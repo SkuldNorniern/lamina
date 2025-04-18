@@ -106,11 +106,24 @@ pub fn generate_function<'a, W: Write>(
 
     // Function Body Generation
     writeln!(writer, "    # Function Body Start")?;
-    for (ir_label, block) in &func.basic_blocks {
-        let asm_label = func_ctx.get_block_label(ir_label)?;
+    
+    // Process the entry block first to ensure correct control flow
+    if let Some(entry_block) = func.basic_blocks.get(&func.entry_block) {
+        let asm_label = func_ctx.get_block_label(&func.entry_block)?;
         writeln!(writer, "{}:", asm_label)?;
-        generate_basic_block(block, writer, state, &func_ctx, func_name)?;
+        generate_basic_block(entry_block, writer, state, &func_ctx, func_name)?;
     }
+    
+    // Process the remaining blocks
+    for (ir_label, block) in &func.basic_blocks {
+        // Skip the entry block since we've already processed it
+        if *ir_label != func.entry_block {
+            let asm_label = func_ctx.get_block_label(ir_label)?;
+            writeln!(writer, "{}:", asm_label)?;
+            generate_basic_block(block, writer, state, &func_ctx, func_name)?;
+        }
+    }
+    
     writeln!(writer, "    # Function Body End")?;
 
     // Unified Function Epilogue
@@ -619,5 +632,62 @@ mod tests {
         assert!(asm.contains("movq $2, %rsi"));
         assert!(asm.contains("movq $7, "));   // Stack arg
         assert!(asm.contains("movq $8, "));   // Stack arg
+    }
+
+    #[test]
+    fn test_block_ordering() {
+        let ir = r#"
+            fn @fibonacci(i64 %n) -> i64 {
+                entry:
+                    %cmp_le1 = le.i64 %n, 1
+                    br %cmp_le1, base_case, recursive_step
+
+                base_case:
+                    ret.i64 %n
+
+                recursive_step:
+                    %n_minus_1 = sub.i64 %n, 1
+                    %n_minus_2 = sub.i64 %n, 2
+                    %fib1 = call @fibonacci(%n_minus_1)
+                    %fib2 = call @fibonacci(%n_minus_2)
+                    %sum = add.i64 %fib1, %fib2
+                    ret.i64 %sum
+            }
+        "#;
+        let asm = compile_to_asm(ir);
+        
+        // Extract all block labels for the fibonacci function
+        let block_labels: Vec<&str> = asm.lines()
+            .filter(|line| line.contains(".L_block_") && !line.contains(":") && !line.contains("jmp") && !line.contains("je"))
+            .collect();
+            
+        // Find the first occurrence of each unique block type
+        let mut first_entry = None;
+        let mut first_base_case = None;
+        let mut first_recursive_step = None;
+        
+        for (i, line) in asm.lines().enumerate() {
+            if line.contains(".L_block_entry_") && line.ends_with(":") && first_entry.is_none() {
+                first_entry = Some(i);
+            } else if line.contains(".L_block_base_case_") && line.ends_with(":") && first_base_case.is_none() {
+                first_base_case = Some(i);
+            } else if line.contains(".L_block_recursive_step_") && line.ends_with(":") && first_recursive_step.is_none() {
+                first_recursive_step = Some(i);
+            }
+        }
+        
+        // Check that we found all block types
+        assert!(first_entry.is_some(), "Entry block not found");
+        assert!(first_base_case.is_some(), "Base case block not found");
+        assert!(first_recursive_step.is_some(), "Recursive step block not found");
+        
+        // Check that entry block is first
+        let entry_pos = first_entry.unwrap();
+        let base_case_pos = first_base_case.unwrap();
+        let recursive_step_pos = first_recursive_step.unwrap();
+        
+        // Entry should come before both others
+        assert!(entry_pos < base_case_pos && entry_pos < recursive_step_pos, 
+                "Entry block should come before other blocks");
     }
 }
