@@ -71,7 +71,7 @@ impl fmt::Display for PrimitiveType {
     }
 }
 
-impl<'a> fmt::Display for Type<'a> {
+impl fmt::Display for Type<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Type::Primitive(pt) => write!(f, "{}", pt),
@@ -102,7 +102,7 @@ impl<'a> fmt::Display for Type<'a> {
     }
 }
 
-impl<'a> fmt::Display for Literal<'a> {
+impl fmt::Display for Literal<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Literal::I8(v) => write!(f, "{}", v), 
@@ -115,7 +115,7 @@ impl<'a> fmt::Display for Literal<'a> {
     }
 }
 
-impl<'a> fmt::Display for Value<'a> {
+impl fmt::Display for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Variable(id) => write!(f, "%{id}"),

@@ -153,7 +153,7 @@ impl fmt::Display for AllocType {
 }
 
 
-impl<'a> fmt::Display for Instruction<'a> {
+impl fmt::Display for Instruction<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Instruction::Binary { op, result, ty, lhs, rhs } =>
