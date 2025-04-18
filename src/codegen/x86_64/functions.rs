@@ -1,9 +1,9 @@
-use crate::{
-    Function, BasicBlock, Identifier, Type, PrimitiveType, Instruction, FunctionAnnotation, Result
-};
-use super::state::{CodegenState, FunctionContext, ValueLocation, ARG_REGISTERS};
 use super::instructions::generate_instruction;
+use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_type_size_directive_and_bytes;
+use crate::{
+    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type,
+};
 use std::io::Write;
 
 // Generate the assembly for all functions in the module
@@ -89,16 +89,16 @@ pub fn generate_function<'a, W: Write>(
                     // but ideally they are copied to local stack slots if reused.
                     // Stack args are at %rbp + 16, %rbp + 24, ...
                     let stack_arg_offset = 16 + (i - ARG_REGISTERS.len()) * 8;
-                     writeln!(
-                         writer,
-                         "        movq {}(%rbp), %r10 # Load stack arg {}",
-                         stack_arg_offset, arg.name
-                     )?;
-                     writeln!(
-                         writer,
-                         "        movq %r10, {}(%rbp) # Spill stack arg {} to local slot",
-                         offset, arg.name
-                     )?;
+                    writeln!(
+                        writer,
+                        "        movq {}(%rbp), %r10 # Load stack arg {}",
+                        stack_arg_offset, arg.name
+                    )?;
+                    writeln!(
+                        writer,
+                        "        movq %r10, {}(%rbp) # Spill stack arg {} to local slot",
+                        offset, arg.name
+                    )?;
                 }
             }
         }
@@ -106,14 +106,14 @@ pub fn generate_function<'a, W: Write>(
 
     // Function Body Generation
     writeln!(writer, "    # Function Body Start")?;
-    
+
     // Process the entry block first to ensure correct control flow
     if let Some(entry_block) = func.basic_blocks.get(&func.entry_block) {
         let asm_label = func_ctx.get_block_label(&func.entry_block)?;
         writeln!(writer, "{}:", asm_label)?;
         generate_basic_block(entry_block, writer, state, &func_ctx, func_name)?;
     }
-    
+
     // Process the remaining blocks
     for (ir_label, block) in &func.basic_blocks {
         // Skip the entry block since we've already processed it
@@ -123,7 +123,7 @@ pub fn generate_function<'a, W: Write>(
             generate_basic_block(block, writer, state, &func_ctx, func_name)?;
         }
     }
-    
+
     writeln!(writer, "    # Function Body End")?;
 
     // Unified Function Epilogue
@@ -183,23 +183,65 @@ fn precompute_function_layout<'a>(
     let mut local_allocations = Vec::new(); // Store (result_name, size)
     for block in func.basic_blocks.values() {
         for instr in &block.instructions {
-             let result_info: Option<(&Identifier<'a>, u64)> = match instr {
-                 Instruction::Alloc { result, allocated_ty, .. } => { let (_,s)=get_type_size_directive_and_bytes(allocated_ty)?; Some((result,s)) },
-                 Instruction::Binary { result, ty, .. } | Instruction::Cmp { result, ty, .. } => { let (_,s)=get_type_size_directive_and_bytes(&Type::Primitive(*ty))?; Some((result,s)) },
-                 Instruction::ZeroExtend { result, target_type, .. } => { let (_,s)=get_type_size_directive_and_bytes(&Type::Primitive(*target_type))?; Some((result,s)) },
-                 Instruction::Load { result, ty, .. } => { let (_,s)=get_type_size_directive_and_bytes(ty)?; Some((result,s)) },
-                 Instruction::GetFieldPtr { result, .. } | Instruction::GetElemPtr { result, .. } => { let (_,s)=get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?; Some((result,s)) },
-                 Instruction::Tuple { result, .. } => { let (_,s)=get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?; Some((result,s)) },
-                 Instruction::ExtractTuple { result, .. } => { let (_,s)=get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?; Some((result,s)) },
-                 Instruction::Phi { result, ty, .. } => { let (_,s)=get_type_size_directive_and_bytes(ty)?; Some((result,s)) },
-                 Instruction::Call { result: Some(res), .. } => { let (_,s)=get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?; Some((res,s)) },
-                 _ => None, // Only care about instructions with results
+            let result_info: Option<(&Identifier<'a>, u64)> = match instr {
+                Instruction::Alloc {
+                    result,
+                    allocated_ty,
+                    ..
+                } => {
+                    let (_, s) = get_type_size_directive_and_bytes(allocated_ty)?;
+                    Some((result, s))
+                }
+                Instruction::Binary { result, ty, .. } | Instruction::Cmp { result, ty, .. } => {
+                    let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(*ty))?;
+                    Some((result, s))
+                }
+                Instruction::ZeroExtend {
+                    result,
+                    target_type,
+                    ..
+                } => {
+                    let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(*target_type))?;
+                    Some((result, s))
+                }
+                Instruction::Load { result, ty, .. } => {
+                    let (_, s) = get_type_size_directive_and_bytes(ty)?;
+                    Some((result, s))
+                }
+                Instruction::GetFieldPtr { result, .. }
+                | Instruction::GetElemPtr { result, .. } => {
+                    let (_, s) =
+                        get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
+                    Some((result, s))
+                }
+                Instruction::Tuple { result, .. } => {
+                    let (_, s) =
+                        get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
+                    Some((result, s))
+                }
+                Instruction::ExtractTuple { result, .. } => {
+                    let (_, s) =
+                        get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
+                    Some((result, s))
+                }
+                Instruction::Phi { result, ty, .. } => {
+                    let (_, s) = get_type_size_directive_and_bytes(ty)?;
+                    Some((result, s))
+                }
+                Instruction::Call {
+                    result: Some(res), ..
+                } => {
+                    let (_, s) =
+                        get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
+                    Some((res, s))
+                }
+                _ => None, // Only care about instructions with results
             };
 
             if let Some((result, size)) = result_info {
-                 let aligned_size = (size + 7) & !7;
-                 local_size += aligned_size;
-                 local_allocations.push((result, aligned_size));
+                let aligned_size = (size + 7) & !7;
+                local_size += aligned_size;
+                local_allocations.push((result, aligned_size));
             }
         }
     }
@@ -208,26 +250,39 @@ fn precompute_function_layout<'a>(
     current_stack_offset = -(saved_callee_regs_size + local_size as i64);
     let local_start_offset = current_stack_offset;
     for (result, aligned_size) in local_allocations {
-         func_ctx.value_locations.insert(result, ValueLocation::StackOffset(current_stack_offset));
-         current_stack_offset += aligned_size as i64; // Move offset *up* towards -saved_callee_regs_size
+        func_ctx
+            .value_locations
+            .insert(result, ValueLocation::StackOffset(current_stack_offset));
+        current_stack_offset += aligned_size as i64; // Move offset *up* towards -saved_callee_regs_size
     }
-    
+
     // Reset offset to start allocating spill slots below locals
     current_stack_offset = local_start_offset;
 
     // 5. Allocate stack spill slots for register parameters and record them
     for (param_name, initial_location) in temp_param_locations {
         if let ValueLocation::Register(reg_name) = initial_location {
-            let param_sig = func.signature.params.iter().find(|p| p.name == param_name).unwrap(); // Find param to get type
+            let param_sig = func
+                .signature
+                .params
+                .iter()
+                .find(|p| p.name == param_name)
+                .unwrap(); // Find param to get type
             let (_, size) = get_type_size_directive_and_bytes(&param_sig.ty)?;
             let aligned_size = (size + 7) & !7;
             current_stack_offset -= aligned_size as i64; // Allocate space below locals/previous spills
-            func_ctx.arg_register_spills.insert(reg_name.clone(), current_stack_offset);
+            func_ctx
+                .arg_register_spills
+                .insert(reg_name.clone(), current_stack_offset);
             // Final location for parameters (even register ones) is their spill slot
-            func_ctx.value_locations.insert(param_name, ValueLocation::StackOffset(current_stack_offset));
+            func_ctx
+                .value_locations
+                .insert(param_name, ValueLocation::StackOffset(current_stack_offset));
         } else {
             // Parameter was already on the stack, just insert its location
-             func_ctx.value_locations.insert(param_name, initial_location);
+            func_ctx
+                .value_locations
+                .insert(param_name, initial_location);
         }
     }
 
@@ -254,14 +309,14 @@ fn generate_basic_block<'a, W: Write>(
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::parse_module;
-    use crate::codegen::x86_64::generate_x86_64_assembly;
     use super::*;
+    use crate::codegen::x86_64::generate_x86_64_assembly;
+    use crate::parser::parse_module;
     // Add imports needed specifically for test_codegen_tensor_benchmark
-    use std::fs;
-    use std::io::{BufWriter, Write};
+    use crate::Result;
     use crate::codegen::x86_64; // To call x86_64::generate_x86_64_assembly
-    use crate::Result; // Needed for the test function signature
+    use std::fs;
+    use std::io::{BufWriter, Write}; // Needed for the test function signature
 
     fn compile_to_asm(ir_code: &str) -> String {
         let module = parse_module(ir_code).expect("Test IR parsing failed");
@@ -312,7 +367,7 @@ mod tests {
         assert!(asm.contains("L_block_entry_"));
         assert!(asm.contains("L_block_positive_"));
         assert!(asm.contains("L_block_negative_"));
-        
+
         // Check for branch instruction
         assert!(asm.contains("cmpq"));
         assert!(asm.contains("setg %al"));
@@ -447,16 +502,16 @@ mod tests {
             }
         "#;
         let asm = compile_to_asm(ir);
-        
+
         // Check global data section
         assert!(asm.contains(".section .data"));
         assert!(asm.contains("global_counter:"));
         assert!(asm.contains(".quad 100"));
         assert!(asm.contains("global_message:"));
-        
+
         // Check load from global
         assert!(asm.contains("global_counter(%rip)"));
-        
+
         // Check getelementptr for array access
         assert!(asm.contains("global_message(%rip)"));
     }
@@ -480,15 +535,15 @@ mod tests {
             }
         "#;
         let asm = compile_to_asm(ir);
-        
+
         // Check i32 operations
         assert!(asm.contains("movl"));
         assert!(asm.contains("addl"));
-        
+
         // Check boolean operations
         assert!(asm.contains("sete %al"));
         assert!(asm.contains("testb %al, %al"));
-        
+
         // Check zero extension
         assert!(asm.contains("movslq"));
     }
@@ -516,13 +571,13 @@ mod tests {
             }
         "#;
         let asm = compile_to_asm(ir);
-        
+
         // Check loop structure
         assert!(asm.contains("jmp"));
         assert!(asm.contains("L_block_loop_start_"));
         assert!(asm.contains("L_block_loop_body_"));
         assert!(asm.contains("L_block_loop_exit_"));
-        
+
         // Check comparison and branching
         assert!(asm.contains("cmpq"));
         assert!(asm.contains("setl %al"));
@@ -558,7 +613,7 @@ mod tests {
             }
         "#;
         let asm = compile_to_asm(ir);
-        
+
         // Check all the basic blocks exist
         assert!(asm.contains("L_block_entry_"));
         assert!(asm.contains("L_block_if_true_"));
@@ -567,7 +622,7 @@ mod tests {
         assert!(asm.contains("L_block_nested_false_"));
         assert!(asm.contains("L_block_if_false_true_"));
         assert!(asm.contains("L_block_if_false_false_"));
-        
+
         // Check different comparison operators
         assert!(asm.contains("setg %al"));
         assert!(asm.contains("setl %al"));
@@ -584,7 +639,7 @@ mod tests {
             }
         "#;
         let asm = compile_to_asm(ir);
-        
+
         // Check that main is exported properly
         assert!(asm.contains(".globl main"));
         assert!(asm.contains("main:"));
@@ -615,23 +670,23 @@ mod tests {
             }
         "#;
         let asm = compile_to_asm(ir);
-        
+
         // Check register args
-        assert!(asm.contains("movq %rdi,"));  // arg a
-        assert!(asm.contains("movq %rsi,"));  // arg b
-        assert!(asm.contains("movq %rdx,"));  // arg c
-        assert!(asm.contains("movq %rcx,"));  // arg d
-        assert!(asm.contains("movq %r8,"));   // arg e
-        assert!(asm.contains("movq %r9,"));   // arg f
-        
+        assert!(asm.contains("movq %rdi,")); // arg a
+        assert!(asm.contains("movq %rsi,")); // arg b
+        assert!(asm.contains("movq %rdx,")); // arg c
+        assert!(asm.contains("movq %rcx,")); // arg d
+        assert!(asm.contains("movq %r8,")); // arg e
+        assert!(asm.contains("movq %r9,")); // arg f
+
         // Check stack args (g and h)
         assert!(asm.contains("16(%rbp)") || asm.contains("24(%rbp)"));
-        
+
         // Check calling with many args
         assert!(asm.contains("movq $1, %rdi"));
         assert!(asm.contains("movq $2, %rsi"));
-        assert!(asm.contains("movq $7, "));   // Stack arg
-        assert!(asm.contains("movq $8, "));   // Stack arg
+        assert!(asm.contains("movq $7, ")); // Stack arg
+        assert!(asm.contains("movq $8, ")); // Stack arg
     }
 
     #[test]
@@ -655,39 +710,56 @@ mod tests {
             }
         "#;
         let asm = compile_to_asm(ir);
-        
+
         // Extract all block labels for the fibonacci function
-        let block_labels: Vec<&str> = asm.lines()
-            .filter(|line| line.contains(".L_block_") && !line.contains(":") && !line.contains("jmp") && !line.contains("je"))
+        let block_labels: Vec<&str> = asm
+            .lines()
+            .filter(|line| {
+                line.contains(".L_block_")
+                    && !line.contains(":")
+                    && !line.contains("jmp")
+                    && !line.contains("je")
+            })
             .collect();
-            
+
         // Find the first occurrence of each unique block type
         let mut first_entry = None;
         let mut first_base_case = None;
         let mut first_recursive_step = None;
-        
+
         for (i, line) in asm.lines().enumerate() {
             if line.contains(".L_block_entry_") && line.ends_with(":") && first_entry.is_none() {
                 first_entry = Some(i);
-            } else if line.contains(".L_block_base_case_") && line.ends_with(":") && first_base_case.is_none() {
+            } else if line.contains(".L_block_base_case_")
+                && line.ends_with(":")
+                && first_base_case.is_none()
+            {
                 first_base_case = Some(i);
-            } else if line.contains(".L_block_recursive_step_") && line.ends_with(":") && first_recursive_step.is_none() {
+            } else if line.contains(".L_block_recursive_step_")
+                && line.ends_with(":")
+                && first_recursive_step.is_none()
+            {
                 first_recursive_step = Some(i);
             }
         }
-        
+
         // Check that we found all block types
         assert!(first_entry.is_some(), "Entry block not found");
         assert!(first_base_case.is_some(), "Base case block not found");
-        assert!(first_recursive_step.is_some(), "Recursive step block not found");
-        
+        assert!(
+            first_recursive_step.is_some(),
+            "Recursive step block not found"
+        );
+
         // Check that entry block is first
         let entry_pos = first_entry.unwrap();
         let base_case_pos = first_base_case.unwrap();
         let recursive_step_pos = first_recursive_step.unwrap();
-        
+
         // Entry should come before both others
-        assert!(entry_pos < base_case_pos && entry_pos < recursive_step_pos, 
-                "Entry block should come before other blocks");
+        assert!(
+            entry_pos < base_case_pos && entry_pos < recursive_step_pos,
+            "Entry block should come before other blocks"
+        );
     }
 }

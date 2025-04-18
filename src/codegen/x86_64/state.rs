@@ -1,7 +1,9 @@
 use crate::{
-    Identifier, Label,
+    Identifier,
+    Label,
     // Value, Type,
-    LaminaError, Result,
+    LaminaError,
+    Result,
     // Module, GlobalDeclaration, PrimitiveType
 };
 use std::collections::HashMap; // Re-add HashMap
@@ -52,7 +54,7 @@ pub struct FunctionContext<'a> {
     // pub variable_types: HashMap<Identifier<'a>, Type<'a>>,
 }
 
-impl<'a> Default for FunctionContext<'a> {
+impl Default for FunctionContext<'_> {
     fn default() -> Self {
         Self::new()
     }
@@ -74,25 +76,31 @@ impl<'a> FunctionContext<'a> {
     // Get the location (register, stack offset, spilled arg) of an IR value
     // This version assumes layout_function_stack has already run and populated locations.
     pub fn get_value_location(&self, name: Identifier<'a>) -> Result<ValueLocation> {
-        self.value_locations.get(name)
-            .cloned()
-            .ok_or_else(|| LaminaError::CodegenError(format!("Value '{}' location not found in function context", name)))
+        self.value_locations.get(name).cloned().ok_or_else(|| {
+            LaminaError::CodegenError(format!(
+                "Value '{}' location not found in function context",
+                name
+            ))
+        })
     }
 
     // Get the assembly label for a basic block
     pub fn get_block_label(&self, ir_label: &Label<'a>) -> Result<String> {
-        self.block_labels.get(ir_label)
-            .cloned()
-            .ok_or_else(|| LaminaError::CodegenError(format!("Label '{}' not found in function context", ir_label)))
+        self.block_labels.get(ir_label).cloned().ok_or_else(|| {
+            LaminaError::CodegenError(format!(
+                "Label '{}' not found in function context",
+                ir_label
+            ))
+        })
     }
 }
 
 // Codegen state for the entire module
 #[derive(Debug, Default)]
 pub struct CodegenState<'a> {
-    pub global_layout: HashMap<Identifier<'a>, String>, 
+    pub global_layout: HashMap<Identifier<'a>, String>,
     pub rodata_strings: Vec<(String, String)>, // label -> content
-    pub next_label_id: u32, 
+    pub next_label_id: u32,
     pub next_rodata_id: u32, // For unique rodata labels
 }
 
@@ -124,7 +132,8 @@ impl CodegenState<'_> {
         let id = self.next_rodata_id;
         self.next_rodata_id += 1;
         let label = format!(".L.rodata_str_{}", id);
-        self.rodata_strings.push((label.clone(), content.to_string()));
+        self.rodata_strings
+            .push((label.clone(), content.to_string()));
         label
     }
 }
@@ -166,4 +175,3 @@ mod tests {
 
     // ... rest of tests (test_codegen_state_new, test_codegen_state_add_rodata_string, test_value_location_to_operand_string) ...
 }
-

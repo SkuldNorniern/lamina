@@ -1,11 +1,13 @@
-pub mod types;
-pub mod instruction;
-pub mod function;
-pub mod module;
 pub mod builder;
+pub mod function;
+pub mod instruction;
+pub mod module;
+pub mod types;
 
 // Re-export key types
-pub use types::{Type, PrimitiveType, Identifier, Value, Literal};
-pub use instruction::{Instruction, BinaryOp, CmpOp, AllocType};
-pub use function::{Function, FunctionSignature, FunctionParameter, BasicBlock, FunctionAnnotation};
-pub use module::{Module, GlobalDeclaration, TypeDeclaration}; 
+pub use function::{
+    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
+};
+pub use instruction::{AllocType, BinaryOp, CmpOp, Instruction};
+pub use module::{GlobalDeclaration, Module, TypeDeclaration};
+pub use types::{Identifier, Literal, PrimitiveType, Type, Value};
