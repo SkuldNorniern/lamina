@@ -1,0 +1,176 @@
+# 2D Matrix Multiplication Benchmark (NumPy matmul equivalent)
+# This implements standard matrix multiplication: C = A @ B
+# For 2D matrices where A is (n_rows × k_dim), B is (k_dim × n_cols)
+
+# Function to get element from matrix A at position [i,k]
+# Uses a deterministic pattern to avoid storing the actual matrix
+fn @get_matrix_a_element(i64 %i, i64 %k) -> i64 {
+  entry:
+    # Same pattern as C version
+    %result = mul.i64 %i, %k
+    %result = add.i64 %result, 1
+    ret.i64 %result
+}
+
+# Function to get element from matrix B at position [k,j]
+# Uses a deterministic pattern to avoid storing the actual matrix
+fn @get_matrix_b_element(i64 %k, i64 %j) -> i64 {
+  entry:
+    # Same pattern as C version
+    %result = mul.i64 %k, %j
+    %result = add.i64 %result, 1
+    ret.i64 %result
+}
+
+# Compute a single cell of the result matrix C[i,j]
+# Standard matrix multiplication: C[i,j] = sum(A[i,k] * B[k,j]) for all k
+fn @compute_matrix_cell(i64 %i, i64 %j, i64 %k_dim) -> i64 {
+  entry:
+    # Initialize accumulator
+    %sum = add.i64 0, 0
+    
+    # Loop counter
+    %k = add.i64 0, 0
+    jmp k_loop
+    
+  k_loop:
+    # Check if we've processed all k values
+    %k_done = eq.i64 %k, %k_dim
+    br %k_done, loop_exit, loop_body
+    
+  loop_body:
+    # Get element from A[i,k]
+    %a_elem = call @get_matrix_a_element(%i, %k)
+    
+    # Get element from B[k,j]
+    %b_elem = call @get_matrix_b_element(%k, %j)
+    
+    # Multiply and add to accumulator
+    %product = mul.i64 %a_elem, %b_elem
+    %sum = add.i64 %sum, %product
+    
+    # Increment k
+    %k = add.i64 %k, 1
+    jmp k_loop
+    
+  loop_exit:
+    # Return the accumulated sum
+    ret.i64 %sum
+}
+
+# Full 2D matrix multiplication benchmark
+# A is (n_rows × k_dim), B is (k_dim × n_cols), C is (n_rows × n_cols)
+fn @matmul_2d(i64 %n_rows, i64 %k_dim, i64 %n_cols) -> i64 {
+  entry:
+    # Print matrix dimensions header
+    print %n_rows   # Matrix A rows
+    print %k_dim    # Matrix A columns = Matrix B rows
+    print %n_cols   # Matrix B columns
+    
+    # Compute total result size
+    %result_size = mul.i64 %n_rows, %n_cols
+    
+    # Progress tracking variables
+    %cells_done = add.i64 0, 0
+    %progress_step = div.i64 %result_size, 20  # Report every 5%
+    %next_report = add.i64 %progress_step, 0
+    
+    # Verification sum
+    %total_sum = add.i64 0, 0
+    
+    # Start marker
+    %start_marker = add.i64 987654321, 0
+    print %start_marker
+    
+    # Outer loop - rows of A (i)
+    %i = add.i64 0, 0
+    jmp row_loop
+    
+  row_loop:
+    %i_done = eq.i64 %i, %n_rows
+    br %i_done, matrix_done, process_row
+    
+  process_row:
+    # Inner loop - columns of B (j)
+    %j = add.i64 0, 0
+    jmp col_loop
+    
+  col_loop:
+    %j_done = eq.i64 %j, %n_cols
+    br %j_done, next_row, process_cell
+    
+  process_cell:
+    # Compute this cell of the result matrix
+    %cell_result = call @compute_matrix_cell(%i, %j, %k_dim)
+    
+    # Add to total sum for verification
+    %total_sum = add.i64 %total_sum, %cell_result
+    
+    # Increment cells processed count
+    %cells_done = add.i64 %cells_done, 1
+    
+    # Check if we should report progress
+    %report_now = ge.i64 %cells_done, %next_report
+    br %report_now, show_progress, next_cell
+    
+  show_progress:
+    # Calculate progress percentage
+    %hundred = add.i64 100, 0
+    %percent = mul.i64 %cells_done, %hundred
+    %percent = div.i64 %percent, %result_size
+    print %percent  # Print progress percentage
+    
+    # Update next report threshold
+    %next_report = add.i64 %next_report, %progress_step
+    jmp next_cell
+    
+  next_cell:
+    # Move to next column
+    %j = add.i64 %j, 1
+    jmp col_loop
+    
+  next_row:
+    # Move to next row
+    %i = add.i64 %i, 1
+    jmp row_loop
+    
+  matrix_done:
+    # End marker
+    %end_marker = add.i64 987654322, 0
+    print %end_marker
+    
+    # Print results 
+    print %total_sum  # Total sum for verification
+    
+    # Calculate operations (each cell requires k_dim multiplications and additions)
+    %ops_per_cell = mul.i64 %k_dim, 2
+    %total_ops = mul.i64 %result_size, %ops_per_cell
+    print %total_ops  # Print total operations count
+    
+    # Return verification sum
+    ret.i64 %total_sum
+}
+
+# Main function to run the benchmark
+@export
+fn @main() -> i64 {
+  entry:
+    # Set matrix dimensions 
+    # Reduced size for faster testing
+    %n_rows = add.i64 256, 0  # Rows in A 
+    %k_dim = add.i64 256, 0   # Cols in A = Rows in B
+    %n_cols = add.i64 256, 0  # Cols in B
+    
+    # Print header
+    %header = add.i64 123456789, 0  # Unique header marker
+    print %header
+    
+    # Run the benchmark
+    %result = call @matmul_2d(%n_rows, %k_dim, %n_cols)
+    
+    # Print final status
+    %status = add.i64 987654323, 0  # Final completion marker
+    print %status
+    
+    ret.i64 0
+}
