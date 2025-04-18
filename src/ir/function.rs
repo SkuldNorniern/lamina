@@ -52,13 +52,17 @@ pub struct Function<'a> {
 
 impl fmt::Display for FunctionAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@{}", match self {
-            FunctionAnnotation::Inline => "inline",
-            FunctionAnnotation::Export => "export",
-            FunctionAnnotation::NoReturn => "noreturn",
-            FunctionAnnotation::NoInline => "noinline",
-            FunctionAnnotation::Cold => "cold",
-        })
+        write!(
+            f,
+            "@{}",
+            match self {
+                FunctionAnnotation::Inline => "inline",
+                FunctionAnnotation::Export => "export",
+                FunctionAnnotation::NoReturn => "noreturn",
+                FunctionAnnotation::NoInline => "noinline",
+                FunctionAnnotation::Cold => "cold",
+            }
+        )
     }
 }
 
@@ -106,8 +110,8 @@ impl fmt::Display for Function<'_> {
         // Print remaining blocks (order might not be source order, but good enough for display)
         for (label, block) in &self.basic_blocks {
             if *label != self.entry_block {
-                 writeln!(f, "{}:", label)?;
-                 write!(f, "{}", block)?;
+                writeln!(f, "{}:", label)?;
+                write!(f, "{}", block)?;
             }
         }
 
@@ -118,8 +122,8 @@ impl fmt::Display for Function<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::types::{PrimitiveType, Type, Value, Literal};
-    use crate::ir::instruction::{Instruction, BinaryOp, AllocType};
+    use crate::ir::instruction::{AllocType, BinaryOp, Instruction};
+    use crate::ir::types::{Literal, PrimitiveType, Type, Value};
     use std::collections::HashMap;
 
     #[test]
@@ -151,7 +155,10 @@ mod tests {
 
         // One param, primitive return
         let sig2 = FunctionSignature {
-            params: vec![FunctionParameter { name: "input", ty: Type::Primitive(PrimitiveType::F32) }],
+            params: vec![FunctionParameter {
+                name: "input",
+                ty: Type::Primitive(PrimitiveType::F32),
+            }],
             return_type: Type::Primitive(PrimitiveType::F32),
         };
         assert_eq!(format!("{}", sig2), "(f32 %input) -> f32");
@@ -159,8 +166,14 @@ mod tests {
         // Multiple params, named return
         let sig3 = FunctionSignature {
             params: vec![
-                FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32) },
-                FunctionParameter { name: "b", ty: Type::Named("MyType") },
+                FunctionParameter {
+                    name: "a",
+                    ty: Type::Primitive(PrimitiveType::I32),
+                },
+                FunctionParameter {
+                    name: "b",
+                    ty: Type::Named("MyType"),
+                },
             ],
             return_type: Type::Named("ResultType"),
         };
@@ -181,38 +194,45 @@ mod tests {
                     ptr: Value::Variable("p"),
                     value: Value::Constant(Literal::I32(10)),
                 },
-                Instruction::Jmp { target_label: "next_block" },
+                Instruction::Jmp {
+                    target_label: "next_block",
+                },
             ],
         };
         // Expect leading spaces on ALL instruction lines due to writeln!
-        let expected_output = 
-"  %p = alloc.ptr.stack i32\n  store.i32 %p, 10\n  jmp next_block\n"; 
+        let expected_output = "  %p = alloc.ptr.stack i32\n  store.i32 %p, 10\n  jmp next_block\n";
         assert_eq!(format!("{}", block), expected_output);
     }
 
     #[test]
     fn test_display_function() {
         let sig = FunctionSignature {
-            params: vec![FunctionParameter { name: "x", ty: Type::Primitive(PrimitiveType::I32) }],
+            params: vec![FunctionParameter {
+                name: "x",
+                ty: Type::Primitive(PrimitiveType::I32),
+            }],
             return_type: Type::Primitive(PrimitiveType::I32),
         };
 
         let mut blocks = HashMap::new();
-        blocks.insert("entry", BasicBlock {
-            instructions: vec![
-                Instruction::Binary {
-                    op: BinaryOp::Add,
-                    result: "tmp",
-                    ty: PrimitiveType::I32,
-                    lhs: Value::Variable("x"),
-                    rhs: Value::Constant(Literal::I32(1)),
-                },
-                Instruction::Ret {
-                    ty: Type::Primitive(PrimitiveType::I32),
-                    value: Some(Value::Variable("tmp")),
-                },
-            ],
-        });
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![
+                    Instruction::Binary {
+                        op: BinaryOp::Add,
+                        result: "tmp",
+                        ty: PrimitiveType::I32,
+                        lhs: Value::Variable("x"),
+                        rhs: Value::Constant(Literal::I32(1)),
+                    },
+                    Instruction::Ret {
+                        ty: Type::Primitive(PrimitiveType::I32),
+                        value: Some(Value::Variable("tmp")),
+                    },
+                ],
+            },
+        );
 
         let func = Function {
             name: "increment",
@@ -222,9 +242,8 @@ mod tests {
             entry_block: "entry",
         };
 
-        // Match actual output - no indentation for instructions 
-        let expected_output = 
-"@inline\n@export\nfn @increment(i32 %x) -> i32 {\nentry:\n  %tmp = add.i32 %x, 1\n  ret.i32 %tmp\n}\n"; 
+        // Match actual output - no indentation for instructions
+        let expected_output = "@inline\n@export\nfn @increment(i32 %x) -> i32 {\nentry:\n  %tmp = add.i32 %x, 1\n  ret.i32 %tmp\n}\n";
 
         assert_eq!(format!("{}", func), expected_output);
     }
@@ -232,36 +251,42 @@ mod tests {
     #[test]
     fn test_display_function_multiple_blocks() {
         let sig = FunctionSignature {
-            params: vec![FunctionParameter { name: "cond", ty: Type::Primitive(PrimitiveType::Bool) }],
+            params: vec![FunctionParameter {
+                name: "cond",
+                ty: Type::Primitive(PrimitiveType::Bool),
+            }],
             return_type: Type::Primitive(PrimitiveType::I32),
         };
 
         let mut blocks = HashMap::new();
-        blocks.insert("entry", BasicBlock {
-            instructions: vec![
-                Instruction::Br {
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Br {
                     condition: Value::Variable("cond"),
                     true_label: "if_true",
                     false_label: "if_false",
-                },
-            ],
-        });
-         blocks.insert("if_true", BasicBlock {
-            instructions: vec![
-                Instruction::Ret {
+                }],
+            },
+        );
+        blocks.insert(
+            "if_true",
+            BasicBlock {
+                instructions: vec![Instruction::Ret {
                     ty: Type::Primitive(PrimitiveType::I32),
                     value: Some(Value::Constant(Literal::I32(1))),
-                },
-            ],
-        });
-         blocks.insert("if_false", BasicBlock {
-            instructions: vec![
-                Instruction::Ret {
+                }],
+            },
+        );
+        blocks.insert(
+            "if_false",
+            BasicBlock {
+                instructions: vec![Instruction::Ret {
                     ty: Type::Primitive(PrimitiveType::I32),
                     value: Some(Value::Constant(Literal::I32(0))),
-                },
-            ],
-        });
+                }],
+            },
+        );
 
         let func = Function {
             name: "branch_test",
@@ -274,17 +299,21 @@ mod tests {
         // Match actual output - no indentation for instructions
         let output = format!("{}", func);
 
-        let expected_order1 = 
-"fn @branch_test(bool %cond) -> i32 {\nentry:\n  br %cond, if_true, if_false\nif_false:\n  ret.i32 0\nif_true:\n  ret.i32 1\n}\n";
+        let expected_order1 = "fn @branch_test(bool %cond) -> i32 {\nentry:\n  br %cond, if_true, if_false\nif_false:\n  ret.i32 0\nif_true:\n  ret.i32 1\n}\n";
 
-        let expected_order2 =  "fn @branch_test(bool %cond) -> i32 {\n  entry:\n    br %cond, if_true, if_false\n  if_true:\n    ret.i32 1\n  if_false:\n    ret.i32 0\n}\n";
-        let expected_order3 = 
-"fn @branch_test(bool %cond) -> i32 {\nentry:\n  br %cond, if_true, if_false\nif_true:\n  ret.i32 1\nif_false:\n  ret.i32 0\n}\n";
-        let expected_order4 = 
-"fn @branch_test(bool %cond) -> i32 {\n  entry:\n    br %cond, if_true, if_false\n  if_true:\n    ret.i32 1\n  if_false:\n    ret.i32 0\n}\n";
+        let expected_order2 = "fn @branch_test(bool %cond) -> i32 {\n  entry:\n    br %cond, if_true, if_false\n  if_true:\n    ret.i32 1\n  if_false:\n    ret.i32 0\n}\n";
+        let expected_order3 = "fn @branch_test(bool %cond) -> i32 {\nentry:\n  br %cond, if_true, if_false\nif_true:\n  ret.i32 1\nif_false:\n  ret.i32 0\n}\n";
+        let expected_order4 = "fn @branch_test(bool %cond) -> i32 {\n  entry:\n    br %cond, if_true, if_false\n  if_true:\n    ret.i32 1\n  if_false:\n    ret.i32 0\n}\n";
 
-        assert!(output == expected_order1 || output == expected_order2 || output == expected_order3 || output == expected_order4, 
-                "Unexpected output:\n{}\nExpected one of:\n{}\nOR\n{}\n", 
-                output, expected_order1, expected_order2);
+        assert!(
+            output == expected_order1
+                || output == expected_order2
+                || output == expected_order3
+                || output == expected_order4,
+            "Unexpected output:\n{}\nExpected one of:\n{}\nOR\n{}\n",
+            output,
+            expected_order1,
+            expected_order2
+        );
     }
-} 
+}
