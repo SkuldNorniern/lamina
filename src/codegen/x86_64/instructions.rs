@@ -259,8 +259,8 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        movq %rax, {} # Store GEP Result", dest_asm)?;
         }
         Instruction::Print { value } => {
-            // Get label for format string "%lld\\n", adding it to state if needed.
-            let format_label = state.add_rodata_string("%lld\\n");
+            // Get label for format string "%lld\n", adding it to state if needed.
+            let format_label = state.add_rodata_string("%lld\n");
             // Get the assembly operand for the value to print
             let val_op = get_value_operand_asm(value, state, func_ctx)?;
 
