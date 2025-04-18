@@ -329,206 +329,734 @@ pub fn generate_instruction<'a, W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::types::{Literal, PrimitiveType, Type, Value, StructField};
+    use crate::ir::types::{Literal, PrimitiveType, Type, Value};
     use crate::ir::instruction::{Instruction, BinaryOp, CmpOp, AllocType};
-    use crate::ir::function::{FunctionSignature, FunctionParameter, BasicBlock, Function};
     use crate::codegen::x86_64::state::{CodegenState, FunctionContext, ValueLocation};
-    use std::collections::HashMap;
     use std::io::Cursor;
+    use indexmap::IndexMap;
+    use std::collections::HashMap;
 
-    // Helper function to create a state and context for testing
-    fn setup_test_context<'a>() -> (CodegenState<'a>, FunctionContext<'a>) {
-        let mut state = CodegenState::new();
-        
-        // Create a function context with defaults
+    // Helper to create a default FunctionContext for testing
+    fn setup_test_context_basic<'a>() -> FunctionContext<'a> {
         let mut func_ctx = FunctionContext::new();
         func_ctx.epilogue_label = ".Lepilogue_test_func".to_string();
-        
-        // Add some stack slots for variables
         func_ctx.value_locations.insert("ptr1", ValueLocation::StackOffset(-16));
         func_ctx.value_locations.insert("val1", ValueLocation::StackOffset(-24));
-        func_ctx.value_locations.insert("result", ValueLocation::StackOffset(-32));
-        
-        // Add some basic block labels
+        func_ctx.value_locations.insert("val2", ValueLocation::StackOffset(-32));
+        func_ctx.value_locations.insert("result", ValueLocation::StackOffset(-40));
         func_ctx.block_labels.insert("entry", ".Lblock_entry".to_string());
         func_ctx.block_labels.insert("true_block", ".Lblock_true".to_string());
         func_ctx.block_labels.insert("false_block", ".Lblock_false".to_string());
-        
-        (state, func_ctx)
+        func_ctx
     }
-    
-    // Helper to extract and format assembly from instruction generation
-    fn generate_test_asm<'a>(instr: &Instruction<'a>) -> String {
+
+    // Helper function to create a CodegenState with some globals for testing
+    fn setup_test_state_with_globals<'a>() -> CodegenState<'a> {
+        let mut state = CodegenState::new();
+        state.global_layout.insert("my_global_i32", "global_my_global_i32".to_string());
+        state.global_layout.insert("my_global_i64", "global_my_global_i64".to_string());
+        state
+    }
+
+    // Helper to generate assembly for a single instruction
+    // Now accepts state explicitly
+    fn generate_test_asm<'a>(instr: &Instruction<'a>, ctx: &FunctionContext<'a>, state: &mut CodegenState<'a>) -> String {
         let mut output = Cursor::new(Vec::new());
-        let (mut state, func_ctx) = setup_test_context();
-        
-        generate_instruction(instr, &mut output, &mut state, &func_ctx, "test_func")
+        generate_instruction(instr, &mut output, state, ctx, "test_func")
             .expect("Failed to generate instruction");
-        
+
         String::from_utf8(output.into_inner())
             .expect("Failed to convert output to string")
     }
-    
-    #[test]
-    fn test_alloc_stack_instruction() {
-        // Test allocation on stack
-        let alloc_instr = Instruction::Alloc {
-            result: "ptr1",
-            alloc_type: AllocType::Stack,
-            allocated_ty: Type::Primitive(PrimitiveType::I32),
-        };
-        
-        let asm = generate_test_asm(&alloc_instr);
-        
-        assert!(asm.contains("leaq -16(%rbp), %rax"));
-        assert!(asm.contains("movq %rax, -16(%rbp)"));
+
+    // Helper to generate assembly and assert it contains specific snippets
+    // Now accepts state explicitly
+    fn assert_asm_contains<'a>(instr: &Instruction<'a>, ctx: &FunctionContext<'a>, state: &mut CodegenState<'a>, expected_snippets: &[&str]) {
+        let asm = generate_test_asm(instr, ctx, state);
+        println!("Generated ASM for {}:\n{}", instr, asm); // Print ASM for debugging
+        for snippet in expected_snippets {
+            assert!(asm.contains(snippet),
+                "ASM output does not contain expected snippet: \nSnippet: \t{:?}\nFull ASM:\n{}", snippet, asm);
+        }
     }
-    
+
+    // Helper to assert that generating an instruction results in a CodegenError
+    // Now accepts state explicitly
+    fn assert_codegen_error<'a>(instr: &Instruction<'a>, ctx: &FunctionContext<'a>, state: &mut CodegenState<'a>, expected_msg_part: &str) {
+        let mut output = Cursor::new(Vec::new());
+        let result = generate_instruction(instr, &mut output, state, ctx, "test_func");
+
+        match result {
+            Err(LaminaError::CodegenError(msg)) => {
+                assert!(msg.contains(expected_msg_part),
+                    "Expected error message containing \nExpected: \t{:?}\nActual: \t{:?}", expected_msg_part, msg);
+            }
+            Err(other_err) => {
+                panic!("Expected CodegenError, but got different error: {:?}", other_err);
+            }
+            Ok(_) => {
+                panic!("Expected CodegenError, but instruction generation succeeded.");
+            }
+        }
+    }
+
+    // --- Instruction Tests ---
+
     #[test]
-    fn test_store_instruction() {
-        // Test store to memory
-        let store_instr = Instruction::Store {
+    fn test_ret_instruction() {
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new(); // Globals not needed for ret
+        // Test return with value
+        let ret_val_instr = Instruction::Ret {
+            ty: Type::Primitive(PrimitiveType::I64),
+            value: Some(Value::Variable("result")),
+        };
+        assert_asm_contains(&ret_val_instr, &ctx, &mut state, &[
+            "movq -40(%rbp), %rax",
+            "jmp .Lepilogue_test_func",
+        ]);
+
+        // Test return void (no value)
+        let ret_void_instr = Instruction::Ret {
+            ty: Type::Void,
+            value: None,
+        };
+        let asm_void = generate_test_asm(&ret_void_instr, &ctx, &mut state);
+        assert!(!asm_void.contains("%rax"), "Void return should not touch %rax");
+        assert!(asm_void.contains("jmp .Lepilogue_test_func"));
+    }
+
+    #[test]
+    fn test_store_instructions() {
+        let ctx = setup_test_context_basic();
+        let mut state = setup_test_state_with_globals();
+        // Store i32 to stack var
+        let store_i32 = Instruction::Store {
             ty: Type::Primitive(PrimitiveType::I32),
             ptr: Value::Variable("ptr1"),
             value: Value::Constant(Literal::I32(42)),
         };
-        
-        let asm = generate_test_asm(&store_instr);
-        
-        assert!(asm.contains("movq $42, %r10"));  // Load the constant
-        assert!(asm.contains("movq -16(%rbp), %r11"));  // Load the pointer
-        assert!(asm.contains("movl %r10d, (%r11)"));  // Store the value
-    }
-    
-    #[test]
-    fn test_load_instruction() {
-        // Test load from memory
-        let load_instr = Instruction::Load {
-            result: "result",
-            ty: Type::Primitive(PrimitiveType::I32),
+        assert_asm_contains(&store_i32, &ctx, &mut state, &[
+            "movq $42, %r10",
+            "movq -16(%rbp), %r11",
+            "movl %r10d, (%r11)",
+        ]);
+
+        // Store i64 to stack var
+        let store_i64 = Instruction::Store {
+            ty: Type::Primitive(PrimitiveType::I64),
             ptr: Value::Variable("ptr1"),
+            value: Value::Variable("val2"),
         };
-        
-        let asm = generate_test_asm(&load_instr);
-        
-        assert!(asm.contains("movq -16(%rbp), %r11"));  // Load pointer address
-        assert!(asm.contains("movslq (%r11), %r10"));   // Load value with sign extension
-        assert!(asm.contains("movq %r10, -32(%rbp)"));  // Store to result location
+        assert_asm_contains(&store_i64, &ctx, &mut state, &[
+            "movq -32(%rbp), %r10",
+            "movq -16(%rbp), %r11",
+            "movq %r10, (%r11)",
+        ]);
+
+        // Store bool to stack var
+        let store_bool = Instruction::Store {
+            ty: Type::Primitive(PrimitiveType::Bool),
+            ptr: Value::Variable("ptr1"),
+            value: Value::Constant(Literal::Bool(true)),
+        };
+        assert_asm_contains(&store_bool, &ctx, &mut state, &[
+            "movq $1, %r10", // true is 1
+            "movq -16(%rbp), %r11",
+            "movb %r10b, (%r11)",
+        ]);
+
+        // Store Ptr to stack var
+        let store_ptr = Instruction::Store {
+            ty: Type::Primitive(PrimitiveType::Ptr),
+            ptr: Value::Variable("ptr1"), // ptr to ptr
+            value: Value::Variable("val2"), // address to store (e.g. result of GEP)
+        };
+        assert_asm_contains(&store_ptr, &ctx, &mut state, &[
+            "movq -32(%rbp), %r10", // val2 (address)
+            "movq -16(%rbp), %r11", // ptr1 (ptr to ptr)
+            "movq %r10, (%r11)",    // Store address into ptr to ptr
+        ]);
+
+        // Store i64 to global
+        let store_global_i64 = Instruction::Store {
+            ty: Type::Primitive(PrimitiveType::I64),
+            ptr: Value::Global("my_global_i64"),
+            value: Value::Variable("val1"),
+        };
+        assert_asm_contains(&store_global_i64, &ctx, &mut state, &[
+            "movq -24(%rbp), %r10",       // Load value from val1
+            "movq global_my_global_i64(%rip), %r11", // Load address of global into r11
+            "movq %r10, (%r11)",          // Store value to global address (indirect)
+        ]);
+
+        // Store constant i32 to global
+        let store_global_const_i32 = Instruction::Store {
+            ty: Type::Primitive(PrimitiveType::I32),
+            ptr: Value::Global("my_global_i32"),
+            value: Value::Constant(Literal::I32(99)),
+        };
+        assert_asm_contains(&store_global_const_i32, &ctx, &mut state, &[
+            "movq $99, %r10",              // Load constant value
+            "movq global_my_global_i32(%rip), %r11", // Load address of global into r11
+            "movl %r10d, (%r11)",          // Store value to global address (indirect)
+        ]);
+
+        // Store unsupported type
+        let store_err = Instruction::Store {
+            ty: Type::Void, // Invalid type to store
+            ptr: Value::Variable("ptr1"),
+            value: Value::Constant(Literal::I32(0)),
+        };
+        assert_codegen_error(&store_err, &ctx, &mut state, "Store for type");
     }
-    
+
     #[test]
-    fn test_binary_add_instruction() {
-        // Test binary addition
-        let add_instr = Instruction::Binary {
+    fn test_alloc_instructions() {
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
+        // Stack allocation
+        let alloc_stack = Instruction::Alloc {
+            result: "result",
+            alloc_type: AllocType::Stack,
+            allocated_ty: Type::Primitive(PrimitiveType::I64),
+        };
+        assert_asm_contains(&alloc_stack, &ctx, &mut state, &[
+            "leaq -40(%rbp), %rax", // Get address of stack slot
+            "movq %rax, -40(%rbp)", // Store address in itself (alloc returns pointer)
+        ]);
+
+        // Heap allocation (should error)
+        let alloc_heap = Instruction::Alloc {
+            result: "result",
+            alloc_type: AllocType::Heap,
+            allocated_ty: Type::Primitive(PrimitiveType::I64),
+        };
+        assert_codegen_error(&alloc_heap, &ctx, &mut state, "Heap allocation requires runtime");
+
+        // Stack allocation with invalid location (should error)
+        let mut ctx_invalid_loc = setup_test_context_basic();
+        ctx_invalid_loc.value_locations.insert("result", ValueLocation::Register("%rax".to_string())); // Invalid location for alloc result
+        let alloc_stack_invalid = Instruction::Alloc {
+            result: "result",
+            alloc_type: AllocType::Stack,
+            allocated_ty: Type::Primitive(PrimitiveType::I64),
+        };
+         assert_codegen_error(&alloc_stack_invalid, &ctx_invalid_loc, &mut state, "Stack allocation result location invalid");
+    }
+
+    #[test]
+    fn test_binary_instructions() {
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
+        // Add i32
+        let add_i32 = Instruction::Binary {
             op: BinaryOp::Add,
             result: "result",
             ty: PrimitiveType::I32,
             lhs: Value::Variable("val1"),
             rhs: Value::Constant(Literal::I32(5)),
         };
-        
-        let asm = generate_test_asm(&add_instr);
-        
-        assert!(asm.contains("movl -24(%rbp), %eax"));  // Load LHS
-        assert!(asm.contains("movl $5, %r10d"));        // Load RHS
-        assert!(asm.contains("addl %r10d, %eax"));      // Perform addition
-        assert!(asm.contains("movl %eax, -32(%rbp)"));  // Store result
+        assert_asm_contains(&add_i32, &ctx, &mut state, &[
+            "movl -24(%rbp), %eax",
+            "movl $5, %r10d",
+            "addl %r10d, %eax",
+            "movl %eax, -40(%rbp)",
+        ]);
+
+        // Sub i64
+        let sub_i64 = Instruction::Binary {
+            op: BinaryOp::Sub,
+            result: "result",
+            ty: PrimitiveType::I64,
+            lhs: Value::Variable("val1"),
+            rhs: Value::Variable("val2"),
+        };
+        assert_asm_contains(&sub_i64, &ctx, &mut state, &[
+            "movq -24(%rbp), %rax",
+            "movq -32(%rbp), %r10",
+            "subq %r10, %rax",
+            "movq %rax, -40(%rbp)",
+        ]);
+
+        // Mul ptr (treated as i64)
+        let mul_ptr = Instruction::Binary {
+            op: BinaryOp::Mul,
+            result: "result",
+            ty: PrimitiveType::Ptr,
+            lhs: Value::Variable("val1"),
+            rhs: Value::Constant(Literal::I64(8)),
+        };
+        assert_asm_contains(&mul_ptr, &ctx, &mut state, &[
+            "movq -24(%rbp), %rax",
+            "movq $8, %r10",
+            "imulq %r10, %rax",
+            "movq %rax, -40(%rbp)",
+        ]);
+
+        // Div i32
+        let div_i32 = Instruction::Binary {
+            op: BinaryOp::Div,
+            result: "result",
+            ty: PrimitiveType::I32,
+            lhs: Value::Variable("val1"),
+            rhs: Value::Constant(Literal::I32(2)),
+        };
+        assert_asm_contains(&div_i32, &ctx, &mut state, &[
+            "movl -24(%rbp), %eax", // Dividend
+            "movl $2, %r10d",      // Divisor
+            "cltd",                 // Sign extend eax to edx:eax
+            "idivl %r10d",          // Divide edx:eax by r10d
+            "movl %eax, -40(%rbp)", // Store quotient (in eax)
+        ]);
+
+        // Div i64
+        let div_i64 = Instruction::Binary {
+            op: BinaryOp::Div,
+            result: "result",
+            ty: PrimitiveType::I64,
+            lhs: Value::Variable("val1"),
+            rhs: Value::Variable("val2"),
+        };
+        assert_asm_contains(&div_i64, &ctx, &mut state, &[
+            "movq -24(%rbp), %rax",
+            "movq -32(%rbp), %r10",
+            "cqto",                // Sign extend rax to rdx:rax
+            "idivq %r10",          // Divide rdx:rax by r10
+            "movq %rax, -40(%rbp)", // Store quotient (in rax)
+        ]);
+
+        // Binary op unsupported type
+        let bin_err = Instruction::Binary {
+            op: BinaryOp::Add,
+            result: "result",
+            ty: PrimitiveType::Bool, // Invalid type for add
+            lhs: Value::Constant(Literal::Bool(true)),
+            rhs: Value::Constant(Literal::Bool(false)),
+        };
+        assert_codegen_error(&bin_err, &ctx, &mut state, "Binary op for type");
     }
-    
+
     #[test]
-    fn test_cmp_instruction() {
-        // Test comparison
-        let cmp_instr = Instruction::Cmp {
-            op: CmpOp::Lt,
+    fn test_load_instructions() {
+        let ctx = setup_test_context_basic();
+        let mut state = setup_test_state_with_globals();
+        // Load i8 from stack
+        let load_i8 = Instruction::Load {
+            result: "result",
+            ty: Type::Primitive(PrimitiveType::I8),
+            ptr: Value::Variable("ptr1"),
+        };
+        assert_asm_contains(&load_i8, &ctx, &mut state, &[
+            "movq -16(%rbp), %r11", // Load address
+            "movsbq (%r11), %r10",  // Load byte and sign-extend to quad
+            "movq %r10, -40(%rbp)", // Store result
+        ]);
+        
+        // Load i32 from stack
+        let load_i32 = Instruction::Load {
+            result: "result",
+            ty: Type::Primitive(PrimitiveType::I32),
+            ptr: Value::Variable("ptr1"),
+        };
+        assert_asm_contains(&load_i32, &ctx, &mut state, &[
+            "movq -16(%rbp), %r11",
+            "movslq (%r11), %r10",  // Load long and sign-extend to quad
+            "movq %r10, -40(%rbp)",
+        ]);
+
+        // Load i64 from stack
+        let load_i64 = Instruction::Load {
+            result: "result",
+            ty: Type::Primitive(PrimitiveType::I64),
+            ptr: Value::Variable("ptr1"),
+        };
+        assert_asm_contains(&load_i64, &ctx, &mut state, &[
+            "movq -16(%rbp), %r11",
+            "movq (%r11), %r10",   // Load quad
+            "movq %r10, -40(%rbp)",
+        ]);
+
+        // Load bool from stack
+        let load_bool = Instruction::Load {
+            result: "result",
+            ty: Type::Primitive(PrimitiveType::Bool),
+            ptr: Value::Variable("ptr1"),
+        };
+        assert_asm_contains(&load_bool, &ctx, &mut state, &[
+            "movq -16(%rbp), %r11",
+            "movzbq (%r11), %r10", // Load byte and zero-extend to quad
+            "movq %r10, -40(%rbp)",
+        ]);
+
+        // Load Ptr from stack
+        let load_ptr = Instruction::Load {
+            result: "result",
+            ty: Type::Primitive(PrimitiveType::Ptr),
+            ptr: Value::Variable("ptr1"),
+        };
+        assert_asm_contains(&load_ptr, &ctx, &mut state, &[
+            "movq -16(%rbp), %r11",
+            "movq (%r11), %r10",   // Load quad
+            "movq %r10, -40(%rbp)",
+        ]);
+
+        // Load i32 from global
+        let load_global_i32 = Instruction::Load {
+            result: "result",
+            ty: Type::Primitive(PrimitiveType::I32),
+            ptr: Value::Global("my_global_i32"),
+        };
+        assert_asm_contains(&load_global_i32, &ctx, &mut state, &[
+            "movslq global_my_global_i32(%rip), %r10", // Load global i32 and sign-extend
+            "movq %r10, -40(%rbp)",               // Store result
+        ]);
+
+        // Load i64 from global
+        let load_global_i64 = Instruction::Load {
+            result: "result",
+            ty: Type::Primitive(PrimitiveType::I64),
+            ptr: Value::Global("my_global_i64"),
+        };
+        assert_asm_contains(&load_global_i64, &ctx, &mut state, &[
+            "movq global_my_global_i64(%rip), %r10", // Load global i64 directly
+            "movq %r10, -40(%rbp)",               // Store result
+        ]);
+
+        // Load unsupported type
+        let load_err = Instruction::Load {
+            result: "result",
+            ty: Type::Void, // Invalid type
+            ptr: Value::Variable("ptr1"),
+        };
+        assert_codegen_error(&load_err, &ctx, &mut state, "Load for type");
+    }
+
+    #[test]
+    fn test_cmp_instructions() {
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
+        // Cmp i8
+        let cmp_i8 = Instruction::Cmp {
+            op: CmpOp::Eq,
+            result: "result",
+            ty: PrimitiveType::I8,
+            lhs: Value::Variable("val1"),
+            rhs: Value::Constant(Literal::I8(10)),
+        };
+        assert_asm_contains(&cmp_i8, &ctx, &mut state, &[
+            "movb $10, %r10b",
+            "movb -24(%rbp), %r11b",
+            "cmpb %r10b, %r11b",
+            "sete %al",
+            "movb %al, -40(%rbp)",
+        ]);
+        
+        // Cmp i32
+        let cmp_i32 = Instruction::Cmp {
+            op: CmpOp::Ne,
             result: "result",
             ty: PrimitiveType::I32,
             lhs: Value::Variable("val1"),
             rhs: Value::Constant(Literal::I32(10)),
         };
+        assert_asm_contains(&cmp_i32, &ctx, &mut state, &[
+            "movl $10, %r10d",
+            "movl -24(%rbp), %r11d",
+            "cmpl %r10d, %r11d",
+            "setne %al",
+            "movb %al, -40(%rbp)",
+        ]);
         
-        let asm = generate_test_asm(&cmp_instr);
-        
-        assert!(asm.contains("movl $10, %r10d"));       // Load RHS
-        assert!(asm.contains("movl -24(%rbp), %r11d")); // Load LHS
-        assert!(asm.contains("cmpl %r10d, %r11d"));     // Compare
-        assert!(asm.contains("setl %al"));              // Set result based on comparison
-        assert!(asm.contains("movb %al, -32(%rbp)"));   // Store boolean result
+        // Cmp i64
+        let cmp_i64 = Instruction::Cmp {
+            op: CmpOp::Gt,
+            result: "result",
+            ty: PrimitiveType::I64,
+            lhs: Value::Variable("val1"),
+            rhs: Value::Variable("val2"),
+        };
+        assert_asm_contains(&cmp_i64, &ctx, &mut state, &[
+            "movq -32(%rbp), %r10",
+            "movq -24(%rbp), %r11",
+            "cmpq %r10, %r11",
+            "setg %al",
+            "movb %al, -40(%rbp)",
+        ]);
+
+        // Cmp bool
+        let cmp_bool = Instruction::Cmp {
+            op: CmpOp::Eq,
+            result: "result",
+            ty: PrimitiveType::Bool,
+            lhs: Value::Constant(Literal::Bool(true)),
+            rhs: Value::Variable("val1"),
+        };
+        assert_asm_contains(&cmp_bool, &ctx, &mut state, &[
+            "movb -24(%rbp), %r10b",
+            "movb $1, %r11b",
+            "cmpb %r10b, %r11b",
+            "sete %al",
+            "movb %al, -40(%rbp)",
+        ]);
+
+        // Cmp ptr
+        let cmp_ptr = Instruction::Cmp {
+            op: CmpOp::Le,
+            result: "result",
+            ty: PrimitiveType::Ptr,
+            lhs: Value::Variable("ptr1"),
+            rhs: Value::Variable("val1"), // Comparing address with integer value
+        };
+        assert_asm_contains(&cmp_ptr, &ctx, &mut state, &[
+            "movq -24(%rbp), %r10",
+            "movq -16(%rbp), %r11",
+            "cmpq %r10, %r11",
+            "setle %al",
+            "movb %al, -40(%rbp)",
+        ]);
+
+        // Cmp unsupported type
+        let cmp_err = Instruction::Cmp {
+            op: CmpOp::Eq,
+            result: "result",
+            ty: PrimitiveType::F32, // Invalid type for this codegen
+            lhs: Value::Constant(Literal::I32(0)), // Placeholder values
+            rhs: Value::Constant(Literal::I32(0)),
+        };
+        assert_codegen_error(&cmp_err, &ctx, &mut state, "Cmp op for type");
     }
-    
+
     #[test]
     fn test_br_instruction() {
-        // Test conditional branch
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
         let br_instr = Instruction::Br {
-            condition: Value::Variable("val1"),
+            condition: Value::Variable("val1"), // Assumed bool stored here
             true_label: "true_block",
             false_label: "false_block",
         };
-        
-        let asm = generate_test_asm(&br_instr);
-        
-        assert!(asm.contains("movb -24(%rbp), %al"));   // Load condition
-        assert!(asm.contains("testb %al, %al"));        // Test condition
-        assert!(asm.contains("jne .Lblock_true"));      // Jump if true
-        assert!(asm.contains("jmp .Lblock_false"));     // Jump if false
+        assert_asm_contains(&br_instr, &ctx, &mut state, &[
+            "movb -24(%rbp), %al",
+            "testb %al, %al",
+            "jne .Lblock_true",
+            "jmp .Lblock_false",
+        ]);
     }
-    
+
     #[test]
     fn test_jmp_instruction() {
-        // Test unconditional jump
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
         let jmp_instr = Instruction::Jmp {
             target_label: "true_block",
         };
-        
-        let asm = generate_test_asm(&jmp_instr);
-        
-        assert!(asm.contains("jmp .Lblock_true"));      // Jump to target
+        assert_asm_contains(&jmp_instr, &ctx, &mut state, &["jmp .Lblock_true"]);
     }
-    
+
     #[test]
-    fn test_ret_instruction() {
-        // Test return instruction
-        let ret_instr = Instruction::Ret {
-            ty: Type::Primitive(PrimitiveType::I32),
-            value: Some(Value::Variable("result")),
+    fn test_call_instruction() {
+        let mut ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
+        // Add locations for arguments if needed by get_value_operand_asm
+        ctx.value_locations.insert("arg1", ValueLocation::StackOffset(-48)); 
+        ctx.value_locations.insert("arg2", ValueLocation::StackOffset(-56)); 
+        ctx.value_locations.insert("arg7", ValueLocation::StackOffset(-64)); // For stack arg
+
+        // Call with 2 register args and result
+        let call_reg_args = Instruction::Call {
+            result: Some("result"),
+            func_name: "callee",
+            args: vec![Value::Variable("arg1"), Value::Variable("arg2")],
         };
-        
-        let asm = generate_test_asm(&ret_instr);
-        
-        assert!(asm.contains("movq -32(%rbp), %rax"));  // Load return value
-        assert!(asm.contains("jmp .Lepilogue_test_func")); // Jump to epilogue
+        assert_asm_contains(&call_reg_args, &ctx, &mut state, &[
+            "# Setup register arguments for call @callee",
+            "movq -48(%rbp), %rdi # Arg 0",
+            "movq -56(%rbp), %rsi # Arg 1",
+            "call func_callee",
+            "movq %rax, -40(%rbp) # Store call result",
+        ]);
+
+        // Call with 7 args (6 reg, 1 stack) and no result
+        let call_stack_args = Instruction::Call {
+            result: None,
+            func_name: "callee_many",
+            args: vec![
+                Value::Constant(Literal::I64(1)),
+                Value::Constant(Literal::I64(2)),
+                Value::Constant(Literal::I64(3)),
+                Value::Constant(Literal::I64(4)),
+                Value::Constant(Literal::I64(5)),
+                Value::Constant(Literal::I64(6)),
+                Value::Variable("arg7"), // 7th arg from stack
+            ],
+        };
+        assert_asm_contains(&call_stack_args, &ctx, &mut state, &[
+            "# Setup register arguments for call @callee_many",
+            "movq $1, %rdi # Arg 0",
+            "movq $2, %rsi # Arg 1",
+            "movq $3, %rdx # Arg 2",
+            "movq $4, %rcx # Arg 3",
+            "movq $5, %r8 # Arg 4",
+            "movq $6, %r9 # Arg 5",
+            "# Setup stack arguments for call @callee_many",
+            "movq -64(%rbp), %r10", // Load 7th arg into temp reg
+            "pushq %r10 # Arg 6",     // Push 7th arg
+            "call func_callee_many",
+            "addq $8, %rsp # Cleanup stack args", // Clean up 1 stack arg (8 bytes)
+        ]);
+        // Check result storage is NOT present
+        let asm_stack = generate_test_asm(&call_stack_args, &ctx, &mut state);
+        assert!(!asm_stack.contains("Store call result"));
     }
-    
+
     #[test]
-    fn test_zeroextend_instruction() {
-        // Test zero extension instruction
-        let zext_instr = Instruction::ZeroExtend {
+    fn test_getfieldptr_instruction() {
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
+        // Currently outputs a comment and zero
+        let getfield_instr = Instruction::GetFieldPtr {
+            result: "result",
+            struct_ptr: Value::Variable("ptr1"),
+            field_index: 1,
+        };
+        assert_asm_contains(&getfield_instr, &ctx, &mut state, &[
+            "# GetFieldPtr for result not implemented",
+            "movq $0, -40(%rbp)", // Store 0 in result
+        ]);
+    }
+
+    #[test]
+    fn test_getelementptr_instruction() {
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
+        // GEP with variable index (i64)
+        let gep_var_idx = Instruction::GetElemPtr {
+            result: "result",
+            array_ptr: Value::Variable("ptr1"),
+            index: Value::Variable("val1"), // Assume val1 holds i64 index
+        };
+        assert_asm_contains(&gep_var_idx, &ctx, &mut state, &[
+            "movq -16(%rbp), %rax",  // Load array pointer (ptr1)
+            "movq -24(%rbp), %r10",  // Load index (val1)
+            "imulq $8, %r10",        // Multiply by element size (hardcoded 8 for now)
+            "addq %r10, %rax",       // Calculate address
+            "movq %rax, -40(%rbp)",  // Store result pointer (result)
+        ]);
+        
+        // GEP with constant index (i32)
+        let gep_const_idx = Instruction::GetElemPtr {
+            result: "result",
+            array_ptr: Value::Variable("ptr1"),
+            index: Value::Constant(Literal::I32(3)),
+        };
+        assert_asm_contains(&gep_const_idx, &ctx, &mut state, &[
+            "movq -16(%rbp), %rax",
+            "movq $3, %r10",
+            "imulq $8, %r10",
+            "addq %r10, %rax",
+            "movq %rax, -40(%rbp)",
+        ]);
+    }
+
+    #[test]
+    fn test_print_instruction() {
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
+        let print_instr = Instruction::Print {
+            value: Value::Variable("val1"),
+        };
+        // Need to call it once to ensure the label exists in state
+        let _ = generate_test_asm(&print_instr, &ctx, &mut state);
+        // Now assert with the state possibly modified
+        assert_asm_contains(&print_instr, &ctx, &mut state, &[
+            "leaq .L.rodata_str_0(%rip), %rdi", // Assuming first rodata string
+            "movq -24(%rbp), %rsi",
+            "movl $0, %eax",
+            "call printf@PLT",
+            "pushq %rax", // Check registers are saved/restored
+            "popq %rax",
+            "pushq %r10",
+            "popq %r10",
+            "pushq %r11",
+            "popq %r11",
+        ]);
+    }
+
+    #[test]
+    fn test_zeroextend_instructions() {
+        let ctx = setup_test_context_basic();
+        let mut state = CodegenState::new();
+        // Zext i8 -> i32
+        let zext_i8_i32 = Instruction::ZeroExtend {
             result: "result",
             source_type: PrimitiveType::I8,
             target_type: PrimitiveType::I32,
             value: Value::Variable("val1"),
         };
+        assert_asm_contains(&zext_i8_i32, &ctx, &mut state, &[
+            "movzbl -24(%rbp), %eax",
+            "movl %eax, -40(%rbp)",
+        ]);
         
-        let asm = generate_test_asm(&zext_instr);
-        
-        assert!(asm.contains("movzbl -24(%rbp), %eax")); // Zero extend I8 to I32
-        assert!(asm.contains("movl %eax, -32(%rbp)"));   // Store result
-    }
-    
-    #[test]
-    fn test_getelementptr_instruction() {
-        // Test getelementptr instruction
-        let gep_instr = Instruction::GetElemPtr {
+        // Zext i8 -> i64
+        let zext_i8_i64 = Instruction::ZeroExtend {
             result: "result",
-            array_ptr: Value::Variable("ptr1"),
-            index: Value::Constant(Literal::I32(2)),
+            source_type: PrimitiveType::I8,
+            target_type: PrimitiveType::I64,
+            value: Value::Variable("val1"),
         };
+        assert_asm_contains(&zext_i8_i64, &ctx, &mut state, &[
+            "movzbl -24(%rbp), %eax",
+            "movzlq %eax, %rax",
+            "movq %rax, -40(%rbp)",
+        ]);
         
-        let asm = generate_test_asm(&gep_instr);
-        
-        assert!(asm.contains("movq -16(%rbp), %rax"));  // Load array pointer
-        assert!(asm.contains("movq $2, %r10"));         // Load index
-        assert!(asm.contains("imulq $8, %r10"));        // Multiply by element size
-        assert!(asm.contains("addq %r10, %rax"));       // Calculate address
-        assert!(asm.contains("movq %rax, -32(%rbp)"));  // Store result pointer
+        // Zext i32 -> i64
+        let zext_i32_i64 = Instruction::ZeroExtend {
+            result: "result",
+            source_type: PrimitiveType::I32,
+            target_type: PrimitiveType::I64,
+            value: Value::Variable("val1"),
+        };
+        assert_asm_contains(&zext_i32_i64, &ctx, &mut state, &[
+            "movl -24(%rbp), %eax",
+            "movslq %eax, %rax", 
+            "movq %rax, -40(%rbp)",
+        ]);
+
+        // Zext bool -> i32
+        let zext_bool_i32 = Instruction::ZeroExtend {
+            result: "result",
+            source_type: PrimitiveType::Bool,
+            target_type: PrimitiveType::I32,
+            value: Value::Constant(Literal::Bool(true)),
+        };
+        assert_asm_contains(&zext_bool_i32, &ctx, &mut state, &[
+            "movzbl $1, %eax", // Load constant bool and zero-extend
+            "movl %eax, -40(%rbp)",
+        ]);
+
+        // Zext bool -> i64
+        let zext_bool_i64 = Instruction::ZeroExtend {
+            result: "result",
+            source_type: PrimitiveType::Bool,
+            target_type: PrimitiveType::I64,
+            value: Value::Variable("val1"),
+        };
+        assert_asm_contains(&zext_bool_i64, &ctx, &mut state, &[
+            "movzbl -24(%rbp), %eax",
+            "movzlq %eax, %rax",
+            "movq %rax, -40(%rbp)",
+        ]);
+
+        // Zext invalid types
+        let zext_err = Instruction::ZeroExtend {
+            result: "result",
+            source_type: PrimitiveType::I64,
+            target_type: PrimitiveType::I32,
+            value: Value::Variable("val1"),
+        };
+        assert_codegen_error(&zext_err, &ctx, &mut state, "Unsupported zero extension");
     }
 }
