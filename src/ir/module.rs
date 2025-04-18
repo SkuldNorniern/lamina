@@ -29,7 +29,7 @@ pub struct Module<'a> {
     pub functions: HashMap<Identifier<'a>, Function<'a>>,
 }
 
-impl<'a> Module<'a> {
+impl Module<'_> {
     // Basic constructor
     pub fn new() -> Self {
         Module {
@@ -40,7 +40,7 @@ impl<'a> Module<'a> {
     }
 }
 
-impl<'a> Default for Module<'a> {
+impl Default for Module<'_> {
     fn default() -> Self {
         Self::new()
     }
@@ -48,13 +48,13 @@ impl<'a> Default for Module<'a> {
 
 // --- Display Implementations ---
 
-impl<'a> fmt::Display for TypeDeclaration<'a> {
+impl fmt::Display for TypeDeclaration<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "type @{} = {}", self.name, self.ty)
     }
 }
 
-impl<'a> fmt::Display for GlobalDeclaration<'a> {
+impl fmt::Display for GlobalDeclaration<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "global @{}: {}", self.name, self.ty)?;
         if let Some(init) = &self.initializer {
@@ -64,7 +64,7 @@ impl<'a> fmt::Display for GlobalDeclaration<'a> {
     }
 }
 
-impl<'a> fmt::Display for Module<'a> {
+impl fmt::Display for Module<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Print type declarations first
         for decl in self.type_declarations.values() {

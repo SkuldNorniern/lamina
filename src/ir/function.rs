@@ -62,13 +62,13 @@ impl fmt::Display for FunctionAnnotation {
     }
 }
 
-impl<'a> fmt::Display for FunctionParameter<'a> {
+impl fmt::Display for FunctionParameter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} %{}", self.ty, self.name)
     }
 }
 
-impl<'a> fmt::Display for FunctionSignature<'a> {
+impl fmt::Display for FunctionSignature<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         for (i, param) in self.params.iter().enumerate() {
@@ -81,7 +81,7 @@ impl<'a> fmt::Display for FunctionSignature<'a> {
     }
 }
 
-impl<'a> fmt::Display for BasicBlock<'a> {
+impl fmt::Display for BasicBlock<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for instr in &self.instructions {
             writeln!(f, "  {}", instr)?;
@@ -90,7 +90,7 @@ impl<'a> fmt::Display for BasicBlock<'a> {
     }
 }
 
-impl<'a> fmt::Display for Function<'a> {
+impl fmt::Display for Function<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for annotation in &self.annotations {
             writeln!(f, "{}", annotation)?;
