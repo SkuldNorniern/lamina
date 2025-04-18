@@ -37,6 +37,7 @@ pub enum Type<'a> {
 
 #[derive(Debug, Clone, PartialEq)] // Float comparison requires PartialEq only
 pub enum Literal<'a> {
+    I8(i8),
     I32(i32),
     I64(i64),
     F32(f32),
@@ -104,6 +105,7 @@ impl<'a> fmt::Display for Type<'a> {
 impl<'a> fmt::Display for Literal<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Literal::I8(v) => write!(f, "{}", v), 
             Literal::I32(v) => write!(f, "{}", v),
             Literal::I64(v) => write!(f, "{}", v),
             Literal::F32(v) => write!(f, "{}", v),
