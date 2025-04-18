@@ -87,13 +87,13 @@ impl fmt::Display for Module<'_> {
         function_names.sort(); // Sort by name for consistent output order
 
         for (i, name) in function_names.iter().enumerate() {
-             // Dereference name twice (&&str -> &str) to match the key type for lookup
-             if let Some(func) = self.functions.get(*name) { 
+            // Dereference name twice (&&str -> &str) to match the key type for lookup
+            if let Some(func) = self.functions.get(*name) {
                 write!(f, "{}", func)?;
                 if i < function_names.len() - 1 {
                     writeln!(f)?;
                 }
-             } 
+            }
         }
 
         Ok(())
@@ -103,9 +103,9 @@ impl fmt::Display for Module<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ir::function::{BasicBlock, Function, FunctionParameter, FunctionSignature};
+    use crate::ir::instruction::{BinaryOp, Instruction};
     use crate::ir::types::{Literal, PrimitiveType, Type, Value}; // Assuming crate root
-    use crate::ir::function::{Function, FunctionSignature, FunctionParameter, BasicBlock};
-    use crate::ir::instruction::{Instruction, BinaryOp};
     use std::collections::HashMap;
 
     #[test]
@@ -131,7 +131,10 @@ mod tests {
         // Uninitialized (Extern)
         let decl2 = GlobalDeclaration {
             name: "external_data",
-            ty: Type::Array { element_type: Box::new(Type::Primitive(PrimitiveType::I8)), size: 256 },
+            ty: Type::Array {
+                element_type: Box::new(Type::Primitive(PrimitiveType::I8)),
+                size: 256,
+            },
             initializer: None,
         };
         assert_eq!(format!("{}", decl2), "global @external_data: [256 x i8]");
@@ -142,42 +145,60 @@ mod tests {
         let mut module = Module::new();
 
         // Add type declaration
-        module.type_declarations.insert("Vec2", TypeDeclaration {
-            name: "Vec2",
-            ty: Type::Struct(vec![
-                crate::ir::types::StructField { name: "x", ty: Type::Primitive(PrimitiveType::F32) },
-                crate::ir::types::StructField { name: "y", ty: Type::Primitive(PrimitiveType::F32) },
-            ]),
-        });
+        module.type_declarations.insert(
+            "Vec2",
+            TypeDeclaration {
+                name: "Vec2",
+                ty: Type::Struct(vec![
+                    crate::ir::types::StructField {
+                        name: "x",
+                        ty: Type::Primitive(PrimitiveType::F32),
+                    },
+                    crate::ir::types::StructField {
+                        name: "y",
+                        ty: Type::Primitive(PrimitiveType::F32),
+                    },
+                ]),
+            },
+        );
 
         // Add global declaration
-        module.global_declarations.insert("PI", GlobalDeclaration {
-            name: "PI",
-            ty: Type::Primitive(PrimitiveType::F32),
-            initializer: Some(Value::Constant(Literal::F32(3.14159))),
-        });
+        module.global_declarations.insert(
+            "PI",
+            GlobalDeclaration {
+                name: "PI",
+                ty: Type::Primitive(PrimitiveType::F32),
+                initializer: Some(Value::Constant(Literal::F32(3.14159))),
+            },
+        );
 
         // Add a simple function
         let func_sig = FunctionSignature {
-            params: vec![FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32) }],
+            params: vec![FunctionParameter {
+                name: "a",
+                ty: Type::Primitive(PrimitiveType::I32),
+            }],
             return_type: Type::Primitive(PrimitiveType::I32),
         };
         let mut func_blocks = HashMap::new();
-        func_blocks.insert("entry", BasicBlock {
-            instructions: vec![
-                Instruction::Binary {
-                    op: BinaryOp::Add,
-                    result: "res",
-                    ty: PrimitiveType::I32,
-                    lhs: Value::Variable("a"),
-                    rhs: Value::Constant(Literal::I32(1)),
-                },
-                Instruction::Ret {
-                    ty: Type::Primitive(PrimitiveType::I32),
-                    value: Some(Value::Variable("res")),
-                },
-            ],
-        });
+        func_blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![
+                    Instruction::Binary {
+                        op: BinaryOp::Add,
+                        result: "res",
+                        ty: PrimitiveType::I32,
+                        lhs: Value::Variable("a"),
+                        rhs: Value::Constant(Literal::I32(1)),
+                    },
+                    Instruction::Ret {
+                        ty: Type::Primitive(PrimitiveType::I32),
+                        value: Some(Value::Variable("res")),
+                    },
+                ],
+            },
+        );
         let func = Function {
             name: "add_one",
             signature: func_sig,
@@ -188,19 +209,17 @@ mod tests {
         module.functions.insert("add_one", func);
 
         // Match actual output - no indentation for function instructions
-        let expected_output = 
-"type @Vec2 = struct { x: f32, y: f32 }\n\nglobal @PI: f32 = 3.14159\n\nfn @add_one(i32 %a) -> i32 {\nentry:\n  %res = add.i32 %a, 1\n  ret.i32 %res\n}\n";
+        let expected_output = "type @Vec2 = struct { x: f32, y: f32 }\n\nglobal @PI: f32 = 3.14159\n\nfn @add_one(i32 %a) -> i32 {\nentry:\n  %res = add.i32 %a, 1\n  ret.i32 %res\n}\n";
 
         // Note: Hashmap iteration order isn't guaranteed, but Display impl sorts function keys.
         // Type/Global order isn't sorted, so this test might be fragile if more are added.
         // A more robust test might parse the output or check for substrings.
         assert_eq!(format!("{}", module), expected_output);
-
     }
 
-     #[test]
+    #[test]
     fn test_display_empty_module() {
-         let module = Module::<'static>::new();
-         assert_eq!(format!("{}", module), ""); // Empty module should print nothing
+        let module = Module::<'static>::new();
+        assert_eq!(format!("{}", module), ""); // Empty module should print nothing
     }
-} 
+}

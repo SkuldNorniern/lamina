@@ -1,15 +1,23 @@
 use std::fmt;
 
-use super::types::{Identifier, Label, Type, Value, PrimitiveType};
+use super::types::{Identifier, Label, PrimitiveType, Type, Value};
 
 #[derive(Debug, Clone, PartialEq)] // Cannot derive Eq due to f32 in Value::Constant
 pub enum BinaryOp {
-    Add, Sub, Mul, Div, // Add more as needed (SDiv, UDiv, Rem, etc.)
+    Add,
+    Sub,
+    Mul,
+    Div, // Add more as needed (SDiv, UDiv, Rem, etc.)
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CmpOp {
-    Eq, Ne, Gt, Ge, Lt, Le, // Equality, Non-equality, Greater than, etc.
+    Eq,
+    Ne,
+    Gt,
+    Ge,
+    Lt,
+    Le, // Equality, Non-equality, Greater than, etc.
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -45,16 +53,19 @@ pub enum Instruction<'a> {
         value: Value<'a>,
     },
     // --- Control Flow ---
-    Br { // Conditional branch
+    Br {
+        // Conditional branch
         condition: Value<'a>, // Must be bool type
         true_label: Label<'a>,
         false_label: Label<'a>,
     },
-    Jmp { // Unconditional jump
+    Jmp {
+        // Unconditional jump
         target_label: Label<'a>,
     },
-    Ret { // Return from function
-        ty: Type<'a>, // Use Type::Void for void returns
+    Ret {
+        // Return from function
+        ty: Type<'a>,             // Use Type::Void for void returns
         value: Option<Value<'a>>, // None if ty is Void
     },
     // --- Memory Operations ---
@@ -65,33 +76,38 @@ pub enum Instruction<'a> {
     },
     Load {
         result: Identifier<'a>,
-        ty: Type<'a>, // Type being loaded
+        ty: Type<'a>,   // Type being loaded
         ptr: Value<'a>, // Must be a ptr type
     },
     Store {
-        ty: Type<'a>, // Type being stored
+        ty: Type<'a>,   // Type being stored
         ptr: Value<'a>, // Must be a ptr type
         value: Value<'a>,
     },
-    Dealloc { // Optional Heap Deallocation
+    Dealloc {
+        // Optional Heap Deallocation
         ptr: Value<'a>, // Must be a ptr from alloc.heap
     },
     // --- Composite Type Operations ---
-    GetFieldPtr { // Get pointer to struct field
+    GetFieldPtr {
+        // Get pointer to struct field
         result: Identifier<'a>, // Result is always ptr
-        struct_ptr: Value<'a>, // Must be a ptr to a struct or named struct type
+        struct_ptr: Value<'a>,  // Must be a ptr to a struct or named struct type
         field_index: usize,
     },
-    GetElemPtr { // Get pointer to array element
+    GetElemPtr {
+        // Get pointer to array element
         result: Identifier<'a>, // Result is always ptr
-        array_ptr: Value<'a>, // Must be a ptr to an array or named array type
-        index: Value<'a>, // Must be an integer type
+        array_ptr: Value<'a>,   // Must be a ptr to an array or named array type
+        index: Value<'a>,       // Must be an integer type
     },
-    Tuple { // Create a tuple
+    Tuple {
+        // Create a tuple
         result: Identifier<'a>,
         elements: Vec<Value<'a>>,
     },
-    ExtractTuple { // Extract element from tuple
+    ExtractTuple {
+        // Extract element from tuple
         result: Identifier<'a>,
         tuple_val: Value<'a>, // Must be a tuple type
         index: usize,
@@ -99,7 +115,7 @@ pub enum Instruction<'a> {
     // --- Function Calls ---
     Call {
         result: Option<Identifier<'a>>, // None if function returns void
-        func_name: Identifier<'a>, // Name of the function to call (e.g., "@add")
+        func_name: Identifier<'a>,      // Name of the function to call (e.g., "@add")
         args: Vec<Value<'a>>,
         // Return type needs to be known from function signature context
     },
@@ -113,75 +129,115 @@ pub enum Instruction<'a> {
     // --- Debugging ---
     Print {
         value: Value<'a>, // Value to print (currently assumes i64 for printf)
-    }
+    },
 }
-
 
 // --- Display Implementations ---
 
 impl fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            BinaryOp::Add => "add",
-            BinaryOp::Sub => "sub",
-            BinaryOp::Mul => "mul",
-            BinaryOp::Div => "div",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                BinaryOp::Add => "add",
+                BinaryOp::Sub => "sub",
+                BinaryOp::Mul => "mul",
+                BinaryOp::Div => "div",
+            }
+        )
     }
 }
 
 impl fmt::Display for CmpOp {
-     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            CmpOp::Eq => "eq",
-            CmpOp::Ne => "ne",
-            CmpOp::Gt => "gt",
-            CmpOp::Ge => "ge",
-            CmpOp::Lt => "lt",
-            CmpOp::Le => "le",
-        })
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                CmpOp::Eq => "eq",
+                CmpOp::Ne => "ne",
+                CmpOp::Gt => "gt",
+                CmpOp::Ge => "ge",
+                CmpOp::Lt => "lt",
+                CmpOp::Le => "le",
+            }
+        )
     }
 }
 
 impl fmt::Display for AllocType {
-     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match self {
-            AllocType::Stack => "stack",
-            AllocType::Heap => "heap",
-        })
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                AllocType::Stack => "stack",
+                AllocType::Heap => "heap",
+            }
+        )
     }
 }
-
 
 impl fmt::Display for Instruction<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Instruction::Binary { op, result, ty, lhs, rhs } =>
-                write!(f, "%{} = {}.{} {}, {}", result, op, ty, lhs, rhs),
-            Instruction::Cmp { op, result, ty, lhs, rhs } =>
-                write!(f, "%{} = {}.{} {}, {}", result, op, ty, lhs, rhs),
-            Instruction::ZeroExtend { result, source_type, target_type, value } =>
-                write!(f, "%{} = zext.{}.{} {}", result, source_type, target_type, value),
-            Instruction::Br { condition, true_label, false_label } =>
-                write!(f, "br {}, {}, {}", condition, true_label, false_label),
-            Instruction::Jmp { target_label } =>
-                write!(f, "jmp {}", target_label),
+            Instruction::Binary {
+                op,
+                result,
+                ty,
+                lhs,
+                rhs,
+            } => write!(f, "%{} = {}.{} {}, {}", result, op, ty, lhs, rhs),
+            Instruction::Cmp {
+                op,
+                result,
+                ty,
+                lhs,
+                rhs,
+            } => write!(f, "%{} = {}.{} {}, {}", result, op, ty, lhs, rhs),
+            Instruction::ZeroExtend {
+                result,
+                source_type,
+                target_type,
+                value,
+            } => write!(
+                f,
+                "%{} = zext.{}.{} {}",
+                result, source_type, target_type, value
+            ),
+            Instruction::Br {
+                condition,
+                true_label,
+                false_label,
+            } => write!(f, "br {}, {}, {}", condition, true_label, false_label),
+            Instruction::Jmp { target_label } => write!(f, "jmp {}", target_label),
             Instruction::Ret { ty, value } => match value {
                 Some(v) => write!(f, "ret.{} {}", ty, v),
                 None => write!(f, "ret.void"),
             },
-            Instruction::Alloc { result, alloc_type, allocated_ty } =>
-                write!(f, "%{} = alloc.ptr.{} {}", result, alloc_type, allocated_ty),
-            Instruction::Load { result, ty, ptr } =>
-                write!(f, "%{} = load.{} {}", result, ty, ptr),
-            Instruction::Store { ty, ptr, value } =>
-                write!(f, "store.{} {}, {}", ty, ptr, value),
-            Instruction::Dealloc { ptr } =>
-                write!(f, "dealloc.heap {}", ptr),
-            Instruction::GetFieldPtr { result, struct_ptr, field_index } =>
-                write!(f, "%{} = getfield.ptr {}, {}", result, struct_ptr, field_index),
-            Instruction::GetElemPtr { result, array_ptr, index } =>
-                write!(f, "%{} = getelem.ptr {}, {}", result, array_ptr, index),
+            Instruction::Alloc {
+                result,
+                alloc_type,
+                allocated_ty,
+            } => write!(f, "%{} = alloc.ptr.{} {}", result, alloc_type, allocated_ty),
+            Instruction::Load { result, ty, ptr } => write!(f, "%{} = load.{} {}", result, ty, ptr),
+            Instruction::Store { ty, ptr, value } => write!(f, "store.{} {}, {}", ty, ptr, value),
+            Instruction::Dealloc { ptr } => write!(f, "dealloc.heap {}", ptr),
+            Instruction::GetFieldPtr {
+                result,
+                struct_ptr,
+                field_index,
+            } => write!(
+                f,
+                "%{} = getfield.ptr {}, {}",
+                result, struct_ptr, field_index
+            ),
+            Instruction::GetElemPtr {
+                result,
+                array_ptr,
+                index,
+            } => write!(f, "%{} = getelem.ptr {}, {}", result, array_ptr, index),
             Instruction::Tuple { result, elements } => {
                 write!(f, "%{} = tuple", result)?;
                 for elem in elements {
@@ -189,9 +245,16 @@ impl fmt::Display for Instruction<'_> {
                 }
                 Ok(())
             }
-            Instruction::ExtractTuple { result, tuple_val, index } =>
-                write!(f, "%{} = extract.tuple {}, {}", result, tuple_val, index),
-            Instruction::Call { result, func_name, args } => {
+            Instruction::ExtractTuple {
+                result,
+                tuple_val,
+                index,
+            } => write!(f, "%{} = extract.tuple {}, {}", result, tuple_val, index),
+            Instruction::Call {
+                result,
+                func_name,
+                args,
+            } => {
                 if let Some(res) = result {
                     write!(f, "%{} = call @{}(", res, func_name)?;
                 } else {
@@ -205,18 +268,21 @@ impl fmt::Display for Instruction<'_> {
                 }
                 write!(f, ")")
             }
-            Instruction::Phi { result, ty, incoming } => {
-                 write!(f, "%{} = phi.{} ", result, ty)?;
-                 for (i, (val, label)) in incoming.iter().enumerate() {
+            Instruction::Phi {
+                result,
+                ty,
+                incoming,
+            } => {
+                write!(f, "%{} = phi.{} ", result, ty)?;
+                for (i, (val, label)) in incoming.iter().enumerate() {
                     write!(f, "[{}, {}]", val, label)?;
-                     if i < incoming.len() - 1 {
+                    if i < incoming.len() - 1 {
                         write!(f, ", ")?;
                     }
-                 }
-                 Ok(())
+                }
+                Ok(())
             }
-            Instruction::Print { value } => 
-                write!(f, "print {}", value),
+            Instruction::Print { value } => write!(f, "print {}", value),
         }
     }
 }
@@ -224,7 +290,7 @@ impl fmt::Display for Instruction<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::types::{Literal, PrimitiveType, Type, Value, StructField}; // Assuming crate root
+    use crate::ir::types::{Literal, PrimitiveType, StructField, Type, Value}; // Assuming crate root
 
     #[test]
     fn test_display_binary_op() {
@@ -281,7 +347,9 @@ mod tests {
         assert_eq!(format!("{}", instr3), "br %cond, if_true, if_false");
 
         // Jmp
-        let instr4 = Instruction::Jmp { target_label: "loop_start" };
+        let instr4 = Instruction::Jmp {
+            target_label: "loop_start",
+        };
         assert_eq!(format!("{}", instr4), "jmp loop_start");
 
         // Ret (Void)
@@ -307,15 +375,19 @@ mod tests {
         assert_eq!(format!("{}", instr7), "%ptr1 = alloc.ptr.stack i32");
 
         // Alloc (Heap)
-         let struct_type = Type::Struct(vec![
-            StructField { name: "a", ty: Type::Primitive(PrimitiveType::I32) },
-        ]);
+        let struct_type = Type::Struct(vec![StructField {
+            name: "a",
+            ty: Type::Primitive(PrimitiveType::I32),
+        }]);
         let instr8 = Instruction::Alloc {
             result: "heap_ptr",
             alloc_type: AllocType::Heap,
             allocated_ty: struct_type.clone(), // Clone necessary if used later
         };
-        assert_eq!(format!("{}", instr8), "%heap_ptr = alloc.ptr.heap struct { a: i32 }");
+        assert_eq!(
+            format!("{}", instr8),
+            "%heap_ptr = alloc.ptr.heap struct { a: i32 }"
+        );
 
         // Load
         let instr9 = Instruction::Load {
@@ -339,7 +411,10 @@ mod tests {
             struct_ptr: Value::Variable("struct_instance_ptr"),
             field_index: 1,
         };
-        assert_eq!(format!("{}", instr11), "%field_ptr = getfield.ptr %struct_instance_ptr, 1");
+        assert_eq!(
+            format!("{}", instr11),
+            "%field_ptr = getfield.ptr %struct_instance_ptr, 1"
+        );
 
         // GetElemPtr
         let instr12 = Instruction::GetElemPtr {
@@ -347,7 +422,10 @@ mod tests {
             array_ptr: Value::Variable("array_data_ptr"),
             index: Value::Constant(Literal::I64(3)),
         };
-        assert_eq!(format!("{}", instr12), "%elem_ptr = getelem.ptr %array_data_ptr, 3");
+        assert_eq!(
+            format!("{}", instr12),
+            "%elem_ptr = getelem.ptr %array_data_ptr, 3"
+        );
 
         // Call (void)
         let instr13 = Instruction::Call {
@@ -374,10 +452,15 @@ mod tests {
                 (Value::Constant(Literal::I32(10)), "label2"),
             ],
         };
-        assert_eq!(format!("{}", instr15), "%merged_val = phi.i32 [%val1, label1], [10, label2]");
+        assert_eq!(
+            format!("{}", instr15),
+            "%merged_val = phi.i32 [%val1, label1], [10, label2]"
+        );
 
         // Print
-        let instr16 = Instruction::Print { value: Value::Variable("debug_val") };
+        let instr16 = Instruction::Print {
+            value: Value::Variable("debug_val"),
+        };
         assert_eq!(format!("{}", instr16), "print %debug_val");
 
         // ZeroExtend
@@ -387,7 +470,10 @@ mod tests {
             target_type: PrimitiveType::I64,
             value: Value::Variable("byte_val"),
         };
-        assert_eq!(format!("{}", instr17), "%extended_val = zext.i8.i64 %byte_val");
+        assert_eq!(
+            format!("{}", instr17),
+            "%extended_val = zext.i8.i64 %byte_val"
+        );
 
         // Tuple
         let instr18 = Instruction::Tuple {
@@ -402,11 +488,15 @@ mod tests {
             tuple_val: Value::Variable("my_tuple"),
             index: 0,
         };
-        assert_eq!(format!("{}", instr19), "%elem0 = extract.tuple %my_tuple, 0");
+        assert_eq!(
+            format!("{}", instr19),
+            "%elem0 = extract.tuple %my_tuple, 0"
+        );
 
-         // Dealloc
-        let instr20 = Instruction::Dealloc { ptr: Value::Variable("heap_ptr") };
+        // Dealloc
+        let instr20 = Instruction::Dealloc {
+            ptr: Value::Variable("heap_ptr"),
+        };
         assert_eq!(format!("{}", instr20), "dealloc.heap %heap_ptr");
-
     }
-} 
+}

@@ -105,7 +105,7 @@ impl fmt::Display for Type<'_> {
 impl fmt::Display for Literal<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Literal::I8(v) => write!(f, "{}", v), 
+            Literal::I8(v) => write!(f, "{}", v),
             Literal::I32(v) => write!(f, "{}", v),
             Literal::I64(v) => write!(f, "{}", v),
             Literal::F32(v) => write!(f, "{}", v),
@@ -147,8 +147,14 @@ mod tests {
         };
         assert_eq!(format!("{}", arr_type), "[10 x i8]");
         let struct_type = Type::Struct(vec![
-            StructField { name: "x", ty: Type::Primitive(PrimitiveType::F32) },
-            StructField { name: "y", ty: Type::Primitive(PrimitiveType::F32) },
+            StructField {
+                name: "x",
+                ty: Type::Primitive(PrimitiveType::F32),
+            },
+            StructField {
+                name: "y",
+                ty: Type::Primitive(PrimitiveType::F32),
+            },
         ]);
         assert_eq!(format!("{}", struct_type), "struct { x: f32, y: f32 }");
         let tuple_type = Type::Tuple(vec![
@@ -159,7 +165,7 @@ mod tests {
         assert_eq!(format!("{}", Type::Void), "void");
     }
 
-     #[test]
+    #[test]
     fn test_display_literal() {
         assert_eq!(format!("{}", Literal::I32(123)), "123");
         assert_eq!(format!("{}", Literal::I64(-456)), "-456");
@@ -173,10 +179,13 @@ mod tests {
     fn test_display_value() {
         assert_eq!(format!("{}", Value::Variable("tmp1")), "%tmp1");
         assert_eq!(format!("{}", Value::Constant(Literal::I32(42))), "42");
-         assert_eq!(
+        assert_eq!(
             format!("{}", Value::Constant(Literal::String("world"))),
             "\"world\""
         );
-        assert_eq!(format!("{}", Value::Global("my_global_var")), "@my_global_var");
+        assert_eq!(
+            format!("{}", Value::Global("my_global_var")),
+            "@my_global_var"
+        );
     }
-} 
+}
