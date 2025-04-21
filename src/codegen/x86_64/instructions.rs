@@ -572,7 +572,6 @@ mod tests {
     use crate::codegen::x86_64::state::{CodegenState, FunctionContext, ValueLocation};
     use crate::ir::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
     use crate::ir::types::{Literal, PrimitiveType, Type, Value};
-    use indexmap::IndexMap;
     use std::collections::HashMap;
     use std::io::Cursor;
 
