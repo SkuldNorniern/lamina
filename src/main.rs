@@ -7,23 +7,137 @@ use std::process::Command;
 // Import the library crate
 use lamina;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn print_usage() {
+    eprintln!("Usage: lamina <input.lamina> [options]");
+    eprintln!("Options:");
+    eprintln!("  -o, --output <file>     Specify output executable name");
+    eprintln!("  -v, --verbose           Enable verbose output");
+    eprintln!("  -c, --compiler <n>      Force specific compiler (gcc, clang, cl)");
+    eprintln!("  -f, --flag <flag>       Pass additional flag to compiler");
+    eprintln!("  --emit-asm              Only emit assembly file without compiling");
+    eprintln!("  --target <arch>         Specify target architecture (x86_64, aarch64)");
+    eprintln!("  -h, --help              Display this help message");
+}
+
+struct CompileOptions {
+    input_file: PathBuf,
+    output_file: Option<PathBuf>,
+    verbose: bool,
+    forced_compiler: Option<String>,
+    compiler_flags: Vec<String>,
+    emit_asm_only: bool,
+    target_arch: Option<String>,
+}
+
+fn parse_args() -> Result<CompileOptions, String> {
     let args: Vec<String> = env::args().collect();
-
+    
     if args.len() < 2 {
-        eprintln!("Usage: lamina <input.lamina> [output_executable]");
-        std::process::exit(1);
+        return Err("Not enough arguments".to_string());
     }
+    
+    if args[1] == "-h" || args[1] == "--help" {
+        return Err("help".to_string());
+    }
+    
+    let mut options = CompileOptions {
+        input_file: PathBuf::new(),
+        output_file: None,
+        verbose: false,
+        forced_compiler: None,
+        compiler_flags: Vec::new(),
+        emit_asm_only: false,
+        target_arch: None,
+    };
+    
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-o" | "--output" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for output file".to_string());
+                }
+                options.output_file = Some(PathBuf::from(&args[i + 1]));
+                i += 2;
+            },
+            "-v" | "--verbose" => {
+                options.verbose = true;
+                i += 1;
+            },
+            "-c" | "--compiler" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for compiler".to_string());
+                }
+                options.forced_compiler = Some(args[i + 1].clone());
+                i += 2;
+            },
+            "-f" | "--flag" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for compiler flag".to_string());
+                }
+                options.compiler_flags.push(args[i + 1].clone());
+                i += 2;
+            },
+            "--emit-asm" => {
+                options.emit_asm_only = true;
+                i += 1;
+            },
+            "--target" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for target architecture".to_string());
+                }
+                let target = args[i + 1].to_lowercase();
+                if target != "x86_64" && target != "aarch64" {
+                    return Err(format!("Unsupported target architecture: {}. Supported values: x86_64, aarch64", target));
+                }
+                options.target_arch = Some(target);
+                i += 2;
+            },
+            _ => {
+                if options.input_file.as_os_str().is_empty() {
+                    options.input_file = PathBuf::from(&args[i]);
+                    i += 1;
+                } else {
+                    return Err(format!("Unknown argument: {}", args[i]));
+                }
+            }
+        }
+    }
+    
+    // Check if input file is specified
+    if options.input_file.as_os_str().is_empty() {
+        return Err("No input file specified".to_string());
+    }
+    
+    Ok(options)
+}
 
-    let input_path = Path::new(&args[1]);
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Parse command line arguments
+    let options = match parse_args() {
+        Ok(opts) => opts,
+        Err(e) => {
+            if e == "help" {
+                print_usage();
+                return Ok(());
+            } else {
+                eprintln!("Error: {}", e);
+                print_usage();
+                std::process::exit(1);
+            }
+        }
+    };
+    
+    let input_path = &options.input_file;
     if !input_path.exists() {
-        eprintln!("Error: Input file '{}' does not exist.", args[1]);
+        eprintln!("Error: Input file '{}' does not exist.", input_path.display());
         std::process::exit(1);
     }
+    
     if input_path.extension().map_or(true, |ext| ext != "lamina") {
         eprintln!(
             "Warning: Input file '{}' does not have .lamina extension.",
-            args[1]
+            input_path.display()
         );
     }
 
@@ -31,8 +145,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let exe_extension = if cfg!(windows) { ".exe" } else { "" };
     
     // Get output name
-    let output_stem = if args.len() >= 3 {
-        PathBuf::from(&args[2])
+    let output_stem = if let Some(out_path) = &options.output_file {
+        out_path.clone()
     } else {
         // Default output name based on input file
         let stem = input_path.file_stem().map_or_else(
@@ -66,14 +180,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         input_path.display(), asm_path.display(), exec_path.display()
     );
 
+    if options.verbose {
+        println!("[VERBOSE] Compiler options:");
+        println!("  Verbose mode: {}", options.verbose);
+        if let Some(compiler) = &options.forced_compiler {
+            println!("  Forced compiler: {}", compiler);
+        }
+        if !options.compiler_flags.is_empty() {
+            println!("  Additional compiler flags: {:?}", options.compiler_flags);
+        }
+    }
+
     // 1. Read Input Lamina IR
-    let mut input_file = File::open(input_path)?;
+    let mut input_file = match File::open(input_path) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("[ERROR] Failed to open input file: {}", e);
+            std::process::exit(1);
+        }
+    };
+    
     let mut ir_source = String::new();
-    input_file.read_to_string(&mut ir_source)?;
+    if let Err(e) = input_file.read_to_string(&mut ir_source) {
+        eprintln!("[ERROR] Failed to read input file: {}", e);
+        std::process::exit(1);
+    }
 
     // 2. Compile IR to Assembly
     let mut asm_buffer = Vec::<u8>::new();
-    match lamina::compile_lamina_ir_to_assembly(&ir_source, &mut asm_buffer) {
+    
+    // Choose compilation method based on target
+    let compilation_result = if let Some(target) = &options.target_arch {
+        if options.verbose {
+            println!("[VERBOSE] Using explicit target architecture: {}", target);
+        }
+        lamina::compile_lamina_ir_to_target_assembly(&ir_source, &mut asm_buffer, target)
+    } else {
+        lamina::compile_lamina_ir_to_assembly(&ir_source, &mut asm_buffer)
+    };
+    
+    match compilation_result {
         Ok(_) => {
             println!(
                 "[INFO] Assembly generated successfully ({} bytes).",
@@ -82,35 +228,91 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(e) => {
             eprintln!("\n[ERROR] Compilation failed: {}", e);
+            eprintln!("[HINT] If you see dependency errors, make sure all required crates are in Cargo.toml");
             std::process::exit(1);
         }
     }
 
     // 3. Write Assembly to file
-    let mut asm_file = File::create(&asm_path)?;
-    asm_file.write_all(&asm_buffer)?;
+    match File::create(&asm_path) {
+        Ok(mut file) => {
+            if let Err(e) = file.write_all(&asm_buffer) {
+                eprintln!("[ERROR] Failed to write assembly file: {}", e);
+                std::process::exit(1);
+            }
+        },
+        Err(e) => {
+            eprintln!("[ERROR] Failed to create assembly file: {}", e);
+            std::process::exit(1);
+        }
+    };
+    
     println!("[INFO] Assembly written to {}", asm_path.display());
 
+    // Skip compilation step if --emit-asm flag is present
+    if options.emit_asm_only {
+        println!("[INFO] Skipping compilation as requested (--emit-asm flag)");
+        return Ok(());
+    }
+
     // 4. Determine which compiler to use
-    let (compiler, args) = detect_compiler()?;
+    let (compiler_name, mut compiler_args) = match &options.forced_compiler {
+        Some(forced) => {
+            // Check if forced compiler exists
+            if Command::new(forced).arg("--version").output().is_err() {
+                eprintln!("[ERROR] Forced compiler '{}' not found", forced);
+                std::process::exit(1);
+            }
+            // Get appropriate flags for forced compiler
+            match forced.as_str() {
+                "cl" => (forced.as_str(), vec!["/nologo".to_string()]),
+                _ => (forced.as_str(), Vec::<String>::new()),
+            }
+        },
+        None => match detect_compiler() {
+            Ok((name, args)) => {
+                // Convert &'static str to String instead of trying to collect to Vec<&str>
+                let string_args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+                (name, string_args)
+            },
+            Err(e) => {
+                eprintln!("[ERROR] {}", e);
+                std::process::exit(1);
+            }
+        }
+    };
     
     // 5. Assemble and Link
-    println!("[INFO] Assembling and linking with {}...", compiler);
+    println!("[INFO] Assembling and linking with {}...", compiler_name);
     
     // Build command with appropriate arguments
-    let mut cmd = Command::new(compiler);
+    let mut cmd = Command::new(compiler_name);
     
     // Add any compiler-specific flags first
-    for arg in args {
+    for arg in compiler_args {
         cmd.arg(arg);
     }
     
+    // Add user-specified flags
+    for flag in &options.compiler_flags {
+        cmd.arg(flag);
+    }
+    
     // Add input and output files
-    let compiler_output = cmd
-        .arg(&asm_path)
-        .arg("-o")
-        .arg(&exec_path)
-        .output()?;
+    cmd.arg(&asm_path).arg("-o").arg(&exec_path);
+    
+    if options.verbose {
+        println!("[VERBOSE] Executing: {:?}", cmd);
+    }
+    
+    // Execute the compiler command
+    let compiler_output = match cmd.output() {
+        Ok(output) => output,
+        Err(e) => {
+            eprintln!("[ERROR] Failed to execute compiler: {}", e);
+            std::process::exit(1);
+        }
+    };
 
     if compiler_output.status.success() {
         println!("[INFO] Executable '{}' created successfully.", exec_path.display());
