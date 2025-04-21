@@ -11,7 +11,7 @@ use std::collections::HashMap; // Re-add HashMap
 // use std::io::Write;
 // Replace HashMap with IndexMap for deterministic iteration order
 // use std::collections::HashMap;
-use indexmap::IndexMap;
+// use indexmap::IndexMap; // TODO: recrate IndexMap from scratch
 
 // x86-64 registers used for integer/pointer arguments in System V ABI
 pub const ARG_REGISTERS: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
@@ -41,7 +41,7 @@ pub struct FunctionContext<'a> {
     // Keep track of where SSA variables (%result) and arguments are stored
     pub value_locations: HashMap<Identifier<'a>, ValueLocation>,
     // Map IR block labels to assembly labels (deterministic order)
-    pub block_labels: IndexMap<Label<'a>, String>,
+    pub block_labels: HashMap<Label<'a>, String>,
     // Track spilled argument registers and their stack offsets
     pub arg_register_spills: HashMap<String, i64>, // Register name -> stack offset (%rbp relative)
     // Track total stack space needed for locals and spills (aligned)
@@ -64,7 +64,7 @@ impl<'a> FunctionContext<'a> {
     pub fn new() -> Self {
         Self {
             value_locations: HashMap::new(),
-            block_labels: IndexMap::new(), // Use IndexMap for deterministic label order
+            block_labels: HashMap::new(), // Use HashMap (previously IndexMap)
             arg_register_spills: HashMap::new(),
             total_stack_size: 0,
             current_stack_offset: -8, // Start allocating below RBP (first local/spill)
