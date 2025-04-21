@@ -5,6 +5,7 @@ pub mod module;
 pub mod types;
 
 // Re-export key types
+pub use builder::IRBuilder;
 pub use function::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
 };
