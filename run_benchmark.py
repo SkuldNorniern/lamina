@@ -121,7 +121,7 @@ def create_csharp_project_file(benchmark_dir):
     try:
         with open(csproj_path, 'w') as f:
             f.write(csproj_content)
-        print_color(GREEN, f"Created temporary C# project file: {csproj_path}")
+        print_color(GREEN, f"Created C# project file: {csproj_path}")
         return True
     except Exception as e:
         print_color(RED, f"Error creating C# project file: {e}")
@@ -147,7 +147,7 @@ def compile_and_run(target, results, cwd):
 
     # --- Special handling for C# ---
     if label == "C#":
-        # Create temporary project file for dotnet run
+        # Create a proper project file for dotnet run
         if not create_csharp_project_file(cwd):
             results[label] = {'time': None, 'exit_code': -1, 'error': 'Failed to create project file'}
             return
@@ -157,15 +157,12 @@ def compile_and_run(target, results, cwd):
     src_for_cmd = source_file_rel
     out_for_cmd = output_path_rel
 
-    # Handle C# publish target directory structure
-    is_cs_publish = (label == 'C#') # Specific handling needed
-
     # --- Compilation Step ---
     if compile_cmd_template:
         print_color(YELLOW, f"Compiling {label}...")
         # Replace placeholders with paths relative to the cwd (BENCHMARK_DIR)
         compile_cmd_full = [
-            str(c).replace('{src}', src_for_cmd).replace('{out}', str(out_for_cmd))
+            str(c).replace('{src}', src_for_cmd).replace('{out}', str(out_for_cmd) if out_for_cmd else "")
             for c in compile_cmd_template
         ]
 
@@ -177,24 +174,13 @@ def compile_and_run(target, results, cwd):
             return
 
         # Verify compilation output if expected
-        if output_path_rel:
-            # For C#, the 'output' is the executable *inside* the publish dir
-            if is_cs_publish:
-                expected_executable_abs = cwd / output_path_rel # e.g., .../benchmarks/2Dmatmul/bin_cs/2Dmatmul
-                if not expected_executable_abs.exists():
-                     print_color(RED, f"Error: {label} compilation did not produce expected executable: {expected_executable_abs}")
-                     results[label] = {'time': None, 'exit_code': -1, 'error': 'Output executable missing'}
-                     return
-                # Ensure executable permissions are set on the actual executable file
-                ensure_executable(expected_executable_abs)
-            else:
-                 # For other compiled languages, 'output' is the direct binary name
-                 output_binary_abs = cwd / output_path_rel
-                 if not output_binary_abs.exists():
-                      print_color(RED, f"Error: {label} compilation did not produce expected output: {output_binary_abs}")
-                      results[label] = {'time': None, 'exit_code': -1, 'error': 'Output binary missing'}
-                      return
-                 ensure_executable(output_binary_abs)
+        if output_path_rel and label != "C#":  # Skip output check for C# as it's handled differently
+            output_binary_abs = cwd / output_path_rel
+            if not output_binary_abs.exists():
+                print_color(RED, f"Error: {label} compilation did not produce expected output: {output_binary_abs}")
+                results[label] = {'time': None, 'exit_code': -1, 'error': 'Output binary missing'}
+                return
+            ensure_executable(output_binary_abs)
 
         print_color(GREEN, f"{label} compilation successful.")
 
@@ -212,7 +198,6 @@ def compile_and_run(target, results, cwd):
     # Special case: C# with dotnet run
     elif label == "C#":
         # We need to run dotnet from the benchmark directory where the .csproj is located
-        # The run command is already ['dotnet', 'run', '-c', 'Release', '--project', '.']
         run_cmd_actual = run_cmd_template
         exec_cwd = cwd # Run from benchmark dir where .csproj is located
     # Handle other compiled languages
@@ -299,7 +284,8 @@ def main():
          print_color(RED, f"Lamina source file not found: {lamina_source_abs}")
          sys.exit(1)
 
-    lamina_compile_cmd = [LAMINA_EXECUTABLE, str(lamina_source_abs), LAMINA_OUTPUT_BINARY]
+    # Update Lamina command to use the new CLI with -o/--output flag
+    lamina_compile_cmd = [LAMINA_EXECUTABLE, str(lamina_source_abs), "--output", LAMINA_OUTPUT_BINARY]
     compile_result = run_command(lamina_compile_cmd, check=False, cwd=None) # Run lamina compiler from project root
 
     if compile_result.returncode != 0:
@@ -335,10 +321,10 @@ def main():
          'compile': ['go', 'build', '-o', '{out}', '{src}'], 'run': ['./{out}']},
         {'lang': 'Zig',   'source': '2Dmatmul.zig', 'output': '2Dmatmul_zig',
          'compile': ['zig', 'build-exe', '{src}', '-O', 'ReleaseFast', '--name', '{out}'], 'run': ['./{out}']},
-        {'lang': 'Java',  'source': '2Dmatmul.java', 'output': '2Dmatmul.class', # Compile produces .class
+        {'lang': 'Java',  'source': 'MatMul2D.java', 'output': 'MatMul2D.class', # Compile produces .class
          'compile': ['javac', '{src}'],
          # Run needs class name (no extension), executed from BENCHMARK_DIR
-         'run': ['java', '2Dmatmul']},
+         'run': ['java', 'MatMul2D']},
         # C# uses dotnet publish, outputs to a directory specified by --output
         # 'output' here specifies the relative path to the *executable file* within BENCHMARK_DIR
         #{'lang': 'C#',    'source': '2Dmatmul.cs', 'output': 'bin_cs/2Dmatmul',
@@ -348,9 +334,9 @@ def main():
         # 'run': ['./{out}']}, # Run command uses the 'output' path which points to the exe
         # --- Try C# with a temporary project file ---
         {'lang': 'C#', 'source': '2Dmatmul.cs',
-         # Will create a temporary project file in the benchmark directory
-         # We need to run from that directory
-         'run': ['dotnet', 'run', '-c', 'Release', '--project', '.']},
+         'compile': ['dotnet', 'new', 'console', '-n', '2Dmatmul', '--force', '--no-restore'], # Create project file first
+         # Run using the specific project file name
+         'run': ['dotnet', 'run', '-c', 'Release', '--project', '2Dmatmul.csproj']},
         # Interpreted languages run from project root (cwd=None in run_single_benchmark)
         # {src} will be replaced with full path relative to root for these
         {'lang': 'Python', 'source': '2Dmatmul.py', 'run': ['python3', '{src}']},
