@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+
+[features]
+default = []
+# Enable the use of the mold linker instead of the default system linker (usually ld via gcc)
+use_mold = []
