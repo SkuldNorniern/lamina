@@ -216,6 +216,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         lamina::compile_lamina_ir_to_target_assembly(&ir_source, &mut asm_buffer, target)
     } else {
+        if options.verbose {
+            // Get the architecture that will be used by default (from the detect_host_architecture function)
+            let default_arch = if cfg!(target_arch = "x86_64") {
+                "x86_64"
+            } else if cfg!(target_arch = "aarch64") {
+                "aarch64"
+            } else {
+                "x86_64" // Default fallback
+            };
+            println!("[VERBOSE] Using host architecture: {}", default_arch);
+        }
         lamina::compile_lamina_ir_to_assembly(&ir_source, &mut asm_buffer)
     };
     
