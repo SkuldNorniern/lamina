@@ -5,6 +5,7 @@ use crate::{
     BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type,
 };
 use std::io::Write;
+use std::collections::HashSet;
 
 // Generate the assembly for all functions in the module
 pub fn generate_functions<'a, W: Write>(
@@ -37,6 +38,14 @@ pub fn generate_function<'a, W: Write>(
     let mut func_ctx = FunctionContext::new();
     func_ctx.epilogue_label = format!(".Lfunc_epilogue_{}", func_name); // Set epilogue label early
 
+    // Analyze which registers this function actually requires and if it should be inlined
+    let (required_regs, should_inline) = analyze_register_requirements(func);
+    
+    // Store inlining preference in function state
+    if should_inline {
+        state.inlinable_functions.insert(func_name.to_string());
+    }
+    
     // Function Prologue
     writeln!(writer, "\n# Function: @{}", func_name)?;
     if is_exported {
@@ -47,23 +56,39 @@ pub fn generate_function<'a, W: Write>(
     writeln!(writer, "{}:", asm_label)?;
     writeln!(writer, "    pushq %rbp")?;
     writeln!(writer, "    movq %rsp, %rbp")?;
-    // Save callee-saved registers
-    writeln!(writer, "    pushq %rbx")?;
-    writeln!(writer, "    pushq %r12")?;
-    writeln!(writer, "    pushq %r13")?;
-    writeln!(writer, "    pushq %r14")?;
-    writeln!(writer, "    pushq %r15")?;
+    
+    // Only save callee-saved registers we actually use
+    let mut saved_regs = Vec::new();
+    if required_regs.contains("rbx") {
+        writeln!(writer, "    pushq %rbx")?;
+        saved_regs.push("rbx");
+    }
+    if required_regs.contains("r12") {
+        writeln!(writer, "    pushq %r12")?;
+        saved_regs.push("r12");
+    }
+    if required_regs.contains("r13") {
+        writeln!(writer, "    pushq %r13")?;
+        saved_regs.push("r13");
+    }
+    if required_regs.contains("r14") {
+        writeln!(writer, "    pushq %r14")?;
+        saved_regs.push("r14");
+    }
+    if required_regs.contains("r15") {
+        writeln!(writer, "    pushq %r15")?;
+        saved_regs.push("r15");
+    }
 
     // Calculate stack layout (offsets relative to %rbp)
-    precompute_function_layout(func, &mut func_ctx, state)?; // Populate context
+    precompute_function_layout(func, &mut func_ctx, state, &required_regs)?; // Populate context
 
     // Calculate required stack size and ensure alignment for calls
     let needed_bytes = func_ctx.total_stack_size;
-    // We need the stack pointer (%rsp) to be 16-byte aligned *before* the call instruction.
-    // RSP is 16-byte aligned after pushing rbp + 5 regs (48 bytes total).
-    // Subtracting frame_size must *maintain* this 16-byte alignment.
-    // Therefore, frame_size must be a multiple of 16.
-    // We need the smallest `frame_size >= needed_bytes` that is a multiple of 16.
+    
+    // Calculate proper alignment based on saved registers
+    // Each saved reg is 8 bytes, plus rbp is 8 bytes, total must be 16-byte aligned
+    let saved_bytes = (saved_regs.len() + 1) * 8; // +1 for rbp
     let frame_size = (needed_bytes + 15) & !15; // Round up to multiple of 16
 
     if frame_size > 0 {
@@ -126,16 +151,22 @@ pub fn generate_function<'a, W: Write>(
 
     writeln!(writer, "    # Function Body End")?;
 
-    // Unified Function Epilogue
+    // Function Epilogue
     writeln!(writer, "{}:", func_ctx.epilogue_label)?;
+    
+    // Restore stack pointer directly if needed
+    if frame_size > 0 {
+        writeln!(writer, "    addq ${}, %rsp", frame_size)?;
+    }
+    
+    // Write restore of callee-saved registers (in reverse order)
     writeln!(writer, "    # Restore callee-saved registers")?;
-    writeln!(writer, "    popq %r15")?;
-    writeln!(writer, "    popq %r14")?;
-    writeln!(writer, "    popq %r13")?;
-    writeln!(writer, "    popq %r12")?;
-    writeln!(writer, "    popq %rbx")?;
-    // Restore stack pointer and base pointer
-    writeln!(writer, "    leave")?;
+    for reg in saved_regs.iter().rev() {
+        writeln!(writer, "    popq %{}", reg)?;
+    }
+    
+    // Return directly without leave instruction
+    writeln!(writer, "    popq %rbp")?;
     writeln!(writer, "    ret")?;
 
     // Add size directive for debugging/analysis
@@ -144,19 +175,107 @@ pub fn generate_function<'a, W: Write>(
     Ok(())
 }
 
+// Analyze which registers this function actually requires
+fn analyze_register_requirements<'a>(func: &'a Function<'a>) -> (HashSet<&'static str>, bool) {
+    let mut required_regs = HashSet::new();
+    
+    // Count instructions to estimate complexity
+    let total_instructions: usize = func.basic_blocks.values()
+        .map(|block| block.instructions.len())
+        .sum();
+        
+    // Check for recursive calls
+    let has_recursion = func.basic_blocks.values()
+        .any(|block| block.instructions.iter()
+            .any(|instr| {
+                if let Instruction::Call { func_name, .. } = instr {
+                    *func_name == func.name
+                } else {
+                    false
+                }
+            })
+        );
+        
+    // Check for function calls (non-recursive)
+    let has_function_calls = func.basic_blocks.values()
+        .any(|block| block.instructions.iter()
+            .any(|instr| {
+                if let Instruction::Call { .. } = instr {
+                    true
+                } else {
+                    false
+                }
+            })
+        );
+    
+    // Count number of binary operations
+    let binary_op_count = func.basic_blocks.values()
+        .map(|block| block.instructions.iter()
+            .filter(|instr| {
+                matches!(instr, Instruction::Binary { .. })
+            })
+            .count()
+        )
+        .sum::<usize>();
+    
+    // Count number of comparisons
+    let cmp_count = func.basic_blocks.values()
+        .map(|block| block.instructions.iter()
+            .filter(|instr| {
+                matches!(instr, Instruction::Cmp { .. })
+            })
+            .count()
+        )
+        .sum::<usize>();
+        
+    // If the function is recursive or has many instructions, it'll need rbx
+    if has_recursion || total_instructions > 15 || binary_op_count > 5 {
+        required_regs.insert("rbx");
+    }
+    
+    // If it has more operations or calls other functions, allocate r12
+    if has_function_calls || binary_op_count > 10 || cmp_count > 3 {
+        required_regs.insert("r12");
+    }
+    
+    // More complex functions with many instructions and function calls
+    if total_instructions > 30 || (has_function_calls && total_instructions > 20) {
+        required_regs.insert("r13");
+    }
+    
+    // Only for very complex functions
+    if total_instructions > 40 || (has_recursion && has_function_calls) {
+        required_regs.insert("r14");
+    }
+    
+    // Only for the most complex functions
+    if total_instructions > 60 || (has_recursion && total_instructions > 40) {
+        required_regs.insert("r15");
+    }
+    
+    // Determine if function could be inlined
+    // Small, non-recursive functions with few instructions are good candidates
+    let should_inline = !has_recursion && 
+                        total_instructions <= 10 && 
+                        func.basic_blocks.len() <= 2 &&
+                        !func.signature.params.is_empty() && 
+                        func.signature.params.len() <= 3;
+    
+    (required_regs, should_inline)
+}
+
 // Pass to calculate stack layout and assign assembly labels to IR blocks
 fn precompute_function_layout<'a>(
     func: &'a Function<'a>,
     func_ctx: &mut FunctionContext<'a>,
     state: &mut CodegenState<'a>,
+    required_regs: &HashSet<&'static str>,
 ) -> Result<()> {
     let mut current_stack_offset: i64;
     let mut current_param_stack_offset = 16i64; // For args passed via stack (> 6th arg)
 
-    let _saved_regs_size = 48i64; // rbx, r12-r15 (5 * 8 = 40) + rbp (8) - Unused for now
-    // NOTE: The calculation here assumes we only save rbx, r12-r15. If more are saved, update saved_regs_size.
-    // We actually push rbp separately before saving these, so the space used below the *new* rbp is 40 bytes (rbp-8 to rbp-40)
-    let saved_callee_regs_size = 40i64; // rbx, r12-r15 pushed *after* new rbp established.
+    // Calculate size taken by saved callee registers
+    let saved_callee_regs_size = (required_regs.len() as i64) * 8; // Each saved reg is 8 bytes
 
     // 1. Assign locations for parameters (registers first, then stack)
     let mut temp_param_locations = Vec::new(); // Store temp locations before assigning spill slots
@@ -247,8 +366,12 @@ fn precompute_function_layout<'a>(
     }
 
     // 4. Assign stack offsets for locals, starting below the saved callee registers
-    current_stack_offset = -(saved_callee_regs_size + local_size as i64);
+    // Ensure offsets are properly aligned to 16-byte boundary
+    let aligned_local_size = (local_size + 15) & !15; // Round up to 16-byte multiple
+    current_stack_offset = -(saved_callee_regs_size + 8 + aligned_local_size as i64); // +8 for saved rbp
     let local_start_offset = current_stack_offset;
+    
+    // Assign offsets to local values based on the aligned layout
     for (result, aligned_size) in local_allocations {
         func_ctx
             .value_locations
@@ -257,7 +380,8 @@ fn precompute_function_layout<'a>(
     }
 
     // Reset offset to start allocating spill slots below locals
-    current_stack_offset = local_start_offset;
+    // Ensure we maintain proper alignment for spill slots
+    current_stack_offset = (local_start_offset / 16) * 16; // Re-align to 16-byte boundary
 
     // 5. Allocate stack spill slots for register parameters and record them
     for (param_name, initial_location) in temp_param_locations {
@@ -286,9 +410,9 @@ fn precompute_function_layout<'a>(
         }
     }
 
-    // total_stack_size represents the number of bytes to allocate *below* the saved callee registers.
-    // It's the difference between the base offset (-40) and the lowest offset reached.
-    func_ctx.total_stack_size = (-current_stack_offset - saved_callee_regs_size) as u64;
+    // Ensure final stack size is 16-byte aligned
+    let unaligned_stack_size = -current_stack_offset as u64;
+    func_ctx.total_stack_size = (unaligned_stack_size + 15) & !15;
 
     Ok(())
 }
