@@ -38,14 +38,15 @@ def matrix_multiply_2d
   
   puts "Starting #{n}x#{n} matrix multiplication benchmark in Ruby..."
   
-  # Only compute a sample of cells for large matrices
-  sample_step = [n / 10, 1].max
-
-  (0...n).step(sample_step) do |i|
-    print "Progress: #{(i * 100.0 / n).round}%\r"
-    $stdout.flush
+  # Compute the full matrix multiplication
+  (0...n).each do |i|
+    # Print progress every 10% to avoid excessive output
+    if i % (n / 10) == 0
+      print "Progress: #{(i * 100.0 / n).round}%\r"
+      $stdout.flush
+    end
     
-    (0...n).step(sample_step) do |j|
+    (0...n).each do |j|
       # Compute the result cell [i,j]
       cell_value = compute_matrix_cell(i, j, n)
       total += cell_value
