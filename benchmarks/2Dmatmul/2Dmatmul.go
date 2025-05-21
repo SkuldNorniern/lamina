@@ -8,9 +8,9 @@ import (
 )
 
 // --- Configuration ---
-const N_ROWS = 512
-const K_DIM = 512
-const N_COLS = 512
+const N_ROWS = 256
+const K_DIM = 256
+const N_COLS = 256
 
 // --- Markers ---
 // Use strings for large constant markers to avoid potential int conversion issues if very large
