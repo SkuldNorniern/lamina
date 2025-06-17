@@ -23,11 +23,7 @@ pub fn generate_instruction<'a, W: Write>(
                 let src_loc = get_value_operand_asm(val, state, func_ctx)?;
                 // Move value to %rax first, regardless of function
                 // The caller (C runtime for main, or another func) will read the appropriate register (%eax or %rax).
-                writeln!(
-                    writer,
-                    "        movq {}, %rax  # Return value",
-                    src_loc
-                )?;
+                writeln!(writer, "        movq {}, %rax  # Return value", src_loc)?;
             }
             // Jump to the unified epilogue instead of emitting leave/ret here
             writeln!(
@@ -120,7 +116,7 @@ pub fn generate_instruction<'a, W: Write>(
             // 1. Direct operations with immediates
             let is_constant_lhs = lhs_op.starts_with('$');
             let is_constant_rhs = rhs_op.starts_with('$');
-            
+
             // Special case for operations on constants
             if is_constant_lhs && is_constant_rhs {
                 // Both operands are constants
@@ -129,22 +125,22 @@ pub fn generate_instruction<'a, W: Write>(
                         let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         lhs_val + rhs_val
-                    },
+                    }
                     BinaryOp::Sub => {
                         let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         lhs_val - rhs_val
-                    },
+                    }
                     BinaryOp::Mul => {
                         let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         lhs_val * rhs_val
-                    },
+                    }
                     BinaryOp::Div => {
                         let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         if rhs_val == 0 { 0 } else { lhs_val / rhs_val }
-                    },
+                    }
                 };
                 writeln!(
                     writer,
@@ -153,10 +149,9 @@ pub fn generate_instruction<'a, W: Write>(
                 )?;
                 return Ok(());
             }
-            
+
             // Special case for adding/subtracting with immediate values
-            if matches!(op, BinaryOp::Add | BinaryOp::Sub) && 
-               (is_constant_rhs || is_constant_lhs) {
+            if matches!(op, BinaryOp::Add | BinaryOp::Sub) && (is_constant_rhs || is_constant_lhs) {
                 // Check which operand is immediate
                 if is_constant_rhs {
                     // If destination is a register, we can optimize further
@@ -165,7 +160,7 @@ pub fn generate_instruction<'a, W: Write>(
                         let op_name = match op {
                             BinaryOp::Add => format!("add{}", op_mnemonic),
                             BinaryOp::Sub => format!("sub{}", op_mnemonic),
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         };
                         writeln!(
                             writer,
@@ -175,15 +170,11 @@ pub fn generate_instruction<'a, W: Write>(
                         return Ok(());
                     } else {
                         // Load LHS, add immediate, store result
-                        writeln!(
-                            writer,
-                            "        {} {}, %rax # Load LHS",
-                            mov_instr, lhs_op
-                        )?;
+                        writeln!(writer, "        {} {}, %rax # Load LHS", mov_instr, lhs_op)?;
                         let op_name = match op {
                             BinaryOp::Add => format!("add{}", op_mnemonic),
                             BinaryOp::Sub => format!("sub{}", op_mnemonic),
-                            _ => unreachable!()
+                            _ => unreachable!(),
                         };
                         writeln!(
                             writer,
@@ -209,11 +200,7 @@ pub fn generate_instruction<'a, W: Write>(
                         return Ok(());
                     } else {
                         // Load RHS, add immediate, store result
-                        writeln!(
-                            writer,
-                            "        {} {}, %rax # Load RHS",
-                            mov_instr, rhs_op
-                        )?;
+                        writeln!(writer, "        {} {}, %rax # Load RHS", mov_instr, rhs_op)?;
                         writeln!(
                             writer,
                             "        add{} {}, %rax # Direct Op with Immediate",
@@ -228,7 +215,7 @@ pub fn generate_instruction<'a, W: Write>(
                     }
                 }
             }
-            
+
             // Special case for multiplication by powers of 2
             if *op == BinaryOp::Mul && is_constant_rhs {
                 // Check if RHS is power of 2
@@ -255,9 +242,9 @@ pub fn generate_instruction<'a, W: Write>(
                     }
                 }
             }
-            
+
             // Regular path for operations not handled by special cases
-            
+
             // Use correct registers based on size suffix
             let lhs_reg = if size_suffix == "d" { "%eax" } else { "%rax" };
             let rhs_reg = if size_suffix == "d" { "%r10d" } else { "%r10" };
@@ -464,16 +451,15 @@ pub fn generate_instruction<'a, W: Write>(
             // Check if this is a tail call (recursive call directly followed by ret)
             let is_tail_call = false; // Not implemented yet without lookahead
             let is_recursive = func_name == &_func_name; // Compare &str with &str
-            
+
             // For now, we'll use a simplified heuristic for tail calls
             // In a more complete implementation, we'd check if this call is the last instruction
             // before a return that returns the result of this call
-            
+
             // Check if the function can be inlined
-            let mut should_inline = state.inlinable_functions.contains(*func_name) && 
-                                args.len() <= 3 && 
-                                !is_recursive;
-                              
+            let mut should_inline =
+                state.inlinable_functions.contains(*func_name) && args.len() <= 3 && !is_recursive;
+
             if should_inline {
                 // Implement simple function inlining
                 writeln!(
@@ -481,19 +467,21 @@ pub fn generate_instruction<'a, W: Write>(
                     "        # Inlining call to @{} (small function)",
                     func_name
                 )?;
-                
+
                 // Setup "parameters" directly - pass args through temporary registers
                 for (i, arg) in args.iter().enumerate() {
                     let arg_str = get_value_operand_asm(arg, state, func_ctx)?;
                     writeln!(
                         writer,
                         "        movq {}, %r{} # Inline arg {}",
-                        arg_str, 10 + i, i
+                        arg_str,
+                        10 + i,
+                        i
                     )?;
                 }
-                
+
                 // Generate inlined operation based on function name and args
-                // We could implement more sophisticated inlining here based on 
+                // We could implement more sophisticated inlining here based on
                 // a lookup table of common functions
                 match *func_name {
                     "get_matrix_a_element" | "get_matrix_b_element" => {
@@ -501,14 +489,17 @@ pub fn generate_instruction<'a, W: Write>(
                         writeln!(writer, "        movq %r10, %rax # First arg")?;
                         writeln!(writer, "        imulq %r11, %rax # Multiply by second arg")?;
                         writeln!(writer, "        addq $1, %rax # Add one")?;
-                    },
+                    }
                     _ => {
                         // Generic small function, just call normally
-                        writeln!(writer, "        # Can't inline function body directly, falling back to call")?;
+                        writeln!(
+                            writer,
+                            "        # Can't inline function body directly, falling back to call"
+                        )?;
                         should_inline = false;
                     }
                 }
-                
+
                 // If we successfully inlined, handle the result and return
                 if should_inline {
                     // Handle the return value if there is one
@@ -521,7 +512,7 @@ pub fn generate_instruction<'a, W: Write>(
                 }
                 // Otherwise fall through to normal call
             }
-            
+
             // Regular function call
             // Setup arguments
             writeln!(
@@ -542,7 +533,11 @@ pub fn generate_instruction<'a, W: Write>(
                 // Round up to maintain 16-byte alignment
                 stack_size = ((stack_args * 8) + 15) & !15;
                 if stack_size > 0 {
-                    writeln!(writer, "        subq ${}, %rsp # Reserve stack space for args", stack_size)?;
+                    writeln!(
+                        writer,
+                        "        subq ${}, %rsp # Reserve stack space for args",
+                        stack_size
+                    )?;
                 }
             }
 
@@ -563,7 +558,8 @@ pub fn generate_instruction<'a, W: Write>(
                 writeln!(
                     writer,
                     "        movq {}, %r10 # Arg {}",
-                    arg_str, i + reg_args_count
+                    arg_str,
+                    i + reg_args_count
                 )?;
                 writeln!(
                     writer,
@@ -577,7 +573,11 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Restore stack if we allocated space for stack args
             if stack_size > 0 {
-                writeln!(writer, "        addq ${}, %rsp # Restore stack after call", stack_size)?;
+                writeln!(
+                    writer,
+                    "        addq ${}, %rsp # Restore stack after call",
+                    stack_size
+                )?;
             }
 
             // Handle the return value if there is one
@@ -635,7 +635,7 @@ pub fn generate_instruction<'a, W: Write>(
         }
         Instruction::Print { value } => {
             let val_loc = get_value_operand_asm(value, state, func_ctx)?;
-            
+
             // Save only essential registers
             writeln!(writer, "        pushq %rax")?;
             writeln!(writer, "        pushq %r10")?;
@@ -653,7 +653,10 @@ pub fn generate_instruction<'a, W: Write>(
                 "        movq {}, %rsi # Arg 2: Value to print",
                 val_loc
             )?;
-            writeln!(writer, "        movl $0, %eax # Variadic call: AL=0 (no FP args)")?;
+            writeln!(
+                writer,
+                "        movl $0, %eax # Variadic call: AL=0 (no FP args)"
+            )?;
             writeln!(writer, "        call printf@PLT")?;
 
             // Restore registers

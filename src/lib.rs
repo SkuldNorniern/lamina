@@ -8,8 +8,8 @@ pub mod parser;
 use std::io::Write;
 
 // Re-export core IR structures for easier access
-pub use codegen::generate_x86_64_assembly;
 pub use codegen::generate_aarch64_assembly;
+pub use codegen::generate_x86_64_assembly;
 pub use error::{LaminaError, Result};
 pub use ir::{
     function::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
@@ -19,7 +19,7 @@ pub use ir::{
 };
 
 /// Detect the host system's architecture.
-/// 
+///
 /// Returns a string representing the detected architecture: "x86_64" or "aarch64".
 /// Falls back to "x86_64" if detection fails.
 fn detect_host_architecture() -> &'static str {
@@ -59,9 +59,9 @@ pub fn compile_lamina_ir_to_assembly<W: Write>(input_ir: &str, output_asm: &mut 
 /// # Returns
 /// * `Result<()>` - Ok if compilation succeeds, Err with error information otherwise.
 pub fn compile_lamina_ir_to_target_assembly<W: Write>(
-    input_ir: &str, 
+    input_ir: &str,
     output_asm: &mut W,
-    target: &str
+    target: &str,
 ) -> Result<()> {
     // 1. Parse the input string into an IR Module
     let module = parser::parse_module(input_ir)?;
@@ -70,11 +70,13 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     match target {
         "x86_64" => codegen::generate_x86_64_assembly(&module, output_asm)?,
         "aarch64" => codegen::generate_aarch64_assembly(&module, output_asm)?,
-        _ => return Err(error::LaminaError::CodegenError(
-            format!("Unsupported target architecture: {}", target)
-        )),
+        _ => {
+            return Err(error::LaminaError::CodegenError(format!(
+                "Unsupported target architecture: {}",
+                target
+            )));
+        }
     }
 
     Ok(())
 }
-

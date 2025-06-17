@@ -591,7 +591,12 @@ impl<'a> IRBuilder<'a> {
     /// // Get pointer to the second field (index 1)
     /// builder.struct_gep("field_ptr", var("struct_ptr"), 1);
     /// ```
-    pub fn struct_gep(&mut self, result: &'a str, struct_ptr: Value<'a>, field_index: usize) -> &mut Self {
+    pub fn struct_gep(
+        &mut self,
+        result: &'a str,
+        struct_ptr: Value<'a>,
+        field_index: usize,
+    ) -> &mut Self {
         self.inst(Instruction::GetFieldPtr {
             result,
             struct_ptr,
@@ -659,10 +664,7 @@ impl<'a> IRBuilder<'a> {
     /// builder.tuple("my_tuple", vec![i32(42), bool(true)]);
     /// ```
     pub fn tuple(&mut self, result: &'a str, elements: Vec<Value<'a>>) -> &mut Self {
-        self.inst(Instruction::Tuple {
-            result,
-            elements,
-        })
+        self.inst(Instruction::Tuple { result, elements })
     }
 
     /// Extracts a value from a tuple
@@ -677,7 +679,12 @@ impl<'a> IRBuilder<'a> {
     /// // Extract the first element (index 0) from a tuple
     /// builder.extract_tuple("first", var("my_tuple"), 0);
     /// ```
-    pub fn extract_tuple(&mut self, result: &'a str, tuple_val: Value<'a>, index: usize) -> &mut Self {
+    pub fn extract_tuple(
+        &mut self,
+        result: &'a str,
+        tuple_val: Value<'a>,
+        index: usize,
+    ) -> &mut Self {
         self.inst(Instruction::ExtractTuple {
             result,
             tuple_val,
@@ -799,7 +806,7 @@ impl<'a> IRBuilder<'a> {
     }
 }
 
-// 
+//
 // EXTERNAL FUNCTION SUPPORT
 //
 
@@ -837,7 +844,8 @@ impl<'a> IRBuilder<'a> {
 
         self.function_signatures.insert(name, signature);
         self.function_blocks.insert(name, HashMap::new());
-        self.function_annotations.insert(name, vec![FunctionAnnotation::Export]);
+        self.function_annotations
+            .insert(name, vec![FunctionAnnotation::Export]);
         self.current_function = Some(name);
 
         self
