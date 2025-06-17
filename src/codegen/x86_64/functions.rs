@@ -4,8 +4,8 @@ use super::util::get_type_size_directive_and_bytes;
 use crate::{
     BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type,
 };
-use std::io::Write;
 use std::collections::HashSet;
+use std::io::Write;
 
 // Generate the assembly for all functions in the module
 pub fn generate_functions<'a, W: Write>(
@@ -40,12 +40,12 @@ pub fn generate_function<'a, W: Write>(
 
     // Analyze which registers this function actually requires and if it should be inlined
     let (required_regs, should_inline) = analyze_register_requirements(func);
-    
+
     // Store inlining preference in function state
     if should_inline {
         state.inlinable_functions.insert(func_name.to_string());
     }
-    
+
     // Function Prologue
     writeln!(writer, "\n# Function: @{}", func_name)?;
     if is_exported {
@@ -56,7 +56,7 @@ pub fn generate_function<'a, W: Write>(
     writeln!(writer, "{}:", asm_label)?;
     writeln!(writer, "    pushq %rbp")?;
     writeln!(writer, "    movq %rsp, %rbp")?;
-    
+
     // Only save callee-saved registers we actually use
     let mut saved_regs = Vec::new();
     if required_regs.contains("rbx") {
@@ -85,7 +85,7 @@ pub fn generate_function<'a, W: Write>(
 
     // Calculate required stack size and ensure alignment for calls
     let needed_bytes = func_ctx.total_stack_size;
-    
+
     // Calculate proper alignment based on saved registers
     // Each saved reg is 8 bytes, plus rbp is 8 bytes, total must be 16-byte aligned
     let saved_bytes = (saved_regs.len() + 1) * 8; // +1 for rbp
@@ -153,18 +153,18 @@ pub fn generate_function<'a, W: Write>(
 
     // Function Epilogue
     writeln!(writer, "{}:", func_ctx.epilogue_label)?;
-    
+
     // Restore stack pointer directly if needed
     if frame_size > 0 {
         writeln!(writer, "    addq ${}, %rsp", frame_size)?;
     }
-    
+
     // Write restore of callee-saved registers (in reverse order)
     writeln!(writer, "    # Restore callee-saved registers")?;
     for reg in saved_regs.iter().rev() {
         writeln!(writer, "    popq %{}", reg)?;
     }
-    
+
     // Return directly without leave instruction
     writeln!(writer, "    popq %rbp")?;
     writeln!(writer, "    ret")?;
@@ -178,89 +178,95 @@ pub fn generate_function<'a, W: Write>(
 // Analyze which registers this function actually requires
 fn analyze_register_requirements<'a>(func: &'a Function<'a>) -> (HashSet<&'static str>, bool) {
     let mut required_regs = HashSet::new();
-    
+
     // Count instructions to estimate complexity
-    let total_instructions: usize = func.basic_blocks.values()
+    let total_instructions: usize = func
+        .basic_blocks
+        .values()
         .map(|block| block.instructions.len())
         .sum();
-        
+
     // Check for recursive calls
-    let has_recursion = func.basic_blocks.values()
-        .any(|block| block.instructions.iter()
-            .any(|instr| {
-                if let Instruction::Call { func_name, .. } = instr {
-                    *func_name == func.name
-                } else {
-                    false
-                }
-            })
-        );
-        
+    let has_recursion = func.basic_blocks.values().any(|block| {
+        block.instructions.iter().any(|instr| {
+            if let Instruction::Call { func_name, .. } = instr {
+                *func_name == func.name
+            } else {
+                false
+            }
+        })
+    });
+
     // Check for function calls (non-recursive)
-    let has_function_calls = func.basic_blocks.values()
-        .any(|block| block.instructions.iter()
-            .any(|instr| {
-                if let Instruction::Call { .. } = instr {
-                    true
-                } else {
-                    false
-                }
-            })
-        );
-    
+    let has_function_calls = func.basic_blocks.values().any(|block| {
+        block.instructions.iter().any(|instr| {
+            if let Instruction::Call { .. } = instr {
+                true
+            } else {
+                false
+            }
+        })
+    });
+
     // Count number of binary operations
-    let binary_op_count = func.basic_blocks.values()
-        .map(|block| block.instructions.iter()
-            .filter(|instr| {
-                matches!(instr, Instruction::Binary { .. })
-            })
-            .count()
-        )
+    let binary_op_count = func
+        .basic_blocks
+        .values()
+        .map(|block| {
+            block
+                .instructions
+                .iter()
+                .filter(|instr| matches!(instr, Instruction::Binary { .. }))
+                .count()
+        })
         .sum::<usize>();
-    
+
     // Count number of comparisons
-    let cmp_count = func.basic_blocks.values()
-        .map(|block| block.instructions.iter()
-            .filter(|instr| {
-                matches!(instr, Instruction::Cmp { .. })
-            })
-            .count()
-        )
+    let cmp_count = func
+        .basic_blocks
+        .values()
+        .map(|block| {
+            block
+                .instructions
+                .iter()
+                .filter(|instr| matches!(instr, Instruction::Cmp { .. }))
+                .count()
+        })
         .sum::<usize>();
-        
+
     // If the function is recursive or has many instructions, it'll need rbx
     if has_recursion || total_instructions > 15 || binary_op_count > 5 {
         required_regs.insert("rbx");
     }
-    
+
     // If it has more operations or calls other functions, allocate r12
     if has_function_calls || binary_op_count > 10 || cmp_count > 3 {
         required_regs.insert("r12");
     }
-    
+
     // More complex functions with many instructions and function calls
     if total_instructions > 30 || (has_function_calls && total_instructions > 20) {
         required_regs.insert("r13");
     }
-    
+
     // Only for very complex functions
     if total_instructions > 40 || (has_recursion && has_function_calls) {
         required_regs.insert("r14");
     }
-    
+
     // Only for the most complex functions
     if total_instructions > 60 || (has_recursion && total_instructions > 40) {
         required_regs.insert("r15");
     }
-    
+
     // Determine if function could be inlined
     // Small, non-recursive functions with few instructions are good candidates
-    let should_inline = !has_recursion && 
-                        total_instructions <= 10 && 
-                        func.basic_blocks.len() <= 2 &&
-                        !func.signature.params.is_empty() && 
-                        func.signature.params.len() <= 3;
-    
+    let should_inline = !has_recursion
+        && total_instructions <= 10
+        && func.basic_blocks.len() <= 2
+        && !func.signature.params.is_empty()
+        && func.signature.params.len() <= 3;
+
     (required_regs, should_inline)
 }
 
@@ -370,7 +376,7 @@ fn precompute_function_layout<'a>(
     let aligned_local_size = (local_size + 15) & !15; // Round up to 16-byte multiple
     current_stack_offset = -(saved_callee_regs_size + 8 + aligned_local_size as i64); // +8 for saved rbp
     let local_start_offset = current_stack_offset;
-    
+
     // Assign offsets to local values based on the aligned layout
     for (result, aligned_size) in local_allocations {
         func_ctx
