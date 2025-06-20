@@ -439,14 +439,8 @@ fn generate_basic_block<'a, W: Write>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::codegen::x86_64::generate_x86_64_assembly;
     use crate::parser::parse_module;
-    // Add imports needed specifically for test_codegen_tensor_benchmark
-    use crate::Result;
-    use crate::codegen::x86_64; // To call x86_64::generate_x86_64_assembly
-    use std::fs;
-    use std::io::{BufWriter, Write}; // Needed for the test function signature
 
     fn compile_to_asm(ir_code: &str) -> String {
         let module = parse_module(ir_code).expect("Test IR parsing failed");
@@ -537,8 +531,8 @@ mod tests {
                 entry:
                     %sum = add.i64 %a, %b
                     %diff = sub.i64 %sum, 10
-                    %product = mul.i64 %diff, 2
-                    %quotient = div.i64 %product, 3
+                    %product = mul.i64 %diff, 3
+                    %quotient = div.i64 %product, 5
                     ret.i64 %quotient
             }
         "#;
@@ -649,10 +643,10 @@ mod tests {
     #[test]
     fn test_different_primitive_types() {
         let ir = r#"
-            fn @test_types() -> i64 {
+            fn @test_types(i32 %a, i32 %b) -> i64 {
                 entry:
-                    %bool_val = eq.i32 5, 5
-                    %i32_val = add.i32 42, 10
+                    %bool_val = eq.i32 %a, %b
+                    %i32_val = add.i32 %a, 42
                     %extended = zext.i32.i64 %i32_val
                     
                     br %bool_val, true_branch, false_branch
