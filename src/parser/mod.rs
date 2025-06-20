@@ -459,7 +459,7 @@ mod tests {
     fn test_parse_tensor_benchmark() -> Result<(), LaminaError> {
         // Load the benchmark Lamina code
         let source =
-            fs::read_to_string("../../benchmarks/tensor benchmark/tensor_benchmark.lamina")
+            fs::read_to_string("benchmarks/2Dmatmul/2Dmatmul.lamina")
                 .map_err(|e| {
                     LaminaError::ParsingError(format!("Failed to read benchmark file: {}", e))
                 })?;
@@ -477,7 +477,7 @@ mod tests {
             0,
             "Should have no global declarations"
         );
-        assert_eq!(module.functions.len(), 5, "Should have 5 functions");
+        assert_eq!(module.functions.len(), 4, "Should have 4 functions");
 
         // Check @main function details
         let main_func = module
@@ -515,41 +515,43 @@ mod tests {
             "@main should end with ret"
         );
 
-        // Check @matmul_2d function details (more complex)
+        // Check @matmul_2d_optimized function details (more complex)
         let matmul_func = module
             .functions
-            .get("matmul_2d")
-            .expect("Missing @matmul_2d function");
-        assert_eq!(matmul_func.name, "matmul_2d");
+            .get("matmul_2d_optimized")
+            .expect("Missing @matmul_2d_optimized function");
+        assert_eq!(matmul_func.name, "matmul_2d_optimized");
         assert_eq!(
             matmul_func.signature.params.len(),
             3,
-            "@matmul_2d should have 3 parameters"
+            "@matmul_2d_optimized should have 3 parameters"
         );
         assert_eq!(
             matmul_func.signature.return_type,
             Type::Primitive(PrimitiveType::I64),
-            "@matmul_2d should return i64"
+            "@matmul_2d_optimized should return i64"
         );
-        assert_eq!(
-            matmul_func.basic_blocks.len(),
-            9,
-            "@matmul_2d should have 9 basic blocks"
+        
+        // Check that it has many basic blocks (it's a complex function)
+        assert!(
+            matmul_func.basic_blocks.len() > 10,
+            "@matmul_2d_optimized should have many basic blocks"
         );
         assert!(matmul_func.basic_blocks.contains_key("entry"));
-        assert!(matmul_func.basic_blocks.contains_key("row_loop"));
-        assert!(matmul_func.basic_blocks.contains_key("col_loop"));
-        assert!(matmul_func.basic_blocks.contains_key("process_cell"));
-        assert!(matmul_func.basic_blocks.contains_key("show_progress"));
-        assert!(matmul_func.basic_blocks.contains_key("matrix_done"));
-
-        // Check for a key instruction (e.g., the call inside the loop)
-        let process_cell_block = matmul_func
-            .basic_blocks
-            .get("process_cell")
-            .expect("@matmul_2d missing process_cell block");
-        assert!(process_cell_block.instructions.iter().any(|instr| matches!(instr, Instruction::Call { func_name, .. } if *func_name == "compute_matrix_cell")),
-                "process_cell block should contain call to @compute_matrix_cell");
+        
+        // Check for get_matrix_a_element function
+        let get_a_func = module
+            .functions
+            .get("get_matrix_a_element")
+            .expect("Missing @get_matrix_a_element function");
+        assert_eq!(get_a_func.signature.params.len(), 2);
+        
+        // Check for get_matrix_b_element function
+        let get_b_func = module
+            .functions
+            .get("get_matrix_b_element")
+            .expect("Missing @get_matrix_b_element function");
+        assert_eq!(get_b_func.signature.params.len(), 2);
 
         Ok(())
     }

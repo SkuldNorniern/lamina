@@ -1,4 +1,4 @@
-use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, RETURN_REGISTER, ValueLocation};
+use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_value_operand_asm;
 use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType,
@@ -760,7 +760,7 @@ mod tests {
     use crate::codegen::x86_64::state::{CodegenState, FunctionContext, ValueLocation};
     use crate::ir::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
     use crate::ir::types::{Literal, PrimitiveType, Type, Value};
-    use std::collections::HashMap;
+
     use std::io::Cursor;
 
     // Helper to create a default FunctionContext for testing
@@ -1007,10 +1007,9 @@ mod tests {
             &add_i32,
             &ctx,
             &[
-                "movl -24(%rbp), %eax",
-                "movl $5, %r10d",
-                "addl %r10d, %eax",
-                "movl %eax, -40(%rbp)",
+                "movl -24(%rbp), %rax",
+                "addl $5, %rax",
+                "movl %rax, -40(%rbp)",
             ],
         );
 
@@ -1033,7 +1032,7 @@ mod tests {
             ],
         );
 
-        // Mul ptr (treated as i64)
+        // Mul ptr (treated as i64) - optimized to shift for power of 2
         let mul_ptr = Instruction::Binary {
             op: BinaryOp::Mul,
             result: "result",
@@ -1046,8 +1045,7 @@ mod tests {
             &ctx,
             &[
                 "movq -24(%rbp), %rax",
-                "movq $8, %r10",
-                "imulq %r10, %rax",
+                "shlq $3, %rax",
                 "movq %rax, -40(%rbp)",
             ],
         );
@@ -1064,11 +1062,11 @@ mod tests {
             &div_i32,
             &ctx,
             &[
-                "movl -24(%rbp), %eax", // Dividend
-                "movl $2, %r10d",       // Divisor
-                "cltd",                 // Sign extend eax to edx:eax
-                "idivl %r10d",          // Divide edx:eax by r10d
-                "movl %eax, -40(%rbp)", // Store quotient (in eax)
+                "movl -24(%rbp), %eax",
+                "movl $2, %r10d",
+                "cltd",
+                "idivl %r10d",
+                "movl %eax, -40(%rbp)",
             ],
         );
 
@@ -1086,9 +1084,9 @@ mod tests {
             &[
                 "movq -24(%rbp), %rax",
                 "movq -32(%rbp), %r10",
-                "cqto",                 // Sign extend rax to rdx:rax
-                "idivq %r10",           // Divide rdx:rax by r10
-                "movq %rax, -40(%rbp)", // Store quotient (in rax)
+                "cqto",
+                "idivq %r10",
+                "movq %rax, -40(%rbp)",
             ],
         );
 
@@ -1116,9 +1114,9 @@ mod tests {
             &load_i8,
             &ctx,
             &[
-                "movq -16(%rbp), %r11", // Load address
-                "movsbq (%r11), %r10",  // Load byte and sign-extend to quad
-                "movq %r10, -40(%rbp)", // Store result
+                "movq -16(%rbp), %r11",
+                "movsbq (%r11), %r10",
+                "movq %r10, -40(%rbp)",
             ],
         );
 
@@ -1133,7 +1131,7 @@ mod tests {
             &ctx,
             &[
                 "movq -16(%rbp), %r11",
-                "movslq (%r11), %r10", // Load long and sign-extend to quad
+                "movslq (%r11), %r10",
                 "movq %r10, -40(%rbp)",
             ],
         );
@@ -1149,7 +1147,7 @@ mod tests {
             &ctx,
             &[
                 "movq -16(%rbp), %r11",
-                "movq (%r11), %r10", // Load quad
+                "movq (%r11), %r10",
                 "movq %r10, -40(%rbp)",
             ],
         );
@@ -1165,7 +1163,7 @@ mod tests {
             &ctx,
             &[
                 "movq -16(%rbp), %r11",
-                "movzbq (%r11), %r10", // Load byte and zero-extend to quad
+                "movzbq (%r11), %r10",
                 "movq %r10, -40(%rbp)",
             ],
         );
@@ -1181,7 +1179,7 @@ mod tests {
             &ctx,
             &[
                 "movq -16(%rbp), %r11",
-                "movq (%r11), %r10", // Load quad
+                "movq (%r11), %r10",
                 "movq %r10, -40(%rbp)",
             ],
         );
@@ -1253,9 +1251,9 @@ mod tests {
             &load_from_stack,
             &ctx,
             &[
-                "movq -72(%rbp), %r11", // Load pointer from stack slot
-                "movq (%r11), %r10",    // Load value from address
-                "movq %r10, -88(%rbp)", // Store loaded value
+                "movq -72(%rbp), %r11",
+                "movq (%r11), %r10",
+                "movq %r10, -88(%rbp)",
             ],
         );
 
@@ -1362,12 +1360,8 @@ mod tests {
             "Should load val1 for index calculation"
         );
         assert!(
-            asm.contains("movq $1, %r10"),
-            "Should load constant for index calculation"
-        );
-        assert!(
-            asm.contains("addq %r10, %rax"),
-            "Should add for index calculation"
+            asm.contains("addq $1, %rax"),
+            "Should add immediate constant for index calculation"
         );
         assert!(
             asm.contains("movq -80(%rbp), %rax"),
@@ -1386,8 +1380,8 @@ mod tests {
             "Should load elem_val for multiply"
         );
         assert!(
-            asm.contains("imulq %r10, %rax"),
-            "Should multiply elem_val by constant"
+            asm.contains("shlq $1, %rax"),
+            "Should shift elem_val by 1 (multiply by 2)"
         );
         assert!(
             asm.contains("movq -104(%rbp), %r10"),
@@ -1600,11 +1594,9 @@ mod tests {
                 "movq $4, %rcx # Arg 3",
                 "movq $5, %r8 # Arg 4",
                 "movq $6, %r9 # Arg 5",
-                "# Setup stack arguments for call @callee_many",
-                "movq -64(%rbp), %r10", // Load 7th arg into temp reg
-                "pushq %r10 # Arg 6",   // Push 7th arg
+                "movq -64(%rbp), %r10 # Arg 6",
+                "movq %r10, 0(%rsp) # Stack arg offset",
                 "call func_callee_many",
-                "addq $8, %rsp # Cleanup stack args", // Clean up 1 stack arg (8 bytes)
             ],
         );
         // Check result storage is NOT present

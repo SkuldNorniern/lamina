@@ -1,46 +1,36 @@
+pub mod functions;
+pub mod globals;
+pub mod instructions;
+pub mod state;
+pub mod util;
+pub mod load_store_opt;
+pub mod register_info;
+pub mod optimization;
+
 use crate::{Module, Result};
 use std::io::Write;
 
-// Declare internal modules
-mod functions;
-mod globals;
-mod instructions;
-mod state;
-mod util;
-
-// Re-export the main entry point
-pub use state::CodegenState;
-// Re-export needed state components for sibling module tests
-pub use functions::generate_functions;
-pub use globals::generate_global_data_section;
-pub use globals::generate_globals;
-pub use state::{FunctionContext, ValueLocation};
-
-// Declare the tests module
-
-/// Generates x86-64 assembly text (AT&T syntax) from a Lamina IR Module.
-///
-/// Writes the output assembly to the provided `writer`.
+/// Generate x86_64 assembly for a module
 pub fn generate_x86_64_assembly<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
 ) -> Result<()> {
-    let mut state = CodegenState::new();
+    let mut state = state::CodegenState::new();
 
     // Add note for non-executable stack
     writeln!(writer, ".section .note.GNU-stack,\"\",@progbits")?;
 
     // --- 1. Process Globals and emit .data/.bss ---
-    generate_global_data_section(module, writer, &mut state)?;
+    globals::generate_global_data_section(module, writer, &mut state)?;
 
     // --- 2. Emit .text section ---
     writeln!(writer, "\n.section .text")?;
 
     // --- 3. Process functions ---
-    generate_functions(module, writer, &mut state)?;
+    functions::generate_functions(module, writer, &mut state)?;
 
     // Generate global variable sections (.rodata, .data, .bss)
-    generate_globals(&state, writer)?;
+    globals::generate_globals(&state, writer)?;
 
     Ok(())
 }
