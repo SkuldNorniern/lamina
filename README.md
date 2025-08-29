@@ -208,31 +208,7 @@ Lamina demonstrates competitive performance in computational tasks. The followin
 
 ## Getting Started
 
-<div align="center">
-<table>
-<tr>
-<td align="center" width="33%">
 
-**Prerequisites**
-```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-</td>
-<td align="center" width="33%">
-
-**Build & Test**
-```bash
-# Build the project
-cargo build --release
-
-# Run tests
-cargo test
-```
-
-</td>
-<td align="center" width="33%">
 
 **Try Examples**
 ```bash
@@ -241,10 +217,6 @@ cargo run -- benchmarks/2Dmatmul/2Dmatmul.lamina
 
 ```
 
-</td>
-</tr>
-</table>
-</div>
 
 ## Quick Start Example
 
