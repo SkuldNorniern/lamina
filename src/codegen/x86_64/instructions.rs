@@ -13,8 +13,9 @@ pub fn generate_instruction<'a, W: Write>(
     writer: &mut W,
     state: &mut CodegenState<'a>,
     func_ctx: &FunctionContext<'a>,
-    _func_name: Identifier<'a>,
+    func_name: Identifier<'a>,
 ) -> Result<()> {
+    // Original instruction generation logic follows...
     writeln!(writer, "        # IR: {}", instr)?; // Comment with the original IR
 
     match instr {
@@ -42,11 +43,23 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        movq {}, %r10 # Store value", val_loc)?;
             writeln!(writer, "        movq {}, %r11 # Store address", ptr_loc)?;
             match ty {
-                Type::Primitive(PrimitiveType::I32) => {
+                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) | Type::Primitive(PrimitiveType::Char) => {
+                    writeln!(writer, "        movb %r10b, (%r11)")?
+                }
+                Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => {
+                    writeln!(writer, "        movw %r10w, (%r11)")?
+                }
+                Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => {
                     writeln!(writer, "        movl %r10d, (%r11)")?
                 }
-                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) | Type::Primitive(PrimitiveType::Ptr) => {
                     writeln!(writer, "        movq %r10, (%r11)")?
+                }
+                Type::Primitive(PrimitiveType::F32) => {
+                    writeln!(writer, "        movss %xmm0, (%r11)")?
+                }
+                Type::Primitive(PrimitiveType::F64) => {
+                    writeln!(writer, "        movsd %xmm0, (%r11)")?
                 }
                 Type::Primitive(PrimitiveType::Bool) => {
                     writeln!(writer, "        movb %r10b, (%r11)")?
@@ -102,8 +115,12 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_asm = dest_op.to_operand_string();
 
             let (op_mnemonic, size_suffix, mov_instr, div_instr) = match ty {
-                PrimitiveType::I32 => ("l", "d", "movl", "idivl"),
-                PrimitiveType::I64 | PrimitiveType::Ptr => ("q", "", "movq", "idivq"),
+                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char => ("b", "b", "movb", "idivb"),
+                PrimitiveType::I16 | PrimitiveType::U16 => ("w", "w", "movw", "idivw"),
+                PrimitiveType::I32 | PrimitiveType::U32 => ("l", "d", "movl", "idivl"),
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => ("q", "", "movq", "idivq"),
+                PrimitiveType::F32 => ("ss", "", "movss", "divss"),
+                PrimitiveType::F64 => ("sd", "", "movsd", "divsd"),
                 _ => {
                     return Err(LaminaError::CodegenError(format!(
                         "Binary op for type '{}' not supported yet",
@@ -310,10 +327,16 @@ pub fn generate_instruction<'a, W: Write>(
             // Select correct mov instruction and temporary register based on type
             let (mov_mnemonic, temp_reg) = match ty {
                 Type::Primitive(PrimitiveType::I8) => ("movsbq", "%r10"), // Sign-extend byte load into 64-bit register
+                Type::Primitive(PrimitiveType::U8) | Type::Primitive(PrimitiveType::Char) => ("movzbq", "%r10"), // Zero-extend byte to quad
+                Type::Primitive(PrimitiveType::I16) => ("movswq", "%r10"), // Sign-extend word load into 64-bit register
+                Type::Primitive(PrimitiveType::U16) => ("movzwq", "%r10"), // Zero-extend word to quad
                 Type::Primitive(PrimitiveType::I32) => ("movslq", "%r10"), // Sign-extend load into 64-bit register
-                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                Type::Primitive(PrimitiveType::U32) => ("movl", "%r10d"), // Load 32-bit unsigned
+                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) | Type::Primitive(PrimitiveType::Ptr) => {
                     ("movq", "%r10")
                 }
+                Type::Primitive(PrimitiveType::F32) => ("movss", "%xmm0"), // Load 32-bit float
+                Type::Primitive(PrimitiveType::F64) => ("movsd", "%xmm0"), // Load 64-bit float
                 Type::Primitive(PrimitiveType::Bool) => ("movzbq", "%r10"), // Zero-extend byte to quad
                 _ => {
                     return Err(LaminaError::CodegenError(format!(
@@ -366,33 +389,38 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_asm = dest_op.to_operand_string();
 
             let (cmp_mnemonic, mov_instr, reg_suffix) = match ty {
-                PrimitiveType::I8 => ("cmpb", "movb", "b"),
-                PrimitiveType::I32 => ("cmpl", "movl", "d"),
-                PrimitiveType::I64 | PrimitiveType::Ptr => ("cmpq", "movq", ""),
-                PrimitiveType::Bool => ("cmpb", "movb", "b"),
-                _ => {
-                    return Err(LaminaError::CodegenError(format!(
-                        "Cmp op for type '{}' not supported yet",
-                        ty
-                    )));
-                }
+                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => ("cmpb", "movb", "b"),
+                PrimitiveType::I16 | PrimitiveType::U16 => ("cmpw", "movw", "w"),
+                PrimitiveType::I32 | PrimitiveType::U32 => ("cmpl", "movl", "d"),
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => ("cmpq", "movq", ""),
+                PrimitiveType::F32 => ("ucomiss", "movss", ""),
+                PrimitiveType::F64 => ("ucomisd", "movsd", ""),
             };
 
-            // Use %r10 for rhs, %r11 for lhs
+            // Use appropriate registers based on type size
+            let (rhs_reg, lhs_reg) = match ty {
+                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => ("%r10b", "%r11b"),
+                PrimitiveType::I16 | PrimitiveType::U16 => ("%r10w", "%r11w"),
+                PrimitiveType::I32 | PrimitiveType::U32 => ("%r10d", "%r11d"),
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => ("%r10", "%r11"),
+                PrimitiveType::F32 => ("%xmm0", "%xmm1"),
+                PrimitiveType::F64 => ("%xmm0", "%xmm1"),
+            };
+            
             writeln!(
                 writer,
-                "        {} {}, %r10{} # Cmp RHS",
-                mov_instr, rhs_op, reg_suffix
+                "        {} {}, {} # Cmp RHS",
+                mov_instr, rhs_op, rhs_reg
             )?;
             writeln!(
                 writer,
-                "        {} {}, %r11{} # Cmp LHS",
-                mov_instr, lhs_op, reg_suffix
+                "        {} {}, {} # Cmp LHS",
+                mov_instr, lhs_op, lhs_reg
             )?;
             writeln!(
                 writer,
-                "        {} %r10{}, %r11{} # Cmp Op",
-                cmp_mnemonic, reg_suffix, reg_suffix
+                "        {} {}, {} # Cmp Op",
+                cmp_mnemonic, rhs_reg, lhs_reg
             )?;
 
             let set_instr = match op {
@@ -409,12 +437,34 @@ pub fn generate_instruction<'a, W: Write>(
                 "        {} %al # Set byte based on flags",
                 set_instr
             )?;
-            // Store the boolean result directly as a byte
+            // Store the boolean result, handling different destination types
+            if dest_asm.starts_with('%') {
+                // For registers, check if it's a 64-bit register
+                if dest_asm.starts_with("%r") || dest_asm == "%rax" || dest_asm == "%rbx" || 
+                   dest_asm == "%rcx" || dest_asm == "%rdx" || dest_asm == "%rsi" || 
+                   dest_asm == "%rdi" || dest_asm == "%rbp" || dest_asm == "%rsp" {
+                    // For 64-bit registers, zero-extend the byte result
+                    writeln!(
+                        writer,
+                        "        movzbq %al, {} # Zero-extend Cmp result to register",
+                        dest_asm
+                    )?;
+                } else {
+                    // For 32-bit or smaller registers, use movb to byte portion
             writeln!(
                 writer,
                 "        movb %al, {} # Store Cmp result (byte)",
                 dest_asm
             )?;
+                }
+            } else {
+                // For memory locations, store directly as byte
+                writeln!(
+                    writer,
+                    "        movb %al, {} # Store Cmp result (byte)",
+                    dest_asm
+                )?;
+            }
         }
         Instruction::Br {
             condition,
@@ -425,12 +475,32 @@ pub fn generate_instruction<'a, W: Write>(
             let true_asm_label = func_ctx.get_block_label(true_label)?;
             let false_asm_label = func_ctx.get_block_label(false_label)?;
 
-            // Load the boolean byte into AL and test it directly
+            // Handle different operand types for the condition
+            if cond_op.starts_with('%') {
+                // Condition is in a register, test it directly
+                if cond_op.ends_with("ax") || cond_op == "%rax" || cond_op == "%eax" {
+                    // For AX family registers, test the full register
+                    writeln!(
+                        writer,
+                        "        testq {}, {} # Test condition register",
+                        cond_op, cond_op
+                    )?;
+                } else {
+                    // For other registers, test as quad word
+                    writeln!(
+                        writer,
+                        "        testq {}, {} # Test condition register",
+                        cond_op, cond_op
+                    )?;
+                }
+            } else {
+                // Condition is in memory, load as byte and test
             writeln!(writer, "        movb {}, %al # Load boolean byte", cond_op)?;
             writeln!(
                 writer,
                 "        testb %al, %al # Test AL, sets ZF if AL is 0"
             )?;
+            }
             writeln!(
                 writer,
                 "        jne {} # Jump if condition != 0 (ZF=0)",
@@ -450,11 +520,7 @@ pub fn generate_instruction<'a, W: Write>(
         } => {
             // Check if this is a tail call (recursive call directly followed by ret)
             let _is_tail_call = false; // Not implemented yet without lookahead, placeholder for future implementation
-            let is_recursive = func_name == &_func_name; // Compare &str with &str
-
-            // For now, we'll use a simplified heuristic for tail calls
-            // In a more complete implementation, we'd check if this call is the last instruction
-            // before a return that returns the result of this call
+            let is_recursive = false; // Not implemented yet
 
             // Check if the function can be inlined
             let mut should_inline =
