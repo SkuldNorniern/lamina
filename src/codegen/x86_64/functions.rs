@@ -9,7 +9,19 @@ use crate::{
 use std::collections::HashSet;
 use std::io::Write;
 
-// Generate the assembly for all functions in the module
+/// Generates x86_64 assembly for all functions in the module
+///
+/// This function iterates through all functions in the provided module and generates
+/// their corresponding x86_64 assembly code. Each function is processed individually
+/// using the `generate_function` helper.
+///
+/// # Arguments
+/// * `module` - The Lamina IR module containing functions to compile
+/// * `writer` - Output writer for the generated assembly
+/// * `state` - Code generation state shared across functions
+///
+/// # Returns
+/// * `Result<()>` - Ok if all functions compile successfully, Err with error details otherwise
 pub fn generate_functions<'a, W: Write>(
     module: &'a crate::Module<'a>, // Use full path to avoid ambiguity
     writer: &mut W,
@@ -177,7 +189,22 @@ fn generate_function_with_allocation<'a, W: Write>(
     Ok(())
 }
 
-// Generate assembly for a single function
+/// Generates x86_64 assembly for a single function
+///
+/// This function converts a Lamina IR function into x86_64 assembly code, handling:
+/// - Function prologue (stack setup, register preservation)
+/// - Basic block generation
+/// - Instruction translation
+/// - Function epilogue (stack cleanup, register restoration)
+///
+/// # Arguments
+/// * `func_name` - Name of the function to compile
+/// * `func` - The Lamina IR function definition
+/// * `writer` - Output writer for the generated assembly
+/// * `state` - Code generation state
+///
+/// # Returns
+/// * `Result<()>` - Ok if function compiles successfully, Err with error details otherwise
 pub fn generate_function<'a, W: Write>(
     func_name: Identifier<'a>,
     func: &'a Function<'a>,
@@ -259,7 +286,7 @@ pub fn generate_function<'a, W: Write>(
         if let Some(loc) = func_ctx.value_locations.get(arg.name)
             && let ValueLocation::StackOffset(offset) = loc {
                 if i < ARG_REGISTERS.len() {
-                    // TODO: Handle non-64bit arg types (movl etc.)
+                    // Note: Currently only handles 64-bit arg types (movq)
                     writeln!(
                         writer,
                         "        movq {}, {}(%rbp) # Spill arg {}",
@@ -841,7 +868,7 @@ fn generate_optimized_binary<'a, W: Write>(
     let result_in_reg = allocation_result.assignments.get(result);
 
     // Determine size suffix and instruction format
-    let (op_suffix, reg_prefix) = match ty {
+    let (op_suffix, _reg_prefix) = match ty {
         PrimitiveType::I32 => ("l", "e"),
         PrimitiveType::I64 | PrimitiveType::Ptr => ("q", "r"),
         _ => {
