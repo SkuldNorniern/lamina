@@ -373,6 +373,18 @@ fn detect_compiler() -> Result<(&'static str, Vec<&'static str>), Box<dyn std::e
         }
 
         eprintln!("No suitable compiler found on Windows. Please install GCC, Clang, or MSVC.");
+    } else if cfg!(target_os = "macos") {
+        // On macOS, prefer Clang
+        if Command::new("clang").arg("--version").output().is_ok() {
+            return Ok(("clang", vec![]));
+        }
+
+        // Then try GCC
+        if Command::new("gcc").arg("--version").output().is_ok() {
+            return Ok(("gcc", vec![]));
+        }
+
+        eprintln!("No suitable compiler found on macOS. Please install Clang.");
     } else {
         // On Unix-like systems, prefer GCC, fallback to Clang
         if Command::new("gcc").arg("--version").output().is_ok() {
