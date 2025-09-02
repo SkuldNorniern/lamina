@@ -1,8 +1,8 @@
 use super::types::GlobalLayout;
-use super::utils::{get_type_size_bytes, escape_asm_string};
-use crate::{GlobalDeclaration, Module, Literal, Value, LaminaError, Result};
-use std::io::Write;
+use super::utils::{escape_asm_string, get_type_size_bytes};
+use crate::{GlobalDeclaration, LaminaError, Literal, Module, Result, Value};
 use std::collections::HashMap;
+use std::io::Write;
 
 /// Common interface for global variable generation
 pub trait GlobalGenerator<'a> {
@@ -13,7 +13,7 @@ pub trait GlobalGenerator<'a> {
         writer: &mut W,
         layout: &mut GlobalLayout,
     ) -> Result<()>;
-    
+
     /// Generate a single global variable
     fn generate_global<W: Write>(
         &self,
@@ -41,14 +41,14 @@ impl GlobalManager {
             next_id: 0,
         }
     }
-    
+
     /// Generate a unique label for a global
     pub fn generate_global_label(&mut self, name: &str) -> String {
         let label = format!("global_{}", name);
         self.label_map.insert(name.to_string(), label.clone());
         label
     }
-    
+
     /// Add a read-only string and return its label
     pub fn add_rodata_string(&mut self, content: &str) -> String {
         // Check if this string already exists
@@ -57,19 +57,20 @@ impl GlobalManager {
                 return label.clone();
             }
         }
-        
+
         // Create new string label
         let label = format!(".L.str.{}", self.next_id);
         self.next_id += 1;
-        self.rodata_strings.push((label.clone(), content.to_string()));
+        self.rodata_strings
+            .push((label.clone(), content.to_string()));
         label
     }
-    
+
     /// Get the label for a global variable
     pub fn get_global_label(&self, name: &str) -> Option<&String> {
         self.label_map.get(name)
     }
-    
+
     /// Get all read-only strings
     pub fn get_rodata_strings(&self) -> &[(String, String)] {
         &self.rodata_strings
@@ -101,7 +102,7 @@ impl StandardGlobalGenerator {
             emit_metadata: true,
         }
     }
-    
+
     /// Create generator for x86_64 Linux
     pub fn x86_64_linux() -> Self {
         Self::new(
@@ -110,7 +111,7 @@ impl StandardGlobalGenerator {
             ".section .rodata".to_string(),
         )
     }
-    
+
     /// Create generator for AArch64 macOS  
     pub fn aarch64_macos() -> Self {
         Self::new(
@@ -119,7 +120,7 @@ impl StandardGlobalGenerator {
             ".section __DATA,__const".to_string(),
         )
     }
-    
+
     /// Set whether to emit type and size metadata
     pub fn set_emit_metadata(&mut self, emit: bool) {
         self.emit_metadata = emit;
@@ -136,7 +137,7 @@ impl<'a> GlobalGenerator<'a> for StandardGlobalGenerator {
         // Separate globals into initialized and uninitialized
         let mut initialized_globals = Vec::new();
         let mut uninitialized_globals = Vec::new();
-        
+
         for (name, global) in &module.global_declarations {
             if global.initializer.is_some() {
                 initialized_globals.push((name, global));
@@ -144,7 +145,7 @@ impl<'a> GlobalGenerator<'a> for StandardGlobalGenerator {
                 uninitialized_globals.push((name, global));
             }
         }
-        
+
         // Generate .data section for initialized globals
         if !initialized_globals.is_empty() {
             writeln!(writer, "{}", self.data_section)?;
@@ -152,12 +153,12 @@ impl<'a> GlobalGenerator<'a> for StandardGlobalGenerator {
                 let label = format!("global_{}", name);
                 layout.label_map.insert(name.to_string(), label.clone());
                 layout.data_globals.push(label.clone());
-                
+
                 self.generate_global_declaration(name, global, &label, writer)?;
                 self.generate_global_initializer(global, writer)?;
             }
         }
-        
+
         // Generate .bss section for uninitialized globals
         if !uninitialized_globals.is_empty() {
             writeln!(writer, "\n{}", self.bss_section)?;
@@ -165,12 +166,12 @@ impl<'a> GlobalGenerator<'a> for StandardGlobalGenerator {
                 let label = format!("global_{}", name);
                 layout.label_map.insert(name.to_string(), label.clone());
                 layout.bss_globals.push(label.clone());
-                
+
                 self.generate_global_declaration(name, global, &label, writer)?;
                 self.generate_bss_allocation(global, &label, writer)?;
             }
         }
-        
+
         // Generate .rodata section for string literals
         if !layout.rodata_strings.is_empty() {
             writeln!(writer, "\n{}", self.rodata_section)?;
@@ -179,10 +180,10 @@ impl<'a> GlobalGenerator<'a> for StandardGlobalGenerator {
                 writeln!(writer, "    .string \"{}\"", escape_asm_string(content))?;
             }
         }
-        
+
         Ok(())
     }
-    
+
     fn generate_global<W: Write>(
         &self,
         name: &str,
@@ -190,21 +191,21 @@ impl<'a> GlobalGenerator<'a> for StandardGlobalGenerator {
         writer: &mut W,
     ) -> Result<()> {
         let label = format!("global_{}", name);
-        
+
         if global.initializer.is_some() {
             writeln!(writer, "{}", self.data_section)?;
         } else {
             writeln!(writer, "{}", self.bss_section)?;
         }
-        
+
         self.generate_global_declaration(name, global, &label, writer)?;
-        
+
         if global.initializer.is_some() {
             self.generate_global_initializer(global, writer)?;
         } else {
             self.generate_bss_allocation(global, &label, writer)?;
         }
-        
+
         Ok(())
     }
 }
@@ -220,28 +221,28 @@ impl StandardGlobalGenerator {
     ) -> Result<()> {
         // Make symbol global
         writeln!(writer, ".globl {}", label)?;
-        
+
         // Emit type directive if enabled
         if self.emit_metadata {
             writeln!(writer, ".type {}, @object", label)?;
-            
+
             // Emit size directive
             let size = get_type_size_bytes(&global.ty)?;
             writeln!(writer, ".size {}, {}", label, size)?;
         }
-        
+
         // Emit alignment
         let alignment = get_alignment_for_type(&global.ty)?;
         if alignment > 1 {
             writeln!(writer, ".align {}", alignment.ilog2())?;
         }
-        
+
         // Emit label
         writeln!(writer, "{}:", label)?;
-        
+
         Ok(())
     }
-    
+
     /// Generate initializer data for a global
     fn generate_global_initializer<W: Write>(
         &self,
@@ -270,7 +271,7 @@ impl StandardGlobalGenerator {
         }
         Ok(())
     }
-    
+
     /// Generate literal data
     fn generate_literal_data<W: Write>(&self, literal: &Literal, writer: &mut W) -> Result<()> {
         match literal {
@@ -298,7 +299,7 @@ impl StandardGlobalGenerator {
         }
         Ok(())
     }
-    
+
     /// Generate BSS allocation
     fn generate_bss_allocation<W: Write>(
         &self,
@@ -308,19 +309,19 @@ impl StandardGlobalGenerator {
     ) -> Result<()> {
         let size = get_type_size_bytes(&global.ty)?;
         let alignment = get_alignment_for_type(&global.ty)?;
-        
+
         // Use .comm directive for BSS allocation
         writeln!(writer, ".comm {}, {}, {}", label, size, alignment)?;
-        
+
         Ok(())
     }
 }
 
 /// Get alignment for a type
 fn get_alignment_for_type(ty: &crate::Type) -> Result<u64> {
-    use crate::Type;
     use crate::PrimitiveType;
-    
+    use crate::Type;
+
     match ty {
         Type::Primitive(pt) => Ok(match pt {
             PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
@@ -347,7 +348,7 @@ impl GlobalOptimizer {
         let mut merged_count = 0;
         let mut unique_strings: HashMap<String, String> = HashMap::new();
         let mut new_rodata_strings = Vec::new();
-        
+
         for (label, content) in &layout.rodata_strings {
             if let Some(existing_label) = unique_strings.get(content) {
                 // This string already exists, we could update references
@@ -358,29 +359,29 @@ impl GlobalOptimizer {
                 new_rodata_strings.push((label.clone(), content.clone()));
             }
         }
-        
+
         layout.rodata_strings = new_rodata_strings;
         merged_count
     }
-    
+
     /// Remove unused globals (requires usage analysis)
     pub fn remove_unused_globals(
         layout: &mut GlobalLayout,
         used_globals: &std::collections::HashSet<String>,
     ) -> usize {
         let initial_count = layout.data_globals.len() + layout.bss_globals.len();
-        
+
         layout.data_globals.retain(|global| {
             // Extract global name from label
             let name = global.strip_prefix("global_").unwrap_or(global);
             used_globals.contains(name)
         });
-        
+
         layout.bss_globals.retain(|global| {
             let name = global.strip_prefix("global_").unwrap_or(global);
             used_globals.contains(name)
         });
-        
+
         let final_count = layout.data_globals.len() + layout.bss_globals.len();
         initial_count - final_count
     }
@@ -389,60 +390,76 @@ impl GlobalOptimizer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::types::{Type, PrimitiveType};
+    use crate::ir::types::{PrimitiveType, Type};
     use std::io::Cursor;
 
     #[test]
     fn test_global_manager() {
         let mut manager = GlobalManager::new();
-        
+
         let label1 = manager.generate_global_label("counter");
         assert_eq!(label1, "global_counter");
-        assert_eq!(manager.get_global_label("counter"), Some(&"global_counter".to_string()));
-        
+        assert_eq!(
+            manager.get_global_label("counter"),
+            Some(&"global_counter".to_string())
+        );
+
         let str_label = manager.add_rodata_string("hello");
         assert_eq!(str_label, ".L.str.0");
-        
+
         // Adding same string should return same label
         let str_label2 = manager.add_rodata_string("hello");
         assert_eq!(str_label, str_label2);
-        
+
         assert_eq!(manager.get_rodata_strings().len(), 1);
     }
-    
+
     #[test]
     fn test_standard_global_generator() {
         let generator = StandardGlobalGenerator::x86_64_linux();
         assert_eq!(generator.data_section, ".section .data");
         assert_eq!(generator.bss_section, ".section .bss");
         assert_eq!(generator.rodata_section, ".section .rodata");
-        
+
         let generator = StandardGlobalGenerator::aarch64_macos();
         assert_eq!(generator.data_section, ".section __DATA,__data");
     }
-    
+
     #[test]
     fn test_generate_literal_data() {
         let generator = StandardGlobalGenerator::x86_64_linux();
         let mut writer = Cursor::new(Vec::new());
-        
-        generator.generate_literal_data(&Literal::I32(42), &mut writer).unwrap();
+
+        generator
+            .generate_literal_data(&Literal::I32(42), &mut writer)
+            .unwrap();
         let output = String::from_utf8(writer.into_inner()).unwrap();
         assert_eq!(output.trim(), ".long 42");
-        
+
         let mut writer = Cursor::new(Vec::new());
-        generator.generate_literal_data(&Literal::String("test"), &mut writer).unwrap();
+        generator
+            .generate_literal_data(&Literal::String("test"), &mut writer)
+            .unwrap();
         let output = String::from_utf8(writer.into_inner()).unwrap();
         assert_eq!(output.trim(), ".string \"test\"");
     }
-    
+
     #[test]
     fn test_get_alignment_for_type() {
-        assert_eq!(get_alignment_for_type(&Type::Primitive(PrimitiveType::I8)).unwrap(), 1);
-        assert_eq!(get_alignment_for_type(&Type::Primitive(PrimitiveType::I32)).unwrap(), 4);
-        assert_eq!(get_alignment_for_type(&Type::Primitive(PrimitiveType::I64)).unwrap(), 8);
+        assert_eq!(
+            get_alignment_for_type(&Type::Primitive(PrimitiveType::I8)).unwrap(),
+            1
+        );
+        assert_eq!(
+            get_alignment_for_type(&Type::Primitive(PrimitiveType::I32)).unwrap(),
+            4
+        );
+        assert_eq!(
+            get_alignment_for_type(&Type::Primitive(PrimitiveType::I64)).unwrap(),
+            8
+        );
     }
-    
+
     #[test]
     fn test_global_optimizer() {
         let mut layout = GlobalLayout {
@@ -455,18 +472,18 @@ mod tests {
             data_globals: vec!["global_a".to_string(), "global_b".to_string()],
             bss_globals: vec!["global_c".to_string()],
         };
-        
+
         let merged = GlobalOptimizer::merge_string_literals(&mut layout);
         assert_eq!(merged, 1); // One duplicate was found
         assert_eq!(layout.rodata_strings.len(), 2); // Only unique strings remain
-        
+
         let mut used_globals = std::collections::HashSet::new();
         used_globals.insert("a".to_string());
         // Note: "b" and "c" are not in used_globals
-        
+
         let removed = GlobalOptimizer::remove_unused_globals(&mut layout, &used_globals);
         assert_eq!(removed, 2); // "global_b" and "global_c" should be removed
         assert_eq!(layout.data_globals.len(), 1);
         assert_eq!(layout.bss_globals.len(), 0);
     }
-} 
+}

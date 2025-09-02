@@ -1,4 +1,4 @@
-use crate::{Identifier, Label, Type, Result};
+use crate::{Identifier, Label, Type};
 use std::collections::HashMap;
 
 /// Represents where a value is stored in a backend-agnostic way
@@ -236,4 +236,4 @@ impl std::fmt::Display for CodegenError {
 impl std::error::Error for CodegenError {}
 
 /// Result type for codegen operations
-pub type CodegenResult<T> = std::result::Result<T, CodegenError>; 
+pub type CodegenResult<T> = std::result::Result<T, CodegenError>;

@@ -10,7 +10,9 @@ pub const RETURN_REGISTER: &str = "%rax";
 pub const CALLEE_SAVED_REGISTERS: &[&str] = &["%rbx", "%rbp", "%r12", "%r13", "%r14", "%r15"];
 
 /// Caller-saved registers  
-pub const CALLER_SAVED_REGISTERS: &[&str] = &["%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9", "%r10", "%r11"];
+pub const CALLER_SAVED_REGISTERS: &[&str] = &[
+    "%rax", "%rcx", "%rdx", "%rsi", "%rdi", "%r8", "%r9", "%r10", "%r11",
+];
 
 /// Stack pointer register
 pub const STACK_POINTER: &str = "%rsp";
@@ -22,7 +24,7 @@ pub const FRAME_POINTER: &str = "%rbp";
 pub fn get_register_suffix_for_size(size_bytes: u64) -> &'static str {
     match size_bytes {
         1 => "b",
-        2 => "w", 
+        2 => "w",
         4 => "l",
         8 => "q",
         _ => "q", // Default to 64-bit
@@ -32,45 +34,45 @@ pub fn get_register_suffix_for_size(size_bytes: u64) -> &'static str {
 /// Get the appropriate x86_64 register name for a given size
 pub fn get_sized_register(base_reg: &str, size_bytes: u64) -> String {
     let suffix = get_register_suffix_for_size(size_bytes);
-    
+
     // Handle special register mappings for different sizes
     match (base_reg, size_bytes) {
         // RAX family
         ("%rax", 1) => "%al".to_string(),
-        ("%rax", 2) => "%ax".to_string(), 
+        ("%rax", 2) => "%ax".to_string(),
         ("%rax", 4) => "%eax".to_string(),
         ("%rax", 8) => "%rax".to_string(),
-        
+
         // RBX family
         ("%rbx", 1) => "%bl".to_string(),
         ("%rbx", 2) => "%bx".to_string(),
         ("%rbx", 4) => "%ebx".to_string(),
         ("%rbx", 8) => "%rbx".to_string(),
-        
+
         // RCX family
         ("%rcx", 1) => "%cl".to_string(),
         ("%rcx", 2) => "%cx".to_string(),
         ("%rcx", 4) => "%ecx".to_string(),
         ("%rcx", 8) => "%rcx".to_string(),
-        
+
         // RDX family
         ("%rdx", 1) => "%dl".to_string(),
         ("%rdx", 2) => "%dx".to_string(),
         ("%rdx", 4) => "%edx".to_string(),
         ("%rdx", 8) => "%rdx".to_string(),
-        
+
         // Extended registers (r8-r15) - different naming convention
         (reg, 1) if reg.starts_with("%r") && reg.len() >= 3 => {
             format!("{}b", reg)
-        },
+        }
         (reg, 2) if reg.starts_with("%r") && reg.len() >= 3 => {
             format!("{}w", reg)
-        },
+        }
         (reg, 4) if reg.starts_with("%r") && reg.len() >= 3 => {
             format!("{}d", reg)
-        },
+        }
         (reg, 8) if reg.starts_with("%r") => reg.to_string(),
-        
+
         // Default case - just append suffix
         (reg, _) => {
             if reg.starts_with('%') {
@@ -84,11 +86,24 @@ pub fn get_sized_register(base_reg: &str, size_bytes: u64) -> String {
 
 /// Check if a register is a general-purpose register
 pub fn is_gp_register(reg: &str) -> bool {
-    matches!(reg, 
-        "%rax" | "%rbx" | "%rcx" | "%rdx" | 
-        "%rsi" | "%rdi" | "%rbp" | "%rsp" |
-        "%r8" | "%r9" | "%r10" | "%r11" | 
-        "%r12" | "%r13" | "%r14" | "%r15"
+    matches!(
+        reg,
+        "%rax"
+            | "%rbx"
+            | "%rcx"
+            | "%rdx"
+            | "%rsi"
+            | "%rdi"
+            | "%rbp"
+            | "%rsp"
+            | "%r8"
+            | "%r9"
+            | "%r10"
+            | "%r11"
+            | "%r12"
+            | "%r13"
+            | "%r14"
+            | "%r15"
     )
 }
 
@@ -129,7 +144,7 @@ mod tests {
         assert_eq!(get_sized_register("%rax", 2), "%ax");
         assert_eq!(get_sized_register("%rax", 4), "%eax");
         assert_eq!(get_sized_register("%rax", 8), "%rax");
-        
+
         // Test extended registers
         assert_eq!(get_sized_register("%r8", 1), "%r8b");
         assert_eq!(get_sized_register("%r8", 2), "%r8w");
@@ -142,11 +157,11 @@ mod tests {
         assert!(is_gp_register("%rax"));
         assert!(is_gp_register("%r15"));
         assert!(!is_gp_register("%xmm0"));
-        
+
         assert!(is_callee_saved("%rbx"));
         assert!(!is_callee_saved("%rax"));
-        
+
         assert!(is_caller_saved("%rax"));
         assert!(!is_caller_saved("%rbx"));
     }
-} 
+}
