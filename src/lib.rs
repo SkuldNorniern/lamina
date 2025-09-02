@@ -20,9 +20,18 @@ pub use ir::{
 
 /// Detect the host system's architecture.
 ///
-/// Returns a string representing the detected architecture: "x86_64" or "aarch64".
+/// Returns a string representing the detected architecture and host system: "x86_64" or "aarch64".
+/// 
+/// Target List:
+/// x86_64_unknown
+/// x86_64_linux
+/// x86_64_windows
+/// x86_64_macos - since Intel mac is heading to a end, it's not supported as much as aarch64 
+/// aarch64_unknown
+/// aarch64_macos
+///
 /// Falls back to "x86_64" if detection fails.
-fn detect_host_architecture() -> &'static str {
+pub fn detect_host_architecture() -> &'static str {
     #[cfg(target_arch = "x86_64")]
     {
         #[cfg(target_os = "macos")]
@@ -46,11 +55,19 @@ fn detect_host_architecture() -> &'static str {
     {
         #[cfg(target_os = "macos")]
         {
-            "aarch64_macos"
+            return "aarch64_macos"
         }
         #[cfg(target_os = "linux")]
         {
             return "aarch64_linux";
+        }
+        #[cfg(target_os = "windows")]
+        {
+            return "aarch64_windows";
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        {
+            return "aarch64_unknown";
         }
     }
     #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
@@ -97,7 +114,8 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         "x86_64_windows" => codegen::generate_x86_64_assembly(&module, output_asm)?,
         // FEAT:TODO: Detalize per-target generation for macOS/Linux/Windows for target archs
         // |
-        //"aarch64" => codegen::generate_aarch64_assembly(&module, output_asm)?,
+        "aarch64_unknown" => codegen::generate_aarch64_assembly(&module, output_asm)?,
+        "aarch64_macos" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         _ => {
             return Err(error::LaminaError::CodegenError(format!(
                 "Unsupported target architecture: {}",
