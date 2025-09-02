@@ -7,11 +7,8 @@ use crate::{
     // Module, GlobalDeclaration, PrimitiveType
 };
 use std::collections::HashMap; // Re-add HashMap
-// Remove unused:
-// use std::io::Write;
-// Replace HashMap with IndexMap for deterministic iteration order
-// use std::collections::HashMap;
-// use indexmap::IndexMap; // TODO: recrate IndexMap from scratch
+// Using HashMap for standard library compatibility
+// IndexMap dependency removed for release
 
 // x86-64 registers used for integer/pointer arguments in System V ABI
 pub const ARG_REGISTERS: [&str; 6] = ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
