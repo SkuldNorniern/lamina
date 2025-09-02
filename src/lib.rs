@@ -18,6 +18,17 @@ pub use ir::{
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
 };
 
+pub const HOST_ARCH_LIST: &[&str] = &[
+    "x86_64_unknown",
+    "x86_64_linux",
+    "x86_64_windows",
+    "x86_64_macos",
+    "aarch64_unknown",
+    "aarch64_macos",
+    "aarch64_linux",
+    "aarch64_windows",
+];
+
 /// Detect the host system's architecture.
 ///
 /// Returns a string representing the detected architecture and host system: "x86_64" or "aarch64".
