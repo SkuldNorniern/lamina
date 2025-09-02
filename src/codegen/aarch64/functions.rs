@@ -1,10 +1,22 @@
 use super::instructions::generate_instruction;
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_type_size_directive_and_bytes;
-use crate::{BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type};
+use crate::{BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType, Result};
 use std::collections::HashSet;
 use std::io::Write;
 
+/// Generates AArch64 assembly for all functions in the module
+///
+/// This function iterates through all functions in the provided module and generates
+/// their corresponding AArch64 assembly code following Apple's ARM64 ABI.
+///
+/// # Arguments
+/// * `module` - The Lamina IR module containing functions to compile
+/// * `writer` - Output writer for the generated assembly
+/// * `state` - Code generation state shared across functions
+///
+/// # Returns
+/// * `Result<()>` - Ok if all functions compile successfully, Err with error details otherwise
 pub fn generate_functions<'a, W: Write>(
     module: &'a crate::Module<'a>,
     writer: &mut W,
@@ -149,11 +161,23 @@ fn precompute_function_layout<'a>(
                     Some((result, s))
                 }
                 Instruction::Binary { result, ty, .. } | Instruction::Cmp { result, ty, .. } => {
-                    let s = match ty { PrimitiveType::I32 => 4, PrimitiveType::I64 | PrimitiveType::Ptr => 8, PrimitiveType::Bool | PrimitiveType::I8 => 1, PrimitiveType::F32 => 4, _ =>todo!()};
+                    let s = match ty {
+                        PrimitiveType::I32 => 4,
+                        PrimitiveType::I64 | PrimitiveType::Ptr => 8,
+                        PrimitiveType::Bool | PrimitiveType::I8 => 1,
+                        PrimitiveType::F32 => 4,
+                        _ => return Err(LaminaError::CodegenError(format!("Unsupported type for stack allocation: {:?}", ty))),
+                    };
                     Some((result, s))
                 }
                 Instruction::ZeroExtend { result, target_type, .. } => {
-                    let s = match target_type { PrimitiveType::I32 => 4, PrimitiveType::I64 | PrimitiveType::Ptr => 8, PrimitiveType::Bool | PrimitiveType::I8 => 1, PrimitiveType::F32 => 4, _ => todo!()};
+                    let s = match target_type {
+                        PrimitiveType::I32 => 4,
+                        PrimitiveType::I64 | PrimitiveType::Ptr => 8,
+                        PrimitiveType::Bool | PrimitiveType::I8 => 1,
+                        PrimitiveType::F32 => 4,
+                        _ => return Err(LaminaError::CodegenError(format!("Unsupported target type for zero extension: {:?}", target_type))),
+                    };
                     Some((result, s))
                 }
                 Instruction::Load { result, ty, .. } => {
