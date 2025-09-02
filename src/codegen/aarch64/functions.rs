@@ -23,18 +23,11 @@ pub fn generate_function<'a, W: Write>(
     state: &mut CodegenState<'a>,
 ) -> Result<()> {
     let is_exported = func.annotations.contains(&FunctionAnnotation::Export);
-    // On macOS/Mach-O, the C entry point symbol is _main. Ensure we always emit it for @main
-    let (asm_label, force_export) = if func_name == "main" {
-        #[cfg(target_os = "macos")]
-        {
-            ("_main".to_string(), true)
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            ("main".to_string(), true)
-        }
+    let is_main = func_name == "main";
+    let asm_label = if is_main {
+        "_main".to_string() // Mach-O entry symbol uses underscore
     } else {
-        (format!("func_{}", func_name), false)
+        format!("func_{}", func_name)
     };
 
     let mut func_ctx = FunctionContext::new();
@@ -44,7 +37,7 @@ pub fn generate_function<'a, W: Write>(
 
     // Prologue (AArch64): save FP/LR and set FP
     writeln!(writer, "\n// Function: @{}", func_name)?;
-    if is_exported || force_export {
+    if is_exported || is_main {
         writeln!(writer, ".globl {}", asm_label)?;
     }
     writeln!(writer, "{}:", asm_label)?;
