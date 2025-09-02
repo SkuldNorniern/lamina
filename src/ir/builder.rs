@@ -191,11 +191,10 @@ impl<'a> IRBuilder<'a> {
     ///     .annotate(FunctionAnnotation::Inline);
     /// ```
     pub fn annotate(&mut self, annotation: FunctionAnnotation) -> &mut Self {
-        if let Some(func_name) = self.current_function {
-            if let Some(annotations) = self.function_annotations.get_mut(func_name) {
+        if let Some(func_name) = self.current_function
+            && let Some(annotations) = self.function_annotations.get_mut(func_name) {
                 annotations.push(annotation);
             }
-        }
         self
     }
 
@@ -260,11 +259,10 @@ impl<'a> IRBuilder<'a> {
     /// You should prefer using the specialized methods unless you need to add a
     /// custom instruction type.
     pub fn inst(&mut self, instruction: Instruction<'a>) -> &mut Self {
-        if let (Some(_func_name), Some(block_name)) = (self.current_function, self.current_block) {
-            if let Some(instructions) = self.block_instructions.get_mut(block_name) {
+        if let (Some(_func_name), Some(block_name)) = (self.current_function, self.current_block)
+            && let Some(instructions) = self.block_instructions.get_mut(block_name) {
                 instructions.push(instruction);
             }
-        }
         self
     }
 

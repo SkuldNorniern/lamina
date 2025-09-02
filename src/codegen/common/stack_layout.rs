@@ -1,6 +1,6 @@
-use super::types::{StackFrame, ValueLocation, Parameter};
-use super::utils::{get_type_size_bytes, get_type_alignment, align_to, align_to_signed};
-use crate::{Function, Instruction, Type, Result};
+use super::types::{StackFrame, ValueLocation};
+use super::utils::{align_to, align_to_signed, get_type_alignment, get_type_size_bytes};
+use crate::{Function, Instruction, Result, Type};
 use std::collections::HashMap;
 
 /// Common stack layout computation that works for most architectures
@@ -67,7 +67,7 @@ impl StandardStackLayout {
 
         // Step 3: Assign stack offsets for local variables
         let mut current_offset = if self.stack_grows_down { -8i64 } else { 8i64 };
-        
+
         for (var_name, size, alignment) in local_vars {
             // Align the offset for this variable
             if self.stack_grows_down {
@@ -75,10 +75,10 @@ impl StandardStackLayout {
             } else {
                 current_offset = align_to_signed(current_offset, alignment as i64);
             }
-            
+
             value_locations.insert(var_name, ValueLocation::StackOffset(current_offset));
             frame.locals_size += size;
-            
+
             if !self.stack_grows_down {
                 current_offset += size as i64;
             }
@@ -90,17 +90,18 @@ impl StandardStackLayout {
                 // This parameter was passed in a register, allocate spill slot
                 let param_size = get_type_size_bytes(&param.ty)?;
                 let param_align = get_type_alignment(&param.ty)?;
-                
+
                 if self.stack_grows_down {
-                    current_offset = align_to_signed(current_offset - param_size as i64, -(param_align as i64));
+                    current_offset =
+                        align_to_signed(current_offset - param_size as i64, -(param_align as i64));
                 } else {
                     current_offset = align_to_signed(current_offset, param_align as i64);
                 }
-                
+
                 // Update location to spill slot
                 value_locations.insert(param.name, ValueLocation::StackOffset(current_offset));
                 frame.spills_size += param_size;
-                
+
                 if !self.stack_grows_down {
                     current_offset += param_size as i64;
                 }
@@ -117,36 +118,33 @@ impl StandardStackLayout {
     /// Extract variable name and type from instruction that defines a variable
     fn extract_variable_info<'a>(&self, instr: &Instruction<'a>) -> Option<(&'a str, Type<'a>)> {
         match instr {
-            Instruction::Alloc { result, allocated_ty, .. } => {
-                Some((result, allocated_ty.clone()))
-            }
-            Instruction::Binary { result, ty, .. } => {
-                Some((result, Type::Primitive(*ty)))
-            }
-            Instruction::Cmp { result, ty, .. } => {
-                Some((result, Type::Primitive(*ty)))
-            }
-            Instruction::Load { result, ty, .. } => {
-                Some((result, ty.clone()))
-            }
-            Instruction::Call { result: Some(result), .. } => {
+            Instruction::Alloc {
+                result,
+                allocated_ty,
+                ..
+            } => Some((result, allocated_ty.clone())),
+            Instruction::Binary { result, ty, .. } => Some((result, Type::Primitive(*ty))),
+            Instruction::Cmp { result, ty, .. } => Some((result, Type::Primitive(*ty))),
+            Instruction::Load { result, ty, .. } => Some((result, ty.clone())),
+            Instruction::Call {
+                result: Some(result),
+                ..
+            } => {
                 // Assume calls return pointer-sized values
                 Some((result, Type::Primitive(crate::PrimitiveType::Ptr)))
             }
-            Instruction::ZeroExtend { result, target_type, .. } => {
-                Some((result, Type::Primitive(*target_type)))
-            }
-            Instruction::GetFieldPtr { result, .. } |
-            Instruction::GetElemPtr { result, .. } => {
+            Instruction::ZeroExtend {
+                result,
+                target_type,
+                ..
+            } => Some((result, Type::Primitive(*target_type))),
+            Instruction::GetFieldPtr { result, .. } | Instruction::GetElemPtr { result, .. } => {
                 Some((result, Type::Primitive(crate::PrimitiveType::Ptr)))
             }
-            Instruction::Tuple { result, .. } |
-            Instruction::ExtractTuple { result, .. } => {
+            Instruction::Tuple { result, .. } | Instruction::ExtractTuple { result, .. } => {
                 Some((result, Type::Primitive(crate::PrimitiveType::Ptr)))
             }
-            Instruction::Phi { result, ty, .. } => {
-                Some((result, ty.clone()))
-            }
+            Instruction::Phi { result, ty, .. } => Some((result, ty.clone())),
             _ => None,
         }
     }
@@ -171,9 +169,12 @@ impl AArch64StackLayout {
 }
 
 /// Calculate maximum outgoing argument space needed by function
-pub fn calculate_outgoing_args_size<'a>(func: &'a Function<'a>, arg_registers: &[&str]) -> Result<u64> {
+pub fn calculate_outgoing_args_size<'a>(
+    func: &'a Function<'a>,
+    arg_registers: &[&str],
+) -> Result<u64> {
     let mut max_stack_args = 0;
-    
+
     for block in func.basic_blocks.values() {
         for instr in &block.instructions {
             if let Instruction::Call { args, .. } = instr {
@@ -186,7 +187,7 @@ pub fn calculate_outgoing_args_size<'a>(func: &'a Function<'a>, arg_registers: &
             }
         }
     }
-    
+
     // Each stack argument is typically 8 bytes (pointer-sized)
     Ok((max_stack_args * 8) as u64)
 }
@@ -195,9 +196,7 @@ pub fn calculate_outgoing_args_size<'a>(func: &'a Function<'a>, arg_registers: &
 pub fn optimize_stack_layout(variables: &mut Vec<(&str, u64, u64)>) {
     // Sort by alignment (descending) then by size (descending)
     // This minimizes padding between variables
-    variables.sort_by(|a, b| {
-        b.2.cmp(&a.2).then_with(|| b.1.cmp(&a.1))
-    });
+    variables.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| b.1.cmp(&a.1)));
 }
 
 #[cfg(test)]
@@ -223,18 +222,18 @@ mod tests {
     #[test]
     fn test_optimize_stack_layout() {
         let mut vars = vec![
-            ("small", 1, 1),      // 1 byte, 1-byte aligned
-            ("medium", 4, 4),     // 4 bytes, 4-byte aligned  
-            ("large", 8, 8),      // 8 bytes, 8-byte aligned
+            ("small", 1, 1),         // 1 byte, 1-byte aligned
+            ("medium", 4, 4),        // 4 bytes, 4-byte aligned
+            ("large", 8, 8),         // 8 bytes, 8-byte aligned
             ("another_small", 2, 2), // 2 bytes, 2-byte aligned
         ];
-        
+
         optimize_stack_layout(&mut vars);
-        
+
         // Should be sorted by alignment desc, then size desc
-        assert_eq!(vars[0].0, "large");     // 8-byte aligned
-        assert_eq!(vars[1].0, "medium");    // 4-byte aligned
+        assert_eq!(vars[0].0, "large"); // 8-byte aligned
+        assert_eq!(vars[1].0, "medium"); // 4-byte aligned
         assert_eq!(vars[2].0, "another_small"); // 2-byte aligned
-        assert_eq!(vars[3].0, "small");     // 1-byte aligned
+        assert_eq!(vars[3].0, "small"); // 1-byte aligned
     }
-} 
+}

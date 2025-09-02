@@ -19,7 +19,7 @@ pub enum PrimitiveType {
     F64,
     Bool,
     Char, // Single character (8-bit)
-    Ptr, // Generic pointer type
+    Ptr,  // Generic pointer type
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

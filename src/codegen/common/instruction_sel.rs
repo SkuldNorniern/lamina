@@ -1,14 +1,14 @@
-use crate::{Instruction, Value, Type, PrimitiveType, Result};
 use super::types::ValueLocation;
+use crate::{Instruction, PrimitiveType, Result, Type, Value};
 
 /// Common instruction selection patterns that can be shared across architectures
 pub trait InstructionSelector<'a> {
     /// Select the best instruction pattern for a given IR instruction
     fn select_instruction(&self, instr: &Instruction<'a>) -> Result<Vec<String>>;
-    
+
     /// Get the optimal operand representation for a value
     fn select_operand(&self, value: &Value<'a>, location: &ValueLocation) -> String;
-    
+
     /// Select the best addressing mode for memory operations
     fn select_addressing_mode(&self, base: &Value<'a>, offset: Option<i64>) -> String;
 }
@@ -16,15 +16,34 @@ pub trait InstructionSelector<'a> {
 /// Common instruction patterns
 pub enum InstructionPattern {
     /// Simple register-to-register operation
-    RegisterToRegister { opcode: String, src: String, dst: String },
+    RegisterToRegister {
+        opcode: String,
+        src: String,
+        dst: String,
+    },
     /// Register to memory operation
-    RegisterToMemory { opcode: String, src: String, dst: String },
+    RegisterToMemory {
+        opcode: String,
+        src: String,
+        dst: String,
+    },
     /// Memory to register operation
-    MemoryToRegister { opcode: String, src: String, dst: String },
+    MemoryToRegister {
+        opcode: String,
+        src: String,
+        dst: String,
+    },
     /// Immediate to register operation
-    ImmediateToRegister { opcode: String, immediate: i64, dst: String },
+    ImmediateToRegister {
+        opcode: String,
+        immediate: i64,
+        dst: String,
+    },
     /// Complex instruction with multiple operands
-    Complex { template: String, operands: Vec<String> },
+    Complex {
+        template: String,
+        operands: Vec<String>,
+    },
 }
 
 /// Common addressing modes
@@ -37,7 +56,12 @@ pub enum AddressingMode {
     /// Memory reference with base register
     Memory { base: String, offset: i64 },
     /// Memory reference with base + index
-    IndexedMemory { base: String, index: String, scale: u8, offset: i64 },
+    IndexedMemory {
+        base: String,
+        index: String,
+        scale: u8,
+        offset: i64,
+    },
     /// Global symbol reference
     Global(String),
 }
@@ -63,10 +87,26 @@ impl AddressingMode {
                     format!("[{} + {}]", base, offset)
                 }
             }
-            (AddressingMode::IndexedMemory { base, index, scale, offset }, ArchSyntax::ATT) => {
+            (
+                AddressingMode::IndexedMemory {
+                    base,
+                    index,
+                    scale,
+                    offset,
+                },
+                ArchSyntax::ATT,
+            ) => {
                 format!("{}({},{},{})", offset, base, index, scale)
             }
-            (AddressingMode::IndexedMemory { base, index, scale, offset }, ArchSyntax::Intel) => {
+            (
+                AddressingMode::IndexedMemory {
+                    base,
+                    index,
+                    scale,
+                    offset,
+                },
+                ArchSyntax::Intel,
+            ) => {
                 format!("[{} + {} * {} + {}]", base, index, scale, offset)
             }
             (AddressingMode::Global(symbol), ArchSyntax::ATT) => format!("{}(%rip)", symbol),
@@ -78,8 +118,8 @@ impl AddressingMode {
 /// Assembly syntax styles
 #[derive(Debug, Clone, Copy)]
 pub enum ArchSyntax {
-    ATT,    // AT&T syntax (used by GAS)
-    Intel,  // Intel syntax
+    ATT,   // AT&T syntax (used by GAS)
+    Intel, // Intel syntax
 }
 
 /// Instruction cost model for optimization
@@ -97,29 +137,35 @@ pub struct CostModel {
     costs: std::collections::HashMap<String, InstructionCost>,
 }
 
+impl Default for CostModel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CostModel {
     pub fn new() -> Self {
         Self {
             costs: std::collections::HashMap::new(),
         }
     }
-    
+
     /// Add cost information for an instruction
     pub fn add_cost(&mut self, instruction: String, cost: InstructionCost) {
         self.costs.insert(instruction, cost);
     }
-    
+
     /// Get cost for an instruction
     pub fn get_cost(&self, instruction: &str) -> Option<&InstructionCost> {
         self.costs.get(instruction)
     }
-    
+
     /// Calculate total cost for a sequence of instructions
     pub fn calculate_sequence_cost(&self, instructions: &[String]) -> InstructionCost {
         let mut total_latency = 0;
         let mut total_size = 0;
         let mut min_throughput = f32::INFINITY;
-        
+
         for instr in instructions {
             if let Some(cost) = self.get_cost(instr) {
                 total_latency += cost.latency;
@@ -127,10 +173,14 @@ impl CostModel {
                 min_throughput = min_throughput.min(cost.throughput);
             }
         }
-        
+
         InstructionCost {
             latency: total_latency,
-            throughput: if min_throughput == f32::INFINITY { 1.0 } else { min_throughput },
+            throughput: if min_throughput == f32::INFINITY {
+                1.0
+            } else {
+                min_throughput
+            },
             size_bytes: total_size,
         }
     }
@@ -146,7 +196,7 @@ impl InstructionUtils {
         let max_val = (1i64 << (bits - 1)) - 1;
         value >= min_val && value <= max_val
     }
-    
+
     /// Get register size suffix for a type
     pub fn get_size_suffix(ty: &Type, arch: &str) -> &'static str {
         match arch {
@@ -167,7 +217,7 @@ impl InstructionUtils {
             _ => "",
         }
     }
-    
+
     /// Check if an instruction can be folded into another
     pub fn can_fold_instruction(producer: &Instruction, consumer: &Instruction) -> bool {
         match (producer, consumer) {
@@ -182,7 +232,7 @@ impl InstructionUtils {
             _ => false,
         }
     }
-    
+
     /// Select the best instruction variant based on operand types
     pub fn select_instruction_variant(
         base_opcode: &str,
@@ -204,7 +254,7 @@ impl InstructionUtils {
                             format!("{} offset(%rbp), %reg", base_opcode)
                         }
                         _ => base_opcode.to_string(),
-                    }
+                    },
                     _ => base_opcode.to_string(),
                 }
             }
@@ -244,67 +294,68 @@ impl PeepholeOptimizer {
             patterns: Vec::new(),
         }
     }
-    
+
     /// Add an optimization pattern
     pub fn add_pattern(&mut self, pattern: OptimizationPattern) {
         self.patterns.push(pattern);
     }
-    
+
     /// Apply peephole optimizations to a sequence of instructions
     pub fn optimize(&self, instructions: &mut Vec<String>) -> usize {
         let mut optimizations_applied = 0;
         let mut i = 0;
-        
+
         while i < instructions.len() {
             let mut matched = false;
-            
+
             for pattern in &self.patterns {
                 if i + pattern.pattern.len() <= instructions.len() {
                     let window = &instructions[i..i + pattern.pattern.len()];
                     if self.matches_pattern(window, &pattern.pattern) {
                         // Replace the matched sequence
-                        instructions.splice(i..i + pattern.pattern.len(), pattern.replacement.clone());
+                        instructions
+                            .splice(i..i + pattern.pattern.len(), pattern.replacement.clone());
                         optimizations_applied += 1;
                         matched = true;
                         break;
                     }
                 }
             }
-            
+
             if !matched {
                 i += 1;
             }
         }
-        
+
         optimizations_applied
     }
-    
+
     /// Check if a sequence matches a pattern
     fn matches_pattern(&self, sequence: &[String], pattern: &[String]) -> bool {
         if sequence.len() != pattern.len() {
             return false;
         }
-        
+
         for (seq_instr, pat_instr) in sequence.iter().zip(pattern.iter()) {
             if !self.instruction_matches(seq_instr, pat_instr) {
                 return false;
             }
         }
-        
+
         true
     }
-    
+
     /// Check if an instruction matches a pattern (with wildcards)
     fn instruction_matches(&self, instruction: &str, pattern: &str) -> bool {
         // Simple pattern matching - could be extended with regex
         if pattern == "*" {
             return true;
         }
-        
+
         // Extract opcode from both
         let instr_opcode = instruction.split_whitespace().next().unwrap_or("");
         let pattern_opcode = pattern.split_whitespace().next().unwrap_or("");
-        
+
         instr_opcode == pattern_opcode
     }
 }
@@ -326,11 +377,11 @@ mod tests {
             offset: -8,
         };
         assert_eq!(mode.to_asm_string(ArchSyntax::ATT), "-8(%rbp)");
-        
+
         let mode = AddressingMode::Immediate(42);
         assert_eq!(mode.to_asm_string(ArchSyntax::ATT), "$42");
     }
-    
+
     #[test]
     fn test_addressing_mode_intel_syntax() {
         let mode = AddressingMode::Memory {
@@ -339,7 +390,7 @@ mod tests {
         };
         assert_eq!(mode.to_asm_string(ArchSyntax::Intel), "[rbp + -8]");
     }
-    
+
     #[test]
     fn test_fits_in_immediate() {
         assert!(InstructionUtils::fits_in_immediate(127, 8));
@@ -347,22 +398,25 @@ mod tests {
         assert!(!InstructionUtils::fits_in_immediate(128, 8));
         assert!(!InstructionUtils::fits_in_immediate(-129, 8));
     }
-    
+
     #[test]
     fn test_cost_model() {
         let mut model = CostModel::new();
-        model.add_cost("add".to_string(), InstructionCost {
-            latency: 1,
-            throughput: 4.0,
-            size_bytes: 3,
-        });
-        
+        model.add_cost(
+            "add".to_string(),
+            InstructionCost {
+                latency: 1,
+                throughput: 4.0,
+                size_bytes: 3,
+            },
+        );
+
         let cost = model.get_cost("add").unwrap();
         assert_eq!(cost.latency, 1);
         assert_eq!(cost.throughput, 4.0);
         assert_eq!(cost.size_bytes, 3);
     }
-    
+
     #[test]
     fn test_peephole_optimizer() {
         let mut optimizer = PeepholeOptimizer::new();
@@ -372,16 +426,16 @@ mod tests {
             description: "Remove redundant move pair".to_string(),
             improvement: 1.0,
         });
-        
+
         let mut instructions = vec![
             "mov %rax, %rbx".to_string(),
             "mov %rbx, %rax".to_string(),
             "add %rcx, %rax".to_string(),
         ];
-        
+
         let optimizations = optimizer.optimize(&mut instructions);
         assert_eq!(optimizations, 1);
         assert_eq!(instructions.len(), 1);
         assert_eq!(instructions[0], "add %rcx, %rax");
     }
-} 
+}

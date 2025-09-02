@@ -458,11 +458,9 @@ mod tests {
     #[test]
     fn test_parse_tensor_benchmark() -> Result<(), LaminaError> {
         // Load the benchmark Lamina code
-        let source =
-            fs::read_to_string("benchmarks/2Dmatmul/2Dmatmul.lamina")
-                .map_err(|e| {
-                    LaminaError::ParsingError(format!("Failed to read benchmark file: {}", e))
-                })?;
+        let source = fs::read_to_string("benchmarks/2Dmatmul/2Dmatmul.lamina").map_err(|e| {
+            LaminaError::ParsingError(format!("Failed to read benchmark file: {}", e))
+        })?;
 
         let module: Module = parse_module(&source)?;
 
@@ -531,21 +529,21 @@ mod tests {
             Type::Primitive(PrimitiveType::I64),
             "@matmul_2d_optimized should return i64"
         );
-        
+
         // Check that it has many basic blocks (it's a complex function)
         assert!(
             matmul_func.basic_blocks.len() > 10,
             "@matmul_2d_optimized should have many basic blocks"
         );
         assert!(matmul_func.basic_blocks.contains_key("entry"));
-        
+
         // Check for get_matrix_a_element function
         let get_a_func = module
             .functions
             .get("get_matrix_a_element")
             .expect("Missing @get_matrix_a_element function");
         assert_eq!(get_a_func.signature.params.len(), 2);
-        
+
         // Check for get_matrix_b_element function
         let get_b_func = module
             .functions

@@ -17,7 +17,7 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
             PrimitiveType::F64 => Ok((".quad", 8)), // 64-bit float
             PrimitiveType::Bool => Ok((".byte", 1)),
             PrimitiveType::Char => Ok((".byte", 1)), // Char is 8-bit
-            PrimitiveType::Ptr => Ok((".quad", 8)), // Assuming 64-bit pointers
+            PrimitiveType::Ptr => Ok((".quad", 8)),  // Assuming 64-bit pointers
         },
         Type::Array { element_type, size } => {
             let (_, elem_size) = get_type_size_directive_and_bytes(element_type)?;
