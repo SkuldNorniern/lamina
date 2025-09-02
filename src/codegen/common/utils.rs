@@ -4,9 +4,10 @@ use crate::{PrimitiveType, Result, Type};
 pub fn get_type_size_bytes(ty: &Type<'_>) -> Result<u64> {
     match ty {
         Type::Primitive(pt) => Ok(match pt {
-            PrimitiveType::I8 | PrimitiveType::Bool => 1,
-            PrimitiveType::I32 | PrimitiveType::F32 => 4,
-            PrimitiveType::I64 | PrimitiveType::Ptr => 8,
+            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
+            PrimitiveType::I16 | PrimitiveType::U16 => 2,
+            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+            PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
         }),
         Type::Array { element_type, size } => {
             let elem_size = get_type_size_bytes(element_type)?;
@@ -31,9 +32,10 @@ pub fn get_type_size_bytes(ty: &Type<'_>) -> Result<u64> {
 pub fn get_type_alignment(ty: &Type<'_>) -> Result<u64> {
     match ty {
         Type::Primitive(pt) => Ok(match pt {
-            PrimitiveType::I8 | PrimitiveType::Bool => 1,
-            PrimitiveType::I32 | PrimitiveType::F32 => 4,
-            PrimitiveType::I64 | PrimitiveType::Ptr => 8,
+            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
+            PrimitiveType::I16 | PrimitiveType::U16 => 2,
+            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+            PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
         }),
         Type::Array { element_type, .. } => get_type_alignment(element_type),
         Type::Struct(_) => Ok(8), // Default to 8-byte alignment for structs
@@ -123,10 +125,17 @@ mod tests {
     #[test]
     fn test_get_type_size_bytes() {
         assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::I8)).unwrap(), 1);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::Bool)).unwrap(), 1);
+        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::I16)).unwrap(), 2);
         assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::I32)).unwrap(), 4);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::F32)).unwrap(), 4);
         assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::I64)).unwrap(), 8);
+        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::U8)).unwrap(), 1);
+        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::U16)).unwrap(), 2);
+        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::U32)).unwrap(), 4);
+        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::U64)).unwrap(), 8);
+        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::F32)).unwrap(), 4);
+        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::F64)).unwrap(), 8);
+        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::Bool)).unwrap(), 1);
+        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::Char)).unwrap(), 1);
         assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::Ptr)).unwrap(), 8);
 
         let array_type = Type::Array {
@@ -139,8 +148,18 @@ mod tests {
     #[test]
     fn test_get_type_alignment() {
         assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::I8)).unwrap(), 1);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::I16)).unwrap(), 2);
         assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::I32)).unwrap(), 4);
         assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::I64)).unwrap(), 8);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::U8)).unwrap(), 1);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::U16)).unwrap(), 2);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::U32)).unwrap(), 4);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::U64)).unwrap(), 8);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::F32)).unwrap(), 4);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::F64)).unwrap(), 8);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::Bool)).unwrap(), 1);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::Char)).unwrap(), 1);
+        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::Ptr)).unwrap(), 8);
     }
 
     #[test]
