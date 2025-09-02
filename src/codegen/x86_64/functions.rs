@@ -88,7 +88,7 @@ pub fn generate_function<'a, W: Write>(
 
     // Calculate proper alignment based on saved registers
     // Each saved reg is 8 bytes, plus rbp is 8 bytes, total must be 16-byte aligned
-    let saved_bytes = (saved_regs.len() + 1) * 8; // +1 for rbp
+    let _saved_bytes = (saved_regs.len() + 1) * 8; // +1 for rbp
     let frame_size = (needed_bytes + 15) & !15; // Round up to multiple of 16
 
     if frame_size > 0 {
