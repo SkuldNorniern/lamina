@@ -1,0 +1,10 @@
+# Test arithmetic operations
+fn @main() -> i64 {
+  entry:
+    %a = add.i64 10, 20
+    %b = sub.i64 %a, 5
+    %c = mul.i64 %b, 2
+    %d = div.i64 %c, 10
+    print %d  # Should print 5
+    ret.i64 0
+}

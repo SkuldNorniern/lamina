@@ -1,0 +1,9 @@
+# Test simple conditional and arithmetic
+fn @main() -> i64 {
+  entry:
+    %a = add.i64 5, 0
+    %b = add.i64 10, 0
+    %sum = add.i64 %a, %b
+    print %sum  # Should print 15
+    ret.i64 0
+}
