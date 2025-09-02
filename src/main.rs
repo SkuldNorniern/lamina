@@ -88,8 +88,8 @@ fn parse_args() -> Result<CompileOptions, String> {
                 let target = args[i + 1].to_lowercase();
                 if target != "x86_64" && target != "aarch64" {
                     return Err(format!(
-                        "Unsupported target architecture: {}. Supported values: x86_64, aarch64",
-                        target
+                            "Unsupported target architecture: {}. Supported values: x86_64, aarch64",
+                            target
                     ));
                 }
                 options.target_arch = Some(target);
@@ -224,15 +224,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         lamina::compile_lamina_ir_to_target_assembly(&ir_source, &mut asm_buffer, target)
     } else {
+        // Get the architecture that will be used by default (from the detect_host_architecture function)
+        let default_arch = lamina::detect_host_architecture();
         if options.verbose {
-            // Get the architecture that will be used by default (from the detect_host_architecture function)
-            let default_arch = if cfg!(target_arch = "x86_64") {
-                "x86_64"
-            } else if cfg!(target_arch = "aarch64") {
-                "aarch64"
-            } else {
-                "x86_64" // Default fallback
-            };
             println!("[VERBOSE] Using host architecture: {}", default_arch);
         }
         lamina::compile_lamina_ir_to_assembly(&ir_source, &mut asm_buffer)
