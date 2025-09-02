@@ -1,0 +1,33 @@
+# Test recursive sum of numbers from 1 to n
+fn @sum_to_n(i64 %n) -> i64 {
+  entry:
+    %is_zero = eq.i64 %n, 0
+    br %is_zero, base_case, recursive_case
+
+  base_case:
+    ret.i64 0
+
+  recursive_case:
+    %n_minus_1 = sub.i64 %n, 1
+    %sum_n_minus_1 = call @sum_to_n(%n_minus_1)
+    %result = add.i64 %n, %sum_n_minus_1
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %result1 = call @sum_to_n(0)  # Should be 0
+    %result2 = call @sum_to_n(1)  # Should be 1
+    %result3 = call @sum_to_n(2)  # Should be 3
+    %result4 = call @sum_to_n(3)  # Should be 6
+    %result5 = call @sum_to_n(4)  # Should be 10
+    %result6 = call @sum_to_n(5)  # Should be 15
+    
+    print %result1
+    print %result2
+    print %result3
+    print %result4
+    print %result5
+    print %result6
+    ret.i64 0
+}

@@ -1,0 +1,20 @@
+# Test function calls
+fn @add_numbers(i64 %a, i64 %b) -> i64 {
+  entry:
+    %result = add.i64 %a, %b
+    ret.i64 %result
+}
+
+fn @multiply_by_two(i64 %x) -> i64 {
+  entry:
+    %result = mul.i64 %x, 2
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %sum = call @add_numbers(15, 25)
+    %doubled = call @multiply_by_two(%sum)
+    print %doubled  # Should print 80
+    ret.i64 0
+}
