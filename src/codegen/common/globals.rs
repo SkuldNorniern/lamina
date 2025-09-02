@@ -214,7 +214,7 @@ impl StandardGlobalGenerator {
     /// Generate global declaration directives
     fn generate_global_declaration<W: Write>(
         &self,
-        name: &str,
+        _name: &str,
         global: &GlobalDeclaration,
         label: &str,
         writer: &mut W,
@@ -350,7 +350,7 @@ impl GlobalOptimizer {
         let mut new_rodata_strings = Vec::new();
 
         for (label, content) in &layout.rodata_strings {
-            if let Some(existing_label) = unique_strings.get(content) {
+            if let Some(_existing_label) = unique_strings.get(content) {
                 // This string already exists, we could update references
                 // For now, just count the merge
                 merged_count += 1;
