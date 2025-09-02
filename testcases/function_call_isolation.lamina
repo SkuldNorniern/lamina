@@ -1,0 +1,33 @@
+# Test function call isolation and parameter passing
+fn @add_ten(i64 %x) -> i64 {
+  entry:
+    %result = add.i64 %x, 10
+    ret.i64 %result
+}
+
+fn @multiply_by_two(i64 %x) -> i64 {
+  entry:
+    %result = mul.i64 %x, 2
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    # Test that function calls don't interfere with each other
+    %result1 = call @add_ten(5)        # Should be 15
+    %result2 = call @multiply_by_two(8) # Should be 16
+    %result3 = call @add_ten(20)       # Should be 30
+    %result4 = call @multiply_by_two(12) # Should be 24
+    
+    print %result1
+    print %result2
+    print %result3
+    print %result4
+    
+    # Test chained calls
+    %chained = call @add_ten(100)
+    %chained = call @multiply_by_two(%chained)  # (100+10)*2 = 220
+    
+    print %chained  # Should always be 220
+    ret.i64 0
+}

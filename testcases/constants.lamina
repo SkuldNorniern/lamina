@@ -1,0 +1,9 @@
+# Test various constant sizes
+fn @main() -> i64 {
+  entry:
+    print 42          # Small constant
+    print 65536       # 16-bit boundary
+    print 1000000     # Large constant
+    print 123456789   # Very large constant
+    ret.i64 0
+}

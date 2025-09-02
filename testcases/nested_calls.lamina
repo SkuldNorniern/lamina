@@ -1,0 +1,33 @@
+# Test nested function calls
+fn @add_three(i64 %x) -> i64 {
+  entry:
+    %result = add.i64 %x, 3
+    ret.i64 %result
+}
+
+fn @multiply_by_two(i64 %x) -> i64 {
+  entry:
+    %result = mul.i64 %x, 2
+    ret.i64 %result
+}
+
+fn @square(i64 %x) -> i64 {
+  entry:
+    %result = mul.i64 %x, %x
+    ret.i64 %result
+}
+
+fn @complex_calculation(i64 %x) -> i64 {
+  entry:
+    %step1 = call @add_three(%x)      # x + 3
+    %step2 = call @multiply_by_two(%step1)  # (x + 3) * 2
+    %step3 = call @square(%step2)     # ((x + 3) * 2)^2
+    ret.i64 %step3
+}
+
+fn @main() -> i64 {
+  entry:
+    %result = call @complex_calculation(5)  # ((5+3)*2)^2 = (8*2)^2 = 16^2 = 256
+    print %result
+    ret.i64 0
+}

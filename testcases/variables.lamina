@@ -1,0 +1,15 @@
+# Test variable operations
+fn @main() -> i64 {
+  entry:
+    %a = add.i64 10, 0
+    %b = add.i64 20, 0
+    %c = add.i64 %a, %b
+    %d = sub.i64 %c, 5
+    %e = mul.i64 %d, 2
+    print %a  # 10
+    print %b  # 20
+    print %c  # 30
+    print %d  # 25
+    print %e  # 50
+    ret.i64 0
+}

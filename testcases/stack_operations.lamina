@@ -1,0 +1,28 @@
+# Test stack operations and local variables
+fn @test_stack(i64 %x) -> i64 {
+  entry:
+    %local1 = add.i64 %x, 10
+    %local2 = add.i64 %x, 20
+    %local3 = add.i64 %x, 30
+    %local4 = add.i64 %x, 40
+    %local5 = add.i64 %x, 50
+    
+    %result = add.i64 %local1, %local2
+    %result = add.i64 %result, %local3
+    %result = add.i64 %result, %local4
+    %result = add.i64 %result, %local5
+    
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %result1 = call @test_stack(100)  # Should be 100+10+20+30+40+50 = 250
+    %result2 = call @test_stack(200)  # Should be 200+10+20+30+40+50 = 350
+    %result3 = call @test_stack(300)  # Should be 300+10+20+30+40+50 = 450
+    
+    print %result1
+    print %result2
+    print %result3
+    ret.i64 0
+}
