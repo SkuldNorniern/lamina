@@ -16,7 +16,7 @@ LAMINA_EXECUTABLE = "./target/release/lamina"
 LAMINA_SOURCE = "benchmarks/2Dmatmul/2Dmatmul.lamina" # Keep lamina source path relative to root
 LAMINA_OUTPUT_BINARY = "2Dmatmul_lamina" # Consistent naming
 BATCH_RUNS = 500  # Number of times to run each benchmark
-TIME_THRESHOLD = 1.0  # Seconds - if a run takes longer than this, only run once
+TIME_THRESHOLD = 0.5  # Seconds - if a run takes longer than this, only run once
 
 # --- Colors (ANSI escape codes) ---
 GREEN = '\033[0;32m'
