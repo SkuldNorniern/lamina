@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use std::process::Command;
 
 // Import the library crate
-use lamina;
 
 fn print_usage() {
     eprintln!("Usage: lamina <input.lamina> [options]");
@@ -140,7 +139,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    if input_path.extension().map_or(true, |ext| ext != "lamina") {
+    if input_path.extension().is_none_or(|ext| ext != "lamina") {
         eprintln!(
             "Warning: Input file '{}' does not have .lamina extension.",
             input_path.display()
@@ -158,7 +157,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Default output name based on input file
         let stem = input_path.file_stem().map_or_else(
             || "a".into(), // "a.out" on Unix, "a.exe" on Windows
-            |s| PathBuf::from(s),
+            PathBuf::from,
         );
 
         // If output name doesn't have an extension and we're on Windows, add .exe
