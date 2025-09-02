@@ -86,10 +86,12 @@ fn parse_args() -> Result<CompileOptions, String> {
                     return Err("Missing argument for target architecture".to_string());
                 }
                 let target = args[i + 1].to_lowercase();
-                if target != "x86_64" && target != "aarch64" {
+
+                if !lamina::HOST_ARCH_LIST.contains(&target.as_str()) {
                     return Err(format!(
-                            "Unsupported target architecture: {}. Supported values: x86_64, aarch64",
-                            target
+                            "Unsupported target architecture: {}\nSupported values: \n{}",
+                            target,
+                            lamina::HOST_ARCH_LIST.join(",\n")
                     ));
                 }
                 options.target_arch = Some(target);
