@@ -449,7 +449,7 @@ pub fn generate_instruction<'a, W: Write>(
             result,
         } => {
             // Check if this is a tail call (recursive call directly followed by ret)
-            let is_tail_call = false; // Not implemented yet without lookahead
+            let _is_tail_call = false; // Not implemented yet without lookahead, placeholder for future implementation
             let is_recursive = func_name == &_func_name; // Compare &str with &str
 
             // For now, we'll use a simplified heuristic for tail calls

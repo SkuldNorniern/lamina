@@ -1,7 +1,7 @@
 use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 // Import the library crate
@@ -148,7 +148,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Determine default executable extension based on platform
-    let exe_extension = if cfg!(windows) { ".exe" } else { "" };
+    // It's not used, but we keep it for reference and maybe in the future
+    let _exe_extension = if cfg!(windows) { ".exe" } else { "" };
 
     // Get output name
     let output_stem = if let Some(out_path) = &options.output_file {
@@ -277,7 +278,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 4. Determine which compiler to use
-    let (compiler_name, mut compiler_args) = match &options.forced_compiler {
+    let (compiler_name, compiler_args) = match &options.forced_compiler {
         Some(forced) => {
             // Check if forced compiler exists
             if Command::new(forced).arg("--version").output().is_err() {

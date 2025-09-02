@@ -8,7 +8,7 @@ pub mod parser;
 use std::io::Write;
 
 // Re-export core IR structures for easier access
-pub use codegen::generate_aarch64_assembly;
+//pub use codegen::generate_aarch64_assembly;
 pub use codegen::generate_x86_64_assembly;
 pub use error::{LaminaError, Result};
 pub use ir::{
@@ -25,17 +25,41 @@ pub use ir::{
 fn detect_host_architecture() -> &'static str {
     #[cfg(target_arch = "x86_64")]
     {
-        "x86_64"
+        #[cfg(target_os = "macos")]
+        {
+            return "x86_64_macos"
+        }
+        #[cfg(target_os = "linux")]
+        {
+            return "x86_64_linux"
+        }
+        #[cfg(target_os = "windows")]
+        {
+            return "x86_64_windows"
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        {
+            return "x86_64_unknown"
+        }
+
     }
     #[cfg(target_arch = "aarch64")]
     {
-        "aarch64"
+        #[cfg(target_os = "macos")]
+        {
+            return "aarch64_macos"
+        }
+        #[cfg(target_os = "linux")]
+        {
+            return "aarch64_linux"
+        }
     }
     #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
     {
         // Default to x86_64 for unsupported architectures
-        "x86_64"
+        return "x86_64_unknown"
     }
+    // FEAT:TODO: Add support for other architectures (RISC-V, etc.)
 }
 
 /// Parses Lamina IR text and generates assembly code using the host system's architecture.
@@ -68,8 +92,13 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 
     // 2. Generate assembly for the specified target
     match target {
-        "x86_64" => codegen::generate_x86_64_assembly(&module, output_asm)?,
-        "aarch64" => codegen::generate_aarch64_assembly(&module, output_asm)?,
+        "x86_64_unknown" => codegen::generate_x86_64_assembly(&module, output_asm)?,
+        "x86_64_macos" => codegen::generate_x86_64_assembly(&module, output_asm)?,
+        "x86_64_linux" => codegen::generate_x86_64_assembly(&module, output_asm)?,
+        "x86_64_windows" => codegen::generate_x86_64_assembly(&module, output_asm)?,
+        // FEAT:TODO: Detalize per-target generation for macOS/Linux/Windows for target archs
+        // | 
+        //"aarch64" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         _ => {
             return Err(error::LaminaError::CodegenError(format!(
                 "Unsupported target architecture: {}",

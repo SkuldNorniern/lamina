@@ -140,8 +140,10 @@ pub fn analyze_function_complexity<'a>(function: &Function<'a>) -> OptimizationL
 }
 
 /// Simple register usage analysis for better register allocation
+/// Placeholder function for future implementation
 pub fn analyze_register_usage<'a>(function: &Function<'a>) -> HashMap<String, u32> {
-    let mut usage_count = HashMap::new();
+    
+    let mut _usage_count = HashMap::new();
     
     // This is a simplified analysis - in practice, we'd need more sophisticated
     // data flow analysis to track register pressure accurately
@@ -152,7 +154,7 @@ pub fn analyze_register_usage<'a>(function: &Function<'a>) -> HashMap<String, u3
         }
     }
     
-    usage_count
+    _usage_count
 }
 
 /// Estimate the benefit of inlining a function
