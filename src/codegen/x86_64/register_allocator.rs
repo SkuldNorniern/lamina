@@ -1,19 +1,19 @@
-use crate::{Function, Instruction, Label, Result, Value, LaminaError, BasicBlock};
-use std::collections::{HashMap, HashSet};
 use super::register_info::CALLEE_SAVED_REGISTERS;
+use crate::{Function, Instruction, Result, Value};
+use std::collections::{HashMap, HashSet};
 
 /// Available x86_64 general-purpose registers for allocation
 const ALLOCATABLE_REGISTERS: &[&str] = &[
-    "%rax", "%rcx", "%rdx", "%rbx", "%rsi", "%rdi", 
-    "%r8", "%r9", "%r10", "%r11", "%r12", "%r13", "%r14", "%r15"
+    "%rax", "%rcx", "%rdx", "%rbx", "%rsi", "%rdi", "%r8", "%r9", "%r10", "%r11", "%r12", "%r13",
+    "%r14", "%r15",
 ];
 
 /// Live intervals for variables in the IR
 #[derive(Debug, Clone)]
 pub struct LiveInterval {
     pub var: String,
-    pub start: usize,  // Instruction index where variable is defined
-    pub end: usize,    // Last instruction index where variable is used
+    pub start: usize,     // Instruction index where variable is defined
+    pub end: usize,       // Last instruction index where variable is used
     pub uses: Vec<usize>, // All instruction indices where variable is used
 }
 
@@ -30,9 +30,9 @@ pub struct InterferenceNode {
 /// Result of register allocation
 #[derive(Debug, Clone)]
 pub struct AllocationResult {
-    pub assignments: HashMap<String, String>,  // Variable -> Register
-    pub spilled_vars: HashSet<String>,         // Variables that need to be spilled
-    pub callee_saved_used: HashSet<String>,    // Callee-saved registers actually used
+    pub assignments: HashMap<String, String>, // Variable -> Register
+    pub spilled_vars: HashSet<String>,        // Variables that need to be spilled
+    pub callee_saved_used: HashSet<String>,   // Callee-saved registers actually used
 }
 
 /// Simplified graph coloring register allocator
@@ -40,6 +40,12 @@ pub struct AllocationResult {
 pub struct GraphColoringAllocator {
     live_intervals: HashMap<String, LiveInterval>,
     instruction_count: usize,
+}
+
+impl Default for GraphColoringAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GraphColoringAllocator {
@@ -51,10 +57,13 @@ impl GraphColoringAllocator {
     }
 
     /// Main entry point for register allocation
-    pub fn allocate_registers<'a>(&mut self, function: &'a Function<'a>) -> Result<AllocationResult> {
+    pub fn allocate_registers<'a>(
+        &mut self,
+        function: &'a Function<'a>,
+    ) -> Result<AllocationResult> {
         // Build live intervals for all variables
         self.build_live_intervals(function)?;
-        
+
         // Apply simplified graph coloring
         self.simple_coloring()
     }
@@ -73,14 +82,14 @@ impl GraphColoringAllocator {
             let block = &function.basic_blocks[block_label];
             for (idx, instruction) in block.instructions.iter().enumerate() {
                 let abs_idx = self.instruction_count + idx;
-                
+
                 // Track variable definitions
                 if let Some(def_var) = self.get_defined_variable(instruction) {
                     var_first_def.entry(def_var.clone()).or_insert(abs_idx);
                     var_last_use.insert(def_var.clone(), abs_idx);
                     var_uses.entry(def_var).or_insert(Vec::new()).push(abs_idx);
                 }
-                
+
                 // Track variable uses
                 for used_var in self.get_used_variables(instruction) {
                     var_last_use.insert(used_var.clone(), abs_idx);
@@ -94,12 +103,15 @@ impl GraphColoringAllocator {
         for (var, &first_def) in &var_first_def {
             if let Some(&last_use) = var_last_use.get(var) {
                 let uses = var_uses.get(var).cloned().unwrap_or_default();
-                self.live_intervals.insert(var.clone(), LiveInterval {
-                    var: var.clone(),
-                    start: first_def,
-                    end: last_use,
-                    uses,
-                });
+                self.live_intervals.insert(
+                    var.clone(),
+                    LiveInterval {
+                        var: var.clone(),
+                        start: first_def,
+                        end: last_use,
+                        uses,
+                    },
+                );
             }
         }
 
@@ -116,17 +128,20 @@ impl GraphColoringAllocator {
 
         // Build interference lists (sorted for determinism)
         let mut interference_lists: HashMap<String, HashSet<String>> = HashMap::new();
-        
+
         let mut sorted_vars: Vec<_> = self.live_intervals.keys().collect();
         sorted_vars.sort();
-        
+
         for var1 in &sorted_vars {
             let interval1 = &self.live_intervals[*var1];
             interference_lists.insert(var1.to_string(), HashSet::new());
             for var2 in &sorted_vars {
                 let interval2 = &self.live_intervals[*var2];
                 if var1 != var2 && self.intervals_interfere(interval1, interval2) {
-                    interference_lists.get_mut(*var1).unwrap().insert(var2.to_string());
+                    interference_lists
+                        .get_mut(*var1)
+                        .unwrap()
+                        .insert(var2.to_string());
                 }
             }
         }
@@ -135,25 +150,27 @@ impl GraphColoringAllocator {
         let mut used_registers = HashMap::new();
         let mut sorted_vars_for_coloring: Vec<_> = interference_lists.keys().collect();
         sorted_vars_for_coloring.sort();
-        
+
         for var in sorted_vars_for_coloring {
             let interferences = &interference_lists[var];
             let mut forbidden_regs = HashSet::new();
-            
+
             // Check what registers are used by interfering variables
             for interfering_var in interferences {
                 if let Some(reg) = result.assignments.get(interfering_var) {
                     forbidden_regs.insert(reg.clone());
                 }
             }
-            
+
             // Find first available register
             let mut assigned = false;
             for &register in ALLOCATABLE_REGISTERS {
                 if !forbidden_regs.contains(register) {
-                    result.assignments.insert(var.to_string(), register.to_string());
+                    result
+                        .assignments
+                        .insert(var.to_string(), register.to_string());
                     used_registers.insert(register.to_string(), var.to_string());
-                    
+
                     // Track callee-saved usage
                     if CALLEE_SAVED_REGISTERS.contains(&register) {
                         result.callee_saved_used.insert(register.to_string());
@@ -162,7 +179,7 @@ impl GraphColoringAllocator {
                     break;
                 }
             }
-            
+
             // If no register available, mark for spilling
             if !assigned {
                 result.spilled_vars.insert(var.to_string());
@@ -184,7 +201,10 @@ impl GraphColoringAllocator {
             Instruction::Cmp { result, .. } => Some(result.to_string()),
             Instruction::Load { result, .. } => Some(result.to_string()),
             Instruction::Alloc { result, .. } => Some(result.to_string()),
-            Instruction::Call { result: Some(result), .. } => Some(result.to_string()),
+            Instruction::Call {
+                result: Some(result),
+                ..
+            } => Some(result.to_string()),
             Instruction::ZeroExtend { result, .. } => Some(result.to_string()),
             Instruction::GetFieldPtr { result, .. } => Some(result.to_string()),
             Instruction::GetElemPtr { result, .. } => Some(result.to_string()),
@@ -198,7 +218,7 @@ impl GraphColoringAllocator {
     /// Get variables used by an instruction
     fn get_used_variables(&self, instruction: &Instruction) -> Vec<String> {
         let mut used_vars = Vec::new();
-        
+
         match instruction {
             Instruction::Binary { lhs, rhs, .. } => {
                 if let Value::Variable(var) = lhs {
@@ -229,7 +249,9 @@ impl GraphColoringAllocator {
                     used_vars.push(var.to_string());
                 }
             }
-            Instruction::Ret { value: Some(value), .. } => {
+            Instruction::Ret {
+                value: Some(value), ..
+            } => {
                 if let Value::Variable(var) = value {
                     used_vars.push(var.to_string());
                 }
@@ -253,7 +275,7 @@ impl GraphColoringAllocator {
             }
             _ => {}
         }
-        
+
         used_vars
     }
 }
@@ -261,8 +283,8 @@ impl GraphColoringAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::types::{PrimitiveType, Type};
     use crate::ir::instruction::BinaryOp;
+    use crate::ir::types::{PrimitiveType, Type};
 
     #[test]
     fn test_live_interval_creation() {
@@ -272,7 +294,7 @@ mod tests {
             end: 5,
             uses: vec![1, 3, 5],
         };
-        
+
         assert_eq!(interval.var, "test_var");
         assert_eq!(interval.start, 0);
         assert_eq!(interval.end, 5);
@@ -281,7 +303,7 @@ mod tests {
     #[test]
     fn test_interference_detection() {
         let allocator = GraphColoringAllocator::new();
-        
+
         // Create two overlapping intervals
         let interval1 = LiveInterval {
             var: "var1".to_string(),
@@ -289,16 +311,16 @@ mod tests {
             end: 3,
             uses: vec![0, 2],
         };
-        
+
         let interval2 = LiveInterval {
             var: "var2".to_string(),
             start: 2,
             end: 5,
             uses: vec![2, 4],
         };
-        
+
         assert!(allocator.intervals_interfere(&interval1, &interval2));
-        
+
         // Non-overlapping intervals
         let interval3 = LiveInterval {
             var: "var3".to_string(),
@@ -306,7 +328,7 @@ mod tests {
             end: 8,
             uses: vec![6, 7],
         };
-        
+
         assert!(!allocator.intervals_interfere(&interval1, &interval3));
     }
 
@@ -317,9 +339,9 @@ mod tests {
             spilled_vars: HashSet::new(),
             callee_saved_used: HashSet::new(),
         };
-        
+
         assert!(result.assignments.is_empty());
         assert!(result.spilled_vars.is_empty());
         assert!(result.callee_saved_used.is_empty());
     }
-} 
+}

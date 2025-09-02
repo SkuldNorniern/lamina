@@ -124,19 +124,58 @@ mod tests {
 
     #[test]
     fn test_get_type_size_bytes() {
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::I8)).unwrap(), 1);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::I16)).unwrap(), 2);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::I32)).unwrap(), 4);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::I64)).unwrap(), 8);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::U8)).unwrap(), 1);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::U16)).unwrap(), 2);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::U32)).unwrap(), 4);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::U64)).unwrap(), 8);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::F32)).unwrap(), 4);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::F64)).unwrap(), 8);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::Bool)).unwrap(), 1);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::Char)).unwrap(), 1);
-        assert_eq!(get_type_size_bytes(&Type::Primitive(PrimitiveType::Ptr)).unwrap(), 8);
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::I8)).unwrap(),
+            1
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::I16)).unwrap(),
+            2
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::I32)).unwrap(),
+            4
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::I64)).unwrap(),
+            8
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::U8)).unwrap(),
+            1
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::U16)).unwrap(),
+            2
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::U32)).unwrap(),
+            4
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::U64)).unwrap(),
+            8
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::F32)).unwrap(),
+            4
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::F64)).unwrap(),
+            8
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::Bool)).unwrap(),
+            1
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::Char)).unwrap(),
+            1
+        );
+        assert_eq!(
+            get_type_size_bytes(&Type::Primitive(PrimitiveType::Ptr)).unwrap(),
+            8
+        );
 
         let array_type = Type::Array {
             element_type: Box::new(Type::Primitive(PrimitiveType::I32)),
@@ -147,19 +186,58 @@ mod tests {
 
     #[test]
     fn test_get_type_alignment() {
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::I8)).unwrap(), 1);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::I16)).unwrap(), 2);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::I32)).unwrap(), 4);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::I64)).unwrap(), 8);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::U8)).unwrap(), 1);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::U16)).unwrap(), 2);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::U32)).unwrap(), 4);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::U64)).unwrap(), 8);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::F32)).unwrap(), 4);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::F64)).unwrap(), 8);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::Bool)).unwrap(), 1);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::Char)).unwrap(), 1);
-        assert_eq!(get_type_alignment(&Type::Primitive(PrimitiveType::Ptr)).unwrap(), 8);
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::I8)).unwrap(),
+            1
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::I16)).unwrap(),
+            2
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::I32)).unwrap(),
+            4
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::I64)).unwrap(),
+            8
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::U8)).unwrap(),
+            1
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::U16)).unwrap(),
+            2
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::U32)).unwrap(),
+            4
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::U64)).unwrap(),
+            8
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::F32)).unwrap(),
+            4
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::F64)).unwrap(),
+            8
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::Bool)).unwrap(),
+            1
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::Char)).unwrap(),
+            1
+        );
+        assert_eq!(
+            get_type_alignment(&Type::Primitive(PrimitiveType::Ptr)).unwrap(),
+            8
+        );
     }
 
     #[test]
@@ -210,7 +288,7 @@ mod tests {
         assert!(fits_in_signed_bits(-128, 8));
         assert!(!fits_in_signed_bits(128, 8));
         assert!(!fits_in_signed_bits(-129, 8));
-        
+
         assert!(fits_in_signed_bits(32767, 16));
         assert!(fits_in_signed_bits(-32768, 16));
         assert!(!fits_in_signed_bits(32768, 16));
@@ -221,7 +299,7 @@ mod tests {
     fn test_fits_in_unsigned_bits() {
         assert!(fits_in_unsigned_bits(255, 8));
         assert!(!fits_in_unsigned_bits(256, 8));
-        
+
         assert!(fits_in_unsigned_bits(65535, 16));
         assert!(!fits_in_unsigned_bits(65536, 16));
     }
@@ -236,4 +314,4 @@ mod tests {
         assert_eq!(bits_needed_for_value(255), 8);
         assert_eq!(bits_needed_for_value(256), 9);
     }
-} 
+}
