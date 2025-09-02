@@ -8,5 +8,5 @@ pub mod utils;
 
 // Re-export commonly used items
 pub use traits::*;
-pub use types::*;
+pub use types::ValueLocation;
 pub use utils::*;
