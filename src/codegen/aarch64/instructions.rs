@@ -256,16 +256,6 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(writer, "        mov w10, w10")?;
                     store_to_location(writer, "x10", &dest)?;
                 }
-                (PrimitiveType::Bool, PrimitiveType::I32) => {
-                    materialize_to_reg(writer, &src, "x10")?;
-                    writeln!(writer, "        and w10, w10, #0xFF")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
-                (PrimitiveType::Bool, PrimitiveType::I64) => {
-                    materialize_to_reg(writer, &src, "x10")?;
-                    writeln!(writer, "        and x10, x10, #0xFF")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
                 _ => return Err(LaminaError::CodegenError(format!("Unsupported zero extension: {} to {}", source_type, target_type))),
             }
         }
