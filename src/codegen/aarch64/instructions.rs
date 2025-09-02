@@ -1,6 +1,6 @@
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation, RETURN_REGISTER};
 use super::util::{get_value_operand_asm, materialize_label_address};
-use crate::{AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType, Result, Type};
+use crate::{AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, Literal, PrimitiveType, Result, Type, Value};
 use std::io::Write;
 
 pub fn generate_instruction<'a, W: Write>(
@@ -159,11 +159,82 @@ pub fn generate_instruction<'a, W: Write>(
         }
 
         Instruction::Print { value } => {
-            let val = get_value_operand_asm(value, state, func_ctx)?;
+            // Use printf with proper macOS ARM64 ABI compliance
+            // Apple's ARM64 ABI requires variadic arguments to be passed on stack
             let fmt_label = state.add_rodata_string("%lld\n");
-            for line in materialize_label_address("x0", &fmt_label) { writeln!(writer, "{}", line)?; }
-            materialize_to_reg(writer, &val, "x1")?;
+            
+            // Make space on stack for variadic argument (16-byte aligned)
+            writeln!(writer, "        sub sp, sp, #16")?;
+            
+            // Load format string into x0
+            writeln!(writer, "        adrp x0, {}@PAGE", fmt_label)?;
+            writeln!(writer, "        add x0, x0, {}@PAGEOFF", fmt_label)?;
+            
+            // Load value into x1 and also store on stack (Apple ABI requirement)
+            match value {
+                Value::Constant(literal) => {
+                    match literal {
+                        Literal::I64(v) => {
+                            let value = *v as u64;
+                            if value <= 0xFFFF {
+                                writeln!(writer, "        mov x1, #{}", value)?;
+                            } else {
+                                // Use movz/movk sequence for larger values
+                                let mut first = true;
+                                for shift in [0u32, 16, 32, 48] {
+                                    let part = ((value >> shift) & 0xFFFF) as u16;
+                                    if part != 0 || first {
+                                        if first {
+                                            writeln!(writer, "        movz x1, #{}, lsl #{}", part, shift)?;
+                                            first = false;
+                                        } else {
+                                            writeln!(writer, "        movk x1, #{}, lsl #{}", part, shift)?;
+                                        }
+                                    }
+                                }
+                            }
+                            writeln!(writer, "        str x1, [sp]")?;
+                        }
+                        Literal::I32(v) => {
+                            let value = *v as u32;
+                            if value <= 0xFFFF {
+                                writeln!(writer, "        mov x1, #{}", value)?;
+                            } else {
+                                // Use movz/movk sequence for larger values
+                                let mut first = true;
+                                for shift in [0u32, 16] {
+                                    let part = ((value >> shift) & 0xFFFF) as u16;
+                                    if part != 0 || first {
+                                        if first {
+                                            writeln!(writer, "        movz x1, #{}, lsl #{}", part, shift)?;
+                                            first = false;
+                                        } else {
+                                            writeln!(writer, "        movk x1, #{}, lsl #{}", part, shift)?;
+                                        }
+                                    }
+                                }
+                            }
+                            writeln!(writer, "        str x1, [sp]")?;
+                        }
+                        _ => {
+                            let val = get_value_operand_asm(value, state, func_ctx)?;
+                            materialize_to_reg(writer, &val, "x1")?;
+                            writeln!(writer, "        str x1, [sp]")?;
+                        }
+                    }
+                }
+                _ => {
+                    let val = get_value_operand_asm(value, state, func_ctx)?;
+                    materialize_to_reg(writer, &val, "x1")?;
+                    writeln!(writer, "        str x1, [sp]")?;
+                }
+            }
+            
+            // Call printf
             writeln!(writer, "        bl _printf")?;
+            
+            // Restore stack
+            writeln!(writer, "        add sp, sp, #16")?;
         }
 
         Instruction::ZeroExtend { result, source_type, target_type, value } => {
