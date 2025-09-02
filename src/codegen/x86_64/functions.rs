@@ -1,8 +1,9 @@
 use super::instructions::generate_instruction;
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_type_size_directive_and_bytes;
+use super::register_allocator::{GraphColoringAllocator, AllocationResult};
 use crate::{
-    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type,
+    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type, Value,
 };
 use std::collections::HashSet;
 use std::io::Write;
@@ -16,6 +17,137 @@ pub fn generate_functions<'a, W: Write>(
     for (func_name, func) in &module.functions {
         generate_function(func_name, func, writer, state)?;
     }
+    Ok(())
+}
+
+// Generate the assembly for all functions with graph coloring optimization
+pub fn generate_functions_with_optimization<'a, W: Write>(
+    module: &'a crate::Module<'a>,
+    writer: &mut W,
+    state: &mut CodegenState<'a>,
+) -> Result<()> {
+    for (func_name, func) in &module.functions {
+        generate_function_with_register_allocation(func_name, func, writer, state)?;
+    }
+    Ok(())
+}
+
+// Generate assembly for a single function with graph coloring register allocation
+pub fn generate_function_with_register_allocation<'a, W: Write>(
+    func_name: Identifier<'a>,
+    func: &'a Function<'a>,
+    writer: &mut W,
+    state: &mut CodegenState<'a>,
+) -> Result<()> {
+    // Apply graph coloring register allocation
+    let mut allocator = GraphColoringAllocator::new();
+    let allocation_result = allocator.allocate_registers(func)?;
+    
+    // Generate function using optimized register assignments
+    generate_function_with_allocation(func_name, func, writer, state, &allocation_result)
+}
+
+// Core function generation with optional register allocation results
+fn generate_function_with_allocation<'a, W: Write>(
+    func_name: Identifier<'a>,
+    func: &'a Function<'a>,
+    writer: &mut W,
+    state: &mut CodegenState<'a>,
+    allocation_result: &AllocationResult,
+) -> Result<()> {
+    // Determine assembly label
+    let is_exported = func.annotations.contains(&FunctionAnnotation::Export);
+    let asm_label = if is_exported && func_name == "main" {
+        "main".to_string() // Special case for C runtime entry point
+    } else {
+        format!("func_{}", func_name)
+    };
+
+    // Create context and determine epilogue label *before* generating blocks
+    let mut func_ctx = FunctionContext::new();
+    func_ctx.epilogue_label = format!(".Lfunc_epilogue_{}", func_name); // Set epilogue label early
+
+    // Use allocation results to optimize register usage
+    let callee_saved_needed: Vec<&str> = allocation_result.callee_saved_used.iter()
+        .map(|s| s.as_str())
+        .collect();
+
+    // Function Prologue - optimized based on register allocation
+    writeln!(writer, "\n# Function: @{} (Graph Coloring Optimized)", func_name)?;
+    if is_exported {
+        writeln!(writer, ".globl {}", asm_label)?;
+    }
+    writeln!(writer, ".type {}, @function", asm_label)?;
+    writeln!(writer, ".align 16")?; // Ensure function entry is aligned
+    writeln!(writer, "{}:", asm_label)?;
+    writeln!(writer, "    pushq %rbp")?;
+    writeln!(writer, "    movq %rsp, %rbp")?;
+
+    // Only save callee-saved registers that are actually used by register allocation
+    let mut saved_regs = Vec::new();
+    for reg in &callee_saved_needed {
+        if *reg != "%rbp" { // %rbp is handled separately
+            writeln!(writer, "    pushq {}", reg)?;
+            saved_regs.push(*reg);
+        }
+    }
+
+    // Calculate stack layout using optimized allocation
+    precompute_optimized_function_layout(func, &mut func_ctx, state, allocation_result)?;
+
+    // Calculate required stack size for spilled variables
+    let spill_stack_size = allocation_result.spilled_vars.len() * 8; // 8 bytes per spilled var
+    let frame_size = ((spill_stack_size + 15) & !15) as u64; // Round up to 16-byte alignment
+
+    if frame_size > 0 {
+        writeln!(writer, "    subq ${}, %rsp", frame_size)?;
+    }
+
+    // Handle register-allocated vs spilled variables
+    writeln!(writer, "    # Optimized register assignments:")?;
+    for (var, reg) in &allocation_result.assignments {
+        writeln!(writer, "    # {} -> {}", var, reg)?;
+    }
+    if !allocation_result.spilled_vars.is_empty() {
+        writeln!(writer, "    # Spilled variables: {:?}", allocation_result.spilled_vars)?;
+    }
+
+    // Process the entry block first
+    if let Some(entry_block) = func.basic_blocks.get(&func.entry_block) {
+        let asm_label = func_ctx.get_block_label(&func.entry_block)?;
+        writeln!(writer, "{}:", asm_label)?;
+        generate_optimized_basic_block(entry_block, writer, state, &func_ctx, func_name, allocation_result)?;
+    }
+
+    // Process the remaining blocks (sorted for deterministic order)
+    let mut sorted_blocks: Vec<_> = func.basic_blocks.keys().collect();
+    sorted_blocks.sort();
+    for ir_label in sorted_blocks {
+        if *ir_label != func.entry_block {
+            let block = &func.basic_blocks[ir_label];
+            let asm_label = func_ctx.get_block_label(ir_label)?;
+            writeln!(writer, "{}:", asm_label)?;
+            generate_optimized_basic_block(block, writer, state, &func_ctx, func_name, allocation_result)?;
+        }
+    }
+
+    // Function Epilogue
+    writeln!(writer, "{}:", func_ctx.epilogue_label)?;
+
+    // Restore stack pointer
+    if frame_size > 0 {
+        writeln!(writer, "    addq ${}, %rsp", frame_size)?;
+    }
+
+    // Restore callee-saved registers in reverse order
+    for reg in saved_regs.iter().rev() {
+        writeln!(writer, "    popq {}", reg)?;
+    }
+
+    writeln!(writer, "    popq %rbp")?;
+    writeln!(writer, "    ret")?;
+    writeln!(writer, ".size {}, .-{}\n", asm_label, asm_label)?;
+
     Ok(())
 }
 
@@ -139,10 +271,13 @@ pub fn generate_function<'a, W: Write>(
         generate_basic_block(entry_block, writer, state, &func_ctx, func_name)?;
     }
 
-    // Process the remaining blocks
-    for (ir_label, block) in &func.basic_blocks {
+    // Process the remaining blocks (sorted for deterministic order)
+    let mut sorted_blocks: Vec<_> = func.basic_blocks.keys().collect();
+    sorted_blocks.sort();
+    for ir_label in sorted_blocks {
         // Skip the entry block since we've already processed it
         if *ir_label != func.entry_block {
+            let block = &func.basic_blocks[ir_label];
             let asm_label = func_ctx.get_block_label(ir_label)?;
             writeln!(writer, "{}:", asm_label)?;
             generate_basic_block(block, writer, state, &func_ctx, func_name)?;
@@ -297,16 +432,21 @@ fn precompute_function_layout<'a>(
         temp_param_locations.push((param.name, location));
     }
 
-    // 2. Assign assembly labels to IR blocks
-    for ir_label in func.basic_blocks.keys() {
+    // 2. Assign assembly labels to IR blocks (sorted for deterministic order)
+    let mut sorted_labels: Vec<_> = func.basic_blocks.keys().collect();
+    sorted_labels.sort();
+    for ir_label in sorted_labels {
         let asm_label = state.new_label(&format!("block_{}", ir_label));
         func_ctx.block_labels.insert(ir_label, asm_label);
     }
 
-    // 3. Calculate stack space for locals
+    // 3. Calculate stack space for locals (sorted for deterministic order)
     let mut local_size = 0u64;
     let mut local_allocations = Vec::new(); // Store (result_name, size)
-    for block in func.basic_blocks.values() {
+    let mut sorted_blocks: Vec<_> = func.basic_blocks.keys().collect();
+    sorted_blocks.sort();
+    for block_label in sorted_blocks {
+        let block = &func.basic_blocks[block_label];
         for instr in &block.instructions {
             let result_info: Option<(&Identifier<'a>, u64)> = match instr {
                 Instruction::Alloc {
@@ -435,6 +575,470 @@ fn generate_basic_block<'a, W: Write>(
         generate_instruction(instr, writer, state, func_ctx, func_name)?;
     }
     Ok(())
+}
+
+// Optimized function layout that considers register allocation results
+fn precompute_optimized_function_layout<'a>(
+    func: &'a Function<'a>,
+    func_ctx: &mut FunctionContext<'a>,
+    state: &mut CodegenState<'a>,
+    allocation_result: &AllocationResult,
+) -> Result<()> {
+    // Use simplified layout for register-allocated variables
+    let mut current_stack_offset = -8i64; // Start below RBP
+    
+    // Assign assembly labels to IR blocks (sorted for deterministic order)
+    let mut sorted_labels: Vec<_> = func.basic_blocks.keys().collect();
+    sorted_labels.sort();
+    for ir_label in sorted_labels {
+        let asm_label = state.new_label(&format!("block_{}", ir_label));
+        func_ctx.block_labels.insert(ir_label, asm_label);
+    }
+
+    // Only allocate stack space for spilled variables and function parameters
+    for param in &func.signature.params {
+        if allocation_result.spilled_vars.contains(param.name) {
+            // Spilled parameter gets stack location
+            func_ctx.value_locations.insert(
+                param.name, 
+                ValueLocation::StackOffset(current_stack_offset)
+            );
+            current_stack_offset -= 8; // Move down for next allocation
+        } else if let Some(reg) = allocation_result.assignments.get(param.name) {
+            // Register-allocated parameter
+            func_ctx.value_locations.insert(
+                param.name, 
+                ValueLocation::Register(reg.clone())
+            );
+        } else {
+            // Fallback: parameter not handled by register allocator, assign stack location
+            func_ctx.value_locations.insert(
+                param.name, 
+                ValueLocation::StackOffset(current_stack_offset)
+            );
+            current_stack_offset -= 8;
+        }
+    }
+
+    // Handle local variables (sorted for deterministic order)
+    let mut sorted_blocks: Vec<_> = func.basic_blocks.keys().collect();
+    sorted_blocks.sort();
+    for block_label in sorted_blocks {
+        let block = &func.basic_blocks[block_label];
+        for instr in &block.instructions {
+            if let Some(result_var) = get_instruction_result(instr) {
+                if allocation_result.spilled_vars.contains(result_var) {
+                    func_ctx.value_locations.insert(
+                        result_var, 
+                        ValueLocation::StackOffset(current_stack_offset)
+                    );
+                    current_stack_offset -= 8;
+                } else if let Some(reg) = allocation_result.assignments.get(result_var) {
+                    func_ctx.value_locations.insert(
+                        result_var, 
+                        ValueLocation::Register(reg.clone())
+                    );
+                } else {
+                    // Fallback: variable not handled by register allocator, assign stack location
+                    func_ctx.value_locations.insert(
+                        result_var, 
+                        ValueLocation::StackOffset(current_stack_offset)
+                    );
+                    current_stack_offset -= 8;
+                }
+            }
+        }
+    }
+
+    func_ctx.total_stack_size = (-current_stack_offset) as u64;
+    Ok(())
+}
+
+// Generate optimized basic block that uses register allocation results
+fn generate_optimized_basic_block<'a, W: Write>(
+    block: &BasicBlock<'a>,
+    writer: &mut W,
+    state: &mut CodegenState<'a>,
+    func_ctx: &FunctionContext<'a>,
+    func_name: Identifier<'a>,
+    allocation_result: &AllocationResult,
+) -> Result<()> {
+    for instr in &block.instructions {
+        // Use optimized instruction generation that prefers registers
+        generate_optimized_instruction(instr, writer, state, func_ctx, func_name, allocation_result)?;
+    }
+    Ok(())
+}
+
+// Optimized instruction generation that leverages register allocation
+fn generate_optimized_instruction<'a, W: Write>(
+    instr: &Instruction<'a>,
+    writer: &mut W,
+    state: &mut CodegenState<'a>,
+    func_ctx: &FunctionContext<'a>,
+    func_name: Identifier<'a>,
+    allocation_result: &AllocationResult,
+) -> Result<()> {
+    // Try to generate highly optimized assembly based on register allocation
+    match instr {
+        Instruction::Binary { op, result, ty, lhs, rhs } => {
+            generate_optimized_binary(op, result, ty, lhs, rhs, writer, state, func_ctx, allocation_result)
+        }
+        Instruction::Cmp { op, result, ty, lhs, rhs } => {
+            generate_optimized_cmp(op, result, ty, lhs, rhs, writer, state, func_ctx, allocation_result)
+        }
+        Instruction::Load { result, ty, ptr } => {
+            generate_optimized_load(result, ty, ptr, writer, state, func_ctx, allocation_result)
+        }
+        Instruction::Store { ty, ptr, value } => {
+            generate_optimized_store(ty, ptr, value, writer, state, func_ctx, allocation_result)
+        }
+        // For other instructions, use the existing generator
+        _ => generate_instruction(instr, writer, state, func_ctx, func_name)
+    }
+}
+
+// Helper to get result variable from instruction
+fn get_instruction_result<'a>(instr: &Instruction<'a>) -> Option<&'a str> {
+    match instr {
+        Instruction::Binary { result, .. } => Some(result),
+        Instruction::Cmp { result, .. } => Some(result),
+        Instruction::Load { result, .. } => Some(result),
+        Instruction::Alloc { result, .. } => Some(result),
+        Instruction::Call { result: Some(result), .. } => Some(result),
+        Instruction::ZeroExtend { result, .. } => Some(result),
+        Instruction::GetFieldPtr { result, .. } => Some(result),
+        Instruction::GetElemPtr { result, .. } => Some(result),
+        Instruction::Tuple { result, .. } => Some(result),
+        Instruction::ExtractTuple { result, .. } => Some(result),
+        Instruction::Phi { result, .. } => Some(result),
+        _ => None,
+    }
+}
+
+// Count how many operands are in registers vs memory
+fn count_register_operands(instr: &Instruction, allocation_result: &AllocationResult) -> usize {
+    let mut count = 0;
+    
+    match instr {
+        Instruction::Binary { lhs, rhs, .. } => {
+            if let Value::Variable(var) = lhs {
+                if allocation_result.assignments.contains_key(*var) {
+                    count += 1;
+                }
+            }
+            if let Value::Variable(var) = rhs {
+                if allocation_result.assignments.contains_key(*var) {
+                    count += 1;
+                }
+            }
+        }
+        Instruction::Load { ptr, .. } => {
+            if let Value::Variable(var) = ptr {
+                if allocation_result.assignments.contains_key(*var) {
+                    count += 1;
+                }
+            }
+        }
+        Instruction::Store { ptr, value, .. } => {
+            if let Value::Variable(var) = ptr {
+                if allocation_result.assignments.contains_key(*var) {
+                    count += 1;
+                }
+            }
+            if let Value::Variable(var) = value {
+                if allocation_result.assignments.contains_key(*var) {
+                    count += 1;
+                }
+            }
+        }
+        _ => {}
+    }
+    
+    count
+}
+
+// Highly optimized binary operation generation using register allocation results
+fn generate_optimized_binary<'a, W: Write>(
+    op: &crate::ir::instruction::BinaryOp,
+    result: &'a str,
+    ty: &crate::ir::types::PrimitiveType,
+    lhs: &Value<'a>,
+    rhs: &Value<'a>,
+    writer: &mut W,
+    state: &mut CodegenState<'a>,
+    func_ctx: &FunctionContext<'a>,
+    allocation_result: &AllocationResult,
+) -> Result<()> {
+    use crate::ir::instruction::BinaryOp;
+    use crate::ir::types::{PrimitiveType, Literal};
+    
+    // Get register/memory locations for operands
+    let lhs_in_reg = if let Value::Variable(var) = lhs {
+        allocation_result.assignments.get(*var)
+    } else { None };
+    
+    let rhs_in_reg = if let Value::Variable(var) = rhs {
+        allocation_result.assignments.get(*var)
+    } else { None };
+    
+    let result_in_reg = allocation_result.assignments.get(result);
+    
+    // Determine size suffix and instruction format
+    let (op_suffix, reg_prefix) = match ty {
+        PrimitiveType::I32 => ("l", "e"),
+        PrimitiveType::I64 | PrimitiveType::Ptr => ("q", "r"),
+        _ => return generate_instruction(&crate::Instruction::Binary { 
+            op: op.clone(), result, ty: ty.clone(), lhs: lhs.clone(), rhs: rhs.clone() 
+        }, writer, state, func_ctx, ""),
+    };
+    
+    // Fast path: both operands in registers, result in register
+    if let (Some(lhs_reg), Some(rhs_reg), Some(result_reg)) = (lhs_in_reg, rhs_in_reg, result_in_reg) {
+        let op_name = match op {
+            BinaryOp::Add => format!("add{}", op_suffix),
+            BinaryOp::Sub => format!("sub{}", op_suffix),
+            BinaryOp::Mul => format!("imul{}", op_suffix),
+            BinaryOp::Div => {
+                // Division is more complex, fall back to regular implementation
+                return generate_instruction(&crate::Instruction::Binary { 
+                    op: op.clone(), result, ty: ty.clone(), lhs: lhs.clone(), rhs: rhs.clone() 
+                }, writer, state, func_ctx, "");
+            }
+        };
+        
+        // Ultra-fast register-to-register operations
+        if lhs_reg == result_reg {
+            // result = lhs op rhs, and result is already in lhs register
+            writeln!(writer, "    {} {}, {} # Optimized: {} = {} {} {}", 
+                     op_name, rhs_reg, lhs_reg, result, lhs_reg, op_name, rhs_reg)?;
+        } else if rhs_reg == result_reg && matches!(op, BinaryOp::Add | BinaryOp::Mul) {
+            // For commutative operations, we can do result = rhs op lhs
+            writeln!(writer, "    {} {}, {} # Optimized: {} = {} {} {}", 
+                     op_name, lhs_reg, rhs_reg, result, rhs_reg, op_name, lhs_reg)?;
+        } else {
+            // Move one operand to result register, then operate
+            writeln!(writer, "    mov{} {}, {} # Optimized move", op_suffix, lhs_reg, result_reg)?;
+            writeln!(writer, "    {} {}, {} # Optimized: {} = {} {} {}", 
+                     op_name, rhs_reg, result_reg, result, lhs_reg, op_name, rhs_reg)?;
+        }
+        return Ok(());
+    }
+    
+    // Constant folding for immediate values
+    if let (Value::Constant(Literal::I64(lhs_val)), Value::Constant(Literal::I64(rhs_val))) = (lhs, rhs) {
+        let folded_result = match op {
+            BinaryOp::Add => lhs_val + rhs_val,
+            BinaryOp::Sub => lhs_val - rhs_val,
+            BinaryOp::Mul => lhs_val * rhs_val,
+            BinaryOp::Div => if *rhs_val != 0 { lhs_val / rhs_val } else { 0 },
+        };
+        
+        if let Some(result_reg) = result_in_reg {
+            writeln!(writer, "    mov{} ${}, {} # Constant folding: {} = {}", 
+                     op_suffix, folded_result, result_reg, result, folded_result)?;
+            return Ok(());
+        }
+    }
+    
+    // Optimized immediate operations
+    if let (Some(lhs_reg), Value::Constant(Literal::I64(rhs_val))) = (lhs_in_reg, rhs) {
+        if let Some(result_reg) = result_in_reg {
+            let op_name = match op {
+                BinaryOp::Add => format!("add{}", op_suffix),
+                BinaryOp::Sub => format!("sub{}", op_suffix),
+                BinaryOp::Mul => {
+                    // Check for power-of-2 multiplication
+                    if *rhs_val > 0 && (*rhs_val & (rhs_val - 1)) == 0 {
+                        let shift_amount = rhs_val.trailing_zeros();
+                        if lhs_reg == result_reg {
+                            writeln!(writer, "    shl{} ${}, {} # Optimized multiply by power of 2", 
+                                     op_suffix, shift_amount, result_reg)?;
+                        } else {
+                            writeln!(writer, "    mov{} {}, {} # Move for shift", op_suffix, lhs_reg, result_reg)?;
+                            writeln!(writer, "    shl{} ${}, {} # Optimized multiply by power of 2", 
+                                     op_suffix, shift_amount, result_reg)?;
+                        }
+                        return Ok(());
+                    }
+                    format!("imul{}", op_suffix)
+                }
+                BinaryOp::Div => {
+                    // Fall back to regular division
+                    return generate_instruction(&crate::Instruction::Binary { 
+                        op: op.clone(), result, ty: ty.clone(), lhs: lhs.clone(), rhs: rhs.clone() 
+                    }, writer, state, func_ctx, "");
+                }
+            };
+            
+            if lhs_reg == result_reg {
+                writeln!(writer, "    {} ${}, {} # Optimized immediate operation", 
+                         op_name, rhs_val, result_reg)?;
+            } else {
+                writeln!(writer, "    mov{} {}, {} # Move for immediate op", op_suffix, lhs_reg, result_reg)?;
+                writeln!(writer, "    {} ${}, {} # Optimized immediate operation", 
+                         op_name, rhs_val, result_reg)?;
+            }
+            return Ok(());
+        }
+    }
+    
+    // Fall back to regular instruction generation
+    generate_instruction(&crate::Instruction::Binary { 
+        op: op.clone(), result, ty: ty.clone(), lhs: lhs.clone(), rhs: rhs.clone() 
+    }, writer, state, func_ctx, "")
+}
+
+// Optimized comparison generation
+fn generate_optimized_cmp<'a, W: Write>(
+    op: &crate::ir::instruction::CmpOp,
+    result: &'a str,
+    ty: &crate::ir::types::PrimitiveType,
+    lhs: &Value<'a>,
+    rhs: &Value<'a>,
+    writer: &mut W,
+    state: &mut CodegenState<'a>,
+    func_ctx: &FunctionContext<'a>,
+    allocation_result: &AllocationResult,
+) -> Result<()> {
+    use crate::ir::instruction::CmpOp;
+    use crate::ir::types::PrimitiveType;
+    
+    // Get register locations
+    let lhs_in_reg = if let Value::Variable(var) = lhs {
+        allocation_result.assignments.get(*var)
+    } else { None };
+    
+    let rhs_in_reg = if let Value::Variable(var) = rhs {
+        allocation_result.assignments.get(*var)
+    } else { None };
+    
+    let result_in_reg = allocation_result.assignments.get(result);
+    
+    // Fast path: both operands in registers
+    if let (Some(lhs_reg), Some(rhs_reg), Some(result_reg)) = (lhs_in_reg, rhs_in_reg, result_in_reg) {
+        let cmp_suffix = match ty {
+            PrimitiveType::I32 => "l",
+            PrimitiveType::I64 | PrimitiveType::Ptr => "q",
+            PrimitiveType::I8 => "b",
+            _ => return generate_instruction(&crate::Instruction::Cmp { 
+                op: op.clone(), result, ty: ty.clone(), lhs: lhs.clone(), rhs: rhs.clone() 
+            }, writer, state, func_ctx, ""),
+        };
+        
+        let set_instr = match op {
+            CmpOp::Eq => "sete",
+            CmpOp::Ne => "setne",
+            CmpOp::Gt => "setg",
+            CmpOp::Ge => "setge",
+            CmpOp::Lt => "setl",
+            CmpOp::Le => "setle",
+        };
+        
+        writeln!(writer, "        cmp{} {}, {} # Optimized register comparison", cmp_suffix, rhs_reg, lhs_reg)?;
+        writeln!(writer, "        {} %al # Set AL based on flags", set_instr)?;
+        // Convert to appropriate register size for the result
+        let result_reg_sized = if cmp_suffix == "l" {
+            // For 32-bit comparison, use 32-bit destination register
+            if result_reg.starts_with("%r") {
+                result_reg.replace("%r", "%e").replace("ax", "eax")
+            } else {
+                result_reg.clone()
+            }
+        } else {
+            result_reg.clone()
+        };
+        writeln!(writer, "        movzbq %al, {} # Zero-extend to result register", result_reg_sized)?;
+        return Ok(());
+    }
+    
+    // Fall back to regular instruction generation
+    generate_instruction(&crate::Instruction::Cmp { 
+        op: op.clone(), result, ty: ty.clone(), lhs: lhs.clone(), rhs: rhs.clone() 
+    }, writer, state, func_ctx, "")
+}
+
+// Optimized load generation
+fn generate_optimized_load<'a, W: Write>(
+    result: &'a str,
+    ty: &crate::ir::types::Type<'a>,
+    ptr: &Value<'a>,
+    writer: &mut W,
+    state: &mut CodegenState<'a>,
+    func_ctx: &FunctionContext<'a>,
+    allocation_result: &AllocationResult,
+) -> Result<()> {
+    use crate::ir::types::Type;
+    
+    // Check if result is in a register
+    if let Some(result_reg) = allocation_result.assignments.get(result) {
+        // Check if pointer is also in a register
+        if let Value::Variable(ptr_var) = ptr {
+            if let Some(ptr_reg) = allocation_result.assignments.get(*ptr_var) {
+                let load_suffix = match ty {
+                    Type::Primitive(crate::ir::types::PrimitiveType::I32) => "l",
+                    Type::Primitive(crate::ir::types::PrimitiveType::I64) | 
+                    Type::Primitive(crate::ir::types::PrimitiveType::Ptr) => "q",
+                    Type::Primitive(crate::ir::types::PrimitiveType::I8) => "b",
+                    _ => return generate_instruction(&crate::Instruction::Load { 
+                        result, ty: ty.clone(), ptr: ptr.clone() 
+                    }, writer, state, func_ctx, ""),
+                };
+                
+                writeln!(writer, "        mov{} ({}), {} # Optimized register-to-register load", 
+                         load_suffix, ptr_reg, result_reg)?;
+                return Ok(());
+            }
+        }
+    }
+    
+    // Fall back to regular instruction generation
+    generate_instruction(&crate::Instruction::Load { 
+        result, ty: ty.clone(), ptr: ptr.clone() 
+    }, writer, state, func_ctx, "")
+}
+
+// Optimized store generation
+fn generate_optimized_store<'a, W: Write>(
+    ty: &crate::ir::types::Type<'a>,
+    ptr: &Value<'a>,
+    value: &Value<'a>,
+    writer: &mut W,
+    state: &mut CodegenState<'a>,
+    func_ctx: &FunctionContext<'a>,
+    allocation_result: &AllocationResult,
+) -> Result<()> {
+    use crate::ir::types::Type;
+    
+    // Check if both pointer and value are in registers
+    let ptr_in_reg = if let Value::Variable(var) = ptr {
+        allocation_result.assignments.get(*var)
+    } else { None };
+    
+    let value_in_reg = if let Value::Variable(var) = value {
+        allocation_result.assignments.get(*var)
+    } else { None };
+    
+    if let (Some(ptr_reg), Some(value_reg)) = (ptr_in_reg, value_in_reg) {
+        let store_suffix = match ty {
+            Type::Primitive(crate::ir::types::PrimitiveType::I32) => "l",
+            Type::Primitive(crate::ir::types::PrimitiveType::I64) | 
+            Type::Primitive(crate::ir::types::PrimitiveType::Ptr) => "q",
+            Type::Primitive(crate::ir::types::PrimitiveType::I8) => "b",
+            _ => return generate_instruction(&crate::Instruction::Store { 
+                ty: ty.clone(), ptr: ptr.clone(), value: value.clone() 
+            }, writer, state, func_ctx, ""),
+        };
+        
+        writeln!(writer, "        mov{} {}, ({}) # Optimized register-to-register store", 
+                 store_suffix, value_reg, ptr_reg)?;
+        return Ok(());
+    }
+    
+    // Fall back to regular instruction generation
+    generate_instruction(&crate::Instruction::Store { 
+        ty: ty.clone(), ptr: ptr.clone(), value: value.clone() 
+    }, writer, state, func_ctx, "")
 }
 
 #[cfg(test)]

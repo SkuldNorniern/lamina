@@ -6,6 +6,7 @@ pub mod util;
 pub mod load_store_opt;
 pub mod register_info;
 pub mod optimization;
+pub mod register_allocator;
 
 use crate::{Module, Result};
 use std::io::Write;

@@ -6,10 +6,17 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
     match ty {
         Type::Primitive(pt) => match pt {
             PrimitiveType::I8 => Ok((".byte", 1)),
+            PrimitiveType::I16 => Ok((".word", 2)),
             PrimitiveType::I32 => Ok((".long", 4)),
             PrimitiveType::I64 => Ok((".quad", 8)),
+            PrimitiveType::U8 => Ok((".byte", 1)),
+            PrimitiveType::U16 => Ok((".word", 2)),
+            PrimitiveType::U32 => Ok((".long", 4)),
+            PrimitiveType::U64 => Ok((".quad", 8)),
             PrimitiveType::F32 => Ok((".long", 4)), // Assuming 32-bit float
+            PrimitiveType::F64 => Ok((".quad", 8)), // 64-bit float
             PrimitiveType::Bool => Ok((".byte", 1)),
+            PrimitiveType::Char => Ok((".byte", 1)), // Char is 8-bit
             PrimitiveType::Ptr => Ok((".quad", 8)), // Assuming 64-bit pointers
         },
         Type::Array { element_type, size } => {
@@ -39,16 +46,25 @@ pub fn get_value_operand_asm<'a>(
 ) -> Result<String> {
     match value {
         Value::Constant(literal) => match literal {
+            Literal::I8(v) => Ok(format!("${}", v)),
+            Literal::I16(v) => Ok(format!("${}", v)),
             Literal::I32(v) => Ok(format!("${}", v)),
             Literal::I64(v) => Ok(format!("${}", v)),
-            Literal::Bool(v) => Ok(format!("${}", if *v { 1 } else { 0 })),
+            Literal::U8(v) => Ok(format!("${}", v)),
+            Literal::U16(v) => Ok(format!("${}", v)),
+            Literal::U32(v) => Ok(format!("${}", v)),
+            Literal::U64(v) => Ok(format!("${}", v)),
             Literal::F32(_v) => Err(LaminaError::CodegenError(
                 "f32 literal operand not implemented".to_string(),
             )),
+            Literal::F64(_v) => Err(LaminaError::CodegenError(
+                "f64 literal operand not implemented".to_string(),
+            )),
+            Literal::Bool(v) => Ok(format!("${}", if *v { 1 } else { 0 })),
+            Literal::Char(c) => Ok(format!("${}", *c as u8)),
             Literal::String(_) => Err(LaminaError::CodegenError(
                 "String literal operand requires label (use global var)".to_string(),
             )),
-            Literal::I8(v) => Ok(format!("${}", v)),
         },
         Value::Variable(name) => {
             // Use the location assigned during precompute/prologue
@@ -77,6 +93,10 @@ mod tests {
             (".byte", 1)
         );
         assert_eq!(
+            get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::I16)).unwrap(),
+            (".word", 2)
+        );
+        assert_eq!(
             get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::I32)).unwrap(),
             (".long", 4)
         );
@@ -85,11 +105,35 @@ mod tests {
             (".quad", 8)
         );
         assert_eq!(
+            get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::U8)).unwrap(),
+            (".byte", 1)
+        );
+        assert_eq!(
+            get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::U16)).unwrap(),
+            (".word", 2)
+        );
+        assert_eq!(
+            get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::U32)).unwrap(),
+            (".long", 4)
+        );
+        assert_eq!(
+            get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::U64)).unwrap(),
+            (".quad", 8)
+        );
+        assert_eq!(
             get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::F32)).unwrap(),
             (".long", 4)
         );
         assert_eq!(
+            get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::F64)).unwrap(),
+            (".quad", 8)
+        );
+        assert_eq!(
             get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Bool)).unwrap(),
+            (".byte", 1)
+        );
+        assert_eq!(
+            get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Char)).unwrap(),
             (".byte", 1)
         );
         assert_eq!(
@@ -157,12 +201,36 @@ mod tests {
     fn test_get_value_operand_asm_constants() {
         let (state, func_ctx) = setup_test_state_context();
         assert_eq!(
+            get_value_operand_asm(&Value::Constant(Literal::I8(123)), &state, &func_ctx).unwrap(),
+            "$123"
+        );
+        assert_eq!(
+            get_value_operand_asm(&Value::Constant(Literal::I16(-456)), &state, &func_ctx).unwrap(),
+            "$-456"
+        );
+        assert_eq!(
             get_value_operand_asm(&Value::Constant(Literal::I32(123)), &state, &func_ctx).unwrap(),
             "$123"
         );
         assert_eq!(
             get_value_operand_asm(&Value::Constant(Literal::I64(-5)), &state, &func_ctx).unwrap(),
             "$-5"
+        );
+        assert_eq!(
+            get_value_operand_asm(&Value::Constant(Literal::U8(123)), &state, &func_ctx).unwrap(),
+            "$123"
+        );
+        assert_eq!(
+            get_value_operand_asm(&Value::Constant(Literal::U16(456)), &state, &func_ctx).unwrap(),
+            "$456"
+        );
+        assert_eq!(
+            get_value_operand_asm(&Value::Constant(Literal::U32(123)), &state, &func_ctx).unwrap(),
+            "$123"
+        );
+        assert_eq!(
+            get_value_operand_asm(&Value::Constant(Literal::U64(456)), &state, &func_ctx).unwrap(),
+            "$456"
         );
         assert_eq!(
             get_value_operand_asm(&Value::Constant(Literal::Bool(true)), &state, &func_ctx)
@@ -174,9 +242,16 @@ mod tests {
                 .unwrap(),
             "$0"
         );
+        assert_eq!(
+            get_value_operand_asm(&Value::Constant(Literal::Char('A')), &state, &func_ctx).unwrap(),
+            "$65"
+        );
         // Check errors for unimplemented types
         assert!(
             get_value_operand_asm(&Value::Constant(Literal::F32(1.0)), &state, &func_ctx).is_err()
+        );
+        assert!(
+            get_value_operand_asm(&Value::Constant(Literal::F64(2.5)), &state, &func_ctx).is_err()
         );
         assert!(
             get_value_operand_asm(&Value::Constant(Literal::String("hi")), &state, &func_ctx)

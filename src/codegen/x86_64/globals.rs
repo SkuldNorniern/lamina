@@ -66,19 +66,30 @@ fn generate_global_initializer<W: Write>(
     if let Some(ref initializer) = global.initializer {
         match initializer {
             Value::Constant(literal) => match literal {
+                Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
+                Literal::I16(v) => writeln!(writer, "    .word {}", v)?,
                 Literal::I32(v) => writeln!(writer, "    .long {}", v)?,
                 Literal::I64(v) => writeln!(writer, "    .quad {}", v)?,
+                Literal::U8(v) => writeln!(writer, "    .byte {}", v)?,
+                Literal::U16(v) => writeln!(writer, "    .word {}", v)?,
+                Literal::U32(v) => writeln!(writer, "    .long {}", v)?,
+                Literal::U64(v) => writeln!(writer, "    .quad {}", v)?,
                 Literal::F32(v) => {
                     // Represent f32 as its raw u32 bits
                     let bits = v.to_bits();
                     writeln!(writer, "    .long {}", bits)?;
                 }
+                Literal::F64(v) => {
+                    // Represent f64 as its raw u64 bits
+                    let bits = v.to_bits();
+                    writeln!(writer, "    .quad {}", bits)?;
+                }
                 Literal::Bool(v) => writeln!(writer, "    .byte {}", if *v { 1 } else { 0 })?,
+                Literal::Char(c) => writeln!(writer, "    .byte {}", *c as u8)?,
                 Literal::String(s) => {
                     // Use .string directive for consistent handling of string literals
                     writeln!(writer, "    .string \"{}\"", escape_asm_string(s))?;
                 }
-                Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
             },
             Value::Global(_) => {
                 return Err(LaminaError::CodegenError(
@@ -101,13 +112,20 @@ fn generate_global_initializer<W: Write>(
 }
 
 // Escape characters in a string literal for GAS .string directive
-// Only need to escape literal backslash and double quote characters.
 fn escape_asm_string(s: &str) -> String {
-    let mut escaped = String::with_capacity(s.len());
+    let mut escaped = String::with_capacity(s.len() * 2);
     for c in s.chars() {
         match c {
-            '\\' => escaped.push_str("\\\\"), // Match backslash char '\' -> push "\\"
-            '"' => escaped.push_str("\\\""),  // Match double quote char '"' -> push "\""
+            '\\' => escaped.push_str("\\\\"), // Escape backslash
+            '"' => escaped.push_str("\\\""),  // Escape double quote
+            '\n' => escaped.push_str("\\n"),  // Escape newline
+            '\t' => escaped.push_str("\\t"),  // Escape tab
+            '\r' => escaped.push_str("\\r"),  // Escape carriage return
+            '\0' => escaped.push_str("\\0"),  // Escape null character
+            c if c.is_control() => {
+                // Escape other control characters as octal
+                escaped.push_str(&format!("\\{:03o}", c as u8));
+            }
             _ => escaped.push(c),
         }
     }
@@ -152,10 +170,10 @@ mod tests {
         assert_eq!(escape_asm_string("simple"), "simple");
         assert_eq!(escape_asm_string("with\"quote"), "with\\\"quote");
         assert_eq!(escape_asm_string("with\\backslash"), "with\\\\backslash");
-        // GAS handles \n, \t, \r within .string, so they aren't specially escaped
-        assert_eq!(escape_asm_string("new\nline"), "new\nline");
-        assert_eq!(escape_asm_string("tab\tstop"), "tab\tstop");
-        assert_eq!(escape_asm_string("carriage\rreturn"), "carriage\rreturn");
+        // Control characters should be properly escaped
+        assert_eq!(escape_asm_string("new\nline"), "new\\nline");
+        assert_eq!(escape_asm_string("tab\tstop"), "tab\\tstop");
+        assert_eq!(escape_asm_string("carriage\rreturn"), "carriage\\rreturn");
         assert_eq!(
             escape_asm_string("mixed \"quotes\" and \\slashes\\"),
             "mixed \\\"quotes\\\" and \\\\slashes\\\\"
