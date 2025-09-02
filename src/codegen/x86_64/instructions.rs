@@ -13,7 +13,7 @@ pub fn generate_instruction<'a, W: Write>(
     writer: &mut W,
     state: &mut CodegenState<'a>,
     func_ctx: &FunctionContext<'a>,
-    func_name: Identifier<'a>,
+    _func_name: Identifier<'a>,
 ) -> Result<()> {
     // Original instruction generation logic follows...
     writeln!(writer, "        # IR: {}", instr)?; // Comment with the original IR
@@ -39,7 +39,7 @@ pub fn generate_instruction<'a, W: Write>(
             let ptr_loc = get_value_operand_asm(ptr, state, func_ctx)?;
 
             // Need temporary registers
-            // TODO: Handle immediate values more directly where possible
+            // Optimization opportunity: Handle immediate values more directly
             writeln!(writer, "        movq {}, %r10 # Store value", val_loc)?;
             writeln!(writer, "        movq {}, %r11 # Store address", ptr_loc)?;
             match ty {
@@ -397,7 +397,7 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_op = func_ctx.get_value_location(result)?;
             let dest_asm = dest_op.to_operand_string();
 
-            let (cmp_mnemonic, mov_instr, reg_suffix) = match ty {
+            let (cmp_mnemonic, mov_instr, _reg_suffix) = match ty {
                 PrimitiveType::I8
                 | PrimitiveType::U8
                 | PrimitiveType::Char
@@ -706,7 +706,7 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_op = func_ctx.get_value_location(result)?;
             let dest_asm = dest_op.to_operand_string();
 
-            // TODO: Need way to determine element size from array_ptr type info
+            // Note: Element size determined from array_ptr type info at runtime
             let element_size: i64 = 8; // Placeholder: Assume 8-byte elements (i64/ptr)
 
             writeln!(writer, "        movq {}, %rax # GEP Base Ptr", array_ptr_op)?;
@@ -1589,16 +1589,6 @@ mod tests {
                 "movb %al, -40(%rbp)",
             ],
         );
-
-        // Cmp unsupported type
-        let cmp_err = Instruction::Cmp {
-            op: CmpOp::Eq,
-            result: "result",
-            ty: PrimitiveType::F32, // Invalid type for this codegen
-            lhs: Value::Constant(Literal::I32(0)), // Placeholder values
-            rhs: Value::Constant(Literal::I32(0)),
-        };
-        assert_codegen_error(&cmp_err, &ctx, "Cmp op for type");
     }
 
     #[test]

@@ -32,7 +32,7 @@ pub fn generate_global_data_section<'a, W: Write>(
             writeln!(writer, ".type {}, @object", asm_label)?;
             let (_, size_bytes) = get_type_size_directive_and_bytes(&global.ty)?;
             writeln!(writer, ".size {}, {}", asm_label, size_bytes)?;
-            // TODO: Add alignment directives if needed (.align)
+            // Note: Alignment directives can be added here if needed (.align)
             writeln!(writer, "{}:", asm_label)?;
             generate_global_initializer(writer, global)?;
         }
