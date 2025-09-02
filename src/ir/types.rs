@@ -8,10 +8,17 @@ pub type Label<'a> = &'a str;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrimitiveType {
     I8,
+    I16,
     I32,
     I64,
+    U8,
+    U16,
+    U32,
+    U64,
     F32,
+    F64,
     Bool,
+    Char, // Single character (8-bit)
     Ptr, // Generic pointer type
 }
 
@@ -38,10 +45,17 @@ pub enum Type<'a> {
 #[derive(Debug, Clone, PartialEq)] // Float comparison requires PartialEq only
 pub enum Literal<'a> {
     I8(i8),
+    I16(i16),
     I32(i32),
     I64(i64),
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
     F32(f32),
+    F64(f64),
     Bool(bool),
+    Char(char),
     String(&'a str),
     // Null pointers or other constants might be needed later
 }
@@ -62,10 +76,17 @@ impl fmt::Display for PrimitiveType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             PrimitiveType::I8 => write!(f, "i8"),
+            PrimitiveType::I16 => write!(f, "i16"),
             PrimitiveType::I32 => write!(f, "i32"),
             PrimitiveType::I64 => write!(f, "i64"),
+            PrimitiveType::U8 => write!(f, "u8"),
+            PrimitiveType::U16 => write!(f, "u16"),
+            PrimitiveType::U32 => write!(f, "u32"),
+            PrimitiveType::U64 => write!(f, "u64"),
             PrimitiveType::F32 => write!(f, "f32"),
+            PrimitiveType::F64 => write!(f, "f64"),
             PrimitiveType::Bool => write!(f, "bool"),
+            PrimitiveType::Char => write!(f, "char"),
             PrimitiveType::Ptr => write!(f, "ptr"),
         }
     }
@@ -106,10 +127,17 @@ impl fmt::Display for Literal<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Literal::I8(v) => write!(f, "{}", v),
+            Literal::I16(v) => write!(f, "{}", v),
             Literal::I32(v) => write!(f, "{}", v),
             Literal::I64(v) => write!(f, "{}", v),
+            Literal::U8(v) => write!(f, "{}", v),
+            Literal::U16(v) => write!(f, "{}", v),
+            Literal::U32(v) => write!(f, "{}", v),
+            Literal::U64(v) => write!(f, "{}", v),
             Literal::F32(v) => write!(f, "{}", v),
+            Literal::F64(v) => write!(f, "{}", v),
             Literal::Bool(v) => write!(f, "{}", v),
+            Literal::Char(c) => write!(f, "'{}'", c),
             Literal::String(s) => write!(f, "\"{}\"", s), // Note: needs escaping for proper output
         }
     }
@@ -131,9 +159,18 @@ mod tests {
 
     #[test]
     fn test_display_primitive_type() {
+        assert_eq!(format!("{}", PrimitiveType::I8), "i8");
+        assert_eq!(format!("{}", PrimitiveType::I16), "i16");
         assert_eq!(format!("{}", PrimitiveType::I32), "i32");
+        assert_eq!(format!("{}", PrimitiveType::I64), "i64");
+        assert_eq!(format!("{}", PrimitiveType::U8), "u8");
+        assert_eq!(format!("{}", PrimitiveType::U16), "u16");
+        assert_eq!(format!("{}", PrimitiveType::U32), "u32");
+        assert_eq!(format!("{}", PrimitiveType::U64), "u64");
         assert_eq!(format!("{}", PrimitiveType::F32), "f32");
+        assert_eq!(format!("{}", PrimitiveType::F64), "f64");
         assert_eq!(format!("{}", PrimitiveType::Bool), "bool");
+        assert_eq!(format!("{}", PrimitiveType::Char), "char");
         assert_eq!(format!("{}", PrimitiveType::Ptr), "ptr");
     }
 
@@ -167,11 +204,19 @@ mod tests {
 
     #[test]
     fn test_display_literal() {
+        assert_eq!(format!("{}", Literal::I8(123)), "123");
+        assert_eq!(format!("{}", Literal::I16(-456)), "-456");
         assert_eq!(format!("{}", Literal::I32(123)), "123");
         assert_eq!(format!("{}", Literal::I64(-456)), "-456");
+        assert_eq!(format!("{}", Literal::U8(123)), "123");
+        assert_eq!(format!("{}", Literal::U16(456)), "456");
+        assert_eq!(format!("{}", Literal::U32(123)), "123");
+        assert_eq!(format!("{}", Literal::U64(456)), "456");
         assert_eq!(format!("{}", Literal::F32(1.25)), "1.25");
+        assert_eq!(format!("{}", Literal::F64(2.5)), "2.5");
         assert_eq!(format!("{}", Literal::Bool(true)), "true");
         assert_eq!(format!("{}", Literal::Bool(false)), "false");
+        assert_eq!(format!("{}", Literal::Char('A')), "'A'");
         assert_eq!(format!("{}", Literal::String("hello")), "\"hello\"");
     }
 
