@@ -47,25 +47,24 @@ pub fn generate_function<'a, W: Write>(
 
     let (required_regs, _inline_hint) = analyze_register_requirements(func);
 
-    // Prologue (AArch64): save FP/LR and set FP
+    // Prologue (AArch64): save FP/LR
     writeln!(writer, "\n// Function: @{}", func_name)?;
     if is_exported || is_main {
         writeln!(writer, ".globl {}", asm_label)?;
     }
     writeln!(writer, "{}:", asm_label)?;
-    writeln!(writer, "    stp x29, x30, [sp, #-16]! // BUG: Hardcoded 16 bytes, may need more for frame_size")?;
+    writeln!(writer, "    stp x29, x30, [sp, #-16]! // Allocate space for FP/LR")?;
     writeln!(writer, "    mov x29, sp")?;
 
     // Precompute layout
     precompute_function_layout(func, &mut func_ctx, state, &required_regs)?;
 
-    // Allocate stack frame
+    // Allocate stack frame for locals
     let frame_size = func_ctx.total_stack_size as i64;
     if frame_size > 0 {
         writeln!(writer, "    sub sp, sp, #{}", frame_size)?;
     }
 
-    // Spill arg registers
     writeln!(writer, "    // Spill argument registers to stack slots")?;
     for (i, arg) in func.signature.params.iter().enumerate() {
         if let Some(loc) = func_ctx.value_locations.get(arg.name) {
