@@ -1,0 +1,25 @@
+# Test multiple functions working together (simplified, no recursion)
+fn @sum_range(i64 %start, i64 %end) -> i64 {
+  entry:
+    %diff = sub.i64 %end, %start
+    %plus_one = add.i64 %diff, 1
+    %sum_start_end = add.i64 %start, %end
+    %count = mul.i64 %plus_one, %sum_start_end
+    %result = div.i64 %count, 2
+    ret.i64 %result
+}
+
+fn @multiply_by_two(i64 %x) -> i64 {
+  entry:
+    %result = mul.i64 %x, 2
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %sum = call @sum_range(1, 10)    # sum(1..10) = 55
+    %doubled = call @multiply_by_two(1)   # 1 * 2 = 2
+    %result = add.i64 %sum, %doubled   # 55 + 2 = 57
+    print %result
+    ret.i64 0
+}

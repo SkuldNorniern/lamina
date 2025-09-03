@@ -1,0 +1,21 @@
+# Test complex arithmetic operations
+fn @main() -> i64 {
+  entry:
+    # Complex calculation: ((100 * 200) - 2000) * (150 / 10) + 8000
+    %a = mul.i64 100, 200     # 20000
+    %b = sub.i64 %a, 2000     # 18000
+    %c = div.i64 150, 10      # 15
+    %d = mul.i64 %b, %c       # 270000
+    %e = add.i64 %d, 8000     # 278000
+    
+    # Nested operations: (50 + 30) * (40 - 20) / 4
+    %f = add.i64 50, 30       # 80
+    %g = sub.i64 40, 20       # 20
+    %h = mul.i64 %f, %g       # 1600
+    %i = div.i64 %h, 4        # 400
+    
+    # Final result: large - small
+    %result = sub.i64 %e, %i  # 278000 - 400 = 277600
+    print %result
+    ret.i64 0
+}
