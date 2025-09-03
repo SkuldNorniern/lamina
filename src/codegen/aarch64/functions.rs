@@ -72,13 +72,13 @@ pub fn generate_function<'a, W: Write>(
             if let ValueLocation::StackOffset(offset) = loc {
                 if i < ARG_REGISTERS.len() {
                     writeln!(writer, "        add x10, x29, #{}", offset)?;
-                    // BUG: ARG_REGISTERS[i] is a string like "x0", but str instruction expects register name
+                    // FIXED: ARG_REGISTERS[i] is already the register name (string), use it directly
                     writeln!(writer, "        str {}, [x10] // Spill arg {}", ARG_REGISTERS[i], arg.name)?;
                             } else {
-                // BUG: Stack arguments in AAPCS64 start at [sp, #0], not [sp, #16]
-                // Also, x11 is being used without being properly set to the source location
+                // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
+                // x11 needs to point to the incoming stack argument location
                 let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
-                writeln!(writer, "        add x11, x29, #{}", 16 + stack_arg_offset)?; // Fixed offset
+                writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?; // AAPCS64 stack arg offset
                 writeln!(writer, "        ldr x10, [x11] // Load stack arg {}", arg.name)?;
                 writeln!(writer, "        add x11, x29, #{}", offset)?;
                 writeln!(writer, "        str x10, [x11]")?;
@@ -132,18 +132,18 @@ fn precompute_function_layout<'a>(
     state: &mut CodegenState<'a>,
     _required_regs: &HashSet<&'static str>,
 ) -> Result<()> {
-    // BUG: Importing x86_64 function in AArch64 codegen - should use local get_type_size_directive_and_bytes
-    use crate::codegen::x86_64::util::get_type_size_directive_and_bytes as x86_size;
+    // FIXED: Use local AArch64 function instead of x86_64 import
+    use super::util::get_type_size_directive_and_bytes as aarch64_size;
 
-    // BUG: Stack arguments in AAPCS64 start at [x29, #0], not [x29, #16]
+    // FIXED: Stack arguments in AAPCS64 start at [x29, #0], not [x29, #16]
     let mut tmp_param_locs = Vec::new();
-    let mut stack_arg_offset = 16i64;
+    let mut stack_arg_offset = 0i64; // AAPCS64: First stack arg at [sp, #0]
     for (i, param) in func.signature.params.iter().enumerate() {
         let loc = if i < ARG_REGISTERS.len() {
             ValueLocation::Register(ARG_REGISTERS[i].to_string())
         } else {
             let loc = ValueLocation::StackOffset(stack_arg_offset);
-            let (_, sz) = x86_size(&param.ty)?;
+            let (_, sz) = aarch64_size(&param.ty)?;
             stack_arg_offset += ((sz + 7) & !7) as i64;
             loc
         };
