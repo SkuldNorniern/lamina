@@ -2,6 +2,15 @@
 name = "lamina"
 version = "0.0.1"
 edition = "2024"
+authors = ["Eira <eira@nornity.com>"]
+description = "High-performance compiler backend for Lamina Intermediate Representation"
+documentation = "https://docs.rs/lamina"
+repository = "https://github.com/SkuldNorniern/lamina"
+readme = "README.md"
+license = "Apache-2.0"
+keywords = ["compiler", "backend", "IR", "assembly", "codegen"]
+categories = ["compilers", "development-tools", "parsing"]
+exclude = [ "benchmarks/", "testcases/"]
 
 [dependencies]
 
