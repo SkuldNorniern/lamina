@@ -256,7 +256,7 @@ pub fn generate_instruction<'a, W: Write>(
                 }
                 (PrimitiveType::I32, PrimitiveType::I64) => {
                     materialize_to_reg(writer, &src, "x10")?;
-                    writeln!(writer, "        mov w10, w10")?;
+                    writeln!(writer, "        mov x10, w10 // Zero-extend I32 to I64")?;
                     store_to_location(writer, "x10", &dest)?;
                 }
                 _ => return Err(LaminaError::CodegenError(format!("Unsupported zero extension: {} to {}", source_type, target_type))),
