@@ -282,17 +282,42 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
         writeln!(writer, "        ldr {}, [x9]", dest)?;
     } else if let Some(imm) = op.strip_prefix('#') {
         let value: u64 = imm.parse().map_err(|_| LaminaError::CodegenError("invalid immediate".into()))?;
-        // POTENTIAL BUG: No validation that immediate value fits in destination register size
-        // Materialize 64-bit immediate with movz/movk sequence
-        let mut first = true;
-        for shift in [0u32, 16, 32, 48] {
-            let part = ((value >> shift) & 0xFFFF) as u16;
-            if part != 0 || first {
-                if first {
-                    writeln!(writer, "        movz {}, #{}, lsl #{}", dest, part, shift)?;
-                    first = false;
-                } else {
-                    writeln!(writer, "        movk {}, #{}, lsl #{}", dest, part, shift)?;
+        // FIXED: Validate immediate fits in destination register size
+        if dest.starts_with('w') {
+            // 32-bit register - validate fits in 32 bits and use simpler instruction if possible
+            if value > u32::MAX as u64 {
+                return Err(LaminaError::CodegenError(format!("immediate value {} too large for 32-bit register {}", value, dest)));
+            }
+            if value <= 0xFFFF {
+                // Simple mov for small values
+                writeln!(writer, "        mov {}, #{}", dest, value)?;
+            } else {
+                // Use movz/movk for larger 32-bit values
+                let mut first = true;
+                for shift in [0u32, 16] {
+                    let part = ((value >> shift) & 0xFFFF) as u16;
+                    if part != 0 || first {
+                        if first {
+                            writeln!(writer, "        movz {}, #{}, lsl #{}", dest, part, shift)?;
+                            first = false;
+                        } else {
+                            writeln!(writer, "        movk {}, #{}, lsl #{}", dest, part, shift)?;
+                        }
+                    }
+                }
+            }
+        } else {
+            // 64-bit register - use full movz/movk sequence
+            let mut first = true;
+            for shift in [0u32, 16, 32, 48] {
+                let part = ((value >> shift) & 0xFFFF) as u16;
+                if part != 0 || first {
+                    if first {
+                        writeln!(writer, "        movz {}, #{}, lsl #{}", dest, part, shift)?;
+                        first = false;
+                    } else {
+                        writeln!(writer, "        movk {}, #{}, lsl #{}", dest, part, shift)?;
+                    }
                 }
             }
         }
@@ -361,8 +386,8 @@ fn binary_i32<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, des
         materialize_address_operand(writer, dest, "x9")?;
         writeln!(writer, "        str w12, [x9]")?;
     } else {
-        // POTENTIAL BUG: Moving from x12 (64-bit) to potentially 32-bit destination register in binary_i32
-        writeln!(writer, "        mov {}, x12", dest)?;
+        // FIXED: Use w12 for 32-bit operations to match the register size
+        writeln!(writer, "        mov {}, w12", dest)?;
     }
     Ok(())
 }
