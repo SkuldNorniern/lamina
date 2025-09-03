@@ -1,0 +1,72 @@
+# Fibonacci Sequence Benchmark
+# Iterative fibonacci implementation using recursive helper functions
+# Mimics the C/C++ iterative approach using functional programming style
+
+fn @fibonacci_iter(i64 %n, i64 %a, i64 %b, i64 %i) -> i64 {
+  entry:
+    # Base case: if i > n, return b (current fibonacci number)
+    %i_gt_n = gt.i64 %i, %n
+    br %i_gt_n, return_result, continue_iter
+
+  continue_iter:
+    # Fibonacci iteration: temp = a + b; a = b; b = temp;
+    %temp = add.i64 %a, %b
+    %new_a = add.i64 %b, 0      # new_a = b
+    %new_b = add.i64 %temp, 0   # new_b = temp
+
+    # Increment counter: i = i + 1
+    %new_i = add.i64 %i, 1
+
+    # Recursive call with updated values
+    %result = call @fibonacci_iter(%n, %new_a, %new_b, %new_i)
+    ret.i64 %result
+
+  return_result:
+    ret.i64 %b
+}
+
+fn @fibonacci_iterative(i64 %n) -> i64 {
+  entry:
+    # Base cases - same as C/C++ version
+    %is_zero = eq.i64 %n, 0
+    br %is_zero, return_zero, check_one
+
+  return_zero:
+    ret.i64 0
+
+  check_one:
+    %is_one = eq.i64 %n, 1
+    br %is_one, return_one, start_iteration
+
+  return_one:
+    ret.i64 1
+
+  start_iteration:
+    # Start iteration with initial values: a=0, b=1, i=2
+    %result = call @fibonacci_iter(%n, 0, 1, 2)
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    # Print header marker
+    print 123456789
+
+    # Compute and print fibonacci values using iterative algorithm
+    %fib10 = call @fibonacci_iterative(10)
+    print %fib10
+
+    %fib20 = call @fibonacci_iterative(20)
+    print %fib20
+
+    %fib30 = call @fibonacci_iterative(30)
+    print %fib30
+
+    %fib35 = call @fibonacci_iterative(35)
+    print %fib35
+
+    # Print footer marker
+    print 987654321
+
+    ret.i64 0
+}
