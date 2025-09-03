@@ -1,0 +1,9 @@
+# Test large constant handling
+fn @main() -> i64 {
+  entry:
+    print 4294967296    # 2^32
+    print 1073741824    # 2^30
+    print 8589934592    # 2^33
+    print 17179869184   # 2^34
+    ret.i64 0
+}
