@@ -44,7 +44,7 @@ impl<'a> FunctionContext<'a> {
             block_labels: HashMap::new(),
             arg_register_spills: HashMap::new(),
             total_stack_size: 0,
-            // First local below saved FP/LR pair; we will align later.
+            // POTENTIAL BUG: Hardcoded -16 offset assumes FP/LR pair size
             current_stack_offset: -16,
             epilogue_label: String::new(),
         }
@@ -94,6 +94,7 @@ impl<'a> CodegenState<'a> {
     }
 
     pub fn new_label(&mut self, prefix: &str) -> String {
+        // POTENTIAL BUG: No validation that generated labels don't conflict with assembler reserved names
         let id = self.next_label_id;
         self.next_label_id += 1;
         format!(".L_{}_{}", prefix, id)
