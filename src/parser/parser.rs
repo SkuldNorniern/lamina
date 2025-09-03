@@ -11,12 +11,11 @@ use crate::{
     Identifier,
     Instruction,
     Label,
-    /*error::{*/ LaminaError,
+    LaminaError,
     Literal,
-    // ir::*,
     Module,
     PrimitiveType,
-    Result, /*}*/
+    Result,
     StructField,
     Type,
     TypeDeclaration,
@@ -279,7 +278,7 @@ impl<'a> ParserState<'a> {
         self.expect_char('"')?;
         let start = self.position;
         while !self.is_eof() && self.bytes[self.position] != b'"' {
-            // TODO: Handle escape sequences
+            // Note: Escape sequences not yet supported in string literals
             self.advance();
         }
         let end = self.position;
@@ -289,7 +288,7 @@ impl<'a> ParserState<'a> {
 
     // --- Error Helper ---
     fn error(&self, message: String) -> LaminaError {
-        // TODO: Add line/column info
+        // Note: Line/column info not currently tracked
         LaminaError::ParsingError(format!("{} at position {}", message, self.position))
     }
 }
@@ -1337,7 +1336,7 @@ mod tests {
         assert!(parse_type(&mut test_state("@1InvalidName")).is_err()); // Starts with digit
     }
 
-    // TODO: Add tests for parse_type with struct/array types once parse_composite_type is fully implemented and tested.
+    // Note: Tests for parse_type with struct/array types pending full composite type implementation
 
     // --- Tests for parse_value and parse_value_with_type_hint ---
 
