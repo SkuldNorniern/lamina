@@ -70,7 +70,7 @@ fn generate_global_initializer<W: Write>(writer: &mut W, global: &GlobalDeclarat
                     writeln!(writer, "    .string \"{}\"", crate::codegen::common::utils::escape_asm_string(s))?;
                 }
                 Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
-                _ => return Err(LaminaError::CodegenError(format!("Unsupported literal type for global initializer: {:?}", literal))),
+                _ => todo!()
             },
             Value::Global(_) => {
                 return Err(LaminaError::CodegenError(
@@ -93,23 +93,10 @@ fn generate_global_initializer<W: Write>(writer: &mut W, global: &GlobalDeclarat
 
 pub fn generate_globals<W: Write>(state: &CodegenState, writer: &mut W) -> Result<()> {
     if !state.rodata_strings.is_empty() {
-        // Use Mach-O compatible cstring section on macOS; generic .rodata elsewhere
-        #[cfg(target_os = "macos")]
-        {
-            writeln!(writer, "\n.section __TEXT,__cstring")?;
-            for (label, content) in &state.rodata_strings {
-                let escaped = crate::codegen::common::utils::escape_asm_string(content);
-                writeln!(writer, "{}:", label)?;
-                writeln!(writer, "    .asciz \"{}\"", escaped)?;
-            }
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            writeln!(writer, "\n.section .rodata")?;
-            for (label, content) in &state.rodata_strings {
-                let escaped = crate::codegen::common::utils::escape_asm_string(content);
-                writeln!(writer, "{}: .string \"{}\"", label, escaped)?;
-            }
+        writeln!(writer, "\n.section .rodata")?;
+        for (label, content) in &state.rodata_strings {
+            let escaped = crate::codegen::common::utils::escape_asm_string(content);
+            writeln!(writer, "{}: .string \"{}\"", label, escaped)?;
         }
     }
     Ok(())
