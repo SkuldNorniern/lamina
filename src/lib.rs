@@ -1,5 +1,3 @@
-#![allow(dead_code)] // Allow unused code for now
-
 pub mod codegen;
 pub mod error;
 pub mod ir;
@@ -8,7 +6,6 @@ pub mod parser;
 use std::io::Write;
 
 // Re-export core IR structures for easier access
-//pub use codegen::generate_aarch64_assembly;
 pub use codegen::generate_x86_64_assembly;
 pub use error::{LaminaError, Result};
 pub use ir::{
@@ -86,7 +83,7 @@ pub fn detect_host_architecture() -> &'static str {
         // Default to x86_64 for unsupported architectures
         return "x86_64_unknown";
     }
-    // FEAT:TODO: Add support for other architectures (RISC-V, etc.)
+    // FEAT:TODO Add support for other architectures (RISC-V, etc.)
 }
 
 /// Parses Lamina IR text and generates assembly code using the host system's architecture.
@@ -123,10 +120,11 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         "x86_64_macos" => codegen::generate_x86_64_assembly(&module, output_asm)?,
         "x86_64_linux" => codegen::generate_x86_64_assembly(&module, output_asm)?,
         "x86_64_windows" => codegen::generate_x86_64_assembly(&module, output_asm)?,
-        // FEAT:TODO: Detalize per-target generation for macOS/Linux/Windows for target archs
-        // |
+        // FEAT:TODO Add per-target generation refinements for macOS/Linux/Windows
         "aarch64_unknown" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         "aarch64_macos" => codegen::generate_aarch64_assembly(&module, output_asm)?,
+        "aarch64_linux" => codegen::generate_aarch64_assembly(&module, output_asm)?,
+        "aarch64_windows" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         _ => {
             return Err(error::LaminaError::CodegenError(format!(
                 "Unsupported target architecture: {}",
