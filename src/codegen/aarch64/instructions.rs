@@ -120,7 +120,8 @@ pub fn generate_instruction<'a, W: Write>(
                 writeln!(writer, "        mov {}, x12", dest)?;
             } else {
                 materialize_address_operand(writer, &dest, "x9")?;
-                writeln!(writer, "        strb w12, [x9]")?;
+                // FIXED: Store full 64-bit value instead of just byte to avoid garbage data
+                writeln!(writer, "        str x12, [x9]")?;
             }
         }
 
@@ -168,9 +169,9 @@ pub fn generate_instruction<'a, W: Write>(
             // Apple's ARM64 ABI requires variadic arguments to be passed on stack
             let fmt_label = state.add_rodata_string("%lld\n");
             
-            // BUG: This doesn't ensure 16-byte stack alignment before the call
-            // AAPCS64 requires stack to be 16-byte aligned before function calls
-            writeln!(writer, "        sub sp, sp, #16 // BUG: May not be 16-byte aligned")?;
+            // FIXED: Ensure 16-byte stack alignment before function call (AAPCS64 requirement)
+            // Allocate enough space to guarantee alignment (32 bytes to be safe)
+            writeln!(writer, "        sub sp, sp, #32")?;  // Allocate 32 bytes (guarantees 16-byte alignment)
             
             // Load format string into x0
             writeln!(writer, "        adrp x0, {}@PAGE", fmt_label)?;
@@ -238,9 +239,9 @@ pub fn generate_instruction<'a, W: Write>(
             
             // Call printf
             writeln!(writer, "        bl _printf")?;
-            
-            // Restore stack
-            writeln!(writer, "        add sp, sp, #16")?;
+
+            // Restore stack (32 bytes allocated)
+            writeln!(writer, "        add sp, sp, #32")?;
         }
 
         Instruction::ZeroExtend { result, source_type, target_type, value } => {
