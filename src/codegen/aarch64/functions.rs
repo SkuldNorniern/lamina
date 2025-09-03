@@ -72,7 +72,7 @@ pub fn generate_function<'a, W: Write>(
             if let ValueLocation::StackOffset(offset) = loc {
                 if i < ARG_REGISTERS.len() {
                     writeln!(writer, "        add x10, x29, #{}", offset)?;
-                    // FIXED: ARG_REGISTERS[i] is already the register name (string), use it directly
+                    // POTENTIAL BUG: No validation that ARG_REGISTERS[i] is a valid register string
                     writeln!(writer, "        str {}, [x10] // Spill arg {}", ARG_REGISTERS[i], arg.name)?;
                             } else {
                 // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
@@ -119,6 +119,7 @@ fn analyze_register_requirements<'a>(func: &'a Function<'a>) -> (HashSet<&'stati
         .values()
         .map(|b| b.instructions.len())
         .sum();
+    // POTENTIAL BUG: Hardcoded threshold of 40 instructions - may not be optimal
     if total_instructions > 40 {
         required.insert("x19");
         required.insert("x20");
@@ -208,6 +209,7 @@ fn precompute_function_layout<'a>(
     }
 
     let aligned_local = (local_size + 15) & !15;
+    // POTENTIAL BUG: Stack layout assumes 16-byte alignment but doesn't verify it
     let mut current = -(16 + aligned_local as i64);
     let locals_start = current;
     for (res, sz) in local_allocs {
