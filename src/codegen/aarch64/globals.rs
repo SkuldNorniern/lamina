@@ -70,7 +70,9 @@ fn generate_global_initializer<W: Write>(writer: &mut W, global: &GlobalDeclarat
                     writeln!(writer, "    .string \"{}\"", crate::codegen::common::utils::escape_asm_string(s))?;
                 }
                 Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
-                _ => todo!()
+                _ => return Err(LaminaError::CodegenError(
+                    format!("Unsupported literal type in global initializer: {:?}", literal)
+                ))
             },
             Value::Global(_) => {
                 return Err(LaminaError::CodegenError(
