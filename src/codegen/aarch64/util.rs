@@ -40,9 +40,11 @@ pub fn get_value_operand_asm<'a>(
             Literal::I32(v) => Ok(format!("#{}", v)),
             Literal::I64(v) => Ok(format!("#{}", v)),
             Literal::Bool(v) => Ok(format!("#{}", if *v { 1 } else { 0 })),
+            // POTENTIAL BUG: F32 literals not implemented - could cause compilation failures
             Literal::F32(_v) => Err(LaminaError::CodegenError(
                 "f32 literal operand not implemented".to_string(),
             )),
+            // POTENTIAL BUG: String literals not supported in operands - requires global variable workaround
             Literal::String(_) => Err(LaminaError::CodegenError(
                 "String literal operand requires label (use global var)".to_string(),
             )),

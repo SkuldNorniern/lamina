@@ -14,6 +14,7 @@ pub fn generate_instruction<'a, W: Write>(
 
     match instr {
         Instruction::Ret { ty: _, value } => {
+            // POTENTIAL BUG: No validation that return type matches function signature
             if let Some(val) = value {
                 let src = get_value_operand_asm(val, state, func_ctx)?;
                 match src.as_str() {
@@ -25,10 +26,12 @@ pub fn generate_instruction<'a, W: Write>(
                     _ => materialize_to_reg(writer, &src, RETURN_REGISTER)?,
                 }
             }
+            // POTENTIAL BUG: No check that epilogue_label is valid
             writeln!(writer, "        b {}", func_ctx.epilogue_label)?;
         }
 
         Instruction::Store { ty, ptr, value } => {
+            // POTENTIAL BUG: No bounds checking for pointer access
             let val = get_value_operand_asm(value, state, func_ctx)?;
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
             materialize_address_operand(writer, &ptr_op, "x11")?;
@@ -279,6 +282,7 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
         writeln!(writer, "        ldr {}, [x9]", dest)?;
     } else if let Some(imm) = op.strip_prefix('#') {
         let value: u64 = imm.parse().map_err(|_| LaminaError::CodegenError("invalid immediate".into()))?;
+        // POTENTIAL BUG: No validation that immediate value fits in destination register size
         // Materialize 64-bit immediate with movz/movk sequence
         let mut first = true;
         for shift in [0u32, 16, 32, 48] {
@@ -357,6 +361,7 @@ fn binary_i32<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, des
         materialize_address_operand(writer, dest, "x9")?;
         writeln!(writer, "        str w12, [x9]")?;
     } else {
+        // POTENTIAL BUG: Moving from x12 (64-bit) to potentially 32-bit destination register in binary_i32
         writeln!(writer, "        mov {}, x12", dest)?;
     }
     Ok(())

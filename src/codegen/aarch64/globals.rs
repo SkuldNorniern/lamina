@@ -46,7 +46,7 @@ pub fn generate_global_data_section<'a, W: Write>(
             let asm_label = format!("global_{}", name);
             state.global_layout.insert(name, asm_label.clone());
             let (_, size_bytes) = get_type_size_directive_and_bytes(&global.ty)?;
-            // Use .comm as a portable directive
+            // POTENTIAL BUG: Hardcoded alignment of 8 bytes - may not be optimal for all types
             writeln!(writer, ".comm {},{},8", asm_label, size_bytes)?;
         }
     }
