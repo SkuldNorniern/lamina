@@ -93,10 +93,12 @@ fn generate_global_initializer<W: Write>(writer: &mut W, global: &GlobalDeclarat
 
 pub fn generate_globals<W: Write>(state: &CodegenState, writer: &mut W) -> Result<()> {
     if !state.rodata_strings.is_empty() {
-        writeln!(writer, "\n.section .rodata")?;
+        // Use Mach-O compatible section directive for AArch64
+        // FEAT:TODO: Supporft other Host platform using AArch64
+        writeln!(writer, "\n.section __TEXT,__cstring,cstring_literals")?;
         for (label, content) in &state.rodata_strings {
             let escaped = crate::codegen::common::utils::escape_asm_string(content);
-            writeln!(writer, "{}: .string \"{}\"", label, escaped)?;
+            writeln!(writer, "{}: .asciz \"{}\"", label, escaped)?;
         }
     }
     Ok(())
