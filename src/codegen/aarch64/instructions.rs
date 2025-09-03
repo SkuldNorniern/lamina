@@ -131,10 +131,12 @@ pub fn generate_instruction<'a, W: Write>(
         }
 
         Instruction::Call { func_name, args, result } => {
+            // BUG: Only handles register arguments, ignores stack arguments for calls with >8 args
             for (i, arg) in args.iter().enumerate().take(ARG_REGISTERS.len()) {
                 let op = get_value_operand_asm(arg, state, func_ctx)?;
                 materialize_to_reg(writer, &op, ARG_REGISTERS[i])?;
             }
+            // BUG: Missing stack argument passing for functions with >8 arguments
             writeln!(writer, "        bl func_{}", func_name)?;
             if let Some(res) = result {
                 let dest = func_ctx.get_value_location(res)?.to_operand_string();
@@ -163,8 +165,9 @@ pub fn generate_instruction<'a, W: Write>(
             // Apple's ARM64 ABI requires variadic arguments to be passed on stack
             let fmt_label = state.add_rodata_string("%lld\n");
             
-            // Make space on stack for variadic argument (16-byte aligned)
-            writeln!(writer, "        sub sp, sp, #16")?;
+            // BUG: This doesn't ensure 16-byte stack alignment before the call
+            // AAPCS64 requires stack to be 16-byte aligned before function calls
+            writeln!(writer, "        sub sp, sp, #16 // BUG: May not be 16-byte aligned")?;
             
             // Load format string into x0
             writeln!(writer, "        adrp x0, {}@PAGE", fmt_label)?;

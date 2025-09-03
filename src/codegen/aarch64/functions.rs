@@ -53,7 +53,7 @@ pub fn generate_function<'a, W: Write>(
         writeln!(writer, ".globl {}", asm_label)?;
     }
     writeln!(writer, "{}:", asm_label)?;
-    writeln!(writer, "    stp x29, x30, [sp, #-16]! // Save FP/LR")?;
+    writeln!(writer, "    stp x29, x30, [sp, #-16]! // BUG: Hardcoded 16 bytes, may need more for frame_size")?;
     writeln!(writer, "    mov x29, sp")?;
 
     // Precompute layout
@@ -72,14 +72,17 @@ pub fn generate_function<'a, W: Write>(
             if let ValueLocation::StackOffset(offset) = loc {
                 if i < ARG_REGISTERS.len() {
                     writeln!(writer, "        add x10, x29, #{}", offset)?;
+                    // BUG: ARG_REGISTERS[i] is a string like "x0", but str instruction expects register name
                     writeln!(writer, "        str {}, [x10] // Spill arg {}", ARG_REGISTERS[i], arg.name)?;
-                } else {
-                    let stack_arg_offset = 16 + ((i - ARG_REGISTERS.len()) * 8) as i64;
-                    writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?;
-                    writeln!(writer, "        ldr x10, [x11] // Load stack arg {}", arg.name)?;
-                    writeln!(writer, "        add x11, x29, #{}", offset)?;
-                    writeln!(writer, "        str x10, [x11]")?;
-                }
+                            } else {
+                // BUG: Stack arguments in AAPCS64 start at [sp, #0], not [sp, #16]
+                // Also, x11 is being used without being properly set to the source location
+                let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
+                writeln!(writer, "        add x11, x29, #{}", 16 + stack_arg_offset)?; // Fixed offset
+                writeln!(writer, "        ldr x10, [x11] // Load stack arg {}", arg.name)?;
+                writeln!(writer, "        add x11, x29, #{}", offset)?;
+                writeln!(writer, "        str x10, [x11]")?;
+            }
             }
         }
     }
@@ -129,9 +132,10 @@ fn precompute_function_layout<'a>(
     state: &mut CodegenState<'a>,
     _required_regs: &HashSet<&'static str>,
 ) -> Result<()> {
+    // BUG: Importing x86_64 function in AArch64 codegen - should use local get_type_size_directive_and_bytes
     use crate::codegen::x86_64::util::get_type_size_directive_and_bytes as x86_size;
 
-    // Params: registers then stack at [x29, #16+]
+    // BUG: Stack arguments in AAPCS64 start at [x29, #0], not [x29, #16]
     let mut tmp_param_locs = Vec::new();
     let mut stack_arg_offset = 16i64;
     for (i, param) in func.signature.params.iter().enumerate() {
