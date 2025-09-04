@@ -1,7 +1,10 @@
 use super::instructions::generate_instruction;
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_type_size_directive_and_bytes;
-use crate::{BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType, Result};
+use crate::{
+    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType,
+    Result,
+};
 use std::collections::HashSet;
 use std::io::Write;
 
@@ -47,14 +50,35 @@ pub fn generate_function<'a, W: Write>(
 
     let (required_regs, _inline_hint) = analyze_register_requirements(func);
 
-    // Prologue (AArch64): save FP/LR
+    // Set callee-saved registers in function context
+    func_ctx.callee_saved_regs = required_regs.iter().cloned().collect();
+    func_ctx.calculate_initial_stack_offset();
+
+    // Prologue (AArch64): save FP/LR and callee-saved registers
     writeln!(writer, "\n// Function: @{}", func_name)?;
     if is_exported || is_main {
         writeln!(writer, ".globl {}", asm_label)?;
     }
     writeln!(writer, "{}:", asm_label)?;
-    writeln!(writer, "    stp x29, x30, [sp, #-16]! // Allocate space for FP/LR")?;
-    writeln!(writer, "    mov x29, sp")?;
+
+    // Calculate space needed for all registers (FP, LR, and callee-saved)
+    let reg_save_space = (2 + func_ctx.callee_saved_regs.len()) * 8; // 8 bytes per register
+    // Ensure 16-byte alignment for AAPCS64 compliance
+    let aligned_reg_space = (reg_save_space + 15) & !15;
+    writeln!(writer, "    sub sp, sp, #{} // Allocate space for FP/LR and callee-saved registers", aligned_reg_space)?;
+    writeln!(writer, "    stp x29, x30, [sp] // Save FP and LR")?;
+
+    // Save additional callee-saved registers if needed
+    if !func_ctx.callee_saved_regs.is_empty() {
+        let mut offset = 16; // Start after FP/LR
+        for reg in &func_ctx.callee_saved_regs {
+            writeln!(writer, "    str {}, [sp, #{}]", reg, offset)?;
+            offset += 8;
+        }
+    }
+
+    // Set up frame pointer to point to saved FP/LR (standard AAPCS64 convention)
+    writeln!(writer, "    add x29, sp, #0 // Set up frame pointer to saved FP/LR")?;
 
     // Precompute layout
     precompute_function_layout(func, &mut func_ctx, state, &required_regs)?;
@@ -72,16 +96,24 @@ pub fn generate_function<'a, W: Write>(
                 if i < ARG_REGISTERS.len() {
                     writeln!(writer, "        add x10, x29, #{}", offset)?;
                     // POTENTIAL BUG: No validation that ARG_REGISTERS[i] is a valid register string
-                    writeln!(writer, "        str {}, [x10] // Spill arg {}", ARG_REGISTERS[i], arg.name)?;
-                            } else {
-                // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
-                // x11 needs to point to the incoming stack argument location
-                let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
-                writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?; // AAPCS64 stack arg offset
-                writeln!(writer, "        ldr x10, [x11] // Load stack arg {}", arg.name)?;
-                writeln!(writer, "        add x11, x29, #{}", offset)?;
-                writeln!(writer, "        str x10, [x11]")?;
-            }
+                    writeln!(
+                        writer,
+                        "        str {}, [x10] // Spill arg {}",
+                        ARG_REGISTERS[i], arg.name
+                    )?;
+                } else {
+                    // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
+                    // x11 needs to point to the incoming stack argument location
+                    let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
+                    writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?; // AAPCS64 stack arg offset
+                    writeln!(
+                        writer,
+                        "        ldr x10, [x11] // Load stack arg {}",
+                        arg.name
+                    )?;
+                    writeln!(writer, "        add x11, x29, #{}", offset)?;
+                    writeln!(writer, "        str x10, [x11]")?;
+                }
             }
         }
     }
@@ -105,7 +137,21 @@ pub fn generate_function<'a, W: Write>(
     if frame_size > 0 {
         writeln!(writer, "    add sp, sp, #{}", frame_size)?;
     }
-    writeln!(writer, "    ldp x29, x30, [sp], #16")?;
+
+    // Restore callee-saved registers if needed (in reverse order)
+    if !func_ctx.callee_saved_regs.is_empty() {
+        let mut offset = 16; // Start after FP/LR
+        for reg in func_ctx.callee_saved_regs.iter().rev() {
+            writeln!(writer, "    ldr {}, [sp, #{}]", reg, offset)?;
+            offset += 8;
+        }
+    }
+
+    // Calculate space needed for all registers (FP, LR, and callee-saved)
+    let reg_save_space = (2 + func_ctx.callee_saved_regs.len()) * 8;
+    // Ensure 16-byte alignment for AAPCS64 compliance
+    let aligned_reg_space = (reg_save_space + 15) & !15;
+    writeln!(writer, "    ldp x29, x30, [sp], #{} // Restore FP/LR and deallocate stack", aligned_reg_space)?;
     writeln!(writer, "    ret")?;
 
     Ok(())
@@ -118,11 +164,25 @@ fn analyze_register_requirements<'a>(func: &'a Function<'a>) -> (HashSet<&'stati
         .values()
         .map(|b| b.instructions.len())
         .sum();
-    // POTENTIAL BUG: Hardcoded threshold of 40 instructions - may not be optimal
-    if total_instructions > 40 {
+
+    // Dynamic register allocation based on function complexity
+    // Use more registers for larger functions to reduce stack spills
+    if total_instructions > 100 {
+        // Large functions: use multiple callee-saved registers
         required.insert("x19");
         required.insert("x20");
+        required.insert("x21");
+        required.insert("x22");
+    } else if total_instructions > 50 {
+        // Medium functions: use a couple of registers
+        required.insert("x19");
+        required.insert("x20");
+    } else if total_instructions > 20 {
+        // Small functions: use one register if needed
+        required.insert("x19");
     }
+    // Very small functions (< 20 instructions) don't need additional callee-saved registers
+
     (required, false)
 }
 
@@ -160,7 +220,11 @@ fn precompute_function_layout<'a>(
     for block in func.basic_blocks.values() {
         for instr in &block.instructions {
             let result_info: Option<(&Identifier<'a>, u64)> = match instr {
-                Instruction::Alloc { result, allocated_ty, .. } => {
+                Instruction::Alloc {
+                    result,
+                    allocated_ty,
+                    ..
+                } => {
                     let (_, s) = get_type_size_directive_and_bytes(allocated_ty)?;
                     Some((result, s))
                 }
@@ -170,17 +234,31 @@ fn precompute_function_layout<'a>(
                         PrimitiveType::I64 | PrimitiveType::Ptr => 8,
                         PrimitiveType::Bool | PrimitiveType::I8 => 1,
                         PrimitiveType::F32 => 4,
-                        _ => return Err(LaminaError::CodegenError(format!("Unsupported type for stack allocation: {:?}", ty))),
+                        _ => {
+                            return Err(LaminaError::CodegenError(format!(
+                                "Unsupported type for stack allocation: {:?}",
+                                ty
+                            )));
+                        }
                     };
                     Some((result, s))
                 }
-                Instruction::ZeroExtend { result, target_type, .. } => {
+                Instruction::ZeroExtend {
+                    result,
+                    target_type,
+                    ..
+                } => {
                     let s = match target_type {
                         PrimitiveType::I32 => 4,
                         PrimitiveType::I64 | PrimitiveType::Ptr => 8,
                         PrimitiveType::Bool | PrimitiveType::I8 => 1,
                         PrimitiveType::F32 => 4,
-                        _ => return Err(LaminaError::CodegenError(format!("Unsupported target type for zero extension: {:?}", target_type))),
+                        _ => {
+                            return Err(LaminaError::CodegenError(format!(
+                                "Unsupported target type for zero extension: {:?}",
+                                target_type
+                            )));
+                        }
                     };
                     Some((result, s))
                 }
@@ -196,7 +274,9 @@ fn precompute_function_layout<'a>(
                     let (_, s) = get_type_size_directive_and_bytes(ty)?;
                     Some((result, s))
                 }
-                Instruction::Call { result: Some(res), .. } => Some((res, 8)),
+                Instruction::Call {
+                    result: Some(res), ..
+                } => Some((res, 8)),
                 _ => None,
             };
             if let Some((res, size)) = result_info {
@@ -208,11 +288,14 @@ fn precompute_function_layout<'a>(
     }
 
     let aligned_local = (local_size + 15) & !15;
-    // POTENTIAL BUG: Stack layout assumes 16-byte alignment but doesn't verify it
-    let mut current = -(16 + aligned_local as i64);
+    // Locals start at negative offset from frame pointer (which points to saved registers)
+    // Frame pointer is at SP after register allocation, so locals go below that
+    let mut current = -(aligned_local as i64);
     let locals_start = current;
     for (res, sz) in local_allocs {
-        func_ctx.value_locations.insert(res, ValueLocation::StackOffset(current));
+        func_ctx
+            .value_locations
+            .insert(res, ValueLocation::StackOffset(current));
         current += sz as i64;
     }
 
@@ -246,5 +329,3 @@ fn generate_basic_block<'a, W: Write>(
     }
     Ok(())
 }
-
-

@@ -1,6 +1,9 @@
-use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation, RETURN_REGISTER};
+use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, RETURN_REGISTER, ValueLocation};
 use super::util::{get_value_operand_asm, materialize_label_address};
-use crate::{AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, Literal, PrimitiveType, Result, Type, Value};
+use crate::{
+    AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, Literal, PrimitiveType,
+    Result, Type, Value,
+};
 use std::io::Write;
 
 pub fn generate_instruction<'a, W: Write>(
@@ -18,7 +21,9 @@ pub fn generate_instruction<'a, W: Write>(
             if let Some(val) = value {
                 let src = get_value_operand_asm(val, state, func_ctx)?;
                 match src.as_str() {
-                    s if s.starts_with('x') => writeln!(writer, "        mov {}, {}", RETURN_REGISTER, s)?,
+                    s if s.starts_with('x') => {
+                        writeln!(writer, "        mov {}, {}", RETURN_REGISTER, s)?
+                    }
                     s if s.starts_with("[x29,") => {
                         materialize_address_operand(writer, s, "x9")?;
                         writeln!(writer, "        ldr {}, [x9]", RETURN_REGISTER)?;
@@ -48,11 +53,18 @@ pub fn generate_instruction<'a, W: Write>(
                     materialize_to_reg(writer, &val, "x10")?;
                     writeln!(writer, "        strb w10, [x11]")?;
                 }
-                _ => return Err(LaminaError::CodegenError(format!("Store for type '{}' not implemented yet", ty))),
+                _ => {
+                    return Err(LaminaError::CodegenError(format!(
+                        "Store for type '{}' not implemented yet",
+                        ty
+                    )));
+                }
             }
         }
 
-        Instruction::Alloc { result, alloc_type, .. } => match alloc_type {
+        Instruction::Alloc {
+            result, alloc_type, ..
+        } => match alloc_type {
             AllocType::Stack => {
                 let result_loc = func_ctx.get_value_location(result)?;
                 if let ValueLocation::StackOffset(offset) = result_loc {
@@ -60,22 +72,39 @@ pub fn generate_instruction<'a, W: Write>(
                     materialize_address(writer, "x9", offset)?;
                     writeln!(writer, "        str x0, [x9]")?;
                 } else {
-                    return Err(LaminaError::CodegenError("Stack allocation result location invalid".to_string()));
+                    return Err(LaminaError::CodegenError(
+                        "Stack allocation result location invalid".to_string(),
+                    ));
                 }
             }
             AllocType::Heap => {
-                return Err(LaminaError::CodegenError("Heap allocation requires runtime/libc (malloc)".to_string()));
+                return Err(LaminaError::CodegenError(
+                    "Heap allocation requires runtime/libc (malloc)".to_string(),
+                ));
             }
         },
 
-        Instruction::Binary { op, result, ty, lhs, rhs } => {
+        Instruction::Binary {
+            op,
+            result,
+            ty,
+            lhs,
+            rhs,
+        } => {
             let lhs_op = get_value_operand_asm(lhs, state, func_ctx)?;
             let rhs_op = get_value_operand_asm(rhs, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             match ty {
                 PrimitiveType::I32 => binary_i32(writer, op, &lhs_op, &rhs_op, &dest)?,
-                PrimitiveType::I64 | PrimitiveType::Ptr => binary_i64(writer, op, &lhs_op, &rhs_op, &dest)?,
-                _ => return Err(LaminaError::CodegenError(format!("Binary op for type '{}' not supported yet", ty))),
+                PrimitiveType::I64 | PrimitiveType::Ptr => {
+                    binary_i64(writer, op, &lhs_op, &rhs_op, &dest)?
+                }
+                _ => {
+                    return Err(LaminaError::CodegenError(format!(
+                        "Binary op for type '{}' not supported yet",
+                        ty
+                    )));
+                }
             }
         }
 
@@ -96,11 +125,22 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(writer, "        ldr x10, [x11]")?;
                     store_to_location(writer, "x10", &dest)?;
                 }
-                _ => return Err(LaminaError::CodegenError(format!("Load for type '{}' not implemented yet", ty))),
+                _ => {
+                    return Err(LaminaError::CodegenError(format!(
+                        "Load for type '{}' not implemented yet",
+                        ty
+                    )));
+                }
             }
         }
 
-        Instruction::Cmp { op, result, ty: _, lhs, rhs } => {
+        Instruction::Cmp {
+            op,
+            result,
+            ty: _,
+            lhs,
+            rhs,
+        } => {
             let lhs_op = get_value_operand_asm(lhs, state, func_ctx)?;
             let rhs_op = get_value_operand_asm(rhs, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
@@ -125,7 +165,11 @@ pub fn generate_instruction<'a, W: Write>(
             }
         }
 
-        Instruction::Br { condition, true_label, false_label } => {
+        Instruction::Br {
+            condition,
+            true_label,
+            false_label,
+        } => {
             let cond = get_value_operand_asm(condition, state, func_ctx)?;
             let tlabel = func_ctx.get_block_label(true_label)?;
             let flabel = func_ctx.get_block_label(false_label)?;
@@ -134,7 +178,11 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        b {}", flabel)?;
         }
 
-        Instruction::Call { func_name, args, result } => {
+        Instruction::Call {
+            func_name,
+            args,
+            result,
+        } => {
             // BUG: Only handles register arguments, ignores stack arguments for calls with >8 args
             for (i, arg) in args.iter().enumerate().take(ARG_REGISTERS.len()) {
                 let op = get_value_operand_asm(arg, state, func_ctx)?;
@@ -153,13 +201,37 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        b {}", label)?;
         }
 
-        Instruction::GetElemPtr { result, array_ptr, index } => {
+        Instruction::GetElemPtr {
+            result,
+            array_ptr,
+            index,
+        } => {
             let base = get_value_operand_asm(array_ptr, state, func_ctx)?;
             let idx = get_value_operand_asm(index, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
+
+            // Calculate element size - for now use 8 bytes (i64/ptr) as default
+            // This should ideally be determined from the array type, but that information
+            // is not currently available in the instruction
+            let element_size = 8; // bytes
+            let shift_amount = match element_size {
+                1 => 0, // byte
+                2 => 1, // halfword
+                4 => 2, // word
+                8 => 3, // doubleword
+                16 => 4, // quadword
+                _ => {
+                    return Err(LaminaError::CodegenError(format!(
+                        "Unsupported element size: {} bytes", element_size
+                    )));
+                }
+            };
+
             materialize_to_reg(writer, &base, "x0")?;
             materialize_to_reg(writer, &idx, "x1")?;
-            writeln!(writer, "        lsl x1, x1, #3")?;
+            if shift_amount > 0 {
+                writeln!(writer, "        lsl x1, x1, #{}", shift_amount)?;
+            }
             writeln!(writer, "        add x0, x0, x1")?;
             store_to_location(writer, "x0", &dest)?;
         }
@@ -168,15 +240,15 @@ pub fn generate_instruction<'a, W: Write>(
             // Use printf with proper macOS ARM64 ABI compliance
             // Apple's ARM64 ABI requires variadic arguments to be passed on stack
             let fmt_label = state.add_rodata_string("%lld\n");
-            
+
             // FIXED: Ensure 16-byte stack alignment before function call (AAPCS64 requirement)
             // Allocate enough space to guarantee alignment (32 bytes to be safe)
-            writeln!(writer, "        sub sp, sp, #32")?;  // Allocate 32 bytes (guarantees 16-byte alignment)
-            
+            writeln!(writer, "        sub sp, sp, #32")?; // Allocate 32 bytes (guarantees 16-byte alignment)
+
             // Load format string into x0
             writeln!(writer, "        adrp x0, {}@PAGE", fmt_label)?;
             writeln!(writer, "        add x0, x0, {}@PAGEOFF", fmt_label)?;
-            
+
             // Load value into x1 and also store on stack (Apple ABI requirement)
             match value {
                 Value::Constant(literal) => {
@@ -192,10 +264,18 @@ pub fn generate_instruction<'a, W: Write>(
                                     let part = ((value >> shift) & 0xFFFF) as u16;
                                     if part != 0 || first {
                                         if first {
-                                            writeln!(writer, "        movz x1, #{}, lsl #{}", part, shift)?;
+                                            writeln!(
+                                                writer,
+                                                "        movz x1, #{}, lsl #{}",
+                                                part, shift
+                                            )?;
                                             first = false;
                                         } else {
-                                            writeln!(writer, "        movk x1, #{}, lsl #{}", part, shift)?;
+                                            writeln!(
+                                                writer,
+                                                "        movk x1, #{}, lsl #{}",
+                                                part, shift
+                                            )?;
                                         }
                                     }
                                 }
@@ -213,10 +293,18 @@ pub fn generate_instruction<'a, W: Write>(
                                     let part = ((value >> shift) & 0xFFFF) as u16;
                                     if part != 0 || first {
                                         if first {
-                                            writeln!(writer, "        movz x1, #{}, lsl #{}", part, shift)?;
+                                            writeln!(
+                                                writer,
+                                                "        movz x1, #{}, lsl #{}",
+                                                part, shift
+                                            )?;
                                             first = false;
                                         } else {
-                                            writeln!(writer, "        movk x1, #{}, lsl #{}", part, shift)?;
+                                            writeln!(
+                                                writer,
+                                                "        movk x1, #{}, lsl #{}",
+                                                part, shift
+                                            )?;
                                         }
                                     }
                                 }
@@ -236,7 +324,7 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(writer, "        str x1, [sp]")?;
                 }
             }
-            
+
             // Call printf
             writeln!(writer, "        bl _printf")?;
 
@@ -244,7 +332,12 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        add sp, sp, #32")?;
         }
 
-        Instruction::ZeroExtend { result, source_type, target_type, value } => {
+        Instruction::ZeroExtend {
+            result,
+            source_type,
+            target_type,
+            value,
+        } => {
             let src = get_value_operand_asm(value, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             match (source_type, target_type) {
@@ -263,12 +356,21 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(writer, "        mov x10, w10 // Zero-extend I32 to I64")?;
                     store_to_location(writer, "x10", &dest)?;
                 }
-                _ => return Err(LaminaError::CodegenError(format!("Unsupported zero extension: {} to {}", source_type, target_type))),
+                _ => {
+                    return Err(LaminaError::CodegenError(format!(
+                        "Unsupported zero extension: {} to {}",
+                        source_type, target_type
+                    )));
+                }
             }
         }
 
         _ => {
-            writeln!(writer, "        // Unimplemented instruction on aarch64: {}", instr)?;
+            writeln!(
+                writer,
+                "        // Unimplemented instruction on aarch64: {}",
+                instr
+            )?;
         }
     }
 
@@ -282,12 +384,17 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
         materialize_address_operand(writer, op, "x9")?;
         writeln!(writer, "        ldr {}, [x9]", dest)?;
     } else if let Some(imm) = op.strip_prefix('#') {
-        let value: u64 = imm.parse().map_err(|_| LaminaError::CodegenError("invalid immediate".into()))?;
+        let value: u64 = imm
+            .parse()
+            .map_err(|_| LaminaError::CodegenError("invalid immediate".into()))?;
         // FIXED: Validate immediate fits in destination register size
         if dest.starts_with('w') {
             // 32-bit register - validate fits in 32 bits and use simpler instruction if possible
             if value > u32::MAX as u64 {
-                return Err(LaminaError::CodegenError(format!("immediate value {} too large for 32-bit register {}", value, dest)));
+                return Err(LaminaError::CodegenError(format!(
+                    "immediate value {} too large for 32-bit register {}",
+                    value, dest
+                )));
             }
             if value <= 0xFFFF {
                 // Simple mov for small values
@@ -324,7 +431,9 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
         }
     } else if op.ends_with("(adrp+add)") {
         let label = op.trim_end_matches("(adrp+add)");
-        for line in materialize_label_address(dest, label) { writeln!(writer, "{}", line)?; }
+        for line in materialize_label_address(dest, label) {
+            writeln!(writer, "{}", line)?;
+        }
     } else {
         // Fallback try mov
         writeln!(writer, "        mov {}, {}", dest, op)?;
@@ -341,10 +450,15 @@ fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -
     }
     if op.ends_with("(adrp+add)") {
         let label = op.trim_end_matches("(adrp+add)");
-        for line in materialize_label_address(dest, label) { writeln!(writer, "{}", line)?; }
+        for line in materialize_label_address(dest, label) {
+            writeln!(writer, "{}", line)?;
+        }
         return Ok(());
     }
-    Err(LaminaError::CodegenError(format!("Unsupported address operand: {}", op)))
+    Err(LaminaError::CodegenError(format!(
+        "Unsupported address operand: {}",
+        op
+    )))
 }
 
 fn materialize_address<W: Write>(writer: &mut W, dest: &str, offset: i64) -> Result<()> {
@@ -369,12 +483,21 @@ fn store_to_location<W: Write>(writer: &mut W, src_reg: &str, dest: &str) -> Res
         materialize_address_operand(writer, dest, "x9")?;
         writeln!(writer, "        str {}, [x9]", src_reg)?;
     } else {
-        return Err(LaminaError::CodegenError(format!("Unsupported destination location: {}", dest)));
+        return Err(LaminaError::CodegenError(format!(
+            "Unsupported destination location: {}",
+            dest
+        )));
     }
     Ok(())
 }
 
-fn binary_i32<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, dest: &str) -> Result<()> {
+fn binary_i32<W: Write>(
+    writer: &mut W,
+    op: &BinaryOp,
+    lhs: &str,
+    rhs: &str,
+    dest: &str,
+) -> Result<()> {
     materialize_to_reg(writer, lhs, "x10")?;
     materialize_to_reg(writer, rhs, "x11")?;
     match op {
@@ -393,7 +516,13 @@ fn binary_i32<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, des
     Ok(())
 }
 
-fn binary_i64<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, dest: &str) -> Result<()> {
+fn binary_i64<W: Write>(
+    writer: &mut W,
+    op: &BinaryOp,
+    lhs: &str,
+    rhs: &str,
+    dest: &str,
+) -> Result<()> {
     materialize_to_reg(writer, lhs, "x10")?;
     materialize_to_reg(writer, rhs, "x11")?;
     match op {
@@ -410,5 +539,3 @@ fn binary_i64<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, des
     }
     Ok(())
 }
-
-

@@ -249,26 +249,28 @@ pub fn generate_instruction<'a, W: Write>(
             if *op == BinaryOp::Mul && is_constant_rhs {
                 // Check if RHS is power of 2
                 if let Ok(rhs_val) = rhs_op.trim_start_matches('$').parse::<i64>()
-                    && rhs_val > 0 && (rhs_val & (rhs_val - 1)) == 0 {
-                        // It's a power of 2, convert to shift
-                        let shift_amount = rhs_val.trailing_zeros();
-                        writeln!(
-                            writer,
-                            "        {} {}, %rax # Load value for shift",
-                            mov_instr, lhs_op
-                        )?;
-                        writeln!(
-                            writer,
-                            "        shl{} ${}, %rax # Shift instead of multiply by power of 2",
-                            op_mnemonic, shift_amount
-                        )?;
-                        writeln!(
-                            writer,
-                            "        {} %rax, {} # Store Result",
-                            mov_instr, dest_asm
-                        )?;
-                        return Ok(());
-                    }
+                    && rhs_val > 0
+                    && (rhs_val & (rhs_val - 1)) == 0
+                {
+                    // It's a power of 2, convert to shift
+                    let shift_amount = rhs_val.trailing_zeros();
+                    writeln!(
+                        writer,
+                        "        {} {}, %rax # Load value for shift",
+                        mov_instr, lhs_op
+                    )?;
+                    writeln!(
+                        writer,
+                        "        shl{} ${}, %rax # Shift instead of multiply by power of 2",
+                        op_mnemonic, shift_amount
+                    )?;
+                    writeln!(
+                        writer,
+                        "        {} %rax, {} # Store Result",
+                        mov_instr, dest_asm
+                    )?;
+                    return Ok(());
+                }
             }
 
             // Regular path for operations not handled by special cases

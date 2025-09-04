@@ -46,15 +46,19 @@ pub fn generate_global_data_section<'a, W: Write>(
             let asm_label = format!("global_{}", name);
             state.global_layout.insert(name, asm_label.clone());
             let (_, size_bytes) = get_type_size_directive_and_bytes(&global.ty)?;
-            // POTENTIAL BUG: Hardcoded alignment of 8 bytes - may not be optimal for all types
-            writeln!(writer, ".comm {},{},8", asm_label, size_bytes)?;
+            // Calculate proper alignment based on type
+            let alignment = crate::codegen::common::utils::get_type_alignment(&global.ty)?;
+            writeln!(writer, ".comm {},{},{}", asm_label, size_bytes, alignment)?;
         }
     }
 
     Ok(())
 }
 
-fn generate_global_initializer<W: Write>(writer: &mut W, global: &GlobalDeclaration<'_>) -> Result<()> {
+fn generate_global_initializer<W: Write>(
+    writer: &mut W,
+    global: &GlobalDeclaration<'_>,
+) -> Result<()> {
     if let Some(ref initializer) = global.initializer {
         match initializer {
             Value::Constant(literal) => match literal {
@@ -67,12 +71,19 @@ fn generate_global_initializer<W: Write>(writer: &mut W, global: &GlobalDeclarat
                 Literal::Bool(v) => writeln!(writer, "    .byte {}", if *v { 1 } else { 0 })?,
                 Literal::String(s) => {
                     // GAS-compatible .string
-                    writeln!(writer, "    .string \"{}\"", crate::codegen::common::utils::escape_asm_string(s))?;
+                    writeln!(
+                        writer,
+                        "    .string \"{}\"",
+                        crate::codegen::common::utils::escape_asm_string(s)
+                    )?;
                 }
                 Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
-                _ => return Err(LaminaError::CodegenError(
-                    format!("Unsupported literal type in global initializer: {:?}", literal)
-                ))
+                _ => {
+                    return Err(LaminaError::CodegenError(format!(
+                        "Unsupported literal type in global initializer: {:?}",
+                        literal
+                    )));
+                }
             },
             Value::Global(_) => {
                 return Err(LaminaError::CodegenError(
@@ -96,7 +107,7 @@ fn generate_global_initializer<W: Write>(writer: &mut W, global: &GlobalDeclarat
 pub fn generate_globals<W: Write>(state: &CodegenState, writer: &mut W) -> Result<()> {
     if !state.rodata_strings.is_empty() {
         // Use Mach-O compatible section directive for AArch64
-        // FEAT:TODO: Support other Host platform using AArch64 like linux / Windows 
+        // FEAT:TODO: Support other Host platform using AArch64 like linux / Windows
         writeln!(writer, "\n.section __TEXT,__cstring,cstring_literals")?;
         for (label, content) in &state.rodata_strings {
             let escaped = crate::codegen::common::utils::escape_asm_string(content);
@@ -105,7 +116,3 @@ pub fn generate_globals<W: Write>(state: &CodegenState, writer: &mut W) -> Resul
     }
     Ok(())
 }
-
-
-
-

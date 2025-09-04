@@ -29,12 +29,12 @@ pub const HOST_ARCH_LIST: &[&str] = &[
 /// Detect the host system's architecture.
 ///
 /// Returns a string representing the detected architecture and host system: "x86_64" or "aarch64".
-/// 
+///
 /// Target List:
 /// x86_64_unknown
 /// x86_64_linux
 /// x86_64_windows
-/// x86_64_macos - since Intel mac is heading to a end, it's not supported as much as aarch64 
+/// x86_64_macos - since Intel mac is heading to a end, it's not supported as much as aarch64
 /// aarch64_unknown
 /// aarch64_macos
 ///
@@ -63,7 +63,7 @@ pub fn detect_host_architecture() -> &'static str {
     {
         #[cfg(target_os = "macos")]
         {
-            return "aarch64_macos"
+            return "aarch64_macos";
         }
         #[cfg(target_os = "linux")]
         {

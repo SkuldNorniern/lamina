@@ -1,0 +1,19 @@
+# Test memory operations and variable isolation
+fn @main() -> i64 {
+  entry:
+    %a = add.i64 100, 0
+    %b = add.i64 200, 0
+    %c = add.i64 300, 0
+    %d = add.i64 400, 0
+    %e = add.i64 500, 0
+    
+    # Test that variables maintain their values
+    print %a  # Should always be 100
+    print %b  # Should always be 200
+    print %c  # Should always be 300
+    print %d  # Should always be 400
+    print %e  # Should always be 500
+    
+    ret.i64 0
+}
+
