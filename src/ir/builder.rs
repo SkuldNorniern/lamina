@@ -28,6 +28,8 @@ use super::types::{Literal, PrimitiveType, Type, Value};
 /// ## Example
 ///
 /// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, FunctionParameter, BinaryOp, var};
+///
 /// let mut builder = IRBuilder::new();
 ///
 /// // Create a function that adds two numbers
@@ -126,6 +128,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// builder.function("main", Type::Void);
     /// ```
     pub fn function(&mut self, name: &'a str, return_type: Type<'a>) -> &mut Self {
@@ -144,6 +149,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, PrimitiveType, FunctionParameter};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// builder.function_with_params(
     ///     "add",
     ///     vec![
@@ -186,6 +194,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, FunctionAnnotation};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// builder
     ///     .function("fast_func", Type::Void)
     ///     .annotate(FunctionAnnotation::Inline);
@@ -210,6 +221,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, var};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// builder
     ///     .function("condition", Type::Void)
     ///     .branch(var("cond"), "then_block", "else_block")
@@ -236,6 +250,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// builder
     ///     .function("custom_entry", Type::Void)
     ///     .block("setup")
@@ -279,6 +296,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, PrimitiveType};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Allocate an i32 on the stack
     /// builder.alloc_stack("ptr", Type::Primitive(PrimitiveType::I32));
     /// ```
@@ -302,6 +322,10 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, PrimitiveType};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// let struct_type = Type::Primitive(PrimitiveType::I32); // Example type
     /// // Allocate a struct on the heap
     /// builder.alloc_heap("obj_ptr", struct_type);
     /// ```
@@ -322,6 +346,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Store 42 into ptr
     /// builder.store(
     ///     Type::Primitive(PrimitiveType::I32),
@@ -346,6 +373,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, PrimitiveType, var};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Load an i32 from ptr
     /// builder.load("val", Type::Primitive(PrimitiveType::I32), var("ptr"));
     /// ```
@@ -364,6 +394,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, BinaryOp, PrimitiveType, var};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Compute x + y
     /// builder.binary(
     ///     BinaryOp::Add,
@@ -403,6 +436,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, CmpOp, PrimitiveType, var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Check if x < 10
     /// builder.cmp(
     ///     CmpOp::Lt,
@@ -440,6 +476,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, CmpOp, PrimitiveType, var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Branch based on comparison result
     /// builder
     ///     .cmp(CmpOp::Lt, "is_neg", PrimitiveType::I32, var("x"), i32(0))
@@ -467,6 +506,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::IRBuilder;
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Jump to the "end" block
     /// builder.jump("end");
     /// ```
@@ -486,6 +528,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, PrimitiveType, var};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Return the computed result
     /// builder.ret(Type::Primitive(PrimitiveType::I32), var("result"));
     /// ```
@@ -503,6 +548,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::IRBuilder;
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Return from a void function
     /// builder.ret_void();
     /// ```
@@ -526,6 +574,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, PrimitiveType, var};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Extend an i32 to i64
     /// builder.zext(
     ///     "extended",
@@ -560,6 +611,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Get pointer to the third element (index 2)
     /// builder.getelementptr("elem_ptr", var("array_ptr"), i32(2));
     /// ```
@@ -588,6 +642,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, var};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Get pointer to the second field (index 1)
     /// builder.struct_gep("field_ptr", var("struct_ptr"), 1);
     /// ```
@@ -613,6 +670,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, var, string};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Call a function that returns a value
     /// builder.call(
     ///     Some("result"),
@@ -645,6 +705,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, var};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Print the value of x
     /// builder.print(var("x"));
     /// ```
@@ -660,6 +723,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, i32, bool};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Create a tuple of (42, true)
     /// builder.tuple("my_tuple", vec![i32(42), bool(true)]);
     /// ```
@@ -676,6 +742,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, var};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Extract the first element (index 0) from a tuple
     /// builder.extract_tuple("first", var("my_tuple"), 0);
     /// ```
@@ -701,6 +770,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, var};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Free previously allocated memory
     /// builder.dealloc(var("heap_ptr"));
     /// ```
@@ -720,6 +792,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Merge values from two blocks
     /// builder.phi(
     ///     "merged",
@@ -759,6 +834,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::IRBuilder;
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Add all functions and instructions...
     /// let module = builder.build();
     /// // Use the module for analysis, code generation, etc.
@@ -824,6 +902,9 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
+    /// use lamina::{IRBuilder, Type, PrimitiveType, FunctionParameter};
+    ///
+    /// let mut builder = IRBuilder::new();
     /// // Declare printf from libc
     /// builder.external_function(
     ///     "printf",
