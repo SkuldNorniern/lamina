@@ -1,0 +1,131 @@
+# Test pointer operations: getelementptr and struct_gep
+
+# Test array element access with getelementptr
+fn @test_array_access() -> i64 {
+  entry:
+    # Allocate array of 5 i64 elements
+    %arr = alloc.stack [5 x i64]
+
+    # Store values in array elements
+    %elem0_ptr = getelementptr %arr, 0
+    %elem1_ptr = getelementptr %arr, 1
+    %elem2_ptr = getelementptr %arr, 2
+    %elem3_ptr = getelementptr %arr, 3
+    %elem4_ptr = getelementptr %arr, 4
+
+    store i64 %elem0_ptr, 10
+    store i64 %elem1_ptr, 20
+    store i64 %elem2_ptr, 30
+    store i64 %elem3_ptr, 40
+    store i64 %elem4_ptr, 50
+
+    # Load and sum specific elements
+    %val1 = load i64 %elem1_ptr  # 20
+    %val3 = load i64 %elem3_ptr  # 40
+    %sum = add.i64 %val1, %val3  # 60
+
+    ret.i64 %sum
+}
+
+# Define a struct type for testing
+type @Point = struct { x: i64, y: i64, z: i64 }
+type @Person = struct { name: [10 x i8], age: i32, height: i64 }
+
+# Test struct field access with struct_gep
+fn @test_struct_access() -> i64 {
+  entry:
+    # Allocate a Point struct
+    %point = alloc.stack struct { x: i64, y: i64, z: i64 }
+
+    # Get pointers to struct fields
+    %x_ptr = struct_gep %point, 0  # x field
+    %y_ptr = struct_gep %point, 1  # y field
+    %z_ptr = struct_gep %point, 2  # z field
+
+    # Store coordinates
+    store i64 %x_ptr, 100
+    store i64 %y_ptr, 200
+    store i64 %z_ptr, 300
+
+    # Load and compute Manhattan distance from origin
+    %x_val = load i64 %x_ptr
+    %y_val = load i64 %y_ptr
+    %z_val = load i64 %z_ptr
+
+    %xy_sum = add.i64 %x_val, %y_val
+    %distance = add.i64 %xy_sum, %z_val
+
+    ret.i64 %distance
+}
+
+# Test complex struct with different field types
+fn @test_complex_struct() -> i64 {
+  entry:
+    # Allocate a Person struct
+    %person = alloc.stack struct { name: [10 x i8], age: i32, height: i64 }
+
+    # Access name field (array within struct)
+    %name_ptr = struct_gep %person, 0
+    %name_elem_ptr = getelementptr %name_ptr, 0
+    store i8 %name_elem_ptr, 65  # 'A'
+
+    # Access age field
+    %age_ptr = struct_gep %person, 1
+    store i32 %age_ptr, 25
+
+    # Access height field
+    %height_ptr = struct_gep %person, 2
+    store i64 %height_ptr, 175
+
+    # Load and return age + height
+    %age_val = load i32 %age_ptr
+    %height_val = load i64 %height_ptr
+    %age_extended = zext i32 i64 %age_val
+    %result = add.i64 %age_extended, %height_val
+
+    ret.i64 %result
+}
+
+# Test pointer arithmetic on heap-allocated arrays
+fn @test_heap_array_operations() -> i64 {
+  entry:
+    # Allocate array on heap
+    %heap_arr = alloc.heap [3 x i64]
+
+    # Access elements
+    %elem0 = getelementptr %heap_arr, 0
+    %elem1 = getelementptr %heap_arr, 1
+    %elem2 = getelementptr %heap_arr, 2
+
+    store i64 %elem0, 1
+    store i64 %elem1, 2
+    store i64 %elem2, 3
+
+    # Compute sum
+    %val0 = load i64 %elem0
+    %val1 = load i64 %elem1
+    %val2 = load i64 %elem2
+
+    %sum1 = add.i64 %val0, %val1
+    %total = add.i64 %sum1, %val2
+
+    # TODO: Clean up heap allocation
+    # dealloc %heap_arr
+
+    ret.i64 %total
+}
+
+fn @main() -> i64 {
+  entry:
+    %array_result = call @test_array_access()         # Should return 60 (20 + 40)
+    %struct_result = call @test_struct_access()       # Should return 600 (100 + 200 + 300)
+    %complex_result = call @test_complex_struct()     # Should return 200 (25 + 175)
+    %heap_result = call @test_heap_array_operations() # Should return 6 (1 + 2 + 3)
+
+    print %array_result
+    print %struct_result
+    print %complex_result
+    print %heap_result
+
+    ret.i64 0
+}
