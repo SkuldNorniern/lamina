@@ -290,6 +290,7 @@ fn @main() -> i64 {
 - JIT Compilation: Dynamic code execution support
 - Debugging Tools: Enhanced debugging information and tooling
 - Performance Improvements: Advanced optimization passes
+- GPU Acceleration: support for generating code targeting GPU architectures (e.g., CUDA, Vulkan compute shaders) to enable parallel execution of compute-intensive workloads
 
 
 
