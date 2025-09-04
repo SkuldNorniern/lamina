@@ -566,22 +566,21 @@ fn precompute_function_layout<'a>(
     }
 
     // 4. Assign stack offsets for locals, starting below the saved callee registers
-    // Ensure offsets are properly aligned to 16-byte boundary
-    let aligned_local_size = (local_size + 15) & !15; // Round up to 16-byte multiple
-    current_stack_offset = -(saved_callee_regs_size + 8 + aligned_local_size as i64); // +8 for saved rbp
-    let local_start_offset = current_stack_offset;
+    // Start allocating from -8 (below saved rbp), then go more negative for each variable
+    current_stack_offset = -(saved_callee_regs_size + 8); // Start below saved rbp
+    let _local_start_offset = current_stack_offset;
 
     // Assign offsets to local values based on the aligned layout
     for (result, aligned_size) in local_allocations {
         func_ctx
             .value_locations
             .insert(result, ValueLocation::StackOffset(current_stack_offset));
-        current_stack_offset += aligned_size as i64; // Move offset *up* towards -saved_callee_regs_size
+        current_stack_offset -= aligned_size as i64; // Move offset *down* (more negative) for next variable
     }
 
-    // Reset offset to start allocating spill slots below locals
-    // Ensure we maintain proper alignment for spill slots
-    current_stack_offset = (local_start_offset / 16) * 16; // Re-align to 16-byte boundary
+    // Continue allocating spill slots below the locals we just allocated
+    // current_stack_offset is already at the bottom of the locals, so continue from there
+    // No need to reset - we want to allocate spills below the locals
 
     // 5. Allocate stack spill slots for register parameters and record them
     for (param_name, initial_location) in temp_param_locations {
@@ -612,9 +611,10 @@ fn precompute_function_layout<'a>(
         }
     }
 
-    // Ensure final stack size is 16-byte aligned
-    let unaligned_stack_size = -current_stack_offset as u64;
-    func_ctx.total_stack_size = (unaligned_stack_size + 15) & !15;
+    // Calculate total stack size: from saved rbp to bottom of allocated space
+    // current_stack_offset is now at the bottom of all allocated space (locals + spills)
+    let total_allocated = -current_stack_offset as u64;
+    func_ctx.total_stack_size = (total_allocated + 15) & !15; // 16-byte align
 
     Ok(())
 }
