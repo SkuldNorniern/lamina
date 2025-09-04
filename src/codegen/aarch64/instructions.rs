@@ -1,6 +1,6 @@
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, RETURN_REGISTER, ValueLocation};
-use crate::codegen::{CodegenError, TypeInfo, ExtensionInfo};
 use super::util::{get_value_operand_asm, materialize_label_address};
+use crate::codegen::{CodegenError, ExtensionInfo, TypeInfo};
 use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, Literal, PrimitiveType,
     Result, Type, Value,
@@ -56,7 +56,7 @@ pub fn generate_instruction<'a, W: Write>(
                 }
                 _ => {
                     return Err(LaminaError::CodegenError(
-                        CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string()))
+                        CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
                     ));
                 }
             }
@@ -101,7 +101,7 @@ pub fn generate_instruction<'a, W: Write>(
                 }
                 _ => {
                     return Err(LaminaError::CodegenError(
-                        CodegenError::BinaryOpNotSupportedForType(TypeInfo::Primitive(*ty))
+                        CodegenError::BinaryOpNotSupportedForType(TypeInfo::Primitive(*ty)),
                     ));
                 }
             }
@@ -126,7 +126,7 @@ pub fn generate_instruction<'a, W: Write>(
                 }
                 _ => {
                     return Err(LaminaError::CodegenError(
-                        CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string()))
+                        CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
                     ));
                 }
             }
@@ -213,15 +213,13 @@ pub fn generate_instruction<'a, W: Write>(
             // is not currently available in the instruction
             let element_size = 8; // bytes
             let shift_amount = match element_size {
-                1 => 0, // byte
-                2 => 1, // halfword
-                4 => 2, // word
-                8 => 3, // doubleword
+                1 => 0,  // byte
+                2 => 1,  // halfword
+                4 => 2,  // word
+                8 => 3,  // doubleword
                 16 => 4, // quadword
                 _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::InternalError
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::InternalError));
                 }
             };
 
@@ -260,7 +258,10 @@ pub fn generate_instruction<'a, W: Write>(
                 }
                 _ => {
                     return Err(LaminaError::CodegenError(
-                        CodegenError::ZeroExtensionNotSupported(ExtensionInfo::Custom(format!("{} to {}", source_type, target_type)))
+                        CodegenError::ZeroExtensionNotSupported(ExtensionInfo::Custom(format!(
+                            "{} to {}",
+                            source_type, target_type
+                        ))),
                     ));
                 }
             }
@@ -362,7 +363,6 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        add sp, sp, #32")?;
         }
 
-
         _ => {
             writeln!(
                 writer,
@@ -390,7 +390,7 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
             // 32-bit register - validate fits in 32 bits and use simpler instruction if possible
             if value > u32::MAX as u64 {
                 return Err(LaminaError::CodegenError(
-                    CodegenError::InvalidImmediateValue
+                    CodegenError::InvalidImmediateValue,
                 ));
             }
             if value <= 0xFFFF {
@@ -452,9 +452,7 @@ fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -
         }
         return Ok(());
     }
-    Err(LaminaError::CodegenError(
-        CodegenError::InternalError
-    ))
+    Err(LaminaError::CodegenError(CodegenError::InternalError))
 }
 
 fn materialize_address<W: Write>(writer: &mut W, dest: &str, offset: i64) -> Result<()> {
@@ -479,9 +477,7 @@ fn store_to_location<W: Write>(writer: &mut W, src_reg: &str, dest: &str) -> Res
         materialize_address_operand(writer, dest, "x9")?;
         writeln!(writer, "        str {}, [x9]", src_reg)?;
     } else {
-        return Err(LaminaError::CodegenError(
-            CodegenError::InternalError
-        ));
+        return Err(LaminaError::CodegenError(CodegenError::InternalError));
     }
     Ok(())
 }

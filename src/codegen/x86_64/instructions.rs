@@ -1,6 +1,6 @@
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_value_operand_asm;
-use crate::codegen::{CodegenError, TypeInfo, ExtensionInfo};
+use crate::codegen::{CodegenError, ExtensionInfo, TypeInfo};
 use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType,
     Result, /*Identifier*/
@@ -75,7 +75,7 @@ pub fn generate_instruction<'a, W: Write>(
                 }
                 _ => {
                     return Err(LaminaError::CodegenError(
-                        CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string()))
+                        CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
                     ));
                 }
             }
@@ -135,7 +135,7 @@ pub fn generate_instruction<'a, W: Write>(
                 PrimitiveType::F64 => ("sd", "", "movsd", "divsd"),
                 _ => {
                     return Err(LaminaError::CodegenError(
-                        CodegenError::BinaryOpNotSupportedForType(TypeInfo::Primitive(*ty))
+                        CodegenError::BinaryOpNotSupportedForType(TypeInfo::Primitive(*ty)),
                     ));
                 }
             };
@@ -354,7 +354,7 @@ pub fn generate_instruction<'a, W: Write>(
                 Type::Primitive(PrimitiveType::Bool) => ("movzbq", "%r10"), // Zero-extend byte to quad
                 _ => {
                     return Err(LaminaError::CodegenError(
-                        CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string()))
+                        CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
                     ));
                 }
             };
@@ -835,7 +835,10 @@ pub fn generate_instruction<'a, W: Write>(
                 }
                 _ => {
                     return Err(LaminaError::CodegenError(
-                        CodegenError::ZeroExtensionNotSupported(ExtensionInfo::Custom(format!("{} to {}", source_type, target_type)))
+                        CodegenError::ZeroExtensionNotSupported(ExtensionInfo::Custom(format!(
+                            "{} to {}",
+                            source_type, target_type
+                        ))),
                     ));
                 }
             }
