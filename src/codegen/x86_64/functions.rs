@@ -3,7 +3,7 @@ use super::register_allocator::{AllocationResult, GraphColoringAllocator};
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_type_size_directive_and_bytes;
 use crate::{
-    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type,
+    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType, Result, Type,
     Value,
 };
 use std::collections::HashSet;
@@ -70,7 +70,8 @@ fn generate_function_with_allocation<'a, W: Write>(
 ) -> Result<()> {
     // Determine assembly label
     let is_exported = func.annotations.contains(&FunctionAnnotation::Export);
-    let asm_label = if is_exported && func_name == "main" {
+    let is_main = func_name == "main";
+    let asm_label = if is_main {
         "main".to_string() // Special case for C runtime entry point
     } else {
         format!("func_{}", func_name)
@@ -93,7 +94,7 @@ fn generate_function_with_allocation<'a, W: Write>(
         "\n# Function: @{} (Graph Coloring Optimized)",
         func_name
     )?;
-    if is_exported {
+    if is_exported || is_main {
         writeln!(writer, ".globl {}", asm_label)?;
     }
     writeln!(writer, ".type {}, @function", asm_label)?;
@@ -213,7 +214,8 @@ pub fn generate_function<'a, W: Write>(
 ) -> Result<()> {
     // Determine assembly label
     let is_exported = func.annotations.contains(&FunctionAnnotation::Export);
-    let asm_label = if is_exported && func_name == "main" {
+    let is_main = func_name == "main";
+    let asm_label = if is_main {
         "main".to_string() // Special case for C runtime entry point
     } else {
         format!("func_{}", func_name)
@@ -233,7 +235,7 @@ pub fn generate_function<'a, W: Write>(
 
     // Function Prologue
     writeln!(writer, "\n# Function: @{}", func_name)?;
-    if is_exported {
+    if is_exported || is_main {
         writeln!(writer, ".globl {}", asm_label)?;
     }
     writeln!(writer, ".type {}, @function", asm_label)?;
@@ -589,7 +591,9 @@ fn precompute_function_layout<'a>(
                 .params
                 .iter()
                 .find(|p| p.name == param_name)
-                .unwrap(); // Find param to get type
+                .ok_or_else(|| LaminaError::CodegenError(
+                    format!("Parameter '{}' not found in function signature", param_name)
+                ))?; // Find param to get type
             let (_, size) = get_type_size_directive_and_bytes(&param_sig.ty)?;
             let aligned_size = (size + 7) & !7;
             current_stack_offset -= aligned_size as i64; // Allocate space below locals/previous spills
@@ -1731,9 +1735,10 @@ mod tests {
         );
 
         // Check that entry block is first
-        let entry_pos = first_entry.unwrap();
-        let base_case_pos = first_base_case.unwrap();
-        let recursive_step_pos = first_recursive_step.unwrap();
+        // Safe to unwrap because we asserted these are Some above
+        let entry_pos = first_entry.expect("Entry block position should be available");
+        let base_case_pos = first_base_case.expect("Base case block position should be available");
+        let recursive_step_pos = first_recursive_step.expect("Recursive step block position should be available");
 
         // Entry should come before both others
         assert!(
