@@ -7,6 +7,12 @@ pub const ARG_REGISTERS: [&str; 8] = ["x0", "x1", "x2", "x3", "x4", "x5", "x6", 
 // AArch64 return register for integer/pointer
 pub const RETURN_REGISTER: &str = "x0";
 
+// AArch64 callee-saved registers that may need to be preserved
+pub const CALLEE_SAVED_REGISTERS: [&str; 12] = ["x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30"];
+
+// Size of each register in bytes (all x registers are 64-bit = 8 bytes)
+pub const REGISTER_SIZE: i64 = 8;
+
 // Represents the location of an IR value in generated code
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ValueLocation {
@@ -35,6 +41,7 @@ pub struct FunctionContext<'a> {
     pub total_stack_size: u64,
     pub current_stack_offset: i64,
     pub epilogue_label: String,
+    pub callee_saved_regs: Vec<&'static str>, // Track which registers need to be saved
 }
 
 impl<'a> FunctionContext<'a> {
@@ -44,10 +51,19 @@ impl<'a> FunctionContext<'a> {
             block_labels: HashMap::new(),
             arg_register_spills: HashMap::new(),
             total_stack_size: 0,
-            // POTENTIAL BUG: Hardcoded -16 offset assumes FP/LR pair size
-            current_stack_offset: -16,
+            current_stack_offset: 0, // Will be calculated later based on callee-saved regs
             epilogue_label: String::new(),
+            callee_saved_regs: Vec::new(),
         }
+    }
+
+    /// Calculate the initial stack offset based on callee-saved registers that need preservation
+    pub fn calculate_initial_stack_offset(&mut self) {
+        // Register save space is handled in prologue with 16-byte alignment
+        // Frame pointer points to saved registers, so locals start at 0 offset initially
+        let reg_save_space = (2 + self.callee_saved_regs.len()) as i64 * REGISTER_SIZE;
+        let aligned_reg_space = (reg_save_space + 15) & !15;
+        self.current_stack_offset = -aligned_reg_space;
     }
 
     pub fn get_value_location(&self, name: Identifier<'a>) -> Result<ValueLocation> {
