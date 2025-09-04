@@ -13,3 +13,4 @@ fn @main() -> i64 {
     print %e  # 50
     ret.i64 0
 }
+

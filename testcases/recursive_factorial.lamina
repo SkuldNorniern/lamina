@@ -1,0 +1,32 @@
+# Test recursive factorial with different inputs
+fn @factorial(i64 %n) -> i64 {
+  entry:
+    %is_zero = eq.i64 %n, 0
+    br %is_zero, base_case, recursive_case
+
+  base_case:
+    ret.i64 1
+
+  recursive_case:
+    %n_minus_1 = sub.i64 %n, 1
+    %factorial_n_minus_1 = call @factorial(%n_minus_1)
+    %result = mul.i64 %n, %factorial_n_minus_1
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %result1 = call @factorial(0)  # Should be 1
+    %result2 = call @factorial(1)  # Should be 1
+    %result3 = call @factorial(2)  # Should be 2
+    %result4 = call @factorial(3)  # Should be 6
+    %result5 = call @factorial(4)  # Should be 24
+    
+    print %result1
+    print %result2
+    print %result3
+    print %result4
+    print %result5
+    ret.i64 0
+}
+
