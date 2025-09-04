@@ -1,0 +1,60 @@
+# Test heap memory allocation and deallocation
+fn @test_heap_allocation() -> i64 {
+  entry:
+    # Allocate memory on heap
+    %heap_ptr = alloc.heap i32
+    %value = add.i32 42, 0
+
+    # Store value in heap memory
+    store.i32 %heap_ptr, %value
+
+    # Load value back from heap
+    %loaded = load.i32 %heap_ptr
+
+    # Use the loaded value
+    %result = add.i32 %loaded, 8
+
+    # TODO: Always deallocate heap memory
+    # dealloc %heap_ptr
+
+    ret.i64 %result
+}
+
+fn @test_multiple_heap_allocations() -> i64 {
+  entry:
+    # Allocate multiple heap objects
+    %ptr1 = alloc.heap i64
+    %ptr2 = alloc.heap i64
+    %ptr3 = alloc.heap i64
+
+    # Store different values
+    store.i64 %ptr1, 100
+    store.i64 %ptr2, 200
+    store.i64 %ptr3, 300
+
+    # Load and compute
+    %val1 = load.i64 %ptr1
+    %val2 = load.i64 %ptr2
+    %val3 = load.i64 %ptr3
+
+    %sum1 = add.i64 %val1, %val2
+    %total = add.i64 %sum1, %val3
+
+    # TODO: Clean up all allocations
+    # dealloc %ptr1
+    # dealloc %ptr2
+    # dealloc %ptr3
+
+    ret.i64 %total
+}
+
+fn @main() -> i64 {
+  entry:
+    %result1 = call @test_heap_allocation()  # Should return 50 (42 + 8)
+    %result2 = call @test_multiple_heap_allocations()  # Should return 600 (100 + 200 + 300)
+
+    print %result1
+    print %result2
+
+    ret.i64 0
+}

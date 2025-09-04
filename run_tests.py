@@ -40,6 +40,20 @@ TEST_CASES = {
     'recursive_sum.lamina': ['0', '1', '3', '6', '10', '15'],  # Sum from 1 to n
     'recursion_with_calculation.lamina': ['6'],  # Simple factorial calculation
     'stack_overflow_test.lamina': ['42'],  # Stack overflow protection
+
+    # Memory Management Tests (Note: heap allocation requires runtime support)
+     'heap_memory.lamina': ['50', '600'],  # heap allocation/deallocation tests - requires malloc
+     'stack_allocation.lamina': ['50', '90', '300'],  # stack allocation tests - requires malloc for heap parts
+     'load_store_operations.lamina': ['1', '75', '301', '1000', '150', '10'],  # load/store operations - requires malloc
+
+    # Advanced Tests (Note: Some require additional implementation)
+     'pointer_operations.lamina': ['60', '600', '200', '6'],  # getelementptr and getfieldptr - requires heap support
+     'struct_operations.lamina': ['500', '1000', '100', '10', '275'],  # struct operations - requires struct size calculation
+     'tuple_operations.lamina': ['43', '175', '5', '151', '60'],  # tuple operations - requires tuple implementation
+     'type_conversion.lamina': ['100', '60', '1', '1', '1', '1', '50'],  # zero extension - requires proper type system
+     'advanced_control_flow.lamina': ['100', '1000', '100', '10', '1', '0', '2', '10', '1100', '101', '84', '48'],  # phi nodes - requires SSA implementation
+     'external_functions.lamina': ['60', '100', '17', '123', '50'],  # external functions - requires linking support
+     'debug_printing.lamina': ['1111', '27', '1', '1025', '510', '3', '246', '25', '100', '2222'],  # advanced printing - requires heap support
 }
 
 class Colors:
