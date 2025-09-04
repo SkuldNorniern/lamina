@@ -60,9 +60,13 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(writer, "        movq %r10, (%r11)")?
                 }
                 Type::Primitive(PrimitiveType::F32) => {
+                    // Move value to XMM register first
+                    writeln!(writer, "        movss {}, %xmm0", val_loc)?;
                     writeln!(writer, "        movss %xmm0, (%r11)")?
                 }
                 Type::Primitive(PrimitiveType::F64) => {
+                    // Move value to XMM register first
+                    writeln!(writer, "        movsd {}, %xmm0", val_loc)?;
                     writeln!(writer, "        movsd %xmm0, (%r11)")?
                 }
                 Type::Primitive(PrimitiveType::Bool) => {

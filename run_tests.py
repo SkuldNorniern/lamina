@@ -72,14 +72,14 @@ def run_command(cmd, cwd=None):
     except Exception as e:
         return False, "", str(e)
 
-def compile_and_run_test(test_file, target='aarch64_macos'):
+def compile_and_run_test(test_file):
     """Compile and run a test case, return the output lines"""
     project_root = Path(__file__).parent
     testcase_path = project_root / 'testcases' / test_file
     executable_name = test_file.replace('.lamina', '')
     
     # Compile the test
-    compile_cmd = f"cargo run --quiet -- testcases/{test_file} --target {target}"
+    compile_cmd = f"cargo run --quiet -- testcases/{test_file} "
     success, stdout, stderr = run_command(compile_cmd, cwd=project_root)
     
     if not success:
