@@ -89,9 +89,9 @@ fn parse_args() -> Result<CompileOptions, String> {
 
                 if !lamina::HOST_ARCH_LIST.contains(&target.as_str()) {
                     return Err(format!(
-                            "Unsupported target architecture: {}\nSupported values: \n{}",
-                            target,
-                            lamina::HOST_ARCH_LIST.join(",\n")
+                        "Unsupported target architecture: {}\nSupported values: \n{}",
+                        target,
+                        lamina::HOST_ARCH_LIST.join(",\n")
                     ));
                 }
                 options.target_arch = Some(target);
