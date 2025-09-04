@@ -1,5 +1,6 @@
 use super::state::{CodegenState, FunctionContext};
 use crate::{LaminaError, Literal, PrimitiveType, Result, Type, Value};
+use crate::codegen::{CodegenError, LiteralType};
 
 // Convert an IR Type into AArch64 storage width in bytes and a directive for data sections
 pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str, u64)> {
@@ -9,10 +10,9 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
             PrimitiveType::I32 | PrimitiveType::F32 => Ok((".word", 4)),
             PrimitiveType::I64 | PrimitiveType::Ptr => Ok((".xword", 8)),
             _ => {
-                return Err(LaminaError::CodegenError(format!(
-                    "Unsupported primitive type: {:?}",
-                    pt
-                )));
+                return Err(LaminaError::CodegenError(
+                    CodegenError::UnsupportedPrimitiveType(*pt)
+                ));
             }
         },
         Type::Array { element_type, size } => {
@@ -20,16 +20,16 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
             Ok((".space", elem * size))
         }
         Type::Struct(_) => Err(LaminaError::CodegenError(
-            "Struct size calculation not implemented yet".to_string(),
+            CodegenError::StructNotImplemented,
         )),
         Type::Tuple(_) => Err(LaminaError::CodegenError(
-            "Tuple size calculation not implemented yet".to_string(),
+            CodegenError::TupleNotImplemented,
         )),
         Type::Named(_) => Err(LaminaError::CodegenError(
-            "Named type size calculation requires lookup (not implemented yet)".to_string(),
+            CodegenError::NamedTypeNotImplemented,
         )),
         Type::Void => Err(LaminaError::CodegenError(
-            "Cannot get size of void type".to_string(),
+            CodegenError::VoidTypeSize,
         )),
     }
 }
@@ -47,18 +47,17 @@ pub fn get_value_operand_asm<'a>(
             Literal::Bool(v) => Ok(format!("#{}", if *v { 1 } else { 0 })),
             // POTENTIAL BUG: F32 literals not implemented - could cause compilation failures
             Literal::F32(_v) => Err(LaminaError::CodegenError(
-                "f32 literal operand not implemented".to_string(),
+                CodegenError::F32LiteralNotImplemented,
             )),
             // POTENTIAL BUG: String literals not supported in operands - requires global variable workaround
             Literal::String(_) => Err(LaminaError::CodegenError(
-                "String literal operand requires label (use global var)".to_string(),
+                CodegenError::StringLiteralRequiresGlobal,
             )),
             Literal::I8(v) => Ok(format!("#{}", v)),
             _ => {
-                return Err(LaminaError::CodegenError(format!(
-                    "Unsupported literal type for operand: {:?}",
-                    value
-                )));
+                return Err(LaminaError::CodegenError(
+                    CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(format!("{:?}", value)))
+                ));
             }
         },
         Value::Variable(name) => {
@@ -67,7 +66,7 @@ pub fn get_value_operand_asm<'a>(
         }
         Value::Global(name) => {
             let asm_label = state.global_layout.get(name).ok_or_else(|| {
-                LaminaError::CodegenError(format!("Global '{}' not found in layout map", name))
+                LaminaError::CodegenError(CodegenError::GlobalNotFound(name.to_string()))
             })?;
             // ADRP/ADD sequence is used in code emission, here return label placeholder
             Ok(format!("{}(adrp+add)", asm_label))

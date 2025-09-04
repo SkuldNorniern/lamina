@@ -1,5 +1,6 @@
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_value_operand_asm;
+use crate::codegen::{CodegenError, TypeInfo, ExtensionInfo};
 use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType,
     Result, /*Identifier*/
@@ -73,10 +74,9 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(writer, "        movb %r10b, (%r11)")?
                 }
                 _ => {
-                    return Err(LaminaError::CodegenError(format!(
-                        "Store for type '{}' not implemented yet",
-                        ty
-                    )));
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string()))
+                    ));
                 }
             }
         }
@@ -99,13 +99,13 @@ pub fn generate_instruction<'a, W: Write>(
                     )?;
                 } else {
                     return Err(LaminaError::CodegenError(
-                        "Stack allocation result location invalid".to_string(),
+                        CodegenError::InvalidAllocationLocation,
                     ));
                 }
             }
             AllocType::Heap => {
                 return Err(LaminaError::CodegenError(
-                    "Heap allocation requires runtime/libc (malloc)".to_string(),
+                    CodegenError::HeapAllocationNotSupported,
                 ));
             }
         },
@@ -134,10 +134,9 @@ pub fn generate_instruction<'a, W: Write>(
                 PrimitiveType::F32 => ("ss", "", "movss", "divss"),
                 PrimitiveType::F64 => ("sd", "", "movsd", "divsd"),
                 _ => {
-                    return Err(LaminaError::CodegenError(format!(
-                        "Binary op for type '{}' not supported yet",
-                        ty
-                    )));
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::BinaryOpNotSupportedForType(TypeInfo::Primitive(*ty))
+                    ));
                 }
             };
 
@@ -354,10 +353,9 @@ pub fn generate_instruction<'a, W: Write>(
                 Type::Primitive(PrimitiveType::F64) => ("movsd", "%xmm0"), // Load 64-bit float
                 Type::Primitive(PrimitiveType::Bool) => ("movzbq", "%r10"), // Zero-extend byte to quad
                 _ => {
-                    return Err(LaminaError::CodegenError(format!(
-                        "Load for type '{}' not implemented yet",
-                        ty
-                    )));
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string()))
+                    ));
                 }
             };
 
@@ -836,10 +834,9 @@ pub fn generate_instruction<'a, W: Write>(
                     )?;
                 }
                 _ => {
-                    return Err(LaminaError::CodegenError(format!(
-                        "Unsupported zero extension: {} to {}",
-                        source_type, target_type
-                    )));
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::ZeroExtensionNotSupported(ExtensionInfo::Custom(format!("{} to {}", source_type, target_type)))
+                    ));
                 }
             }
         }

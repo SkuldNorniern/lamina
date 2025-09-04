@@ -1,5 +1,6 @@
 use super::state::CodegenState;
 use super::util::get_type_size_directive_and_bytes;
+use crate::codegen::{CodegenError, LiteralType};
 use crate::{GlobalDeclaration, LaminaError, Literal, Module, Result, Value};
 use std::io::Write;
 
@@ -79,26 +80,25 @@ fn generate_global_initializer<W: Write>(
                 }
                 Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
                 _ => {
-                    return Err(LaminaError::CodegenError(format!(
-                        "Unsupported literal type in global initializer: {:?}",
-                        literal
-                    )));
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(format!("{:?}", literal)))
+                    ));
                 }
             },
             Value::Global(_) => {
                 return Err(LaminaError::CodegenError(
-                    "Global initializer pointing to another global not implemented yet".to_string(),
+                    CodegenError::GlobalToGlobalInitNotImplemented,
                 ));
             }
             Value::Variable(_) => {
                 return Err(LaminaError::CodegenError(
-                    "Cannot initialize global with a variable".to_string(),
+                    CodegenError::GlobalVarInitNotSupported,
                 ));
             }
         }
     } else {
         return Err(LaminaError::CodegenError(
-            "generate_global_initializer called on uninitialized global".to_string(),
+            CodegenError::UninitializedGlobalInit,
         ));
     }
     Ok(())
