@@ -1,15 +1,15 @@
+use crate::codegen::CodegenError;
 use std::error::Error; // Import the Error trait
 use std::fmt;
 use std::string::FromUtf8Error;
-use crate::codegen::CodegenError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaminaError {
-    ParsingError(String),         // Placeholder for parsing errors
-    CodegenError(CodegenError),         // Codegen errors (will be migrated to typed errors)
-    ValidationError(String),      // Placeholder for validation errors
-    IoError(String),              // Placeholder for IO errors
-    Utf8Error(String),            // Added variant for UTF8 errors
+    ParsingError(String),       // Placeholder for parsing errors
+    CodegenError(CodegenError), // Codegen errors (will be migrated to typed errors)
+    ValidationError(String),    // Placeholder for validation errors
+    IoError(String),            // Placeholder for IO errors
+    Utf8Error(String),          // Added variant for UTF8 errors
 }
 
 impl fmt::Display for LaminaError {
@@ -45,6 +45,5 @@ impl From<CodegenError> for LaminaError {
         LaminaError::CodegenError(err)
     }
 }
-
 
 pub type Result<T> = std::result::Result<T, LaminaError>;

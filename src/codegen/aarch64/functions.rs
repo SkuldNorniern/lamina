@@ -66,7 +66,11 @@ pub fn generate_function<'a, W: Write>(
     let reg_save_space = (2 + func_ctx.callee_saved_regs.len()) * 8; // 8 bytes per register
     // Ensure 16-byte alignment for AAPCS64 compliance
     let aligned_reg_space = (reg_save_space + 15) & !15;
-    writeln!(writer, "    sub sp, sp, #{} // Allocate space for FP/LR and callee-saved registers", aligned_reg_space)?;
+    writeln!(
+        writer,
+        "    sub sp, sp, #{} // Allocate space for FP/LR and callee-saved registers",
+        aligned_reg_space
+    )?;
     writeln!(writer, "    stp x29, x30, [sp] // Save FP and LR")?;
 
     // Save additional callee-saved registers if needed
@@ -79,7 +83,10 @@ pub fn generate_function<'a, W: Write>(
     }
 
     // Set up frame pointer to point to saved FP/LR (standard AAPCS64 convention)
-    writeln!(writer, "    add x29, sp, #0 // Set up frame pointer to saved FP/LR")?;
+    writeln!(
+        writer,
+        "    add x29, sp, #0 // Set up frame pointer to saved FP/LR"
+    )?;
 
     // Precompute layout
     precompute_function_layout(func, &mut func_ctx, state, &required_regs)?;
@@ -152,7 +159,11 @@ pub fn generate_function<'a, W: Write>(
     let reg_save_space = (2 + func_ctx.callee_saved_regs.len()) * 8;
     // Ensure 16-byte alignment for AAPCS64 compliance
     let aligned_reg_space = (reg_save_space + 15) & !15;
-    writeln!(writer, "    ldp x29, x30, [sp], #{} // Restore FP/LR and deallocate stack", aligned_reg_space)?;
+    writeln!(
+        writer,
+        "    ldp x29, x30, [sp], #{} // Restore FP/LR and deallocate stack",
+        aligned_reg_space
+    )?;
     writeln!(writer, "    ret")?;
 
     Ok(())
@@ -236,9 +247,7 @@ fn precompute_function_layout<'a>(
                         PrimitiveType::Bool | PrimitiveType::I8 => 1,
                         PrimitiveType::F32 => 4,
                         _ => {
-                            return Err(LaminaError::CodegenError(
-                                CodegenError::InternalError
-                            ));
+                            return Err(LaminaError::CodegenError(CodegenError::InternalError));
                         }
                     };
                     Some((result, s))
@@ -254,13 +263,16 @@ fn precompute_function_layout<'a>(
                         PrimitiveType::I64 | PrimitiveType::Ptr => 8,
                         PrimitiveType::Bool | PrimitiveType::I8 => 1,
                         PrimitiveType::F32 => 4,
-                                        _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::ZeroExtensionNotSupported(
-                            crate::codegen::ExtensionInfo::Custom(format!("{:?} to {:?}", source_type, target_type))
-                        )
-                    ));
-                }
+                        _ => {
+                            return Err(LaminaError::CodegenError(
+                                CodegenError::ZeroExtensionNotSupported(
+                                    crate::codegen::ExtensionInfo::Custom(format!(
+                                        "{:?} to {:?}",
+                                        source_type, target_type
+                                    )),
+                                ),
+                            ));
+                        }
                     };
                     Some((result, s))
                 }

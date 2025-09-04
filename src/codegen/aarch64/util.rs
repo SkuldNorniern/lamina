@@ -1,6 +1,6 @@
 use super::state::{CodegenState, FunctionContext};
-use crate::{LaminaError, Literal, PrimitiveType, Result, Type, Value};
 use crate::codegen::{CodegenError, LiteralType};
+use crate::{LaminaError, Literal, PrimitiveType, Result, Type, Value};
 
 // Convert an IR Type into AArch64 storage width in bytes and a directive for data sections
 pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str, u64)> {
@@ -11,7 +11,7 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
             PrimitiveType::I64 | PrimitiveType::Ptr => Ok((".xword", 8)),
             _ => {
                 return Err(LaminaError::CodegenError(
-                    CodegenError::UnsupportedPrimitiveType(*pt)
+                    CodegenError::UnsupportedPrimitiveType(*pt),
                 ));
             }
         },
@@ -22,15 +22,11 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
         Type::Struct(_) => Err(LaminaError::CodegenError(
             CodegenError::StructNotImplemented,
         )),
-        Type::Tuple(_) => Err(LaminaError::CodegenError(
-            CodegenError::TupleNotImplemented,
-        )),
+        Type::Tuple(_) => Err(LaminaError::CodegenError(CodegenError::TupleNotImplemented)),
         Type::Named(_) => Err(LaminaError::CodegenError(
             CodegenError::NamedTypeNotImplemented,
         )),
-        Type::Void => Err(LaminaError::CodegenError(
-            CodegenError::VoidTypeSize,
-        )),
+        Type::Void => Err(LaminaError::CodegenError(CodegenError::VoidTypeSize)),
     }
 }
 
@@ -56,7 +52,10 @@ pub fn get_value_operand_asm<'a>(
             Literal::I8(v) => Ok(format!("#{}", v)),
             _ => {
                 return Err(LaminaError::CodegenError(
-                    CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(format!("{:?}", value)))
+                    CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(format!(
+                        "{:?}",
+                        value
+                    ))),
                 ));
             }
         },

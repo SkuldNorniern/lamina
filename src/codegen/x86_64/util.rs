@@ -1,6 +1,6 @@
 use super::state::{CodegenState, FunctionContext};
-use crate::{LaminaError, Literal, PrimitiveType, Result, Type, Value};
 use crate::codegen::CodegenError;
+use crate::{LaminaError, Literal, PrimitiveType, Result, Type, Value};
 
 // Helper to get assembly size directive and size in bytes (simplified)
 pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str, u64)> {
@@ -27,15 +27,11 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
         Type::Struct(_) => Err(LaminaError::CodegenError(
             CodegenError::StructNotImplemented,
         )),
-        Type::Tuple(_) => Err(LaminaError::CodegenError(
-            CodegenError::TupleNotImplemented,
-        )),
+        Type::Tuple(_) => Err(LaminaError::CodegenError(CodegenError::TupleNotImplemented)),
         Type::Named(_) => Err(LaminaError::CodegenError(
             CodegenError::NamedTypeNotImplemented,
         )),
-        Type::Void => Err(LaminaError::CodegenError(
-            CodegenError::VoidTypeSize,
-        )),
+        Type::Void => Err(LaminaError::CodegenError(CodegenError::VoidTypeSize)),
     }
 }
 

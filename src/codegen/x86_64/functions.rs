@@ -592,11 +592,7 @@ fn precompute_function_layout<'a>(
                 .params
                 .iter()
                 .find(|p| p.name == param_name)
-                .ok_or_else(|| {
-                    LaminaError::CodegenError(
-                        CodegenError::InternalError
-                    )
-                })?; // Find param to get type
+                .ok_or_else(|| LaminaError::CodegenError(CodegenError::InternalError))?; // Find param to get type
             let (_, size) = get_type_size_directive_and_bytes(&param_sig.ty)?;
             let aligned_size = (size + 7) & !7;
             current_stack_offset -= aligned_size as i64; // Allocate space below locals/previous spills
