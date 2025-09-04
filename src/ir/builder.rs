@@ -54,19 +54,137 @@ use super::types::{Literal, PrimitiveType, Type, Value};
 /// let module = builder.build();
 /// ```
 ///
+/// ## Memory Management in Lamina IR
+///
+/// Lamina provides comprehensive memory management capabilities through its IR builder.
+/// Understanding these operations is crucial for efficient and safe code generation.
+///
+/// ### Memory Allocation Strategies
+///
+/// **Stack Allocation (`alloc_stack`)**:
+/// - Fast allocation/deallocation (automatic)
+/// - Limited lifetime (function scope)
+/// - Ideal for temporary variables and local data
+/// - No manual deallocation needed
+///
+/// **Heap Allocation (`alloc_heap`)**:
+/// - Persistent across function calls
+/// - Must be manually deallocated with `dealloc()`
+/// - Suitable for data that outlives the current function
+/// - Enables dynamic data structures
+///
+/// ### Memory Access Patterns
+///
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("memory_demo", Type::Void)
+///     // Allocate on stack
+///     .alloc_stack("local_var", Type::Primitive(PrimitiveType::I32))
+///     // Store a value
+///     .store(Type::Primitive(PrimitiveType::I32), var("local_var"), i32(42))
+///     // Load and use it
+///     .load("loaded_val", Type::Primitive(PrimitiveType::I32), var("local_var"))
+///     .print(var("loaded_val")) // Debug output
+///     .ret_void();
+/// ```
+///
+/// ### Pointer Operations
+///
+/// Lamina supports sophisticated pointer arithmetic for arrays and structures:
+///
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("pointer_demo", Type::Void)
+///     // Allocate an array
+///     .alloc_stack("arr", Type::Array { element_type: Box::new(Type::Primitive(PrimitiveType::I32)), size: 10 })
+///     // Get pointer to element at index 5
+///     .getelementptr("elem_ptr", var("arr"), i32(5))
+///     // Store value at that location
+///     .store(Type::Primitive(PrimitiveType::I32), var("elem_ptr"), i32(100))
+///     .ret_void();
+/// ```
+///
+/// ### Heap Memory Management
+///
+/// Always pair heap allocations with deallocations:
+///
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("heap_demo", Type::Void)
+///     // Allocate on heap
+///     .alloc_heap("heap_data", Type::Primitive(PrimitiveType::I32))
+///     // Use the allocated memory
+///     .store(Type::Primitive(PrimitiveType::I32), var("heap_data"), i32(999))
+///     // Always deallocate when done
+///     .dealloc(var("heap_data"))
+///     .ret_void();
+/// ```
+///
+/// ### Debugging with Print
+///
+/// The `print()` instruction is invaluable for debugging IR code:
+///
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32, bool, string};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("debug_demo", Type::Void)
+///     .print(i32(42))           // Print integer
+///     .print(bool(true))        // Print boolean
+///     .print(string("hello"))   // Print string
+///     .print(var("my_var"))     // Print variable value
+///     .ret_void();
+/// ```
+///
+/// ### Best Practices
+///
+/// 1. **Prefer stack allocation** when possible for better performance
+/// 2. **Always deallocate heap memory** to prevent memory leaks
+/// 3. **Use print() liberally** during development for debugging
+/// 4. **Validate pointer arithmetic** to avoid out-of-bounds access
+/// 5. **Consider data layout** when using structs and arrays
+///
 /// ## Method Organization
 ///
 /// The builder methods are organized into several categories:
 ///
-/// - **Function definition**: `function()`, `function_with_params()`, `annotate()`
-/// - **Block management**: `block()`, `set_entry_block()`
-/// - **Memory operations**: `alloc_stack()`, `alloc_heap()`, `load()`, `store()`, `dealloc()`
-/// - **Arithmetic**: `binary()`, `cmp()`
-/// - **Control flow**: `branch()`, `jump()`, `ret()`, `ret_void()`
-/// - **Pointers**: `getelementptr()`, `struct_gep()`
-/// - **Function calls**: `call()`
-/// - **SSA form**: `phi()`
-/// - **Helper methods**: `temp_var()`
+/// ### **Memory Management**
+/// - **Allocation**: `alloc_stack()`, `alloc_heap()` - Allocate memory on stack or heap
+/// - **Access**: `load()`, `store()` - Read from and write to memory locations
+/// - **Deallocation**: `dealloc()` - Free heap-allocated memory
+/// - **Pointer arithmetic**: `getelementptr()`, `struct_gep()` - Calculate element/field addresses
+///
+/// ### **Function Definition**
+/// - `function()`, `function_with_params()`, `annotate()` - Define functions and their properties
+///
+/// ### **Control Flow**
+/// - **Blocks**: `block()`, `set_entry_block()` - Manage basic blocks
+/// - **Branching**: `branch()`, `jump()`, `ret()`, `ret_void()` - Control flow operations
+///
+/// ### **Data Operations**
+/// - **Arithmetic**: `binary()`, `cmp()` - Mathematical and comparison operations
+/// - **Type conversion**: `zext()` - Zero-extension for type widening
+/// - **Composite types**: `tuple()`, `extract_tuple()` - Tuple creation and access
+///
+/// ### **Function Calls**
+/// - `call()` - Call other functions
+///
+/// ### **Debugging & I/O**
+/// - `print()` - Debug output for development and testing
+///
+/// ### **Advanced Features**
+/// - **SSA form**: `phi()` - Merge values from different control flow paths
+/// - **Helper methods**: `temp_var()` - Generate unique temporary variable names
 pub struct IRBuilder<'a> {
     module: Module<'a>,
     current_function: Option<&'a str>,
@@ -285,22 +403,43 @@ impl<'a> IRBuilder<'a> {
         self
     }
 
-    /// Allocates stack memory
+    /// Allocates stack memory (automatic lifetime management)
     ///
-    /// Parameters:
-    /// - `result`: Name for the pointer variable
-    /// - `ty`: Type of the allocated memory
+    /// # Parameters
+    /// - `result`: Name for the pointer variable that will hold the allocation
+    /// - `ty`: Type of the data to allocate on the stack
     ///
-    /// Creates a stack allocation instruction. The result will be a pointer
-    /// to memory of the specified type.
+    /// # Returns
+    /// A pointer to the newly allocated memory of the specified type.
     ///
-    /// Example:
-    /// ```
-    /// use lamina::{IRBuilder, Type, PrimitiveType};
+    /// # Important Notes
+    /// - **Automatic cleanup**: Memory is automatically freed when function returns
+    /// - **Performance**: Fast allocation/deallocation with minimal overhead
+    /// - **Lifetime**: Limited to current function scope
+    /// - **Size limits**: May have stack size limitations for large allocations
+    ///
+    /// # Memory Management
+    /// Stack allocation requires no explicit deallocation. The memory is automatically
+    /// reclaimed when the function returns. This makes it ideal for:
+    /// - Local variables
+    /// - Temporary buffers
+    /// - Function-scoped data structures
+    ///
+    /// # Example
+    /// ```rust
+    /// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
     ///
     /// let mut builder = IRBuilder::new();
-    /// // Allocate an i32 on the stack
-    /// builder.alloc_stack("ptr", Type::Primitive(PrimitiveType::I32));
+    /// builder
+    ///     .function("stack_example", Type::Void)
+    ///     // Allocate on stack (automatic cleanup)
+    ///     .alloc_stack("local", Type::Primitive(PrimitiveType::I32))
+    ///     // Use the memory
+    ///     .store(Type::Primitive(PrimitiveType::I32), var("local"), i32(42))
+    ///     // Load and use
+    ///     .load("value", Type::Primitive(PrimitiveType::I32), var("local"))
+    ///     .print(var("value"))
+    ///     .ret_void(); // Memory automatically freed here
     /// ```
     pub fn alloc_stack(&mut self, result: &'a str, ty: Type<'a>) -> &mut Self {
         self.inst(Instruction::Alloc {
@@ -312,23 +451,38 @@ impl<'a> IRBuilder<'a> {
 
     /// Allocates heap memory
     ///
-    /// Parameters:
-    /// - `result`: Name for the pointer variable
-    /// - `ty`: Type of the allocated memory
+    /// # Parameters
+    /// - `result`: Name for the pointer variable that will hold the allocation
+    /// - `ty`: Type of the data to allocate on the heap
     ///
-    /// Creates a heap allocation instruction. The result will be a pointer
-    /// to memory of the specified type. Remember to deallocate with `dealloc`
-    /// to avoid memory leaks.
+    /// # Returns
+    /// A pointer to the newly allocated memory of the specified type.
     ///
-    /// Example:
-    /// ```
-    /// use lamina::{IRBuilder, Type, PrimitiveType};
+    /// # Important Notes
+    /// - **Memory leaks**: Always call `dealloc()` on the returned pointer when done
+    /// - **Performance**: Heap allocation is slower than stack allocation
+    /// - **Lifetime**: Heap memory persists until explicitly deallocated
+    /// - **Thread safety**: Consider synchronization if used in multi-threaded contexts
     ///
-    /// let mut builder = IRBuilder::new();
-    /// let struct_type = Type::Primitive(PrimitiveType::I32); // Example type
-    /// // Allocate a struct on the heap
-    /// builder.alloc_heap("obj_ptr", struct_type);
-    /// ```
+    /// # Memory Management Responsibility
+    /// Unlike stack allocation, heap allocation requires explicit memory management.
+    /// Failing to deallocate heap memory will result in memory leaks.
+    ///
+    /// # Example
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("heap_example", Type::Void)
+///     // Allocate on heap
+///     .alloc_heap("data", Type::Primitive(PrimitiveType::I32))
+///     // Use the memory
+///     .store(Type::Primitive(PrimitiveType::I32), var("data"), i32(42))
+///     // Always deallocate
+///     .dealloc(var("data"))
+///     .ret_void();
+/// ```
     pub fn alloc_heap(&mut self, result: &'a str, ty: Type<'a>) -> &mut Self {
         self.inst(Instruction::Alloc {
             result,
@@ -600,22 +754,46 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Gets a pointer to an array element
+    /// Gets a pointer to an array element (pointer arithmetic)
     ///
-    /// Parameters:
-    /// - `result`: Name for the resulting pointer
-    /// - `array_ptr`: Pointer to the array
-    /// - `index`: Index value (must be integer type)
+    /// # Parameters
+    /// - `result`: Name for the resulting element pointer
+    /// - `array_ptr`: Pointer to the base of the array
+    /// - `index`: Zero-based index of the element to access
     ///
-    /// Computes the address of an element within an array. The index is 0-based.
+    /// # Returns
+    /// A pointer to the element at the specified index within the array.
     ///
-    /// Example:
-    /// ```
-    /// use lamina::{IRBuilder, var, i32};
+    /// # Memory Safety
+    /// - **Bounds checking**: No automatic bounds checking is performed
+    /// - **Valid indices**: Ensure `index` is within array bounds
+    /// - **Array pointer**: `array_ptr` must point to a valid array
+    /// - **Type safety**: Result pointer has the element type, not array type
+    ///
+    /// # Index Calculation
+    /// The operation computes: `result = array_ptr + (index * element_size)`
+    /// where `element_size` is determined by the array's element type.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
     ///
     /// let mut builder = IRBuilder::new();
-    /// // Get pointer to the third element (index 2)
-    /// builder.getelementptr("elem_ptr", var("array_ptr"), i32(2));
+    /// builder
+    ///     .function("array_access", Type::Void)
+    ///     // Allocate array of 10 i32 elements
+    ///     .alloc_stack("arr", Type::Array {
+    ///         element_type: Box::new(Type::Primitive(PrimitiveType::I32)),
+    ///         size: 10
+    ///     })
+    ///     // Get pointer to element at index 5
+    ///     .getelementptr("elem_ptr", var("arr"), i32(5))
+    ///     // Store value at that location
+    ///     .store(Type::Primitive(PrimitiveType::I32), var("elem_ptr"), i32(99))
+    ///     // Load it back
+    ///     .load("value", Type::Primitive(PrimitiveType::I32), var("elem_ptr"))
+    ///     .print(var("value")) // Should print 99
+    ///     .ret_void();
     /// ```
     pub fn getelementptr(
         &mut self,
@@ -630,24 +808,56 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Gets a pointer to a struct field
+    /// Gets a pointer to a struct field (structure field access)
     ///
-    /// Parameters:
-    /// - `result`: Name for the resulting pointer
-    /// - `struct_ptr`: Pointer to the struct
-    /// - `field_index`: Field index (0-based)
+    /// # Parameters
+    /// - `result`: Name for the resulting field pointer
+    /// - `struct_ptr`: Pointer to the struct instance
+    /// - `field_index`: Zero-based index of the field to access
     ///
-    /// Computes the address of a field within a struct. The index corresponds
-    /// to the order of fields in the struct definition.
+    /// # Returns
+    /// A pointer to the specified field within the struct.
     ///
-    /// Example:
+    /// # Memory Safety
+    /// - **Valid field index**: Must be within the struct's field count
+    /// - **Struct pointer**: `struct_ptr` must point to a valid struct instance
+    /// - **Type safety**: Result pointer has the field type, not struct type
+    ///
+    /// # Field Layout
+    /// Fields are ordered according to the struct type definition:
+    /// ```rust
+    /// // struct Point { x: i32, y: i32 }
+    /// // Field 0: x (i32), Field 1: y (i32)
     /// ```
-    /// use lamina::{IRBuilder, var};
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::{IRBuilder, Type, PrimitiveType, StructField, var, i32};
     ///
     /// let mut builder = IRBuilder::new();
-    /// // Get pointer to the second field (index 1)
-    /// builder.struct_gep("field_ptr", var("struct_ptr"), 1);
+    /// builder
+    ///     .function("struct_access", Type::Void)
+    ///     // Allocate a struct with two i32 fields
+    ///     .alloc_stack("point", Type::Struct(vec![
+    ///         StructField { name: "x", ty: Type::Primitive(PrimitiveType::I32) },
+    ///         StructField { name: "y", ty: Type::Primitive(PrimitiveType::I32) }
+    ///     ]))
+    ///     // Get pointer to field 0 (x coordinate)
+    ///     .struct_gep("x_ptr", var("point"), 0)
+    ///     // Store value in x field
+    ///     .store(Type::Primitive(PrimitiveType::I32), var("x_ptr"), i32(10))
+    ///     // Get pointer to field 1 (y coordinate)
+    ///     .struct_gep("y_ptr", var("point"), 1)
+    ///     // Store value in y field
+    ///     .store(Type::Primitive(PrimitiveType::I32), var("y_ptr"), i32(20))
+    ///     .ret_void();
     /// ```
+    ///
+    /// # Common Use Cases
+    /// - Accessing individual fields of struct instances
+    /// - Implementing object-oriented patterns in IR
+    /// - Manipulating complex data structures
+    /// - Field-based data processing
     pub fn struct_gep(
         &mut self,
         result: &'a str,
@@ -696,58 +906,143 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Creates a print instruction (for debugging)
+    /// Creates a print instruction for debugging
     ///
-    /// Parameters:
-    /// - `value`: Value to print
+    /// # Parameters
+    /// - `value`: The value to print (can be constants, variables, or expressions)
     ///
-    /// A utility instruction for debugging IR code.
+    /// # Supported Types
+    /// The print instruction can output values of any Lamina IR type:
+    /// - **Integers**: `i8`, `i32`, `i64` (displayed as decimal numbers)
+    /// - **Booleans**: `true` or `false`
+    /// - **Strings**: String literals and string variables
+    /// - **Pointers**: Memory addresses (displayed in hexadecimal)
+    /// - **Variables**: Current values of SSA variables
     ///
-    /// Example:
-    /// ```
-    /// use lamina::{IRBuilder, var};
+    /// # Use Cases
+    /// - **Debugging**: Inspect variable values during execution
+    /// - **Tracing**: Log program execution flow
+    /// - **Testing**: Verify computation results
+    /// - **Development**: Understand IR code behavior
+    ///
+    /// # Performance Note
+    /// Print instructions are primarily for development and debugging.
+    /// Consider removing them in production code for better performance.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::{IRBuilder, Type, PrimitiveType, var, i32, bool, string};
     ///
     /// let mut builder = IRBuilder::new();
-    /// // Print the value of x
-    /// builder.print(var("x"));
+    /// builder
+    ///     .function("debug_example", Type::Void)
+    ///     // Print constants
+    ///     .print(i32(42))
+    ///     .print(bool(true))
+    ///     .print(string("Debug message"))
+    ///     // Print variables
+    ///     .print(var("result"))
+    ///     .ret_void();
     /// ```
+    ///
+    /// # Output Format
+    /// The exact output format depends on the target architecture's runtime,
+    /// but typically follows these patterns:
+    /// - Integers: `42`, `-15`, `0`
+    /// - Booleans: `true`, `false`
+    /// - Strings: `hello world`
+    /// - Pointers: `0x7fff12345678`
     pub fn print(&mut self, value: Value<'a>) -> &mut Self {
         self.inst(Instruction::Print { value })
     }
 
-    /// Creates a tuple from elements
+    /// Creates a tuple from multiple values (composite data construction)
     ///
-    /// Parameters:
-    /// - `result`: Name for the tuple variable
-    /// - `elements`: Vector of values to put in the tuple
+    /// # Parameters
+    /// - `result`: Name for the resulting tuple variable
+    /// - `elements`: Vector of values to combine into a tuple
     ///
-    /// Example:
-    /// ```
-    /// use lamina::{IRBuilder, i32, bool};
+    /// # Returns
+    /// A tuple value containing all the specified elements in order.
+    ///
+    /// # Tuple Structure
+    /// Tuples in Lamina IR are heterogeneous collections that can contain
+    /// values of different types. Elements are accessed by index using `extract_tuple()`.
+    ///
+    /// # Use Cases
+    /// - **Multiple return values**: Functions can return multiple values as a tuple
+    /// - **Data aggregation**: Combine related values into a single unit
+    /// - **Temporary grouping**: Group values for processing
+    /// - **Pattern matching**: Enable destructuring operations
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::{IRBuilder, Type, PrimitiveType, i32, bool, var};
     ///
     /// let mut builder = IRBuilder::new();
-    /// // Create a tuple of (42, true)
-    /// builder.tuple("my_tuple", vec![i32(42), bool(true)]);
+    /// builder
+    ///     .function("tuple_demo", Type::Void)
+    ///     // Create a tuple with mixed types
+    ///     .tuple("pair", vec![i32(42), bool(true)])
+    ///     // Extract first element (index 0)
+    ///     .extract_tuple("num", var("pair"), 0)
+    ///     // Extract second element (index 1)
+    ///     .extract_tuple("flag", var("pair"), 1)
+    ///     // Print both values
+    ///     .print(var("num"))
+    ///     .print(var("flag"))
+    ///     .ret_void();
     /// ```
     pub fn tuple(&mut self, result: &'a str, elements: Vec<Value<'a>>) -> &mut Self {
         self.inst(Instruction::Tuple { result, elements })
     }
 
-    /// Extracts a value from a tuple
+    /// Extracts a value from a tuple (tuple element access)
     ///
-    /// Parameters:
-    /// - `result`: Name for the extracted value
-    /// - `tuple_val`: Tuple to extract from
-    /// - `index`: Index of the element to extract (0-based)
+    /// # Parameters
+    /// - `result`: Name for the extracted element variable
+    /// - `tuple_val`: The tuple value to extract from
+    /// - `index`: Zero-based index of the element to extract
     ///
-    /// Example:
-    /// ```
-    /// use lamina::{IRBuilder, var};
+    /// # Returns
+    /// The value at the specified index within the tuple.
+    ///
+    /// # Type Safety
+    /// The result type matches the type of the element at the specified index
+    /// in the tuple's type definition.
+    ///
+    /// # Bounds Checking
+    /// - **Valid indices**: Index must be within the tuple's element count
+    /// - **Runtime behavior**: Out-of-bounds access has undefined behavior
+    /// - **Compile-time verification**: Index validity should be verified at IR construction time
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::{IRBuilder, Type, PrimitiveType, i32, bool, string, var};
     ///
     /// let mut builder = IRBuilder::new();
-    /// // Extract the first element (index 0) from a tuple
-    /// builder.extract_tuple("first", var("my_tuple"), 0);
+    /// builder
+    ///     .function("extract_demo", Type::Void)
+    ///     // Create tuple: (42, true, "hello")
+    ///     .tuple("data", vec![i32(42), bool(true), string("hello")])
+    ///     // Extract number (index 0)
+    ///     .extract_tuple("num", var("data"), 0)
+    ///     // Extract boolean (index 1)
+    ///     .extract_tuple("flag", var("data"), 1)
+    ///     // Extract string (index 2)
+    ///     .extract_tuple("text", var("data"), 2)
+    ///     // Use extracted values
+    ///     .print(var("num"))
+    ///     .print(var("flag"))
+    ///     .print(var("text"))
+    ///     .ret_void();
     /// ```
+    ///
+    /// # Common Patterns
+    /// - **Destructuring**: Extract multiple elements from a tuple
+    /// - **Data processing**: Access individual components of composite data
+    /// - **Return value unpacking**: Handle multiple return values from functions
+    /// - **Field access**: Simulate struct field access with tuples
     pub fn extract_tuple(
         &mut self,
         result: &'a str,
@@ -763,18 +1058,36 @@ impl<'a> IRBuilder<'a> {
 
     /// Deallocates heap memory
     ///
-    /// Parameters:
-    /// - `ptr`: Pointer to the memory to free
+    /// # Parameters
+    /// - `ptr`: Pointer to the heap memory to deallocate (must be from `alloc_heap`)
     ///
-    /// Use this to free memory previously allocated with `alloc_heap`.
+    /// # Important Notes
+    /// - **Use after alloc_heap**: Only call on pointers returned by `alloc_heap()`
+    /// - **Double deallocation**: Never deallocate the same pointer twice
+    /// - **Dangling pointers**: Do not use the pointer after deallocation
+    /// - **Null pointers**: Behavior undefined for null or invalid pointers
     ///
-    /// Example:
-    /// ```
-    /// use lamina::{IRBuilder, var};
+    /// # Memory Safety
+    /// This operation frees the memory pointed to by `ptr`. Using `ptr` after
+    /// deallocation will result in undefined behavior. Always ensure:
+    /// 1. The pointer came from a previous `alloc_heap()` call
+    /// 2. The memory hasn't been deallocated already
+    /// 3. No other references to this memory exist
+    ///
+    /// # Example
+    /// ```rust
+    /// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
     ///
     /// let mut builder = IRBuilder::new();
-    /// // Free previously allocated memory
-    /// builder.dealloc(var("heap_ptr"));
+    /// builder
+    ///     .function("safe_heap_usage", Type::Void)
+    ///     // Allocate memory
+    ///     .alloc_heap("temp", Type::Primitive(PrimitiveType::I32))
+    ///     // Use the memory
+    ///     .store(Type::Primitive(PrimitiveType::I32), var("temp"), i32(42))
+    ///     // Always clean up
+    ///     .dealloc(var("temp"))
+    ///     .ret_void();
     /// ```
     pub fn dealloc(&mut self, ptr: Value<'a>) -> &mut Self {
         self.inst(Instruction::Dealloc { ptr })
