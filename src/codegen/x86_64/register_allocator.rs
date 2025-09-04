@@ -142,14 +142,15 @@ impl GraphColoringAllocator {
 
         for var1 in &sorted_vars {
             let interval1 = &self.live_intervals[*var1];
-            interference_lists.insert(var1.to_string(), HashSet::new());
+            let var1_key = (*var1).to_string();
+            interference_lists.insert(var1_key.clone(), HashSet::new());
             for var2 in &sorted_vars {
                 let interval2 = &self.live_intervals[*var2];
                 if var1 != var2 && self.intervals_interfere(interval1, interval2) {
                     interference_lists
-                        .get_mut(*var1)
+                        .get_mut(&var1_key)
                         .unwrap()
-                        .insert(var2.to_string());
+                        .insert((*var2).to_string());
                 }
             }
         }
@@ -291,8 +292,6 @@ impl GraphColoringAllocator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::instruction::BinaryOp;
-    use crate::ir::types::{PrimitiveType, Type};
 
     #[test]
     fn test_live_interval_creation() {
