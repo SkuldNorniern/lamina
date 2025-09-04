@@ -3,8 +3,8 @@ use super::register_allocator::{AllocationResult, GraphColoringAllocator};
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_type_size_directive_and_bytes;
 use crate::{
-    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType, Result, Type,
-    Value,
+    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType,
+    Result, Type, Value,
 };
 use std::collections::HashSet;
 use std::io::Write;
@@ -286,33 +286,34 @@ pub fn generate_function<'a, W: Write>(
     writeln!(writer, "    # Spill argument registers to stack slots")?;
     for (i, arg) in func.signature.params.iter().enumerate() {
         if let Some(loc) = func_ctx.value_locations.get(arg.name)
-            && let ValueLocation::StackOffset(offset) = loc {
-                if i < ARG_REGISTERS.len() {
-                    // Note: Currently only handles 64-bit arg types (movq)
-                    writeln!(
-                        writer,
-                        "        movq {}, {}(%rbp) # Spill arg {}",
-                        ARG_REGISTERS[i], offset, arg.name
-                    )?;
-                } else {
-                    // Arguments passed on the stack are already above RBP,
-                    // copy them down if needed? Or adjust offsets?
-                    // For now, assume stack args are accessed relative to old RBP if needed,
-                    // but ideally they are copied to local stack slots if reused.
-                    // Stack args are at %rbp + 16, %rbp + 24, ...
-                    let stack_arg_offset = 16 + (i - ARG_REGISTERS.len()) * 8;
-                    writeln!(
-                        writer,
-                        "        movq {}(%rbp), %r10 # Load stack arg {}",
-                        stack_arg_offset, arg.name
-                    )?;
-                    writeln!(
-                        writer,
-                        "        movq %r10, {}(%rbp) # Spill stack arg {} to local slot",
-                        offset, arg.name
-                    )?;
-                }
+            && let ValueLocation::StackOffset(offset) = loc
+        {
+            if i < ARG_REGISTERS.len() {
+                // Note: Currently only handles 64-bit arg types (movq)
+                writeln!(
+                    writer,
+                    "        movq {}, {}(%rbp) # Spill arg {}",
+                    ARG_REGISTERS[i], offset, arg.name
+                )?;
+            } else {
+                // Arguments passed on the stack are already above RBP,
+                // copy them down if needed? Or adjust offsets?
+                // For now, assume stack args are accessed relative to old RBP if needed,
+                // but ideally they are copied to local stack slots if reused.
+                // Stack args are at %rbp + 16, %rbp + 24, ...
+                let stack_arg_offset = 16 + (i - ARG_REGISTERS.len()) * 8;
+                writeln!(
+                    writer,
+                    "        movq {}(%rbp), %r10 # Load stack arg {}",
+                    stack_arg_offset, arg.name
+                )?;
+                writeln!(
+                    writer,
+                    "        movq %r10, {}(%rbp) # Spill stack arg {} to local slot",
+                    offset, arg.name
+                )?;
             }
+        }
     }
 
     // Function Body Generation
@@ -591,9 +592,12 @@ fn precompute_function_layout<'a>(
                 .params
                 .iter()
                 .find(|p| p.name == param_name)
-                .ok_or_else(|| LaminaError::CodegenError(
-                    format!("Parameter '{}' not found in function signature", param_name)
-                ))?; // Find param to get type
+                .ok_or_else(|| {
+                    LaminaError::CodegenError(format!(
+                        "Parameter '{}' not found in function signature",
+                        param_name
+                    ))
+                })?; // Find param to get type
             let (_, size) = get_type_size_directive_and_bytes(&param_sig.ty)?;
             let aligned_size = (size + 7) & !7;
             current_stack_offset -= aligned_size as i64; // Allocate space below locals/previous spills
@@ -811,29 +815,34 @@ fn count_register_operands(instr: &Instruction, allocation_result: &AllocationRe
     match instr {
         Instruction::Binary { lhs, rhs, .. } => {
             if let Value::Variable(var) = lhs
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
+                && allocation_result.assignments.contains_key(*var)
+            {
+                count += 1;
+            }
             if let Value::Variable(var) = rhs
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
+                && allocation_result.assignments.contains_key(*var)
+            {
+                count += 1;
+            }
         }
         Instruction::Load { ptr, .. } => {
             if let Value::Variable(var) = ptr
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
+                && allocation_result.assignments.contains_key(*var)
+            {
+                count += 1;
+            }
         }
         Instruction::Store { ptr, value, .. } => {
             if let Value::Variable(var) = ptr
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
+                && allocation_result.assignments.contains_key(*var)
+            {
+                count += 1;
+            }
             if let Value::Variable(var) = value
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
+                && allocation_result.assignments.contains_key(*var)
+            {
+                count += 1;
+            }
         }
         _ => {}
     }
@@ -978,74 +987,75 @@ fn generate_optimized_binary<'a, W: Write>(
 
     // Optimized immediate operations
     if let (Some(lhs_reg), Value::Constant(Literal::I64(rhs_val))) = (lhs_in_reg, rhs)
-        && let Some(result_reg) = result_in_reg {
-            let op_name = match op {
-                BinaryOp::Add => format!("add{}", op_suffix),
-                BinaryOp::Sub => format!("sub{}", op_suffix),
-                BinaryOp::Mul => {
-                    // Check for power-of-2 multiplication
-                    if *rhs_val > 0 && (*rhs_val & (rhs_val - 1)) == 0 {
-                        let shift_amount = rhs_val.trailing_zeros();
-                        if lhs_reg == result_reg {
-                            writeln!(
-                                writer,
-                                "    shl{} ${}, {} # Optimized multiply by power of 2",
-                                op_suffix, shift_amount, result_reg
-                            )?;
-                        } else {
-                            writeln!(
-                                writer,
-                                "    mov{} {}, {} # Move for shift",
-                                op_suffix, lhs_reg, result_reg
-                            )?;
-                            writeln!(
-                                writer,
-                                "    shl{} ${}, {} # Optimized multiply by power of 2",
-                                op_suffix, shift_amount, result_reg
-                            )?;
-                        }
-                        return Ok(());
+        && let Some(result_reg) = result_in_reg
+    {
+        let op_name = match op {
+            BinaryOp::Add => format!("add{}", op_suffix),
+            BinaryOp::Sub => format!("sub{}", op_suffix),
+            BinaryOp::Mul => {
+                // Check for power-of-2 multiplication
+                if *rhs_val > 0 && (*rhs_val & (rhs_val - 1)) == 0 {
+                    let shift_amount = rhs_val.trailing_zeros();
+                    if lhs_reg == result_reg {
+                        writeln!(
+                            writer,
+                            "    shl{} ${}, {} # Optimized multiply by power of 2",
+                            op_suffix, shift_amount, result_reg
+                        )?;
+                    } else {
+                        writeln!(
+                            writer,
+                            "    mov{} {}, {} # Move for shift",
+                            op_suffix, lhs_reg, result_reg
+                        )?;
+                        writeln!(
+                            writer,
+                            "    shl{} ${}, {} # Optimized multiply by power of 2",
+                            op_suffix, shift_amount, result_reg
+                        )?;
                     }
-                    format!("imul{}", op_suffix)
+                    return Ok(());
                 }
-                BinaryOp::Div => {
-                    // Fall back to regular division
-                    return generate_instruction(
-                        &crate::Instruction::Binary {
-                            op: op.clone(),
-                            result,
-                            ty: *ty,
-                            lhs: lhs.clone(),
-                            rhs: rhs.clone(),
-                        },
-                        writer,
-                        state,
-                        func_ctx,
-                        "",
-                    );
-                }
-            };
-
-            if lhs_reg == result_reg {
-                writeln!(
-                    writer,
-                    "    {} ${}, {} # Optimized immediate operation",
-                    op_name, rhs_val, result_reg
-                )?;
-            } else {
-                writeln!(
-                    writer,
-                    "    mov{} {}, {} # Move for immediate op",
-                    op_suffix, lhs_reg, result_reg
-                )?;
-                writeln!(
-                    writer,
-                    "    {} ${}, {} # Optimized immediate operation",
-                    op_name, rhs_val, result_reg
-                )?;
+                format!("imul{}", op_suffix)
             }
-            return Ok(());
+            BinaryOp::Div => {
+                // Fall back to regular division
+                return generate_instruction(
+                    &crate::Instruction::Binary {
+                        op: op.clone(),
+                        result,
+                        ty: *ty,
+                        lhs: lhs.clone(),
+                        rhs: rhs.clone(),
+                    },
+                    writer,
+                    state,
+                    func_ctx,
+                    "",
+                );
+            }
+        };
+
+        if lhs_reg == result_reg {
+            writeln!(
+                writer,
+                "    {} ${}, {} # Optimized immediate operation",
+                op_name, rhs_val, result_reg
+            )?;
+        } else {
+            writeln!(
+                writer,
+                "    mov{} {}, {} # Move for immediate op",
+                op_suffix, lhs_reg, result_reg
+            )?;
+            writeln!(
+                writer,
+                "    {} ${}, {} # Optimized immediate operation",
+                op_name, rhs_val, result_reg
+            )?;
         }
+        return Ok(());
+    }
 
     // Fall back to regular instruction generation
     generate_instruction(
@@ -1184,34 +1194,35 @@ fn generate_optimized_load<'a, W: Write>(
     if let Some(result_reg) = allocation_result.assignments.get(result) {
         // Check if pointer is also in a register
         if let Value::Variable(ptr_var) = ptr
-            && let Some(ptr_reg) = allocation_result.assignments.get(*ptr_var) {
-                let load_suffix = match ty {
-                    Type::Primitive(crate::ir::types::PrimitiveType::I32) => "l",
-                    Type::Primitive(crate::ir::types::PrimitiveType::I64)
-                    | Type::Primitive(crate::ir::types::PrimitiveType::Ptr) => "q",
-                    Type::Primitive(crate::ir::types::PrimitiveType::I8) => "b",
-                    _ => {
-                        return generate_instruction(
-                            &crate::Instruction::Load {
-                                result,
-                                ty: ty.clone(),
-                                ptr: ptr.clone(),
-                            },
-                            writer,
-                            state,
-                            func_ctx,
-                            "",
-                        );
-                    }
-                };
+            && let Some(ptr_reg) = allocation_result.assignments.get(*ptr_var)
+        {
+            let load_suffix = match ty {
+                Type::Primitive(crate::ir::types::PrimitiveType::I32) => "l",
+                Type::Primitive(crate::ir::types::PrimitiveType::I64)
+                | Type::Primitive(crate::ir::types::PrimitiveType::Ptr) => "q",
+                Type::Primitive(crate::ir::types::PrimitiveType::I8) => "b",
+                _ => {
+                    return generate_instruction(
+                        &crate::Instruction::Load {
+                            result,
+                            ty: ty.clone(),
+                            ptr: ptr.clone(),
+                        },
+                        writer,
+                        state,
+                        func_ctx,
+                        "",
+                    );
+                }
+            };
 
-                writeln!(
-                    writer,
-                    "        mov{} ({}), {} # Optimized register-to-register load",
-                    load_suffix, ptr_reg, result_reg
-                )?;
-                return Ok(());
-            }
+            writeln!(
+                writer,
+                "        mov{} ({}), {} # Optimized register-to-register load",
+                load_suffix, ptr_reg, result_reg
+            )?;
+            return Ok(());
+        }
     }
 
     // Fall back to regular instruction generation
@@ -1738,7 +1749,8 @@ mod tests {
         // Safe to unwrap because we asserted these are Some above
         let entry_pos = first_entry.expect("Entry block position should be available");
         let base_case_pos = first_base_case.expect("Base case block position should be available");
-        let recursive_step_pos = first_recursive_step.expect("Recursive step block position should be available");
+        let recursive_step_pos =
+            first_recursive_step.expect("Recursive step block position should be available");
 
         // Entry should come before both others
         assert!(

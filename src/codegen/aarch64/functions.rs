@@ -1,7 +1,10 @@
 use super::instructions::generate_instruction;
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_type_size_directive_and_bytes;
-use crate::{BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType, Result};
+use crate::{
+    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType,
+    Result,
+};
 use std::collections::HashSet;
 use std::io::Write;
 
@@ -53,7 +56,10 @@ pub fn generate_function<'a, W: Write>(
         writeln!(writer, ".globl {}", asm_label)?;
     }
     writeln!(writer, "{}:", asm_label)?;
-    writeln!(writer, "    stp x29, x30, [sp, #-16]! // Allocate space for FP/LR")?;
+    writeln!(
+        writer,
+        "    stp x29, x30, [sp, #-16]! // Allocate space for FP/LR"
+    )?;
     writeln!(writer, "    mov x29, sp")?;
 
     // Precompute layout
@@ -72,16 +78,24 @@ pub fn generate_function<'a, W: Write>(
                 if i < ARG_REGISTERS.len() {
                     writeln!(writer, "        add x10, x29, #{}", offset)?;
                     // POTENTIAL BUG: No validation that ARG_REGISTERS[i] is a valid register string
-                    writeln!(writer, "        str {}, [x10] // Spill arg {}", ARG_REGISTERS[i], arg.name)?;
-                            } else {
-                // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
-                // x11 needs to point to the incoming stack argument location
-                let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
-                writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?; // AAPCS64 stack arg offset
-                writeln!(writer, "        ldr x10, [x11] // Load stack arg {}", arg.name)?;
-                writeln!(writer, "        add x11, x29, #{}", offset)?;
-                writeln!(writer, "        str x10, [x11]")?;
-            }
+                    writeln!(
+                        writer,
+                        "        str {}, [x10] // Spill arg {}",
+                        ARG_REGISTERS[i], arg.name
+                    )?;
+                } else {
+                    // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
+                    // x11 needs to point to the incoming stack argument location
+                    let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
+                    writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?; // AAPCS64 stack arg offset
+                    writeln!(
+                        writer,
+                        "        ldr x10, [x11] // Load stack arg {}",
+                        arg.name
+                    )?;
+                    writeln!(writer, "        add x11, x29, #{}", offset)?;
+                    writeln!(writer, "        str x10, [x11]")?;
+                }
             }
         }
     }
@@ -160,7 +174,11 @@ fn precompute_function_layout<'a>(
     for block in func.basic_blocks.values() {
         for instr in &block.instructions {
             let result_info: Option<(&Identifier<'a>, u64)> = match instr {
-                Instruction::Alloc { result, allocated_ty, .. } => {
+                Instruction::Alloc {
+                    result,
+                    allocated_ty,
+                    ..
+                } => {
                     let (_, s) = get_type_size_directive_and_bytes(allocated_ty)?;
                     Some((result, s))
                 }
@@ -170,17 +188,31 @@ fn precompute_function_layout<'a>(
                         PrimitiveType::I64 | PrimitiveType::Ptr => 8,
                         PrimitiveType::Bool | PrimitiveType::I8 => 1,
                         PrimitiveType::F32 => 4,
-                        _ => return Err(LaminaError::CodegenError(format!("Unsupported type for stack allocation: {:?}", ty))),
+                        _ => {
+                            return Err(LaminaError::CodegenError(format!(
+                                "Unsupported type for stack allocation: {:?}",
+                                ty
+                            )));
+                        }
                     };
                     Some((result, s))
                 }
-                Instruction::ZeroExtend { result, target_type, .. } => {
+                Instruction::ZeroExtend {
+                    result,
+                    target_type,
+                    ..
+                } => {
                     let s = match target_type {
                         PrimitiveType::I32 => 4,
                         PrimitiveType::I64 | PrimitiveType::Ptr => 8,
                         PrimitiveType::Bool | PrimitiveType::I8 => 1,
                         PrimitiveType::F32 => 4,
-                        _ => return Err(LaminaError::CodegenError(format!("Unsupported target type for zero extension: {:?}", target_type))),
+                        _ => {
+                            return Err(LaminaError::CodegenError(format!(
+                                "Unsupported target type for zero extension: {:?}",
+                                target_type
+                            )));
+                        }
                     };
                     Some((result, s))
                 }
@@ -196,7 +228,9 @@ fn precompute_function_layout<'a>(
                     let (_, s) = get_type_size_directive_and_bytes(ty)?;
                     Some((result, s))
                 }
-                Instruction::Call { result: Some(res), .. } => Some((res, 8)),
+                Instruction::Call {
+                    result: Some(res), ..
+                } => Some((res, 8)),
                 _ => None,
             };
             if let Some((res, size)) = result_info {
@@ -212,7 +246,9 @@ fn precompute_function_layout<'a>(
     let mut current = -(16 + aligned_local as i64);
     let locals_start = current;
     for (res, sz) in local_allocs {
-        func_ctx.value_locations.insert(res, ValueLocation::StackOffset(current));
+        func_ctx
+            .value_locations
+            .insert(res, ValueLocation::StackOffset(current));
         current += sz as i64;
     }
 
@@ -246,5 +282,3 @@ fn generate_basic_block<'a, W: Write>(
     }
     Ok(())
 }
-
-
