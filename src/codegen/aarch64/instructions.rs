@@ -478,7 +478,7 @@ fn store_to_location<W: Write>(writer: &mut W, src_reg: &str, dest: &str) -> Res
         writeln!(writer, "        str {}, [x9]", src_reg)?;
     } else {
         return Err(LaminaError::CodegenError(CodegenError::InternalError));
--    }
+    }
     Ok(())
 }
 
