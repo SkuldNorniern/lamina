@@ -704,21 +704,26 @@ pub fn generate_instruction<'a, W: Write>(
             array_ptr,
             index,
         } => {
-            // Removed non-existent array_ty
+            // CRITICAL BUG: Element size should be determined from array type information
+            // Currently hardcoded to 8 bytes (64-bit), which will cause incorrect address
+            // calculations for arrays with different element sizes (e.g., i32 arrays)
             let array_ptr_op = get_value_operand_asm(array_ptr, state, func_ctx)?;
             let index_op = get_value_operand_asm(index, state, func_ctx)?;
             let dest_op = func_ctx.get_value_location(result)?;
             let dest_asm = dest_op.to_operand_string();
 
-            // Note: Element size determined from array_ptr type info at runtime
-            let element_size: i64 = 8; // Placeholder: Assume 8-byte elements (i64/ptr)
+            // FIXME: GetElemPtr should carry element type information or we need a way
+            // to look up the array element type from the context. For now, assume 8-byte
+            // elements (i64/ptr) which is the most common case, but this is INCORRECT
+            // for other element sizes.
+            let element_size: i64 = 8; // FIXME: This should be calculated from array element type
 
             writeln!(writer, "        movq {}, %rax # GEP Base Ptr", array_ptr_op)?;
             writeln!(writer, "        movq {}, %r10 # GEP Index", index_op)?;
             // Ensure index is sign-extended if it's i32? Assume 64-bit for now.
             writeln!(
                 writer,
-                "        imulq ${}, %r10 # GEP Offset = Index * ElemSize",
+                "        imulq ${}, %r10 # GEP Offset = Index * ElemSize (FIXME: hardcoded 8)",
                 element_size
             )?;
             writeln!(

@@ -804,42 +804,6 @@ fn get_instruction_result<'a>(instr: &Instruction<'a>) -> Option<&'a str> {
     }
 }
 
-// Count how many operands are in registers vs memory
-fn count_register_operands(instr: &Instruction, allocation_result: &AllocationResult) -> usize {
-    let mut count = 0;
-
-    match instr {
-        Instruction::Binary { lhs, rhs, .. } => {
-            if let Value::Variable(var) = lhs
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
-            if let Value::Variable(var) = rhs
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
-        }
-        Instruction::Load { ptr, .. } => {
-            if let Value::Variable(var) = ptr
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
-        }
-        Instruction::Store { ptr, value, .. } => {
-            if let Value::Variable(var) = ptr
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
-            if let Value::Variable(var) = value
-                && allocation_result.assignments.contains_key(*var) {
-                    count += 1;
-                }
-        }
-        _ => {}
-    }
-
-    count
-}
 
 // Highly optimized binary operation generation using register allocation results
 fn generate_optimized_binary<'a, W: Write>(
@@ -1695,7 +1659,7 @@ mod tests {
         let asm = compile_to_asm(ir);
 
         // Extract all block labels for the fibonacci function
-        let block_labels: Vec<&str> = asm
+        let _block_labels: Vec<&str> = asm
             .lines()
             .filter(|line| {
                 line.contains(".L_block_")
