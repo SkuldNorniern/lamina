@@ -1200,7 +1200,7 @@ mod tests {
             lhs: Value::Constant(Literal::Bool(true)),
             rhs: Value::Constant(Literal::Bool(false)),
         };
-        assert_codegen_error(&bin_err, &ctx, "Binary op for type");
+        assert_codegen_error(&bin_err, &ctx, "Binary operation for type");
     }
 
     #[test]

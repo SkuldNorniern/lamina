@@ -251,12 +251,14 @@ mod tests {
             get_value_operand_asm(&Value::Constant(Literal::Char('A')), &state, &func_ctx).unwrap(),
             "$65"
         );
-        // Check errors for unimplemented types
-        assert!(
-            get_value_operand_asm(&Value::Constant(Literal::F32(1.0)), &state, &func_ctx).is_err()
+        // F32 and F64 literals are now supported (converted to integer bit representation)
+        assert_eq!(
+            get_value_operand_asm(&Value::Constant(Literal::F32(1.0)), &state, &func_ctx).unwrap(),
+            "$1065353216" // 1.0f32 in IEEE 754 bit representation
         );
-        assert!(
-            get_value_operand_asm(&Value::Constant(Literal::F64(2.5)), &state, &func_ctx).is_err()
+        assert_eq!(
+            get_value_operand_asm(&Value::Constant(Literal::F64(2.5)), &state, &func_ctx).unwrap(),
+            "$4612811918334230528" // 2.5f64 in IEEE 754 bit representation
         );
         assert!(
             get_value_operand_asm(&Value::Constant(Literal::String("hi")), &state, &func_ctx)
