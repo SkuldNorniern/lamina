@@ -54,12 +54,20 @@ pub fn get_value_operand_asm<'a>(
             Literal::U16(v) => Ok(format!("${}", v)),
             Literal::U32(v) => Ok(format!("${}", v)),
             Literal::U64(v) => Ok(format!("${}", v)),
-            Literal::F32(_v) => Err(LaminaError::CodegenError(
-                "f32 literal operand not implemented".to_string(),
-            )),
-            Literal::F64(_v) => Err(LaminaError::CodegenError(
-                "f64 literal operand not implemented".to_string(),
-            )),
+            Literal::F32(v) => {
+                // For now, convert to integer representation
+                // This is a temporary implementation - proper float constant handling
+                // should use .float/.double directives in data section
+                let bits = v.to_bits() as i64;
+                Ok(format!("${}", bits))
+            },
+            Literal::F64(v) => {
+                // For now, convert to integer representation
+                // This is a temporary implementation - proper float constant handling
+                // should use .float/.double directives in data section
+                let bits = v.to_bits() as i64;
+                Ok(format!("${}", bits))
+            },
             Literal::Bool(v) => Ok(format!("${}", if *v { 1 } else { 0 })),
             Literal::Char(c) => Ok(format!("${}", *c as u8)),
             Literal::String(_) => Err(LaminaError::CodegenError(
