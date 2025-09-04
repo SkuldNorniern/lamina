@@ -1,5 +1,6 @@
 use super::state::{CodegenState, FunctionContext};
 use crate::{LaminaError, Literal, PrimitiveType, Result, Type, Value};
+use crate::codegen::CodegenError;
 
 // Helper to get assembly size directive and size in bytes (simplified)
 pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str, u64)> {
@@ -24,16 +25,16 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
             Ok((".space", elem_size * size)) // Use .space for aggregate types, directive isn't really used here
         }
         Type::Struct(_) => Err(LaminaError::CodegenError(
-            "Struct size calculation not implemented yet".to_string(),
+            CodegenError::StructNotImplemented,
         )),
         Type::Tuple(_) => Err(LaminaError::CodegenError(
-            "Tuple size calculation not implemented yet".to_string(),
+            CodegenError::TupleNotImplemented,
         )),
         Type::Named(_) => Err(LaminaError::CodegenError(
-            "Named type size calculation requires lookup (not implemented yet)".to_string(),
+            CodegenError::NamedTypeNotImplemented,
         )),
         Type::Void => Err(LaminaError::CodegenError(
-            "Cannot get size of void type".to_string(),
+            CodegenError::VoidTypeSize,
         )),
     }
 }
@@ -71,7 +72,7 @@ pub fn get_value_operand_asm<'a>(
             Literal::Bool(v) => Ok(format!("${}", if *v { 1 } else { 0 })),
             Literal::Char(c) => Ok(format!("${}", *c as u8)),
             Literal::String(_) => Err(LaminaError::CodegenError(
-                "String literal operand requires label (use global var)".to_string(),
+                CodegenError::StringLiteralRequiresGlobal,
             )),
         },
         Value::Variable(name) => {
@@ -81,7 +82,7 @@ pub fn get_value_operand_asm<'a>(
         }
         Value::Global(name) => {
             let asm_label = state.global_layout.get(name).ok_or_else(|| {
-                LaminaError::CodegenError(format!("Global '{}' not found in layout map", name))
+                LaminaError::CodegenError(CodegenError::GlobalNotFound(name.to_string()))
             })?;
             Ok(format!("{}(%rip)", asm_label))
         }

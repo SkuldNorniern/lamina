@@ -196,44 +196,4 @@ impl Default for BackendConfig {
     }
 }
 
-/// Error types specific to codegen
-#[derive(Debug, Clone)]
-pub enum CodegenError {
-    /// Register allocation failed
-    RegisterAllocationFailed(String),
-    /// Invalid instruction for target
-    InvalidInstruction(String),
-    /// Stack overflow (too many locals)
-    StackOverflow,
-    /// Unsupported feature
-    UnsupportedFeature(String),
-    /// Internal error
-    InternalError(String),
-}
 
-impl std::fmt::Display for CodegenError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CodegenError::RegisterAllocationFailed(msg) => {
-                write!(f, "Register allocation failed: {}", msg)
-            }
-            CodegenError::InvalidInstruction(msg) => {
-                write!(f, "Invalid instruction: {}", msg)
-            }
-            CodegenError::StackOverflow => {
-                write!(f, "Stack overflow: too many local variables")
-            }
-            CodegenError::UnsupportedFeature(feature) => {
-                write!(f, "Unsupported feature: {}", feature)
-            }
-            CodegenError::InternalError(msg) => {
-                write!(f, "Internal codegen error: {}", msg)
-            }
-        }
-    }
-}
-
-impl std::error::Error for CodegenError {}
-
-/// Result type for codegen operations
-pub type CodegenResult<T> = std::result::Result<T, CodegenError>;

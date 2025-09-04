@@ -1,6 +1,7 @@
 use super::state::CodegenState;
 use super::util::get_type_size_directive_and_bytes;
 use crate::{GlobalDeclaration, LaminaError, Literal, Module, Result, Value};
+use crate::codegen::CodegenError;
 use std::io::Write;
 
 // Helper to generate the .data and .bss sections based on globals
@@ -93,19 +94,19 @@ fn generate_global_initializer<W: Write>(
             },
             Value::Global(_) => {
                 return Err(LaminaError::CodegenError(
-                    "Global initializer pointing to another global not implemented yet".to_string(),
+                    CodegenError::GlobalToGlobalInitNotImplemented,
                 ));
             }
             Value::Variable(_) => {
                 return Err(LaminaError::CodegenError(
-                    "Cannot initialize global with a variable".to_string(),
+                    CodegenError::GlobalVarInitNotSupported,
                 ));
             }
         }
     } else {
         // Should have been handled by BSS section logic
         return Err(LaminaError::CodegenError(
-            "generate_global_initializer called on uninitialized global".to_string(),
+            CodegenError::UninitializedGlobalInit,
         ));
     }
     Ok(())

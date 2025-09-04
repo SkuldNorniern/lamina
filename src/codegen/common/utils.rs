@@ -14,16 +14,16 @@ pub fn get_type_size_bytes(ty: &Type<'_>) -> Result<u64> {
             Ok(elem_size * size)
         }
         Type::Struct(_) => Err(crate::LaminaError::CodegenError(
-            "Struct size calculation not implemented yet".to_string(),
+            crate::codegen::CodegenError::StructNotImplemented,
         )),
         Type::Tuple(_) => Err(crate::LaminaError::CodegenError(
-            "Tuple size calculation not implemented yet".to_string(),
+            crate::codegen::CodegenError::TupleNotImplemented,
         )),
         Type::Named(_) => Err(crate::LaminaError::CodegenError(
-            "Named type size calculation requires lookup (not implemented yet)".to_string(),
+            crate::codegen::CodegenError::NamedTypeNotImplemented,
         )),
         Type::Void => Err(crate::LaminaError::CodegenError(
-            "Cannot get size of void type".to_string(),
+            crate::codegen::CodegenError::VoidTypeSize,
         )),
     }
 }
@@ -42,7 +42,7 @@ pub fn get_type_alignment(ty: &Type<'_>) -> Result<u64> {
         Type::Tuple(_) => Ok(8),  // Default to 8-byte alignment for tuples
         Type::Named(_) => Ok(8),  // Default to 8-byte alignment for named types
         Type::Void => Err(crate::LaminaError::CodegenError(
-            "Cannot get alignment of void type".to_string(),
+            crate::codegen::CodegenError::VoidTypeSize,
         )),
     }
 }

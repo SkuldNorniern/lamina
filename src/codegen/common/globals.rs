@@ -260,13 +260,13 @@ impl StandardGlobalGenerator {
                 }
                 Value::Variable(_) => {
                     return Err(LaminaError::CodegenError(
-                        "Cannot initialize global with a variable".to_string(),
+                        crate::codegen::CodegenError::GlobalVarInitNotSupported,
                     ));
                 }
             }
         } else {
             return Err(LaminaError::CodegenError(
-                "generate_global_initializer called on uninitialized global".to_string(),
+                crate::codegen::CodegenError::UninitializedGlobalInit,
             ));
         }
         Ok(())
@@ -334,7 +334,7 @@ fn get_alignment_for_type(ty: &crate::Type) -> Result<u64> {
         Type::Tuple(_) => Ok(8),  // Default alignment for tuples
         Type::Named(_) => Ok(8),  // Default alignment for named types
         Type::Void => Err(LaminaError::CodegenError(
-            "Cannot get alignment of void type".to_string(),
+            crate::codegen::CodegenError::VoidTypeSize,
         )),
     }
 }
