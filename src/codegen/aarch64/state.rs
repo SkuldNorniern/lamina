@@ -1,4 +1,5 @@
 use crate::{Identifier, Label, LaminaError, Result};
+use crate::codegen::CodegenError;
 use std::collections::{HashMap, HashSet};
 
 // AArch64 (ARM64) integer/pointer argument registers (AAPCS64 / SysV-like)
@@ -68,19 +69,17 @@ impl<'a> FunctionContext<'a> {
 
     pub fn get_value_location(&self, name: Identifier<'a>) -> Result<ValueLocation> {
         self.value_locations.get(name).cloned().ok_or_else(|| {
-            LaminaError::CodegenError(format!(
-                "Value '{}' location not found in function context",
-                name
-            ))
+            LaminaError::CodegenError(
+                CodegenError::ValueLocationNotFound(name.to_string())
+            )
         })
     }
 
     pub fn get_block_label(&self, ir_label: &Label<'a>) -> Result<String> {
         self.block_labels.get(ir_label).cloned().ok_or_else(|| {
-            LaminaError::CodegenError(format!(
-                "Label '{}' not found in function context",
-                ir_label
-            ))
+            LaminaError::CodegenError(
+                CodegenError::BlockLabelNotFound(ir_label.to_string())
+            )
         })
     }
 }

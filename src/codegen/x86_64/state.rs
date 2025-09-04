@@ -6,6 +6,7 @@ use crate::{
     Result,
     // Module, GlobalDeclaration, PrimitiveType
 };
+use crate::codegen::CodegenError;
 use std::collections::HashMap; // Re-add HashMap
 // Using HashMap for standard library compatibility
 // IndexMap dependency removed for release
@@ -74,20 +75,18 @@ impl<'a> FunctionContext<'a> {
     // This version assumes layout_function_stack has already run and populated locations.
     pub fn get_value_location(&self, name: Identifier<'a>) -> Result<ValueLocation> {
         self.value_locations.get(name).cloned().ok_or_else(|| {
-            LaminaError::CodegenError(format!(
-                "Value '{}' location not found in function context",
-                name
-            ))
+            LaminaError::CodegenError(
+                CodegenError::ValueLocationNotFound(name.to_string())
+            )
         })
     }
 
     // Get the assembly label for a basic block
     pub fn get_block_label(&self, ir_label: &Label<'a>) -> Result<String> {
         self.block_labels.get(ir_label).cloned().ok_or_else(|| {
-            LaminaError::CodegenError(format!(
-                "Label '{}' not found in function context",
-                ir_label
-            ))
+            LaminaError::CodegenError(
+                CodegenError::BlockLabelNotFound(ir_label.to_string())
+            )
         })
     }
 }

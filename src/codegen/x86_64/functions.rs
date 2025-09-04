@@ -2,6 +2,7 @@ use super::instructions::generate_instruction;
 use super::register_allocator::{AllocationResult, GraphColoringAllocator};
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_type_size_directive_and_bytes;
+use crate::codegen::CodegenError;
 use crate::{
     BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType,
     Result, Type, Value,
@@ -592,10 +593,9 @@ fn precompute_function_layout<'a>(
                 .iter()
                 .find(|p| p.name == param_name)
                 .ok_or_else(|| {
-                    LaminaError::CodegenError(format!(
-                        "Parameter '{}' not found in function signature",
-                        param_name
-                    ))
+                    LaminaError::CodegenError(
+                        CodegenError::InternalError
+                    )
                 })?; // Find param to get type
             let (_, size) = get_type_size_directive_and_bytes(&param_sig.ty)?;
             let aligned_size = (size + 7) & !7;

@@ -1,6 +1,7 @@
 use super::instructions::generate_instruction;
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_type_size_directive_and_bytes;
+use crate::codegen::CodegenError;
 use crate::{
     BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType,
     Result,
@@ -235,16 +236,16 @@ fn precompute_function_layout<'a>(
                         PrimitiveType::Bool | PrimitiveType::I8 => 1,
                         PrimitiveType::F32 => 4,
                         _ => {
-                            return Err(LaminaError::CodegenError(format!(
-                                "Unsupported type for stack allocation: {:?}",
-                                ty
-                            )));
+                            return Err(LaminaError::CodegenError(
+                                CodegenError::InternalError
+                            ));
                         }
                     };
                     Some((result, s))
                 }
                 Instruction::ZeroExtend {
                     result,
+                    source_type,
                     target_type,
                     ..
                 } => {
@@ -253,12 +254,13 @@ fn precompute_function_layout<'a>(
                         PrimitiveType::I64 | PrimitiveType::Ptr => 8,
                         PrimitiveType::Bool | PrimitiveType::I8 => 1,
                         PrimitiveType::F32 => 4,
-                        _ => {
-                            return Err(LaminaError::CodegenError(format!(
-                                "Unsupported target type for zero extension: {:?}",
-                                target_type
-                            )));
-                        }
+                                        _ => {
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::ZeroExtensionNotSupported(
+                            crate::codegen::ExtensionInfo::Custom(format!("{:?} to {:?}", source_type, target_type))
+                        )
+                    ));
+                }
                     };
                     Some((result, s))
                 }
