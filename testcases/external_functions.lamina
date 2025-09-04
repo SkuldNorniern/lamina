@@ -1,0 +1,109 @@
+# Test external function declarations and calls
+
+# Declare external functions (simulating libc functions)
+external fn @external_add(i64, i64) -> i64
+external fn @external_print(i64) -> void
+external fn @external_multiply(i32, i32) -> i32
+
+# Test calling external functions
+fn @test_external_calls() -> i64 {
+  entry:
+    # Call external addition
+    %sum = call @external_add(10, 20)  # Should be 30
+
+    # Call external multiplication with type conversion
+    %a_i32 = add.i32 5, 0
+    %b_i32 = add.i32 6, 0
+    %product_i32 = call @external_multiply(%a_i32, %b_i32)  # Should be 30
+
+    # Convert to i64 for summation
+    %product_i64 = zext i32 i64 %product_i32
+
+    # Return sum of both results
+    %total = add.i64 %sum, %product_i64  # 30 + 30 = 60
+
+    ret.i64 %total
+}
+
+# Test external function with void return
+fn @test_external_void() -> i64 {
+  entry:
+    # Call external print function
+    %value = add.i64 42, 0
+    call @external_print(%value)  # Should print 42
+
+    # Return a different value to verify execution
+    %result = add.i64 100, 0
+    ret.i64 %result
+}
+
+# Test multiple external function calls in sequence
+fn @test_multiple_externals() -> i64 {
+  entry:
+    # First external call
+    %val1 = call @external_add(1, 2)  # 3
+
+    # Second external call using result
+    %val2 = call @external_add(%val1, 4)  # 3 + 4 = 7
+
+    # Third external call
+    %val3 = call @external_add(%val2, 10)  # 7 + 10 = 17
+
+    ret.i64 %val3
+}
+
+# Test external functions with different signatures
+external fn @external_bool_op(i1, i1) -> i1
+external fn @external_string_op([10 x i8]) -> i64
+
+fn @test_different_signatures() -> i64 {
+  entry:
+    # Test boolean external function
+    %bool_result = call @external_bool_op(1, 0)  # true AND false = false
+    %bool_extended = zext i1 i64 %bool_result    # Convert to i64
+
+    # Test string external function (simplified)
+    %dummy_string_val = add.i64 123, 0  # Placeholder
+
+    # Return combined result
+    %final = add.i64 %bool_extended, %dummy_string_val
+    ret.i64 %final
+}
+
+# Test mixed internal and external function calls
+fn @internal_helper(i64 %x) -> i64 {
+  entry:
+    %doubled = mul.i64 %x, 2
+    ret.i64 %doubled
+}
+
+fn @test_mixed_calls() -> i64 {
+  entry:
+    # Call internal function
+    %internal_result = call @internal_helper(5)  # 10
+
+    # Call external function
+    %external_result = call @external_add(15, 25)  # 40
+
+    # Combine results
+    %combined = add.i64 %internal_result, %external_result  # 10 + 40 = 50
+
+    ret.i64 %combined
+}
+
+fn @main() -> i64 {
+  entry:
+    %ext_calls_result = call @test_external_calls()       # Should return 60
+    %ext_void_result = call @test_external_void()         # Should return 100
+    %multi_ext_result = call @test_multiple_externals()   # Should return 17
+    %diff_sig_result = call @test_different_signatures()  # Depends on external impl
+    %mixed_result = call @test_mixed_calls()             # Should return 50
+
+    print %ext_calls_result
+    print %ext_void_result
+    print %multi_ext_result
+    print %diff_sig_result
+    print %mixed_result
+
+    ret.i64 0
+}

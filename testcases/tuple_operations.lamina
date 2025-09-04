@@ -1,0 +1,139 @@
+# Test tuple creation and manipulation
+
+# Test basic tuple operations
+fn @test_basic_tuple() -> i64 {
+  entry:
+    # Create a tuple with mixed types
+    %tuple = tuple (42, true, "hello")
+
+    # Extract elements
+    %number = extract_tuple %tuple, 0  # i64: 42
+    %flag = extract_tuple %tuple, 1    # bool: true
+    # Note: string extraction would be more complex in practice
+
+    # Convert bool to i64 for arithmetic (true = 1, false = 0)
+    %flag_int = zext i1 i64 %flag
+
+    # Return number + flag
+    %result = add.i64 %number, %flag_int
+    ret.i64 %result
+}
+
+# Test tuple as function parameter
+fn @process_tuple(tuple (i64, i64, i64) %coords) -> i64 {
+  entry:
+    # Extract coordinates
+    %x = extract_tuple %coords, 0
+    %y = extract_tuple %coords, 1
+    %z = extract_tuple %coords, 2
+
+    # Calculate sum of coordinates
+    %xy_sum = add.i64 %x, %y
+    %total = add.i64 %xy_sum, %z
+
+    ret.i64 %total
+}
+
+# Test nested tuple operations
+fn @test_nested_tuples() -> i64 {
+  entry:
+    # Create inner tuples
+    %point2d = tuple (10, 20)
+    %point3d = tuple (5, 15, 25)
+
+    # Create outer tuple containing other tuples and values
+    %complex_data = tuple (%point2d, 100, %point3d, true)
+
+    # Extract inner tuples
+    %inner_point2d = extract_tuple %complex_data, 0
+    %number = extract_tuple %complex_data, 1
+    %inner_point3d = extract_tuple %complex_data, 2
+    %boolean = extract_tuple %complex_data, 3
+
+    # Extract coordinates from inner tuples
+    %x2d = extract_tuple %inner_point2d, 0
+    %y2d = extract_tuple %inner_point2d, 1
+    %x3d = extract_tuple %inner_point3d, 0
+    %y3d = extract_tuple %inner_point3d, 1
+    %z3d = extract_tuple %inner_point3d, 2
+
+    # Calculate: 2D sum + number + 3D sum
+    %sum2d = add.i64 %x2d, %y2d         # 10 + 20 = 30
+    %sum3d = add.i64 %x3d, %y3d
+    %sum3d = add.i64 %sum3d, %z3d       # 5 + 15 + 25 = 45
+
+    %partial = add.i64 %sum2d, %number  # 30 + 100 = 130
+    %total = add.i64 %partial, %sum3d   # 130 + 45 = 175
+
+    ret.i64 %total
+}
+
+# Test tuple for multiple return values simulation
+fn @divide_and_remainder(i64 %dividend, i64 %divisor) -> tuple (i64, i64) {
+  entry:
+    %quotient = div.i64 %dividend, %divisor
+    %remainder = mod.i64 %dividend, %divisor
+    %result = tuple (%quotient, %remainder)
+    ret.tuple %result
+}
+
+# Test using the multiple return values
+fn @test_multiple_returns() -> i64 {
+  entry:
+    # Call function that returns tuple
+    %division_result = call @divide_and_remainder(17, 5)
+
+    # Extract quotient and remainder
+    %quotient = extract_tuple %division_result, 0  # Should be 3
+    %remainder = extract_tuple %division_result, 1  # Should be 2
+
+    # Return quotient + remainder
+    %sum = add.i64 %quotient, %remainder
+    ret.i64 %sum
+}
+
+# Test tuple with different data types
+fn @test_mixed_types_tuple() -> i64 {
+  entry:
+    # Create tuple with various types
+    %data = tuple (100, false, 50, true)
+
+    # Extract integer values
+    %first_int = extract_tuple %data, 0   # 100
+    %second_int = extract_tuple %data, 2  # 50
+
+    # Extract boolean values
+    %first_bool = extract_tuple %data, 1  # false
+    %second_bool = extract_tuple %data, 3 # true
+
+    # Convert booleans to integers for calculation
+    %bool1_int = zext i1 i64 %first_bool  # 0
+    %bool2_int = zext i1 i64 %second_bool # 1
+
+    # Calculate: first_int + second_int + bool1 + bool2
+    %int_sum = add.i64 %first_int, %second_int  # 100 + 50 = 150
+    %bool_sum = add.i64 %bool1_int, %bool2_int  # 0 + 1 = 1
+    %total = add.i64 %int_sum, %bool_sum        # 150 + 1 = 151
+
+    ret.i64 %total
+}
+
+fn @main() -> i64 {
+  entry:
+    %basic_result = call @test_basic_tuple()         # Should return 43 (42 + 1)
+    %nested_result = call @test_nested_tuples()      # Should return 175
+    %multi_return_result = call @test_multiple_returns() # Should return 5 (3 + 2)
+    %mixed_result = call @test_mixed_types_tuple()   # Should return 151
+
+    # Test tuple as parameter
+    %coords = tuple (10, 20, 30)
+    %coords_sum = call @process_tuple(%coords)       # Should return 60 (10 + 20 + 30)
+
+    print %basic_result
+    print %nested_result
+    print %multi_return_result
+    print %mixed_result
+    print %coords_sum
+
+    ret.i64 0
+}

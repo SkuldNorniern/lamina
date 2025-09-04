@@ -1,0 +1,205 @@
+# Test comprehensive print operations for debugging
+
+# Test printing different integer types
+fn @test_integer_printing() -> i64 {
+  entry:
+    # Print various integer literals
+    print 0     # Zero
+    print 42    # Positive number
+    print -15   # Negative number
+    print 1000  # Larger number
+
+    # Print computed values
+    %a = add.i64 10, 5
+    %b = mul.i64 %a, 2
+    %c = sub.i64 %b, 3
+
+    print %a  # Should print 15
+    print %b  # Should print 30
+    print %c  # Should print 27
+
+    ret.i64 %c
+}
+
+# Test printing boolean values
+fn @test_boolean_printing() -> i64 {
+  entry:
+    # Print boolean literals
+    print 1     # true
+    print 0     # false
+
+    # Print boolean expressions
+    %x = add.i64 10, 0
+    %y = add.i64 5, 0
+
+    %is_greater = gt.i64 %x, %y   # true
+    %is_equal = eq.i64 %x, %y     # false
+    %is_less = lt.i64 %x, %y      # false
+
+    print %is_greater  # Should print 1 (true)
+    print %is_equal    # Should print 0 (false)
+    print %is_less     # Should print 0 (false)
+
+    # Convert boolean to integer for return
+    %bool_int = zext i1 i64 %is_greater
+    ret.i64 %bool_int
+}
+
+# Test printing in conditional contexts
+fn @test_conditional_printing(i64 %input) -> i64 {
+  entry:
+    print %input  # Print input value
+
+    %is_positive = gt.i64 %input, 0
+    br %is_positive, positive, non_positive
+
+  positive:
+    print 100  # Indicate positive path
+    %result = add.i64 %input, 1000
+    jmp done
+
+  non_positive:
+    print 200  # Indicate non-positive path
+    %result = sub.i64 %input, 500
+    jmp done
+
+  done:
+    print %result  # Print final result
+    ret.i64 %result
+}
+
+# Test printing in loops (simulated)
+fn @test_loop_printing(i64 %iterations) -> i64 {
+  entry:
+    %counter = add.i64 0, 0
+    %accumulator = add.i64 0, 0
+    jmp loop_check
+
+  loop_check:
+    print %counter    # Print current iteration
+    %should_continue = lt.i64 %counter, %iterations
+    br %should_continue, loop_body, loop_exit
+
+  loop_body:
+    %new_acc = add.i64 %accumulator, %counter
+    print %new_acc   # Print running total
+
+    %next_counter = add.i64 %counter, 1
+    %counter = phi i64 (%next_counter, loop_check)
+    %accumulator = phi i64 (%new_acc, loop_check)
+    jmp loop_check
+
+  loop_exit:
+    print %accumulator  # Print final result
+    ret.i64 %accumulator
+}
+
+# Test printing with memory operations
+fn @test_memory_printing() -> i64 {
+  entry:
+    # Allocate memory and print operations
+    %ptr = alloc.stack i64
+    print %ptr  # Print pointer value (address)
+
+    # Store and load values with printing
+    %value = add.i64 123, 0
+    print %value  # Print value before storing
+
+    store i64 %ptr, %value
+    %loaded = load i64 %ptr
+    print %loaded  # Print loaded value
+
+    # Modify and print again
+    %modified = mul.i64 %loaded, 2
+    print %modified  # Print modified value
+
+    store i64 %ptr, %modified
+    %final = load i64 %ptr
+    print %final  # Print final value
+
+    ret.i64 %final
+}
+
+# Test printing function call results
+fn @compute_and_print(i64 %x, i64 %y) -> i64 {
+  entry:
+    %sum = add.i64 %x, %y
+    %product = mul.i64 %x, %y
+
+    print %x      # Print inputs
+    print %y
+    print %sum    # Print sum
+    print %product  # Print product
+
+    ret.i64 %sum
+}
+
+fn @test_function_printing() -> i64 {
+  entry:
+    print 1000  # Print test marker
+
+    %result1 = call @compute_and_print(3, 7)   # Should print: 3, 7, 10, 21
+    %result2 = call @compute_and_print(10, 5)  # Should print: 10, 5, 15, 50
+
+    %total = add.i64 %result1, %result2  # 10 + 15 = 25
+    print %total
+
+    ret.i64 %total
+}
+
+# Test comprehensive debugging scenario
+fn @debug_complex_scenario() -> i64 {
+  entry:
+    print 9999  # Start marker
+
+    # Memory operations with debugging
+    %ptr1 = alloc.stack i64
+    %ptr2 = alloc.stack i64
+
+    store i64 %ptr1, 42
+    store i64 %ptr2, 58
+
+    %val1 = load i64 %ptr1
+    %val2 = load i64 %ptr2
+
+    print %val1  # Should print 42
+    print %val2  # Should print 58
+
+    # Arithmetic with debugging
+    %sum = add.i64 %val1, %val2
+    %diff = sub.i64 %val1, %val2
+    %prod = mul.i64 %val1, %val2
+
+    print %sum   # Should print 100
+    print %diff  # Should print -16
+    print %prod  # Should print 2436
+
+    # Boolean logic with debugging
+    %is_equal = eq.i64 %val1, %val2
+    %is_greater = gt.i64 %val1, %val2
+
+    print %is_equal    # Should print 0 (false)
+    print %is_greater  # Should print 0 (false)
+
+    print 9999  # End marker
+
+    ret.i64 %sum
+}
+
+fn @main() -> i64 {
+  entry:
+    print 1111  # Main function start marker
+
+    %int_result = call @test_integer_printing()      # Should return 27
+    %bool_result = call @test_boolean_printing()     # Should return 1
+    %cond_result1 = call @test_conditional_printing(25)  # Should return 1025
+    %cond_result2 = call @test_conditional_printing(-10) # Should return -510
+    %loop_result = call @test_loop_printing(3)       # Should return 3 (0+1+2)
+    %mem_result = call @test_memory_printing()       # Should return 246
+    %func_result = call @test_function_printing()    # Should return 25
+    %complex_result = call @test_complex_scenario()  # Should return 100
+
+    print 2222  # Main function end marker
+
+    ret.i64 0
+}

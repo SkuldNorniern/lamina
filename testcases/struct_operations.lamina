@@ -1,0 +1,150 @@
+# Test struct definitions and operations
+
+# Define various struct types
+type @Vector2D = struct { x: i64, y: i64 }
+type @Vector3D = struct { x: i64, y: i64, z: i64 }
+type @Rectangle = struct { width: i64, height: i64 }
+type @Circle = struct { center_x: i64, center_y: i64, radius: i64 }
+type @ComplexNumber = struct { real: i64, imaginary: i64 }
+
+# Test basic struct operations
+fn @test_vector2d_operations() -> i64 {
+  entry:
+    # Allocate Vector2D struct
+    %vec = alloc.stack struct { x: i64, y: i64 }
+
+    # Set coordinates
+    %x_ptr = getfieldptr %vec, 0
+    %y_ptr = getfieldptr %vec, 1
+    store.i64 %x_ptr, 10
+    store.i64 %y_ptr, 20
+
+    # Load coordinates
+    %x = load.i64 %x_ptr
+    %y = load.i64 %y_ptr
+
+    # Calculate magnitude squared (x*x + y*y)
+    %x_squared = mul.i64 %x, %x
+    %y_squared = mul.i64 %y, %y
+    %magnitude_squared = add.i64 %x_squared, %y_squared
+
+    ret.i64 %magnitude_squared
+}
+
+# Test struct as function parameter
+fn @calculate_area(struct { width: i64, height: i64 } %rect) -> i64 {
+  entry:
+    %width_ptr = getfieldptr %rect, 0
+    %height_ptr = getfieldptr %rect, 1
+
+    %width = load.i64 %width_ptr
+    %height = load.i64 %height_ptr
+
+    %area = mul.i64 %width, %height
+    ret.i64 %area
+}
+
+# Test nested struct operations
+fn @test_nested_operations() -> i64 {
+  entry:
+    # Create rectangle
+    %rect = alloc.stack struct { width: i64, height: i64 }
+    %rect_width_ptr = getfieldptr %rect, 0
+    %rect_height_ptr = getfieldptr %rect, 1
+    store.i64 %rect_width_ptr, 15
+    store.i64 %rect_height_ptr, 25
+
+    # Calculate area using function
+    %area = call @calculate_area(%rect)
+
+    # Create circle
+    %circle = alloc.stack struct { center_x: i64, center_y: i64, radius: i64 }
+    %circle_x_ptr = getfieldptr %circle, 0
+    %circle_y_ptr = getfieldptr %circle, 1
+    %circle_r_ptr = getfieldptr %circle, 2
+    store.i64 %circle_x_ptr, 0
+    store.i64 %circle_y_ptr, 0
+    store.i64 %circle_r_ptr, 10
+
+    # Load circle data
+    %radius = load.i64 %circle_r_ptr
+    %radius_squared = mul.i64 %radius, %radius
+    %circle_area_approx = mul.i64 %radius_squared, 3  # Approximate π × r²
+
+    # Return sum of areas
+    %total_area = add.i64 %area, %circle_area_approx
+    ret.i64 %total_area
+}
+
+# Test struct field updates
+fn @test_struct_updates() -> i64 {
+  entry:
+    # Create a complex number
+    %complex = alloc.stack struct { real: i64, imaginary: i64 }
+
+    # Initialize
+    %real_ptr = getfieldptr %complex, 0
+    %imag_ptr = getfieldptr %complex, 1
+    store.i64 %real_ptr, 3
+    store.i64 %imag_ptr, 4
+
+    # Update real part
+    %new_real = add.i64 3, 10  # 3 + 10 = 13
+    store.i64 %real_ptr, %new_real
+
+    # Load final values
+    %final_real = load.i64 %real_ptr
+    %final_imag = load.i64 %imag_ptr
+
+    # Return real + imaginary
+    %sum = add.i64 %final_real, %final_imag
+    ret.i64 %sum
+}
+
+# Test multiple struct instances
+fn @test_multiple_structs() -> i64 {
+  entry:
+    # Create two vectors
+    %vec1 = alloc.stack struct { x: i64, y: i64 }
+    %vec2 = alloc.stack struct { x: i64, y: i64 }
+
+    # Initialize vec1
+    %vec1_x_ptr = getfieldptr %vec1, 0
+    %vec1_y_ptr = getfieldptr %vec1, 1
+    store.i64 %vec1_x_ptr, 5
+    store.i64 %vec1_y_ptr, 10
+
+    # Initialize vec2
+    %vec2_x_ptr = getfieldptr %vec2, 0
+    %vec2_y_ptr = getfieldptr %vec2, 1
+    store.i64 %vec2_x_ptr, 15
+    store.i64 %vec2_y_ptr, 20
+
+    # Load all values
+    %v1x = load.i64 %vec1_x_ptr
+    %v1y = load.i64 %vec1_y_ptr
+    %v2x = load.i64 %vec2_x_ptr
+    %v2y = load.i64 %vec2_y_ptr
+
+    # Calculate dot product: (5*15) + (10*20) = 75 + 200 = 275
+    %x_product = mul.i64 %v1x, %v2x
+    %y_product = mul.i64 %v1y, %v2y
+    %dot_product = add.i64 %x_product, %y_product
+
+    ret.i64 %dot_product
+}
+
+fn @main() -> i64 {
+  entry:
+    %vec_result = call @test_vector2d_operations()    # Should return 500 (10² + 20²)
+    %nested_result = call @test_nested_operations()   # Should return 400 (15*25 + 10²*3)
+    %update_result = call @test_struct_updates()      # Should return 17 (13 + 4)
+    %multi_result = call @test_multiple_structs()     # Should return 275 (dot product)
+
+    print %vec_result
+    print %nested_result
+    print %update_result
+    print %multi_result
+
+    ret.i64 0
+}

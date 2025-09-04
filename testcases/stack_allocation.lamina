@@ -1,0 +1,74 @@
+# Test stack memory allocation (automatic lifetime management)
+fn @test_stack_allocation() -> i64 {
+  entry:
+    # Allocate memory on stack (automatically freed when function returns)
+    %stack_ptr = alloc.stack i32
+    %value = add.i32 25, 0
+
+    # Store and load from stack memory
+    store i32 %stack_ptr, %value
+    %loaded = load i32 %stack_ptr
+
+    # Use the value
+    %result = mul.i32 %loaded, 2
+
+    ret.i64 %result  # stack_ptr automatically freed here
+}
+
+fn @test_nested_stack_operations() -> i64 {
+  entry:
+    # Multiple stack allocations
+    %ptr1 = alloc.stack i64
+    %ptr2 = alloc.stack i64
+
+    # Store values
+    store i64 %ptr1, 10
+    store i64 %ptr2, 20
+
+    # Load and compute
+    %val1 = load i64 %ptr1
+    %val2 = load i64 %ptr2
+    %sum = add.i64 %val1, %val2
+
+    # More operations
+    %ptr3 = alloc.stack i64
+    store i64 %ptr3, %sum
+    %final = load i64 %ptr3
+    %result = mul.i64 %final, 3
+
+    ret.i64 %result  # All stack allocations automatically freed
+}
+
+fn @test_stack_vs_heap_comparison() -> i64 {
+  entry:
+    # Stack allocation (fast, automatic cleanup)
+    %stack_var = alloc.stack i32
+    store i32 %stack_var, 100
+
+    # Heap allocation (slower, manual cleanup required)
+    %heap_var = alloc.heap i32
+    store i32 %heap_var, 200
+
+    # Use both
+    %stack_val = load i32 %stack_var
+    %heap_val = load i32 %heap_var
+    %combined = add.i32 %stack_val, %heap_val
+
+    # TODO: Clean up heap allocation
+    # dealloc %heap_var
+
+    ret.i64 %combined  # stack_var automatically cleaned up
+}
+
+fn @main() -> i64 {
+  entry:
+    %result1 = call @test_stack_allocation()      # Should return 50 (25 * 2)
+    %result2 = call @test_nested_stack_operations() # Should return 90 ((10 + 20) * 3)
+    %result3 = call @test_stack_vs_heap_comparison() # Should return 300 (100 + 200)
+
+    print %result1
+    print %result2
+    print %result3
+
+    ret.i64 0
+}
