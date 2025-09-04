@@ -102,13 +102,21 @@ impl GraphColoringAllocator {
         // Create live intervals
         for (var, &first_def) in &var_first_def {
             if let Some(&last_use) = var_last_use.get(var) {
-                let uses = var_uses.get(var).cloned().unwrap_or_default();
+                let uses = var_uses.get(var).cloned().unwrap_or_else(|| Vec::new());
+                // Ensure start <= end for valid live intervals
+                let (start, end) = if first_def <= last_use {
+                    (first_def, last_use)
+                } else {
+                    // This can happen with phi nodes or malformed IR
+                    // In such cases, extend the interval to cover both points
+                    (first_def.min(last_use), first_def.max(last_use))
+                };
                 self.live_intervals.insert(
                     var.clone(),
                     LiveInterval {
                         var: var.clone(),
-                        start: first_def,
-                        end: last_use,
+                        start,
+                        end,
                         uses,
                     },
                 );
