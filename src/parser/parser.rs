@@ -1,25 +1,7 @@
 use crate::{
-    AllocType,
-    BasicBlock,
-    BinaryOp,
-    CmpOp,
-    Function,
-    FunctionAnnotation,
-    FunctionParameter,
-    FunctionSignature,
-    GlobalDeclaration,
-    Identifier,
-    Instruction,
-    Label,
-    LaminaError,
-    Literal,
-    Module,
-    PrimitiveType,
-    Result,
-    StructField,
-    Type,
-    TypeDeclaration,
-    Value,
+    AllocType, BasicBlock, BinaryOp, CmpOp, Function, FunctionAnnotation, FunctionParameter,
+    FunctionSignature, GlobalDeclaration, Identifier, Instruction, Label, LaminaError, Literal,
+    Module, PrimitiveType, Result, StructField, Type, TypeDeclaration, Value,
 };
 use std::collections::HashMap;
 

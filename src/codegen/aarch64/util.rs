@@ -8,7 +8,12 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
             PrimitiveType::I8 | PrimitiveType::Bool => Ok((".byte", 1)),
             PrimitiveType::I32 | PrimitiveType::F32 => Ok((".word", 4)),
             PrimitiveType::I64 | PrimitiveType::Ptr => Ok((".xword", 8)),
-            _ => return Err(LaminaError::CodegenError(format!("Unsupported primitive type: {:?}", pt))),
+            _ => {
+                return Err(LaminaError::CodegenError(format!(
+                    "Unsupported primitive type: {:?}",
+                    pt
+                )));
+            }
         },
         Type::Array { element_type, size } => {
             let (_, elem) = get_type_size_directive_and_bytes(element_type)?;
@@ -49,7 +54,12 @@ pub fn get_value_operand_asm<'a>(
                 "String literal operand requires label (use global var)".to_string(),
             )),
             Literal::I8(v) => Ok(format!("#{}", v)),
-            _ => return Err(LaminaError::CodegenError(format!("Unsupported literal type for operand: {:?}", value))),
+            _ => {
+                return Err(LaminaError::CodegenError(format!(
+                    "Unsupported literal type for operand: {:?}",
+                    value
+                )));
+            }
         },
         Value::Variable(name) => {
             let location = func_ctx.get_value_location(name)?;
@@ -73,7 +83,3 @@ pub fn materialize_label_address(dest_reg: &str, label: &str) -> [String; 2] {
         format!("        add {}, {}, {}@PAGEOFF", dest_reg, dest_reg, label),
     ]
 }
-
-
-
-

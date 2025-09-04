@@ -192,9 +192,10 @@ impl<'a> IRBuilder<'a> {
     /// ```
     pub fn annotate(&mut self, annotation: FunctionAnnotation) -> &mut Self {
         if let Some(func_name) = self.current_function
-            && let Some(annotations) = self.function_annotations.get_mut(func_name) {
-                annotations.push(annotation);
-            }
+            && let Some(annotations) = self.function_annotations.get_mut(func_name)
+        {
+            annotations.push(annotation);
+        }
         self
     }
 
@@ -260,9 +261,10 @@ impl<'a> IRBuilder<'a> {
     /// custom instruction type.
     pub fn inst(&mut self, instruction: Instruction<'a>) -> &mut Self {
         if let (Some(_func_name), Some(block_name)) = (self.current_function, self.current_block)
-            && let Some(instructions) = self.block_instructions.get_mut(block_name) {
-                instructions.push(instruction);
-            }
+            && let Some(instructions) = self.block_instructions.get_mut(block_name)
+        {
+            instructions.push(instruction);
+        }
         self
     }
 
