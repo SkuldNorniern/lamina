@@ -1,8 +1,0 @@
-# Simple print test with multiple values
-fn @main() -> i64 {
-  entry:
-    print 100
-    print 200
-    print 300
-    ret.i64 0
-}

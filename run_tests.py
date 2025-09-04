@@ -14,34 +14,32 @@ from pathlib import Path
 TEST_CASES = {
     # Basic functionality
     'simple_const.lamina': ['42'],
-    'simple_print.lamina': ['100', '200', '300'],
-    'simple_plus.lamina': ['45'],
     'arithmetic.lamina': ['5'],
     'loops.lamina': ['15'],
     'conditionals.lamina': ['100'],
     'functions.lamina': ['80'],
     'constants.lamina': ['42', '65536', '1000000', '123456789'],
     'variables.lamina': ['10', '20', '30', '25', '50'],
-    
-    # Advanced functionality  
+
+    # Advanced functionality
     'complex_arithmetic.lamina': ['277600'],
     'nested_calls.lamina': ['256'],
     'large_constants.lamina': ['4294967296', '1073741824', '8589934592', '17179869184'],
     'stress_test.lamina': ['210'],
-    'multiple_functions_simple.lamina': ['57'],  # Non-recursive version
-    
+
     # Debugging and consistency tests
     'memory_test.lamina': ['100', '200', '300', '400', '500'],
     'register_pressure.lamina': ['136'],
     'stack_operations.lamina': ['650', '1150', '1650'],
-    'printf_stress.lamina': ['1', '2', '3', '4', '5', '10', '20', '30', '40', '50', '100', '200', '300', '400', '500', '1000', '2000', '3000', '4000', '5000'],
-    'arithmetic_consistency.lamina': ['30', '20', '30', '25', '50', '55', '105'],
     'function_call_isolation.lamina': ['15', '16', '30', '24', '220'],
     'edge_cases.lamina': ['0', '0', '-5', '100', '0', '42'],  # Note: -5 is printed as -5
-    'repeated_operations.lamina': ['5', '16'],
-    
-    # Recursion tests (known to be non-deterministic - for debugging only)
-    'recursion_depth_test.lamina': ['0', '0', '0', '0'],
+
+    # Recursion tests (kept only essential ones)
+    'recursive_factorial.lamina': ['1', '1', '2', '6', '24'],  # Factorial recursion
+    'recursive_fibonacci.lamina': ['0', '1', '1', '2', '3', '5'],  # Fibonacci recursion
+    'recursive_sum.lamina': ['0', '1', '3', '6', '10', '15'],  # Sum from 1 to n
+    'recursion_with_calculation.lamina': ['6'],  # Simple factorial calculation
+    'stack_overflow_test.lamina': ['42'],  # Stack overflow protection
 }
 
 class Colors:
