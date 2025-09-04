@@ -391,11 +391,7 @@ fn analyze_register_requirements<'a>(func: &'a Function<'a>) -> (HashSet<&'stati
     // Check for function calls (non-recursive)
     let has_function_calls = func.basic_blocks.values().any(|block| {
         block.instructions.iter().any(|instr| {
-            if let Instruction::Call { .. } = instr {
-                true
-            } else {
-                false
-            }
+            matches!(instr, Instruction::Call { .. })
         })
     });
 
@@ -592,7 +588,7 @@ fn precompute_function_layout<'a>(
                 .params
                 .iter()
                 .find(|p| p.name == param_name)
-                .ok_or_else(|| LaminaError::CodegenError(CodegenError::InternalError))?; // Find param to get type
+                .ok_or(LaminaError::CodegenError(CodegenError::InternalError))?; // Find param to get type
             let (_, size) = get_type_size_directive_and_bytes(&param_sig.ty)?;
             let aligned_size = (size + 7) & !7;
             current_stack_offset -= aligned_size as i64; // Allocate space below locals/previous spills
@@ -804,47 +800,6 @@ fn get_instruction_result<'a>(instr: &Instruction<'a>) -> Option<&'a str> {
     }
 }
 
-// Count how many operands are in registers vs memory
-fn count_register_operands(instr: &Instruction, allocation_result: &AllocationResult) -> usize {
-    let mut count = 0;
-
-    match instr {
-        Instruction::Binary { lhs, rhs, .. } => {
-            if let Value::Variable(var) = lhs
-                && allocation_result.assignments.contains_key(*var)
-            {
-                count += 1;
-            }
-            if let Value::Variable(var) = rhs
-                && allocation_result.assignments.contains_key(*var)
-            {
-                count += 1;
-            }
-        }
-        Instruction::Load { ptr, .. } => {
-            if let Value::Variable(var) = ptr
-                && allocation_result.assignments.contains_key(*var)
-            {
-                count += 1;
-            }
-        }
-        Instruction::Store { ptr, value, .. } => {
-            if let Value::Variable(var) = ptr
-                && allocation_result.assignments.contains_key(*var)
-            {
-                count += 1;
-            }
-            if let Value::Variable(var) = value
-                && allocation_result.assignments.contains_key(*var)
-            {
-                count += 1;
-            }
-        }
-        _ => {}
-    }
-
-    count
-}
 
 // Highly optimized binary operation generation using register allocation results
 fn generate_optimized_binary<'a, W: Write>(

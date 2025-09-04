@@ -102,7 +102,7 @@ impl GraphColoringAllocator {
         // Create live intervals
         for (var, &first_def) in &var_first_def {
             if let Some(&last_use) = var_last_use.get(var) {
-                let uses = var_uses.get(var).cloned().unwrap_or_else(|| Vec::new());
+                let uses = var_uses.get(var).cloned().unwrap_or_else(Vec::new);
                 // Ensure start <= end for valid live intervals
                 let (start, end) = if first_def <= last_use {
                     (first_def, last_use)

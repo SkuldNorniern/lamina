@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn test_calculate_outgoing_args_size() {
         // This would need a proper Function to test, but shows the concept
-        let arg_registers = &["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
+        let _arg_registers = &["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
         // Test would create a function with various call instructions
         // and verify the calculated outgoing args size
     }
