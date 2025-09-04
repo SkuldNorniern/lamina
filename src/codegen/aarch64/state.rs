@@ -61,7 +61,10 @@ impl<'a> FunctionContext<'a> {
 
     pub fn get_block_label(&self, ir_label: &Label<'a>) -> Result<String> {
         self.block_labels.get(ir_label).cloned().ok_or_else(|| {
-            LaminaError::CodegenError(format!("Label '{}' not found in function context", ir_label))
+            LaminaError::CodegenError(format!(
+                "Label '{}' not found in function context",
+                ir_label
+            ))
         })
     }
 }
@@ -109,9 +112,8 @@ impl<'a> CodegenState<'a> {
         let id = self.next_rodata_id;
         self.next_rodata_id += 1;
         let label = format!(".L.rodata_str_{}", id);
-        self.rodata_strings.push((label.clone(), content.to_string()));
+        self.rodata_strings
+            .push((label.clone(), content.to_string()));
         label
     }
 }
-
-
