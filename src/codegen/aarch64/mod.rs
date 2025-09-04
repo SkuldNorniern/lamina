@@ -11,8 +11,7 @@ use std::io::Write;
 pub fn generate_aarch64_assembly<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
-)
--> Result<()> {
+) -> Result<()> {
     let mut state = state::CodegenState::new();
 
     // --- 1. Process Globals and emit data/BSS ---
@@ -30,5 +29,3 @@ pub fn generate_aarch64_assembly<'a, W: Write>(
 
     Ok(())
 }
-
-

@@ -1,5 +1,5 @@
-pub mod common;
 pub mod aarch64;
+pub mod common;
 pub mod x86_64;
 // pub mod riscv;
 

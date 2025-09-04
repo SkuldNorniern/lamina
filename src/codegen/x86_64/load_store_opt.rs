@@ -179,12 +179,13 @@ pub fn optimize_load_store<'a>(
             Instruction::Store { ptr, value, .. } => {
                 // Check if we're storing to a location that nobody reads from
                 if let Value::Variable(ptr_var) = ptr
-                    && !live_vars.contains(ptr_var) {
-                        optimized_ops.push(OptimizedOperation::Eliminated {
-                            comment: format!("Eliminated dead store to {}", ptr_var),
-                        });
-                        continue;
-                    }
+                    && !live_vars.contains(ptr_var)
+                {
+                    optimized_ops.push(OptimizedOperation::Eliminated {
+                        comment: format!("Eliminated dead store to {}", ptr_var),
+                    });
+                    continue;
+                }
 
                 // For Store, remember that the register now contains this memory value
                 if let (Value::Variable(ptr_var), Value::Variable(value_var)) = (ptr, value) {
@@ -232,9 +233,10 @@ fn collect_variables_from_instruction<'a>(
         Instruction::Ret { value, .. } => {
             // Check if there's a return value that's a variable
             if let Some(val) = value
-                && let Value::Variable(var) = val {
-                    live_vars.insert(var);
-                }
+                && let Value::Variable(var) = val
+            {
+                live_vars.insert(var);
+            }
         }
         // We already handle Load, Store, Binary, Call, and Cmp separately
         // Add any other cases here as needed
