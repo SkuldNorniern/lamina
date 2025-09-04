@@ -50,17 +50,35 @@ pub fn generate_function<'a, W: Write>(
 
     let (required_regs, _inline_hint) = analyze_register_requirements(func);
 
-    // Prologue (AArch64): save FP/LR
+    // Set callee-saved registers in function context
+    func_ctx.callee_saved_regs = required_regs.iter().cloned().collect();
+    func_ctx.calculate_initial_stack_offset();
+
+    // Prologue (AArch64): save FP/LR and callee-saved registers
     writeln!(writer, "\n// Function: @{}", func_name)?;
     if is_exported || is_main {
         writeln!(writer, ".globl {}", asm_label)?;
     }
     writeln!(writer, "{}:", asm_label)?;
-    writeln!(
-        writer,
-        "    stp x29, x30, [sp, #-16]! // Allocate space for FP/LR"
-    )?;
-    writeln!(writer, "    mov x29, sp")?;
+
+    // Calculate space needed for all registers (FP, LR, and callee-saved)
+    let reg_save_space = (2 + func_ctx.callee_saved_regs.len()) * 8; // 8 bytes per register
+    // Ensure 16-byte alignment for AAPCS64 compliance
+    let aligned_reg_space = (reg_save_space + 15) & !15;
+    writeln!(writer, "    sub sp, sp, #{} // Allocate space for FP/LR and callee-saved registers", aligned_reg_space)?;
+    writeln!(writer, "    stp x29, x30, [sp] // Save FP and LR")?;
+
+    // Save additional callee-saved registers if needed
+    if !func_ctx.callee_saved_regs.is_empty() {
+        let mut offset = 16; // Start after FP/LR
+        for reg in &func_ctx.callee_saved_regs {
+            writeln!(writer, "    str {}, [sp, #{}]", reg, offset)?;
+            offset += 8;
+        }
+    }
+
+    // Set up frame pointer to point to saved FP/LR (standard AAPCS64 convention)
+    writeln!(writer, "    add x29, sp, #0 // Set up frame pointer to saved FP/LR")?;
 
     // Precompute layout
     precompute_function_layout(func, &mut func_ctx, state, &required_regs)?;
@@ -119,7 +137,21 @@ pub fn generate_function<'a, W: Write>(
     if frame_size > 0 {
         writeln!(writer, "    add sp, sp, #{}", frame_size)?;
     }
-    writeln!(writer, "    ldp x29, x30, [sp], #16")?;
+
+    // Restore callee-saved registers if needed (in reverse order)
+    if !func_ctx.callee_saved_regs.is_empty() {
+        let mut offset = 16; // Start after FP/LR
+        for reg in func_ctx.callee_saved_regs.iter().rev() {
+            writeln!(writer, "    ldr {}, [sp, #{}]", reg, offset)?;
+            offset += 8;
+        }
+    }
+
+    // Calculate space needed for all registers (FP, LR, and callee-saved)
+    let reg_save_space = (2 + func_ctx.callee_saved_regs.len()) * 8;
+    // Ensure 16-byte alignment for AAPCS64 compliance
+    let aligned_reg_space = (reg_save_space + 15) & !15;
+    writeln!(writer, "    ldp x29, x30, [sp], #{} // Restore FP/LR and deallocate stack", aligned_reg_space)?;
     writeln!(writer, "    ret")?;
 
     Ok(())
@@ -132,11 +164,25 @@ fn analyze_register_requirements<'a>(func: &'a Function<'a>) -> (HashSet<&'stati
         .values()
         .map(|b| b.instructions.len())
         .sum();
-    // POTENTIAL BUG: Hardcoded threshold of 40 instructions - may not be optimal
-    if total_instructions > 40 {
+
+    // Dynamic register allocation based on function complexity
+    // Use more registers for larger functions to reduce stack spills
+    if total_instructions > 100 {
+        // Large functions: use multiple callee-saved registers
         required.insert("x19");
         required.insert("x20");
+        required.insert("x21");
+        required.insert("x22");
+    } else if total_instructions > 50 {
+        // Medium functions: use a couple of registers
+        required.insert("x19");
+        required.insert("x20");
+    } else if total_instructions > 20 {
+        // Small functions: use one register if needed
+        required.insert("x19");
     }
+    // Very small functions (< 20 instructions) don't need additional callee-saved registers
+
     (required, false)
 }
 
@@ -242,8 +288,9 @@ fn precompute_function_layout<'a>(
     }
 
     let aligned_local = (local_size + 15) & !15;
-    // POTENTIAL BUG: Stack layout assumes 16-byte alignment but doesn't verify it
-    let mut current = -(16 + aligned_local as i64);
+    // Locals start at negative offset from frame pointer (which points to saved registers)
+    // Frame pointer is at SP after register allocation, so locals go below that
+    let mut current = -(aligned_local as i64);
     let locals_start = current;
     for (res, sz) in local_allocs {
         func_ctx

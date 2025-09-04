@@ -209,9 +209,29 @@ pub fn generate_instruction<'a, W: Write>(
             let base = get_value_operand_asm(array_ptr, state, func_ctx)?;
             let idx = get_value_operand_asm(index, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
+
+            // Calculate element size - for now use 8 bytes (i64/ptr) as default
+            // This should ideally be determined from the array type, but that information
+            // is not currently available in the instruction
+            let element_size = 8; // bytes
+            let shift_amount = match element_size {
+                1 => 0, // byte
+                2 => 1, // halfword
+                4 => 2, // word
+                8 => 3, // doubleword
+                16 => 4, // quadword
+                _ => {
+                    return Err(LaminaError::CodegenError(format!(
+                        "Unsupported element size: {} bytes", element_size
+                    )));
+                }
+            };
+
             materialize_to_reg(writer, &base, "x0")?;
             materialize_to_reg(writer, &idx, "x1")?;
-            writeln!(writer, "        lsl x1, x1, #3")?;
+            if shift_amount > 0 {
+                writeln!(writer, "        lsl x1, x1, #{}", shift_amount)?;
+            }
             writeln!(writer, "        add x0, x0, x1")?;
             store_to_location(writer, "x0", &dest)?;
         }
