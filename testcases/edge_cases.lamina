@@ -1,0 +1,27 @@
+# Test edge cases and boundary conditions
+fn @main() -> i64 {
+  entry:
+    # Test zero values
+    print 0
+    %zero = add.i64 0, 0
+    print %zero
+    
+    # Test negative results (if supported)
+    %neg = sub.i64 5, 10  # Should be -5, but might wrap to large positive
+    print %neg
+    
+    # Test division by one
+    %div_one = div.i64 100, 1
+    print %div_one  # Should be 100
+    
+    # Test multiplication by zero
+    %mul_zero = mul.i64 999, 0
+    print %mul_zero  # Should be 0
+    
+    # Test addition with zero
+    %add_zero = add.i64 42, 0
+    print %add_zero  # Should be 42
+    
+    ret.i64 0
+}
+
