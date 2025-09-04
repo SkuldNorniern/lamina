@@ -46,8 +46,9 @@ pub fn generate_global_data_section<'a, W: Write>(
             let asm_label = format!("global_{}", name);
             state.global_layout.insert(name, asm_label.clone());
             let (_, size_bytes) = get_type_size_directive_and_bytes(&global.ty)?;
-            // POTENTIAL BUG: Hardcoded alignment of 8 bytes - may not be optimal for all types
-            writeln!(writer, ".comm {},{},8", asm_label, size_bytes)?;
+            // Calculate proper alignment based on type
+            let alignment = crate::codegen::common::utils::get_type_alignment(&global.ty)?;
+            writeln!(writer, ".comm {},{},{}", asm_label, size_bytes, alignment)?;
         }
     }
 
