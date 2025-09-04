@@ -1,7 +1,7 @@
 use super::state::CodegenState;
 use super::util::get_type_size_directive_and_bytes;
-use crate::{GlobalDeclaration, LaminaError, Literal, Module, Result, Value};
 use crate::codegen::CodegenError;
+use crate::{GlobalDeclaration, LaminaError, Literal, Module, Result, Value};
 use std::io::Write;
 
 // Helper to generate the .data and .bss sections based on globals

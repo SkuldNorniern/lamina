@@ -6,9 +6,9 @@ pub mod parser;
 use std::io::Write;
 
 // Re-export core IR structures for easier access
+use codegen::CodegenError;
 pub use codegen::generate_x86_64_assembly;
 pub use error::{LaminaError, Result};
-use codegen::CodegenError;
 pub use ir::{
     function::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
     instruction::{AllocType, BinaryOp, CmpOp, Instruction},
@@ -128,9 +128,10 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         "aarch64_windows" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         _ => {
             return Err(error::LaminaError::CodegenError(
-                CodegenError::UnsupportedFeature(
-                    codegen::FeatureType::Custom(format!("Unsupported target architecture: {}", target))
-                )
+                CodegenError::UnsupportedFeature(codegen::FeatureType::Custom(format!(
+                    "Unsupported target architecture: {}",
+                    target
+                ))),
             ));
         }
     }

@@ -81,7 +81,9 @@ fn generate_global_initializer<W: Write>(
                 Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
                 _ => {
                     return Err(LaminaError::CodegenError(
-                        CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(format!("{:?}", literal)))
+                        CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(
+                            format!("{:?}", literal),
+                        )),
                     ));
                 }
             },

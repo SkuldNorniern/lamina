@@ -1,5 +1,5 @@
-use crate::{Identifier, Label, LaminaError, Result};
 use crate::codegen::CodegenError;
+use crate::{Identifier, Label, LaminaError, Result};
 use std::collections::{HashMap, HashSet};
 
 // AArch64 (ARM64) integer/pointer argument registers (AAPCS64 / SysV-like)
@@ -9,7 +9,9 @@ pub const ARG_REGISTERS: [&str; 8] = ["x0", "x1", "x2", "x3", "x4", "x5", "x6", 
 pub const RETURN_REGISTER: &str = "x0";
 
 // AArch64 callee-saved registers that may need to be preserved
-pub const CALLEE_SAVED_REGISTERS: [&str; 12] = ["x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30"];
+pub const CALLEE_SAVED_REGISTERS: [&str; 12] = [
+    "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30",
+];
 
 // Size of each register in bytes (all x registers are 64-bit = 8 bytes)
 pub const REGISTER_SIZE: i64 = 8;
@@ -69,17 +71,13 @@ impl<'a> FunctionContext<'a> {
 
     pub fn get_value_location(&self, name: Identifier<'a>) -> Result<ValueLocation> {
         self.value_locations.get(name).cloned().ok_or_else(|| {
-            LaminaError::CodegenError(
-                CodegenError::ValueLocationNotFound(name.to_string())
-            )
+            LaminaError::CodegenError(CodegenError::ValueLocationNotFound(name.to_string()))
         })
     }
 
     pub fn get_block_label(&self, ir_label: &Label<'a>) -> Result<String> {
         self.block_labels.get(ir_label).cloned().ok_or_else(|| {
-            LaminaError::CodegenError(
-                CodegenError::BlockLabelNotFound(ir_label.to_string())
-            )
+            LaminaError::CodegenError(CodegenError::BlockLabelNotFound(ir_label.to_string()))
         })
     }
 }

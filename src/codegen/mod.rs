@@ -11,7 +11,6 @@ use crate::PrimitiveType;
 
 // Codegen Errors for Detailed Error Handling
 
-
 /// Error types specific to codegen
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodegenError {
@@ -158,13 +157,20 @@ impl std::fmt::Display for CodegenError {
                 write!(f, "Tuple size calculation not implemented yet")
             }
             CodegenError::NamedTypeNotImplemented => {
-                write!(f, "Named type size calculation requires lookup (not implemented yet)")
+                write!(
+                    f,
+                    "Named type size calculation requires lookup (not implemented yet)"
+                )
             }
             CodegenError::VoidTypeSize => {
                 write!(f, "Cannot get size of void type")
             }
             CodegenError::UnsupportedLiteralTypeInGlobal(lit_type) => {
-                write!(f, "Unsupported literal type in global initializer: {}", lit_type)
+                write!(
+                    f,
+                    "Unsupported literal type in global initializer: {}",
+                    lit_type
+                )
             }
             CodegenError::UnsupportedTypeForOperation(op_type) => {
                 write!(f, "Unsupported type for {} operation", op_type)
@@ -178,10 +184,18 @@ impl std::fmt::Display for CodegenError {
                 write!(f, "Load for type '{}' not implemented yet", type_info)
             }
             CodegenError::BinaryOpNotSupportedForType(type_info) => {
-                write!(f, "Binary operation for type '{}' not supported yet", type_info)
+                write!(
+                    f,
+                    "Binary operation for type '{}' not supported yet",
+                    type_info
+                )
             }
             CodegenError::ComparisonOpNotSupportedForType(type_info) => {
-                write!(f, "Comparison operation for type '{}' not supported yet", type_info)
+                write!(
+                    f,
+                    "Comparison operation for type '{}' not supported yet",
+                    type_info
+                )
             }
             CodegenError::ZeroExtensionNotSupported(ext_info) => {
                 write!(f, "Unsupported zero extension: {}", ext_info)
@@ -223,13 +237,19 @@ impl std::fmt::Display for CodegenError {
 
             // Global/Initializer Errors
             CodegenError::GlobalToGlobalInitNotImplemented => {
-                write!(f, "Global initializer pointing to another global not implemented yet")
+                write!(
+                    f,
+                    "Global initializer pointing to another global not implemented yet"
+                )
             }
             CodegenError::GlobalVarInitNotSupported => {
                 write!(f, "Cannot initialize global with a variable")
             }
             CodegenError::UninitializedGlobalInit => {
-                write!(f, "generate_global_initializer called on uninitialized global")
+                write!(
+                    f,
+                    "generate_global_initializer called on uninitialized global"
+                )
             }
 
             // Feature Support Errors
@@ -324,27 +344,35 @@ impl std::fmt::Display for InstructionType {
 /// Example of how to use the new CodegenError types
 /// This demonstrates replacing unwrap() calls with proper error handling
 pub mod error_examples {
-    use super::{CodegenError, TypeInfo, LiteralType};
+    use super::{CodegenError, LiteralType, TypeInfo};
     use crate::{PrimitiveType, Result};
 
     /// Example: Replace unwrap() with proper error handling
     pub fn safe_parse_immediate(value: &str) -> Result<u64> {
-        value.parse::<u64>()
+        value
+            .parse::<u64>()
             .map_err(|_| CodegenError::InvalidImmediateValue.into())
     }
 
     /// Example: Replace string-based errors with typed errors
     pub fn safe_check_primitive_type(pt: PrimitiveType) -> Result<()> {
         match pt {
-            PrimitiveType::I8 | PrimitiveType::I32 | PrimitiveType::I64 |
-            PrimitiveType::Bool | PrimitiveType::Ptr => Ok(()),
+            PrimitiveType::I8
+            | PrimitiveType::I32
+            | PrimitiveType::I64
+            | PrimitiveType::Bool
+            | PrimitiveType::Ptr => Ok(()),
             _ => Err(CodegenError::UnsupportedPrimitiveType(pt).into()),
         }
     }
 
     /// Example: Replace generic error messages with specific error types
-    pub fn safe_global_lookup(name: &str, globals: &std::collections::HashMap<String, String>) -> Result<String> {
-        globals.get(name)
+    pub fn safe_global_lookup(
+        name: &str,
+        globals: &std::collections::HashMap<String, String>,
+    ) -> Result<String> {
+        globals
+            .get(name)
             .cloned()
             .ok_or_else(|| CodegenError::GlobalNotFound(name.to_string()).into())
     }
