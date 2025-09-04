@@ -10,9 +10,9 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
             PrimitiveType::I32 | PrimitiveType::F32 => Ok((".word", 4)),
             PrimitiveType::I64 | PrimitiveType::Ptr => Ok((".xword", 8)),
             _ => {
-                return Err(LaminaError::CodegenError(
+                Err(LaminaError::CodegenError(
                     CodegenError::UnsupportedPrimitiveType(*pt),
-                ));
+                ))
             }
         },
         Type::Array { element_type, size } => {
@@ -51,12 +51,12 @@ pub fn get_value_operand_asm<'a>(
             )),
             Literal::I8(v) => Ok(format!("#{}", v)),
             _ => {
-                return Err(LaminaError::CodegenError(
+                Err(LaminaError::CodegenError(
                     CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(format!(
                         "{:?}",
                         value
                     ))),
-                ));
+                ))
             }
         },
         Value::Variable(name) => {

@@ -925,7 +925,8 @@ mod tests {
         let result = generate_instruction(instr, &mut output, &mut state, ctx, "test_func");
 
         match result {
-            Err(LaminaError::CodegenError(msg)) => {
+            Err(LaminaError::CodegenError(err)) => {
+                let msg = format!("{}", err);
                 assert!(
                     msg.contains(expected_msg_part),
                     "Expected error message containing \nExpected: \t{:?}\nActual: \t{:?}",

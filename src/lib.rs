@@ -64,7 +64,7 @@ pub fn detect_host_architecture() -> &'static str {
     {
         #[cfg(target_os = "macos")]
         {
-            return "aarch64_macos";
+            "aarch64_macos"
         }
         #[cfg(target_os = "linux")]
         {

@@ -356,30 +356,28 @@ fn get_used_variables<'a>(instr: &Instruction<'a>) -> Vec<String> {
                 vars.push(var.to_string());
             }
         }
-        Instruction::Load { ptr, .. } => {
-            if let Value::Variable(var) = ptr {
-                vars.push(var.to_string());
-            }
+        Instruction::Load { ptr: Value::Variable(var), .. } => {
+            vars.push(var.to_string());
         }
-        Instruction::Store { ptr, value, .. } => {
-            if let Value::Variable(var) = ptr {
-                vars.push(var.to_string());
-            }
-            if let Value::Variable(var) = value {
-                vars.push(var.to_string());
-            }
+        Instruction::Store {
+            ptr: Value::Variable(ptr_var),
+            value: Value::Variable(value_var),
+            ..
+        } => {
+            vars.push(ptr_var.to_string());
+            vars.push(value_var.to_string());
         }
         Instruction::Ret {
-            value: Some(value), ..
+            value: Some(Value::Variable(var)),
+            ..
         } => {
-            if let Value::Variable(var) = value {
-                vars.push(var.to_string());
-            }
+            vars.push(var.to_string());
         }
-        Instruction::Br { condition, .. } => {
-            if let Value::Variable(var) = condition {
-                vars.push(var.to_string());
-            }
+        Instruction::Br {
+            condition: Value::Variable(var),
+            ..
+        } => {
+            vars.push(var.to_string());
         }
         Instruction::Call { args, .. } => {
             for arg in args {
@@ -388,15 +386,16 @@ fn get_used_variables<'a>(instr: &Instruction<'a>) -> Vec<String> {
                 }
             }
         }
-        Instruction::Print { value } => {
-            if let Value::Variable(var) = value {
-                vars.push(var.to_string());
-            }
+        Instruction::Print {
+            value: Value::Variable(var)
+        } => {
+            vars.push(var.to_string());
         }
-        Instruction::ZeroExtend { value, .. } => {
-            if let Value::Variable(var) = value {
-                vars.push(var.to_string());
-            }
+        Instruction::ZeroExtend {
+            value: Value::Variable(var),
+            ..
+        } => {
+            vars.push(var.to_string());
         }
         Instruction::Phi { incoming, .. } => {
             for (value, _) in incoming {

@@ -99,8 +99,8 @@ pub fn generate_function<'a, W: Write>(
 
     writeln!(writer, "    // Spill argument registers to stack slots")?;
     for (i, arg) in func.signature.params.iter().enumerate() {
-        if let Some(loc) = func_ctx.value_locations.get(arg.name) {
-            if let ValueLocation::StackOffset(offset) = loc {
+        if let Some(loc) = func_ctx.value_locations.get(arg.name)
+            && let ValueLocation::StackOffset(offset) = loc {
                 if i < ARG_REGISTERS.len() {
                     writeln!(writer, "        add x10, x29, #{}", offset)?;
                     // POTENTIAL BUG: No validation that ARG_REGISTERS[i] is a valid register string
@@ -123,7 +123,6 @@ pub fn generate_function<'a, W: Write>(
                     writeln!(writer, "        str x10, [x11]")?;
                 }
             }
-        }
     }
 
     // Entry block
