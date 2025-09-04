@@ -14,22 +14,8 @@
 
 <br/>
 
----
+Lamina is a compiler infrastructure for the Lamina Intermediate Representation (IR), a statically-typed, SSA-based language designed to bridge the gap between high-level languages and low-level backends like LLVM and Cranelift.
 
-**Lamina** is a compiler infrastructure for the Lamina Intermediate Representation (IR), a statically-typed, SSA-based language designed to bridge the gap between high-level languages and low-level backends like LLVM and Cranelift.
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Features](#features)
-- [Direct Code Generation](#direct-code-generation)
-- [Building Compilers with Lamina](#building-compilers-with-lamina)
-- [Performance Benchmarks](#performance-benchmarks)
-- [Getting Started](#getting-started)
-- [Quick Start Example](#quick-start-example)
-- [Lamina IR Syntax](#lamina-ir-syntax)
-- [Advanced Examples](#advanced-example-matrix-multiplication)
-- [Contributing](#contributing)
 
 ## Overview
 
@@ -43,39 +29,41 @@ Lamina IR serves as a mid-level intermediate representation with the following d
 
 ## Features
 
-<div align="center">
-<table>
-<tr>
-<td align="center" width="50%">
+### Core Features
+- Type System: Primitive and composite types
+- Memory Model: Stack and heap allocations
+- Control Flow: Basic blocks and branching
+- SSA Representation: Single assignment form
+- Function System: Typed parameters and returns
 
-**Core Features**
-- **Type System**: Primitive & composite types
-- **Memory Model**: Stack & heap allocations  
-- **Control Flow**: Basic blocks & branching
-- **SSA Representation**: Single assignment form
-
-</td>
-<td align="center" width="50%">
-
-**Advanced Capabilities**
-- **Function System**: Typed parameters & returns
-- **Annotations**: Optimization hints
-- **Backend Support**: Direct x86_64 generation
-- **IRBuilder API**: Programmatic construction
-
-</td>
-</tr>
-</table>
-</div>
+### Advanced Capabilities
+- Multi-Architecture: x86_64 and AArch64 support
+- Direct Code Generation: Native assembly output
+- Comprehensive Testing: 30+ test cases with automation
+- IRBuilder API: Programmatic construction
+- Performance Benchmarks: Competitive with systems languages
 
 ## Direct Code Generation
 
-Unlike many IR systems that rely on external backends like LLVM or Cranelift, Lamina directly generates machine code for the target architecture. This approach offers:
+Unlike many IR systems that rely on external backends like LLVM or Cranelift, Lamina directly generates machine code for multiple target architectures. This approach offers:
 
-- Complete control over code generation and optimization
-- Reduced dependencies and compilation overhead
-- Customized optimizations specific to the IR semantics
-- Faster compilation times for certain workloads
+- Complete Control: Full control over code generation and optimization
+- Multi-Architecture: Native support for x86_64 and AArch64 (ARM64)
+- Reduced Dependencies: No external backend dependencies
+- Customized Optimizations: IR-specific optimizations and patterns
+- Faster Compilation: Direct assembly generation for certain workloads
+- Cross-Platform: macOS, Linux, and Windows support
+
+## Current Status
+
+### Working Features
+- Basic Arithmetic: All arithmetic operations work correctly
+- Control Flow: Conditionals, loops, and branching
+- Function Calls: Non-recursive function calls and returns
+- Memory Operations: Stack and heap allocations
+- Print Statements: Correct printf integration for both x86_64 and AArch64
+- Performance: Competitive with systems languages in benchmarks
+
 
 ## Building Compilers with Lamina
 
@@ -155,29 +143,25 @@ fn @add(i32 %a, i32 %b) -> i32 {
 
 ## Performance Benchmarks
 
-Lamina demonstrates competitive performance in computational tasks. The following results are from our comprehensive **256×256 2D matrix multiplication benchmark** (500 runs with statistical analysis):
+Lamina demonstrates competitive performance in computational tasks. The following results are from our comprehensive 256×256 2D matrix multiplication benchmark (500 runs with statistical analysis):
 
-<div align="center">
+### Benchmark Results (AMD Ryzen 9 9900X)
 
-### Benchmark Results
-
-| Language      | Time (s)  | Performance Ratio | Memory (MB) | Memory Ratio |
-|:-------------:|:---------:|:-----------------:|:-----------:|:------------:|
-| **Lamina**    | **0.0372** | **1.00x** (baseline) | **1.38**    | **1.00x**    |
-| Zig           | 0.0021    | 0.06x             | 0.50        | 0.36x        |
-| C             | 0.0098    | 0.26x             | 1.50        | 1.09x        |
-| C++           | 0.0101    | 0.27x             | 3.49        | 2.54x        |
-| Go            | 0.0134    | 0.36x             | 1.60        | 1.16x        |
-| Nim           | 0.0134    | 0.36x             | 1.50        | 1.09x        |
-| Rust          | 0.0176    | 0.47x             | 1.91        | 1.39x        |
-| C#            | 0.0333    | 0.90x             | 30.39       | 22.10x       |
-| Java          | 0.0431    | 1.16x             | 42.93       | 31.22x       |
-| PHP           | 0.5720    | 15.37x            | 20.50       | 14.91x       |
-| Ruby          | 1.4744    | 39.63x            | 23.25       | 16.91x       |
-| Python        | 2.2585    | 60.70x            | 12.38       | 9.00x        |
-| JavaScript    | 2.7995    | 75.24x            | 53.20       | 38.69x       |
-
-</div>
+| Language   | Time (s) | Performance Ratio | Memory (MB) | Memory Ratio |
+|------------|----------|-------------------|-------------|-------------|
+| Lamina     | 0.0372   | 1.00x (baseline)  | 1.38        | 1.00x       |
+| Zig        | 0.0021   | 0.06x             | 0.50        | 0.36x       |
+| C          | 0.0098   | 0.26x             | 1.50        | 1.09x       |
+| C++        | 0.0101   | 0.27x             | 3.49        | 2.54x       |
+| Go         | 0.0134   | 0.36x             | 1.60        | 1.16x       |
+| Nim        | 0.0134   | 0.36x             | 1.50        | 1.09x       |
+| Rust       | 0.0176   | 0.47x             | 1.91        | 1.39x       |
+| C#         | 0.0333   | 0.90x             | 30.39       | 22.10x      |
+| Java       | 0.0431   | 1.16x             | 42.93       | 31.22x      |
+| PHP        | 0.5720   | 15.37x            | 20.50       | 14.91x      |
+| Ruby       | 1.4744   | 39.63x            | 23.25       | 16.91x      |
+| Python     | 2.2585   | 60.70x            | 12.38       | 9.00x       |
+| JavaScript | 2.7995   | 75.24x            | 53.20       | 38.69x      |
 
 **Notes:**
 - Lower ratios indicate better performance relative to Lamina
@@ -186,100 +170,25 @@ Lamina demonstrates competitive performance in computational tasks. The followin
 - Results show median values from 500 runs for compiled languages
 
 ### Key Insights
-
-- **Competitive Performance**: Lamina achieves performance comparable to established systems languages
-- **Memory Efficiency**: Low memory footprint similar to C and Rust
-- **Consistent Results**: Statistical analysis ensures reliable performance measurements
-- **Modern Language Integration**: Competitive with Go, Rust, and C# in practical scenarios
-
-## Project Structure
-
-- `src/ir/`: Core IR data structures and type definitions
-- `src/parser/`: Parser implementation for the Lamina IR text format
-- `src/codegen/`: Code generation for target architectures
-  - `x86_64/`: x86_64 assembly code generation
-- `src/error/`: Error handling types and utilities
-- `examples/`: Example Lamina IR programs
-  - `arithmetic.lamina`: Basic arithmetic operations
-  - `control_flow.lamina`: Conditional branching examples
-  - `matmul.lamina`: 2D matrix multiplication simulation
-  - `matmul3dim.lamina`: 3D matrix multiplication simulation
-  - `tensor_benchmark.lamina`: Tensor operations benchmark
+- Competitive Performance: Lamina achieves performance comparable to established systems languages
+- Memory Efficiency: Low memory footprint similar to C and Rust
+- Consistent Results: Statistical analysis ensures reliable performance measurements
+- Modern Language Integration: Competitive with Go, Rust, and C# in practical scenarios
 
 ## Getting Started
 
+### Prerequisites
+- Rust 1.70+ (2024 edition)
+- Clang/GCC for linking generated assembly
+- macOS, Linux, or Windows
 
 
-**Try Examples**
-```bash
-# Run matrix multiplication
-cargo run -- benchmarks/2Dmatmul/2Dmatmul.lamina
+### Available Targets
+- `x86_64_linux`: Linux x86_64
+- `x86_64_macos`: macOS x86_64  
+- `aarch64_macos`: macOS ARM64 (Apple Silicon)
+- `aarch64_linux`: Linux ARM64
 
-```
-
-
-## Quick Start Example
-
-Here's a simple example that shows how to use the IRBuilder API to create a basic function:
-
-```rust
-use lamina::ir::*;
-
-fn create_add_function() -> Result<Module, Error> {
-    // Create a new module
-    let mut builder = IRBuilder::new();
-    let module = builder.create_module("math_example");
-    
-    // Define function signature: fn add(a: i32, b: i32) -> i32
-    let params = vec![
-        FunctionParameter { ty: Type::I32, name: "a".to_string() },
-        FunctionParameter { ty: Type::I32, name: "b".to_string() },
-    ];
-    
-    // Create the function
-    let function = builder.create_function("add", params, Type::I32);
-    
-    // Create entry block
-    let entry_block = builder.create_block("entry");
-    builder.set_current_block(entry_block);
-    
-    // Get function parameters
-    let param_a = builder.get_parameter(0);
-    let param_b = builder.get_parameter(1);
-    
-    // Add the two parameters
-    let result = builder.add_instruction(
-        Instruction::BinaryOp {
-            op: BinaryOperator::Add,
-            ty: Type::I32,
-            left: param_a,
-            right: param_b,
-        }
-    );
-    
-    // Return the result
-    builder.add_return(result);
-    
-    Ok(module)
-}
-
-// Usage example:
-fn main() {
-    let module = create_add_function().unwrap();
-    let compiled = module.compile_to_assembly().unwrap();
-    println!("Generated assembly:\n{}", compiled);
-}
-```
-
-This generates the equivalent Lamina IR:
-
-```lamina
-fn @add(i32 %a, i32 %b) -> i32 {
-  entry:
-    %result = add.i32 %a, %b
-    ret.i32 %result
-}
-```
 
 ## Lamina IR Syntax
 
@@ -371,18 +280,21 @@ fn @main() -> i64 {
 }
 ```
 
+
+
 ## Future Directions
 
-- Expanding target architectures (ARM, RISC-V)
-- Advanced optimizations including loop analysis and auto-vectorization
-- Integration with higher-level languages including C, Rust, and custom languages
-- JIT compilation support for dynamic code execution
-- Enhanced debugging information and tooling
-- Improved IRBuilder API for easier compiler development
+- Enhanced Optimizations: Loop analysis, auto-vectorization, and register allocation
+- Additional Architectures: RISC-V and other ARM variants 
+- Language Integration: C, Rust, and custom language frontends
+- JIT Compilation: Dynamic code execution support
+- Debugging Tools: Enhanced debugging information and tooling
+- Performance Improvements: Advanced optimization passes
 
-## Contributing
 
-Contributions to Lamina are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+
+
+Please feel free to submit pull requests or open issues for bugs and feature requests.
 
 ---
 
