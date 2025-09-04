@@ -39,7 +39,7 @@ Lamina IR serves as a mid-level intermediate representation with the following d
 ### Advanced Capabilities
 - Multi-Architecture: x86_64 and AArch64 support
 - Direct Code Generation: Native assembly output
-- Comprehensive Testing: 30+ test cases with automation
+- Comprehensive Testing: 20+ test cases with automation
 - IRBuilder API: Programmatic construction
 - Performance Benchmarks: Competitive with systems languages
 
