@@ -1,0 +1,21 @@
+# Test stack overflow handling (shallow recursion to avoid actual overflow)
+fn @shallow_recursion(i64 %depth) -> i64 {
+  entry:
+    %is_limit = eq.i64 %depth, 10  # Stop at depth 10 to avoid overflow
+    br %is_limit, base_case, recursive_case
+
+  base_case:
+    ret.i64 42
+
+  recursive_case:
+    %depth_plus_1 = add.i64 %depth, 1
+    %result = call @shallow_recursion(%depth_plus_1)
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %result = call @shallow_recursion(0)  # Should be 42
+    print %result
+    ret.i64 0
+}

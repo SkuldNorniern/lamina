@@ -1,0 +1,37 @@
+# Test stress scenario with many operations
+fn @calculate_sum(i64 %n) -> i64 {
+  entry:
+    %times_two = mul.i64 %n, 2
+    %plus_ten = add.i64 %times_two, 10
+    ret.i64 %plus_ten
+}
+
+fn @main() -> i64 {
+  entry:
+    # Calculate sum of transformed numbers 1-10
+    %sum1 = call @calculate_sum(1)   # (1*2)+10 = 12
+    %sum2 = call @calculate_sum(2)   # (2*2)+10 = 14
+    %sum3 = call @calculate_sum(3)   # (3*2)+10 = 16
+    %sum4 = call @calculate_sum(4)   # (4*2)+10 = 18
+    %sum5 = call @calculate_sum(5)   # (5*2)+10 = 20
+    %sum6 = call @calculate_sum(6)   # (6*2)+10 = 22
+    %sum7 = call @calculate_sum(7)   # (7*2)+10 = 24
+    %sum8 = call @calculate_sum(8)   # (8*2)+10 = 26
+    %sum9 = call @calculate_sum(9)   # (9*2)+10 = 28
+    %sum10 = call @calculate_sum(10) # (10*2)+10 = 30
+    
+    # Sum all results: 12+14+16+18+20+22+24+26+28+30 = 210
+    %partial1 = add.i64 %sum1, %sum2
+    %partial2 = add.i64 %partial1, %sum3
+    %partial3 = add.i64 %partial2, %sum4
+    %partial4 = add.i64 %partial3, %sum5
+    %partial5 = add.i64 %partial4, %sum6
+    %partial6 = add.i64 %partial5, %sum7
+    %partial7 = add.i64 %partial6, %sum8
+    %partial8 = add.i64 %partial7, %sum9
+    %final = add.i64 %partial8, %sum10
+    
+    print %final
+    ret.i64 0
+}
+

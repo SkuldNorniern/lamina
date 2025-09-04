@@ -1,0 +1,7 @@
+# Simple constant test
+fn @main() -> i64 {
+  entry:
+    print 42
+    ret.i64 0
+}
+

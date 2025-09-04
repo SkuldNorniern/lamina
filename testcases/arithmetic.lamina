@@ -8,3 +8,4 @@ fn @main() -> i64 {
     print %d  # Should print 5
     ret.i64 0
 }
+

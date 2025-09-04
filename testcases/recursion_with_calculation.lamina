@@ -1,0 +1,23 @@
+# Test recursion that actually calculates something
+fn @factorial_simple(i64 %n) -> i64 {
+  entry:
+    %is_zero = eq.i64 %n, 0
+    br %is_zero, base_case, recursive_case
+
+  base_case:
+    ret.i64 1
+
+  recursive_case:
+    %n_minus_1 = sub.i64 %n, 1
+    %factorial_n_minus_1 = call @factorial_simple(%n_minus_1)
+    %result = mul.i64 %n, %factorial_n_minus_1
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %result = call @factorial_simple(3)  # Should be 3! = 6
+    print %result
+    ret.i64 0
+}
+
