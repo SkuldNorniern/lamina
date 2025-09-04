@@ -325,12 +325,12 @@ impl std::fmt::Display for InstructionType {
 /// This demonstrates replacing unwrap() calls with proper error handling
 pub mod error_examples {
     use super::{CodegenError, TypeInfo, LiteralType};
-    use crate::{PrimitiveType, Result, error::codegen_error_to_lamina_error};
+    use crate::{PrimitiveType, Result};
 
     /// Example: Replace unwrap() with proper error handling
     pub fn safe_parse_immediate(value: &str) -> Result<u64> {
         value.parse::<u64>()
-            .map_err(|_| codegen_error_to_lamina_error(CodegenError::InvalidImmediateValue))
+            .map_err(|_| CodegenError::InvalidImmediateValue.into())
     }
 
     /// Example: Replace string-based errors with typed errors
@@ -338,7 +338,7 @@ pub mod error_examples {
         match pt {
             PrimitiveType::I8 | PrimitiveType::I32 | PrimitiveType::I64 |
             PrimitiveType::Bool | PrimitiveType::Ptr => Ok(()),
-            _ => Err(codegen_error_to_lamina_error(CodegenError::UnsupportedPrimitiveType(pt))),
+            _ => Err(CodegenError::UnsupportedPrimitiveType(pt).into()),
         }
     }
 
@@ -346,16 +346,14 @@ pub mod error_examples {
     pub fn safe_global_lookup(name: &str, globals: &std::collections::HashMap<String, String>) -> Result<String> {
         globals.get(name)
             .cloned()
-            .ok_or_else(|| codegen_error_to_lamina_error(CodegenError::GlobalNotFound(name.to_string())))
+            .ok_or_else(|| CodegenError::GlobalNotFound(name.to_string()).into())
     }
 
     /// Example: Using specific type information instead of strings
     pub fn safe_store_operation(pt: PrimitiveType) -> Result<()> {
         match pt {
             PrimitiveType::F32 | PrimitiveType::F64 => {
-                Err(codegen_error_to_lamina_error(
-                    CodegenError::StoreNotImplementedForType(TypeInfo::Primitive(pt))
-                ))
+                Err(CodegenError::StoreNotImplementedForType(TypeInfo::Primitive(pt)).into())
             }
             _ => Ok(()),
         }
@@ -372,9 +370,7 @@ pub mod error_examples {
 
         match literal_type {
             LiteralType::F32 => {
-                Err(codegen_error_to_lamina_error(
-                    CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::F32)
-                ))
+                Err(CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::F32).into())
             }
             _ => Ok(()),
         }
