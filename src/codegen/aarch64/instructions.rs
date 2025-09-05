@@ -70,19 +70,19 @@ pub fn generate_instruction<'a, W: Write>(
                 materialize_address_operand(writer, &ptr_op, "x9")?;
                 writeln!(writer, "        ldr x11, [x9]")?; // Load the target address
                 
-                match ty {
-                    Type::Primitive(PrimitiveType::I32) => {
-                        materialize_to_reg(writer, &val, "x10")?;
-                        writeln!(writer, "        str w10, [x11]")?;
-                    }
-                    Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
-                        materialize_to_reg(writer, &val, "x10")?;
-                        writeln!(writer, "        str x10, [x11]")?;
-                    }
-                    Type::Primitive(PrimitiveType::Bool) | Type::Primitive(PrimitiveType::I8) => {
-                        materialize_to_reg(writer, &val, "x10")?;
-                        writeln!(writer, "        strb w10, [x11]")?;
-                    }
+            match ty {
+                Type::Primitive(PrimitiveType::I32) => {
+                    materialize_to_reg(writer, &val, "x10")?;
+                    writeln!(writer, "        str w10, [x11]")?;
+                }
+                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                    materialize_to_reg(writer, &val, "x10")?;
+                    writeln!(writer, "        str x10, [x11]")?;
+                }
+                Type::Primitive(PrimitiveType::Bool) | Type::Primitive(PrimitiveType::I8) => {
+                    materialize_to_reg(writer, &val, "x10")?;
+                    writeln!(writer, "        strb w10, [x11]")?;
+                }
                     _ => {
                         return Err(LaminaError::CodegenError(
                             CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
@@ -222,19 +222,19 @@ pub fn generate_instruction<'a, W: Write>(
                 materialize_address_operand(writer, &ptr_op, "x9")?;
                 writeln!(writer, "        ldr x11, [x9]")?; // Load the target address
                 
-                match ty {
-                    Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
-                        writeln!(writer, "        ldrb w10, [x11]")?;
-                        store_to_location(writer, "x10", &dest)?;
-                    }
-                    Type::Primitive(PrimitiveType::I32) => {
-                        writeln!(writer, "        ldr w10, [x11]")?;
-                        store_to_location(writer, "x10", &dest)?;
-                    }
-                    Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
-                        writeln!(writer, "        ldr x10, [x11]")?;
-                        store_to_location(writer, "x10", &dest)?;
-                    }
+            match ty {
+                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
+                    writeln!(writer, "        ldrb w10, [x11]")?;
+                    store_to_location(writer, "x10", &dest)?;
+                }
+                Type::Primitive(PrimitiveType::I32) => {
+                    writeln!(writer, "        ldr w10, [x11]")?;
+                    store_to_location(writer, "x10", &dest)?;
+                }
+                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                    writeln!(writer, "        ldr x10, [x11]")?;
+                    store_to_location(writer, "x10", &dest)?;
+                }
                     _ => {
                         return Err(LaminaError::CodegenError(
                             CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
