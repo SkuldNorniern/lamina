@@ -390,9 +390,10 @@ fn analyze_register_requirements<'a>(func: &'a Function<'a>) -> (HashSet<&'stati
 
     // Check for function calls (non-recursive)
     let has_function_calls = func.basic_blocks.values().any(|block| {
-        block.instructions.iter().any(|instr| {
-            matches!(instr, Instruction::Call { .. })
-        })
+        block
+            .instructions
+            .iter()
+            .any(|instr| matches!(instr, Instruction::Call { .. }))
     });
 
     // Count number of binary operations
@@ -799,7 +800,6 @@ fn get_instruction_result<'a>(instr: &Instruction<'a>) -> Option<&'a str> {
         _ => None,
     }
 }
-
 
 // Highly optimized binary operation generation using register allocation results
 fn generate_optimized_binary<'a, W: Write>(
