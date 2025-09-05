@@ -434,7 +434,7 @@ impl<'a> IRBuilder<'a> {
     /// # Example
     /// ```rust
     /// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+    /// use lamina::ir::builder::{var, i32};
     ///
     /// let mut builder = IRBuilder::new();
     /// builder
@@ -478,7 +478,7 @@ impl<'a> IRBuilder<'a> {
     /// # Example
     /// ```rust
     /// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+    /// use lamina::ir::builder::{var, i32};
     ///
     /// let mut builder = IRBuilder::new();
     /// builder
@@ -509,7 +509,7 @@ impl<'a> IRBuilder<'a> {
     /// Example:
     /// ```
     /// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+    /// use lamina::ir::builder::{var, i32};
     ///
     /// let mut builder = IRBuilder::new();
     /// // Store 42 into ptr
@@ -792,7 +792,7 @@ impl<'a> IRBuilder<'a> {
     /// # Examples
     /// ```rust
     /// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+    /// use lamina::ir::builder::{var, i32};
     ///
     /// let mut builder = IRBuilder::new();
     /// builder
@@ -950,7 +950,7 @@ impl<'a> IRBuilder<'a> {
     /// # Examples
     /// ```rust
     /// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32, bool, string};
+    /// use lamina::ir::builder::{var, i32, bool, string};
     ///
     /// let mut builder = IRBuilder::new();
     /// builder
@@ -1098,7 +1098,7 @@ impl<'a> IRBuilder<'a> {
     /// # Example
     /// ```rust
     /// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+    /// use lamina::ir::builder::{var, i32};
     ///
     /// let mut builder = IRBuilder::new();
     /// builder
@@ -1128,7 +1128,7 @@ impl<'a> IRBuilder<'a> {
     /// Example:
     /// ```
     /// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+    /// use lamina::ir::builder::{var, i32};
     ///
     /// let mut builder = IRBuilder::new();
     /// // Merge values from two blocks
