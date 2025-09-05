@@ -54,6 +54,9 @@ TEST_CASES = {
      # 'advanced_control_flow.lamina': ['100', '1000', '100', '10', '1', '0', '2', '10', '1100', '101', '84', '48'],  # phi nodes - requires SSA implementation
      'external_functions.lamina': ['60', '100', '17', '123', '10'],  # external functions - basic structure
      'debug_printing.lamina': ['27'],  # basic integer printing test
+
+     # I/O Tests    
+     'hello_world.lamina': ['Hello World'],
 }
 
 class Colors:
