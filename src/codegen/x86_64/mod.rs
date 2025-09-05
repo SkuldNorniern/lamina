@@ -27,6 +27,10 @@ pub fn generate_x86_64_assembly<'a, W: Write>(
     // --- 2. Emit .text section ---
     writeln!(writer, "\n.section .text")?;
 
+    // --- 2.5. Add extern declarations for heap functions ---
+    writeln!(writer, "    .extern malloc")?;
+    writeln!(writer, "    .extern free")?;
+
     // --- 3. Process functions ---
     functions::generate_functions(module, writer, &mut state)?;
 
