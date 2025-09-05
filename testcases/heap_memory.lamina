@@ -11,11 +11,14 @@ fn @test_heap_allocation() -> i64 {
     # Load value back from heap
     %loaded = load.i32 %heap_ptr
 
-    # Use the loaded value
-    %result = add.i32 %loaded, 8
+    # Convert to i64 for return
+    %loaded_i64 = zext.i32.i64 %loaded
 
-    # TODO: Always deallocate heap memory
-    # dealloc %heap_ptr
+    # Use the loaded value
+    %result = add.i64 %loaded_i64, 8
+
+    # Always deallocate heap memory
+    dealloc.heap %heap_ptr
 
     ret.i64 %result
 }
@@ -40,10 +43,10 @@ fn @test_multiple_heap_allocations() -> i64 {
     %sum1 = add.i64 %val1, %val2
     %total = add.i64 %sum1, %val3
 
-    # TODO: Clean up all allocations
-    # dealloc %ptr1
-    # dealloc %ptr2
-    # dealloc %ptr3
+    # Clean up all allocations
+    dealloc.heap %ptr1
+    dealloc.heap %ptr2
+    dealloc.heap %ptr3
 
     ret.i64 %total
 }
