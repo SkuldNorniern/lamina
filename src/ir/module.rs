@@ -1,31 +1,144 @@
+//! # Module Representation
+//!
+//! This module defines the top-level structures for representing complete
+//! Lamina IR modules. A module is the highest level of organization and
+//! contains all functions, types, and global variables.
+//!
+//! ## Module Structure
+//!
+//! A module consists of:
+//! - **Functions**: All function definitions in the module
+//! - **Type Declarations**: Named type definitions and aliases
+//! - **Global Variables**: Module-level data and constants
+//!
+//! ## Module Organization
+//!
+//! - **Functions**: The main code of the module, organized by name
+//! - **Types**: User-defined types that can be referenced by functions
+//! - **Globals**: Module-level data that persists for the lifetime of the program
+//!
+//! ## Examples
+//!
+//! ```rust
+//! use lamina::{IRBuilder, Type, PrimitiveType, var, i32, string};
+//!
+//! let mut builder = IRBuilder::new();
+//! 
+//! // Define a global variable
+//! builder
+//!     .function("main", Type::Void)
+//!     .print(string("Hello, World!"))
+//!     .ret_void();
+//!
+//! let module = builder.build();
+//! // module contains all the functions and types
+//! ```
+
 use std::collections::HashMap; // Using HashMap for functions and types
 use std::fmt;
 
 use super::function::Function;
 use super::types::{Identifier, Type, Value};
 
-// Represents a named type declaration (e.g., type @Vec2 = struct { ... })
+/// Represents a named type declaration (e.g., `type @Vec2 = struct { ... }`).
+///
+/// Type declarations allow you to define custom types that can be referenced
+/// throughout the module. This is useful for creating reusable type definitions
+/// and making the IR more readable.
+///
+/// # Examples
+///
+/// ```rust
+/// use lamina::{TypeDeclaration, Type, StructField, PrimitiveType};
+///
+/// let point_type = TypeDeclaration {
+///     name: "Point",
+///     ty: Type::Struct(vec![
+///         StructField { name: "x", ty: Type::Primitive(PrimitiveType::I32) },
+///         StructField { name: "y", ty: Type::Primitive(PrimitiveType::I32) },
+///     ]),
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)] // Eq might be too restrictive if Type contains f32 indirectly, but should be okay here.
 pub struct TypeDeclaration<'a> {
+    /// The type name (without the `@` prefix)
     pub name: Identifier<'a>, // e.g., "@Vec2"
+    /// The type definition
     pub ty: Type<'a>,
 }
 
-// Represents a global variable declaration (e.g., global @message: [5 x i8] = "hello")
+/// Represents a global variable declaration (e.g., `global @message: [5 x i8] = "hello"`).
+///
+/// Global variables are module-level data that persists for the lifetime of the program.
+/// They can be initialized with constant values or left uninitialized (for external symbols).
+///
+/// # Examples
+///
+/// ```rust
+/// use lamina::{GlobalDeclaration, Type, PrimitiveType, Value};
+///
+/// let message_global = GlobalDeclaration {
+///     name: "message",
+///     ty: Type::Array {
+///         element_type: Box::new(Type::Primitive(PrimitiveType::I8)),
+///         size: 13,
+///     },
+///     initializer: Some(Value::Constant(Literal::String("Hello, World!"))),
+/// };
+/// ```
 #[derive(Debug, Clone, PartialEq)] // PartialEq due to Value potentially holding f32
 pub struct GlobalDeclaration<'a> {
+    /// The global variable name (without the `@` prefix)
     pub name: Identifier<'a>, // e.g., "@message"
+    /// The type of the global variable
     pub ty: Type<'a>,
+    /// Optional initializer value (None for external symbols)
     pub initializer: Option<Value<'a>>, // Globals might be uninitialized (extern)
 }
 
-// Represents a complete Lamina IR module (file)
+/// Represents a complete Lamina IR module (file).
+///
+/// A module is the top-level container for all IR code. It contains functions,
+/// type declarations, and global variables that together form a complete program.
+///
+/// # Structure
+///
+/// - **Functions**: All function definitions, keyed by name
+/// - **Type Declarations**: Named type definitions, keyed by name
+/// - **Global Variables**: Module-level data, keyed by name
+///
+/// # Examples
+///
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("add", Type::Primitive(PrimitiveType::I32))
+///     .binary(BinaryOp::Add, "result", PrimitiveType::I32, i32(10), i32(20))
+///     .ret(Type::Primitive(PrimitiveType::I32), var("result"));
+///
+/// let module = builder.build();
+/// // module.functions contains the "add" function
+/// // module.type_declarations is empty
+/// // module.global_declarations is empty
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module<'a> {
-    // Using HashMap for efficient lookup by name.
-    // Order is not preserved, but typically not critical for declarations.
+    /// Named type declarations in this module
+    ///
+    /// Using a HashMap allows efficient lookup by type name. The order
+    /// of type declarations is not preserved, but this is typically not critical.
     pub type_declarations: HashMap<Identifier<'a>, TypeDeclaration<'a>>,
+    /// Global variable declarations in this module
+    ///
+    /// Global variables are module-level data that persists for the lifetime
+    /// of the program. They can be initialized with constant values.
     pub global_declarations: HashMap<Identifier<'a>, GlobalDeclaration<'a>>,
+    /// Function definitions in this module
+    ///
+    /// Functions contain the actual code of the module. They are organized
+    /// by name for efficient lookup during function calls.
     pub functions: HashMap<Identifier<'a>, Function<'a>>,
 }
 

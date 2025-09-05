@@ -1,24 +1,139 @@
+//! # Type System
+//!
+//! This module defines the complete type system for the Lamina IR, including
+//! primitive types, composite types, and value representations.
+//!
+//! ## Type Categories
+//!
+//! ### Primitive Types
+//! - **Integers**: Signed and unsigned integers of various sizes
+//! - **Floats**: Single and double precision floating point numbers
+//! - **Booleans**: True/false values
+//! - **Characters**: Single character values
+//! - **Pointers**: Generic pointer type for memory addresses
+//!
+//! ### Composite Types
+//! - **Arrays**: Fixed-size sequences of elements of the same type
+//! - **Structs**: Named collections of fields with different types
+//! - **Tuples**: Anonymous collections of values with different types
+//! - **Named Types**: User-defined type aliases
+//!
+//! ### Special Types
+//! - **Void**: Represents the absence of a value (for functions that don't return)
+//!
+//! ## Value Representation
+//!
+//! Values in the IR can be:
+//! - **Variables**: SSA variables like `%result`
+//! - **Constants**: Literal values like `42`, `true`, `"hello"`
+//! - **Globals**: Global variables like `@message`
+//!
+//! ## Type Safety
+//!
+//! The type system ensures:
+//! - **Type checking**: Operations are only performed on compatible types
+//! - **Memory safety**: Proper handling of pointers and memory access
+//! - **Correctness**: Many classes of errors are caught at compile time
+//!
+//! ## Examples
+//!
+//! ```rust
+//! use lamina::{IRBuilder, Type, PrimitiveType, StructField, var, i32, bool};
+//!
+//! let mut builder = IRBuilder::new();
+//! builder
+//!     .function("type_demo", Type::Void)
+//!     // Primitive types
+//!     .binary(BinaryOp::Add, "sum", PrimitiveType::I32, i32(10), i32(20))
+//!     // Array type
+//!     .alloc_stack("arr", Type::Array {
+//!         element_type: Box::new(Type::Primitive(PrimitiveType::I32)),
+//!         size: 10
+//!     })
+//!     // Struct type
+//!     .alloc_stack("point", Type::Struct(vec![
+//!         StructField { name: "x", ty: Type::Primitive(PrimitiveType::I32) },
+//!         StructField { name: "y", ty: Type::Primitive(PrimitiveType::I32) }
+//!     ]))
+//!     .ret_void();
+//! ```
+
 use std::fmt;
 
 // Using &'a str for identifiers to avoid allocating Strings
 // Assumes the IR lives as long as the source it was parsed from.
+/// A type alias for identifiers in the IR.
+///
+/// Identifiers are used for variable names, function names, and other symbols.
+/// Using string references avoids unnecessary allocations and keeps the IR lightweight.
 pub type Identifier<'a> = &'a str;
+/// A type alias for basic block labels in the IR.
+///
+/// Labels are used to identify basic blocks for control flow operations
+/// like branches and jumps.
 pub type Label<'a> = &'a str;
 
+/// Primitive types in the Lamina IR.
+///
+/// Primitive types are the fundamental building blocks of the type system.
+/// They represent basic data types that can be directly operated on by
+/// the target architecture.
+///
+/// # Integer Types
+///
+/// - **Signed integers**: `I8`, `I16`, `I32`, `I64`
+/// - **Unsigned integers**: `U8`, `U16`, `U32`, `U64`
+///
+/// # Floating Point Types
+///
+/// - **Single precision**: `F32` (32-bit IEEE 754)
+/// - **Double precision**: `F64` (64-bit IEEE 754)
+///
+/// # Other Types
+///
+/// - **Boolean**: `Bool` (true/false)
+/// - **Character**: `Char` (8-bit character)
+/// - **Pointer**: `Ptr` (generic pointer type)
+///
+/// # Examples
+///
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32, bool};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("primitives", Type::Void)
+///     .binary(BinaryOp::Add, "sum", PrimitiveType::I32, i32(10), i32(20))
+///     .cmp(CmpOp::Gt, "is_positive", PrimitiveType::I32, var("sum"), i32(0))
+///     .ret_void();
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PrimitiveType {
+    /// 8-bit signed integer (-128 to 127)
     I8,
+    /// 16-bit signed integer (-32,768 to 32,767)
     I16,
+    /// 32-bit signed integer (-2,147,483,648 to 2,147,483,647)
     I32,
+    /// 64-bit signed integer (-9,223,372,036,854,775,808 to 9,223,372,036,854,775,807)
     I64,
+    /// 8-bit unsigned integer (0 to 255)
     U8,
+    /// 16-bit unsigned integer (0 to 65,535)
     U16,
+    /// 32-bit unsigned integer (0 to 4,294,967,295)
     U32,
+    /// 64-bit unsigned integer (0 to 18,446,744,073,709,551,615)
     U64,
+    /// 32-bit floating point number (IEEE 754 single precision)
     F32,
+    /// 64-bit floating point number (IEEE 754 double precision)
     F64,
+    /// Boolean value (true or false)
     Bool,
+    /// Single character (8-bit)
     Char, // Single character (8-bit)
+    /// Generic pointer type for memory addresses
     Ptr,  // Generic pointer type
 }
 
