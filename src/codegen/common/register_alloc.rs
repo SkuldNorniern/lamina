@@ -356,7 +356,10 @@ fn get_used_variables<'a>(instr: &Instruction<'a>) -> Vec<String> {
                 vars.push(var.to_string());
             }
         }
-        Instruction::Load { ptr: Value::Variable(var), .. } => {
+        Instruction::Load {
+            ptr: Value::Variable(var),
+            ..
+        } => {
             vars.push(var.to_string());
         }
         Instruction::Store {
@@ -387,7 +390,7 @@ fn get_used_variables<'a>(instr: &Instruction<'a>) -> Vec<String> {
             }
         }
         Instruction::Print {
-            value: Value::Variable(var)
+            value: Value::Variable(var),
         } => {
             vars.push(var.to_string());
         }

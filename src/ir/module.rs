@@ -23,7 +23,7 @@
 //! use lamina::{IRBuilder, Type, PrimitiveType, var, i32, string};
 //!
 //! let mut builder = IRBuilder::new();
-//! 
+//!
 //! // Define a global variable
 //! builder
 //!     .function("main", Type::Void)

@@ -100,29 +100,30 @@ pub fn generate_function<'a, W: Write>(
     writeln!(writer, "    // Spill argument registers to stack slots")?;
     for (i, arg) in func.signature.params.iter().enumerate() {
         if let Some(loc) = func_ctx.value_locations.get(arg.name)
-            && let ValueLocation::StackOffset(offset) = loc {
-                if i < ARG_REGISTERS.len() {
-                    writeln!(writer, "        add x10, x29, #{}", offset)?;
-                    // POTENTIAL BUG: No validation that ARG_REGISTERS[i] is a valid register string
-                    writeln!(
-                        writer,
-                        "        str {}, [x10] // Spill arg {}",
-                        ARG_REGISTERS[i], arg.name
-                    )?;
-                } else {
-                    // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
-                    // x11 needs to point to the incoming stack argument location
-                    let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
-                    writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?; // AAPCS64 stack arg offset
-                    writeln!(
-                        writer,
-                        "        ldr x10, [x11] // Load stack arg {}",
-                        arg.name
-                    )?;
-                    writeln!(writer, "        add x11, x29, #{}", offset)?;
-                    writeln!(writer, "        str x10, [x11]")?;
-                }
+            && let ValueLocation::StackOffset(offset) = loc
+        {
+            if i < ARG_REGISTERS.len() {
+                writeln!(writer, "        add x10, x29, #{}", offset)?;
+                // POTENTIAL BUG: No validation that ARG_REGISTERS[i] is a valid register string
+                writeln!(
+                    writer,
+                    "        str {}, [x10] // Spill arg {}",
+                    ARG_REGISTERS[i], arg.name
+                )?;
+            } else {
+                // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
+                // x11 needs to point to the incoming stack argument location
+                let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
+                writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?; // AAPCS64 stack arg offset
+                writeln!(
+                    writer,
+                    "        ldr x10, [x11] // Load stack arg {}",
+                    arg.name
+                )?;
+                writeln!(writer, "        add x11, x29, #{}", offset)?;
+                writeln!(writer, "        str x10, [x11]")?;
             }
+        }
     }
 
     // Entry block
