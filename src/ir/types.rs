@@ -28,6 +28,36 @@
 //! - **Constants**: Literal values like `42`, `true`, `"hello"`
 //! - **Globals**: Global variables like `@message`
 //!
+//! ## FEAT:TODO - Missing Features Compared to LLVM IR
+//!
+//! ### Type System Gaps:
+//! - **Vector/SIMD types**: `<4 x i32>` for SIMD operations
+//! - **Function types**: First-class function types like `i32 (i32, i32)*`
+//! - **Address spaces**: Memory spaces like `i32 addrspace(1)*` for GPUs
+//! - **Packed structs**: `<{ i32, i8 }>` for compact memory layout
+//! - **Union types**: Sum types for different representations
+//! - **Opaque types**: Forward declarations like `type opaque`
+//! - **Type aliases**: Named type abbreviations
+//! - **Metadata types**: Types for debug and optimization info
+//!
+//! ### Missing Instructions:
+//! - **Bitwise operations**: `and`, `or`, `xor`, `not`, `shl`, `shr`
+//! - **Floating point**: `fadd`, `fsub`, `fmul`, `fdiv`, `fcmp`, `fneg`
+//! - **Memory intrinsics**: `memcpy`, `memset`, `memmove`
+//! - **Atomic operations**: `atomicrmw`, `cmpxchg`, `fence`
+//! - **Exception handling**: `invoke`, `landingpad`, `resume`
+//! - **Control flow**: `switch`, `indirectbr`
+//! - **Type conversion**: `trunc`, `sext`, `bitcast`
+//! - **Selection**: `select` instruction
+//! - **Vector operations**: SIMD arithmetic and operations
+//!
+//! ### Advanced Features:
+//! - **Debug information**: `!dbg`, `!llvm.dbg.value`
+//! - **Module features**: `comdat`, `section`, `alignment`
+//! - **Optimization hints**: `!invariant.load`, `!dereferenceable`
+//! - **Target intrinsics**: Architecture-specific operations
+//! - **Profile-guided optimization**: Branch weights and profiling data
+//!
 //! ## Type Safety
 //!
 //! The type system ensures:
