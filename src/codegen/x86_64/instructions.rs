@@ -149,13 +149,13 @@ pub fn generate_instruction<'a, W: Write>(
                 match result_loc {
                     ValueLocation::Register(reg) => {
                         // Calculate the address where the data will be stored
-                    writeln!(
-                        writer,
+                        writeln!(
+                            writer,
                             "        leaq {}(%rbp), {} # Stack allocation data address",
                             data_offset, reg
-                    )?;
-                    writeln!(
-                        writer,
+                        )?;
+                        writeln!(
+                            writer,
                             "        # Stack allocation for {} at offset {}",
                             result, data_offset
                         )?;
@@ -170,8 +170,8 @@ pub fn generate_instruction<'a, W: Write>(
                         writeln!(
                             writer,
                             "        movq %rax, {}(%rbp) # Store data pointer",
-                        offset
-                    )?;
+                            offset
+                        )?;
                         writeln!(
                             writer,
                             "        # Stack allocation for {} at data offset {}",
@@ -385,8 +385,8 @@ pub fn generate_instruction<'a, W: Write>(
                             // If destination is a 64-bit register but we did 32-bit ops,
                             // we need to sign/zero extend the result
                             if matches!(ty, PrimitiveType::I32) {
-                        writeln!(
-                            writer,
+                                writeln!(
+                                    writer,
                                     "        cltq # Sign extend 32-bit result to 64-bit"
                                 )?;
                             } else {
@@ -472,31 +472,31 @@ pub fn generate_instruction<'a, W: Write>(
                     && rhs_val > 0
                     && (rhs_val & (rhs_val - 1)) == 0
                 {
-                        // It's a power of 2, convert to shift
-                        let shift_amount = rhs_val.trailing_zeros();
+                    // It's a power of 2, convert to shift
+                    let shift_amount = rhs_val.trailing_zeros();
                     // Use the appropriate register size based on the operation type
                     let reg_name = match ty {
                         PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register for 32-bit ops
                         _ => "%rax", // 64-bit register for other ops
                     };
 
-                        writeln!(
-                            writer,
+                    writeln!(
+                        writer,
                         "        {} {}, {} # Load value for shift",
                         mov_instr, lhs_op, reg_name
-                        )?;
-                        writeln!(
-                            writer,
+                    )?;
+                    writeln!(
+                        writer,
                         "        shl{} ${}, {} # Shift instead of multiply by power of 2",
                         op_mnemonic, shift_amount, reg_name
-                        )?;
-                        writeln!(
-                            writer,
+                    )?;
+                    writeln!(
+                        writer,
                         "        {} {}, {} # Store Result",
                         mov_instr, reg_name, dest_asm
-                        )?;
-                        return Ok(());
-                    }
+                    )?;
+                    return Ok(());
+                }
             }
 
             // Regular path for operations not handled by special cases
@@ -1112,7 +1112,7 @@ pub fn generate_instruction<'a, W: Write>(
                     return Err(LaminaError::CodegenError(
                         CodegenError::ZeroExtensionNotSupported(ExtensionInfo::Custom(format!(
                             "{} to {}",
-                        source_type, target_type
+                            source_type, target_type
                         ))),
                     ));
                 }
@@ -1354,8 +1354,8 @@ mod tests {
             &alloc_heap,
             &ctx,
             &[
-                "movq $8, %rdi", // Size to allocate
-                "call malloc", // Call malloc
+                "movq $8, %rdi",        // Size to allocate
+                "call malloc",          // Call malloc
                 "movq %rax, -40(%rbp)", // Store result
             ],
         );
@@ -2003,7 +2003,7 @@ mod tests {
             &[
                 "# GetFieldPtr for result (field index 1)",
                 "movq -16(%rbp), %rax", // Load struct pointer
-                "addq $8, %rax", // Add field offset (1 * 8 bytes)
+                "addq $8, %rax",        // Add field offset (1 * 8 bytes)
                 "movq %rax, -40(%rbp)", // Store result
             ],
         );
