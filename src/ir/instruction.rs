@@ -37,7 +37,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use lamina::{IRBuilder, Type, PrimitiveType, BinaryOp, var, i32};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina::ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -59,7 +60,8 @@ use super::types::{Identifier, Label, PrimitiveType, Type, Value};
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{IRBuilder, Type, PrimitiveType, BinaryOp, var, i32};
+/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+/// use lamina::ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -88,7 +90,8 @@ pub enum BinaryOp {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{IRBuilder, Type, PrimitiveType, CmpOp, var, i32};
+/// use lamina::ir::{IRBuilder, Type, PrimitiveType, CmpOp};
+/// use lamina::ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -120,7 +123,7 @@ pub enum CmpOp {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{IRBuilder, Type, PrimitiveType, AllocType};
+/// use lamina::ir::{IRBuilder, Type, PrimitiveType, AllocType};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder

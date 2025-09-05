@@ -20,7 +20,8 @@
 //! ## Examples
 //!
 //! ```rust
-//! use lamina::{IRBuilder, Type, PrimitiveType, var, i32, string};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina::ir::builder::{var, i32, string};
 //!
 //! let mut builder = IRBuilder::new();
 //!
@@ -49,7 +50,7 @@ use super::types::{Identifier, Type, Value};
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{TypeDeclaration, Type, StructField, PrimitiveType};
+/// use lamina::ir::{TypeDeclaration, Type, StructField, PrimitiveType, Value, Literal};
 ///
 /// let point_type = TypeDeclaration {
 ///     name: "Point",
@@ -75,7 +76,7 @@ pub struct TypeDeclaration<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{GlobalDeclaration, Type, PrimitiveType, Value};
+/// use lamina::ir::{GlobalDeclaration, Type, PrimitiveType, Value, Literal};
 ///
 /// let message_global = GlobalDeclaration {
 ///     name: "message",
@@ -110,7 +111,8 @@ pub struct GlobalDeclaration<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+/// use lamina::ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
