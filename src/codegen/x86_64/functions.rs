@@ -493,7 +493,7 @@ fn precompute_function_layout<'a>(
     }
 
     // 3. Calculate stack space for locals (sorted for deterministic order)
-    let mut local_size = 0u64;
+    let mut _local_size = 0u64;
     let mut local_allocations = Vec::new(); // Store (result_name, size)
     let mut sorted_blocks: Vec<_> = func.basic_blocks.keys().collect();
     sorted_blocks.sort();
@@ -557,7 +557,7 @@ fn precompute_function_layout<'a>(
 
             if let Some((result, size)) = result_info {
                 let aligned_size = (size + 7) & !7;
-                local_size += aligned_size;
+                _local_size += aligned_size;
                 local_allocations.push((result, aligned_size));
             }
         }
