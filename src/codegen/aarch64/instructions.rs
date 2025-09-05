@@ -11,7 +11,7 @@ pub fn generate_instruction<'a, W: Write>(
     instr: &Instruction<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     _func_name: Identifier<'a>,
 ) -> Result<()> {
     writeln!(writer, "        // IR: {}", instr)?;
@@ -41,27 +41,53 @@ pub fn generate_instruction<'a, W: Write>(
             let val = get_value_operand_asm(value, state, func_ctx)?;
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
 
-            // Load the pointer value
-            materialize_address_operand(writer, &ptr_op, "x9")?;
-            writeln!(writer, "        ldr x11, [x9]")?;
-
-            match ty {
-                Type::Primitive(PrimitiveType::I32) => {
+            // Check if this is a stack-allocated variable or heap pointer
+            if let Value::Variable(ptr_id) = ptr && func_ctx.stack_allocated_vars.contains(ptr_id) {
+                // Direct stack access - no dereferencing needed
+                if let Some(offset) = parse_fp_offset(&ptr_op) {
                     materialize_to_reg(writer, &val, "x10")?;
-                    writeln!(writer, "        str w10, [x11]")?;
+                    match ty {
+                        Type::Primitive(PrimitiveType::I32) => {
+                            writeln!(writer, "        str w10, [x29, #{}]", offset)?;
+                        }
+                        Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                            writeln!(writer, "        str x10, [x29, #{}]", offset)?;
+                        }
+                        Type::Primitive(PrimitiveType::Bool) | Type::Primitive(PrimitiveType::I8) => {
+                            writeln!(writer, "        strb w10, [x29, #{}]", offset)?;
+                        }
+                        _ => {
+                            return Err(LaminaError::CodegenError(
+                                CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(LaminaError::CodegenError(CodegenError::InternalError));
                 }
-                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
-                    materialize_to_reg(writer, &val, "x10")?;
-                    writeln!(writer, "        str x10, [x11]")?;
-                }
-                Type::Primitive(PrimitiveType::Bool) | Type::Primitive(PrimitiveType::I8) => {
-                    materialize_to_reg(writer, &val, "x10")?;
-                    writeln!(writer, "        strb w10, [x11]")?;
-                }
-                _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
-                    ));
+            } else {
+                // Heap pointer - need to dereference
+                materialize_address_operand(writer, &ptr_op, "x9")?;
+                writeln!(writer, "        ldr x11, [x9]")?; // Load the target address
+                
+                match ty {
+                    Type::Primitive(PrimitiveType::I32) => {
+                        materialize_to_reg(writer, &val, "x10")?;
+                        writeln!(writer, "        str w10, [x11]")?;
+                    }
+                    Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                        materialize_to_reg(writer, &val, "x10")?;
+                        writeln!(writer, "        str x10, [x11]")?;
+                    }
+                    Type::Primitive(PrimitiveType::Bool) | Type::Primitive(PrimitiveType::I8) => {
+                        materialize_to_reg(writer, &val, "x10")?;
+                        writeln!(writer, "        strb w10, [x11]")?;
+                    }
+                    _ => {
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
+                        ));
+                    }
                 }
             }
         }
@@ -80,11 +106,11 @@ pub fn generate_instruction<'a, W: Write>(
                         ));
                     }
                     ValueLocation::StackOffset(offset) => {
-                        // For stack allocation, we want the pointer variable to directly
-                        // contain the stack address, not store it at another location.
-                        // So we don't need to do anything here - the result location
-                        // already represents the allocated stack space.
-                        // The load/store operations will handle this correctly.
+                        // For stack allocation, we don't need to store anything
+                        // The ValueLocation::StackOffset itself represents the allocated space
+                        // Load/store operations will handle this directly
+                        // Track this as a stack-allocated variable
+                        func_ctx.stack_allocated_vars.insert(*result);
                     }
                 }
             }
@@ -165,27 +191,55 @@ pub fn generate_instruction<'a, W: Write>(
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
 
-            // Load the pointer value
-            materialize_address_operand(writer, &ptr_op, "x9")?;
-            writeln!(writer, "        ldr x11, [x9]")?;
-
-            match ty {
-                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
-                    writeln!(writer, "        ldrb w10, [x11]")?;
-                    store_to_location(writer, "x10", &dest)?;
+            // Check if this is a stack-allocated variable or heap pointer
+            if let Value::Variable(ptr_id) = ptr && func_ctx.stack_allocated_vars.contains(ptr_id) {
+                // Direct stack access - no dereferencing needed
+                if let Some(offset) = parse_fp_offset(&ptr_op) {
+                    match ty {
+                        Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
+                            writeln!(writer, "        ldrb w10, [x29, #{}]", offset)?;
+                            store_to_location(writer, "x10", &dest)?;
+                        }
+                        Type::Primitive(PrimitiveType::I32) => {
+                            writeln!(writer, "        ldr w10, [x29, #{}]", offset)?;
+                            store_to_location(writer, "x10", &dest)?;
+                        }
+                        Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                            writeln!(writer, "        ldr x10, [x29, #{}]", offset)?;
+                            store_to_location(writer, "x10", &dest)?;
+                        }
+                        _ => {
+                            return Err(LaminaError::CodegenError(
+                                CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(LaminaError::CodegenError(CodegenError::InternalError));
                 }
-                Type::Primitive(PrimitiveType::I32) => {
-                    writeln!(writer, "        ldr w10, [x11]")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
-                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
-                    writeln!(writer, "        ldr x10, [x11]")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
-                _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
-                    ));
+            } else {
+                // Heap pointer - need to dereference
+                materialize_address_operand(writer, &ptr_op, "x9")?;
+                writeln!(writer, "        ldr x11, [x9]")?; // Load the target address
+                
+                match ty {
+                    Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
+                        writeln!(writer, "        ldrb w10, [x11]")?;
+                        store_to_location(writer, "x10", &dest)?;
+                    }
+                    Type::Primitive(PrimitiveType::I32) => {
+                        writeln!(writer, "        ldr w10, [x11]")?;
+                        store_to_location(writer, "x10", &dest)?;
+                    }
+                    Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                        writeln!(writer, "        ldr x10, [x11]")?;
+                        store_to_location(writer, "x10", &dest)?;
+                    }
+                    _ => {
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
+                        ));
+                    }
                 }
             }
         }
