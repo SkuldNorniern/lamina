@@ -149,13 +149,13 @@ pub fn generate_instruction<'a, W: Write>(
                 match result_loc {
                     ValueLocation::Register(reg) => {
                         // Calculate the address where the data will be stored
-                        writeln!(
-                            writer,
+                    writeln!(
+                        writer,
                             "        leaq {}(%rbp), {} # Stack allocation data address",
                             data_offset, reg
-                        )?;
-                        writeln!(
-                            writer,
+                    )?;
+                    writeln!(
+                        writer,
                             "        # Stack allocation for {} at offset {}",
                             result, data_offset
                         )?;
@@ -170,8 +170,8 @@ pub fn generate_instruction<'a, W: Write>(
                         writeln!(
                             writer,
                             "        movq %rax, {}(%rbp) # Store data pointer",
-                            offset
-                        )?;
+                        offset
+                    )?;
                         writeln!(
                             writer,
                             "        # Stack allocation for {} at data offset {}",
@@ -385,8 +385,8 @@ pub fn generate_instruction<'a, W: Write>(
                             // If destination is a 64-bit register but we did 32-bit ops,
                             // we need to sign/zero extend the result
                             if matches!(ty, PrimitiveType::I32) {
-                                writeln!(
-                                    writer,
+                        writeln!(
+                            writer,
                                     "        cltq # Sign extend 32-bit result to 64-bit"
                                 )?;
                             } else {
@@ -472,31 +472,31 @@ pub fn generate_instruction<'a, W: Write>(
                     && rhs_val > 0
                     && (rhs_val & (rhs_val - 1)) == 0
                 {
-                    // It's a power of 2, convert to shift
-                    let shift_amount = rhs_val.trailing_zeros();
+                        // It's a power of 2, convert to shift
+                        let shift_amount = rhs_val.trailing_zeros();
                     // Use the appropriate register size based on the operation type
                     let reg_name = match ty {
                         PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register for 32-bit ops
                         _ => "%rax", // 64-bit register for other ops
                     };
 
-                    writeln!(
-                        writer,
+                        writeln!(
+                            writer,
                         "        {} {}, {} # Load value for shift",
                         mov_instr, lhs_op, reg_name
-                    )?;
-                    writeln!(
-                        writer,
+                        )?;
+                        writeln!(
+                            writer,
                         "        shl{} ${}, {} # Shift instead of multiply by power of 2",
                         op_mnemonic, shift_amount, reg_name
-                    )?;
-                    writeln!(
-                        writer,
+                        )?;
+                        writeln!(
+                            writer,
                         "        {} {}, {} # Store Result",
                         mov_instr, reg_name, dest_asm
-                    )?;
-                    return Ok(());
-                }
+                        )?;
+                        return Ok(());
+                    }
             }
 
             // Regular path for operations not handled by special cases
@@ -1112,7 +1112,7 @@ pub fn generate_instruction<'a, W: Write>(
                     return Err(LaminaError::CodegenError(
                         CodegenError::ZeroExtensionNotSupported(ExtensionInfo::Custom(format!(
                             "{} to {}",
-                            source_type, target_type
+                        source_type, target_type
                         ))),
                     ));
                 }
@@ -1339,33 +1339,44 @@ mod tests {
             &alloc_stack,
             &ctx,
             &[
-                "leaq -40(%rbp), %rax", // Get address of stack slot
-                "movq %rax, -40(%rbp)", // Store address in itself (alloc returns pointer)
+                "leaq -56(%rbp), %rax", // Get address of stack slot
+                "movq %rax, -40(%rbp)", // Store address in result variable
             ],
         );
 
-        // Heap allocation (should error)
+        // Heap allocation (now implemented)
         let alloc_heap = Instruction::Alloc {
             result: "result",
             alloc_type: AllocType::Heap,
             allocated_ty: Type::Primitive(PrimitiveType::I64),
         };
-        assert_codegen_error(&alloc_heap, &ctx, "Heap allocation requires runtime");
+        assert_asm_contains(
+            &alloc_heap,
+            &ctx,
+            &[
+                "movq $8, %rdi", // Size to allocate
+                "call malloc", // Call malloc
+                "movq %rax, -40(%rbp)", // Store result
+            ],
+        );
 
-        // Stack allocation with invalid location (should error)
-        let mut ctx_invalid_loc = setup_test_context_basic();
-        ctx_invalid_loc
+        // Stack allocation with register location (now supported)
+        let mut ctx_register_loc = setup_test_context_basic();
+        ctx_register_loc
             .value_locations
-            .insert("result", ValueLocation::Register("%rax".to_string())); // Invalid location for alloc result
-        let alloc_stack_invalid = Instruction::Alloc {
+            .insert("result", ValueLocation::Register("%rax".to_string()));
+        let alloc_stack_register = Instruction::Alloc {
             result: "result",
             alloc_type: AllocType::Stack,
             allocated_ty: Type::Primitive(PrimitiveType::I64),
         };
-        assert_codegen_error(
-            &alloc_stack_invalid,
-            &ctx_invalid_loc,
-            "Stack allocation result location invalid",
+        assert_asm_contains(
+            &alloc_stack_register,
+            &ctx_register_loc,
+            &[
+                "leaq -24(%rbp), %rax", // Calculate data address for register result
+                "# Stack allocation for result at offset -24",
+            ],
         );
     }
 
@@ -1467,15 +1478,21 @@ mod tests {
             ],
         );
 
-        // Binary op unsupported type
-        let bin_err = Instruction::Binary {
+        // Add bool (now supported)
+        let add_bool = Instruction::Binary {
             op: BinaryOp::Add,
             result: "result",
-            ty: PrimitiveType::Bool, // Invalid type for add
+            ty: PrimitiveType::Bool,
             lhs: Value::Constant(Literal::Bool(true)),
             rhs: Value::Constant(Literal::Bool(false)),
         };
-        assert_codegen_error(&bin_err, &ctx, "Binary operation for type");
+        assert_asm_contains(
+            &add_bool,
+            &ctx,
+            &[
+                "movb $1, -40(%rbp)", // Constant folding optimization
+            ],
+        );
     }
 
     #[test]
@@ -1614,7 +1631,7 @@ mod tests {
         };
         let stack_alloc_asm = generate_test_asm(&stack_alloc, &ctx);
         assert!(
-            stack_alloc_asm.contains("leaq -72(%rbp), %rax"),
+            stack_alloc_asm.contains("leaq -88(%rbp), %rax"),
             "Stack alloc should calculate address of stack slot"
         );
 
@@ -1974,7 +1991,7 @@ mod tests {
     #[test]
     fn test_getfieldptr_instruction() {
         let ctx = setup_test_context_basic();
-        // Currently outputs a comment and zero
+        // GetFieldPtr is now implemented
         let getfield_instr = Instruction::GetFieldPtr {
             result: "result",
             struct_ptr: Value::Variable("ptr1"),
@@ -1984,8 +2001,10 @@ mod tests {
             &getfield_instr,
             &ctx,
             &[
-                "# GetFieldPtr for result not implemented",
-                "movq $0, -40(%rbp)", // Store 0 in result
+                "# GetFieldPtr for result (field index 1)",
+                "movq -16(%rbp), %rax", // Load struct pointer
+                "addq $8, %rax", // Add field offset (1 * 8 bytes)
+                "movq %rax, -40(%rbp)", // Store result
             ],
         );
     }
