@@ -519,6 +519,177 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        add sp, sp, #32")?;
         }
 
+        // --- I/O Operations ---
+        Instruction::Write { buffer, size, result } => {
+            // macOS ARM64 write syscall:
+            // syscall #4, args: x0=fd(1=stdout), x1=buffer, x2=size
+            // result in x0: bytes written or -1 on error
+
+            // Set up syscall arguments
+            writeln!(writer, "        mov x0, #1")?; // stdout file descriptor
+            let buffer_op = get_value_operand_asm(buffer, state, func_ctx)?;
+            materialize_to_reg(writer, &buffer_op, "x1")?;
+            let size_op = get_value_operand_asm(size, state, func_ctx)?;
+            materialize_to_reg(writer, &size_op, "x2")?;
+
+            // Make syscall
+            writeln!(writer, "        mov x16, #4")?; // write syscall number
+            writeln!(writer, "        svc #0x80")?;   // software interrupt
+
+            // Store result
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            store_to_location(writer, "x0", &dest)?;
+        }
+
+        Instruction::Read { buffer, size, result } => {
+            // macOS ARM64 read syscall:
+            // syscall #3, args: x0=fd(0=stdin), x1=buffer, x2=max_size
+            // result in x0: bytes read or -1 on error
+
+            // Set up syscall arguments
+            writeln!(writer, "        mov x0, #0")?; // stdin file descriptor
+            let buffer_op = get_value_operand_asm(buffer, state, func_ctx)?;
+            materialize_to_reg(writer, &buffer_op, "x1")?;
+            let size_op = get_value_operand_asm(size, state, func_ctx)?;
+            materialize_to_reg(writer, &size_op, "x2")?;
+
+            // Make syscall
+            writeln!(writer, "        mov x16, #3")?; // read syscall number
+            writeln!(writer, "        svc #0x80")?;   // software interrupt
+
+            // Store result
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            store_to_location(writer, "x0", &dest)?;
+        }
+
+        Instruction::WriteByte { value, result } => {
+            // Write single byte to stdout using write syscall
+            // Allocate 1 byte on stack for the buffer
+            writeln!(writer, "        sub sp, sp, #16")?; // Allocate stack space
+
+            // Store the byte value on stack
+            let value_op = get_value_operand_asm(value, state, func_ctx)?;
+            materialize_to_reg(writer, &value_op, "x10")?;
+            writeln!(writer, "        strb w10, [sp]")?; // Store byte on stack
+
+            // Set up syscall arguments
+            writeln!(writer, "        mov x0, #1")?;    // stdout
+            writeln!(writer, "        mov x1, sp")?;    // buffer = stack pointer
+            writeln!(writer, "        mov x2, #1")?;    // size = 1 byte
+
+            // Make syscall
+            writeln!(writer, "        mov x16, #4")?;   // write syscall
+            writeln!(writer, "        svc #0x80")?;     // software interrupt
+
+            // Store result
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            store_to_location(writer, "x0", &dest)?;
+
+            // Restore stack
+            writeln!(writer, "        add sp, sp, #16")?;
+        }
+
+        Instruction::ReadByte { result } => {
+            // Read single byte from stdin using read syscall
+            // Allocate 1 byte on stack for the buffer
+            writeln!(writer, "        sub sp, sp, #16")?; // Allocate stack space
+
+            // Set up syscall arguments
+            writeln!(writer, "        mov x0, #0")?;    // stdin
+            writeln!(writer, "        mov x1, sp")?;    // buffer = stack pointer
+            writeln!(writer, "        mov x2, #1")?;    // size = 1 byte
+
+            // Make syscall
+            writeln!(writer, "        mov x16, #3")?;   // read syscall
+            writeln!(writer, "        svc #0x80")?;     // software interrupt
+
+            // Load the byte from stack (if read succeeded)
+            writeln!(writer, "        ldrb w10, [sp]")?; // Load byte from stack
+
+            // Store result (byte value or -1 on error)
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            if dest.starts_with('x') {
+                // For register destination, check if read succeeded
+                writeln!(writer, "        cmp x0, #1")?;       // Check if 1 byte was read
+                writeln!(writer, "        csel {}, w10, x0, eq", dest)?; // Use byte if success, else error code
+            } else {
+                store_to_location(writer, "w10", &dest)?;
+            }
+
+            // Restore stack
+            writeln!(writer, "        add sp, sp, #16")?;
+        }
+
+        Instruction::WritePtr { ptr, value, ty, result } => {
+            // Write value through pointer dereference
+            let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
+            let value_op = get_value_operand_asm(value, state, func_ctx)?;
+
+            // Load the pointer value
+            materialize_to_reg(writer, &ptr_op, "x9")?;
+
+            // Store the value at the pointer location
+            match ty {
+                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
+                    materialize_to_reg(writer, &value_op, "x10")?;
+                    writeln!(writer, "        strb w10, [x9]")?;
+                }
+                Type::Primitive(PrimitiveType::I32) => {
+                    materialize_to_reg(writer, &value_op, "x10")?;
+                    writeln!(writer, "        str w10, [x9]")?;
+                }
+                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                    materialize_to_reg(writer, &value_op, "x10")?;
+                    writeln!(writer, "        str x10, [x9]")?;
+                }
+                _ => {
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
+                    ));
+                }
+            }
+
+            // Return success (1)
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            if dest.starts_with('x') {
+                writeln!(writer, "        mov {}, #1", dest)?;
+            } else {
+                materialize_address_operand(writer, &dest, "x9")?;
+                writeln!(writer, "        mov x10, #1")?;
+                writeln!(writer, "        str x10, [x9]")?;
+            }
+        }
+
+        Instruction::ReadPtr { result, ptr, ty } => {
+            // Read value through pointer dereference
+            let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+
+            // Load the pointer value
+            materialize_to_reg(writer, &ptr_op, "x9")?;
+
+            // Load the value from the pointer location
+            match ty {
+                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
+                    writeln!(writer, "        ldrb w10, [x9]")?;
+                    store_to_location(writer, "w10", &dest)?;
+                }
+                Type::Primitive(PrimitiveType::I32) => {
+                    writeln!(writer, "        ldr w10, [x9]")?;
+                    store_to_location(writer, "w10", &dest)?;
+                }
+                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
+                    writeln!(writer, "        ldr x10, [x9]")?;
+                    store_to_location(writer, "x10", &dest)?;
+                }
+                _ => {
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
+                    ));
+                }
+            }
+        }
+
         Instruction::Tuple { result, elements } => {
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
 
