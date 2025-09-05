@@ -73,31 +73,30 @@ pub enum FunctionAnnotation {
     /// Inlining can improve performance by eliminating function call overhead,
     /// but may increase code size. Use for small, frequently called functions.
     Inline,
-    
+
     /// Mark this function as exported (visible to other modules).
     ///
     /// Exported functions can be called from other modules or linked against
     /// by external code. This is typically used for public APIs.
     Export,
-    
+
     /// Indicate that this function never returns normally.
     ///
     /// Functions marked with `NoReturn` always terminate the program (e.g., `exit`, `panic`).
     /// This allows the compiler to optimize control flow and eliminate unreachable code.
     NoReturn,
-    
+
     /// Hint to the compiler to never inline this function.
     ///
     /// Use for large functions or when you want to preserve the function call
     /// for debugging or profiling purposes.
     NoInline,
-    
+
     /// Mark this function as "cold" (rarely executed).
     ///
     /// Cold functions are optimized for size rather than speed, and may be
     /// placed in a separate code section to improve instruction cache usage.
     Cold,
-    
     // Add more as needed
 }
 

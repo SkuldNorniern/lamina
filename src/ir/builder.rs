@@ -469,20 +469,20 @@ impl<'a> IRBuilder<'a> {
     /// Failing to deallocate heap memory will result in memory leaks.
     ///
     /// # Example
-/// ```rust
-/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
-///
-/// let mut builder = IRBuilder::new();
-/// builder
-///     .function("heap_example", Type::Void)
-///     // Allocate on heap
-///     .alloc_heap("data", Type::Primitive(PrimitiveType::I32))
-///     // Use the memory
-///     .store(Type::Primitive(PrimitiveType::I32), var("data"), i32(42))
-///     // Always deallocate
-///     .dealloc(var("data"))
-///     .ret_void();
-/// ```
+    /// ```rust
+    /// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("heap_example", Type::Void)
+    ///     // Allocate on heap
+    ///     .alloc_heap("data", Type::Primitive(PrimitiveType::I32))
+    ///     // Use the memory
+    ///     .store(Type::Primitive(PrimitiveType::I32), var("data"), i32(42))
+    ///     // Always deallocate
+    ///     .dealloc(var("data"))
+    ///     .ret_void();
+    /// ```
     pub fn alloc_heap(&mut self, result: &'a str, ty: Type<'a>) -> &mut Self {
         self.inst(Instruction::Alloc {
             result,

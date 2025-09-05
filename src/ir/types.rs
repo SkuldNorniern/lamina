@@ -134,7 +134,7 @@ pub enum PrimitiveType {
     /// Single character (8-bit)
     Char, // Single character (8-bit)
     /// Generic pointer type for memory addresses
-    Ptr,  // Generic pointer type
+    Ptr, // Generic pointer type
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
