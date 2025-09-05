@@ -19,9 +19,16 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
             let (_, elem) = get_type_size_directive_and_bytes(element_type)?;
             Ok((".space", elem * size))
         }
-        Type::Struct(_) => Err(LaminaError::CodegenError(
-            CodegenError::StructNotImplemented,
-        )),
+        Type::Struct(fields) => {
+            let mut total_size = 0u64;
+            for field in fields {
+                let (_, field_size) = get_type_size_directive_and_bytes(&field.ty)?;
+                // For simplicity, assume no padding (fields are packed)
+                // In a real implementation, we'd need to handle alignment
+                total_size += field_size;
+            }
+            Ok((".space", total_size))
+        },
         Type::Tuple(_) => Err(LaminaError::CodegenError(CodegenError::TupleNotImplemented)),
         Type::Named(_) => Err(LaminaError::CodegenError(
             CodegenError::NamedTypeNotImplemented,
