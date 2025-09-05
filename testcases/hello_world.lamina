@@ -1,0 +1,16 @@
+fn @main() -> i32 {
+  entry:
+    %r1 = writebyte 72
+    %r2 = writebyte 101
+    %r3 = writebyte 108
+    %r4 = writebyte 108
+    %r5 = writebyte 111
+    %r6 = writebyte 32
+    %r7 = writebyte 87
+    %r8 = writebyte 111
+    %r9 = writebyte 114
+    %r10 = writebyte 108
+    %r11 = writebyte 100
+    %r12 = writebyte 10
+    ret.i32 0
+}
