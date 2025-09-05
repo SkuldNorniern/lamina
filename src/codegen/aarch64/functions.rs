@@ -130,13 +130,13 @@ pub fn generate_function<'a, W: Write>(
     if let Some(entry_block) = func.basic_blocks.get(&func.entry_block) {
         let asm_label = func_ctx.get_block_label(&func.entry_block)?;
         writeln!(writer, "{}:", asm_label)?;
-        generate_basic_block(entry_block, writer, state, &func_ctx, func_name)?;
+        generate_basic_block(entry_block, writer, state, &mut func_ctx, func_name)?;
     }
     for (ir_label, block) in &func.basic_blocks {
         if *ir_label != func.entry_block {
             let asm_label = func_ctx.get_block_label(ir_label)?;
             writeln!(writer, "{}:", asm_label)?;
-            generate_basic_block(block, writer, state, &func_ctx, func_name)?;
+            generate_basic_block(block, writer, state, &mut func_ctx, func_name)?;
         }
     }
 
@@ -335,7 +335,7 @@ fn generate_basic_block<'a, W: Write>(
     block: &BasicBlock<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     func_name: Identifier<'a>,
 ) -> Result<()> {
     for instr in &block.instructions {
