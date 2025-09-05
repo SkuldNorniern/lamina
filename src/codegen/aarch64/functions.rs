@@ -291,6 +291,13 @@ fn precompute_function_layout<'a>(
                 Instruction::Call {
                     result: Some(res), ..
                 } => Some((res, 8)),
+                // I/O instructions all return i64 syscall results
+                Instruction::Write { result, .. }
+                | Instruction::Read { result, .. }
+                | Instruction::WriteByte { result, .. }
+                | Instruction::ReadByte { result, .. }
+                | Instruction::WritePtr { result, .. }
+                | Instruction::ReadPtr { result, .. } => Some((result, 8)),
                 _ => None,
             };
             if let Some((res, size)) = result_info {
