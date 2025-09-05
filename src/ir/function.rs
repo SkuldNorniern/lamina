@@ -31,7 +31,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use lamina::{IRBuilder, Type, PrimitiveType, CmpOp, var, i32};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, CmpOp};
+//! use lamina::ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -58,7 +59,7 @@ use super::types::{Identifier, Label, Type};
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{IRBuilder, Type, FunctionAnnotation};
+/// use lamina::ir::{IRBuilder, Type, FunctionAnnotation};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -109,7 +110,7 @@ pub enum FunctionAnnotation {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{FunctionParameter, Type, PrimitiveType};
+/// use lamina::ir::{FunctionParameter, Type, PrimitiveType};
 ///
 /// let param = FunctionParameter {
 ///     name: "x",
@@ -133,7 +134,7 @@ pub struct FunctionParameter<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{FunctionSignature, FunctionParameter, Type, PrimitiveType};
+/// use lamina::ir::{FunctionSignature, FunctionParameter, Type, PrimitiveType};
 ///
 /// let signature = FunctionSignature {
 ///     params: vec![
@@ -166,7 +167,8 @@ pub struct FunctionSignature<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+/// use lamina::ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -204,7 +206,8 @@ pub struct BasicBlock<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+/// use lamina::ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder

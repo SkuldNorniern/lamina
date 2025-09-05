@@ -50,7 +50,8 @@
 //! It handles the complexity of managing functions, basic blocks, and instruction sequences.
 //!
 //! ```rust
-//! use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina::ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder

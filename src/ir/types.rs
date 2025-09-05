@@ -38,7 +38,8 @@
 //! ## Examples
 //!
 //! ```rust
-//! use lamina::{IRBuilder, Type, PrimitiveType, StructField, var, i32, bool};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, StructField, BinaryOp, CmpOp};
+//! use lamina::ir::builder::{var, i32, bool};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -98,7 +99,8 @@ pub type Label<'a> = &'a str;
 /// # Examples
 ///
 /// ```rust
-/// use lamina::{IRBuilder, Type, PrimitiveType, var, i32, bool};
+/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp, CmpOp};
+/// use lamina::ir::builder::{var, i32, bool};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
