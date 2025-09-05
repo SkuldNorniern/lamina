@@ -1,0 +1,32 @@
+name: rust-fmt
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  rust-clippy-analyze:
+    name: Run rustfmt style commit
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Stable with rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run fmt
+        run: cargo fmt
+
+      - name: commit changes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "style: `rustfmt`"

@@ -1,0 +1,32 @@
+name: rust-audit 
+on: 
+  schedule:
+    - cron: '20 22 * * 3'
+
+jobs:
+  rust-clippy-analyze:
+    name: Run rust-audit check
+    runs-on: ubuntu-latest
+    permissions: write-all
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Install rust tool chain
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: install cargo-audit
+        run: cargo install cargo-audit --features=fix
+
+      - name: Cahce
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-directories: "$HOME/.cargo/bin/cargo-audit"
+               
+          #- name: attempt to fix audit
+          #  run: cargo audit fix
+
+      - name: Security audit result on summary
+        uses: actions-rs/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
