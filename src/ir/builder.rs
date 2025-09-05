@@ -924,6 +924,150 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
+    /// Writes a buffer to stdout (raw syscall)
+    ///
+    /// # Parameters
+    /// - `buffer`: Pointer to the buffer to write
+    /// - `size`: Number of bytes to write
+    /// - `result`: Variable to store the result (bytes written, or -1 on error)
+    ///
+    /// # Returns
+    /// Number of bytes written on success, -1 on error.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType};
+    /// use lamina::ir::builder::{var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("write_example", Type::Void)
+    ///     // Write 5 bytes from buffer to stdout
+    ///     .write(var("buffer"), i32(5), "bytes_written")
+    ///     .ret_void();
+    /// ```
+    pub fn write(&mut self, buffer: Value<'a>, size: Value<'a>, result: &'a str) -> &mut Self {
+        self.inst(Instruction::Write { buffer, size, result })
+    }
+
+    /// Reads from stdin into a buffer (raw syscall)
+    ///
+    /// # Parameters
+    /// - `buffer`: Pointer to buffer to read into
+    /// - `size`: Maximum number of bytes to read
+    /// - `result`: Variable to store the result (bytes read, or -1 on error)
+    ///
+    /// # Returns
+    /// Number of bytes read on success, -1 on error.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType};
+    /// use lamina::ir::builder::{var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("read_example", Type::Void)
+    ///     // Read up to 100 bytes from stdin
+    ///     .read(var("buffer"), i32(100), "bytes_read")
+    ///     .ret_void();
+    /// ```
+    pub fn read(&mut self, buffer: Value<'a>, size: Value<'a>, result: &'a str) -> &mut Self {
+        self.inst(Instruction::Read { buffer, size, result })
+    }
+
+    /// Writes a single byte to stdout (raw syscall)
+    ///
+    /// # Parameters
+    /// - `value`: Byte value to write (will be truncated to 8 bits)
+    /// - `result`: Variable to store the result (1 on success, -1 on error)
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType};
+    /// use lamina::ir::builder::{i32};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("write_byte_example", Type::Void)
+    ///     // Write 'A' (65) to stdout
+    ///     .write_byte(i32(65), "success")
+    ///     .ret_void();
+    /// ```
+    pub fn write_byte(&mut self, value: Value<'a>, result: &'a str) -> &mut Self {
+        self.inst(Instruction::WriteByte { value, result })
+    }
+
+    /// Reads a single byte from stdin (raw syscall)
+    ///
+    /// # Parameters
+    /// - `result`: Variable to store the result (byte read, or -1 on error)
+    ///
+    /// # Returns
+    /// Byte value (0-255) on success, -1 on error.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, Type};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("read_byte_example", Type::Void)
+    ///     // Read one byte from stdin
+    ///     .read_byte("byte_read")
+    ///     .ret_void();
+    /// ```
+    pub fn read_byte(&mut self, result: &'a str) -> &mut Self {
+        self.inst(Instruction::ReadByte { result })
+    }
+
+    /// Writes a value through a pointer to stdout (pointer dereference)
+    ///
+    /// # Parameters
+    /// - `ptr`: Pointer to dereference for writing
+    /// - `value`: Value to write at the pointer location
+    /// - `ty`: Type of the value being written
+    /// - `result`: Variable to store the result (1 on success, -1 on error)
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType};
+    /// use lamina::ir::builder::{var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("write_ptr_example", Type::Void)
+    ///     // Write i32 value through pointer to stdout
+    ///     .write_ptr(var("ptr"), i32(42), Type::Primitive(PrimitiveType::I32), "success")
+    ///     .ret_void();
+    /// ```
+    pub fn write_ptr(&mut self, ptr: Value<'a>, value: Value<'a>, ty: Type<'a>, result: &'a str) -> &mut Self {
+        self.inst(Instruction::WritePtr { ptr, value, ty, result })
+    }
+
+    /// Reads a value through a pointer from stdin (pointer dereference)
+    ///
+    /// # Parameters
+    /// - `result`: Variable to store the value read from the pointer
+    /// - `ptr`: Pointer to dereference for reading
+    /// - `ty`: Type of the value to read
+    ///
+    /// # Examples
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType};
+    /// use lamina::ir::builder::{var};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("read_ptr_example", Type::Void)
+    ///     // Read i32 value through pointer from stdin
+    ///     .read_ptr("value", var("ptr"), Type::Primitive(PrimitiveType::I32))
+    ///     .ret_void();
+    /// ```
+    pub fn read_ptr(&mut self, result: &'a str, ptr: Value<'a>, ty: Type<'a>) -> &mut Self {
+        self.inst(Instruction::ReadPtr { result, ptr, ty })
+    }
+
     /// Creates a print instruction for debugging
     ///
     /// # Parameters

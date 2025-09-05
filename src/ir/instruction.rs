@@ -239,6 +239,36 @@ pub enum Instruction<'a> {
         // Pairs of (value, predecessor_label)
         incoming: Vec<(Value<'a>, Label<'a>)>,
     },
+    // --- I/O Operations ---
+    Write {
+        buffer: Value<'a>,  // Pointer to buffer to write
+        size: Value<'a>,    // Size of buffer in bytes
+        result: Identifier<'a>, // Result (syscall return value)
+    },
+    Read {
+        buffer: Value<'a>,  // Pointer to buffer to read into
+        size: Value<'a>,    // Maximum bytes to read
+        result: Identifier<'a>, // Result (bytes read, or -1 on error)
+    },
+    WriteByte {
+        value: Value<'a>,   // Single byte value to write
+        result: Identifier<'a>, // Result (1 on success, -1 on error)
+    },
+    ReadByte {
+        result: Identifier<'a>, // Result byte read (-1 on error)
+    },
+    WritePtr {
+        ptr: Value<'a>,     // Pointer to dereference
+        value: Value<'a>,   // Value to write at pointer location
+        ty: Type<'a>,       // Type of value being written
+        result: Identifier<'a>, // Result (1 on success, -1 on error)
+    },
+    ReadPtr {
+        result: Identifier<'a>, // Result value read from pointer
+        ptr: Value<'a>,     // Pointer to dereference
+        ty: Type<'a>,       // Type of value to read
+    },
+
     // --- Debugging ---
     Print {
         value: Value<'a>, // Value to print (currently assumes i64 for printf)
@@ -395,6 +425,12 @@ impl fmt::Display for Instruction<'_> {
                 }
                 Ok(())
             }
+            Instruction::Write { buffer, size, result } => write!(f, "%{} = write {}, {}", result, buffer, size),
+            Instruction::Read { buffer, size, result } => write!(f, "%{} = read {}, {}", result, buffer, size),
+            Instruction::WriteByte { value, result } => write!(f, "%{} = writebyte {}", result, value),
+            Instruction::ReadByte { result } => write!(f, "%{} = readbyte", result),
+            Instruction::WritePtr { ptr, value, ty, result } => write!(f, "%{} = writeptr {}, {}, {}", result, ptr, value, ty),
+            Instruction::ReadPtr { result, ptr, ty } => write!(f, "%{} = readptr {}, {}", result, ptr, ty),
             Instruction::Print { value } => write!(f, "print {}", value),
         }
     }
