@@ -130,13 +130,13 @@ pub fn generate_instruction<'a, W: Write>(
                     _ => 8, // Default fallback
                 };
 
-                let data_offset = match result {
-                    s if s.contains("ptr1") => -24,
-                    s if s.contains("ptr2") => -32,
-                    s if s.contains("ptr3") => -40,
-                    s if s.contains("stack_var") => -48,
-                    s if s.contains("stack_ptr") => -24,
-                    _ => -24, // Default
+                // Use different strategies for structs vs regular allocations
+                let data_offset = match allocated_ty {
+                    Type::Struct(_) => -32, // Structs use fixed offset below normal vars
+                    _ => match result_loc {
+                        ValueLocation::StackOffset(ptr_offset) => ptr_offset - 16, // Regular vars: data below pointer
+                        _ => -24, // Default for register allocations
+                    }
                 };
 
                 match result_loc {
@@ -862,17 +862,37 @@ pub fn generate_instruction<'a, W: Write>(
             // Calculate field address: struct_ptr + field_offset
             match dest_op {
                 ValueLocation::Register(reg) => {
-                    writeln!(writer, "        movq {}, {}", struct_ptr_op, reg)?;
-                    if field_offset != 0 {
-                        writeln!(writer, "        addq ${}, {}", field_offset, reg)?;
+                    if struct_ptr_op.contains("(%") {
+                        // struct_ptr is a memory reference, load it first
+                        writeln!(writer, "        movq {}, %rax", struct_ptr_op)?;
+                        if field_offset != 0 {
+                            writeln!(writer, "        addq ${}, %rax", field_offset)?;
+                        }
+                        writeln!(writer, "        movq %rax, {}", reg)?;
+                    } else {
+                        // struct_ptr is already in a register
+                        writeln!(writer, "        movq {}, {}", struct_ptr_op, reg)?;
+                        if field_offset != 0 {
+                            writeln!(writer, "        addq ${}, {}", field_offset, reg)?;
+                        }
                     }
                 }
                 ValueLocation::StackOffset(offset) => {
-                    writeln!(writer, "        movq {}, %rax", struct_ptr_op)?;
-                    if field_offset != 0 {
-                        writeln!(writer, "        addq ${}, %rax", field_offset)?;
+                    if struct_ptr_op.contains("(%") {
+                        // struct_ptr is a memory reference, load it first
+                        writeln!(writer, "        movq {}, %rax", struct_ptr_op)?;
+                        if field_offset != 0 {
+                            writeln!(writer, "        addq ${}, %rax", field_offset)?;
+                        }
+                        writeln!(writer, "        movq %rax, {}(%rbp)", offset)?;
+                    } else {
+                        // struct_ptr is already in a register
+                        writeln!(writer, "        movq {}, %rax", struct_ptr_op)?;
+                        if field_offset != 0 {
+                            writeln!(writer, "        addq ${}, %rax", field_offset)?;
+                        }
+                        writeln!(writer, "        movq %rax, {}(%rbp)", offset)?;
                     }
-                    writeln!(writer, "        movq %rax, {}(%rbp)", offset)?;
                 }
             }
         }
