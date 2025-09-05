@@ -174,7 +174,11 @@ mod tests {
 
     #[test]
     fn test_get_type_size_directive_and_bytes_invalid() {
-        assert!(get_type_size_directive_and_bytes(&Type::Struct(vec![])).is_err());
+        // Empty struct is now valid (size 0)
+        assert_eq!(
+            get_type_size_directive_and_bytes(&Type::Struct(vec![])).unwrap(),
+            (".space", 0)
+        );
         assert!(get_type_size_directive_and_bytes(&Type::Tuple(vec![])).is_err());
         assert!(get_type_size_directive_and_bytes(&Type::Named("MyType")).is_err());
         assert!(get_type_size_directive_and_bytes(&Type::Void).is_err());
