@@ -45,6 +45,7 @@ pub struct FunctionContext<'a> {
     pub current_stack_offset: i64,
     pub epilogue_label: String,
     pub callee_saved_regs: Vec<&'static str>, // Track which registers need to be saved
+    pub stack_allocated_vars: HashSet<Identifier<'a>>, // Track which variables are stack-allocated
 }
 
 impl<'a> FunctionContext<'a> {
@@ -57,6 +58,7 @@ impl<'a> FunctionContext<'a> {
             current_stack_offset: 0, // Will be calculated later based on callee-saved regs
             epilogue_label: String::new(),
             callee_saved_regs: Vec::new(),
+            stack_allocated_vars: HashSet::new(),
         }
     }
 
