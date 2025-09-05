@@ -1,28 +1,138 @@
+//! # Instruction Definitions
+//!
+//! This module defines all instruction types in the Lamina IR. Instructions are
+//! the fundamental operations that can be performed on values and represent the
+//! atomic units of computation.
+//!
+//! ## Instruction Categories
+//!
+//! ### Arithmetic and Logic
+//! - **Binary operations**: Addition, subtraction, multiplication, division
+//! - **Comparison operations**: Equality, ordering, logical comparisons
+//! - **Type conversions**: Zero-extension, type casting
+//!
+//! ### Memory Operations
+//! - **Allocation**: Stack and heap memory allocation
+//! - **Access**: Loading and storing values to/from memory
+//! - **Pointer arithmetic**: Array indexing, struct field access
+//! - **Deallocation**: Freeing heap-allocated memory
+//!
+//! ### Control Flow
+//! - **Branches**: Conditional jumps based on boolean values
+//! - **Jumps**: Unconditional jumps to other basic blocks
+//! - **Function calls**: Invoking other functions
+//! - **Returns**: Exiting functions with optional return values
+//!
+//! ### Debug and I/O
+//! - **Print**: Debug output for development and testing
+//! - **Phi nodes**: SSA form value merging from different control paths
+//!
+//! ## SSA Form
+//!
+//! All instructions follow Single Static Assignment (SSA) form:
+//! - Each variable is assigned exactly once
+//! - Instructions produce new values rather than modifying existing ones
+//! - This enables powerful optimizations and simplifies analysis
+//!
+//! ## Example
+//!
+//! ```rust
+//! use lamina::{IRBuilder, Type, PrimitiveType, BinaryOp, var, i32};
+//!
+//! let mut builder = IRBuilder::new();
+//! builder
+//!     .function("example", Type::Primitive(PrimitiveType::I32))
+//!     .binary(BinaryOp::Add, "sum", PrimitiveType::I32, i32(10), i32(20))
+//!     .binary(BinaryOp::Mul, "result", PrimitiveType::I32, var("sum"), i32(2))
+//!     .ret(Type::Primitive(PrimitiveType::I32), var("result"));
+//! ```
+
 use std::fmt;
 
 use super::types::{Identifier, Label, PrimitiveType, Type, Value};
 
+/// Binary arithmetic and logical operations.
+///
+/// These operations take two operands and produce a single result.
+/// All operands and the result must have the same primitive type.
+///
+/// # Examples
+///
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, BinaryOp, var, i32};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("math", Type::Primitive(PrimitiveType::I32))
+///     .binary(BinaryOp::Add, "sum", PrimitiveType::I32, i32(10), i32(20))
+///     .binary(BinaryOp::Mul, "product", PrimitiveType::I32, var("sum"), i32(3))
+///     .ret(Type::Primitive(PrimitiveType::I32), var("product"));
+/// ```
 #[derive(Debug, Clone, PartialEq)] // Cannot derive Eq due to f32 in Value::Constant
 pub enum BinaryOp {
+    /// Addition: `result = lhs + rhs`
     Add,
+    /// Subtraction: `result = lhs - rhs`
     Sub,
+    /// Multiplication: `result = lhs * rhs`
     Mul,
+    /// Division: `result = lhs / rhs`
     Div, // Add more as needed (SDiv, UDiv, Rem, etc.)
 }
 
+/// Comparison operations that produce boolean results.
+///
+/// These operations compare two values and return a boolean indicating
+/// whether the comparison is true or false.
+///
+/// # Examples
+///
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, CmpOp, var, i32};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("compare", Type::Primitive(PrimitiveType::Bool))
+///     .cmp(CmpOp::Gt, "is_greater", PrimitiveType::I32, var("a"), var("b"))
+///     .ret(Type::Primitive(PrimitiveType::Bool), var("is_greater"));
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub enum CmpOp {
+    /// Equality: `lhs == rhs`
     Eq,
+    /// Inequality: `lhs != rhs`
     Ne,
+    /// Greater than: `lhs > rhs`
     Gt,
+    /// Greater than or equal: `lhs >= rhs`
     Ge,
+    /// Less than: `lhs < rhs`
     Lt,
+    /// Less than or equal: `lhs <= rhs`
     Le, // Equality, Non-equality, Greater than, etc.
 }
 
+/// Memory allocation strategies.
+///
+/// Determines where and how memory is allocated for variables.
+/// This affects the lifetime and performance characteristics of the allocation.
+///
+/// # Examples
+///
+/// ```rust
+/// use lamina::{IRBuilder, Type, PrimitiveType, AllocType};
+///
+/// let mut builder = IRBuilder::new();
+/// builder
+///     .function("memory", Type::Void)
+///     .alloc_stack("local", Type::Primitive(PrimitiveType::I32))  // Stack allocation
+///     .alloc_heap("persistent", Type::Primitive(PrimitiveType::I32)); // Heap allocation
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AllocType {
+    /// Stack allocation - automatic cleanup, fast, limited lifetime
     Stack,
+    /// Heap allocation - manual cleanup, slower, persistent
     Heap,
 }
 
