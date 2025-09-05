@@ -99,7 +99,8 @@
 //! ### Basic Arithmetic
 //!
 //! ```rust
-//! use lamina::{IRBuilder, Type, PrimitiveType, var, i32, i64};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina::ir::builder::{var, i32, i64};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -111,7 +112,8 @@
 //! ### Memory Operations
 //!
 //! ```rust
-//! use lamina::{IRBuilder, Type, PrimitiveType, var, i32};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType};
+//! use lamina::ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -126,7 +128,8 @@
 //! ### Control Flow
 //!
 //! ```rust
-//! use lamina::{IRBuilder, Type, PrimitiveType, CmpOp, var, i32};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, CmpOp};
+//! use lamina::ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -203,12 +206,12 @@ pub const HOST_ARCH_LIST: &[&str] = &[
 /// Detect the host system's architecture.
 ///
 /// Returns a string representing the detected architecture and host system: "x86_64" or "aarch64".
-///
+/// 
 /// Target List:
 /// x86_64_unknown
 /// x86_64_linux
 /// x86_64_windows
-/// x86_64_macos - since Intel mac is heading to a end, it's not supported as much as aarch64
+/// x86_64_macos - since Intel mac is heading to a end, it's not supported as much as aarch64 
 /// aarch64_unknown
 /// aarch64_macos
 ///
@@ -302,8 +305,8 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         _ => {
             return Err(error::LaminaError::CodegenError(
                 CodegenError::UnsupportedFeature(codegen::FeatureType::Custom(format!(
-                    "Unsupported target architecture: {}",
-                    target
+                "Unsupported target architecture: {}",
+                target
                 ))),
             ));
         }
