@@ -82,7 +82,10 @@ pub fn generate_instruction<'a, W: Write>(
         }
 
         Instruction::Alloc {
-            result, alloc_type, allocated_ty, ..
+            result,
+            alloc_type,
+            allocated_ty,
+            ..
         } => match alloc_type {
             AllocType::Stack => {
                 let result_loc = func_ctx.get_value_location(result)?;
@@ -108,10 +111,14 @@ pub fn generate_instruction<'a, W: Write>(
                         let mut total_size = 0u64;
                         for field in fields {
                             let field_size = match &field.ty {
-                                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
-                                Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
-                                Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
-                                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) => 8,
+                                Type::Primitive(PrimitiveType::I8)
+                                | Type::Primitive(PrimitiveType::U8) => 1,
+                                Type::Primitive(PrimitiveType::I16)
+                                | Type::Primitive(PrimitiveType::U16) => 2,
+                                Type::Primitive(PrimitiveType::I32)
+                                | Type::Primitive(PrimitiveType::U32) => 4,
+                                Type::Primitive(PrimitiveType::I64)
+                                | Type::Primitive(PrimitiveType::U64) => 8,
                                 Type::Primitive(PrimitiveType::F32) => 4,
                                 Type::Primitive(PrimitiveType::F64) => 8,
                                 Type::Primitive(PrimitiveType::Bool) => 1,
@@ -136,20 +143,40 @@ pub fn generate_instruction<'a, W: Write>(
                     _ => match result_loc {
                         ValueLocation::StackOffset(ptr_offset) => ptr_offset - 16, // Regular vars: data below pointer
                         _ => -24, // Default for register allocations
-                    }
+                    },
                 };
 
                 match result_loc {
                     ValueLocation::Register(reg) => {
                         // Calculate the address where the data will be stored
-                        writeln!(writer, "        leaq {}(%rbp), {} # Stack allocation data address", data_offset, reg)?;
-                        writeln!(writer, "        # Stack allocation for {} at offset {}", result, data_offset)?;
+                        writeln!(
+                            writer,
+                            "        leaq {}(%rbp), {} # Stack allocation data address",
+                            data_offset, reg
+                        )?;
+                        writeln!(
+                            writer,
+                            "        # Stack allocation for {} at offset {}",
+                            result, data_offset
+                        )?;
                     }
                     ValueLocation::StackOffset(offset) => {
                         // Calculate the address where the data will be stored
-                        writeln!(writer, "        leaq {}(%rbp), %rax # Calculate data address", data_offset)?;
-                        writeln!(writer, "        movq %rax, {}(%rbp) # Store data pointer", offset)?;
-                        writeln!(writer, "        # Stack allocation for {} at data offset {}", result, data_offset)?;
+                        writeln!(
+                            writer,
+                            "        leaq {}(%rbp), %rax # Calculate data address",
+                            data_offset
+                        )?;
+                        writeln!(
+                            writer,
+                            "        movq %rax, {}(%rbp) # Store data pointer",
+                            offset
+                        )?;
+                        writeln!(
+                            writer,
+                            "        # Stack allocation for {} at data offset {}",
+                            result, data_offset
+                        )?;
                     }
                 }
 
@@ -175,10 +202,14 @@ pub fn generate_instruction<'a, W: Write>(
                         let mut total_size = 0u64;
                         for field in fields {
                             let field_size = match &field.ty {
-                                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
-                                Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
-                                Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
-                                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) => 8,
+                                Type::Primitive(PrimitiveType::I8)
+                                | Type::Primitive(PrimitiveType::U8) => 1,
+                                Type::Primitive(PrimitiveType::I16)
+                                | Type::Primitive(PrimitiveType::U16) => 2,
+                                Type::Primitive(PrimitiveType::I32)
+                                | Type::Primitive(PrimitiveType::U32) => 4,
+                                Type::Primitive(PrimitiveType::I64)
+                                | Type::Primitive(PrimitiveType::U64) => 8,
                                 Type::Primitive(PrimitiveType::F32) => 4,
                                 Type::Primitive(PrimitiveType::F64) => 8,
                                 Type::Primitive(PrimitiveType::Bool) => 1,
@@ -198,16 +229,28 @@ pub fn generate_instruction<'a, W: Write>(
                     _ => 8, // Default fallback
                 };
 
-                writeln!(writer, "        movq ${}, %rdi  # Size to allocate for type {:?}", size, allocated_ty)?;
+                writeln!(
+                    writer,
+                    "        movq ${}, %rdi  # Size to allocate for type {:?}",
+                    size, allocated_ty
+                )?;
                 writeln!(writer, "        call malloc")?;
                 writeln!(writer, "        # malloc returns pointer in %rax")?;
 
                 match result_loc {
                     ValueLocation::Register(reg) => {
-                        writeln!(writer, "        movq %rax, {} # Store malloc result in {}", reg, result)?;
+                        writeln!(
+                            writer,
+                            "        movq %rax, {} # Store malloc result in {}",
+                            reg, result
+                        )?;
                     }
                     ValueLocation::StackOffset(offset) => {
-                        writeln!(writer, "        movq %rax, {}(%rbp) # Store malloc result on stack at {}", offset, result)?;
+                        writeln!(
+                            writer,
+                            "        movq %rax, {}(%rbp) # Store malloc result on stack at {}",
+                            offset, result
+                        )?;
                     }
                 }
             }
@@ -218,7 +261,11 @@ pub fn generate_instruction<'a, W: Write>(
 
             // For now, we assume all deallocations are for heap memory
             // TODO: We need to track allocation type to properly handle stack vs heap deallocation
-            writeln!(writer, "        movq {}, %rdi # Load pointer to free", ptr_loc)?;
+            writeln!(
+                writer,
+                "        movq {}, %rdi # Load pointer to free",
+                ptr_loc
+            )?;
             writeln!(writer, "        call free")?;
             writeln!(writer, "        # Heap memory deallocated")?;
         }
@@ -236,16 +283,17 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_asm = dest_op.to_operand_string();
 
             let (op_mnemonic, size_suffix, mov_instr, div_instr) = match ty {
-                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => {
-                    ("b", "b", "movb", "idivb")
-                }
+                PrimitiveType::I8
+                | PrimitiveType::U8
+                | PrimitiveType::Char
+                | PrimitiveType::Bool => ("b", "b", "movb", "idivb"),
                 PrimitiveType::I16 | PrimitiveType::U16 => ("w", "w", "movw", "idivw"),
                 PrimitiveType::I32 | PrimitiveType::U32 => ("l", "d", "movl", "idivl"),
                 PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => {
                     ("q", "", "movq", "idivq")
                 }
                 PrimitiveType::F32 => ("ss", "", "movss", "divss"),
-                PrimitiveType::F64 => ("sd", "", "movsd", "divsd")
+                PrimitiveType::F64 => ("sd", "", "movsd", "divsd"),
             };
 
             // Fast path for common patterns
@@ -312,7 +360,11 @@ pub fn generate_instruction<'a, W: Write>(
                             _ => "%rax", // 64-bit register for other ops
                         };
 
-                        writeln!(writer, "        {} {}, {} # Load LHS", mov_instr, lhs_op, reg_name)?;
+                        writeln!(
+                            writer,
+                            "        {} {}, {} # Load LHS",
+                            mov_instr, lhs_op, reg_name
+                        )?;
 
                         let op_name = match op {
                             BinaryOp::Add => format!("add{}", op_mnemonic),
@@ -327,14 +379,22 @@ pub fn generate_instruction<'a, W: Write>(
                         )?;
 
                         // For 32-bit operations on 64-bit registers, we need to handle sign extension
-                        if matches!(ty, PrimitiveType::I32 | PrimitiveType::U32) && dest_asm.contains("%rax") {
+                        if matches!(ty, PrimitiveType::I32 | PrimitiveType::U32)
+                            && dest_asm.contains("%rax")
+                        {
                             // If destination is a 64-bit register but we did 32-bit ops,
                             // we need to sign/zero extend the result
                             if matches!(ty, PrimitiveType::I32) {
-                                writeln!(writer, "        cltq # Sign extend 32-bit result to 64-bit")?;
+                                writeln!(
+                                    writer,
+                                    "        cltq # Sign extend 32-bit result to 64-bit"
+                                )?;
                             } else {
                                 // Zero extend by moving to itself (upper bits are already zero)
-                                writeln!(writer, "        movl %eax, %eax # Zero extend 32-bit to 64-bit")?;
+                                writeln!(
+                                    writer,
+                                    "        movl %eax, %eax # Zero extend 32-bit to 64-bit"
+                                )?;
                             }
                         }
 
@@ -363,7 +423,11 @@ pub fn generate_instruction<'a, W: Write>(
                             _ => "%rax", // 64-bit register for other ops
                         };
 
-                        writeln!(writer, "        {} {}, {} # Load RHS", mov_instr, rhs_op, reg_name)?;
+                        writeln!(
+                            writer,
+                            "        {} {}, {} # Load RHS",
+                            mov_instr, rhs_op, reg_name
+                        )?;
                         let op_name = format!("add{}", op_mnemonic);
                         writeln!(
                             writer,
@@ -372,14 +436,22 @@ pub fn generate_instruction<'a, W: Write>(
                         )?;
 
                         // For 32-bit operations on 64-bit registers, we need to handle sign extension
-                        if matches!(ty, PrimitiveType::I32 | PrimitiveType::U32) && dest_asm.contains("%rax") {
+                        if matches!(ty, PrimitiveType::I32 | PrimitiveType::U32)
+                            && dest_asm.contains("%rax")
+                        {
                             // If destination is a 64-bit register but we did 32-bit ops,
                             // we need to sign/zero extend the result
                             if matches!(ty, PrimitiveType::I32) {
-                                writeln!(writer, "        cltq # Sign extend 32-bit result to 64-bit")?;
+                                writeln!(
+                                    writer,
+                                    "        cltq # Sign extend 32-bit result to 64-bit"
+                                )?;
                             } else {
                                 // Zero extend by moving to itself (upper bits are already zero)
-                                writeln!(writer, "        movl %eax, %eax # Zero extend 32-bit to 64-bit")?;
+                                writeln!(
+                                    writer,
+                                    "        movl %eax, %eax # Zero extend 32-bit to 64-bit"
+                                )?;
                             }
                         }
 
@@ -989,7 +1061,10 @@ pub fn generate_instruction<'a, W: Write>(
                         "        movzbl {}, %eax # Zero extend i8->i32",
                         value_op
                     )?;
-                    writeln!(writer, "        # %eax already zero-extended to %rax # Zero extend i32->i64")?;
+                    writeln!(
+                        writer,
+                        "        # %eax already zero-extended to %rax # Zero extend i32->i64"
+                    )?;
                     writeln!(
                         writer,
                         "        movq %rax, {} # Store zero-extended result",
@@ -1023,7 +1098,10 @@ pub fn generate_instruction<'a, W: Write>(
                         "        movzbl {}, %eax # Zero extend bool->i32",
                         value_op
                     )?;
-                    writeln!(writer, "        # %eax already zero-extended to %rax # Zero extend i32->i64")?;
+                    writeln!(
+                        writer,
+                        "        # %eax already zero-extended to %rax # Zero extend i32->i64"
+                    )?;
                     writeln!(
                         writer,
                         "        movq %rax, {} # Store zero-extended result",

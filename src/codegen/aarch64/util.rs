@@ -9,11 +9,9 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
             PrimitiveType::I8 | PrimitiveType::Bool => Ok((".byte", 1)),
             PrimitiveType::I32 | PrimitiveType::F32 => Ok((".word", 4)),
             PrimitiveType::I64 | PrimitiveType::Ptr => Ok((".xword", 8)),
-            _ => {
-                Err(LaminaError::CodegenError(
-                    CodegenError::UnsupportedPrimitiveType(*pt),
-                ))
-            }
+            _ => Err(LaminaError::CodegenError(
+                CodegenError::UnsupportedPrimitiveType(*pt),
+            )),
         },
         Type::Array { element_type, size } => {
             let (_, elem) = get_type_size_directive_and_bytes(element_type)?;
@@ -28,7 +26,7 @@ pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str,
                 total_size += field_size;
             }
             Ok((".space", total_size))
-        },
+        }
         Type::Tuple(_) => Err(LaminaError::CodegenError(CodegenError::TupleNotImplemented)),
         Type::Named(_) => Err(LaminaError::CodegenError(
             CodegenError::NamedTypeNotImplemented,
@@ -57,14 +55,12 @@ pub fn get_value_operand_asm<'a>(
                 CodegenError::StringLiteralRequiresGlobal,
             )),
             Literal::I8(v) => Ok(format!("#{}", v)),
-            _ => {
-                Err(LaminaError::CodegenError(
-                    CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(format!(
-                        "{:?}",
-                        value
-                    ))),
-                ))
-            }
+            _ => Err(LaminaError::CodegenError(
+                CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(format!(
+                    "{:?}",
+                    value
+                ))),
+            )),
         },
         Value::Variable(name) => {
             let location = func_ctx.get_value_location(name)?;
