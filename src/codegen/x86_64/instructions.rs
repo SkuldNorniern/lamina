@@ -91,6 +91,45 @@ pub fn generate_instruction<'a, W: Write>(
                 // This avoids dynamic RSP manipulation which complicates stack cleanup
                 // Use a simple approach: allocate at a fixed offset for each allocation
                 // In a real implementation, this would need proper stack layout management
+
+                // Calculate the size needed for the allocation
+                let _alloc_size = match allocated_ty {
+                    Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
+                    Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
+                    Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
+                    Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) => 8,
+                    Type::Primitive(PrimitiveType::F32) => 4,
+                    Type::Primitive(PrimitiveType::F64) => 8,
+                    Type::Primitive(PrimitiveType::Bool) => 1,
+                    Type::Primitive(PrimitiveType::Char) => 1,
+                    Type::Primitive(PrimitiveType::Ptr) => 8,
+                    Type::Struct(fields) => {
+                        // Calculate actual struct size by summing field sizes
+                        let mut total_size = 0u64;
+                        for field in fields {
+                            let field_size = match &field.ty {
+                                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
+                                Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
+                                Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
+                                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) => 8,
+                                Type::Primitive(PrimitiveType::F32) => 4,
+                                Type::Primitive(PrimitiveType::F64) => 8,
+                                Type::Primitive(PrimitiveType::Bool) => 1,
+                                Type::Primitive(PrimitiveType::Char) => 1,
+                                Type::Primitive(PrimitiveType::Ptr) => 8,
+                                _ => 8, // Default for complex types
+                            };
+                            total_size += field_size;
+                        }
+                        total_size
+                    }
+                    Type::Array { size, .. } => {
+                        // For arrays, we need to calculate element size * array size
+                        8 * (*size as usize).min(1024) as u64 // Cap at reasonable size
+                    }
+                    _ => 8, // Default fallback
+                };
+
                 let data_offset = match result {
                     s if s.contains("ptr1") => -24,
                     s if s.contains("ptr2") => -32,
@@ -131,15 +170,30 @@ pub fn generate_instruction<'a, W: Write>(
                     Type::Primitive(PrimitiveType::Bool) => 1,
                     Type::Primitive(PrimitiveType::Char) => 1,
                     Type::Primitive(PrimitiveType::Ptr) => 8,
-                    Type::Struct(_) => {
-                        // For now, use a default size for structs
-                        // TODO: Calculate actual struct size
-                        8
+                    Type::Struct(fields) => {
+                        // Calculate actual struct size by summing field sizes
+                        let mut total_size = 0u64;
+                        for field in fields {
+                            let field_size = match &field.ty {
+                                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
+                                Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
+                                Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
+                                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) => 8,
+                                Type::Primitive(PrimitiveType::F32) => 4,
+                                Type::Primitive(PrimitiveType::F64) => 8,
+                                Type::Primitive(PrimitiveType::Bool) => 1,
+                                Type::Primitive(PrimitiveType::Char) => 1,
+                                Type::Primitive(PrimitiveType::Ptr) => 8,
+                                _ => 8, // Default for complex types
+                            };
+                            total_size += field_size;
+                        }
+                        total_size
                     }
                     Type::Array { size, .. } => {
                         // For arrays, we need to calculate element size * array size
                         // TODO: Implement proper array size calculation
-                        8 * (*size as usize).min(1024) // Cap at reasonable size
+                        (8 * (*size as usize).min(1024)) as u64 // Cap at reasonable size
                     }
                     _ => 8, // Default fallback
                 };
@@ -182,7 +236,7 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_asm = dest_op.to_operand_string();
 
             let (op_mnemonic, size_suffix, mov_instr, div_instr) = match ty {
-                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char => {
+                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => {
                     ("b", "b", "movb", "idivb")
                 }
                 PrimitiveType::I16 | PrimitiveType::U16 => ("w", "w", "movw", "idivw"),
@@ -191,12 +245,7 @@ pub fn generate_instruction<'a, W: Write>(
                     ("q", "", "movq", "idivq")
                 }
                 PrimitiveType::F32 => ("ss", "", "movss", "divss"),
-                PrimitiveType::F64 => ("sd", "", "movsd", "divsd"),
-                _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::BinaryOpNotSupportedForType(TypeInfo::Primitive(*ty)),
-                    ));
-                }
+                PrimitiveType::F64 => ("sd", "", "movsd", "divsd")
             };
 
             // Fast path for common patterns
@@ -793,17 +842,39 @@ pub fn generate_instruction<'a, W: Write>(
         }
         Instruction::GetFieldPtr {
             result,
-            struct_ptr: _,
-            field_index: _,
+            struct_ptr,
+            field_index,
         } => {
-            // Need struct layout info (not implemented yet)
+            // Calculate field offset within struct
+            let struct_ptr_op = get_value_operand_asm(struct_ptr, state, func_ctx)?;
+            let dest_op = func_ctx.get_value_location(result)?;
+
+            // For now, assume simple struct layout with 8-byte fields
+            // TODO: Use actual struct type information for proper field offsets
+            let field_offset = field_index * 8;
+
             writeln!(
                 writer,
-                "        # GetFieldPtr for {} not implemented (needs struct layout)",
-                result
+                "        # GetFieldPtr for {} (field index {})",
+                result, field_index
             )?;
-            let dest_op = func_ctx.get_value_location(result)?;
-            writeln!(writer, "        movq $0, {}", dest_op.to_operand_string())?;
+
+            // Calculate field address: struct_ptr + field_offset
+            match dest_op {
+                ValueLocation::Register(reg) => {
+                    writeln!(writer, "        movq {}, {}", struct_ptr_op, reg)?;
+                    if field_offset != 0 {
+                        writeln!(writer, "        addq ${}, {}", field_offset, reg)?;
+                    }
+                }
+                ValueLocation::StackOffset(offset) => {
+                    writeln!(writer, "        movq {}, %rax", struct_ptr_op)?;
+                    if field_offset != 0 {
+                        writeln!(writer, "        addq ${}, %rax", field_offset)?;
+                    }
+                    writeln!(writer, "        movq %rax, {}(%rbp)", offset)?;
+                }
+            }
         }
         Instruction::GetElemPtr {
             result,
