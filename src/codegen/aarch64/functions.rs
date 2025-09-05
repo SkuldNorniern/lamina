@@ -100,43 +100,42 @@ pub fn generate_function<'a, W: Write>(
     writeln!(writer, "    // Spill argument registers to stack slots")?;
     for (i, arg) in func.signature.params.iter().enumerate() {
         if let Some(loc) = func_ctx.value_locations.get(arg.name)
-            && let ValueLocation::StackOffset(offset) = loc
-        {
-            if i < ARG_REGISTERS.len() {
-                writeln!(writer, "        add x10, x29, #{}", offset)?;
-                // POTENTIAL BUG: No validation that ARG_REGISTERS[i] is a valid register string
-                writeln!(
-                    writer,
-                    "        str {}, [x10] // Spill arg {}",
-                    ARG_REGISTERS[i], arg.name
-                )?;
-            } else {
-                // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
-                // x11 needs to point to the incoming stack argument location
-                let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
-                writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?; // AAPCS64 stack arg offset
-                writeln!(
-                    writer,
-                    "        ldr x10, [x11] // Load stack arg {}",
-                    arg.name
-                )?;
-                writeln!(writer, "        add x11, x29, #{}", offset)?;
-                writeln!(writer, "        str x10, [x11]")?;
+            && let ValueLocation::StackOffset(offset) = loc {
+                if i < ARG_REGISTERS.len() {
+                    writeln!(writer, "        add x10, x29, #{}", offset)?;
+                    // POTENTIAL BUG: No validation that ARG_REGISTERS[i] is a valid register string
+                    writeln!(
+                        writer,
+                        "        str {}, [x10] // Spill arg {}",
+                        ARG_REGISTERS[i], arg.name
+                    )?;
+                } else {
+                    // FIXED: Stack arguments in AAPCS64 start at [sp, #0], calculate correct offset
+                    // x11 needs to point to the incoming stack argument location
+                    let stack_arg_offset = ((i - ARG_REGISTERS.len()) * 8) as i64;
+                    writeln!(writer, "        add x11, x29, #{}", stack_arg_offset)?; // AAPCS64 stack arg offset
+                    writeln!(
+                        writer,
+                        "        ldr x10, [x11] // Load stack arg {}",
+                        arg.name
+                    )?;
+                    writeln!(writer, "        add x11, x29, #{}", offset)?;
+                    writeln!(writer, "        str x10, [x11]")?;
+                }
             }
-        }
     }
 
     // Entry block
     if let Some(entry_block) = func.basic_blocks.get(&func.entry_block) {
         let asm_label = func_ctx.get_block_label(&func.entry_block)?;
         writeln!(writer, "{}:", asm_label)?;
-        generate_basic_block(entry_block, writer, state, &mut func_ctx, func_name)?;
+        generate_basic_block(entry_block, writer, state, &func_ctx, func_name)?;
     }
     for (ir_label, block) in &func.basic_blocks {
         if *ir_label != func.entry_block {
             let asm_label = func_ctx.get_block_label(ir_label)?;
             writeln!(writer, "{}:", asm_label)?;
-            generate_basic_block(block, writer, state, &mut func_ctx, func_name)?;
+            generate_basic_block(block, writer, state, &func_ctx, func_name)?;
         }
     }
 
@@ -335,7 +334,7 @@ fn generate_basic_block<'a, W: Write>(
     block: &BasicBlock<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &mut FunctionContext<'a>,
+    func_ctx: &FunctionContext<'a>,
     func_name: Identifier<'a>,
 ) -> Result<()> {
     for instr in &block.instructions {
