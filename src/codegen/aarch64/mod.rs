@@ -21,6 +21,10 @@ pub fn generate_aarch64_assembly<'a, W: Write>(
     // Use generic .text which is accepted by clang on macOS as well
     writeln!(writer, "\n.text")?;
 
+    // --- 2.5. Add extern declarations for heap functions ---
+    writeln!(writer, "    .extern _malloc")?;
+    writeln!(writer, "    .extern _free")?;
+
     // --- 3. Process functions ---
     functions::generate_functions(module, writer, &mut state)?;
 

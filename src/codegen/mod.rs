@@ -45,6 +45,8 @@ pub enum CodegenError {
     InvalidAllocationLocation,
     /// Heap allocation not supported
     HeapAllocationNotSupported,
+    /// Unsupported type for heap allocation
+    UnsupportedTypeForHeapAllocation(String),
 
     // Operand/Immediate Errors
     /// Invalid immediate value
@@ -205,6 +207,9 @@ impl std::fmt::Display for CodegenError {
             }
             CodegenError::HeapAllocationNotSupported => {
                 write!(f, "Heap allocation requires runtime/libc (malloc)")
+            }
+            CodegenError::UnsupportedTypeForHeapAllocation(ty) => {
+                write!(f, "Unsupported type for heap allocation: {}", ty)
             }
 
             // Operand/Immediate Errors
