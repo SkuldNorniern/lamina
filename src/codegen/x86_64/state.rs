@@ -7,7 +7,7 @@ use crate::{
     Result,
     // Module, GlobalDeclaration, PrimitiveType
 };
-use std::collections::HashMap; // Re-add HashMap
+use std::collections::{HashMap, HashSet}; // Re-add HashMap and HashSet
 // Using HashMap for standard library compatibility
 // IndexMap dependency removed for release
 
@@ -48,6 +48,8 @@ pub struct FunctionContext<'a> {
     pub current_stack_offset: i64,
     // Assembly label for the function epilogue
     pub epilogue_label: String,
+    // Track which values are heap allocations (need to be freed)
+    pub heap_allocations: HashSet<Identifier<'a>>,
     // Potentially useful: Keep track of types for locals if needed later
     // pub variable_types: HashMap<Identifier<'a>, Type<'a>>,
 }
@@ -67,6 +69,7 @@ impl<'a> FunctionContext<'a> {
             total_stack_size: 0,
             current_stack_offset: -8, // Start allocating below RBP (first local/spill)
             epilogue_label: String::new(),
+            heap_allocations: HashSet::new(),
             // variable_types: HashMap::new(),
         }
     }
