@@ -1,0 +1,19 @@
+# Test buffer-based I/O operations
+fn @main() -> i32 {
+  entry:
+    # Test writing a buffer (simulated with individual bytes)
+    %b1 = writebyte 66   # 'B'
+    %b2 = writebyte 117  # 'u'
+    %b3 = writebyte 102  # 'f'
+    %b4 = writebyte 102  # 'f'
+    %b5 = writebyte 101  # 'e'
+    %b6 = writebyte 114  # 'r'
+    %b7 = writebyte 10   # '\n'
+
+    # Test reading multiple bytes (if available)
+    %c1 = readbyte
+    %c2 = readbyte
+    %c3 = readbyte
+
+    ret.i32 0
+}

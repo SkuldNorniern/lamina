@@ -1,0 +1,25 @@
+# Test I/O with different data types
+fn @main() -> i32 {
+  entry:
+    # Test with different integer types
+    %buf8 = alloc.stack i8
+    %buf16 = alloc.stack i16
+    %buf32 = alloc.stack i32
+
+    # Write different values
+    %w8 = writeptr %buf8, 255, i8    # Max i8 value
+    %w16 = writeptr %buf16, 65535, i16  # Max u16 value
+    %w32 = writeptr %buf32, 123456, i32
+
+    # Read back values
+    %r8 = readptr %buf8, i8
+    %r16 = readptr %buf16, i16
+    %r32 = readptr %buf32, i32
+
+    # Print results
+    print %r8   # Should print 255 (or -1 for signed i8)
+    print %r16  # Should print 65535 (or -1 for signed i16)
+    print %r32  # Should print 123456
+
+    ret.i32 0
+}
