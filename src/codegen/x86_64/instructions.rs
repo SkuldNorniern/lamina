@@ -1010,10 +1010,12 @@ pub fn generate_instruction<'a, W: Write>(
         Instruction::Print { value } => {
             let val_loc = get_value_operand_asm(value, state, func_ctx)?;
 
-            // Save only essential registers
+            // Save essential registers
             writeln!(writer, "        pushq %rax")?;
             writeln!(writer, "        pushq %r10")?;
             writeln!(writer, "        pushq %r11")?;
+            writeln!(writer, "        pushq %rdi")?;
+            writeln!(writer, "        pushq %rsi")?;
 
             // Setup printf args: format string and the value
             let format_str = state.add_rodata_string("%lld\n");
@@ -1033,7 +1035,13 @@ pub fn generate_instruction<'a, W: Write>(
             )?;
             writeln!(writer, "        call printf@PLT")?;
 
+            // Flush stdout to ensure immediate output
+            writeln!(writer, "        movq $0, %rdi # NULL = flush all streams")?;
+            writeln!(writer, "        call fflush@PLT")?;
+
             // Restore registers
+            writeln!(writer, "        popq %rsi")?;
+            writeln!(writer, "        popq %rdi")?;
             writeln!(writer, "        popq %r11")?;
             writeln!(writer, "        popq %r10")?;
             writeln!(writer, "        popq %rax")?;
@@ -1246,40 +1254,20 @@ pub fn generate_instruction<'a, W: Write>(
             // Write the value stored at the pointer location to stdout
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
 
-            // For stack-allocated variables (detected by format like "-16(%rbp)"),
-            // we need to handle differently
-            if ptr_op.contains("(%rbp)") {
-                // Direct stack access - load the value from the stack location
-                // Extract offset from format like "-16(%rbp)"
-                if let Some(offset_start) = ptr_op.find('(') {
-                    let offset_str = &ptr_op[..offset_start];
-                    if let Ok(offset) = offset_str.parse::<i64>() {
-                        // For i8 buffer, we need to write just 1 byte, not 8 bytes
-                        writeln!(writer, "        movzbq {}(%rbp), %rbx", offset)?; // Load byte from stack, zero-extend
-                        writeln!(writer, "        movb %bl, -8(%rsp)")?; // Store on stack for syscall
-                        writeln!(writer, "        movq $1, %rdx")?; // 1 byte for i8
-                    } else {
-                        return Err(LaminaError::CodegenError(CodegenError::InternalError));
-                    }
-                } else {
-                    return Err(LaminaError::CodegenError(CodegenError::InternalError));
-                }
-            } else {
-                // For heap pointers or registers, load the target address first
-                writeln!(writer, "        movq {}, %r9", ptr_op)?;
-                // Then load the value from that address into rsi
-                writeln!(writer, "        movq (%r9), %rsi")?;
-                writeln!(writer, "        movq $8, %rdx")?; // 8 bytes for 64-bit
-            }
+            // Load the address from the pointer operand into %r11
+            writeln!(writer, "        movq {}, %r11 # Load address from pointer", ptr_op)?;
+
+            // Load the byte value from the address in %r11
+            writeln!(writer, "        movzbq (%r11), %rbx # Load byte value from address")?;
+
+            // Store the byte on the stack for the syscall
+            writeln!(writer, "        movb %bl, -8(%rsp)")?;
 
             // Prepare write syscall arguments
             writeln!(writer, "        movq $1, %rax")?; // write syscall
             writeln!(writer, "        movq $1, %rdi")?; // stdout fd
-
-            if ptr_op.contains("(%rbp)") {
-                // Use stack buffer for i8 case
-                writeln!(writer, "        leaq -8(%rsp), %rsi")?;
-            }
+            writeln!(writer, "        leaq -8(%rsp), %rsi")?; // buffer on stack
+            writeln!(writer, "        movq $1, %rdx")?; // 1 byte for i8
 
             writeln!(writer, "        syscall")?; // Make syscall
 
