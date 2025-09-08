@@ -9,11 +9,7 @@ use crate::{
 use std::io::Write;
 
 // Helper function to store syscall result
-fn store_syscall_result<W: Write>(
-    writer: &mut W,
-    dest: &str,
-    src_reg: &str,
-) -> Result<()> {
+fn store_syscall_result<W: Write>(writer: &mut W, dest: &str, src_reg: &str) -> Result<()> {
     writeln!(writer, "        movq {}, {}", src_reg, dest)?;
     Ok(())
 }
