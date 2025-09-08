@@ -1,4 +1,3 @@
-# Test large constant handling
 fn @main() -> i64 {
   entry:
     %dummy = call @print_number(42)
@@ -54,4 +53,4 @@ fn @print_digits(i64 %num) -> i64 {
 
   done:
     ret.i64 0
-
+}
