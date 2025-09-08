@@ -8,11 +8,11 @@ fn @test_i8_array_gep() -> i64 {
     %arr_i8 = alloc.stack [5 x i8]
 
     # Store values at different indices
-    %ptr0 = getelementptr %arr_i8, 0  # Should be at offset 0
-    %ptr1 = getelementptr %arr_i8, 1  # Should be at offset 1 (not 4!)
-    %ptr2 = getelementptr %arr_i8, 2  # Should be at offset 2 (not 8!)
-    %ptr3 = getelementptr %arr_i8, 3  # Should be at offset 3 (not 12!)
-    %ptr4 = getelementptr %arr_i8, 4  # Should be at offset 4 (not 16!)
+    %ptr0 = getelem.ptr %arr_i8, 0, i8  # Should be at offset 0
+    %ptr1 = getelem.ptr %arr_i8, 1, i8  # Should be at offset 1 (not 4!)
+    %ptr2 = getelem.ptr %arr_i8, 2, i8  # Should be at offset 2 (not 8!)
+    %ptr3 = getelem.ptr %arr_i8, 3, i8  # Should be at offset 3 (not 12!)
+    %ptr4 = getelem.ptr %arr_i8, 4, i8  # Should be at offset 4 (not 16!)
 
     store.i8 %ptr0, 1
     store.i8 %ptr1, 10
@@ -53,9 +53,9 @@ fn @test_i16_array_gep() -> i64 {
     # i16 array - element size should be 2 bytes
     %arr_i16 = alloc.stack [3 x i16]
 
-    %ptr0 = getelementptr %arr_i16, 0  # Should be at offset 0
-    %ptr1 = getelementptr %arr_i16, 1  # Should be at offset 2 (not 4!)
-    %ptr2 = getelementptr %arr_i16, 2  # Should be at offset 4 (not 8!)
+    %ptr0 = getelem.ptr %arr_i16, 0, i16  # Should be at offset 0
+    %ptr1 = getelem.ptr %arr_i16, 1, i16  # Should be at offset 2 (not 4!)
+    %ptr2 = getelem.ptr %arr_i16, 2, i16  # Should be at offset 4 (not 8!)
 
     store.i16 %ptr0, 1000
     store.i16 %ptr1, 2000
@@ -84,8 +84,8 @@ fn @test_i64_array_gep() -> i64 {
     # i64 array - element size should be 8 bytes (this should work correctly)
     %arr_i64 = alloc.stack [2 x i64]
 
-    %ptr0 = getelementptr %arr_i64, 0  # Should be at offset 0
-    %ptr1 = getelementptr %arr_i64, 1  # Should be at offset 8
+    %ptr0 = getelem.ptr %arr_i64, 0, i64  # Should be at offset 0
+    %ptr1 = getelem.ptr %arr_i64, 1, i64  # Should be at offset 8
 
     store.i64 %ptr0, 100000
     store.i64 %ptr1, 200000
@@ -104,10 +104,61 @@ fn @main() -> i64 {
   entry:
     # Very simple test without print
     %arr = alloc.stack [2 x i64]
-    %ptr = getelementptr %arr, 0
+    %ptr = getelem.ptr %arr, 0, i64
     store.i64 %ptr, 42
     %val = load.i64 %ptr
     
-    print %val
+    %dummy = call @print_number(%val)
+    %newline = writebyte 10
+    ret.i64 0
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
     ret.i64 0
 }

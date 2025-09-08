@@ -2,26 +2,82 @@
 fn @main() -> i64 {
   entry:
     # Test zero values
-    print 0
+    %dummy0 = call @print_number(0)
+    %newline0 = writebyte 10
     %zero = add.i64 0, 0
-    print %zero
-    
+    %dummy1 = call @print_number(%zero)
+    %newline1 = writebyte 10
+
     # Test negative results (if supported)
     %neg = sub.i64 5, 10  # Should be -5, but might wrap to large positive
-    print %neg
-    
+    %dummy2 = call @print_number(%neg)
+    %newline2 = writebyte 10
+
     # Test division by one
     %div_one = div.i64 100, 1
-    print %div_one  # Should be 100
-    
+    %dummy3 = call @print_number(%div_one)  # Should be 100
+    %newline3 = writebyte 10
+
     # Test multiplication by zero
     %mul_zero = mul.i64 999, 0
-    print %mul_zero  # Should be 0
-    
+    %dummy4 = call @print_number(%mul_zero)  # Should be 0
+    %newline4 = writebyte 10
+
     # Test addition with zero
     %add_zero = add.i64 42, 0
-    print %add_zero  # Should be 42
-    
+    %dummy5 = call @print_number(%add_zero)  # Should be 42
+    %newline5 = writebyte 10
+
+    ret.i64 0
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
     ret.i64 0
 }
 

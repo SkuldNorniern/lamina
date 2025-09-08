@@ -7,11 +7,11 @@ fn @test_array_access() -> i64 {
     %arr = alloc.stack [5 x i64]
 
     # Store values in array elements
-    %elem0_ptr = getelementptr %arr, 0
-    %elem1_ptr = getelementptr %arr, 1
-    %elem2_ptr = getelementptr %arr, 2
-    %elem3_ptr = getelementptr %arr, 3
-    %elem4_ptr = getelementptr %arr, 4
+    %elem0_ptr = getelem.ptr %arr, 0, i64
+    %elem1_ptr = getelem.ptr %arr, 1, i64
+    %elem2_ptr = getelem.ptr %arr, 2, i64
+    %elem3_ptr = getelem.ptr %arr, 3, i64
+    %elem4_ptr = getelem.ptr %arr, 4, i64
 
     store.i64 %elem0_ptr, 10
     store.i64 %elem1_ptr, 20
@@ -66,7 +66,7 @@ type @Person = struct { name: [10 x i8], age: i32, height: i64 }
 #
 #     # Access name field (array within struct)
 #     %name_ptr = getfieldptr %person, 0
-#     %name_elem_ptr = getelementptr %name_ptr, 0
+#     %name_elem_ptr = getelem.ptr %name_ptr, 0, i8
 #     store.i8 %name_elem_ptr, 65  # 'A'
 #
 #     # Access age field
@@ -93,9 +93,9 @@ fn @test_heap_array_operations() -> i64 {
     %heap_arr = alloc.heap [3 x i64]
 
     # Access elements
-    %elem0 = getelementptr %heap_arr, 0
-    %elem1 = getelementptr %heap_arr, 1
-    %elem2 = getelementptr %heap_arr, 2
+    %elem0 = getelem.ptr %heap_arr, 0, i64
+    %elem1 = getelem.ptr %heap_arr, 1, i64
+    %elem2 = getelem.ptr %heap_arr, 2, i64
 
     store.i64 %elem0, 1
     store.i64 %elem1, 2
@@ -127,6 +127,57 @@ fn @main() -> i64 {
     #print %complex_result
     #print %heap_result
 
-    print 42  # Print the return value
+    %dummy = call @print_number(42)
+    %newline = writebyte 10
     ret.i64 0  # Just return a constant for now
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
 }
