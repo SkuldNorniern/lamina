@@ -258,15 +258,11 @@ pub enum Instruction<'a> {
         result: Identifier<'a>, // Result byte read (-1 on error)
     },
     WritePtr {
-        ptr: Value<'a>,     // Pointer to dereference
-        value: Value<'a>,   // Value to write at pointer location
-        ty: Type<'a>,       // Type of value being written
-        result: Identifier<'a>, // Result (1 on success, -1 on error)
+        ptr: Value<'a>,     // Pointer whose address/value to write to output
+        result: Identifier<'a>, // Result (bytes written on success, -1 on error)
     },
     ReadPtr {
-        result: Identifier<'a>, // Result value read from pointer
-        ptr: Value<'a>,     // Pointer to dereference
-        ty: Type<'a>,       // Type of value to read
+        result: Identifier<'a>, // Result pointer address read from input
     },
 
     // --- Debugging ---
@@ -429,8 +425,8 @@ impl fmt::Display for Instruction<'_> {
             Instruction::Read { buffer, size, result } => write!(f, "%{} = read {}, {}", result, buffer, size),
             Instruction::WriteByte { value, result } => write!(f, "%{} = writebyte {}", result, value),
             Instruction::ReadByte { result } => write!(f, "%{} = readbyte", result),
-            Instruction::WritePtr { ptr, value, ty, result } => write!(f, "%{} = writeptr {}, {}, {}", result, ptr, value, ty),
-            Instruction::ReadPtr { result, ptr, ty } => write!(f, "%{} = readptr {}, {}", result, ptr, ty),
+            Instruction::WritePtr { ptr, result } => write!(f, "%{} = writeptr {}", result, ptr),
+            Instruction::ReadPtr { result } => write!(f, "%{} = readptr", result),
             Instruction::Print { value } => write!(f, "print {}", value),
         }
     }
