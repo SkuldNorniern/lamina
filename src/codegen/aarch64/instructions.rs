@@ -525,7 +525,11 @@ pub fn generate_instruction<'a, W: Write>(
         }
 
         // --- I/O Operations ---
-        Instruction::Write { buffer, size, result } => {
+        Instruction::Write {
+            buffer,
+            size,
+            result,
+        } => {
             // macOS ARM64 write syscall:
             // syscall #4, args: x0=fd(1=stdout), x1=buffer, x2=size
             // result in x0: bytes written or -1 on error
@@ -539,14 +543,18 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Make syscall
             writeln!(writer, "        mov x16, #4")?; // write syscall number
-            writeln!(writer, "        svc #0x80")?;   // software interrupt
+            writeln!(writer, "        svc #0x80")?; // software interrupt
 
             // Store result
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             store_to_location(writer, "x0", &dest)?;
         }
 
-        Instruction::Read { buffer, size, result } => {
+        Instruction::Read {
+            buffer,
+            size,
+            result,
+        } => {
             // macOS ARM64 read syscall:
             // syscall #3, args: x0=fd(0=stdin), x1=buffer, x2=max_size
             // result in x0: bytes read or -1 on error
@@ -560,7 +568,7 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Make syscall
             writeln!(writer, "        mov x16, #3")?; // read syscall number
-            writeln!(writer, "        svc #0x80")?;   // software interrupt
+            writeln!(writer, "        svc #0x80")?; // software interrupt
 
             // Store result
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
@@ -578,13 +586,13 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        strb w10, [sp]")?; // Store byte on stack
 
             // Set up syscall arguments
-            writeln!(writer, "        mov x0, #1")?;    // stdout
-            writeln!(writer, "        mov x1, sp")?;    // buffer = stack pointer
-            writeln!(writer, "        mov x2, #1")?;    // size = 1 byte
+            writeln!(writer, "        mov x0, #1")?; // stdout
+            writeln!(writer, "        mov x1, sp")?; // buffer = stack pointer
+            writeln!(writer, "        mov x2, #1")?; // size = 1 byte
 
             // Make syscall
-            writeln!(writer, "        mov x16, #4")?;   // write syscall
-            writeln!(writer, "        svc #0x80")?;     // software interrupt
+            writeln!(writer, "        mov x16, #4")?; // write syscall
+            writeln!(writer, "        svc #0x80")?; // software interrupt
 
             // Store result
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
@@ -600,13 +608,13 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        sub sp, sp, #16")?; // Allocate stack space
 
             // Set up syscall arguments
-            writeln!(writer, "        mov x0, #0")?;    // stdin
-            writeln!(writer, "        mov x1, sp")?;    // buffer = stack pointer
-            writeln!(writer, "        mov x2, #1")?;    // size = 1 byte
+            writeln!(writer, "        mov x0, #0")?; // stdin
+            writeln!(writer, "        mov x1, sp")?; // buffer = stack pointer
+            writeln!(writer, "        mov x2, #1")?; // size = 1 byte
 
             // Make syscall
-            writeln!(writer, "        mov x16, #3")?;   // read syscall
-            writeln!(writer, "        svc #0x80")?;     // software interrupt
+            writeln!(writer, "        mov x16, #3")?; // read syscall
+            writeln!(writer, "        svc #0x80")?; // software interrupt
 
             // Load the byte from stack (if read succeeded)
             writeln!(writer, "        ldrb w10, [sp]")?; // Load byte from stack
@@ -615,7 +623,7 @@ pub fn generate_instruction<'a, W: Write>(
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             if dest.starts_with('x') {
                 // For register destination, check if read succeeded
-                writeln!(writer, "        cmp x0, #1")?;       // Check if 1 byte was read
+                writeln!(writer, "        cmp x0, #1")?; // Check if 1 byte was read
                 writeln!(writer, "        csel {}, w10, x0, eq", dest)?; // Use byte if success, else error code
             } else {
                 store_to_location(writer, "w10", &dest)?;
@@ -636,7 +644,7 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        mov x0, #1")?; // stdout fd
             writeln!(writer, "        mov x2, #8")?; // 8 bytes (64-bit pointer)
             writeln!(writer, "        mov x16, #4")?; // write syscall number
-            writeln!(writer, "        svc #0x80")?;  // Make syscall
+            writeln!(writer, "        svc #0x80")?; // Make syscall
 
             // Store result (bytes written or error)
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
@@ -656,7 +664,7 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        mov x0, #0")?; // stdin fd
             writeln!(writer, "        mov x2, #8")?; // 8 bytes (64-bit pointer)
             writeln!(writer, "        mov x16, #3")?; // read syscall number
-            writeln!(writer, "        svc #0x80")?;  // Make syscall
+            writeln!(writer, "        svc #0x80")?; // Make syscall
 
             // Store result (bytes read or error) - but we want the actual pointer value
             // For ReadPtr, we want to return the pointer address that was read, not bytes read

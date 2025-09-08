@@ -241,24 +241,24 @@ pub enum Instruction<'a> {
     },
     // --- I/O Operations ---
     Write {
-        buffer: Value<'a>,  // Pointer to buffer to write
-        size: Value<'a>,    // Size of buffer in bytes
+        buffer: Value<'a>,      // Pointer to buffer to write
+        size: Value<'a>,        // Size of buffer in bytes
         result: Identifier<'a>, // Result (syscall return value)
     },
     Read {
-        buffer: Value<'a>,  // Pointer to buffer to read into
-        size: Value<'a>,    // Maximum bytes to read
+        buffer: Value<'a>,      // Pointer to buffer to read into
+        size: Value<'a>,        // Maximum bytes to read
         result: Identifier<'a>, // Result (bytes read, or -1 on error)
     },
     WriteByte {
-        value: Value<'a>,   // Single byte value to write
+        value: Value<'a>,       // Single byte value to write
         result: Identifier<'a>, // Result (1 on success, -1 on error)
     },
     ReadByte {
         result: Identifier<'a>, // Result byte read (-1 on error)
     },
     WritePtr {
-        ptr: Value<'a>,     // Pointer whose address/value to write to output
+        ptr: Value<'a>,         // Pointer whose address/value to write to output
         result: Identifier<'a>, // Result (bytes written on success, -1 on error)
     },
     ReadPtr {
@@ -421,9 +421,19 @@ impl fmt::Display for Instruction<'_> {
                 }
                 Ok(())
             }
-            Instruction::Write { buffer, size, result } => write!(f, "%{} = write {}, {}", result, buffer, size),
-            Instruction::Read { buffer, size, result } => write!(f, "%{} = read {}, {}", result, buffer, size),
-            Instruction::WriteByte { value, result } => write!(f, "%{} = writebyte {}", result, value),
+            Instruction::Write {
+                buffer,
+                size,
+                result,
+            } => write!(f, "%{} = write {}, {}", result, buffer, size),
+            Instruction::Read {
+                buffer,
+                size,
+                result,
+            } => write!(f, "%{} = read {}, {}", result, buffer, size),
+            Instruction::WriteByte { value, result } => {
+                write!(f, "%{} = writebyte {}", result, value)
+            }
             Instruction::ReadByte { result } => write!(f, "%{} = readbyte", result),
             Instruction::WritePtr { ptr, result } => write!(f, "%{} = writeptr {}", result, ptr),
             Instruction::ReadPtr { result } => write!(f, "%{} = readptr", result),
