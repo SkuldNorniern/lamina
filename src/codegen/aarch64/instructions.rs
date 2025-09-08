@@ -634,17 +634,43 @@ pub fn generate_instruction<'a, W: Write>(
         }
 
         Instruction::WritePtr { ptr, result } => {
-            // Write pointer address to stdout (I/O operation)
+            // Write the value stored at the pointer location to stdout
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
 
-            // Materialize the pointer address into x1 (buffer for write syscall)
-            materialize_to_reg(writer, &ptr_op, "x1")?;
+            // For stack-allocated variables, we need to handle differently
+            if let Value::Variable(ptr_id) = ptr
+                && func_ctx.stack_allocated_vars.contains(ptr_id)
+            {
+                // Direct stack access - load the value from the stack location
+                if let Some(offset) = parse_fp_offset(&ptr_op) {
+                    // For i8 buffer, we need to write just 1 byte, not 8 bytes
+                    // Store the value on stack temporarily for the write syscall
+                    writeln!(writer, "        ldrb w10, [x29, #{}]", offset)?;
+                    writeln!(writer, "        strb w10, [sp, #-16]!")?;
+                    writeln!(writer, "        mov x1, sp")?;
+                    writeln!(writer, "        mov x2, #1")?; // 1 byte for i8
+                } else {
+                    return Err(LaminaError::CodegenError(CodegenError::InternalError));
+                }
+            } else {
+                // For heap pointers or registers, load the target address first
+                materialize_to_reg(writer, &ptr_op, "x9")?;
+                // Then load the value from that address into x1
+                writeln!(writer, "        ldr x1, [x9]")?;
+                writeln!(writer, "        mov x2, #8")?; // 8 bytes for 64-bit
+            }
 
             // Prepare write syscall arguments
             writeln!(writer, "        mov x0, #1")?; // stdout fd
-            writeln!(writer, "        mov x2, #8")?; // 8 bytes (64-bit pointer)
             writeln!(writer, "        mov x16, #4")?; // write syscall number
             writeln!(writer, "        svc #0x80")?; // Make syscall
+
+            // Restore stack if we used it
+            if let Value::Variable(ptr_id) = ptr
+                && func_ctx.stack_allocated_vars.contains(ptr_id)
+            {
+                writeln!(writer, "        add sp, sp, #16")?;
+            }
 
             // Store result (bytes written or error)
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
