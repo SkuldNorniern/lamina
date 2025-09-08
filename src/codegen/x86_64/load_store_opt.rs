@@ -224,7 +224,10 @@ fn collect_variables_from_instruction<'a>(
     live_vars: &mut HashSet<&'a str>,
 ) {
     match instr {
-        Instruction::Br { condition: Value::Variable(var), .. } => {
+        Instruction::Br {
+            condition: Value::Variable(var),
+            ..
+        } => {
             // Add the condition variable
             live_vars.insert(var);
         }
