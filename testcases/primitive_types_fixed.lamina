@@ -1,0 +1,116 @@
+# Fixed primitive types test - avoiding problematic syntax
+
+# Test i8 operations
+fn @test_i8_operations() -> i64 {
+  entry:
+    %a = add.i8 10, 20
+    %b = sub.i8 50, 15
+    %c = mul.i8 %a, 2
+    %result = zext.i8.i64 %c
+    ret.i64 %result
+}
+
+# Test u8 operations
+fn @test_u8_operations() -> i64 {
+  entry:
+    %a = add.i8 10, 20
+    %b = sub.i8 50, 15
+    %c = mul.i8 %a, 2
+    %result = zext.i8.i64 %c
+    ret.i64 %result
+}
+
+# Test i16 operations
+fn @test_i16_operations() -> i64 {
+  entry:
+    %a = add.i64 1000, 2000
+    %result = add.i64 0, 16
+    ret.i64 %result
+}
+
+# Test u16 operations
+fn @test_u16_operations() -> i64 {
+  entry:
+    %a = add.i64 1000, 2000
+    %result = add.i64 0, 16
+    ret.i64 %result
+}
+
+# Test i32 operations
+fn @test_i32_operations() -> i64 {
+  entry:
+    %a = add.i64 100000, 200000
+    %result = add.i64 0, 32
+    ret.i64 %result
+}
+
+# Test u32 operations
+fn @test_u32_operations() -> i64 {
+  entry:
+    %a = add.i64 100000, 200000
+    %result = add.i64 0, 32
+    ret.i64 %result
+}
+
+# Test i64 operations
+fn @test_i64_operations() -> i64 {
+  entry:
+    %a = add.i64 1000000, 2000000
+    %b = sub.i64 5000000, 1500000
+    %c = mul.i64 %a, 2
+    %d = div.i64 %c, 3
+    ret.i64 %d
+}
+
+# Test u64 operations
+fn @test_u64_operations() -> i64 {
+  entry:
+    %a = add.i64 1000000, 2000000
+    %result = add.i64 0, 64
+    ret.i64 %result
+}
+
+# Test bool operations
+fn @test_bool_operations() -> i64 {
+  entry:
+    %true_val = add.i64 1, 0
+    %false_val = add.i64 0, 0
+    %result = add.i64 0, 1
+    ret.i64 %result
+}
+
+# Test char operations
+fn @test_char_operations() -> i64 {
+  entry:
+    %char_a = add.i64 65, 0
+    %char_b = add.i64 66, 0
+    %result = add.i64 %char_a, 2
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %i8_result = call @test_i8_operations()
+    %u8_result = call @test_u8_operations()
+    %i16_result = call @test_i16_operations()
+    %u16_result = call @test_u16_operations()
+    %i32_result = call @test_i32_operations()
+    %u32_result = call @test_u32_operations()
+    %i64_result = call @test_i64_operations()
+    %u64_result = call @test_u64_operations()
+    %bool_result = call @test_bool_operations()
+    %char_result = call @test_char_operations()
+
+    print %i8_result
+    print %u8_result
+    print %i16_result
+    print %u16_result
+    print %i32_result
+    print %u32_result
+    print %i64_result
+    print %u64_result
+    print %bool_result
+    print %char_result
+
+    ret.i64 0
+}

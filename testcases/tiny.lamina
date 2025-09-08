@@ -1,0 +1,28 @@
+fn @main() -> i64 {
+entry:
+  %tape = alloc.ptr.stack [100 x i32]
+  %data_ptr = alloc.ptr.stack i32
+  store.i32 %data_ptr, 0
+  %op_counter = alloc.ptr.stack i32
+  store.i32 %op_counter, 0
+  %cell_ptr = getelem.ptr %tape, %data_ptr
+  %current_value = load.i32 %cell_ptr
+  %new_value = add.i32 %current_value, 1
+  store.i32 %cell_ptr, %new_value
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %cell_ptr = getelem.ptr %tape, %data_ptr
+  %current_value = load.i32 %cell_ptr
+  %new_value = add.i32 %current_value, 1
+  store.i32 %cell_ptr, %new_value
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %cell_ptr = getelem.ptr %tape, %data_ptr
+  %current_cell = load.i32 %cell_ptr
+  print %current_cell
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_total = add.i32 %op_counter, 3
+  store.i32 %op_counter, %temp_total
+  ret.i64 0
+}
