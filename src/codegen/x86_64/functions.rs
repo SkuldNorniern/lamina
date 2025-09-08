@@ -510,8 +510,7 @@ fn precompute_function_layout<'a>(
             let result_info: Option<(&Identifier<'a>, u64)> = match instr {
                 Instruction::Alloc { result, .. } => {
                     // Alloc always results in a pointer, regardless of allocated type
-                    let (_, s) =
-                        get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
+                    let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
                     Some((result, s))
                 }
                 Instruction::Binary { result, ty, .. } | Instruction::Cmp { result, ty, .. } => {
