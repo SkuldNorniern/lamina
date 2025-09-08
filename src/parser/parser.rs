@@ -1221,40 +1221,66 @@ fn parse_print<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
 }
 
 // I/O instruction parsers - Assignment form (%result = opcode ...)
-fn parse_write_assignment<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_write_assignment<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>> {
     // Format: %result = write %buffer, %size
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
     let size = parse_value(state)?;
-    Ok(Instruction::Write { buffer, size, result })
+    Ok(Instruction::Write {
+        buffer,
+        size,
+        result,
+    })
 }
 
-fn parse_read_assignment<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_read_assignment<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>> {
     // Format: %result = read %buffer, %size
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
     let size = parse_value(state)?;
-    Ok(Instruction::Read { buffer, size, result })
+    Ok(Instruction::Read {
+        buffer,
+        size,
+        result,
+    })
 }
 
-fn parse_writebyte_assignment<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_writebyte_assignment<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>> {
     // Format: %result = writebyte %value
     let value = parse_value(state)?;
     Ok(Instruction::WriteByte { value, result })
 }
 
-fn parse_readbyte_assignment<'a>(_state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_readbyte_assignment<'a>(
+    _state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>> {
     // Format: %result = readbyte
     Ok(Instruction::ReadByte { result })
 }
 
-fn parse_writeptr_assignment<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_writeptr_assignment<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>> {
     // Format: %result = writeptr %ptr
     let ptr = parse_value(state)?;
     Ok(Instruction::WritePtr { ptr, result })
 }
 
-fn parse_readptr_assignment<'a>(_state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_readptr_assignment<'a>(
+    _state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>> {
     // Format: %result = readptr
     Ok(Instruction::ReadPtr { result })
 }
@@ -1267,7 +1293,11 @@ fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     let size = parse_value(state)?;
     state.expect_char(',')?;
     let result = state.parse_identifier_str()?;
-    Ok(Instruction::Write { buffer, size, result })
+    Ok(Instruction::Write {
+        buffer,
+        size,
+        result,
+    })
 }
 
 fn parse_read<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
@@ -1277,7 +1307,11 @@ fn parse_read<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     let size = parse_value(state)?;
     state.expect_char(',')?;
     let result = state.parse_identifier_str()?;
-    Ok(Instruction::Read { buffer, size, result })
+    Ok(Instruction::Read {
+        buffer,
+        size,
+        result,
+    })
 }
 
 fn parse_writebyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
