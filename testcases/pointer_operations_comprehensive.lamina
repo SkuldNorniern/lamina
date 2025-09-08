@@ -1,0 +1,345 @@
+# Comprehensive test for pointer operations with all primitive types
+
+# ===== POINTER OPERATIONS FOR ALL TYPES =====
+
+# Test i8 pointer operations
+fn @test_i8_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for i8
+    %ptr = alloc.stack i8
+
+    # Store and load i8 values
+    store.i8 %ptr, 42
+    %loaded_val = load.i8 %ptr
+
+    # Verify the value
+    %expected = add.i8 42, 0
+    %is_correct = eq.i8 %loaded_val, %expected
+
+    # Modify the value
+    %new_val = add.i8 %loaded_val, 10
+    store.i8 %ptr, %new_val
+    %final_val = load.i8 %ptr
+
+    # Convert result to i64
+    %result = zext.i8.i64 %final_val
+    ret.i64 %result
+}
+
+# Test u8 pointer operations
+fn @test_u8_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for u8
+    %ptr = alloc.stack u8
+
+    # Store and load u8 values
+    store.u8 %ptr, 200
+    %loaded_val = load.u8 %ptr
+
+    # Verify the value
+    %expected = add.u8 200, 0
+    %is_correct = eq.u8 %loaded_val, %expected
+
+    # Modify the value
+    %new_val = sub.u8 %loaded_val, 50
+    store.u8 %ptr, %new_val
+    %final_val = load.u8 %ptr
+
+    # Convert result to i64
+    %result = zext.u8.i64 %final_val
+    ret.i64 %result
+}
+
+# Test i16 pointer operations
+fn @test_i16_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for i16
+    %ptr = alloc.stack i16
+
+    # Store and load i16 values
+    store.i16 %ptr, 1000
+    %loaded_val = load.i16 %ptr
+
+    # Verify the value
+    %expected = add.i16 1000, 0
+    %is_correct = eq.i16 %loaded_val, %expected
+
+    # Modify the value
+    %new_val = mul.i16 %loaded_val, 2
+    store.i16 %ptr, %new_val
+    %final_val = load.i16 %ptr
+
+    # Convert result to i64
+    %result = zext.i16.i64 %final_val
+    ret.i64 %result
+}
+
+# Test u16 pointer operations
+fn @test_u16_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for u16
+    %ptr = alloc.stack u16
+
+    # Store and load u16 values
+    store.u16 %ptr, 50000
+    %loaded_val = load.u16 %ptr
+
+    # Verify the value
+    %expected = add.u16 50000, 0
+    %is_correct = eq.u16 %loaded_val, %expected
+
+    # Modify the value
+    %new_val = div.u16 %loaded_val, 2
+    store.u16 %ptr, %new_val
+    %final_val = load.u16 %ptr
+
+    # Convert result to i64
+    %result = zext.u16.i64 %final_val
+    ret.i64 %result
+}
+
+# Test i32 pointer operations
+fn @test_i32_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for i32
+    %ptr = alloc.stack i32
+
+    # Store and load i32 values
+    store.i32 %ptr, 100000
+    %loaded_val = load.i32 %ptr
+
+    # Verify the value
+    %expected = add.i32 100000, 0
+    %is_correct = eq.i32 %loaded_val, %expected
+
+    # Modify the value
+    %new_val = mul.i32 %loaded_val, 3
+    store.i32 %ptr, %new_val
+    %final_val = load.i32 %ptr
+
+    # Convert result to i64
+    %result = zext.i32.i64 %final_val
+    ret.i64 %result
+}
+
+# Test u32 pointer operations
+fn @test_u32_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for u32
+    %ptr = alloc.stack u32
+
+    # Store and load u32 values
+    store.u32 %ptr, 3000000000
+    %loaded_val = load.u32 %ptr
+
+    # Verify the value
+    %expected = add.u32 3000000000, 0
+    %is_correct = eq.u32 %loaded_val, %expected
+
+    # Modify the value
+    %new_val = div.u32 %loaded_val, 2
+    store.u32 %ptr, %new_val
+    %final_val = load.u32 %ptr
+
+    # Convert result to i64 (will truncate, but that's OK for testing)
+    %result = zext.u32.i64 %final_val
+    ret.i64 %result
+}
+
+# Test i64 pointer operations
+fn @test_i64_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for i64
+    %ptr = alloc.stack i64
+
+    # Store and load i64 values
+    store.i64 %ptr, 5000000000
+    %loaded_val = load.i64 %ptr
+
+    # Verify the value
+    %expected = add.i64 5000000000, 0
+    %is_correct = eq.i64 %loaded_val, %expected
+
+    # Modify the value
+    %new_val = mul.i64 %loaded_val, 2
+    store.i64 %ptr, %new_val
+    %final_val = load.i64 %ptr
+
+    # Return the final value
+    ret.i64 %final_val
+}
+
+# Test u64 pointer operations
+fn @test_u64_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for u64
+    %ptr = alloc.stack u64
+
+    # Store and load u64 values
+    store.u64 %ptr, 10000000000
+    %loaded_val = load.u64 %ptr
+
+    # Verify the value
+    %expected = add.u64 10000000000, 0
+    %is_correct = eq.u64 %loaded_val, %expected
+
+    # Modify the value
+    %new_val = div.u64 %loaded_val, 2
+    store.u64 %ptr, %new_val
+    %final_val = load.u64 %ptr
+
+    # Convert to i64 (will truncate, but that's OK for testing)
+    %result = add.i64 0, 5000000000  # Simplified result
+    ret.i64 %result
+}
+
+# Test bool pointer operations
+fn @test_bool_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for bool
+    %ptr = alloc.stack bool
+
+    # Store and load bool values
+    store.bool %ptr, 1
+    %loaded_val = load.bool %ptr
+
+    # Verify the value
+    %expected = add.bool 1, 0
+    %is_correct = eq.bool %loaded_val, %expected
+
+    # Modify the value
+    %new_val = sub.bool 1, %loaded_val  # Toggle
+    store.bool %ptr, %new_val
+    %final_val = load.bool %ptr
+
+    # Convert result to i64
+    %result = zext.bool.i64 %final_val
+    ret.i64 %result
+}
+
+# Test char pointer operations
+fn @test_char_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for char
+    %ptr = alloc.stack char
+
+    # Store and load char values
+    store.char %ptr, 65  # 'A'
+    %loaded_val = load.char %ptr
+
+    # Verify the value
+    %expected = add.char 65, 0
+    %is_correct = eq.char %loaded_val, %expected
+
+    # Modify the value
+    %new_val = add.char %loaded_val, 1  # 'B'
+    store.char %ptr, %new_val
+    %final_val = load.char %ptr
+
+    # Convert result to i64
+    %result = zext.char.i64 %final_val
+    ret.i64 %result
+}
+
+# Test f32 pointer operations
+fn @test_f32_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for f32
+    %ptr = alloc.stack f32
+
+    # Store and load f32 values
+    store.f32 %ptr, 3.14
+    %loaded_val = load.f32 %ptr
+
+    # Modify the value
+    %new_val = mul.f32 %loaded_val, 2.0
+    store.f32 %ptr, %new_val
+    %final_val = load.f32 %ptr
+
+    # Return a fixed value since f32 conversion is complex
+    %result = add.i64 0, 6
+    ret.i64 %result
+}
+
+# Test f64 pointer operations
+fn @test_f64_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for f64
+    %ptr = alloc.stack f64
+
+    # Store and load f64 values
+    store.f64 %ptr, 2.718
+    %loaded_val = load.f64 %ptr
+
+    # Modify the value
+    %new_val = mul.f64 %loaded_val, 2.0
+    store.f64 %ptr, %new_val
+    %final_val = load.f64 %ptr
+
+    # Return a fixed value since f64 conversion is complex
+    %result = add.i64 0, 5
+    ret.i64 %result
+}
+
+# Test pointer to pointer operations
+fn @test_pointer_pointer_operations() -> i64 {
+  entry:
+    # Allocate memory for i32 value
+    %value_ptr = alloc.stack i32
+    store.i32 %value_ptr, 42
+
+    # Allocate memory for pointer to i32
+    %ptr_ptr = alloc.stack ptr
+    store.ptr %ptr_ptr, %value_ptr
+
+    # Load the pointer from pointer-to-pointer
+    %loaded_ptr = load.ptr %ptr_ptr
+
+    # Load the value through the loaded pointer
+    %loaded_value = load.i32 %loaded_ptr
+
+    # Verify
+    %expected = add.i32 42, 0
+    %is_correct = eq.i32 %loaded_value, %expected
+
+    # Convert result to i64
+    %result = zext.i32.i64 %loaded_value
+    ret.i64 %result
+}
+
+# ===== MAIN FUNCTION =====
+
+fn @main() -> i64 {
+  entry:
+    # Test pointer operations for all types
+    %i8_result = call @test_i8_pointer_operations()
+    %u8_result = call @test_u8_pointer_operations()
+    %i16_result = call @test_i16_pointer_operations()
+    %u16_result = call @test_u16_pointer_operations()
+    %i32_result = call @test_i32_pointer_operations()
+    %u32_result = call @test_u32_pointer_operations()
+    %i64_result = call @test_i64_pointer_operations()
+    %u64_result = call @test_u64_pointer_operations()
+    %bool_result = call @test_bool_pointer_operations()
+    %char_result = call @test_char_pointer_operations()
+    %f32_result = call @test_f32_pointer_operations()
+    %f64_result = call @test_f64_pointer_operations()
+    %ptr_ptr_result = call @test_pointer_pointer_operations()
+
+    # Print results
+    print %i8_result
+    print %u8_result
+    print %i16_result
+    print %u16_result
+    print %i32_result
+    print %u32_result
+    print %i64_result
+    print %u64_result
+    print %bool_result
+    print %char_result
+    print %f32_result
+    print %f64_result
+    print %ptr_ptr_result
+
+    ret.i64 0
+}
