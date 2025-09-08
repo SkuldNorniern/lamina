@@ -1243,27 +1243,20 @@ fn parse_writebyte_assignment<'a>(state: &mut ParserState<'a>, result: Identifie
     Ok(Instruction::WriteByte { value, result })
 }
 
-fn parse_readbyte_assignment<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_readbyte_assignment<'a>(_state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
     // Format: %result = readbyte
     Ok(Instruction::ReadByte { result })
 }
 
 fn parse_writeptr_assignment<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
-    // Format: %result = writeptr %ptr, %value, %ty
+    // Format: %result = writeptr %ptr
     let ptr = parse_value(state)?;
-    state.expect_char(',')?;
-    let value = parse_value(state)?;
-    state.expect_char(',')?;
-    let ty = parse_type(state)?;
-    Ok(Instruction::WritePtr { ptr, value, ty, result })
+    Ok(Instruction::WritePtr { ptr, result })
 }
 
-fn parse_readptr_assignment<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
-    // Format: %result = readptr %ptr, %ty
-    let ptr = parse_value(state)?;
-    state.expect_char(',')?;
-    let ty = parse_type(state)?;
-    Ok(Instruction::ReadPtr { result, ptr, ty })
+fn parse_readptr_assignment<'a>(_state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+    // Format: %result = readptr
+    Ok(Instruction::ReadPtr { result })
 }
 
 // I/O instruction parsers - Non-assignment form (opcode ...)
@@ -1302,25 +1295,17 @@ fn parse_readbyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
 }
 
 fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
-    // Format: writeptr %ptr, %value, %ty, %result
+    // Format: writeptr %ptr, %result
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
-    let value = parse_value(state)?;
-    state.expect_char(',')?;
-    let ty = parse_type(state)?;
-    state.expect_char(',')?;
     let result = state.parse_identifier_str()?;
-    Ok(Instruction::WritePtr { ptr, value, ty, result })
+    Ok(Instruction::WritePtr { ptr, result })
 }
 
 fn parse_readptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
-    // Format: readptr %result, %ptr, %ty
+    // Format: readptr %result
     let result = state.parse_identifier_str()?;
-    state.expect_char(',')?;
-    let ptr = parse_value(state)?;
-    state.expect_char(',')?;
-    let ty = parse_type(state)?;
-    Ok(Instruction::ReadPtr { result, ptr, ty })
+    Ok(Instruction::ReadPtr { result })
 }
 
 // Add parse function for zero extend

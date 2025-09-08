@@ -108,14 +108,14 @@ pub fn generate_instruction<'a, W: Write>(
             AllocType::Stack => {
                 let result_loc = func_ctx.get_value_location(result)?;
                 match result_loc {
-                    ValueLocation::Register(reg) => {
+                    ValueLocation::Register(_reg) => {
                         // For registers, we need to put the stack address in the register
                         // But this is unusual for stack allocation, so we'll handle it
                         return Err(LaminaError::CodegenError(
                             CodegenError::InvalidAllocationLocation,
                         ));
                     }
-                    ValueLocation::StackOffset(offset) => {
+                    ValueLocation::StackOffset(_offset) => {
                         // For stack allocation, we don't need to store anything
                         // The ValueLocation::StackOffset itself represents the allocated space
                         // Load/store operations will handle this directly
@@ -164,8 +164,8 @@ pub fn generate_instruction<'a, W: Write>(
                 // Store the result (pointer) to the allocated location
                 let result_loc = func_ctx.get_value_location(result)?;
                 match result_loc {
-                    ValueLocation::Register(reg) => {
-                        writeln!(writer, "        mov {}, x0", reg)?;
+                    ValueLocation::Register(_reg) => {
+                        writeln!(writer, "        mov {}, x0", _reg)?;
                     }
                     ValueLocation::StackOffset(offset) => {
                         materialize_address(writer, "x9", offset)?;
@@ -514,6 +514,11 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Call printf
             writeln!(writer, "        bl _printf")?;
+
+            // Flush stdout to ensure output appears immediately
+            // This prevents buffering issues when mixing with direct syscall I/O
+            writeln!(writer, "        mov x0, #0")?; // NULL flushes all streams
+            writeln!(writer, "        bl _fflush")?;
 
             // Restore stack (32 bytes allocated)
             writeln!(writer, "        add sp, sp, #32")?;
