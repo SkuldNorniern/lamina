@@ -1,0 +1,13 @@
+# Test basic I/O operations
+fn @main() -> i32 {
+  entry:
+    # Test writebyte - write single characters
+    %result1 = writebyte 72   # 'H'
+    %result2 = writebyte 101  # 'e'
+    %result3 = writebyte 108  # 'l'
+    %result4 = writebyte 108  # 'l'
+    %result5 = writebyte 111  # 'o'
+    %result6 = writebyte 10   # '\n'
+
+    ret.i32 0
+}

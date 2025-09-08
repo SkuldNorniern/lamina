@@ -1,0 +1,28 @@
+# Comprehensive I/O test combining all operations
+fn @main() -> i64 {
+  entry:
+    # Test 1: Basic character output
+    %h = writebyte 72   # 'H'
+    %i = writebyte 105  # 'i'
+    %ex = writebyte 33  # '!'
+    %nl = writebyte 10  # '\n'
+
+    # Test 2: Buffer operations
+    %buffer = alloc.stack i64
+    store.i64 %buffer, 12345         # Store known value in buffer
+    %buffer_val = load.i64 %buffer    # Load the buffer value for printing
+    print %buffer_val             # Should print 12345
+
+    # Test 3: More output
+    %done = writebyte 68   # 'D'
+    %one = writebyte 79    # 'O'
+    %ne = writebyte 78     # 'N'
+    %e = writebyte 69      # 'E'
+    %nl2 = writebyte 10    # '\n'
+
+    # Test 4: Arithmetic with buffer value
+    %sum = add.i64 %buffer_val, 100
+    print %sum  # Should print 12445
+
+    ret.i64 0
+}
