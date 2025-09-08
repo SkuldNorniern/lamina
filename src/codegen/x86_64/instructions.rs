@@ -8,6 +8,16 @@ use crate::{
 };
 use std::io::Write;
 
+// Helper function to store syscall result
+fn store_syscall_result<W: Write>(
+    writer: &mut W,
+    dest: &str,
+    src_reg: &str,
+) -> Result<()> {
+    writeln!(writer, "        movq {}, {}", src_reg, dest)?;
+    Ok(())
+}
+
 // Generate assembly for a single instruction (main translation logic)
 pub fn generate_instruction<'a, W: Write>(
     instr: &Instruction<'a>,
@@ -1143,11 +1153,7 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Store result
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
-            if dest.starts_with('%') {
-                writeln!(writer, "        movq %rax, {}", dest)?;
-            } else {
-                writeln!(writer, "        movq %rax, {}", dest)?;
-            }
+            store_syscall_result(writer, &dest, "%rax")?;
         }
 
         Instruction::Read {
@@ -1174,11 +1180,7 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Store result
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
-            if dest.starts_with('%') {
-                writeln!(writer, "        movq %rax, {}", dest)?;
-            } else {
-                writeln!(writer, "        movq %rax, {}", dest)?;
-            }
+            store_syscall_result(writer, &dest, "%rax")?;
         }
 
         Instruction::WriteByte { value, result } => {
@@ -1203,11 +1205,7 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Store result
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
-            if dest.starts_with('%') {
-                writeln!(writer, "        movq %rax, {}", dest)?;
-            } else {
-                writeln!(writer, "        movq %rax, {}", dest)?;
-            }
+            store_syscall_result(writer, &dest, "%rax")?;
 
             // Restore registers
             writeln!(writer, "        popq %rbx")?;
@@ -1291,11 +1289,7 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Store result (bytes written or error)
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
-            if dest.starts_with('%') {
-                writeln!(writer, "        movq %rax, {}", dest)?;
-            } else {
-                writeln!(writer, "        movq %rax, {}", dest)?;
-            }
+            store_syscall_result(writer, &dest, "%rax")?;
         }
 
         Instruction::ReadPtr { result } => {

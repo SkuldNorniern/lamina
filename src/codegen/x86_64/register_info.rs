@@ -1,5 +1,4 @@
 /// x86_64 register information and calling convention
-
 /// x86_64 argument registers (System V ABI)
 pub const ARG_REGISTERS: &[&str] = &["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"];
 
@@ -75,8 +74,8 @@ pub fn get_sized_register(base_reg: &str, size_bytes: u64) -> String {
 
         // Default case - just append suffix
         (reg, _) => {
-            if reg.starts_with('%') {
-                format!("%{}{}", &reg[1..], suffix)
+            if let Some(stripped) = reg.strip_prefix('%') {
+                format!("%{}{}", stripped, suffix)
             } else {
                 format!("%{}{}", reg, suffix)
             }

@@ -224,11 +224,9 @@ fn collect_variables_from_instruction<'a>(
     live_vars: &mut HashSet<&'a str>,
 ) {
     match instr {
-        Instruction::Br { condition, .. } => {
-            // Add the condition variable if it's a variable
-            if let Value::Variable(var) = condition {
-                live_vars.insert(var);
-            }
+        Instruction::Br { condition: Value::Variable(var), .. } => {
+            // Add the condition variable
+            live_vars.insert(var);
         }
         Instruction::Ret { value, .. } => {
             // Check if there's a return value that's a variable
