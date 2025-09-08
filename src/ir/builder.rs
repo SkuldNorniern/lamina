@@ -947,7 +947,11 @@ impl<'a> IRBuilder<'a> {
     ///     .ret_void();
     /// ```
     pub fn write(&mut self, buffer: Value<'a>, size: Value<'a>, result: &'a str) -> &mut Self {
-        self.inst(Instruction::Write { buffer, size, result })
+        self.inst(Instruction::Write {
+            buffer,
+            size,
+            result,
+        })
     }
 
     /// Reads from stdin into a buffer (raw syscall)
@@ -973,7 +977,11 @@ impl<'a> IRBuilder<'a> {
     ///     .ret_void();
     /// ```
     pub fn read(&mut self, buffer: Value<'a>, size: Value<'a>, result: &'a str) -> &mut Self {
-        self.inst(Instruction::Read { buffer, size, result })
+        self.inst(Instruction::Read {
+            buffer,
+            size,
+            result,
+        })
     }
 
     /// Writes a single byte to stdout (raw syscall)
