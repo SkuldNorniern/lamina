@@ -55,8 +55,12 @@ TEST_CASES = {
      'external_functions.lamina': ['60', '100', '17', '123', '10'],  # external functions - basic structure
      'debug_printing.lamina': ['27'],  # basic integer printing test
 
-     # I/O Tests    
+     # I/O Tests
      'hello_world.lamina': ['Hello World'],
+     'io_basic.lamina': ['Hello'],  # Basic writebyte operations
+     'io_pointer.lamina': ['42'],   # Pointer dereference I/O
+     'io_comprehensive.lamina': ['Hi!', '12345', 'DONE', '12445'],  # Combined I/O operations
+     'io_writeptr.lamina': ['OK'],  # WritePtr I/O - writes binary address + OK message
 }
 
 class Colors:
