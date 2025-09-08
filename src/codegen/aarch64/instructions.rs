@@ -132,7 +132,7 @@ pub fn generate_instruction<'a, W: Write>(
                     Type::Primitive(PrimitiveType::I64 | PrimitiveType::Ptr) => 8,
                     Type::Array { element_type, size } => {
                         let (_, elem_size) =
-                            super::util::get_type_size_directive_and_bytes(&element_type)?;
+                            super::util::get_type_size_directive_and_bytes(element_type)?;
                         (elem_size * size) as usize
                     }
                     Type::Struct(fields) => {
@@ -821,12 +821,11 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
 }
 
 fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<()> {
-    if op.starts_with("[x29,") {
-        if let Some(off) = parse_fp_offset(op) {
+    if op.starts_with("[x29,")
+        && let Some(off) = parse_fp_offset(op) {
             materialize_address(writer, dest, off)?;
             return Ok(());
         }
-    }
     if op.ends_with("(adrp+add)") {
         let label = op.trim_end_matches("(adrp+add)");
         for line in materialize_label_address(dest, label) {
