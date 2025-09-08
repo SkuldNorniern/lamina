@@ -154,7 +154,7 @@ impl StandardStackLayout {
 pub struct X86_64StackLayout;
 
 impl X86_64StackLayout {
-    pub fn new() -> StandardStackLayout {
+    pub fn default_layout() -> StandardStackLayout {
         StandardStackLayout::new(true, 16) // Stack grows down, 16-byte aligned
     }
 }
@@ -163,7 +163,7 @@ impl X86_64StackLayout {
 pub struct AArch64StackLayout;
 
 impl AArch64StackLayout {
-    pub fn new() -> StandardStackLayout {
+    pub fn default_layout() -> StandardStackLayout {
         StandardStackLayout::new(true, 16) // Stack grows down, 16-byte aligned
     }
 }

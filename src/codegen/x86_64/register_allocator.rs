@@ -251,30 +251,26 @@ impl GraphColoringAllocator {
                     used_vars.push(var.to_string());
                 }
             }
-            Instruction::Load { ptr, .. } => {
-                if let Value::Variable(var) = ptr {
-                    used_vars.push(var.to_string());
-                }
+            Instruction::Load { ptr: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
             }
-            Instruction::Store { ptr, value, .. } => {
-                if let Value::Variable(var) = ptr {
-                    used_vars.push(var.to_string());
-                }
-                if let Value::Variable(var) = value {
-                    used_vars.push(var.to_string());
-                }
+            Instruction::Store { ptr: Value::Variable(ptr_var), value: Value::Variable(value_var), .. } => {
+                used_vars.push(ptr_var.to_string());
+                used_vars.push(value_var.to_string());
+            }
+            Instruction::Store { ptr: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
+            }
+            Instruction::Store { value: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
             }
             Instruction::Ret {
-                value: Some(value), ..
+                value: Some(Value::Variable(var)), ..
             } => {
-                if let Value::Variable(var) = value {
-                    used_vars.push(var.to_string());
-                }
+                used_vars.push(var.to_string());
             }
-            Instruction::Br { condition, .. } => {
-                if let Value::Variable(var) = condition {
-                    used_vars.push(var.to_string());
-                }
+            Instruction::Br { condition: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
             }
             Instruction::Call { args, .. } => {
                 for arg in args {
@@ -283,42 +279,34 @@ impl GraphColoringAllocator {
                     }
                 }
             }
-            Instruction::ZeroExtend { value, .. } => {
-                if let Value::Variable(var) = value {
-                    used_vars.push(var.to_string());
-                }
+            Instruction::ZeroExtend { value: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
             }
-            Instruction::Write { buffer, size, .. } => {
-                if let Value::Variable(var) = buffer {
-                    used_vars.push(var.to_string());
-                }
-                if let Value::Variable(var) = size {
-                    used_vars.push(var.to_string());
-                }
+            Instruction::Write { buffer: Value::Variable(buf_var), size: Value::Variable(size_var), .. } => {
+                used_vars.push(buf_var.to_string());
+                used_vars.push(size_var.to_string());
             }
-            Instruction::Read { buffer, size, .. } => {
-                if let Value::Variable(var) = buffer {
-                    used_vars.push(var.to_string());
-                }
-                if let Value::Variable(var) = size {
-                    used_vars.push(var.to_string());
-                }
+            Instruction::Write { buffer: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
             }
-            Instruction::WriteByte { value, .. } => {
-                if let Value::Variable(var) = value {
-                    used_vars.push(var.to_string());
-                }
+            Instruction::Write { size: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
             }
-            Instruction::ReadByte { .. } => {
-                // No variables used as input
+            Instruction::Read { buffer: Value::Variable(buf_var), size: Value::Variable(size_var), .. } => {
+                used_vars.push(buf_var.to_string());
+                used_vars.push(size_var.to_string());
             }
-            Instruction::WritePtr { ptr, .. } => {
-                if let Value::Variable(var) = ptr {
-                    used_vars.push(var.to_string());
-                }
+            Instruction::Read { buffer: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
             }
-            Instruction::ReadPtr { .. } => {
-                // No variables used as input
+            Instruction::Read { size: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
+            }
+            Instruction::WriteByte { value: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
+            }
+            Instruction::WritePtr { ptr: Value::Variable(var), .. } => {
+                used_vars.push(var.to_string());
             }
             _ => {}
         }

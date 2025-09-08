@@ -1,7 +1,7 @@
-pub mod parser;
+pub mod impl_;
 
 // Re-export the main entry point from parser.rs
-pub use parser::parse_module;
+pub use impl_::parse_module;
 
 #[cfg(test)]
 mod tests {
