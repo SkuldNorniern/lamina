@@ -38,7 +38,10 @@ impl Default for OptimizationConfig {
 
 impl OptimizationConfig {
     pub fn new(level: OptimizationLevel) -> Self {
-        let mut config = Self { level, ..Default::default() };
+        let mut config = Self {
+            level,
+            ..Default::default()
+        };
 
         match level {
             OptimizationLevel::None => {

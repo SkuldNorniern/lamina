@@ -251,25 +251,42 @@ impl GraphColoringAllocator {
                     used_vars.push(var.to_string());
                 }
             }
-            Instruction::Load { ptr: Value::Variable(var), .. } => {
-                used_vars.push(var.to_string());
-            }
-            Instruction::Store { ptr: Value::Variable(ptr_var), value: Value::Variable(value_var), .. } => {
-                used_vars.push(ptr_var.to_string());
-                used_vars.push(value_var.to_string());
-            }
-            Instruction::Store { ptr: Value::Variable(var), .. } => {
-                used_vars.push(var.to_string());
-            }
-            Instruction::Store { value: Value::Variable(var), .. } => {
-                used_vars.push(var.to_string());
-            }
-            Instruction::Ret {
-                value: Some(Value::Variable(var)), ..
+            Instruction::Load {
+                ptr: Value::Variable(var),
+                ..
             } => {
                 used_vars.push(var.to_string());
             }
-            Instruction::Br { condition: Value::Variable(var), .. } => {
+            Instruction::Store {
+                ptr: Value::Variable(ptr_var),
+                value: Value::Variable(value_var),
+                ..
+            } => {
+                used_vars.push(ptr_var.to_string());
+                used_vars.push(value_var.to_string());
+            }
+            Instruction::Store {
+                ptr: Value::Variable(var),
+                ..
+            } => {
+                used_vars.push(var.to_string());
+            }
+            Instruction::Store {
+                value: Value::Variable(var),
+                ..
+            } => {
+                used_vars.push(var.to_string());
+            }
+            Instruction::Ret {
+                value: Some(Value::Variable(var)),
+                ..
+            } => {
+                used_vars.push(var.to_string());
+            }
+            Instruction::Br {
+                condition: Value::Variable(var),
+                ..
+            } => {
                 used_vars.push(var.to_string());
             }
             Instruction::Call { args, .. } => {
@@ -279,33 +296,62 @@ impl GraphColoringAllocator {
                     }
                 }
             }
-            Instruction::ZeroExtend { value: Value::Variable(var), .. } => {
+            Instruction::ZeroExtend {
+                value: Value::Variable(var),
+                ..
+            } => {
                 used_vars.push(var.to_string());
             }
-            Instruction::Write { buffer: Value::Variable(buf_var), size: Value::Variable(size_var), .. } => {
+            Instruction::Write {
+                buffer: Value::Variable(buf_var),
+                size: Value::Variable(size_var),
+                ..
+            } => {
                 used_vars.push(buf_var.to_string());
                 used_vars.push(size_var.to_string());
             }
-            Instruction::Write { buffer: Value::Variable(var), .. } => {
+            Instruction::Write {
+                buffer: Value::Variable(var),
+                ..
+            } => {
                 used_vars.push(var.to_string());
             }
-            Instruction::Write { size: Value::Variable(var), .. } => {
+            Instruction::Write {
+                size: Value::Variable(var),
+                ..
+            } => {
                 used_vars.push(var.to_string());
             }
-            Instruction::Read { buffer: Value::Variable(buf_var), size: Value::Variable(size_var), .. } => {
+            Instruction::Read {
+                buffer: Value::Variable(buf_var),
+                size: Value::Variable(size_var),
+                ..
+            } => {
                 used_vars.push(buf_var.to_string());
                 used_vars.push(size_var.to_string());
             }
-            Instruction::Read { buffer: Value::Variable(var), .. } => {
+            Instruction::Read {
+                buffer: Value::Variable(var),
+                ..
+            } => {
                 used_vars.push(var.to_string());
             }
-            Instruction::Read { size: Value::Variable(var), .. } => {
+            Instruction::Read {
+                size: Value::Variable(var),
+                ..
+            } => {
                 used_vars.push(var.to_string());
             }
-            Instruction::WriteByte { value: Value::Variable(var), .. } => {
+            Instruction::WriteByte {
+                value: Value::Variable(var),
+                ..
+            } => {
                 used_vars.push(var.to_string());
             }
-            Instruction::WritePtr { ptr: Value::Variable(var), .. } => {
+            Instruction::WritePtr {
+                ptr: Value::Variable(var),
+                ..
+            } => {
                 used_vars.push(var.to_string());
             }
             _ => {}
