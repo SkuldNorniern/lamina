@@ -220,6 +220,12 @@ impl GraphColoringAllocator {
             Instruction::Tuple { result, .. } => Some(result.to_string()),
             Instruction::ExtractTuple { result, .. } => Some(result.to_string()),
             Instruction::Phi { result, .. } => Some(result.to_string()),
+            Instruction::Write { result, .. } => Some(result.to_string()),
+            Instruction::Read { result, .. } => Some(result.to_string()),
+            Instruction::WriteByte { result, .. } => Some(result.to_string()),
+            Instruction::ReadByte { result, .. } => Some(result.to_string()),
+            Instruction::WritePtr { result, .. } => Some(result.to_string()),
+            Instruction::ReadPtr { result, .. } => Some(result.to_string()),
             _ => None,
         }
     }
@@ -281,6 +287,38 @@ impl GraphColoringAllocator {
                 if let Value::Variable(var) = value {
                     used_vars.push(var.to_string());
                 }
+            }
+            Instruction::Write { buffer, size, .. } => {
+                if let Value::Variable(var) = buffer {
+                    used_vars.push(var.to_string());
+                }
+                if let Value::Variable(var) = size {
+                    used_vars.push(var.to_string());
+                }
+            }
+            Instruction::Read { buffer, size, .. } => {
+                if let Value::Variable(var) = buffer {
+                    used_vars.push(var.to_string());
+                }
+                if let Value::Variable(var) = size {
+                    used_vars.push(var.to_string());
+                }
+            }
+            Instruction::WriteByte { value, .. } => {
+                if let Value::Variable(var) = value {
+                    used_vars.push(var.to_string());
+                }
+            }
+            Instruction::ReadByte { .. } => {
+                // No variables used as input
+            }
+            Instruction::WritePtr { ptr, .. } => {
+                if let Value::Variable(var) = ptr {
+                    used_vars.push(var.to_string());
+                }
+            }
+            Instruction::ReadPtr { .. } => {
+                // No variables used as input
             }
             _ => {}
         }

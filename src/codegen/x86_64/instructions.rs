@@ -1118,6 +1118,209 @@ pub fn generate_instruction<'a, W: Write>(
                 }
             }
         }
+
+        Instruction::Write {
+            buffer,
+            size,
+            result,
+        } => {
+            // Linux x86_64 write syscall:
+            // syscall #1, args: rdi=fd(1=stdout), rsi=buffer, rdx=size
+            // result in rax: bytes written or -1 on error
+
+            // Set up syscall arguments
+            writeln!(writer, "        movq $1, %rax")?; // write syscall number
+            writeln!(writer, "        movq $1, %rdi")?; // stdout file descriptor
+
+            let buffer_op = get_value_operand_asm(buffer, state, func_ctx)?;
+            writeln!(writer, "        movq {}, %rsi", buffer_op)?;
+
+            let size_op = get_value_operand_asm(size, state, func_ctx)?;
+            writeln!(writer, "        movq {}, %rdx", size_op)?;
+
+            // Make syscall
+            writeln!(writer, "        syscall")?;
+
+            // Store result
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            if dest.starts_with('%') {
+                writeln!(writer, "        movq %rax, {}", dest)?;
+            } else {
+                writeln!(writer, "        movq %rax, {}", dest)?;
+            }
+        }
+
+        Instruction::Read {
+            buffer,
+            size,
+            result,
+        } => {
+            // Linux x86_64 read syscall:
+            // syscall #0, args: rdi=fd(0=stdin), rsi=buffer, rdx=max_size
+            // result in rax: bytes read or -1 on error
+
+            // Set up syscall arguments
+            writeln!(writer, "        movq $0, %rax")?; // read syscall number
+            writeln!(writer, "        movq $0, %rdi")?; // stdin file descriptor
+
+            let buffer_op = get_value_operand_asm(buffer, state, func_ctx)?;
+            writeln!(writer, "        movq {}, %rsi", buffer_op)?;
+
+            let size_op = get_value_operand_asm(size, state, func_ctx)?;
+            writeln!(writer, "        movq {}, %rdx", size_op)?;
+
+            // Make syscall
+            writeln!(writer, "        syscall")?;
+
+            // Store result
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            if dest.starts_with('%') {
+                writeln!(writer, "        movq %rax, {}", dest)?;
+            } else {
+                writeln!(writer, "        movq %rax, {}", dest)?;
+            }
+        }
+
+        Instruction::WriteByte { value, result } => {
+            // Write single byte to stdout using write syscall
+            // Save registers
+            writeln!(writer, "        pushq %rax")?;
+            writeln!(writer, "        pushq %rbx")?;
+
+            // Store the byte value on stack
+            let value_op = get_value_operand_asm(value, state, func_ctx)?;
+            writeln!(writer, "        movq {}, %rax", value_op)?;
+            writeln!(writer, "        movb %al, -8(%rsp)")?; // Store byte on stack
+
+            // Set up syscall arguments
+            writeln!(writer, "        movq $1, %rax")?; // write syscall
+            writeln!(writer, "        movq $1, %rdi")?; // stdout
+            writeln!(writer, "        leaq -8(%rsp), %rsi")?; // buffer = stack pointer
+            writeln!(writer, "        movq $1, %rdx")?; // size = 1 byte
+
+            // Make syscall
+            writeln!(writer, "        syscall")?;
+
+            // Store result
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            if dest.starts_with('%') {
+                writeln!(writer, "        movq %rax, {}", dest)?;
+            } else {
+                writeln!(writer, "        movq %rax, {}", dest)?;
+            }
+
+            // Restore registers
+            writeln!(writer, "        popq %rbx")?;
+            writeln!(writer, "        popq %rax")?;
+        }
+
+        Instruction::ReadByte { result } => {
+            // Read single byte from stdin using read syscall
+            // Save registers
+            writeln!(writer, "        pushq %rax")?;
+            writeln!(writer, "        pushq %rbx")?;
+
+            // Set up syscall arguments
+            writeln!(writer, "        movq $0, %rax")?; // read syscall
+            writeln!(writer, "        movq $0, %rdi")?; // stdin
+            writeln!(writer, "        leaq -8(%rsp), %rsi")?; // buffer = stack pointer
+            writeln!(writer, "        movq $1, %rdx")?; // size = 1 byte
+
+            // Make syscall
+            writeln!(writer, "        syscall")?;
+
+            // Load the byte from stack (if read succeeded)
+            writeln!(writer, "        movzbq -8(%rsp), %rbx")?; // Load byte from stack, zero-extend
+
+            // Store result (byte value or -1 on error)
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            if dest.starts_with('%') {
+                // For register destination, check if read succeeded
+                writeln!(writer, "        cmpq $1, %rax")?; // Check if 1 byte was read
+                writeln!(writer, "        cmove {}, %rbx", dest)?; // Use byte if success
+                writeln!(writer, "        cmovne {}, %rax", dest)?; // Use error code if failure
+            } else {
+                writeln!(writer, "        movq %rbx, {}", dest)?;
+            }
+
+            // Restore registers
+            writeln!(writer, "        popq %rbx")?;
+            writeln!(writer, "        popq %rax")?;
+        }
+
+        Instruction::WritePtr { ptr, result } => {
+            // Write the value stored at the pointer location to stdout
+            let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
+
+            // For stack-allocated variables (detected by format like "-16(%rbp)"),
+            // we need to handle differently
+            if ptr_op.contains("(%rbp)") {
+                // Direct stack access - load the value from the stack location
+                // Extract offset from format like "-16(%rbp)"
+                if let Some(offset_start) = ptr_op.find('(') {
+                    let offset_str = &ptr_op[..offset_start];
+                    if let Ok(offset) = offset_str.parse::<i64>() {
+                        // For i8 buffer, we need to write just 1 byte, not 8 bytes
+                        writeln!(writer, "        movzbq {}(%rbp), %rbx", offset)?; // Load byte from stack, zero-extend
+                        writeln!(writer, "        movb %bl, -8(%rsp)")?; // Store on stack for syscall
+                        writeln!(writer, "        movq $1, %rdx")?; // 1 byte for i8
+                    } else {
+                        return Err(LaminaError::CodegenError(CodegenError::InternalError));
+                    }
+                } else {
+                    return Err(LaminaError::CodegenError(CodegenError::InternalError));
+                }
+            } else {
+                // For heap pointers or registers, load the target address first
+                writeln!(writer, "        movq {}, %r9", ptr_op)?;
+                // Then load the value from that address into rsi
+                writeln!(writer, "        movq (%r9), %rsi")?;
+                writeln!(writer, "        movq $8, %rdx")?; // 8 bytes for 64-bit
+            }
+
+            // Prepare write syscall arguments
+            writeln!(writer, "        movq $1, %rax")?; // write syscall
+            writeln!(writer, "        movq $1, %rdi")?; // stdout fd
+
+            if ptr_op.contains("(%rbp)") {
+                // Use stack buffer for i8 case
+                writeln!(writer, "        leaq -8(%rsp), %rsi")?;
+            }
+
+            writeln!(writer, "        syscall")?; // Make syscall
+
+            // Store result (bytes written or error)
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            if dest.starts_with('%') {
+                writeln!(writer, "        movq %rax, {}", dest)?;
+            } else {
+                writeln!(writer, "        movq %rax, {}", dest)?;
+            }
+        }
+
+        Instruction::ReadPtr { result } => {
+            // Read pointer address from stdin (I/O operation)
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+
+            // Prepare read syscall arguments
+            writeln!(writer, "        movq $0, %rax")?; // read syscall
+            writeln!(writer, "        movq $0, %rdi")?; // stdin fd
+            writeln!(writer, "        leaq -8(%rsp), %rsi")?; // buffer = stack pointer
+            writeln!(writer, "        movq $8, %rdx")?; // 8 bytes (64-bit pointer)
+
+            // Make syscall
+            writeln!(writer, "        syscall")?;
+
+            // Load the value from stack and store result
+            if dest.starts_with('%') {
+                // Result is in a register - move the read value to result register
+                writeln!(writer, "        movq -8(%rsp), {}", dest)?;
+            } else {
+                // Result is on stack - store the read value to stack location
+                writeln!(writer, "        movq -8(%rsp), {}", dest)?;
+            }
+        }
+
         _ => {
             writeln!(
                 writer,

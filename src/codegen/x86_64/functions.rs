@@ -138,6 +138,9 @@ fn generate_function_with_allocation<'a, W: Write>(
         )?;
     }
 
+    // Layout function stack and assign value locations based on register allocation
+    precompute_optimized_function_layout(func, &mut func_ctx, state, allocation_result)?;
+
     // Process the entry block first
     if let Some(entry_block) = func.basic_blocks.get(&func.entry_block) {
         let asm_label = func_ctx.get_block_label(&func.entry_block)?;
@@ -316,6 +319,9 @@ pub fn generate_function<'a, W: Write>(
             }
         }
     }
+
+    // Layout function stack and assign value locations
+    precompute_function_layout(func, &mut func_ctx, state, &required_regs)?;
 
     // Function Body Generation
     writeln!(writer, "    # Function Body Start")?;
@@ -552,6 +558,16 @@ fn precompute_function_layout<'a>(
                     let (_, s) =
                         get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
                     Some((res, s))
+                }
+                Instruction::Write { result, .. }
+                | Instruction::Read { result, .. }
+                | Instruction::WriteByte { result, .. }
+                | Instruction::ReadByte { result, .. }
+                | Instruction::WritePtr { result, .. }
+                | Instruction::ReadPtr { result, .. } => {
+                    let (_, s) =
+                        get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::I64))?;
+                    Some((result, s))
                 }
                 _ => None, // Only care about instructions with results
             };
@@ -797,6 +813,12 @@ fn get_instruction_result<'a>(instr: &Instruction<'a>) -> Option<&'a str> {
         Instruction::Tuple { result, .. } => Some(result),
         Instruction::ExtractTuple { result, .. } => Some(result),
         Instruction::Phi { result, .. } => Some(result),
+        Instruction::Write { result, .. } => Some(result),
+        Instruction::Read { result, .. } => Some(result),
+        Instruction::WriteByte { result, .. } => Some(result),
+        Instruction::ReadByte { result, .. } => Some(result),
+        Instruction::WritePtr { result, .. } => Some(result),
+        Instruction::ReadPtr { result, .. } => Some(result),
         _ => None,
     }
 }
