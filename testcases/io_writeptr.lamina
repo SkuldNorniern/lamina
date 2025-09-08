@@ -1,15 +1,15 @@
-# Test writeptr I/O operation
+# Test writeptr I/O operation setup
 fn @main() -> i32 {
   entry:
-    # Allocate a buffer
-    %buffer = alloc.stack i64
+    # Allocate a buffer and initialize it
+    %buffer = alloc.stack i8
+    store.i8 %buffer, 79  # Store 'O' (ASCII 79)
 
-    # Write the buffer's address to stdout
+    # Write the buffer value to stdout using writeptr (produces 'O')
     %result = writeptr %buffer
 
-    # Print success message instead of binary data
-    %success = writebyte 79  # 'O'
-    %success2 = writebyte 75 # 'K'
+    # Write the rest using writebyte (produces 'K\n')
+    %k = writebyte 75 # 'K'
     %newline = writebyte 10  # '\n'
 
     ret.i32 0
