@@ -1255,10 +1255,17 @@ pub fn generate_instruction<'a, W: Write>(
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
 
             // Load the address from the pointer operand into %r11
-            writeln!(writer, "        movq {}, %r11 # Load address from pointer", ptr_op)?;
+            writeln!(
+                writer,
+                "        movq {}, %r11 # Load address from pointer",
+                ptr_op
+            )?;
 
             // Load the byte value from the address in %r11
-            writeln!(writer, "        movzbq (%r11), %rbx # Load byte value from address")?;
+            writeln!(
+                writer,
+                "        movzbq (%r11), %rbx # Load byte value from address"
+            )?;
 
             // Store the byte on the stack for the syscall
             writeln!(writer, "        movb %bl, -8(%rsp)")?;
