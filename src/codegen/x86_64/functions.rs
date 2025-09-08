@@ -149,7 +149,7 @@ fn generate_function_with_allocation<'a, W: Write>(
             entry_block,
             writer,
             state,
-            &func_ctx,
+            &mut func_ctx,
             func_name,
             allocation_result,
         )?;
@@ -167,7 +167,7 @@ fn generate_function_with_allocation<'a, W: Write>(
                 block,
                 writer,
                 state,
-                &func_ctx,
+                &mut func_ctx,
                 func_name,
                 allocation_result,
             )?;
@@ -330,7 +330,7 @@ pub fn generate_function<'a, W: Write>(
     if let Some(entry_block) = func.basic_blocks.get(&func.entry_block) {
         let asm_label = func_ctx.get_block_label(&func.entry_block)?;
         writeln!(writer, "{}:", asm_label)?;
-        generate_basic_block(entry_block, writer, state, &func_ctx, func_name)?;
+        generate_basic_block(entry_block, writer, state, &mut func_ctx, func_name)?;
     }
 
     // Process the remaining blocks (sorted for deterministic order)
@@ -342,7 +342,7 @@ pub fn generate_function<'a, W: Write>(
             let block = &func.basic_blocks[ir_label];
             let asm_label = func_ctx.get_block_label(ir_label)?;
             writeln!(writer, "{}:", asm_label)?;
-            generate_basic_block(block, writer, state, &func_ctx, func_name)?;
+            generate_basic_block(block, writer, state, &mut func_ctx, func_name)?;
         }
     }
 
@@ -508,12 +508,9 @@ fn precompute_function_layout<'a>(
         let block = &func.basic_blocks[block_label];
         for instr in &block.instructions {
             let result_info: Option<(&Identifier<'a>, u64)> = match instr {
-                Instruction::Alloc {
-                    result,
-                    allocated_ty,
-                    ..
-                } => {
-                    let (_, s) = get_type_size_directive_and_bytes(allocated_ty)?;
+                Instruction::Alloc { result, .. } => {
+                    // Alloc always results in a pointer, regardless of allocated type
+                    let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
                     Some((result, s))
                 }
                 Instruction::Binary { result, ty, .. } | Instruction::Cmp { result, ty, .. } => {
@@ -637,7 +634,7 @@ fn generate_basic_block<'a, W: Write>(
     block: &BasicBlock<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     func_name: Identifier<'a>,
 ) -> Result<()> {
     for instr in &block.instructions {
@@ -722,7 +719,7 @@ fn generate_optimized_basic_block<'a, W: Write>(
     block: &BasicBlock<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     func_name: Identifier<'a>,
     allocation_result: &AllocationResult,
 ) -> Result<()> {
@@ -745,7 +742,7 @@ fn generate_optimized_instruction<'a, W: Write>(
     instr: &Instruction<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     func_name: Identifier<'a>,
     allocation_result: &AllocationResult,
 ) -> Result<()> {
@@ -832,7 +829,7 @@ fn generate_optimized_binary<'a, W: Write>(
     rhs: &Value<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     allocation_result: &AllocationResult,
 ) -> Result<()> {
     use crate::ir::instruction::BinaryOp;
@@ -1055,7 +1052,7 @@ fn generate_optimized_cmp<'a, W: Write>(
     rhs: &Value<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     allocation_result: &AllocationResult,
 ) -> Result<()> {
     use crate::ir::instruction::CmpOp;
@@ -1158,7 +1155,7 @@ fn generate_optimized_load<'a, W: Write>(
     ptr: &Value<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     allocation_result: &AllocationResult,
 ) -> Result<()> {
     use crate::ir::types::Type;
@@ -1219,7 +1216,7 @@ fn generate_optimized_store<'a, W: Write>(
     value: &Value<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     allocation_result: &AllocationResult,
 ) -> Result<()> {
     use crate::ir::types::Type;
