@@ -1,0 +1,8 @@
+# Minimal test
+fn @main() -> i64 {
+  entry:
+    %a = add.i8 10, 20
+    %result = zext.i8.i64 %a
+    print %result
+    ret.i64 0
+}
