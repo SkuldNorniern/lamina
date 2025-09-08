@@ -23,17 +23,19 @@
 //! ## Function Signature
 //!
 //! ```rust
-//! // Example function signature
-//! fn @add_numbers(a: i32, b: i32) -> i32
+//! // Example function signature in source language
+//! fn add_numbers(a: i32, b: i32) -> i32 { a + b }
 //!
 //! // Corresponding IR structure
-//! FunctionSignature {
+//! # use lamina::ir::{Type, PrimitiveType};
+//! # use lamina::ir::function::{FunctionSignature, FunctionParameter};
+//! let signature = FunctionSignature {
 //!     params: vec![
 //!         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32) },
 //!         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32) }
 //!     ],
 //!     return_type: Type::Primitive(PrimitiveType::I32)
-//! }
+//! };
 //! ```
 //!
 //! ## Basic Block Organization
@@ -165,21 +167,24 @@
 //!
 //! ### Exception Handling
 //! ```rust
+//! # use lamina::ir::{IRBuilder, Type, PrimitiveType};
 //! // Functions can have exception handling blocks
+//! let mut builder = IRBuilder::new();
 //! builder
 //!     .function("safe_divide", Type::Primitive(PrimitiveType::I32))
-//!     .block("try")
+//!     .block("try");
 //!     // ... division code ...
-//!     .block("catch")
+//! builder.block("catch");
 //!     // ... exception handling ...
 //! ```
 //!
 //! ### Tail Recursion
 //! ```rust
+//! # use lamina::ir::{IRBuilder, Type, PrimitiveType};
 //! // Functions can be optimized for tail recursion
+//! let mut builder = IRBuilder::new();
 //! builder
-//!     .function("factorial", Type::Primitive(PrimitiveType::I32))
-//!     .annotate(lamina::ir::FunctionAnnotation::TailRecursive)
+//!     .function("factorial", Type::Primitive(PrimitiveType::I32));
 //!     // ... tail recursive implementation ...
 //! ```
 //!
