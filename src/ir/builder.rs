@@ -816,11 +816,13 @@ impl<'a> IRBuilder<'a> {
         result: &'a str,
         array_ptr: Value<'a>,
         index: Value<'a>,
+        element_type: PrimitiveType,
     ) -> &mut Self {
         self.inst(Instruction::GetElemPtr {
             result,
             array_ptr,
             index,
+            element_type,
         })
     }
 

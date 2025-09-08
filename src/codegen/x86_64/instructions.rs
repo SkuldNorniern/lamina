@@ -1111,36 +1111,54 @@ pub fn generate_instruction<'a, W: Write>(
             result,
             array_ptr,
             index,
+            element_type,
         } => {
-            // CRITICAL BUG: Element size should be determined from array type information
-            // Currently hardcoded to 8 bytes (64-bit), which will cause incorrect address
-            // calculations for arrays with different element sizes (e.g., i32 arrays)
+            // ========================================================================
+            // POINTER ARITHMETIC LIMITATIONS & ISSUES
+            // ========================================================================
+            //
+            // PROBLEM 1: Missing Type Information
+            // ==================================
+            // The current IR does not carry element type information for arrays.
+            // GetElemPtr operations cannot determine the correct element size without
+            // this information, leading to incorrect address calculations.
+            //
+            // PROBLEM 2: No ptrtoint/inttoptr Operations
+            // ==========================================
+            // Lamina lacks ptrtoint (pointer to integer) and inttoptr (integer to pointer)
+            // operations. This prevents direct pointer arithmetic and forces all pointer
+            // operations to go through getelementptr, which is inefficient and limiting.
+            //
+            // PROBLEM 3: Brittle Element Size Detection
+            // ========================================
+            // Current workaround infers element size from variable names, which is:
+            // - Error-prone (variable naming conventions may not be followed)
+            // - Incomplete (doesn't handle all possible type combinations)
+            // - Not type-safe (no compile-time verification)
+            //
+            // IMPACT:
+            // ======
+            // - Brainfuck-style pointer movement (>, <) cannot be implemented efficiently
+            // - Multi-cell operations require workarounds
+            // - Type safety is compromised
+            // - Performance is suboptimal
+            //
+            // ========================================================================
+
             let array_ptr_op = get_value_operand_asm(array_ptr, state, func_ctx)?;
             let index_op = get_value_operand_asm(index, state, func_ctx)?;
             let dest_op = func_ctx.get_value_location(result)?;
             let dest_asm = dest_op.to_operand_string();
 
-            // TODO: GetElemPtr should carry element type information from the IR
-            // For now, we try to infer element size from context
-            let element_size: i64 = if let Value::Variable(var_name) = array_ptr {
-                // Try to infer element size from variable name patterns
-                if var_name.contains("_i8") || var_name.contains("i8_") {
-                    1 // i8 elements
-                } else if var_name.contains("_i16") || var_name.contains("i16_") {
-                    2 // i16 elements
-                } else if var_name.contains("_i32") || var_name.contains("i32_") {
-                    4 // i32 elements
-                } else if var_name.contains("_u8") || var_name.contains("u8_") {
-                    1 // u8 elements
-                } else if var_name.contains("_u16") || var_name.contains("u16_") {
-                    2 // u16 elements
-                } else if var_name.contains("_u32") || var_name.contains("u32_") {
-                    4 // u32 elements
-                } else {
-                    8 // Default to i64/u64 elements
-                }
-            } else {
-                8 // Default fallback for non-variable pointers
+            // FIXED: Use proper type information from IR
+            // Element size is now determined from the element_type field in the instruction
+            let element_size: i64 = match element_type {
+                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
+                PrimitiveType::I16 | PrimitiveType::U16 => 2,
+                PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+                // Char is typically 32-bit Unicode in modern systems
+                PrimitiveType::Char => 4,
             };
 
             writeln!(writer, "        movq {}, %rax # GEP Base Ptr", array_ptr_op)?;
