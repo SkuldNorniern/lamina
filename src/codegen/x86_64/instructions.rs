@@ -139,10 +139,14 @@ pub fn generate_instruction<'a, W: Write>(
                     Type::Array { element_type, size } => {
                         // For arrays, we need to calculate element size * array size
                         let element_size = match &**element_type {
-                            Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
-                            Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
-                            Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
-                            Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) => 8,
+                            Type::Primitive(PrimitiveType::I8)
+                            | Type::Primitive(PrimitiveType::U8) => 1,
+                            Type::Primitive(PrimitiveType::I16)
+                            | Type::Primitive(PrimitiveType::U16) => 2,
+                            Type::Primitive(PrimitiveType::I32)
+                            | Type::Primitive(PrimitiveType::U32) => 4,
+                            Type::Primitive(PrimitiveType::I64)
+                            | Type::Primitive(PrimitiveType::U64) => 8,
                             Type::Primitive(PrimitiveType::F32) => 4,
                             Type::Primitive(PrimitiveType::F64) => 8,
                             Type::Primitive(PrimitiveType::Bool) => 1,
@@ -242,10 +246,14 @@ pub fn generate_instruction<'a, W: Write>(
                     Type::Array { element_type, size } => {
                         // For arrays, we need to calculate element size * array size
                         let element_size = match &**element_type {
-                            Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
-                            Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
-                            Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
-                            Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) => 8,
+                            Type::Primitive(PrimitiveType::I8)
+                            | Type::Primitive(PrimitiveType::U8) => 1,
+                            Type::Primitive(PrimitiveType::I16)
+                            | Type::Primitive(PrimitiveType::U16) => 2,
+                            Type::Primitive(PrimitiveType::I32)
+                            | Type::Primitive(PrimitiveType::U32) => 4,
+                            Type::Primitive(PrimitiveType::I64)
+                            | Type::Primitive(PrimitiveType::U64) => 8,
                             Type::Primitive(PrimitiveType::F32) => 4,
                             Type::Primitive(PrimitiveType::F64) => 8,
                             Type::Primitive(PrimitiveType::Bool) => 1,
@@ -385,7 +393,10 @@ pub fn generate_instruction<'a, W: Write>(
                         // Load LHS, add immediate, store result
                         // Use the appropriate register size based on the operation type
                         let reg_name = match ty {
-                            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => "%al", // 8-bit register
+                            PrimitiveType::I8
+                            | PrimitiveType::U8
+                            | PrimitiveType::Char
+                            | PrimitiveType::Bool => "%al", // 8-bit register
                             PrimitiveType::I16 | PrimitiveType::U16 => "%ax", // 16-bit register
                             PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register
                             _ => "%rax", // 64-bit register for other ops
@@ -450,7 +461,10 @@ pub fn generate_instruction<'a, W: Write>(
                         // Load RHS, add immediate, store result
                         // Use the appropriate register size based on the operation type
                         let reg_name = match ty {
-                            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => "%al", // 8-bit register
+                            PrimitiveType::I8
+                            | PrimitiveType::U8
+                            | PrimitiveType::Char
+                            | PrimitiveType::Bool => "%al", // 8-bit register
                             PrimitiveType::I16 | PrimitiveType::U16 => "%ax", // 16-bit register
                             PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register
                             _ => "%rax", // 64-bit register for other ops
@@ -509,7 +523,10 @@ pub fn generate_instruction<'a, W: Write>(
                     let shift_amount = rhs_val.trailing_zeros();
                     // Use the appropriate register size based on the operation type
                     let reg_name = match ty {
-                        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => "%al", // 8-bit register for 8-bit ops
+                        PrimitiveType::I8
+                        | PrimitiveType::U8
+                        | PrimitiveType::Char
+                        | PrimitiveType::Bool => "%al", // 8-bit register for 8-bit ops
                         PrimitiveType::I16 | PrimitiveType::U16 => "%ax", // 16-bit register for 16-bit ops
                         PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register for 32-bit ops
                         _ => "%rax", // 64-bit register for other ops
@@ -538,10 +555,10 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Use correct registers based on size suffix
             let (lhs_reg, rhs_reg) = match size_suffix {
-                "b" => ("%al", "%r10b"),     // 8-bit registers
-                "w" => ("%ax", "%r10w"),     // 16-bit registers
-                "d" => ("%eax", "%r10d"),    // 32-bit registers
-                _ => ("%rax", "%r10"),       // 64-bit registers (default)
+                "b" => ("%al", "%r10b"),  // 8-bit registers
+                "w" => ("%ax", "%r10w"),  // 16-bit registers
+                "d" => ("%eax", "%r10d"), // 32-bit registers
+                _ => ("%rax", "%r10"),    // 64-bit registers (default)
             };
 
             // Load operands into registers
@@ -579,14 +596,13 @@ pub fn generate_instruction<'a, W: Write>(
                                 writeln!(writer, "        cbw # Sign extend %al to %ax")?;
                             } else {
                                 // Zero extend by moving to ax
-                                writeln!(writer, "        movzbw %al, %ax # Zero extend %al to %ax")?;
+                                writeln!(
+                                    writer,
+                                    "        movzbw %al, %ax # Zero extend %al to %ax"
+                                )?;
                             }
                             // Divide ax by rhs_reg (8-bit)
-                            writeln!(
-                                writer,
-                                "        idivb {} # Signed 8-bit division",
-                                rhs_reg
-                            )?;
+                            writeln!(writer, "        idivb {} # Signed 8-bit division", rhs_reg)?;
                             // Result is in %al, store it
                             writeln!(
                                 writer,
@@ -601,15 +617,14 @@ pub fn generate_instruction<'a, W: Write>(
                                 writeln!(writer, "        cwd # Sign extend %ax to %dx:%ax")?;
                             } else {
                                 // Zero extend by moving to dx:ax
-                                writeln!(writer, "        movzwl %ax, %eax # Zero extend %ax to %eax")?;
+                                writeln!(
+                                    writer,
+                                    "        movzwl %ax, %eax # Zero extend %ax to %eax"
+                                )?;
                                 writeln!(writer, "        cdq # Sign extend %eax to %edx:%eax")?;
                             }
                             // Divide dx:ax by rhs_reg (16-bit)
-                            writeln!(
-                                writer,
-                                "        idivw {} # Signed 16-bit division",
-                                rhs_reg
-                            )?;
+                            writeln!(writer, "        idivw {} # Signed 16-bit division", rhs_reg)?;
                             // Result is in %ax, store it
                             writeln!(
                                 writer,
@@ -637,7 +652,10 @@ pub fn generate_instruction<'a, W: Write>(
             };
             // Store result from lhs_reg (need to use correct mov instruction for smaller types)
             match ty {
-                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => {
+                PrimitiveType::I8
+                | PrimitiveType::U8
+                | PrimitiveType::Char
+                | PrimitiveType::Bool => {
                     writeln!(
                         writer,
                         "        movb {}, {} # Store 8-bit Binary/Div Result",
@@ -1093,11 +1111,22 @@ pub fn generate_instruction<'a, W: Write>(
             // Check if index is a stack reference (needs dereferencing) or direct value
             if index_op.contains("(%rbp)") {
                 // Index is a pointer to the value - dereference it
-                writeln!(writer, "        movq {}, %r11 # Load pointer to index", index_op)?;
-                writeln!(writer, "        movslq (%r11), %r10 # Load index value with sign extension")?;
+                writeln!(
+                    writer,
+                    "        movq {}, %r11 # Load pointer to index",
+                    index_op
+                )?;
+                writeln!(
+                    writer,
+                    "        movslq (%r11), %r10 # Load index value with sign extension"
+                )?;
             } else {
                 // Index is a direct value
-                writeln!(writer, "        movq {}, %r10 # GEP Index (direct value)", index_op)?;
+                writeln!(
+                    writer,
+                    "        movq {}, %r10 # GEP Index (direct value)",
+                    index_op
+                )?;
             }
 
             writeln!(
