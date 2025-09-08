@@ -318,7 +318,7 @@ pub fn detect_host_architecture() -> &'static str {
         }
         #[cfg(target_os = "linux")]
         {
-            return "x86_64_linux";
+            "x86_64_linux"
         }
         #[cfg(target_os = "windows")]
         {
