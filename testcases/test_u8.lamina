@@ -1,0 +1,14 @@
+# Test u8 usage
+fn @test_u8() -> i64 {
+  entry:
+    %ptr = alloc.stack u8
+    %result = add.i64 0, 42
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %result = call @test_u8()
+    print %result
+    ret.i64 0
+}

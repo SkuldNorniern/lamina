@@ -61,6 +61,15 @@ TEST_CASES = {
      'io_pointer.lamina': ['42'],   # Pointer dereference I/O
      'io_comprehensive.lamina': ['Hi!', '12345', 'DONE', '12445'],  # Combined I/O operations
      'io_writeptr.lamina': ['OK'],  # WritePtr I/O - writes binary address + OK message
+
+     # Comprehensive Type Tests
+     'primitive_types_simple.lamina': ['60', '60', '16', '16', '32', '32', '2000000', '64', '1', '67', '32', '64'],  # All primitive types (simplified)
+     'primitive_types_comprehensive.lamina': ['8', '8', '16', '16', '32', '32', '64', '64', '1', '67', '32', '64'],  # All primitive types
+     'pointer_operations_comprehensive.lamina': ['52', '250', '3000', '25000', '300000', '1500000000', '10000000000', '5000000000', '0', '66', '6', '5', '42'],  # Pointer operations
+     'array_operations_comprehensive.lamina': ['60', '250', '2000', '50000', '300000', '600000', '10000000000', '1', '3', '72', '8', '6', '6'],  # Array operations
+     'struct_operations_comprehensive.lamina': ['500', '14', '149', '12345', '217', '2', '15', '55'],  # Struct operations
+     'tuple_operations_comprehensive.lamina': ['150', '550', '50', '134', '137', '21', '42', '300'],  # Tuple operations
+     'type_conversions_comprehensive.lamina': ['1100', '2200', '30500', '50500', '100500', '2000050000', '5000005000', '10000000000', '16', '65', '11'],  # Type conversions
 }
 
 class Colors:
