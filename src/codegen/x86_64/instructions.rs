@@ -482,6 +482,8 @@ pub fn generate_instruction<'a, W: Write>(
                     let shift_amount = rhs_val.trailing_zeros();
                     // Use the appropriate register size based on the operation type
                     let reg_name = match ty {
+                        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => "%al", // 8-bit register for 8-bit ops
+                        PrimitiveType::I16 | PrimitiveType::U16 => "%ax", // 16-bit register for 16-bit ops
                         PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register for 32-bit ops
                         _ => "%rax", // 64-bit register for other ops
                     };
@@ -508,8 +510,12 @@ pub fn generate_instruction<'a, W: Write>(
             // Regular path for operations not handled by special cases
 
             // Use correct registers based on size suffix
-            let lhs_reg = if size_suffix == "d" { "%eax" } else { "%rax" };
-            let rhs_reg = if size_suffix == "d" { "%r10d" } else { "%r10" };
+            let (lhs_reg, rhs_reg) = match size_suffix {
+                "b" => ("%al", "%r10b"),     // 8-bit registers
+                "w" => ("%ax", "%r10w"),     // 16-bit registers
+                "d" => ("%eax", "%r10d"),    // 32-bit registers
+                _ => ("%rax", "%r10"),       // 64-bit registers (default)
+            };
 
             // Load operands into registers
             writeln!(
