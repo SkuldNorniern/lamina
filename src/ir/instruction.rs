@@ -213,6 +213,7 @@ pub enum Instruction<'a> {
         result: Identifier<'a>, // Result is always ptr
         array_ptr: Value<'a>,   // Must be a ptr to an array or named array type
         index: Value<'a>,       // Must be an integer type
+        element_type: PrimitiveType, // Type of elements in the array (for proper sizing)
     },
     Tuple {
         // Create a tuple
@@ -376,7 +377,8 @@ impl fmt::Display for Instruction<'_> {
                 result,
                 array_ptr,
                 index,
-            } => write!(f, "%{} = getelem.ptr {}, {}", result, array_ptr, index),
+                element_type,
+            } => write!(f, "%{} = getelem.ptr {}, {}, {}", result, array_ptr, index, element_type),
             Instruction::Tuple { result, elements } => {
                 write!(f, "%{} = tuple", result)?;
                 for elem in elements {

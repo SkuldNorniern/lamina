@@ -1049,10 +1049,10 @@ fn parse_getelem<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>> {
-    // Format should be: getelem.ptr array_ptr, index
+    // Format should be: getelem.ptr array_ptr, index, element_type
     // Support both formats:
-    // 1. getelem.ptr array_ptr, index
-    // 2. getelementptr array_ptr, index (without the dot)
+    // 1. getelem.ptr array_ptr, index, element_type
+    // 2. getelementptr array_ptr, index, element_type (without the dot)
 
     // Check if we have a dot
     let _current_pos = state.position; // Prefixed with _
@@ -1066,10 +1066,38 @@ fn parse_getelem<'a>(
     let array_ptr = parse_value(state)?;
     state.expect_char(',')?;
     let index = parse_value(state)?; // Index can be variable or constant
+    state.expect_char(',')?;
+    // Parse element type - try with dot first, then without
+    let element_type = if state.current_char() == Some('.') {
+        parse_primitive_type_suffix(state)?
+    } else {
+        let type_str = state.parse_identifier_str()?;
+        match type_str {
+            "i8" => PrimitiveType::I8,
+            "i16" => PrimitiveType::I16,
+            "i32" => PrimitiveType::I32,
+            "i64" => PrimitiveType::I64,
+            "u8" => PrimitiveType::U8,
+            "u16" => PrimitiveType::U16,
+            "u32" => PrimitiveType::U32,
+            "u64" => PrimitiveType::U64,
+            "f32" => PrimitiveType::F32,
+            "f64" => PrimitiveType::F64,
+            "bool" => PrimitiveType::Bool,
+            "char" => PrimitiveType::Char,
+            "ptr" => PrimitiveType::Ptr,
+            _ => return Err(state.error(format!(
+                "Expected primitive type, found '{}'",
+                type_str
+            ))),
+        }
+    };
+
     Ok(Instruction::GetElemPtr {
         result,
         array_ptr,
         index,
+        element_type,
     })
 }
 
