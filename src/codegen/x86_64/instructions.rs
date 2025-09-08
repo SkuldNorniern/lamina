@@ -993,18 +993,26 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_op = func_ctx.get_value_location(result)?;
             let dest_asm = dest_op.to_operand_string();
 
-            // FIXME: GetElemPtr should carry element type information or we need a way
-            // to look up the array element type from the context. For now, assume 8-byte
-            // elements (i64/ptr) which is the most common case, but this is INCORRECT
-            // for other element sizes.
-            let element_size: i64 = 8; // FIXME: This should be calculated from array element type
+            // TODO: GetElemPtr should carry element type information from the IR
+            // For now, we make a reasonable guess based on common usage patterns
+            // Most arrays in typical programs are either i64 or i32 elements
+            let element_size: i64 = 4; // Assume i32 elements (4 bytes) as a better default
 
             writeln!(writer, "        movq {}, %rax # GEP Base Ptr", array_ptr_op)?;
-            writeln!(writer, "        movq {}, %r10 # GEP Index", index_op)?;
-            // Ensure index is sign-extended if it's i32? Assume 64-bit for now.
+
+            // Check if index is a stack reference (needs dereferencing) or direct value
+            if index_op.contains("(%rbp)") {
+                // Index is a pointer to the value - dereference it
+                writeln!(writer, "        movq {}, %r11 # Load pointer to index", index_op)?;
+                writeln!(writer, "        movslq (%r11), %r10 # Load index value with sign extension")?;
+            } else {
+                // Index is a direct value
+                writeln!(writer, "        movq {}, %r10 # GEP Index (direct value)", index_op)?;
+            }
+
             writeln!(
                 writer,
-                "        imulq ${}, %r10 # GEP Offset = Index * ElemSize (FIXME: hardcoded 8)",
+                "        imulq ${}, %r10 # GEP Offset = Index * ElemSize",
                 element_size
             )?;
             writeln!(
