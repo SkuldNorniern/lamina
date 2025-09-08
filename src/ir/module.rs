@@ -2,37 +2,131 @@
 //!
 //! This module defines the top-level structures for representing complete
 //! Lamina IR modules. A module is the highest level of organization and
-//! contains all functions, types, and global variables.
+//! contains all functions, types, and global variables that make up a program.
 //!
 //! ## Module Structure
 //!
 //! A module consists of:
-//! - **Functions**: All function definitions in the module
-//! - **Type Declarations**: Named type definitions and aliases
-//! - **Global Variables**: Module-level data and constants
+//! - **Functions**: All function definitions in the module (the executable code)
+//! - **Type Declarations**: Named type definitions and aliases for code reuse
+//! - **Global Variables**: Module-level data that persists for the lifetime of the program
+//! - **Metadata**: Additional information about the module (version, dependencies, etc.)
 //!
 //! ## Module Organization
 //!
-//! - **Functions**: The main code of the module, organized by name
-//! - **Types**: User-defined types that can be referenced by functions
-//! - **Globals**: Module-level data that persists for the lifetime of the program
+//! ### Functions (`HashMap<&str, Function>`)
+//! The main code of the module, organized by name for fast lookup:
+//! - **Entry Points**: Functions that can be called from outside the module
+//! - **Internal Functions**: Helper functions used within the module
+//! - **Exported Functions**: Functions marked with `@export` for external use
+//!
+//! ### Types (`HashMap<&str, TypeDeclaration>`)
+//! User-defined types that can be referenced by functions:
+//! - **Struct Types**: Custom data structures with named fields
+//! - **Array Types**: Fixed-size sequences of elements
+//! - **Alias Types**: Shorter names for complex type expressions
+//!
+//! ### Globals (`HashMap<&str, GlobalDeclaration>`)
+//! Module-level data that persists for the lifetime of the program:
+//! - **Constants**: Immutable values known at compile time
+//! - **Static Data**: Mutable data with module lifetime
+//! - **External References**: References to data in other modules
+//!
+//! ## Module Lifecycle
+//!
+//! ### Construction Phase
+//! ```rust
+//! use lamina::ir::IRBuilder;
+//!
+//! let mut builder = IRBuilder::new();
+//! builder
+//!     .function("main", lamina::ir::Type::Void)
+//!     // ... add instructions
+//!     .ret_void();
+//! ```
+//!
+//! ### Build Phase
+//! ```rust
+//! let module = builder.build(); // Convert to Module struct
+//! ```
+//!
+//! ### Code Generation Phase
+//! ```rust
+//! use lamina::compile_lamina_ir_to_assembly;
+//! use std::io::Write;
+//!
+//! let mut assembly = Vec::new();
+//! compile_lamina_ir_to_assembly(ir_source, &mut assembly)?;
+//! ```
+//!
+//! ## Module Validation
+//!
+//! Modules are validated to ensure:
+//! - **Function Signatures**: All referenced functions exist and have compatible signatures
+//! - **Type Consistency**: All type references are valid and properly defined
+//! - **Global References**: All global variables are properly declared
+//! - **SSA Form**: All variables follow Single Static Assignment rules
+//! - **Control Flow**: All basic blocks have valid terminators
 //!
 //! ## Examples
 //!
+//! ### Simple Module
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-//! use lamina::ir::builder::{var, i32, string};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType};
+//! use lamina::ir::builder::{i32, string};
 //!
 //! let mut builder = IRBuilder::new();
 //!
-//! // Define a global variable
 //! builder
 //!     .function("main", Type::Void)
-//!     .print(string("Hello, World!"))
+//!     .print(string("Hello from module!"))
 //!     .ret_void();
 //!
 //! let module = builder.build();
-//! // module contains all the functions and types
+//! assert!(module.functions.contains_key("main"));
+//! ```
+//!
+//! ### Module with Custom Types
+//! ```rust
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, StructField};
+//! use lamina::ir::builder::{var, i32};
+//!
+//! let mut builder = IRBuilder::new();
+//!
+//! builder
+//!     .function("use_custom_type", Type::Void)
+//!     // Allocate a struct with two i32 fields
+//!     .alloc_stack("point", Type::Struct(vec![
+//!         StructField { name: "x", ty: Type::Primitive(PrimitiveType::I32) },
+//!         StructField { name: "y", ty: Type::Primitive(PrimitiveType::I32) }
+//!     ]))
+//!     // Use the allocated struct
+//!     .ret_void();
+//!
+//! let module = builder.build();
+//! ```
+//!
+//! ### Multi-Function Module
+//! ```rust
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina::ir::builder::{var, i32};
+//!
+//! let mut builder = IRBuilder::new();
+//!
+//! // Helper function
+//! builder
+//!     .function("double", Type::Primitive(PrimitiveType::I32))
+//!     .binary(BinaryOp::Mul, "result", PrimitiveType::I32, var("value"), i32(2))
+//!     .ret(Type::Primitive(PrimitiveType::I32), var("result"));
+//!
+//! // Main function
+//! builder
+//!     .function("main", Type::Void)
+//!     .call(Some("result"), "double", vec![i32(21)])
+//!     .print(var("result")) // Should print 42
+//!     .ret_void();
+//!
+//! let module = builder.build();
 //! ```
 
 use std::collections::HashMap; // Using HashMap for functions and types
