@@ -620,73 +620,48 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        add sp, sp, #16")?;
         }
 
-        Instruction::WritePtr { ptr, value, ty, result } => {
-            // Write value through pointer dereference
+        Instruction::WritePtr { ptr, result } => {
+            // Write pointer address to stdout (I/O operation)
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
-            let value_op = get_value_operand_asm(value, state, func_ctx)?;
 
-            // Load the pointer value
-            materialize_to_reg(writer, &ptr_op, "x9")?;
+            // Materialize the pointer address into x1 (buffer for write syscall)
+            materialize_to_reg(writer, &ptr_op, "x1")?;
 
-            // Store the value at the pointer location
-            match ty {
-                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
-                    materialize_to_reg(writer, &value_op, "x10")?;
-                    writeln!(writer, "        strb w10, [x9]")?;
-                }
-                Type::Primitive(PrimitiveType::I32) => {
-                    materialize_to_reg(writer, &value_op, "x10")?;
-                    writeln!(writer, "        str w10, [x9]")?;
-                }
-                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
-                    materialize_to_reg(writer, &value_op, "x10")?;
-                    writeln!(writer, "        str x10, [x9]")?;
-                }
-                _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
-                    ));
-                }
-            }
+            // Prepare write syscall arguments
+            writeln!(writer, "        mov x0, #1")?; // stdout fd
+            writeln!(writer, "        mov x2, #8")?; // 8 bytes (64-bit pointer)
+            writeln!(writer, "        mov x16, #4")?; // write syscall number
+            writeln!(writer, "        svc #0x80")?;  // Make syscall
 
-            // Return success (1)
+            // Store result (bytes written or error)
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             if dest.starts_with('x') {
-                writeln!(writer, "        mov {}, #1", dest)?;
+                writeln!(writer, "        mov {}, x0", dest)?;
             } else {
                 materialize_address_operand(writer, &dest, "x9")?;
-                writeln!(writer, "        mov x10, #1")?;
-                writeln!(writer, "        str x10, [x9]")?;
+                writeln!(writer, "        str x0, [x9]")?;
             }
         }
 
-        Instruction::ReadPtr { result, ptr, ty } => {
-            // Read value through pointer dereference
-            let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
+        Instruction::ReadPtr { result } => {
+            // Read pointer address from stdin (I/O operation)
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
 
-            // Load the pointer value
-            materialize_to_reg(writer, &ptr_op, "x9")?;
+            // Prepare read syscall arguments
+            writeln!(writer, "        mov x0, #0")?; // stdin fd
+            writeln!(writer, "        mov x2, #8")?; // 8 bytes (64-bit pointer)
+            writeln!(writer, "        mov x16, #3")?; // read syscall number
+            writeln!(writer, "        svc #0x80")?;  // Make syscall
 
-            // Load the value from the pointer location
-            match ty {
-                Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
-                    writeln!(writer, "        ldrb w10, [x9]")?;
-                    store_to_location(writer, "w10", &dest)?;
-                }
-                Type::Primitive(PrimitiveType::I32) => {
-                    writeln!(writer, "        ldr w10, [x9]")?;
-                    store_to_location(writer, "w10", &dest)?;
-                }
-                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => {
-                    writeln!(writer, "        ldr x10, [x9]")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
-                _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())),
-                    ));
-                }
+            // Store result (bytes read or error) - but we want the actual pointer value
+            // For ReadPtr, we want to return the pointer address that was read, not bytes read
+            if dest.starts_with('x') {
+                // Result is in a register - move the read value to result register
+                writeln!(writer, "        mov {}, x0", dest)?;
+            } else {
+                // Result is on stack - store the read value to stack location
+                materialize_address_operand(writer, &dest, "x9")?;
+                writeln!(writer, "        str x0, [x9]")?;
             }
         }
 
