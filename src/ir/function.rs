@@ -1,35 +1,134 @@
 //! # Function Representation
 //!
 //! This module defines the structures for representing functions in the Lamina IR.
-//! Functions are the primary unit of code organization and contain basic blocks,
-//! which in turn contain instructions.
+//! Functions are the primary unit of code organization and execution, containing
+//! basic blocks which hold the actual instructions.
 //!
 //! ## Key Concepts
 //!
 //! - **Functions**: Complete function definitions with signatures and implementations
 //! - **Basic Blocks**: Linear sequences of instructions ending with a terminator
 //! - **Function Signatures**: Parameter types and return types
-//! - **Annotations**: Metadata that affects function behavior
+//! - **Annotations**: Metadata that affects function behavior and optimization
+//! - **SSA Variables**: Single Static Assignment form for all variables
 //!
 //! ## Function Structure
 //!
 //! A function consists of:
-//! 1. **Signature**: Parameters and return type
-//! 2. **Basic Blocks**: The actual implementation
-//! 3. **Entry Block**: The first block to execute
-//! 4. **Annotations**: Metadata like `@inline`, `@export`
+//! 1. **Signature** (`FunctionSignature`): Parameters and return type
+//! 2. **Basic Blocks** (`HashMap<&str, BasicBlock>`): The actual implementation
+//! 3. **Entry Block** (`&str`): The first block to execute when called
+//! 4. **Annotations** (`Vec<FunctionAnnotation>`): Metadata like `@inline`, `@export`
 //!
-//! ## Basic Block Rules
+//! ## Function Signature
 //!
-//! - Each basic block must end with a **terminator instruction**:
-//!   - `Br` (conditional branch)
-//!   - `Jmp` (unconditional jump)
-//!   - `Ret` (return)
+//! ```rust
+//! // Example function signature
+//! fn @add_numbers(a: i32, b: i32) -> i32
+//!
+//! // Corresponding IR structure
+//! FunctionSignature {
+//!     params: vec![
+//!         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32) },
+//!         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32) }
+//!     ],
+//!     return_type: Type::Primitive(PrimitiveType::I32)
+//! }
+//! ```
+//!
+//! ## Basic Block Organization
+//!
+//! ### Block Structure
+//! ```text
+//! block_name:
+//!     instruction1
+//!     instruction2
+//!     ...
+//!     terminator_instruction
+//! ```
+//!
+//! ### Terminator Instructions
+//! Each basic block must end with a **terminator instruction**:
+//! - `Br` (conditional branch): `br %condition, "true_block", "false_block"`
+//! - `Jmp` (unconditional jump): `jmp "target_block"`
+//! - `Ret` (return): `ret.i32 %value` or `ret.void`
+//!
+//! ### Control Flow Rules
 //! - Instructions within a block execute sequentially
 //! - Control flow only changes at block boundaries
+//! - No jumps into the middle of blocks
+//! - All paths must eventually reach a terminator
 //!
-//! ## Example
+//! ## Function Annotations
 //!
+//! ### Built-in Annotations
+//! - **`@inline`**: Suggest the function should be inlined
+//! - **`@export`**: Make the function visible to other modules
+//! - **`@internal`**: Function is only used within this module
+//! - **`@noreturn`**: Function never returns (e.g., exits the program)
+//!
+//! ### Custom Annotations
+//! Functions can have custom annotations for:
+//! - **Optimization hints**: `@optimize_speed`, `@optimize_size`
+//! - **Debugging**: `@debug_info`, `@trace_calls`
+//! - **Security**: `@trusted`, `@untrusted`
+//! - **Platform-specific**: `@windows_only`, `@linux_only`
+//!
+//! ## Variable Management (SSA Form)
+//!
+//! ### Single Static Assignment
+//! - Each variable is assigned exactly **once** in its lifetime
+//! - Variables are immutable after assignment
+//! - Enables powerful optimizations and analysis
+//!
+//! ### Variable Naming Convention
+//! ```text
+//! %result      # Standard variable
+//! %temp_1      # Temporary variable
+//! %cond        # Condition variable
+//! %ptr         # Pointer variable
+//! ```
+//!
+//! ### Variable Scoping
+//! - Variables are scoped to their function
+//! - Variables from different blocks can be merged using `phi` nodes
+//! - No global variable shadowing within functions
+//!
+//! ## Function Creation Patterns
+//!
+//! ### Simple Function (No Parameters)
+//! ```rust
+//! use lamina::ir::{IRBuilder, Type};
+//!
+//! let mut builder = IRBuilder::new();
+//! builder
+//!     .function("hello", Type::Void)
+//!     .print(lamina::ir::builder::string("Hello, World!"))
+//!     .ret_void();
+//! ```
+//!
+//! ### Function with Parameters
+//! ```rust
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina::ir::builder::{var, i32};
+//!
+//! let mut builder = IRBuilder::new();
+//! builder
+//!     .function_with_params("add", vec![
+//!         lamina::ir::FunctionParameter {
+//!             name: "a",
+//!             ty: Type::Primitive(PrimitiveType::I32)
+//!         },
+//!         lamina::ir::FunctionParameter {
+//!             name: "b",
+//!             ty: Type::Primitive(PrimitiveType::I32)
+//!         }
+//!     ], Type::Primitive(PrimitiveType::I32))
+//!     .binary(BinaryOp::Add, "result", PrimitiveType::I32, var("a"), var("b"))
+//!     .ret(Type::Primitive(PrimitiveType::I32), var("result"));
+//! ```
+//!
+//! ### Function with Control Flow
 //! ```rust
 //! use lamina::ir::{IRBuilder, Type, PrimitiveType, CmpOp};
 //! use lamina::ir::builder::{var, i32};
@@ -43,6 +142,73 @@
 //!     .ret(Type::Primitive(PrimitiveType::I32), var("a"))
 //!     .block("return_b")
 //!     .ret(Type::Primitive(PrimitiveType::I32), var("b"));
+//! ```
+//!
+//! ## Function Calling Convention
+//!
+//! ### Parameter Passing
+//! - Parameters are passed by value
+//! - Complex types (structs, arrays) are passed by reference
+//! - Variable argument functions are supported
+//!
+//! ### Return Value Handling
+//! - Simple types returned in registers
+//! - Complex types returned via implicit reference parameter
+//! - Void functions have no return value
+//!
+//! ### Stack Frame Management
+//! - Functions automatically manage their stack frames
+//! - Local variables allocated on stack
+//! - Stack frame cleaned up on function return
+//!
+//! ## Advanced Features
+//!
+//! ### Exception Handling
+//! ```rust
+//! // Functions can have exception handling blocks
+//! builder
+//!     .function("safe_divide", Type::Primitive(PrimitiveType::I32))
+//!     .block("try")
+//!     // ... division code ...
+//!     .block("catch")
+//!     // ... exception handling ...
+//! ```
+//!
+//! ### Tail Recursion
+//! ```rust
+//! // Functions can be optimized for tail recursion
+//! builder
+//!     .function("factorial", Type::Primitive(PrimitiveType::I32))
+//!     .annotate(lamina::ir::FunctionAnnotation::TailRecursive)
+//!     // ... tail recursive implementation ...
+//! ```
+//!
+//! ## Examples
+//!
+//! ### Complete Function Example
+//! ```rust
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, CmpOp, BinaryOp};
+//! use lamina::ir::builder::{var, i32};
+//!
+//! let mut builder = IRBuilder::new();
+//!
+//! builder
+//!     .function_with_params("absolute_value", vec![
+//!         lamina::ir::FunctionParameter {
+//!             name: "x",
+//!             ty: Type::Primitive(PrimitiveType::I32)
+//!         }
+//!     ], Type::Primitive(PrimitiveType::I32))
+//!     .annotate(lamina::ir::FunctionAnnotation::Inline)
+//!     .cmp(CmpOp::Lt, "is_negative", PrimitiveType::I32, var("x"), i32(0))
+//!     .branch(var("is_negative"), "negate", "return_x")
+//!     .block("negate")
+//!     .binary(BinaryOp::Sub, "result", PrimitiveType::I32, i32(0), var("x"))
+//!     .ret(Type::Primitive(PrimitiveType::I32), var("result"))
+//!     .block("return_x")
+//!     .ret(Type::Primitive(PrimitiveType::I32), var("x"));
+//!
+//! let module = builder.build();
 //! ```
 
 use std::collections::HashMap; // Using HashMap for basic blocks

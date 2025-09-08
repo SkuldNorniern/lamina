@@ -125,6 +125,99 @@
 //!     .ret_void();
 //! ```
 //!
+//! ### Complete Builder Example: Memory Workflow
+//!
+//! ```rust
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina::ir::builder::{var, i32};
+//!
+//! // Create a new IR builder
+//! let mut builder = IRBuilder::new();
+//!
+//! // Define a function that demonstrates memory operations
+//! builder
+//!     .function_with_params("memory_workflow", vec![
+//!         lamina::ir::FunctionParameter {
+//!             name: "input",
+//!             ty: Type::Primitive(PrimitiveType::I32)
+//!         }
+//!     ], Type::Primitive(PrimitiveType::I32))
+//!
+//!     // Step 1: Allocate memory on stack
+//!     .alloc_stack("buffer", Type::Primitive(PrimitiveType::I32))
+//!
+//!     // Step 2: Store the input value in our buffer
+//!     .store(Type::Primitive(PrimitiveType::I32), var("buffer"), var("input"))
+//!
+//!     // Step 3: Load the value back from memory
+//!     .load("loaded", Type::Primitive(PrimitiveType::I32), var("buffer"))
+//!
+//!     // Step 4: Perform arithmetic on the loaded value
+//!     .binary(BinaryOp::Add, "result", PrimitiveType::I32, var("loaded"), i32(10))
+//!
+//!     // Step 5: Store the result back to memory
+//!     .store(Type::Primitive(PrimitiveType::I32), var("buffer"), var("result"))
+//!
+//!     // Step 6: Load and return the final value
+//!     .load("final", Type::Primitive(PrimitiveType::I32), var("buffer"))
+//!     .ret(Type::Primitive(PrimitiveType::I32), var("final"));
+//!
+//! // Build the module
+//! let module = builder.build();
+//!
+//! // The module now contains our memory_workflow function
+//! assert!(module.functions.contains_key("memory_workflow"));
+//! ```
+//!
+//! ### Advanced Builder Example: Control Flow with Memory
+//!
+//! ```rust
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp, CmpOp};
+//! use lamina::ir::builder::{var, i32, string};
+//!
+//! let mut builder = IRBuilder::new();
+//!
+//! builder
+//!     .function_with_params("process_data", vec![
+//!         lamina::ir::FunctionParameter {
+//!             name: "data",
+//!             ty: Type::Primitive(PrimitiveType::I32)
+//!         }
+//!     ], Type::Void)
+//!
+//!     // Allocate memory for processing
+//!     .alloc_stack("temp", Type::Primitive(PrimitiveType::I32))
+//!     .store(Type::Primitive(PrimitiveType::I32), var("temp"), var("data"))
+//!
+//!     // Check if data is positive
+//!     .cmp(CmpOp::Gt, "is_positive", PrimitiveType::I32, var("data"), i32(0))
+//!     .branch(var("is_positive"), "positive_path", "negative_path")
+//!
+//!     // Positive path: double the value
+//!     .block("positive_path")
+//!     .load("current", Type::Primitive(PrimitiveType::I32), var("temp"))
+//!     .binary(BinaryOp::Mul, "doubled", PrimitiveType::I32, var("current"), i32(2))
+//!     .store(Type::Primitive(PrimitiveType::I32), var("temp"), var("doubled"))
+//!     .print(string("Processed positive value"))
+//!     .jump("cleanup")
+//!
+//!     // Negative path: take absolute value
+//!     .block("negative_path")
+//!     .load("current", Type::Primitive(PrimitiveType::I32), var("temp"))
+//!     .binary(BinaryOp::Sub, "abs", PrimitiveType::I32, i32(0), var("current"))
+//!     .store(Type::Primitive(PrimitiveType::I32), var("temp"), var("abs"))
+//!     .print(string("Processed negative value"))
+//!     .jump("cleanup")
+//!
+//!     // Cleanup: print final result
+//!     .block("cleanup")
+//!     .load("final_result", Type::Primitive(PrimitiveType::I32), var("temp"))
+//!     .print(var("final_result"))
+//!     .ret_void();
+//!
+//! let module = builder.build();
+//! ```
+//!
 //! ### Control Flow
 //!
 //! ```rust
