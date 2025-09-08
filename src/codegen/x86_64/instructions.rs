@@ -4,7 +4,7 @@ use crate::codegen::{CodegenError, ExtensionInfo, TypeInfo};
 use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType,
     Result, /*Identifier*/
-    /*Value,*/ Type,
+    Value, Type,
 };
 use std::io::Write;
 
@@ -19,7 +19,7 @@ pub fn generate_instruction<'a, W: Write>(
     instr: &Instruction<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-    func_ctx: &FunctionContext<'a>,
+    func_ctx: &mut FunctionContext<'a>,
     _func_name: Identifier<'a>,
 ) -> Result<()> {
     // Original instruction generation logic follows...
@@ -290,21 +290,40 @@ pub fn generate_instruction<'a, W: Write>(
                         )?;
                     }
                 }
+
+                // Track this as a heap allocation for proper deallocation
+                func_ctx.heap_allocations.insert(result);
             }
         },
 
         Instruction::Dealloc { ptr } => {
             let ptr_loc = get_value_operand_asm(ptr, state, func_ctx)?;
 
-            // For now, we assume all deallocations are for heap memory
-            // TODO: We need to track allocation type to properly handle stack vs heap deallocation
-            writeln!(
-                writer,
-                "        movq {}, %rdi # Load pointer to free",
-                ptr_loc
-            )?;
-            writeln!(writer, "        call free")?;
-            writeln!(writer, "        # Heap memory deallocated")?;
+            // Check if this is a heap allocation that needs to be freed
+            if let Value::Variable(var_name) = ptr {
+                if func_ctx.heap_allocations.contains(var_name) {
+                    // This is a heap allocation - call free
+                    writeln!(
+                        writer,
+                        "        movq {}, %rdi # Load heap pointer to free",
+                        ptr_loc
+                    )?;
+                    writeln!(writer, "        call free")?;
+                    writeln!(writer, "        # Heap memory deallocated")?;
+                } else {
+                    // This is a stack allocation - no-op
+                    writeln!(writer, "        # Stack allocation {} - no deallocation needed", var_name)?;
+                }
+            } else {
+                // For non-variable pointers, assume heap allocation for safety
+                writeln!(
+                    writer,
+                    "        movq {}, %rdi # Load pointer to free (assuming heap)",
+                    ptr_loc
+                )?;
+                writeln!(writer, "        call free")?;
+                writeln!(writer, "        # Memory deallocated (unknown allocation type)")?;
+            }
         }
 
         Instruction::Binary {
@@ -1102,9 +1121,27 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_asm = dest_op.to_operand_string();
 
             // TODO: GetElemPtr should carry element type information from the IR
-            // For now, we make a reasonable guess based on common usage patterns
-            // Most arrays in typical programs are either i64 or i32 elements
-            let element_size: i64 = 4; // Assume i32 elements (4 bytes) as a better default
+            // For now, we try to infer element size from context
+            let element_size: i64 = if let Value::Variable(var_name) = array_ptr {
+                // Try to infer element size from variable name patterns
+                if var_name.contains("_i8") || var_name.contains("i8_") {
+                    1 // i8 elements
+                } else if var_name.contains("_i16") || var_name.contains("i16_") {
+                    2 // i16 elements
+                } else if var_name.contains("_i32") || var_name.contains("i32_") {
+                    4 // i32 elements
+                } else if var_name.contains("_u8") || var_name.contains("u8_") {
+                    1 // u8 elements
+                } else if var_name.contains("_u16") || var_name.contains("u16_") {
+                    2 // u16 elements
+                } else if var_name.contains("_u32") || var_name.contains("u32_") {
+                    4 // u32 elements
+                } else {
+                    8 // Default to i64/u64 elements
+                }
+            } else {
+                8 // Default fallback for non-variable pointers
+            };
 
             writeln!(writer, "        movq {}, %rax # GEP Base Ptr", array_ptr_op)?;
 
@@ -1190,10 +1227,11 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_asm = dest_op.to_operand_string();
 
             match (source_type, target_type) {
-                (PrimitiveType::I8, PrimitiveType::I32) => {
+                // Signed 8-bit extensions
+                (PrimitiveType::I8, PrimitiveType::I32) | (PrimitiveType::U8, PrimitiveType::I32) => {
                     writeln!(
                         writer,
-                        "        movzbl {}, %eax # Zero extend i8->i32",
+                        "        movzbl {}, %eax # Zero extend i8/u8->i32",
                         value_op
                     )?;
                     writeln!(
@@ -1202,10 +1240,10 @@ pub fn generate_instruction<'a, W: Write>(
                         dest_asm
                     )?;
                 }
-                (PrimitiveType::I8, PrimitiveType::I64) => {
+                (PrimitiveType::I8, PrimitiveType::I64) | (PrimitiveType::U8, PrimitiveType::I64) => {
                     writeln!(
                         writer,
-                        "        movzbl {}, %eax # Zero extend i8->i32",
+                        "        movzbl {}, %eax # Zero extend i8/u8->i32",
                         value_op
                     )?;
                     writeln!(
@@ -1218,10 +1256,11 @@ pub fn generate_instruction<'a, W: Write>(
                         dest_asm
                     )?;
                 }
-                (PrimitiveType::I16, PrimitiveType::I32) => {
+                // Signed 16-bit extensions
+                (PrimitiveType::I16, PrimitiveType::I32) | (PrimitiveType::U16, PrimitiveType::I32) => {
                     writeln!(
                         writer,
-                        "        movzwl {}, %eax # Zero extend i16->i32",
+                        "        movzwl {}, %eax # Zero extend i16/u16->i32",
                         value_op
                     )?;
                     writeln!(
@@ -1230,10 +1269,10 @@ pub fn generate_instruction<'a, W: Write>(
                         dest_asm
                     )?;
                 }
-                (PrimitiveType::I16, PrimitiveType::I64) => {
+                (PrimitiveType::I16, PrimitiveType::I64) | (PrimitiveType::U16, PrimitiveType::I64) => {
                     writeln!(
                         writer,
-                        "        movzwl {}, %eax # Zero extend i16->i32",
+                        "        movzwl {}, %eax # Zero extend i16/u16->i32",
                         value_op
                     )?;
                     writeln!(
@@ -1246,15 +1285,17 @@ pub fn generate_instruction<'a, W: Write>(
                         dest_asm
                     )?;
                 }
-                (PrimitiveType::I32, PrimitiveType::I64) => {
-                    writeln!(writer, "        movl {}, %eax # Load source i32", value_op)?;
-                    writeln!(writer, "        movslq %eax, %rax # Zero extend i32->i64")?;
+                // Signed 32-bit extension
+                (PrimitiveType::I32, PrimitiveType::I64) | (PrimitiveType::U32, PrimitiveType::I64) => {
+                    writeln!(writer, "        movl {}, %eax # Load source i32/u32", value_op)?;
+                    writeln!(writer, "        movslq %eax, %rax # Zero extend i32/u32->i64")?;
                     writeln!(
                         writer,
                         "        movq %rax, {} # Store zero-extended result",
                         dest_asm
                     )?;
                 }
+                // Bool extensions
                 (PrimitiveType::Bool, PrimitiveType::I32) => {
                     writeln!(
                         writer,
