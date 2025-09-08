@@ -1037,20 +1037,18 @@ impl<'a> IRBuilder<'a> {
     /// let mut builder = IRBuilder::new();
     /// builder
     ///     .function("write_ptr_example", Type::Void)
-    ///     // Write i32 value through pointer to stdout
-    ///     .write_ptr(var("ptr"), i32(42), Type::Primitive(PrimitiveType::I32), "success")
+    ///     // Write pointer address to stdout
+    ///     .write_ptr(var("ptr"), "bytes_written")
     ///     .ret_void();
     /// ```
-    pub fn write_ptr(&mut self, ptr: Value<'a>, value: Value<'a>, ty: Type<'a>, result: &'a str) -> &mut Self {
-        self.inst(Instruction::WritePtr { ptr, value, ty, result })
+    pub fn write_ptr(&mut self, ptr: Value<'a>, result: &'a str) -> &mut Self {
+        self.inst(Instruction::WritePtr { ptr, result })
     }
 
-    /// Reads a value through a pointer from stdin (pointer dereference)
+    /// Reads a pointer address from stdin (I/O operation)
     ///
     /// # Parameters
-    /// - `result`: Variable to store the value read from the pointer
-    /// - `ptr`: Pointer to dereference for reading
-    /// - `ty`: Type of the value to read
+    /// - `result`: Variable to store the pointer address read from stdin
     ///
     /// # Examples
     /// ```rust
@@ -1060,12 +1058,12 @@ impl<'a> IRBuilder<'a> {
     /// let mut builder = IRBuilder::new();
     /// builder
     ///     .function("read_ptr_example", Type::Void)
-    ///     // Read i32 value through pointer from stdin
-    ///     .read_ptr("value", var("ptr"), Type::Primitive(PrimitiveType::I32))
+    ///     // Read pointer address from stdin
+    ///     .read_ptr("ptr_addr")
     ///     .ret_void();
     /// ```
-    pub fn read_ptr(&mut self, result: &'a str, ptr: Value<'a>, ty: Type<'a>) -> &mut Self {
-        self.inst(Instruction::ReadPtr { result, ptr, ty })
+    pub fn read_ptr(&mut self, result: &'a str) -> &mut Self {
+        self.inst(Instruction::ReadPtr { result })
     }
 
     /// Creates a print instruction for debugging
@@ -1089,7 +1087,13 @@ impl<'a> IRBuilder<'a> {
     ///
     /// # Performance Note
     /// Print instructions are primarily for development and debugging.
-    /// Consider removing them in production code for better performance.
+    /// For production I/O, use the raw `write`/`read` instructions for better performance.
+    ///
+    /// # See Also
+    /// - `write()`: Raw buffer write to stdout
+    /// - `read()`: Raw buffer read from stdin
+    /// - `writebyte()`: Single byte write
+    /// - `readbyte()`: Single byte read
     ///
     /// # Examples
     /// ```rust
