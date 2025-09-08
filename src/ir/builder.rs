@@ -1029,13 +1029,29 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::ReadByte { result })
     }
 
-    /// Writes a value through a pointer to stdout (pointer dereference)
+    /// Writes the value stored at a pointer location to stdout (I/O operation)
     ///
     /// # Parameters
-    /// - `ptr`: Pointer to dereference for writing
-    /// - `value`: Value to write at the pointer location
-    /// - `ty`: Type of the value being written
-    /// - `result`: Variable to store the result (1 on success, -1 on error)
+    /// - `ptr`: Pointer to the memory location containing the value to write
+    /// - `result`: Variable to store the result (bytes written on success, -1 on error)
+    ///
+    /// # Important Notes
+    /// - **Value-based I/O**: Writes the VALUE stored at the pointer, not the pointer address
+    /// - **Memory dereference**: Automatically loads the value before writing to stdout
+    /// - **Type-aware**: Handles different data types (i8, i32, i64) correctly
+    /// - **Raw output**: Produces binary data (not formatted text)
+    ///
+    /// # Memory Access Pattern
+    /// ```text
+    /// Memory: [value] <- ptr points here
+    /// Output:  value  <- sent to stdout
+    /// ```
+    ///
+    /// # Use Cases
+    /// - **Direct memory output**: Writing computed results to stdout
+    /// - **Binary data output**: Sending raw values without formatting
+    /// - **Memory inspection**: Examining stored values during debugging
+    /// - **Data serialization**: Outputting memory contents for external processing
     ///
     /// # Examples
     /// ```rust
@@ -1044,19 +1060,40 @@ impl<'a> IRBuilder<'a> {
     ///
     /// let mut builder = IRBuilder::new();
     /// builder
-    ///     .function("write_ptr_example", Type::Void)
-    ///     // Write pointer address to stdout
-    ///     .write_ptr(var("ptr"), "bytes_written")
+    ///     .function("memory_output", Type::Void)
+    ///     // Allocate memory and store a value
+    ///     .alloc_stack("data", Type::Primitive(PrimitiveType::I32))
+    ///     .store(Type::Primitive(PrimitiveType::I32), var("data"), i32(42))
+    ///     // Write the stored value to stdout (outputs binary 42)
+    ///     .write_ptr(var("data"), "bytes_written")
     ///     .ret_void();
     /// ```
+    ///
+    /// # See Also
+    /// - `write()`: Write buffer contents to stdout
+    /// - `write_byte()`: Write single byte to stdout
+    /// - `load()`: Load value from memory location
+    /// - `store()`: Store value to memory location
     pub fn write_ptr(&mut self, ptr: Value<'a>, result: &'a str) -> &mut Self {
         self.inst(Instruction::WritePtr { ptr, result })
     }
 
-    /// Reads a pointer address from stdin (I/O operation)
+    /// Reads binary data from stdin and stores it as a pointer-sized value
     ///
     /// # Parameters
-    /// - `result`: Variable to store the pointer address read from stdin
+    /// - `result`: Variable to store the binary data read from stdin (as i64)
+    ///
+    /// # Important Notes
+    /// - **Binary input**: Reads raw bytes from stdin (not text)
+    /// - **8-byte read**: Always reads exactly 8 bytes (64-bit)
+    /// - **No validation**: Assumes input contains valid binary data
+    /// - **Blocking operation**: Waits for input if stdin is empty
+    ///
+    /// # Use Cases
+    /// - **Binary data input**: Reading serialized data from stdin
+    /// - **Memory initialization**: Loading values from external sources
+    /// - **Data deserialization**: Reconstructing values from binary streams
+    /// - **Raw input processing**: Handling non-text data from pipes or files
     ///
     /// # Examples
     /// ```rust
@@ -1065,11 +1102,25 @@ impl<'a> IRBuilder<'a> {
     ///
     /// let mut builder = IRBuilder::new();
     /// builder
-    ///     .function("read_ptr_example", Type::Void)
-    ///     // Read pointer address from stdin
-    ///     .read_ptr("ptr_addr")
+    ///     .function("binary_input", Type::Void)
+    ///     // Read 8 bytes of binary data from stdin
+    ///     .read_ptr("input_data")
+    ///     // Use the data (e.g., store it somewhere)
+    ///     .alloc_stack("storage", Type::Primitive(PrimitiveType::I64))
+    ///     .store(Type::Primitive(PrimitiveType::I64), var("storage"), var("input_data"))
     ///     .ret_void();
     /// ```
+    ///
+    /// # Input/Output Behavior
+    /// ```text
+    /// stdin:  [binary_data] (8 bytes)
+    /// Result: input_data = binary_data (as i64)
+    /// ```
+    ///
+    /// # See Also
+    /// - `read()`: Read buffer from stdin
+    /// - `read_byte()`: Read single byte from stdin
+    /// - `write_ptr()`: Write value to stdout
     pub fn read_ptr(&mut self, result: &'a str) -> &mut Self {
         self.inst(Instruction::ReadPtr { result })
     }

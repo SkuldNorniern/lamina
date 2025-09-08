@@ -58,6 +58,77 @@
 //! - **Target intrinsics**: Architecture-specific operations
 //! - **Profile-guided optimization**: Branch weights and profiling data
 //!
+//! ## ✅ IMPLEMENTED: Raw I/O Support
+//!
+//! Lamina provides comprehensive raw I/O operations for direct system-level
+//! input and output without stdlib dependencies:
+//!
+//! ### I/O Instruction Categories:
+//!
+//! #### **Byte-Level I/O**:
+//! - **`writebyte`**: Write single ASCII character to stdout
+//! - **`readbyte`**: Read single byte from stdin
+//! - **Use case**: Character I/O, simple text output, keyboard input
+//!
+//! #### **Buffer-Level I/O**:
+//! - **`write`**: Write buffer contents to stdout
+//! - **`read`**: Read data into buffer from stdin
+//! - **Use case**: Bulk data transfer, file operations, network I/O
+//!
+//! #### **Memory-Value I/O** (NEW):
+//! - **`writeptr`**: Write VALUE stored at pointer to stdout
+//! - **`readptr`**: Read binary data from stdin as pointer-sized value
+//! - **Use case**: Memory inspection, binary data output, serialization
+//!
+//! ### WritePtr Semantics (IMPORTANT):
+//!
+//! **What it does:**
+//! ```text
+//! Memory: [42] <- pointer points here
+//! writeptr(pointer) -> outputs: 42 (binary)
+//! ```
+//!
+//! **NOT the pointer address, but the VALUE stored at that address!**
+//!
+//! **Example:**
+//! ```lamina
+//! %buffer = alloc.stack i32      # Allocate memory
+//! store.i32 %buffer, 72          # Store 72 ('H' in ASCII)
+//! %result = writeptr %buffer     # Outputs: 'H' (binary 72)
+//! ```
+//!
+//! **Common misconception:**
+//! - `writeptr(ptr)` does NOT write the pointer address
+//! - `writeptr(ptr)` writes the VALUE stored at that address
+//! - Think of it as "write pointer's value", not "write pointer"
+//!
+//! ### I/O Operation Comparison:
+//!
+//! | Instruction | Input/Output | Data Format | Use Case |
+//! |-------------|--------------|-------------|----------|
+//! | `writebyte` | Single char | ASCII | Simple text |
+//! | `write` | Buffer | Raw bytes | Bulk data |
+//! | `writeptr` | Memory value | Binary | Memory inspection |
+//!
+//! ### Memory Workflow Example:
+//!
+//! ```lamina
+//! # Step 1: Allocate memory
+//! %data = alloc.stack i32
+//!
+//! # Step 2: Store a value
+//! store.i32 %data, 65  # ASCII 'A'
+//!
+//! # Step 3: Load the value (optional, for verification)
+//! %value = load.i32 %data
+//!
+//! # Step 4: Output the stored value
+//! %bytes = writeptr %data  # Outputs: 'A'
+//! ```
+//!
+//! This workflow demonstrates the complete memory manipulation cycle
+//! that forms the foundation of all data processing in Lamina.
+//!
 //! ## Type Safety
 //!
 //! The type system ensures:
