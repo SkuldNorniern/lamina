@@ -136,9 +136,21 @@ pub fn generate_instruction<'a, W: Write>(
                         }
                         total_size
                     }
-                    Type::Array { size, .. } => {
+                    Type::Array { element_type, size } => {
                         // For arrays, we need to calculate element size * array size
-                        8 * (*size as usize).min(1024) as u64 // Cap at reasonable size
+                        let element_size = match &**element_type {
+                            Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
+                            Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
+                            Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
+                            Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) => 8,
+                            Type::Primitive(PrimitiveType::F32) => 4,
+                            Type::Primitive(PrimitiveType::F64) => 8,
+                            Type::Primitive(PrimitiveType::Bool) => 1,
+                            Type::Primitive(PrimitiveType::Char) => 1,
+                            Type::Primitive(PrimitiveType::Ptr) => 8,
+                            _ => 8, // Default for complex types
+                        };
+                        (element_size as u64) * (*size as usize).min(1024) as u64 // Cap at reasonable size
                     }
                     _ => 8, // Default fallback
                 };
@@ -227,10 +239,21 @@ pub fn generate_instruction<'a, W: Write>(
                         }
                         total_size
                     }
-                    Type::Array { size, .. } => {
+                    Type::Array { element_type, size } => {
                         // For arrays, we need to calculate element size * array size
-                        // TODO: Implement proper array size calculation
-                        (8 * (*size as usize).min(1024)) as u64 // Cap at reasonable size
+                        let element_size = match &**element_type {
+                            Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
+                            Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
+                            Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
+                            Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) => 8,
+                            Type::Primitive(PrimitiveType::F32) => 4,
+                            Type::Primitive(PrimitiveType::F64) => 8,
+                            Type::Primitive(PrimitiveType::Bool) => 1,
+                            Type::Primitive(PrimitiveType::Char) => 1,
+                            Type::Primitive(PrimitiveType::Ptr) => 8,
+                            _ => 8, // Default for complex types
+                        };
+                        (element_size as u64) * (*size as usize).min(1024) as u64 // Cap at reasonable size
                     }
                     _ => 8, // Default fallback
                 };
@@ -362,7 +385,9 @@ pub fn generate_instruction<'a, W: Write>(
                         // Load LHS, add immediate, store result
                         // Use the appropriate register size based on the operation type
                         let reg_name = match ty {
-                            PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register for 32-bit ops
+                            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => "%al", // 8-bit register
+                            PrimitiveType::I16 | PrimitiveType::U16 => "%ax", // 16-bit register
+                            PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register
                             _ => "%rax", // 64-bit register for other ops
                         };
 
@@ -425,7 +450,9 @@ pub fn generate_instruction<'a, W: Write>(
                         // Load RHS, add immediate, store result
                         // Use the appropriate register size based on the operation type
                         let reg_name = match ty {
-                            PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register for 32-bit ops
+                            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => "%al", // 8-bit register
+                            PrimitiveType::I16 | PrimitiveType::U16 => "%ax", // 16-bit register
+                            PrimitiveType::I32 | PrimitiveType::U32 => "%eax", // 32-bit register
                             _ => "%rax", // 64-bit register for other ops
                         };
 
@@ -546,6 +573,51 @@ pub fn generate_instruction<'a, W: Write>(
                 }
                 BinaryOp::Div => {
                     match ty {
+                        PrimitiveType::I8 | PrimitiveType::U8 => {
+                            // For 8-bit division, sign extend al to ax (for i8) or zero extend (for u8)
+                            if matches!(ty, PrimitiveType::I8) {
+                                writeln!(writer, "        cbw # Sign extend %al to %ax")?;
+                            } else {
+                                // Zero extend by moving to ax
+                                writeln!(writer, "        movzbw %al, %ax # Zero extend %al to %ax")?;
+                            }
+                            // Divide ax by rhs_reg (8-bit)
+                            writeln!(
+                                writer,
+                                "        idivb {} # Signed 8-bit division",
+                                rhs_reg
+                            )?;
+                            // Result is in %al, store it
+                            writeln!(
+                                writer,
+                                "        {} %al, {} # Store 8-bit division result",
+                                mov_instr, dest_asm
+                            )?;
+                            return Ok(());
+                        }
+                        PrimitiveType::I16 | PrimitiveType::U16 => {
+                            // For 16-bit division, sign extend ax to dx:ax (for i16) or zero extend (for u16)
+                            if matches!(ty, PrimitiveType::I16) {
+                                writeln!(writer, "        cwd # Sign extend %ax to %dx:%ax")?;
+                            } else {
+                                // Zero extend by moving to dx:ax
+                                writeln!(writer, "        movzwl %ax, %eax # Zero extend %ax to %eax")?;
+                                writeln!(writer, "        cdq # Sign extend %eax to %edx:%eax")?;
+                            }
+                            // Divide dx:ax by rhs_reg (16-bit)
+                            writeln!(
+                                writer,
+                                "        idivw {} # Signed 16-bit division",
+                                rhs_reg
+                            )?;
+                            // Result is in %ax, store it
+                            writeln!(
+                                writer,
+                                "        {} %ax, {} # Store 16-bit division result",
+                                mov_instr, dest_asm
+                            )?;
+                            return Ok(());
+                        }
                         PrimitiveType::I32 => {
                             writeln!(writer, "        cltd # Sign extend %eax to %edx")?
                         }
@@ -563,12 +635,30 @@ pub fn generate_instruction<'a, W: Write>(
                     // Quotient is now in lhs_reg (%rax or %eax)
                 }
             };
-            // Store result from lhs_reg
-            writeln!(
-                writer,
-                "        {} {}, {} # Store Binary/Div Result",
-                mov_instr, lhs_reg, dest_asm
-            )?;
+            // Store result from lhs_reg (need to use correct mov instruction for smaller types)
+            match ty {
+                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char | PrimitiveType::Bool => {
+                    writeln!(
+                        writer,
+                        "        movb {}, {} # Store 8-bit Binary/Div Result",
+                        "%al", dest_asm
+                    )?;
+                }
+                PrimitiveType::I16 | PrimitiveType::U16 => {
+                    writeln!(
+                        writer,
+                        "        movw {}, {} # Store 16-bit Binary/Div Result",
+                        "%ax", dest_asm
+                    )?;
+                }
+                _ => {
+                    writeln!(
+                        writer,
+                        "        {} {}, {} # Store Binary/Div Result",
+                        mov_instr, lhs_reg, dest_asm
+                    )?;
+                }
+            }
         }
         Instruction::Load { result, ty, ptr } => {
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
@@ -1087,6 +1177,34 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(
                         writer,
                         "        movzbl {}, %eax # Zero extend i8->i32",
+                        value_op
+                    )?;
+                    writeln!(
+                        writer,
+                        "        # %eax already zero-extended to %rax # Zero extend i32->i64"
+                    )?;
+                    writeln!(
+                        writer,
+                        "        movq %rax, {} # Store zero-extended result",
+                        dest_asm
+                    )?;
+                }
+                (PrimitiveType::I16, PrimitiveType::I32) => {
+                    writeln!(
+                        writer,
+                        "        movzwl {}, %eax # Zero extend i16->i32",
+                        value_op
+                    )?;
+                    writeln!(
+                        writer,
+                        "        movl %eax, {} # Store zero-extended result",
+                        dest_asm
+                    )?;
+                }
+                (PrimitiveType::I16, PrimitiveType::I64) => {
+                    writeln!(
+                        writer,
+                        "        movzwl {}, %eax # Zero extend i16->i32",
                         value_op
                     )?;
                     writeln!(
