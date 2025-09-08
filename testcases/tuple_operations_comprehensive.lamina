@@ -144,8 +144,7 @@ fn @test_tuple_with_arrays() -> i64 {
 # Test tuple with struct elements
 fn @test_tuple_with_structs() -> i64 {
   entry:
-    # Define a simple struct
-    type @SimplePoint = struct { x: i32, y: i32 }
+    # Define a simple struct inline
 
     # Create structs
     %point1 = alloc.stack struct { x: i32, y: i32 }
@@ -242,7 +241,7 @@ fn @test_empty_tuple() -> i64 {
 fn @test_tuple_with_function_results() -> i64 {
   entry:
     # Define helper functions
-    type @HelperResult = tuple i64, bool
+    # Helper functions use inline tuple types
 
     # Call functions that return tuples
     %result1 = call @create_tuple_result_1()
