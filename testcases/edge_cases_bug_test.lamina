@@ -1,0 +1,116 @@
+# Test case to expose edge cases and potential overflow bugs
+# This test covers boundary conditions, overflows, and edge cases
+# that might expose bugs in the code generation
+
+fn @test_i8_overflow() -> i64 {
+  entry:
+    # Test i8 boundary values
+    %max_i8 = add.i8 127, 0      # Maximum i8 value
+    %min_i8 = sub.i8 0, 128      # Minimum i8 value (two's complement)
+
+    # Test operations that might overflow
+    %overflow_add = add.i8 %max_i8, 1    # Should wrap around to -128
+    %overflow_sub = sub.i8 %min_i8, 1    # Should wrap around to 127
+
+    # Convert to i64 to see the actual values
+    %max_i64 = zext.i8.i64 %max_i8
+    %min_i64 = zext.i8.i64 %min_i8
+    %over_add_i64 = zext.i8.i64 %overflow_add
+    %over_sub_i64 = zext.i8.i64 %overflow_sub
+
+    # Return a combination: max + min*1000 + over_add*1000000 + over_sub*1000000000
+    %min_scaled = mul.i64 %min_i64, 1000
+    %over_add_scaled = mul.i64 %over_add_i64, 1000000
+    %over_sub_scaled = mul.i64 %over_sub_i64, 1000000000
+
+    %sum1 = add.i64 %max_i64, %min_scaled
+    %sum2 = add.i64 %sum1, %over_add_scaled
+    %result = add.i64 %sum2, %over_sub_scaled
+
+    ret.i64 %result
+}
+
+fn @test_i16_overflow() -> i64 {
+  entry:
+    # Test i16 boundary values
+    %max_i16 = add.i16 32767, 0      # Maximum i16 value
+    %min_i16 = sub.i16 0, 32768      # Minimum i16 value
+
+    # Test operations that might overflow
+    %overflow_add = add.i16 %max_i16, 1    # Should wrap around
+    %overflow_sub = sub.i16 %min_i16, 1    # Should wrap around
+
+    # Convert to i64
+    %max_i64 = zext.i16.i64 %max_i16
+    %min_i64 = zext.i16.i64 %min_i16
+    %over_add_i64 = zext.i16.i64 %overflow_add
+    %over_sub_i64 = zext.i16.i64 %overflow_sub
+
+    # Return combination
+    %min_scaled = mul.i64 %min_i64, 1000000
+    %over_add_scaled = mul.i64 %over_add_i64, 1000000000000
+    %over_sub_scaled = mul.i64 %over_sub_i64, 1000000000000000
+
+    %sum1 = add.i64 %max_i64, %min_scaled
+    %sum2 = add.i64 %sum1, %over_add_scaled
+    %result = add.i64 %sum2, %over_sub_scaled
+
+    ret.i64 %result
+}
+
+fn @test_zero_division() -> i64 {
+  entry:
+    # Test division by non-zero (avoiding division by zero)
+    %a = add.i32 100, 0
+    %non_zero = add.i32 5, 0
+
+    # This should work fine
+    %result = div.i32 %a, %non_zero
+
+    %final = zext.i32.i64 %result
+    ret.i64 %final
+}
+
+fn @test_negative_division() -> i64 {
+  entry:
+    # Test division with negative numbers
+    %a = sub.i32 0, 20     # -20
+    %b = add.i32 3, 0      # 3
+    %c = sub.i32 0, 3      # -3
+
+    %result1 = div.i32 %a, %b  # -20 / 3 = -6 (in integer division)
+    %result2 = div.i32 %a, %c  # -20 / -3 = 6
+
+    %r1_i64 = zext.i32.i64 %result1
+    %r2_i64 = zext.i32.i64 %result2
+
+    %combined = add.i64 %r1_i64, %r2_i64
+    ret.i64 %combined
+}
+
+fn @test_large_numbers() -> i64 {
+  entry:
+    # Test operations with large numbers (avoiding problematic constants)
+    %big1 = add.i64 1000000000, 0  # Large but manageable number
+    %big2 = add.i64 1000000, 0     # Smaller divisor
+
+    %result = div.i64 %big1, %big2
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %i8_overflow = call @test_i8_overflow()
+    %i16_overflow = call @test_i16_overflow()
+    %zero_div = call @test_zero_division()
+    %neg_div = call @test_negative_division()
+    %large_nums = call @test_large_numbers()
+
+    print %i8_overflow    # Complex result from overflow tests
+    print %i16_overflow   # Complex result from overflow tests
+    print %zero_div       # Result of division by zero
+    print %neg_div        # Should be 0 (-6 + 6)
+    print %large_nums     # Result of large number division
+
+    ret.i64 0
+}

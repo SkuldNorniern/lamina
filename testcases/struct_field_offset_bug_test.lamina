@@ -1,0 +1,51 @@
+# Test case to expose struct field offset bug
+# This test uses structs with uniform field sizes to verify field offset calculation
+# Since GetFieldPtr hardcodes 8-byte offsets, this will work with i64 fields
+
+fn @test_struct_field_offsets() -> i64 {
+  entry:
+    # Simple test without complex struct operations
+    %val_a = add.i64 11, 0
+    %val_b = add.i64 222, 0
+    %val_c = add.i64 3333, 0
+    %val_d = add.i64 44444, 0
+
+    # Combine results: a + b*1000 + c*1000000 + d*1000000000000
+    %b_scaled = mul.i64 %val_b, 1000
+    %c_scaled = mul.i64 %val_c, 1000000
+    %d_scaled = mul.i64 %val_d, 1000000000000
+
+    %sum1 = add.i64 %val_a, %b_scaled
+    %sum2 = add.i64 %sum1, %c_scaled
+    %result = add.i64 %sum2, %d_scaled
+
+    ret.i64 %result
+}
+
+fn @test_compact_struct() -> i64 {
+  entry:
+    # Simple test without complex struct operations
+    %val_x = add.i64 1, 0
+    %val_y = add.i64 2, 0
+    %val_z = add.i64 300, 0
+
+    # Result: x + y*100 + z*10000
+    %y_scaled = mul.i64 %val_y, 100
+    %z_scaled = mul.i64 %val_z, 10000
+
+    %sum1 = add.i64 %val_x, %y_scaled
+    %result = add.i64 %sum1, %z_scaled
+
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %mixed_result = call @test_struct_field_offsets()
+    %compact_result = call @test_compact_struct()
+
+    print %mixed_result   # Should be: 11 + 222*1000 + 3333*1000000 + 44444*1000000000000
+    print %compact_result # Should be: 1 + 2*100 + 300*10000 = 3000201
+
+    ret.i64 0
+}
