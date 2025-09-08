@@ -338,15 +338,20 @@ pub fn generate_instruction<'a, W: Write>(
             result,
             array_ptr,
             index,
+            element_type,
         } => {
             let base = get_value_operand_asm(array_ptr, state, func_ctx)?;
             let idx = get_value_operand_asm(index, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
 
-            // Calculate element size - for now use 8 bytes (i64/ptr) as default
-            // This should ideally be determined from the array type, but that information
-            // is not currently available in the instruction
-            let element_size = 8; // bytes
+            // Calculate element size from the element type
+            let element_size = match element_type {
+                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
+                PrimitiveType::I16 | PrimitiveType::U16 => 2,
+                PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+                PrimitiveType::Char => 4, // Typically 32-bit Unicode
+            };
             let shift_amount = match element_size {
                 1 => 0,  // byte
                 2 => 1,  // halfword
