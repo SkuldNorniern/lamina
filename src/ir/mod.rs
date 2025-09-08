@@ -71,36 +71,36 @@
 //!
 //! #### Instruction Categories
 //!
-//! ##### 🔢 **Arithmetic Instructions**
+//! ##### Arithmetic Instructions
 //! - `add`, `sub`, `mul`, `div` - Basic arithmetic operations
 //! - `rem`, `neg` - Remainder and negation
 //! - Type-specific variants: `add.i32`, `mul.i64`, etc.
 //!
-//! ##### 🔍 **Comparison Instructions**
+//! ##### Comparison Instructions
 //! - `eq`, `ne`, `lt`, `le`, `gt`, `ge` - Ordering comparisons
 //! - `cmp` - General comparison returning ordering
 //! - Result type is always boolean or ordering enum
 //!
-//! ##### 💾 **Memory Instructions**
+//! ##### Memory Instructions
 //! - `alloc_stack`, `alloc_heap` - Memory allocation
 //! - `load`, `store` - Memory access operations
 //! - `getelementptr` - Pointer arithmetic for arrays/structs
 //! - `dealloc` - Memory deallocation
 //!
-//! ##### 🎯 **Control Flow Instructions**
+//! ##### Control Flow Instructions
 //! - `br` - Conditional branch based on boolean condition
 //! - `jmp` - Unconditional jump to labeled block
 //! - `call` - Function invocation with parameter passing
 //! - `ret` - Return from function with optional value
 //! - `phi` - SSA phi nodes for merging values from different paths
 //!
-//! ##### 🔄 **Type Conversion Instructions**
+//! ##### Type Conversion Instructions
 //! - `zext` - Zero extension (smaller to larger integer)
 //! - `sext` - Sign extension (smaller to larger integer)
 //! - `trunc` - Truncation (larger to smaller integer)
 //! - `bitcast` - Reinterpretation of bit patterns
 //!
-//! ##### 📝 **I/O Instructions**
+//! ##### I/O Instructions
 //! - `write`, `read` - Buffer-based I/O operations
 //! - `writebyte`, `readbyte` - Single byte I/O
 //! - `writeptr`, `readptr` - Pointer-based I/O operations
@@ -161,30 +161,35 @@
 //!
 //! ##### Stack Allocation (`alloc_stack`)
 //! ```rust
+//! # use lamina::ir::{IRBuilder, Type, PrimitiveType};
 //! // Automatic lifetime management
+//! let mut builder = IRBuilder::new();
 //! builder.alloc_stack("local", Type::Primitive(PrimitiveType::I32));
 //! // Memory automatically freed when function returns
 //! ```
 //!
 //! **Characteristics**:
-//! - 🚀 **Fast**: Minimal allocation overhead
-//! - 🔄 **Automatic**: No manual deallocation needed
-//! - 📏 **Limited**: Function scope only
-//! - 💾 **Efficient**: Reuses stack frames
+//! - **Fast**: Minimal allocation overhead
+//! - **Automatic**: No manual deallocation needed
+//! - **Limited**: Function scope only
+//! - **Efficient**: Reuses stack frames
 //!
 //! ##### Heap Allocation (`alloc_heap`)
 //! ```rust
+//! # use lamina::ir::{IRBuilder, Type, PrimitiveType};
+//! # use lamina::ir::builder::var;
 //! // Manual lifetime management
+//! let mut builder = IRBuilder::new();
 //! builder.alloc_heap("dynamic", Type::Primitive(PrimitiveType::I32));
 //! // Must explicitly deallocate when done
 //! builder.dealloc(var("dynamic"));
 //! ```
 //!
 //! **Characteristics**:
-//! - 🌍 **Persistent**: Survives function boundaries
-//! - 🎛️ **Manual**: Requires explicit deallocation
-//! - 🐌 **Slower**: Heap allocation overhead
-//! - 🔗 **Flexible**: Can be passed between functions
+//! - **Persistent**: Survives function boundaries
+//! - **Manual**: Requires explicit deallocation
+//! - **Slower**: Heap allocation overhead
+//! - **Flexible**: Can be passed between functions
 //!
 //! #### Memory Access Patterns
 //!
@@ -264,11 +269,11 @@
 //!
 //! #### Builder Capabilities
 //!
-//! - ✅ **Type-safe construction**: Compile-time type checking
-//! - ✅ **Fluent API**: Chain operations naturally
-//! - ✅ **Automatic SSA**: Manages variable assignments
-//! - ✅ **Block management**: Handles basic block creation and transitions
-//! - ✅ **Validation**: Ensures IR correctness during construction
+//! - **Type-safe construction**: Compile-time type checking
+//! - **Fluent API**: Chain operations naturally
+//! - **Automatic SSA**: Manages variable assignments
+//! - **Block management**: Handles basic block creation and transitions
+//! - **Validation**: Ensures IR correctness during construction
 //!
 //! ### [`function`] - Function Definition and Control Flow
 //!
@@ -289,19 +294,21 @@
 //!
 //! ##### Function Annotations
 //! ```rust
+//! # use lamina::ir::{IRBuilder, Type};
+//! # use lamina::ir::function::FunctionAnnotation;
+//! let mut builder = IRBuilder::new();
 //! builder
 //!     .function("optimized_func", Type::Void)
-//!     .annotate(lamina::ir::FunctionAnnotation::Inline)      // Suggest inlining
-//!     .annotate(lamina::ir::FunctionAnnotation::NoInline)    // Prevent inlining
-//!     .annotate(lamina::ir::FunctionAnnotation::Pure)        // No side effects
-//!     .annotate(lamina::ir::FunctionAnnotation::Const)       // Compile-time evaluation
+//!     .annotate(FunctionAnnotation::Inline)      // Suggest inlining
+//!     .annotate(FunctionAnnotation::NoInline);   // Prevent inlining
 //! ```
 //!
 //! ##### Tail Recursion Optimization
 //! ```rust
+//! # use lamina::ir::{IRBuilder, Type, PrimitiveType};
+//! let mut builder = IRBuilder::new();
 //! builder
-//!     .function("factorial_tail", Type::Primitive(PrimitiveType::I64))
-//!     .annotate(lamina::ir::FunctionAnnotation::TailRecursive)
+//!     .function("factorial_tail", Type::Primitive(PrimitiveType::I64));
 //!     // Implementation optimized for tail recursion
 //! ```
 //!
@@ -363,11 +370,15 @@
 //!
 //! Modules can reference symbols from other modules:
 //! ```rust
+//! # use lamina::ir::{IRBuilder, Type};
+//! # use lamina::ir::builder::var;
 //! // Module A defines a function
-//! builder.function("public_func", Type::Void);
+//! let mut builder_a = IRBuilder::new();
+//! builder_a.function("public_func", Type::Void);
 //!
 //! // Module B references it
-//! builder.call(Some("result"), "public_func", vec![]);
+//! let mut builder_b = IRBuilder::new();
+//! builder_b.call(Some("result"), "public_func", vec![]);
 //! ```
 //!
 //! ### [`types`] - Comprehensive Type System
@@ -387,10 +398,10 @@
 //!
 //! #### Type System Features
 //!
-//! - **🔒 Memory Safety**: Bounds checking and null pointer prevention
-//! - **⚡ Optimization**: Types guide code generation and optimization
-//! - **🔍 Analysis**: Types enable static analysis and verification
-//! - **🌉 Interoperability**: Compatible with C ABI and other systems
+//! - **Memory Safety**: Bounds checking and null pointer prevention
+//! - **Optimization**: Types guide code generation and optimization
+//! - **Analysis**: Types enable static analysis and verification
+//! - **Interoperability**: Compatible with C ABI and other systems
 //!
 //! ## Advanced Memory Management Patterns
 //!
@@ -398,12 +409,12 @@
 //!
 //! | Feature | Stack Allocation | Heap Allocation |
 //! |---------|------------------|-----------------|
-//! | **Speed** | ⚡ Fast (no syscall) | 🐌 Slow (system call) |
-//! | **Lifetime** | 🔄 Automatic (function scope) | 🎛️ Manual (explicit dealloc) |
-//! | **Size** | 📏 Limited (stack size) | 📈 Large (heap size) |
-//! | **Safety** | 🛡️ Safe (automatic) | ⚠️ Manual (error-prone) |
-//! | **Sharing** | 🚫 Local only | ✅ Cross-function |
-//! | **Overhead** | 💰 Minimal | 💰 Allocation headers |
+//! | **Speed** | Fast (no syscall) | Slow (system call) |
+//! | **Lifetime** | Automatic (function scope) | Manual (explicit dealloc) |
+//! | **Size** | Limited (stack size) | Large (heap size) |
+//! | **Safety** | Safe (automatic) | Manual (error-prone) |
+//! | **Sharing** | Local only | Cross-function |
+//! | **Overhead** | Minimal | Allocation headers |
 //!
 //! ### Advanced Memory Patterns
 //!
@@ -474,12 +485,14 @@
 //!
 //! #### Immutable by Default
 //! ```rust
+//! # use lamina::ir::IRBuilder;
 //! // IR structures are typically built once and read many times
+//! let mut builder = IRBuilder::new();
 //! let module = builder.build(); // Immutable after construction
 //!
 //! // Safe to share across threads
 //! std::thread::spawn(move || {
-//!     analyze_module(&module); // Read-only access
+//!     // analyze_module(&module); // Read-only access
 //! });
 //! ```
 //!

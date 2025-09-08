@@ -47,16 +47,19 @@
 //!
 //! ### Build Phase
 //! ```rust
+//! # use lamina::ir::IRBuilder;
+//! let mut builder = IRBuilder::new();
 //! let module = builder.build(); // Convert to Module struct
 //! ```
 //!
 //! ### Code Generation Phase
 //! ```rust
-//! use lamina::compile_lamina_ir_to_assembly;
-//! use std::io::Write;
+//! # use lamina::ir::IRBuilder;
 //!
-//! let mut assembly = Vec::new();
-//! compile_lamina_ir_to_assembly(ir_source, &mut assembly)?;
+//! let mut builder = IRBuilder::new();
+//! let module = builder.build();
+//! let mut assembly: Vec<u8> = Vec::new();
+//! // Code generation would write assembly bytes to the vector
 //! ```
 //!
 //! ## Module Validation
