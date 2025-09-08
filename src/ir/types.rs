@@ -58,7 +58,7 @@
 //! - **Target intrinsics**: Architecture-specific operations
 //! - **Profile-guided optimization**: Branch weights and profiling data
 //!
-//! ## ✅ IMPLEMENTED: Raw I/O Support
+//! ## IMPLEMENTED: Raw I/O Support
 //!
 //! Lamina provides comprehensive raw I/O operations for direct system-level
 //! input and output without stdlib dependencies:
