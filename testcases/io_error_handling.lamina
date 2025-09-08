@@ -1,0 +1,16 @@
+# Test I/O error handling and return values
+fn @main() -> i32 {
+  entry:
+    # Test writebyte return values (should be 1 on success)
+    %w1 = writebyte 65  # Should return 1
+    print %w1
+
+    %w2 = writebyte 66  # Should return 1
+    print %w2
+
+    # Test readbyte (may return -1 if no input available)
+    %r1 = readbyte
+    print %r1
+
+    ret.i32 0
+}
