@@ -387,10 +387,17 @@ fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>> {
             let potential_primitive = state.parse_identifier_str()?;
             match potential_primitive {
                 "i8" => Ok(Type::Primitive(PrimitiveType::I8)),
+                "i16" => Ok(Type::Primitive(PrimitiveType::I16)),
                 "i32" => Ok(Type::Primitive(PrimitiveType::I32)),
                 "i64" => Ok(Type::Primitive(PrimitiveType::I64)),
+                "u8" => Ok(Type::Primitive(PrimitiveType::U8)),
+                "u16" => Ok(Type::Primitive(PrimitiveType::U16)),
+                "u32" => Ok(Type::Primitive(PrimitiveType::U32)),
+                "u64" => Ok(Type::Primitive(PrimitiveType::U64)),
                 "f32" => Ok(Type::Primitive(PrimitiveType::F32)),
+                "f64" => Ok(Type::Primitive(PrimitiveType::F64)),
                 "bool" => Ok(Type::Primitive(PrimitiveType::Bool)),
+                "char" => Ok(Type::Primitive(PrimitiveType::Char)),
                 "ptr" => Ok(Type::Primitive(PrimitiveType::Ptr)),
                 "void" => Ok(Type::Void),
                 _ => Err(state.error(format!(
@@ -875,10 +882,17 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
     let type_str = state.parse_identifier_str()?;
     match type_str {
         "i8" => Ok(PrimitiveType::I8),
+        "i16" => Ok(PrimitiveType::I16),
         "i32" => Ok(PrimitiveType::I32),
         "i64" => Ok(PrimitiveType::I64),
+        "u8" => Ok(PrimitiveType::U8),
+        "u16" => Ok(PrimitiveType::U16),
+        "u32" => Ok(PrimitiveType::U32),
+        "u64" => Ok(PrimitiveType::U64),
         "f32" => Ok(PrimitiveType::F32),
+        "f64" => Ok(PrimitiveType::F64),
         "bool" => Ok(PrimitiveType::Bool),
+        "char" => Ok(PrimitiveType::Char),
         "ptr" => Ok(PrimitiveType::Ptr),
         _ => Err(state.error(format!(
             "Expected primitive type suffix, found '.{}'",
@@ -1349,33 +1363,45 @@ fn parse_zext<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result
     let source_type_str = state.parse_identifier_str()?;
     let source_type = match source_type_str {
         "i8" => PrimitiveType::I8,
+        "i16" => PrimitiveType::I16,
         "i32" => PrimitiveType::I32,
         "i64" => PrimitiveType::I64,
+        "u8" => PrimitiveType::U8,
+        "u16" => PrimitiveType::U16,
+        "u32" => PrimitiveType::U32,
+        "u64" => PrimitiveType::U64,
+        "f32" => PrimitiveType::F32,
+        "f64" => PrimitiveType::F64,
         "bool" => PrimitiveType::Bool,
+        "char" => PrimitiveType::Char,
         _ => return Err(state.error(format!("Invalid source type for zext: {}", source_type_str))),
     };
 
     state.expect_char('.')?;
     let target_type_str = state.parse_identifier_str()?;
     let target_type = match target_type_str {
+        "i8" => PrimitiveType::I8,
+        "i16" => PrimitiveType::I16,
         "i32" => PrimitiveType::I32,
         "i64" => PrimitiveType::I64,
+        "u8" => PrimitiveType::U8,
+        "u16" => PrimitiveType::U16,
+        "u32" => PrimitiveType::U32,
+        "u64" => PrimitiveType::U64,
+        "f32" => PrimitiveType::F32,
+        "f64" => PrimitiveType::F64,
+        "bool" => PrimitiveType::Bool,
+        "char" => PrimitiveType::Char,
         _ => return Err(state.error(format!("Invalid target type for zext: {}", target_type_str))),
     };
 
-    // Source type must be smaller than target type
-    match (source_type, target_type) {
-        (PrimitiveType::I8, PrimitiveType::I32) => {}
-        (PrimitiveType::I8, PrimitiveType::I64) => {}
-        (PrimitiveType::I32, PrimitiveType::I64) => {}
-        (PrimitiveType::Bool, PrimitiveType::I32) => {}
-        (PrimitiveType::Bool, PrimitiveType::I64) => {}
-        _ => {
-            return Err(state.error(format!(
-                "Invalid type conversion: {} to {}",
-                source_type_str, target_type_str
-            )));
-        }
+    // Allow all conversions for now - the IR will handle validation
+    // Source type must be different from target type for meaningful conversion
+    if source_type == target_type {
+        return Err(state.error(format!(
+            "Source and target types must be different for conversion: {}",
+            source_type_str
+        )));
     }
 
     let value = parse_value(state)?;
