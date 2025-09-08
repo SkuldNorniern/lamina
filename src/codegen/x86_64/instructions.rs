@@ -4,7 +4,7 @@ use crate::codegen::{CodegenError, ExtensionInfo, TypeInfo};
 use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType,
     Result, /*Identifier*/
-    Value, Type,
+    Type, Value,
 };
 use std::io::Write;
 
@@ -312,7 +312,11 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(writer, "        # Heap memory deallocated")?;
                 } else {
                     // This is a stack allocation - no-op
-                    writeln!(writer, "        # Stack allocation {} - no deallocation needed", var_name)?;
+                    writeln!(
+                        writer,
+                        "        # Stack allocation {} - no deallocation needed",
+                        var_name
+                    )?;
                 }
             } else {
                 // For non-variable pointers, assume heap allocation for safety
@@ -322,7 +326,10 @@ pub fn generate_instruction<'a, W: Write>(
                     ptr_loc
                 )?;
                 writeln!(writer, "        call free")?;
-                writeln!(writer, "        # Memory deallocated (unknown allocation type)")?;
+                writeln!(
+                    writer,
+                    "        # Memory deallocated (unknown allocation type)"
+                )?;
             }
         }
 
@@ -1228,7 +1235,8 @@ pub fn generate_instruction<'a, W: Write>(
 
             match (source_type, target_type) {
                 // Signed 8-bit extensions
-                (PrimitiveType::I8, PrimitiveType::I32) | (PrimitiveType::U8, PrimitiveType::I32) => {
+                (PrimitiveType::I8, PrimitiveType::I32)
+                | (PrimitiveType::U8, PrimitiveType::I32) => {
                     writeln!(
                         writer,
                         "        movzbl {}, %eax # Zero extend i8/u8->i32",
@@ -1240,7 +1248,8 @@ pub fn generate_instruction<'a, W: Write>(
                         dest_asm
                     )?;
                 }
-                (PrimitiveType::I8, PrimitiveType::I64) | (PrimitiveType::U8, PrimitiveType::I64) => {
+                (PrimitiveType::I8, PrimitiveType::I64)
+                | (PrimitiveType::U8, PrimitiveType::I64) => {
                     writeln!(
                         writer,
                         "        movzbl {}, %eax # Zero extend i8/u8->i32",
@@ -1257,7 +1266,8 @@ pub fn generate_instruction<'a, W: Write>(
                     )?;
                 }
                 // Signed 16-bit extensions
-                (PrimitiveType::I16, PrimitiveType::I32) | (PrimitiveType::U16, PrimitiveType::I32) => {
+                (PrimitiveType::I16, PrimitiveType::I32)
+                | (PrimitiveType::U16, PrimitiveType::I32) => {
                     writeln!(
                         writer,
                         "        movzwl {}, %eax # Zero extend i16/u16->i32",
@@ -1269,7 +1279,8 @@ pub fn generate_instruction<'a, W: Write>(
                         dest_asm
                     )?;
                 }
-                (PrimitiveType::I16, PrimitiveType::I64) | (PrimitiveType::U16, PrimitiveType::I64) => {
+                (PrimitiveType::I16, PrimitiveType::I64)
+                | (PrimitiveType::U16, PrimitiveType::I64) => {
                     writeln!(
                         writer,
                         "        movzwl {}, %eax # Zero extend i16/u16->i32",
@@ -1286,9 +1297,17 @@ pub fn generate_instruction<'a, W: Write>(
                     )?;
                 }
                 // Signed 32-bit extension
-                (PrimitiveType::I32, PrimitiveType::I64) | (PrimitiveType::U32, PrimitiveType::I64) => {
-                    writeln!(writer, "        movl {}, %eax # Load source i32/u32", value_op)?;
-                    writeln!(writer, "        movslq %eax, %rax # Zero extend i32/u32->i64")?;
+                (PrimitiveType::I32, PrimitiveType::I64)
+                | (PrimitiveType::U32, PrimitiveType::I64) => {
+                    writeln!(
+                        writer,
+                        "        movl {}, %eax # Load source i32/u32",
+                        value_op
+                    )?;
+                    writeln!(
+                        writer,
+                        "        movslq %eax, %rax # Zero extend i32/u32->i64"
+                    )?;
                     writeln!(
                         writer,
                         "        movq %rax, {} # Store zero-extended result",
