@@ -1,0 +1,28 @@
+# Fixed type conversions test - simplified
+
+# Test i8 to i64 conversion
+fn @test_i8_to_i64() -> i64 {
+  entry:
+    %val_i8 = add.i8 100, 0
+    %val_i64 = zext.i8.i64 %val_i8
+    ret.i64 %val_i64
+}
+
+# Test i32 to i64 conversion
+fn @test_i32_to_i64() -> i64 {
+  entry:
+    %val_i32 = add.i32 1000, 0
+    %val_i64 = zext.i32.i64 %val_i32
+    ret.i64 %val_i64
+}
+
+fn @main() -> i64 {
+  entry:
+    %i8_result = call @test_i8_to_i64()
+    %i32_result = call @test_i32_to_i64()
+
+    print %i8_result
+    print %i32_result
+
+    ret.i64 0
+}

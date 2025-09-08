@@ -1,0 +1,113 @@
+# Comprehensive test case to expose GEP element size bug
+# GEP hardcodes element size to 4 bytes but should use actual element types
+# This test uses different element sizes to expose the bug
+
+fn @test_i8_array_gep() -> i64 {
+  entry:
+    # i8 array - element size should be 1 byte
+    %arr_i8 = alloc.stack [5 x i8]
+
+    # Store values at different indices
+    %ptr0 = getelementptr %arr_i8, 0  # Should be at offset 0
+    %ptr1 = getelementptr %arr_i8, 1  # Should be at offset 1 (not 4!)
+    %ptr2 = getelementptr %arr_i8, 2  # Should be at offset 2 (not 8!)
+    %ptr3 = getelementptr %arr_i8, 3  # Should be at offset 3 (not 12!)
+    %ptr4 = getelementptr %arr_i8, 4  # Should be at offset 4 (not 16!)
+
+    store.i8 %ptr0, 1
+    store.i8 %ptr1, 10
+    store.i8 %ptr2, 100
+    store.i8 %ptr3, 15
+    store.i8 %ptr4, 5
+
+    # Load values back
+    %val0 = load.i8 %ptr0
+    %val1 = load.i8 %ptr1
+    %val2 = load.i8 %ptr2
+    %val3 = load.i8 %ptr3
+    %val4 = load.i8 %ptr4
+
+    # Convert to i64 and combine
+    %r0 = zext.i8.i64 %val0
+    %r1 = zext.i8.i64 %val1
+    %r2 = zext.i8.i64 %val2
+    %r3 = zext.i8.i64 %val3
+    %r4 = zext.i8.i64 %val4
+
+    # Result: val0 + val1*256 + val2*65536 + val3*16777216 + val4*4294967296
+    %t1 = mul.i64 %r1, 256
+    %t2 = mul.i64 %r2, 65536
+    %t3 = mul.i64 %r3, 16777216
+    %t4 = mul.i64 %r4, 4294967296
+
+    %s1 = add.i64 %r0, %t1
+    %s2 = add.i64 %s1, %t2
+    %s3 = add.i64 %s2, %t3
+    %s4 = add.i64 %s3, %t4
+
+    ret.i64 %s4
+}
+
+fn @test_i16_array_gep() -> i64 {
+  entry:
+    # i16 array - element size should be 2 bytes
+    %arr_i16 = alloc.stack [3 x i16]
+
+    %ptr0 = getelementptr %arr_i16, 0  # Should be at offset 0
+    %ptr1 = getelementptr %arr_i16, 1  # Should be at offset 2 (not 4!)
+    %ptr2 = getelementptr %arr_i16, 2  # Should be at offset 4 (not 8!)
+
+    store.i16 %ptr0, 1000
+    store.i16 %ptr1, 2000
+    store.i16 %ptr2, 3000
+
+    %val0 = load.i16 %ptr0
+    %val1 = load.i16 %ptr1
+    %val2 = load.i16 %ptr2
+
+    %r0 = zext.i16.i64 %val0
+    %r1 = zext.i16.i64 %val1
+    %r2 = zext.i16.i64 %val2
+
+    # Result: val0 + val1*1000000 + val2*1000000000000
+    %t1 = mul.i64 %r1, 1000000
+    %t2 = mul.i64 %r2, 1000000000000
+
+    %s1 = add.i64 %r0, %t1
+    %s2 = add.i64 %s1, %t2
+
+    ret.i64 %s2
+}
+
+fn @test_i64_array_gep() -> i64 {
+  entry:
+    # i64 array - element size should be 8 bytes (this should work correctly)
+    %arr_i64 = alloc.stack [2 x i64]
+
+    %ptr0 = getelementptr %arr_i64, 0  # Should be at offset 0
+    %ptr1 = getelementptr %arr_i64, 1  # Should be at offset 8
+
+    store.i64 %ptr0, 100000
+    store.i64 %ptr1, 200000
+
+    %val0 = load.i64 %ptr0
+    %val1 = load.i64 %ptr1
+
+    # Result: val0 + val1*1000000000
+    %t1 = mul.i64 %val1, 1000000000
+    %result = add.i64 %val0, %t1
+
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    # Very simple test without print
+    %arr = alloc.stack [2 x i64]
+    %ptr = getelementptr %arr, 0
+    store.i64 %ptr, 42
+    %val = load.i64 %ptr
+    
+    print %val
+    ret.i64 0
+}

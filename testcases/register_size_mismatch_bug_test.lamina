@@ -1,0 +1,114 @@
+# Test case to expose register size mismatch bugs
+# Different data types need different register sizes, but code might use wrong registers
+
+fn @test_i8_register_operations() -> i64 {
+  entry:
+    # Test i8 operations that might use wrong registers
+    %a = add.i8 100, 50
+    %b = sub.i8 120, 30
+    %c = mul.i8 %a, 2
+
+    # Convert to i64
+    %a64 = zext.i8.i64 %a
+    %b64 = zext.i8.i64 %b
+    %c64 = zext.i8.i64 %c
+
+    # Result: a + b*256 + c*65536
+    %b_scaled = mul.i64 %b64, 256
+    %c_scaled = mul.i64 %c64, 65536
+
+    %s1 = add.i64 %a64, %b_scaled
+    %result = add.i64 %s1, %c_scaled
+
+    ret.i64 %result
+}
+
+fn @test_i16_register_operations() -> i64 {
+  entry:
+    # Test i16 operations
+    %a = add.i16 1000, 500
+    %b = sub.i16 1500, 300
+    %c = mul.i16 %a, 3
+
+    # Convert to i64
+    %a64 = zext.i16.i64 %a
+    %b64 = zext.i16.i64 %b
+    %c64 = zext.i16.i64 %c
+
+    # Result: a + b*1000000 + c*1000000000000
+    %b_scaled = mul.i64 %b64, 1000000
+    %c_scaled = mul.i64 %c64, 1000000000000
+
+    %s1 = add.i64 %a64, %b_scaled
+    %result = add.i64 %s1, %c_scaled
+
+    ret.i64 %result
+}
+
+fn @test_mixed_size_operations() -> i64 {
+  entry:
+    # Mix different sizes in operations
+    %i8_val = add.i8 42, 8
+    %i16_val = add.i16 1000, 200
+    %i32_val = add.i32 100000, 50000
+
+    # Convert all to i64
+    %i8_64 = zext.i8.i64 %i8_val
+    %i16_64 = zext.i16.i64 %i16_val
+    %i32_64 = zext.i32.i64 %i32_val
+
+    # Result: i8 + i16*1000 + i32*1000000
+    %i16_scaled = mul.i64 %i16_64, 1000
+    %i32_scaled = mul.i64 %i32_64, 1000000
+
+    %s1 = add.i64 %i8_64, %i16_scaled
+    %result = add.i64 %s1, %i32_scaled
+
+    ret.i64 %result
+}
+
+fn @test_division_small_types() -> i64 {
+  entry:
+    # Test division operations for small types (known to have issues)
+    %i8_div = div.i8 100, 5
+    %i16_div = div.i16 2000, 4
+    %u8_div = div.u8 150, 3
+    %u16_div = div.u16 3000, 6
+
+    # Convert to i64
+    %i8_64 = zext.i8.i64 %i8_div
+    %i16_64 = zext.i16.i64 %i16_div
+    %u8_64 = zext.u8.i64 %u8_div
+    %u16_64 = zext.u16.i64 %u16_div
+
+    # Result: i8 + i16*256 + u8*65536 + u16*16777216
+    %i16_scaled = mul.i64 %i16_64, 256
+    %u8_scaled = mul.i64 %u8_64, 65536
+    %u16_scaled = mul.i64 %u16_64, 16777216
+
+    %s1 = add.i64 %i8_64, %i16_scaled
+    %s2 = add.i64 %s1, %u8_scaled
+    %result = add.i64 %s2, %u16_scaled
+
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %i8_result = call @test_i8_register_operations()
+    %i16_result = call @test_i16_register_operations()
+    %mixed_result = call @test_mixed_size_operations()
+    %div_result = call @test_division_small_types()
+
+    # Combine all results with different scaling
+    %i16_scaled = mul.i64 %i16_result, 1000000000000
+    %mixed_scaled = mul.i64 %mixed_result, 1000000000000000000
+    %div_scaled = mul.i64 %div_result, 1000000000000000000000
+
+    %s1 = add.i64 %i8_result, %i16_scaled
+    %s2 = add.i64 %s1, %mixed_scaled
+    %final = add.i64 %s2, %div_scaled
+
+    print %final
+    ret.i64 0
+}
