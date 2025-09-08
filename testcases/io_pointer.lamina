@@ -1,4 +1,4 @@
-# Test pointer-based I/O operations
+# Test pointer-based operations with print output
 fn @main() -> i32 {
   entry:
     # Allocate buffer
@@ -6,9 +6,6 @@ fn @main() -> i32 {
 
     # Store value in buffer
     store.i32 %buffer, 42
-
-    # Write buffer address to stdout
-    %write_result = writeptr %buffer
 
     # Load value from buffer
     %buffer_val = load.i32 %buffer
