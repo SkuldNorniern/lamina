@@ -241,7 +241,7 @@ fn precompute_function_layout<'a>(
                     // For arrays and structs, we need space for both the pointer (8 bytes) and the actual data
                     let total_size = match allocated_ty {
                         Type::Array { .. } | Type::Struct(_) => s + 8, // pointer + data
-                        _ => s, // just the data
+                        _ => s,                                        // just the data
                     };
                     Some((result, total_size))
                 }
@@ -250,7 +250,10 @@ fn precompute_function_layout<'a>(
                         PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
                         PrimitiveType::I16 | PrimitiveType::U16 => 2,
                         PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
-                        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+                        PrimitiveType::I64
+                        | PrimitiveType::U64
+                        | PrimitiveType::F64
+                        | PrimitiveType::Ptr => 8,
                         PrimitiveType::Char => 1,
                     };
                     Some((result, s))

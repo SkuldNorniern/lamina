@@ -93,25 +93,23 @@ pub fn generate_instruction<'a, W: Write>(
                         materialize_to_reg(writer, &val, "x10")?;
                         writeln!(writer, "        strb w10, [x11]")?;
                     }
-                    Type::Primitive(PrimitiveType::I16)
-                    | Type::Primitive(PrimitiveType::U16) => {
+                    Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => {
                         materialize_to_reg(writer, &val, "x10")?;
                         writeln!(writer, "        strh w10, [x11]")?;
                     }
-                    Type::Primitive(PrimitiveType::I32)
-                    | Type::Primitive(PrimitiveType::U32) => {
+                    Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => {
                         materialize_to_reg(writer, &val, "x10")?;
                         writeln!(writer, "        str w10, [x11]")?;
                     }
                     Type::Primitive(PrimitiveType::I64)
                     | Type::Primitive(PrimitiveType::U64)
                     | Type::Primitive(PrimitiveType::Ptr) => {
-                    materialize_to_reg(writer, &val, "x10")?;
-                    writeln!(writer, "        str x10, [x11]")?;
-                }
+                        materialize_to_reg(writer, &val, "x10")?;
+                        writeln!(writer, "        str x10, [x11]")?;
+                    }
                     Type::Primitive(PrimitiveType::Char) => {
-                    materialize_to_reg(writer, &val, "x10")?;
-                    writeln!(writer, "        strb w10, [x11]")?;
+                        materialize_to_reg(writer, &val, "x10")?;
+                        writeln!(writer, "        strb w10, [x11]")?;
                     }
                     _ => {
                         return Err(LaminaError::CodegenError(
@@ -149,14 +147,14 @@ pub fn generate_instruction<'a, W: Write>(
                                 // The actual data is stored at a different location
                                 // Calculate the data offset (the data goes after the pointer)
                                 let data_offset = offset + 8; // Data goes 8 bytes after the pointer
-                                
+
                                 // Use proper addressing for large offsets
                                 if data_offset >= -256 && data_offset <= 255 {
                                     writeln!(writer, "        add x10, x29, #{}", data_offset)?;
                                 } else {
                                     materialize_address(writer, "x10", data_offset)?;
                                 }
-                                
+
                                 if offset >= -256 && offset <= 255 {
                                     writeln!(writer, "        str x10, [x29, #{}]", offset)?;
                                 } else {
@@ -249,7 +247,9 @@ pub fn generate_instruction<'a, W: Write>(
                     // For I16 and U16, use 32-bit operations (AArch64 doesn't have native 16-bit arithmetic)
                     binary_i16(writer, op, &lhs_op, &rhs_op, &dest)?
                 }
-                PrimitiveType::I32 | PrimitiveType::U32 => binary_i32(writer, op, &lhs_op, &rhs_op, &dest)?,
+                PrimitiveType::I32 | PrimitiveType::U32 => {
+                    binary_i32(writer, op, &lhs_op, &rhs_op, &dest)?
+                }
                 PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => {
                     binary_i64(writer, op, &lhs_op, &rhs_op, &dest)?
                 }
@@ -314,40 +314,38 @@ pub fn generate_instruction<'a, W: Write>(
                 materialize_address_operand(writer, &ptr_op, "x9")?;
                 writeln!(writer, "        ldr x11, [x9]")?; // Load the target address
 
-            match ty {
-                Type::Primitive(PrimitiveType::I8)
-                | Type::Primitive(PrimitiveType::U8)
-                | Type::Primitive(PrimitiveType::Bool) => {
-                    writeln!(writer, "        ldr w10, [x11]")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
-                Type::Primitive(PrimitiveType::I16)
-                | Type::Primitive(PrimitiveType::U16) => {
-                    writeln!(writer, "        ldr w10, [x11]")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
-                Type::Primitive(PrimitiveType::I32)
-                | Type::Primitive(PrimitiveType::U32) => {
-                    writeln!(writer, "        ldr w10, [x11]")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
-                Type::Primitive(PrimitiveType::I64)
-                | Type::Primitive(PrimitiveType::U64)
-                | Type::Primitive(PrimitiveType::Ptr) => {
-                    writeln!(writer, "        ldr x10, [x11]")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
-                Type::Primitive(PrimitiveType::Char) => {
-                    writeln!(writer, "        ldr w10, [x11]")?;
-                    store_to_location(writer, "x10", &dest)?;
-                }
-                _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(
-                            ty.to_string(),
-                        )),
-                    ));
-                }
+                match ty {
+                    Type::Primitive(PrimitiveType::I8)
+                    | Type::Primitive(PrimitiveType::U8)
+                    | Type::Primitive(PrimitiveType::Bool) => {
+                        writeln!(writer, "        ldr w10, [x11]")?;
+                        store_to_location(writer, "x10", &dest)?;
+                    }
+                    Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => {
+                        writeln!(writer, "        ldr w10, [x11]")?;
+                        store_to_location(writer, "x10", &dest)?;
+                    }
+                    Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => {
+                        writeln!(writer, "        ldr w10, [x11]")?;
+                        store_to_location(writer, "x10", &dest)?;
+                    }
+                    Type::Primitive(PrimitiveType::I64)
+                    | Type::Primitive(PrimitiveType::U64)
+                    | Type::Primitive(PrimitiveType::Ptr) => {
+                        writeln!(writer, "        ldr x10, [x11]")?;
+                        store_to_location(writer, "x10", &dest)?;
+                    }
+                    Type::Primitive(PrimitiveType::Char) => {
+                        writeln!(writer, "        ldr w10, [x11]")?;
+                        store_to_location(writer, "x10", &dest)?;
+                    }
+                    _ => {
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(
+                                ty.to_string(),
+                            )),
+                        ));
+                    }
                 }
             }
         }
@@ -576,25 +574,37 @@ pub fn generate_instruction<'a, W: Write>(
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             match (source_type, target_type) {
                 // 8-bit to 32-bit extensions
-                (PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool, PrimitiveType::I32 | PrimitiveType::U32) => {
+                (
+                    PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool,
+                    PrimitiveType::I32 | PrimitiveType::U32,
+                ) => {
                     materialize_to_reg(writer, &src, "x10")?;
                     writeln!(writer, "        uxtb w10, w10")?;
                     store_to_location(writer, "x10", &dest)?;
                 }
                 // 8-bit to 64-bit extensions
-                (PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool, PrimitiveType::I64 | PrimitiveType::U64) => {
+                (
+                    PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool,
+                    PrimitiveType::I64 | PrimitiveType::U64,
+                ) => {
                     materialize_to_reg(writer, &src, "x10")?;
                     writeln!(writer, "        and x10, x10, #0xFF")?; // Mask to 8 bits for zero extension
                     store_to_location(writer, "x10", &dest)?;
                 }
                 // 16-bit to 32-bit extensions
-                (PrimitiveType::I16 | PrimitiveType::U16, PrimitiveType::I32 | PrimitiveType::U32) => {
+                (
+                    PrimitiveType::I16 | PrimitiveType::U16,
+                    PrimitiveType::I32 | PrimitiveType::U32,
+                ) => {
                     materialize_to_reg(writer, &src, "x10")?;
                     writeln!(writer, "        uxth w10, w10")?; // Zero extend 16-bit to 32-bit
                     store_to_location(writer, "x10", &dest)?;
                 }
                 // 16-bit to 64-bit extensions
-                (PrimitiveType::I16 | PrimitiveType::U16, PrimitiveType::I64 | PrimitiveType::U64) => {
+                (
+                    PrimitiveType::I16 | PrimitiveType::U16,
+                    PrimitiveType::I64 | PrimitiveType::U64,
+                ) => {
                     materialize_to_reg(writer, &src, "x10")?;
                     writeln!(writer, "        and x10, x10, #0xFFFF")?; // Mask to 16 bits for zero extension
                     store_to_location(writer, "x10", &dest)?;
@@ -612,7 +622,8 @@ pub fn generate_instruction<'a, W: Write>(
                     // In AArch64, 32-bit registers are automatically zero-extended to 64-bit
                     store_to_location(writer, "x10", &dest)?;
                 }
-                (PrimitiveType::I32, PrimitiveType::U64) | (PrimitiveType::U32, PrimitiveType::I64) => {
+                (PrimitiveType::I32, PrimitiveType::U64)
+                | (PrimitiveType::U32, PrimitiveType::I64) => {
                     materialize_to_reg(writer, &src, "w10")?;
                     // Mixed signed/unsigned conversions - use zero extension for safety
                     store_to_location(writer, "x10", &dest)?;
@@ -946,7 +957,11 @@ pub fn generate_instruction<'a, W: Write>(
             if let Value::Variable(var_name) = ptr {
                 if func_ctx.stack_allocated_vars.contains(var_name) {
                     // This is a stack allocation - no-op for deallocation
-                    writeln!(writer, "        // Stack allocation {} - no deallocation needed", var_name)?;
+                    writeln!(
+                        writer,
+                        "        // Stack allocation {} - no deallocation needed",
+                        var_name
+                    )?;
                     return Ok(());
                 }
             }
@@ -1018,15 +1033,15 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
                 writeln!(writer, "        mov {}, #{}", dest, value_i64)?;
             } else {
                 // Use movz/movk for larger or negative values
-        let mut first = true;
-        for shift in [0u32, 16, 32, 48] {
-            let part = ((value >> shift) & 0xFFFF) as u16;
-            if part != 0 || first {
-                if first {
-                    writeln!(writer, "        movz {}, #{}, lsl #{}", dest, part, shift)?;
-                    first = false;
-                } else {
-                    writeln!(writer, "        movk {}, #{}, lsl #{}", dest, part, shift)?;
+                let mut first = true;
+                for shift in [0u32, 16, 32, 48] {
+                    let part = ((value >> shift) & 0xFFFF) as u16;
+                    if part != 0 || first {
+                        if first {
+                            writeln!(writer, "        movz {}, #{}, lsl #{}", dest, part, shift)?;
+                            first = false;
+                        } else {
+                            writeln!(writer, "        movk {}, #{}, lsl #{}", dest, part, shift)?;
                         }
                     }
                 }
@@ -1048,8 +1063,8 @@ fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -
     if op.starts_with("[x29,")
         && let Some(off) = parse_fp_offset(op)
     {
-            materialize_address(writer, dest, off)?;
-            return Ok(());
+        materialize_address(writer, dest, off)?;
+        return Ok(());
     }
     if op.ends_with("(adrp+add)") {
         let label = op.trim_end_matches("(adrp+add)");
@@ -1103,7 +1118,11 @@ fn materialize_address<W: Write>(writer: &mut W, dest: &str, offset: i64) -> Res
             // Load negative offset
             let abs_offset = (-offset) as u64;
             if abs_offset <= 0xFFFF {
-                writeln!(writer, "        movz {}, #{}, lsl #0", dest, abs_offset as u16)?;
+                writeln!(
+                    writer,
+                    "        movz {}, #{}, lsl #0",
+                    dest, abs_offset as u16
+                )?;
             } else if abs_offset <= 0xFFFFFFFF {
                 let low = (abs_offset & 0xFFFF) as u16;
                 let high = ((abs_offset >> 16) & 0xFFFF) as u16;

@@ -299,12 +299,12 @@ pub const HOST_ARCH_LIST: &[&str] = &[
 /// Detect the host system's architecture.
 ///
 /// Returns a string representing the detected architecture and host system: "x86_64" or "aarch64".
-/// 
+///
 /// Target List:
 /// x86_64_unknown
 /// x86_64_linux
 /// x86_64_windows
-/// x86_64_macos - since Intel mac is heading to a end, it's not supported as much as aarch64 
+/// x86_64_macos - since Intel mac is heading to a end, it's not supported as much as aarch64
 /// aarch64_unknown
 /// aarch64_macos
 ///
@@ -398,8 +398,8 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         _ => {
             return Err(error::LaminaError::CodegenError(
                 CodegenError::UnsupportedFeature(codegen::FeatureType::Custom(format!(
-                "Unsupported target architecture: {}",
-                target
+                    "Unsupported target architecture: {}",
+                    target
                 ))),
             ));
         }
