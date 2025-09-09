@@ -349,7 +349,10 @@ pub fn generate_instruction<'a, W: Write>(
                 PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
                 PrimitiveType::I16 | PrimitiveType::U16 => 2,
                 PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
-                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+                PrimitiveType::I64
+                | PrimitiveType::U64
+                | PrimitiveType::F64
+                | PrimitiveType::Ptr => 8,
                 PrimitiveType::Char => 4, // Typically 32-bit Unicode
             };
             let shift_amount = match element_size {

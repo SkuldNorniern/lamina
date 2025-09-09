@@ -133,8 +133,11 @@ fn generate_function_with_allocation<'a, W: Write>(
 
     if frame_size > 0 {
         writeln!(writer, "    subq ${}, %rsp", frame_size)?;
-        writeln!(writer, "    # Allocated {} bytes ({} for spills + {} for dynamic allocs)",
-                 frame_size, spill_stack_size, dynamic_alloc_reserve)?;
+        writeln!(
+            writer,
+            "    # Allocated {} bytes ({} for spills + {} for dynamic allocs)",
+            frame_size, spill_stack_size, dynamic_alloc_reserve
+        )?;
     }
 
     // Handle register-allocated vs spilled variables
@@ -527,7 +530,8 @@ fn precompute_function_layout<'a>(
             let result_info: Option<(&Identifier<'a>, u64)> = match instr {
                 Instruction::Alloc { result, .. } => {
                     // Alloc always results in a pointer, regardless of allocated type
-                    let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
+                    let (_, s) =
+                        get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
                     Some((result, s))
                 }
                 Instruction::Binary { result, ty, .. } | Instruction::Cmp { result, ty, .. } => {
