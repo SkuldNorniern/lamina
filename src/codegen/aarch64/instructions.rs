@@ -371,6 +371,48 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "        add x0, x0, x1")?;
             store_to_location(writer, "x0", &dest)?;
         }
+        Instruction::PtrToInt {
+            result,
+            ptr_value,
+            target_type,
+        } => {
+            let ptr_op = get_value_operand_asm(ptr_value, state, func_ctx)?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+
+            // Load the pointer value
+            materialize_to_reg(writer, &ptr_op, "x0")?;
+
+            // For AArch64, pointers are 64-bit
+            match target_type {
+                PrimitiveType::I64 | PrimitiveType::U64 => {
+                    store_to_location(writer, "x0", &dest)?;
+                }
+                PrimitiveType::I32 | PrimitiveType::U32 => {
+                    // Truncate to 32-bit
+                    writeln!(writer, "        mov w0, w0")?;
+                    store_to_location(writer, "w0", &dest)?;
+                }
+                _ => return Err(LaminaError::CodegenError(CodegenError::UnsupportedPrimitiveType(*target_type))),
+            }
+        }
+        Instruction::IntToPtr {
+            result,
+            int_value,
+            target_type,
+        } => {
+            let int_op = get_value_operand_asm(int_value, state, func_ctx)?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+
+            // Load the integer value
+            materialize_to_reg(writer, &int_op, "x0")?;
+
+            // Store as pointer (pointers are 64-bit on AArch64)
+            if *target_type == PrimitiveType::Ptr {
+                store_to_location(writer, "x0", &dest)?;
+            } else {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedPrimitiveType(*target_type)));
+            }
+        }
 
         Instruction::GetFieldPtr {
             result,

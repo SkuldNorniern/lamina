@@ -215,6 +215,18 @@ pub enum Instruction<'a> {
         index: Value<'a>,       // Must be an integer type
         element_type: PrimitiveType, // Type of elements in the array (for proper sizing)
     },
+    // Convert pointer to integer for pointer arithmetic
+    PtrToInt {
+        result: Identifier<'a>,
+        ptr_value: Value<'a>,
+        target_type: PrimitiveType, // Usually i64 for addresses
+    },
+    // Convert integer back to pointer
+    IntToPtr {
+        result: Identifier<'a>,
+        int_value: Value<'a>,
+        target_type: PrimitiveType, // The pointer type (usually ptr)
+    },
     Tuple {
         // Create a tuple
         result: Identifier<'a>,
@@ -379,6 +391,16 @@ impl fmt::Display for Instruction<'_> {
                 index,
                 element_type,
             } => write!(f, "%{} = getelem.ptr {}, {}, {}", result, array_ptr, index, element_type),
+            Instruction::PtrToInt {
+                result,
+                ptr_value,
+                target_type,
+            } => write!(f, "%{} = ptrtoint {}, {}", result, ptr_value, target_type),
+            Instruction::IntToPtr {
+                result,
+                int_value,
+                target_type,
+            } => write!(f, "%{} = inttoptr {}, {}", result, int_value, target_type),
             Instruction::Tuple { result, elements } => {
                 write!(f, "%{} = tuple", result)?;
                 for elem in elements {

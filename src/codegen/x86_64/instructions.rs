@@ -1197,6 +1197,47 @@ pub fn generate_instruction<'a, W: Write>(
             )?;
             writeln!(writer, "        movq %rax, {} # Store GEP Result", dest_asm)?;
         }
+        Instruction::PtrToInt {
+            result,
+            ptr_value,
+            target_type,
+        } => {
+            let ptr_op = get_value_operand_asm(ptr_value, state, func_ctx)?;
+            let dest_op = func_ctx.get_value_location(result)?.to_operand_string();
+
+            // Load the pointer value into rax
+            writeln!(writer, "        movq {}, %rax # Load pointer for ptrtoint", ptr_op)?;
+
+            // For x86_64, pointers are 64-bit, so we can directly move to the destination
+            // The target_type should be i64 for addresses
+            match target_type {
+                PrimitiveType::I64 | PrimitiveType::U64 => {
+                    writeln!(writer, "        movq %rax, {} # Store ptrtoint result (i64)", dest_op)?;
+                }
+                PrimitiveType::I32 | PrimitiveType::U32 => {
+                    writeln!(writer, "        movl %eax, {} # Store ptrtoint result (i32)", dest_op)?;
+                }
+                _ => return Err(LaminaError::CodegenError(CodegenError::UnsupportedPrimitiveType(*target_type))),
+            }
+        }
+        Instruction::IntToPtr {
+            result,
+            int_value,
+            target_type,
+        } => {
+            let int_op = get_value_operand_asm(int_value, state, func_ctx)?;
+            let dest_op = func_ctx.get_value_location(result)?.to_operand_string();
+
+            // Load the integer value
+            writeln!(writer, "        movq {}, %rax # Load integer for inttoptr", int_op)?;
+
+            // Store as pointer (pointers are 64-bit on x86_64)
+            if *target_type == PrimitiveType::Ptr {
+                writeln!(writer, "        movq %rax, {} # Store inttoptr result", dest_op)?;
+            } else {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedPrimitiveType(*target_type)));
+            }
+        }
         Instruction::Print { value } => {
             let val_loc = get_value_operand_asm(value, state, func_ctx)?;
 
