@@ -1041,7 +1041,6 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-
     /// Gets a pointer to a struct field (structure field access)
     ///
     /// # Parameters

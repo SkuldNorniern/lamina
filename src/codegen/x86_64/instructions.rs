@@ -158,7 +158,7 @@ pub fn generate_instruction<'a, W: Write>(
                 };
 
                 // Align to 8-byte boundary for proper alignment
-                let aligned_size = ((alloc_size + 7) / 8) * 8;
+                let aligned_size = alloc_size.div_ceil(8) * 8;
 
                 // Allocate space by moving the current stack offset
                 let data_offset = func_ctx.current_stack_offset;
@@ -680,15 +680,15 @@ pub fn generate_instruction<'a, W: Write>(
                 | PrimitiveType::Bool => {
                     writeln!(
                         writer,
-                        "        movb {}, {} # Store 8-bit Binary/Div Result",
-                        "%al", dest_asm
+                        "        movb %al, {} # Store 8-bit Binary/Div Result",
+                        dest_asm
                     )?;
                 }
                 PrimitiveType::I16 | PrimitiveType::U16 => {
                     writeln!(
                         writer,
-                        "        movw {}, {} # Store 16-bit Binary/Div Result",
-                        "%ax", dest_asm
+                        "        movw %ax, {} # Store 16-bit Binary/Div Result",
+                        dest_asm
                     )?;
                 }
                 _ => {
@@ -1216,18 +1216,34 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_op = func_ctx.get_value_location(result)?.to_operand_string();
 
             // Load the pointer value into rax
-            writeln!(writer, "        movq {}, %rax # Load pointer for ptrtoint", ptr_op)?;
+            writeln!(
+                writer,
+                "        movq {}, %rax # Load pointer for ptrtoint",
+                ptr_op
+            )?;
 
             // For x86_64, pointers are 64-bit, so we can directly move to the destination
             // The target_type should be i64 for addresses
             match target_type {
                 PrimitiveType::I64 | PrimitiveType::U64 => {
-                    writeln!(writer, "        movq %rax, {} # Store ptrtoint result (i64)", dest_op)?;
+                    writeln!(
+                        writer,
+                        "        movq %rax, {} # Store ptrtoint result (i64)",
+                        dest_op
+                    )?;
                 }
                 PrimitiveType::I32 | PrimitiveType::U32 => {
-                    writeln!(writer, "        movl %eax, {} # Store ptrtoint result (i32)", dest_op)?;
+                    writeln!(
+                        writer,
+                        "        movl %eax, {} # Store ptrtoint result (i32)",
+                        dest_op
+                    )?;
                 }
-                _ => return Err(LaminaError::CodegenError(CodegenError::UnsupportedPrimitiveType(*target_type))),
+                _ => {
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::UnsupportedPrimitiveType(*target_type),
+                    ));
+                }
             }
         }
         Instruction::IntToPtr {
@@ -1239,13 +1255,23 @@ pub fn generate_instruction<'a, W: Write>(
             let dest_op = func_ctx.get_value_location(result)?.to_operand_string();
 
             // Load the integer value
-            writeln!(writer, "        movq {}, %rax # Load integer for inttoptr", int_op)?;
+            writeln!(
+                writer,
+                "        movq {}, %rax # Load integer for inttoptr",
+                int_op
+            )?;
 
             // Store as pointer (pointers are 64-bit on x86_64)
             if *target_type == PrimitiveType::Ptr {
-                writeln!(writer, "        movq %rax, {} # Store inttoptr result", dest_op)?;
+                writeln!(
+                    writer,
+                    "        movq %rax, {} # Store inttoptr result",
+                    dest_op
+                )?;
             } else {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedPrimitiveType(*target_type)));
+                return Err(LaminaError::CodegenError(
+                    CodegenError::UnsupportedPrimitiveType(*target_type),
+                ));
             }
         }
         Instruction::Print { value } => {
