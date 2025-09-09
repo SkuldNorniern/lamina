@@ -1262,16 +1262,19 @@ pub fn generate_instruction<'a, W: Write>(
             )?;
 
             // Store as pointer (pointers are 64-bit on x86_64)
-            if *target_type == PrimitiveType::Ptr {
-                writeln!(
-                    writer,
-                    "        movq %rax, {} # Store inttoptr result",
-                    dest_op
-                )?;
-            } else {
-                return Err(LaminaError::CodegenError(
-                    CodegenError::UnsupportedPrimitiveType(*target_type),
-                ));
+            match target_type {
+                PrimitiveType::Ptr | PrimitiveType::I64 | PrimitiveType::U64 => {
+                    writeln!(
+                        writer,
+                        "        movq %rax, {} # Store inttoptr result",
+                        dest_op
+                    )?;
+                }
+                _ => {
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::UnsupportedPrimitiveType(*target_type),
+                    ));
+                }
             }
         }
         Instruction::Print { value } => {

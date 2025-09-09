@@ -587,6 +587,15 @@ fn precompute_function_layout<'a>(
                         get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::I64))?;
                     Some((result, s))
                 }
+                Instruction::PtrToInt { result, target_type, .. } => {
+                    let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(*target_type))?;
+                    Some((result, s))
+                }
+                Instruction::IntToPtr { result, .. } => {
+                    let (_, s) =
+                        get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
+                    Some((result, s))
+                }
                 _ => None, // Only care about instructions with results
             };
 

@@ -49,7 +49,7 @@ TEST_CASES = {
     # Advanced Tests (Note: Some require additional implementation)
      'pointer_operations.lamina': ['42', '100'],  # simple stack alloc and GEP test
      'gep_variable_indices.lamina': ['30', '42', '30', '3230'],  # GEP operations with variable indices - comprehensive test
-     'pointer_arithmetic_brainfuck.lamina': ['42'],  # Pointer arithmetic with ptrtoint/inttoptr
+     'pointer_arithmetic_brainfuck.lamina': ['42'],  # Pointer arithmetic with ptrtoint/inttoptr - returns stored value
      'struct_operations.lamina': ['500'],  # struct operations - basic struct allocation only
      'tuple_operations.lamina': ['0'],  # tuple operations - basic tuple operations (extraction not fully implemented)
      'type_conversion.lamina': ['100', '60', '1', '1', '1', '1', '50'],  # zero extension - requires proper type system
