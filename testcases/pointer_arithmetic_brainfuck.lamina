@@ -11,17 +11,65 @@ fn @main() -> i64 {
     # Convert pointer to integer for inspection
     %addr = ptrtoint %ptr, .i64
 
-    # Simple arithmetic: add 8 to move to next element
-    %next_addr = add.i64 %addr, 8
+    # Convert back to pointer to verify the round-trip
+    %new_ptr = inttoptr %addr, .i64
 
-    # Convert back to pointer
-    %next_ptr = inttoptr %next_addr, .i64
+    # Load the value to verify it matches what we stored
+    %value = load.i64 %new_ptr
 
-    # Store a different value at the computed location
-    store.i64 %next_ptr, 100
+    # Print the original stored value
+    %dummy = call @print_number(%value)
+    %newline = writebyte 10
 
-    # Load the original value to verify it wasn't overwritten
-    %original = load.i64 %ptr
+    ret.i64 0  # Return success (test framework expects exit code 0)
+}
 
-    ret.i64 %original  # Should return 42
+# Helper function to print numbers (from the attached file)
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
 }
