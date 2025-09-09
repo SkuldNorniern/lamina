@@ -1681,7 +1681,11 @@ mod tests {
     }
 
     // Helper to generate assembly and assert it contains specific snippets
-    fn assert_asm_contains<'a>(instr: &Instruction<'a>, ctx: &mut FunctionContext<'a>, expected_snippets: &[&str]) {
+    fn assert_asm_contains<'a>(
+        instr: &Instruction<'a>,
+        ctx: &mut FunctionContext<'a>,
+        expected_snippets: &[&str],
+    ) {
         let asm = generate_test_asm(instr, ctx);
         println!("Generated ASM for {}:\n{}", instr, asm); // Print ASM for debugging
         for snippet in expected_snippets {
@@ -1695,7 +1699,11 @@ mod tests {
     }
 
     // Helper to assert that generating an instruction results in a CodegenError
-    fn assert_codegen_error<'a>(instr: &Instruction<'a>, ctx: &mut FunctionContext<'a>, expected_msg_part: &str) {
+    fn assert_codegen_error<'a>(
+        instr: &Instruction<'a>,
+        ctx: &mut FunctionContext<'a>,
+        expected_msg_part: &str,
+    ) {
         let mut output = Cursor::new(Vec::new());
         let mut state = CodegenState::new();
 
@@ -1841,7 +1849,7 @@ mod tests {
             &alloc_stack,
             &mut ctx,
             &[
-                "leaq -8(%rbp), %rax", // Get address of stack slot
+                "leaq -8(%rbp), %rax",  // Get address of stack slot
                 "movq %rax, -40(%rbp)", // Store address in result variable
             ],
         );
@@ -2220,7 +2228,14 @@ mod tests {
             index: Value::Variable("index"),
             element_type: PrimitiveType::I64,
         };
-        generate_instruction(&get_elem_ptr, &mut output, &mut state, &mut ctx, "test_func").unwrap();
+        generate_instruction(
+            &get_elem_ptr,
+            &mut output,
+            &mut state,
+            &mut ctx,
+            "test_func",
+        )
+        .unwrap();
 
         // 3. Load value from element pointer
         let load_elem = Instruction::Load {
@@ -2246,7 +2261,14 @@ mod tests {
             ptr: Value::Variable("elem_ptr"),
             value: Value::Variable("computed"),
         };
-        generate_instruction(&store_result, &mut output, &mut state, &mut ctx, "test_func").unwrap();
+        generate_instruction(
+            &store_result,
+            &mut output,
+            &mut state,
+            &mut ctx,
+            "test_func",
+        )
+        .unwrap();
 
         // Check the final ASM output
         let asm = String::from_utf8(output.into_inner()).expect("Failed to convert to string");
