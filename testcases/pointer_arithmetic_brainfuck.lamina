@@ -1,0 +1,27 @@
+# Simple test for pointer arithmetic instructions
+# Demonstrates ptrtoint and inttoptr functionality
+
+fn @main() -> i64 {
+  entry:
+    # Allocate array and store a value
+    %arr = alloc.stack [3 x i64]
+    %ptr = getelem.ptr %arr, 0, i64
+    store.i64 %ptr, 42
+
+    # Convert pointer to integer for inspection
+    %addr = ptrtoint %ptr, .i64
+
+    # Simple arithmetic: add 8 to move to next element
+    %next_addr = add.i64 %addr, 8
+
+    # Convert back to pointer
+    %next_ptr = inttoptr %next_addr, .i64
+
+    # Store a different value at the computed location
+    store.i64 %next_ptr, 100
+
+    # Load the original value to verify it wasn't overwritten
+    %original = load.i64 %ptr
+
+    ret.i64 %original  # Should return 42
+}

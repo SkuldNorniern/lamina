@@ -115,21 +115,79 @@ fn @test_heap_array_operations() -> i64 {
     ret.i64 %total
 }
 
+# Test variable index GEP operations (this is where runtime issues occur)
+fn @test_variable_index_gep() -> i64 {
+  entry:
+    # Allocate array
+    %arr = alloc.stack [5 x i64]
+
+    # Initialize array with values
+    %ptr0 = getelem.ptr %arr, 0, i64
+    %ptr1 = getelem.ptr %arr, 1, i64
+    %ptr2 = getelem.ptr %arr, 2, i64
+    %ptr3 = getelem.ptr %arr, 3, i64
+    %ptr4 = getelem.ptr %arr, 4, i64
+
+    store.i64 %ptr0, 10
+    store.i64 %ptr1, 20
+    store.i64 %ptr2, 30
+    store.i64 %ptr3, 40
+    store.i64 %ptr4, 50
+
+    # Test variable index access - this is where segmentation faults occur
+    %index = add.i64 0, 2  # Variable index = 2
+    %var_ptr = getelem.ptr %arr, %index, i64  # Use variable index
+
+    # Load value using variable index
+    %var_val = load.i64 %var_ptr
+
+    ret.i64 %var_val
+}
+
+# Test pointer movement like Brainfuck operations
+fn @test_pointer_movement() -> i64 {
+  entry:
+    # Allocate tape
+    %tape = alloc.stack [10 x i32]
+
+    # Initialize data pointer
+    %data_ptr = add.i64 0, 0  # Start at index 0
+
+    # Move data pointer (like Brainfuck > operation)
+    %new_ptr = add.i64 %data_ptr, 1  # Move to index 1
+
+    # Access element using variable index
+    %elem_ptr = getelem.ptr %tape, %new_ptr, i32
+
+    # Store and load value
+    store.i32 %elem_ptr, 42
+    %val = load.i32 %elem_ptr
+
+    # Convert to i64 and return
+    %result = zext.i32.i64 %val
+    ret.i64 %result
+}
+
 fn @main() -> i64 {
   entry:
-    #%array_result = call @test_array_access()         # Should return 60 (20 + 40)
-    #%struct_result = call @test_struct_access()       # Should return 600 (100 + 200 + 300)
-    #%complex_result = call @test_complex_struct()     # Should return 200 (25 + 175)
-    #%heap_result = call @test_heap_array_operations() # Should return 6 (1 + 2 + 3)
+    # Test simple stack allocation and access first
+    %simple_val = alloc.stack i64
+    store.i64 %simple_val, 42
+    %loaded_val = load.i64 %simple_val
 
-    #print %array_result
-    #print %struct_result
-    #print %complex_result
-    #print %heap_result
+    %dummy1 = call @print_number(%loaded_val)
+    %nl1 = writebyte 10
 
-    %dummy = call @print_number(42)
-    %newline = writebyte 10
-    ret.i64 0  # Just return a constant for now
+    # Now test array allocation
+    %arr = alloc.stack [2 x i64]
+    %ptr0 = getelem.ptr %arr, 0, i64
+    store.i64 %ptr0, 100
+    %val2 = load.i64 %ptr0
+
+    %dummy2 = call @print_number(%val2)
+    %nl2 = writebyte 10
+
+    ret.i64 0
 }
 
 # Helper function to print multi-digit numbers

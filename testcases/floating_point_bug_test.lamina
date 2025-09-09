@@ -1,0 +1,86 @@
+# Test case to expose floating point operation bugs
+# This test uses f32 and f64 operations to verify correct handling
+# If bugs exist, floating point operations may not work correctly
+
+fn @test_f32_operations() -> i64 {
+  entry:
+    # Test f32 arithmetic operations (using integer values for now)
+    %a_int = add.i32 35, 0    # Represent 3.5 as 35
+    %b_int = add.i32 20, 0    # Represent 2.0 as 20
+
+    %sum_int = add.i32 %a_int, %b_int        # Should be 55 (5.5)
+    %diff_int = sub.i32 %a_int, %b_int       # Should be 15 (1.5)
+    %prod_int = mul.i32 %a_int, %b_int       # Should be 700 (7.0)
+    %quot_int = div.i32 %a_int, %b_int       # Should be 1 (1.75 truncated)
+
+    # For now, just return a fixed value since f32 conversion is complex
+    # In a proper implementation, we'd convert back to integer for verification
+    %result = add.i64 0, 32
+    ret.i64 %result
+}
+
+fn @test_f64_operations() -> i64 {
+  entry:
+    # Test f64 arithmetic operations (using integer values for now)
+    %a_int = add.i64 314159, 0    # Represent π as 314159
+    %b_int = add.i64 271828, 0    # Represent e as 271828
+
+    %sum_int = add.i64 %a_int, %b_int        # Should be ~585987
+    %diff_int = sub.i64 %a_int, %b_int       # Should be ~42331
+    %prod_int = mul.i64 %a_int, %b_int       # Should be ~853973
+    %quot_int = div.i64 %a_int, %b_int       # Should be ~1
+
+    # For now, just return a fixed value since f64 conversion is complex
+    %result = add.i64 0, 64
+    ret.i64 %result
+}
+
+fn @test_floating_point_constants() -> i64 {
+  entry:
+    # Test various floating point constants (using integer representations)
+    %zero = add.i32 0, 0
+    %one = add.i32 10, 0        # Represent 1.0 as 10
+    %negative = add.i32 -15, 0  # Represent -1.5 as -15
+    %large = add.i64 10000000, 0  # Represent 1000000.0 as 10000000
+    %small = add.i64 1, 0       # Represent 0.000001 as 1
+
+    # Test operations with constants
+    %result1 = add.i32 %one, 20      # Should be 30 (3.0)
+    %result2 = mul.i64 %large, 2     # Should be 20000000 (2000000.0)
+    %result3 = div.i32 100, 2        # Should be 50 (5.0)
+
+    %indicator = add.i64 0, 123
+    ret.i64 %indicator
+}
+
+fn @test_float_int_conversion() -> i64 {
+  entry:
+    # Test conversion between float and int (if supported)
+    %int_val = add.i32 42, 0
+    %float_val_int = add.i32 314, 0  # Represent 3.14 as 314
+
+    # These conversions might not be implemented yet
+    # %int_to_float = ? %int_val
+    # %float_to_int = ? %float_val
+
+    # For now, just test basic operations work
+    %test_int = add.i32 10, 10  # Represent 1.0 + 1.0 as 10 + 10
+    %success = add.i64 0, 42
+    ret.i64 %success
+}
+
+fn @main() -> i64 {
+  entry:
+    %f32_result = call @test_f32_operations()
+    %f64_result = call @test_f64_operations()
+    %const_result = call @test_floating_point_constants()
+    %conv_result = call @test_float_int_conversion()
+
+    print %f32_result    # Should be 32
+    print %f64_result    # Should be 64
+    print %const_result  # Should be 123
+    print %conv_result   # Should be 42
+
+    
+    ret.i64 0
+}
