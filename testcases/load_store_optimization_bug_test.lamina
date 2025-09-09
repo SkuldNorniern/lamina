@@ -1,0 +1,185 @@
+# Test case to expose load/store optimization bugs
+# Load/store optimizations might eliminate necessary operations or create incorrect code
+
+fn @test_load_store_elimination() -> i64 {
+  entry:
+    # Create a scenario where load/store optimization might be too aggressive
+    %data = alloc.stack i64
+
+    # Store a value
+    store.i64 %data, 100
+
+    # Do some unrelated operations (might confuse optimizer)
+    %temp1 = add.i64 10, 5
+    %temp2 = mul.i64 %temp1, 2
+
+    # Store another value (this should overwrite the first)
+    store.i64 %data, 200
+
+    # More unrelated operations
+    %temp3 = sub.i64 50, 10
+    %temp4 = div.i64 %temp3, 2
+
+    # Load the final value
+    %result = load.i64 %data
+
+    # The result should be 200 (the second store), not 100
+    ret.i64 %result
+}
+
+fn @test_redundant_loads() -> i64 {
+  entry:
+    %data = alloc.stack i64
+    store.i64 %data, 123
+
+    # Multiple loads from the same location (optimizer might eliminate some)
+    %val1 = load.i64 %data
+    %val2 = load.i64 %data
+    %val3 = load.i64 %data
+
+    # All should be 123
+    %sum = add.i64 %val1, %val2
+    %final = add.i64 %sum, %val3
+
+    ret.i64 %final
+}
+
+fn @test_store_forwarding() -> i64 {
+  entry:
+    %x = alloc.stack i64
+    %y = alloc.stack i64
+
+    # Store to x
+    store.i64 %x, 50
+
+    # Load from x and store to y
+    %temp = load.i64 %x
+    store.i64 %y, %temp
+
+    # Modify x
+    store.i64 %x, 75
+
+    # Load from y (should still be 50)
+    %y_val = load.i64 %y
+    %x_val = load.i64 %x
+
+    # Result should be 50 + 75 = 125
+    %result = add.i64 %y_val, %x_val
+
+    ret.i64 %result
+}
+
+fn @test_partial_overwrites() -> i64 {
+  entry:
+    # Test with smaller types that might be optimized incorrectly
+    %data = alloc.stack i32
+
+    # Store full 32-bit value
+    store.i32 %data, 305419896  # 0x12345678 in decimal
+
+    # This test is limited by current capabilities
+    %result = load.i32 %data
+
+    %final = zext.i32.i64 %result
+
+    ret.i64 %final
+}
+
+fn @test_volatile_access() -> i64 {
+  entry:
+    # Test case that should NOT be optimized (like volatile access)
+    %counter = alloc.stack i64
+    store.i64 %counter, 0
+
+    # Simulate increment operations that shouldn't be optimized away
+    %val1 = load.i64 %counter
+    %inc1 = add.i64 %val1, 1
+    store.i64 %counter, %inc1
+
+    %val2 = load.i64 %counter
+    %inc2 = add.i64 %val2, 1
+    store.i64 %counter, %inc2
+
+    %val3 = load.i64 %counter
+    %inc3 = add.i64 %val3, 1
+    store.i64 %counter, %inc3
+
+    # Final value should be 3
+    %final = load.i64 %counter
+
+    ret.i64 %final
+}
+
+fn @main() -> i64 {
+  entry:
+    %elim_result = call @test_load_store_elimination()
+    %redundant_result = call @test_redundant_loads()
+    %forwarding_result = call @test_store_forwarding()
+    %partial_result = call @test_partial_overwrites()
+    %volatile_result = call @test_volatile_access()
+
+    # Combine all results with scaling
+    %redundant_scaled = mul.i64 %redundant_result, 1000
+    %forwarding_scaled = mul.i64 %forwarding_result, 1000000
+    %partial_scaled = mul.i64 %partial_result, 1000000000
+    %volatile_scaled = mul.i64 %volatile_result, 1000000000000
+
+    %s1 = add.i64 %elim_result, %redundant_scaled
+    %s2 = add.i64 %s1, %forwarding_scaled
+    %s3 = add.i64 %s2, %partial_scaled
+    %final = add.i64 %s3, %volatile_scaled
+
+    %dummy = call @print_number(%final)
+    %newline = writebyte 10
+    ret.i64 0
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}

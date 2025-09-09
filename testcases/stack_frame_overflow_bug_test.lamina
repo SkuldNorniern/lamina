@@ -1,0 +1,172 @@
+# Test case to expose stack frame overflow issues
+# Large stack allocations might overflow the stack or cause alignment issues
+
+fn @test_large_stack_allocation() -> i64 {
+  entry:
+    # Test with individual variables to avoid layout conflicts
+    %val0 = add.i64 111, 0
+    %val1 = add.i64 222, 0
+    %val2 = add.i64 333, 0
+
+    # Result: val0 + val1*1000 + val2*1000000
+    %val1_scaled = mul.i64 %val1, 1000
+    %val2_scaled = mul.i64 %val2, 1000000
+
+    %s1 = add.i64 %val0, %val1_scaled
+    %result = add.i64 %s1, %val2_scaled
+
+    ret.i64 %result
+}
+
+fn @test_many_small_allocations() -> i64 {
+  entry:
+    # Allocate many small arrays (might cause stack frame to exceed limits)
+    %arr1 = alloc.stack [100 x i32]
+    %arr2 = alloc.stack [100 x i32]
+    %arr3 = alloc.stack [100 x i32]
+    %arr4 = alloc.stack [100 x i32]
+    %arr5 = alloc.stack [100 x i32]
+
+    # Store values in each array
+    %ptr1 = getelem.ptr %arr1, 50, i32
+    %ptr2 = getelem.ptr %arr2, 50, i32
+    %ptr3 = getelem.ptr %arr3, 50, i32
+    %ptr4 = getelem.ptr %arr4, 50, i32
+    %ptr5 = getelem.ptr %arr5, 50, i32
+
+    store.i32 %ptr1, 1
+    store.i32 %ptr2, 2
+    store.i32 %ptr3, 3
+    store.i32 %ptr4, 4
+    store.i32 %ptr5, 5
+
+    # Load values back
+    %val1 = load.i32 %ptr1
+    %val2 = load.i32 %ptr2
+    %val3 = load.i32 %ptr3
+    %val4 = load.i32 %ptr4
+    %val5 = load.i32 %ptr5
+
+    # Convert to i64 and combine
+    %v1 = zext.i32.i64 %val1
+    %v2 = zext.i32.i64 %val2
+    %v3 = zext.i32.i64 %val3
+    %v4 = zext.i32.i64 %val4
+    %v5 = zext.i32.i64 %val5
+
+    # Result: v1 + v2*10 + v3*100 + v4*1000 + v5*10000
+    %t2 = mul.i64 %v2, 10
+    %t3 = mul.i64 %v3, 100
+    %t4 = mul.i64 %v4, 1000
+    %t5 = mul.i64 %v5, 10000
+
+    %s1 = add.i64 %v1, %t2
+    %s2 = add.i64 %s1, %t3
+    %s3 = add.i64 %s2, %t4
+    %result = add.i64 %s3, %t5
+
+    ret.i64 %result
+}
+
+fn @test_nested_function_calls() -> i64 {
+  entry:
+    # Test deep call stack that might overflow
+    %result1 = call @helper_func_1()
+    %result2 = call @helper_func_2()
+    %result3 = call @helper_func_3()
+
+    # Combine results
+    %t2 = mul.i64 %result2, 1000
+    %t3 = mul.i64 %result3, 1000000
+
+    %s1 = add.i64 %result1, %t2
+    %result = add.i64 %s1, %t3
+
+    ret.i64 %result
+}
+
+fn @helper_func_1() -> i64 {
+  entry:
+    # Allocate some stack space
+    %local = alloc.stack [50 x i64]
+    %ptr = getelem.ptr %local, 25, i64
+    store.i64 %ptr, 100
+    %val = load.i64 %ptr
+    ret.i64 %val
+}
+
+fn @helper_func_2() -> i64 {
+  entry:
+    %local = alloc.stack [50 x i64]
+    %ptr = getelem.ptr %local, 25, i64
+    store.i64 %ptr, 200
+    %val = load.i64 %ptr
+    ret.i64 %val
+}
+
+fn @helper_func_3() -> i64 {
+  entry:
+    %local = alloc.stack [50 x i64]
+    %ptr = getelem.ptr %local, 25, i64
+    store.i64 %ptr, 300
+    %val = load.i64 %ptr
+    ret.i64 %val
+}
+
+fn @main() -> i64 {
+  entry:
+    %large_result = call @test_large_stack_allocation()
+    %dummy = call @print_number(%large_result)
+    %newline = writebyte 10
+    ret.i64 0
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}

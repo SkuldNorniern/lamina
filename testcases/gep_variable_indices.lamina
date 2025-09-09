@@ -1,0 +1,386 @@
+# Comprehensive test for GEP operations with variable indices
+# This test demonstrates the runtime support for variable indices in GEP operations
+# Previously this would cause segmentation faults, but now works correctly
+
+fn @main() -> i64 {
+  entry:
+    # Test 1: Basic variable index access
+    %result1 = call @test_basic_variable_index()
+    %dummy1 = call @print_number(%result1)
+    %nl1 = writebyte 10
+
+    # Test 2: Direct vs variable index comparison
+    %result2 = call @test_direct_vs_variable()
+    %dummy2 = call @print_number(%result2)
+    %nl2 = writebyte 10
+
+    # Test 3: Dynamic pointer movement (Brainfuck-style)
+    %result3 = call @test_pointer_movement()
+    %dummy3 = call @print_number(%result3)
+    %nl3 = writebyte 10
+
+    # Test 4: Multi-type arrays with variable indices
+    %result4 = call @test_multi_type_arrays()
+    %dummy4 = call @print_number(%result4)
+    %nl4 = writebyte 10
+
+    ret.i64 0
+}
+
+# Test 1: Basic variable index access
+fn @test_basic_variable_index() -> i64 {
+  entry:
+    # Allocate array and initialize with values
+    %arr = alloc.stack [5 x i64]
+
+    # Initialize array elements
+    %ptr0 = getelem.ptr %arr, 0, i64
+    %ptr1 = getelem.ptr %arr, 1, i64
+    %ptr2 = getelem.ptr %arr, 2, i64
+    %ptr3 = getelem.ptr %arr, 3, i64
+    %ptr4 = getelem.ptr %arr, 4, i64
+
+    store.i64 %ptr0, 10
+    store.i64 %ptr1, 20
+    store.i64 %ptr2, 30
+    store.i64 %ptr3, 40
+    store.i64 %ptr4, 50
+
+    # Use variable index to access element 2
+    %index = add.i64 0, 2  # Variable index = 2
+    %var_ptr = getelem.ptr %arr, %index, i64
+    %value = load.i64 %var_ptr
+
+    ret.i64 %value  # Should return 30
+}
+
+# Test 2: Direct vs variable index comparison
+fn @test_direct_vs_variable() -> i64 {
+  entry:
+    %arr = alloc.stack [3 x i64]
+
+    # Store value using direct index
+    %ptr_direct = getelem.ptr %arr, 0, i64
+    store.i64 %ptr_direct, 42
+
+    # Load value using variable index
+    %index = add.i64 0, 0  # Variable index = 0
+    %ptr_variable = getelem.ptr %arr, %index, i64
+    %value = load.i64 %ptr_variable
+
+    ret.i64 %value  # Should return 42
+}
+
+# Test 3: Dynamic pointer movement (Brainfuck-style operations)
+fn @test_pointer_movement() -> i64 {
+  entry:
+    # Simulate Brainfuck tape
+    %tape = alloc.stack [10 x i32]
+
+    # Initialize tape with some values
+    %i0 = getelem.ptr %tape, 0, i32
+    %i1 = getelem.ptr %tape, 1, i32
+    %i2 = getelem.ptr %tape, 2, i32
+
+    store.i32 %i0, 10
+    store.i32 %i1, 20
+    store.i32 %i2, 30
+
+    # Start at position 0, move to position 2 (simulating >> operations)
+    %pos = add.i64 0, 0  # Start at 0
+
+    # Move right twice (pos = pos + 1, then pos = pos + 1)
+    %pos1 = add.i64 %pos, 1
+    %pos2 = add.i64 %pos1, 1
+
+    # Access element at computed position
+    %ptr = getelem.ptr %tape, %pos2, i32
+    %value = load.i32 %ptr
+    %result = zext.i32.i64 %value
+
+    ret.i64 %result  # Should return 30
+}
+
+# Test 4: Multi-type arrays with variable indices
+fn @test_multi_type_arrays() -> i64 {
+  entry:
+    # Test different element types
+    %i32_arr = alloc.stack [4 x i32]
+    %i16_arr = alloc.stack [4 x i16]
+    %i8_arr = alloc.stack [4 x i8]
+
+    # Initialize i32 array
+    %i32_ptr0 = getelem.ptr %i32_arr, 0, i32
+    %i32_ptr1 = getelem.ptr %i32_arr, 1, i32
+    %i32_ptr2 = getelem.ptr %i32_arr, 2, i32
+
+    store.i32 %i32_ptr0, 1000
+    store.i32 %i32_ptr1, 2000
+    store.i32 %i32_ptr2, 3000
+
+    # Initialize i16 array
+    %i16_ptr0 = getelem.ptr %i16_arr, 0, i16
+    %i16_ptr1 = getelem.ptr %i16_arr, 1, i16
+
+    store.i16 %i16_ptr0, 100
+    store.i16 %i16_ptr1, 200
+
+    # Initialize i8 array
+    %i8_ptr0 = getelem.ptr %i8_arr, 0, i8
+    %i8_ptr1 = getelem.ptr %i8_arr, 1, i8
+
+    store.i8 %i8_ptr0, 10
+    store.i8 %i8_ptr1, 20
+
+    # Access with variable indices
+    %idx = add.i64 0, 2
+
+    # Access i32 array at index 2
+    %i32_var_ptr = getelem.ptr %i32_arr, %idx, i32
+    %i32_val = load.i32 %i32_var_ptr
+    %i32_ext = zext.i32.i64 %i32_val
+
+    # Access i16 array at index 1
+    %idx2 = add.i64 0, 1
+    %i16_var_ptr = getelem.ptr %i16_arr, %idx2, i16
+    %i16_val = load.i16 %i16_var_ptr
+    %i16_ext = zext.i16.i64 %i16_val
+
+    # Access i8 array at index 1
+    %i8_var_ptr = getelem.ptr %i8_arr, %idx2, i8
+    %i8_val = load.i8 %i8_var_ptr
+    %i8_ext = zext.i8.i64 %i8_val
+
+    # Combine results: i32_val + i16_val + i8_val
+    %sum1 = add.i64 %i32_ext, %i16_ext
+    %total = add.i64 %sum1, %i8_ext
+
+    ret.i64 %total  # Should return 3000 + 200 + 20 = 3220
+}
+
+# Test 1: Basic variable index access
+fn @test_basic_variable_index() -> i64 {
+  entry:
+    # Allocate array and initialize with values
+    %arr = alloc.stack [5 x i64]
+
+    # Initialize array elements
+    %ptr0 = getelem.ptr %arr, 0, i64
+    %ptr1 = getelem.ptr %arr, 1, i64
+    %ptr2 = getelem.ptr %arr, 2, i64
+    %ptr3 = getelem.ptr %arr, 3, i64
+    %ptr4 = getelem.ptr %arr, 4, i64
+
+    store.i64 %ptr0, 10
+    store.i64 %ptr1, 20
+    store.i64 %ptr2, 30
+    store.i64 %ptr3, 40
+    store.i64 %ptr4, 50
+
+    # Use variable index to access element 2
+    %index = add.i64 0, 2  # Variable index = 2
+    %var_ptr = getelem.ptr %arr, %index, i64
+    %value = load.i64 %var_ptr
+
+    ret.i64 %value  # Should return 30
+}
+
+# Test 2: Computed indices with expressions
+fn @test_computed_indices() -> i64 {
+  entry:
+    # Allocate smaller array
+    %arr = alloc.stack [3 x i64]
+
+    # Initialize
+    %ptr0 = getelem.ptr %arr, 0, i64
+    %ptr1 = getelem.ptr %arr, 1, i64
+    %ptr2 = getelem.ptr %arr, 2, i64
+
+    store.i64 %ptr0, 100
+    store.i64 %ptr1, 200
+    store.i64 %ptr2, 300
+
+    # Compute index: (1 + 1) = 2
+    %base = add.i64 0, 1
+    %computed_index = add.i64 %base, 1
+    %var_ptr = getelem.ptr %arr, %computed_index, i64
+    %value = load.i64 %var_ptr
+
+    ret.i64 %value  # Should return 300
+}
+
+# Test 3: Dynamic pointer movement (Brainfuck-style operations)
+fn @test_pointer_movement() -> i64 {
+  entry:
+    # Simulate Brainfuck tape
+    %tape = alloc.stack [10 x i32]
+
+    # Initialize tape with some values
+    %i0 = getelem.ptr %tape, 0, i32
+    %i1 = getelem.ptr %tape, 1, i32
+    %i2 = getelem.ptr %tape, 2, i32
+    %i3 = getelem.ptr %tape, 3, i32
+
+    store.i32 %i0, 10
+    store.i32 %i1, 20
+    store.i32 %i2, 30
+    store.i32 %i3, 40
+
+    # Start at position 0, move to position 2 (simulating >> operations)
+    %pos = add.i64 0, 0  # Start at 0
+
+    # Move right twice (pos = pos + 1, then pos = pos + 1)
+    %pos1 = add.i64 %pos, 1
+    %pos2 = add.i64 %pos1, 1
+
+    # Access element at computed position
+    %ptr = getelem.ptr %tape, %pos2, i32
+    %value = load.i32 %ptr
+    %result = zext.i32.i64 %value
+
+    ret.i64 %result  # Should return 30
+}
+
+# Test 4: Multi-type arrays with variable indices
+fn @test_multi_type_arrays() -> i64 {
+  entry:
+    # Test different element types
+    %i32_arr = alloc.stack [4 x i32]
+    %i16_arr = alloc.stack [4 x i16]
+    %i8_arr = alloc.stack [4 x i8]
+
+    # Initialize i32 array
+    %i32_ptr0 = getelem.ptr %i32_arr, 0, i32
+    %i32_ptr1 = getelem.ptr %i32_arr, 1, i32
+    %i32_ptr2 = getelem.ptr %i32_arr, 2, i32
+    %i32_ptr3 = getelem.ptr %i32_arr, 3, i32
+
+    store.i32 %i32_ptr0, 1000
+    store.i32 %i32_ptr1, 2000
+    store.i32 %i32_ptr2, 3000
+    store.i32 %i32_ptr3, 4000
+
+    # Initialize i16 array
+    %i16_ptr0 = getelem.ptr %i16_arr, 0, i16
+    %i16_ptr1 = getelem.ptr %i16_arr, 1, i16
+    %i16_ptr2 = getelem.ptr %i16_arr, 2, i16
+
+    store.i16 %i16_ptr0, 100
+    store.i16 %i16_ptr1, 200
+    store.i16 %i16_ptr2, 300
+
+    # Initialize i8 array
+    %i8_ptr0 = getelem.ptr %i8_arr, 0, i8
+    %i8_ptr1 = getelem.ptr %i8_arr, 1, i8
+    %i8_ptr2 = getelem.ptr %i8_arr, 2, i8
+
+    store.i8 %i8_ptr0, 10
+    store.i8 %i8_ptr1, 20
+    store.i8 %i8_ptr2, 30
+
+    # Access with variable indices
+    %idx = add.i64 0, 2
+
+    # Access i32 array at index 2
+    %i32_var_ptr = getelem.ptr %i32_arr, %idx, i32
+    %i32_val = load.i32 %i32_var_ptr
+    %i32_ext = zext.i32.i64 %i32_val
+
+    # Access i16 array at index 1
+    %idx2 = add.i64 0, 1
+    %i16_var_ptr = getelem.ptr %i16_arr, %idx2, i16
+    %i16_val = load.i16 %i16_var_ptr
+    %i16_ext = zext.i16.i64 %i16_val
+
+    # Access i8 array at index 2
+    %i8_var_ptr = getelem.ptr %i8_arr, %idx, i8
+    %i8_val = load.i8 %i8_var_ptr
+    %i8_ext = zext.i8.i64 %i8_val
+
+    # Combine results: i32_val + i16_val + i8_val
+    %sum1 = add.i64 %i32_ext, %i16_ext
+    %total = add.i64 %sum1, %i8_ext
+
+    ret.i64 %total  # Should return 3000 + 200 + 30 = 3230
+}
+
+# Test 5: Boundary testing with variable indices
+fn @test_boundary_cases() -> i64 {
+  entry:
+    # Test edge cases
+    %arr = alloc.stack [3 x i64]
+
+    # Initialize
+    %ptr0 = getelem.ptr %arr, 0, i64
+    %ptr1 = getelem.ptr %arr, 1, i64
+    %ptr2 = getelem.ptr %arr, 2, i64
+
+    store.i64 %ptr0, 111
+    store.i64 %ptr1, 222
+    store.i64 %ptr2, 333
+
+    # Test index 0 (first element)
+    %idx0 = add.i64 0, 0
+    %ptr_var0 = getelem.ptr %arr, %idx0, i64
+    %val0 = load.i64 %ptr_var0
+
+    # Test index computed as (array_size - 1)
+    %last_idx = add.i64 0, 2  # Last valid index
+    %ptr_var_last = getelem.ptr %arr, %last_idx, i64
+    %val_last = load.i64 %ptr_var_last
+
+    # Return first + last
+    %result = add.i64 %val0, %val_last
+
+    ret.i64 %result  # Should return 111 + 333 = 444
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}

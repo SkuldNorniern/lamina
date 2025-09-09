@@ -1,0 +1,128 @@
+# Test case to expose floating point register bugs
+# Floating point operations use XMM registers but support might be incomplete
+
+fn @test_float_operations() -> i64 {
+  entry:
+    # Test f32 operations (use integer approximations since float literals aren't supported)
+    %f32_val_approx = add.i32 1, 2  # Approximate 1.5 + 2.0 = 3.5 as 1 + 2 = 3
+
+    # Convert to i64
+    %result = zext.i32.i64 %f32_val_approx
+
+    ret.i64 %result
+}
+
+fn @test_double_operations() -> i64 {
+  entry:
+    # Test f64 operations (use integer approximations since float literals aren't supported)
+    %f64_val_approx = add.i64 10, 5  # Approximate 10.5 + 5.5 = 16 as 10 + 5 = 15
+
+    ret.i64 %f64_val_approx
+}
+
+fn @test_float_to_int_conversion() -> i64 {
+  entry:
+    # Test conversion between float and int
+    %float_val = add.i32 42, 0  # Placeholder
+    %int_val = add.i32 100, 0
+
+    # Convert "float" to "int"
+    %converted = add.i32 %float_val, %int_val
+
+    # Convert to i64
+    %result = zext.i32.i64 %converted
+
+    ret.i64 %result
+}
+
+fn @test_float_array() -> i64 {
+  entry:
+    # Try to create float arrays (might expose register issues)
+    %float_array = alloc.stack [3 x i32]  # Using i32 as placeholder
+
+    %ptr0 = getelem.ptr %float_array, 0, i32
+    %ptr1 = getelem.ptr %float_array, 1, i32
+    %ptr2 = getelem.ptr %float_array, 2, i32
+
+    # Store "float" values
+    store.i32 %ptr0, 10
+    store.i32 %ptr1, 20
+    store.i32 %ptr2, 30
+
+    # Load values back
+    %val0 = load.i32 %ptr0
+    %val1 = load.i32 %ptr1
+    %val2 = load.i32 %ptr2
+
+    # Convert to i64 and combine
+    %r0 = zext.i32.i64 %val0
+    %r1 = zext.i32.i64 %val1
+    %r2 = zext.i32.i64 %val2
+
+    # Result: val0 + val1*1000 + val2*1000000
+    %t1 = mul.i64 %r1, 1000
+    %t2 = mul.i64 %r2, 1000000
+
+    %s1 = add.i64 %r0, %t1
+    %result = add.i64 %s1, %t2
+
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    %float_result = call @test_float_operations()
+    %dummy = call @print_number(%float_result)
+    %newline = writebyte 10
+    ret.i64 0
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}

@@ -1,0 +1,293 @@
+# Lamina Capabilities Demonstration Tool
+# A comprehensive showcase of Lamina's language features
+
+# ===== DATA STRUCTURES =====
+
+# Define a struct for person data
+fn @create_person(i64 %id, i64 %age) -> ptr {
+  entry:
+    %person = alloc.stack struct { id: i64, age: i64, name: ptr }
+    %id_ptr = getfieldptr %person, 0
+    %age_ptr = getfieldptr %person, 1
+
+    store.i64 %id_ptr, %id
+    store.i64 %age_ptr, %age
+
+    ret.i64 %person
+}
+
+# ===== MATHEMATICAL FUNCTIONS =====
+
+# Recursive factorial
+fn @factorial(i64 %n) -> i64 {
+  entry:
+    %is_zero = cmp.i64 eq %n, 0
+    br %is_zero, @base_case, @recursive_case
+
+  base_case:
+    ret.i64 1
+
+  recursive_case:
+    %n_minus_1 = sub.i64 %n, 1
+    %sub_result = call @factorial(%n_minus_1)
+    %result = mul.i64 %n, %sub_result
+    ret.i64 %result
+}
+
+# Fibonacci sequence
+fn @fibonacci(i64 %n) -> i64 {
+  entry:
+    %is_zero = cmp.i64 eq %n, 0
+    br %is_zero, @fib_base, @check_one
+
+  check_one:
+    %is_one = cmp.i64 eq %n, 1
+    br %is_one, @fib_base, @fib_recursive
+
+  fib_base:
+    ret.i64 %n
+
+  fib_recursive:
+    %n_minus_1 = sub.i64 %n, 1
+    %n_minus_2 = sub.i64 %n, 2
+    %fib1 = call @fibonacci(%n_minus_1)
+    %fib2 = call @fibonacci(%n_minus_2)
+    %result = add.i64 %fib1, %fib2
+    ret.i64 %result
+}
+
+# ===== ARRAY OPERATIONS =====
+
+# Sum array elements
+fn @sum_array(ptr %arr, i64 %size) -> i64 {
+  entry:
+    %sum = add.i64 0, 0
+    %i = add.i64 0, 0
+    br @loop_condition
+
+  loop_condition:
+    %i_lt_size = cmp.i64 lt %i, %size
+    br %i_lt_size, @loop_body, @loop_end
+
+  loop_body:
+    %elem_ptr = getelem.ptr %arr, %i, i64
+    %elem = load.i64 %elem_ptr
+    %sum = add.i64 %sum, %elem
+    %i = add.i64 %i, 1
+    br @loop_condition
+
+  loop_end:
+    ret.i64 %sum
+}
+
+# ===== MEMORY MANAGEMENT =====
+
+# Demonstrate heap allocation
+fn @heap_demo() -> i64 {
+  entry:
+    # Allocate on heap
+    %heap_data = alloc.heap i64
+    store.i64 %heap_data, 42
+
+    # Load and modify
+    %val = load.i64 %heap_data
+    %doubled = mul.i64 %val, 2
+    store.i64 %heap_data, %doubled
+
+    # Read back
+    %final_val = load.i64 %heap_data
+
+    # Clean up
+    dealloc.heap %heap_data
+
+    ret.i64 %final_val
+}
+
+# ===== TYPE CONVERSIONS =====
+
+# Demonstrate various type conversions
+fn @conversion_demo() -> i64 {
+  entry:
+    %big_num = add.i64 1000, 0
+
+    # Convert i64 to smaller types and back
+    %as_i32 = trunc.i64.i32 %big_num
+    %back_to_i64 = zext.i32.i64 %as_i32
+
+    %as_i16 = trunc.i64.i16 %big_num
+    %back_from_i16 = zext.i16.i64 %as_i16
+
+    %as_i8 = trunc.i64.i8 %big_num
+    %back_from_i8 = zext.i8.i64 %as_i8
+
+    # Sum all conversions
+    %sum1 = add.i64 %back_to_i64, %back_from_i16
+    %total = add.i64 %sum1, %back_from_i8
+
+    ret.i64 %total
+}
+
+# ===== STRING AND I/O SIMULATION =====
+
+# Simulate string operations (since we don't have real strings)
+fn @number_to_digits(i64 %num) -> i64 {
+  entry:
+    # Extract individual digits from a number
+    # For example, 123 -> 1*100 + 2*10 + 3*1 = 123
+
+    %hundreds = div.i64 %num, 100
+    %remainder = mod.i64 %num, 100
+    %tens = div.i64 %remainder, 10
+    %ones = mod.i64 %remainder, 10
+
+    # Reconstruct number from digits
+    %hundreds_scaled = mul.i64 %hundreds, 100
+    %tens_scaled = mul.i64 %tens, 10
+
+    %result = add.i64 %hundreds_scaled, %tens_scaled
+    %final = add.i64 %result, %ones
+
+    ret.i64 %final
+}
+
+# ===== MAIN DEMONSTRATION =====
+
+fn @main() -> i64 {
+  entry:
+    %dummy1 = call @print_number(1)
+    %newline1 = writebyte 10
+    %dummy2 = call @print_number(2)
+    %newline2 = writebyte 10
+
+    # ===== MATHEMATICS DEMO =====
+    %fact5 = call @factorial(5)
+    %dummy3 = call @print_number(3)
+    %newline3 = writebyte 10
+    %dummy4 = call @print_number(%fact5)
+    %newline4 = writebyte 10
+
+    %fib8 = call @fibonacci(8)
+    %dummy5 = call @print_number(4)
+    %newline5 = writebyte 10
+    %dummy6 = call @print_number(%fib8)
+    %newline6 = writebyte 10
+
+    # ===== ARRAY DEMO =====
+    %array = alloc.stack [5 x i64]
+
+    # Initialize array
+    %ptr0 = getelem.ptr %array, 0, i64
+    %ptr1 = getelem.ptr %array, 1, i64
+    %ptr2 = getelem.ptr %array, 2, i64
+    %ptr3 = getelem.ptr %array, 3, i64
+    %ptr4 = getelem.ptr %array, 4, i64
+
+    store.i64 %ptr0, 10
+    store.i64 %ptr1, 20
+    store.i64 %ptr2, 30
+    store.i64 %ptr3, 40
+    store.i64 %ptr4, 50
+
+    %array_sum = call @sum_array(%array, 5)
+    %dummy7 = call @print_number(5)
+    %newline7 = writebyte 10
+    %dummy8 = call @print_number(%array_sum)
+    %newline8 = writebyte 10
+
+    # ===== MEMORY MANAGEMENT DEMO =====
+    %heap_result = call @heap_demo()
+    %dummy9 = call @print_number(6)
+    %newline9 = writebyte 10
+    %dummy10 = call @print_number(%heap_result)
+    %newline10 = writebyte 10
+
+    # ===== TYPE CONVERSION DEMO =====
+    %conversion_result = call @conversion_demo()
+    %dummy11 = call @print_number(7)
+    %newline11 = writebyte 10
+    %dummy12 = call @print_number(%conversion_result)
+    %newline12 = writebyte 10
+
+    # ===== DIGIT MANIPULATION DEMO =====
+    %digit_result = call @number_to_digits(456)
+    %dummy13 = call @print_number(8)
+    %newline13 = writebyte 10
+    %dummy14 = call @print_number(%digit_result)
+    %newline14 = writebyte 10
+
+    # ===== COMPLEX CALCULATIONS =====
+    # Calculate: (fact5 + fib8) * array_sum / 100
+    %math_sum = add.i64 %fact5, %fib8
+    %product = mul.i64 %math_sum, %array_sum
+    %final_math = div.i64 %product, 100
+    %dummy15 = call @print_number(9)
+    %newline15 = writebyte 10
+    %dummy16 = call @print_number(%final_math)
+    %newline16 = writebyte 10
+
+    # ===== TOTAL SCORE =====
+    # Sum of all demo results (normalized)
+    %score1 = add.i64 %fact5, %fib8
+    %score2 = add.i64 %score1, %array_sum
+    %score3 = add.i64 %score2, %heap_result
+    %score4 = add.i64 %score3, %conversion_result
+    %score5 = add.i64 %score4, %digit_result
+    %final_score = add.i64 %score5, %final_math
+
+    %dummy17 = call @print_number(10)
+    %newline17 = writebyte 10
+    %dummy18 = call @print_number(%final_score)
+    %newline18 = writebyte 10
+
+    ret.i64 0
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}
