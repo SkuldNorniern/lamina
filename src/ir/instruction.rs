@@ -210,9 +210,9 @@ pub enum Instruction<'a> {
     },
     GetElemPtr {
         // Get pointer to array element
-        result: Identifier<'a>, // Result is always ptr
-        array_ptr: Value<'a>,   // Must be a ptr to an array or named array type
-        index: Value<'a>,       // Must be an integer type
+        result: Identifier<'a>,      // Result is always ptr
+        array_ptr: Value<'a>,        // Must be a ptr to an array or named array type
+        index: Value<'a>,            // Must be an integer type
         element_type: PrimitiveType, // Type of elements in the array (for proper sizing)
     },
     // Convert pointer to integer for pointer arithmetic
