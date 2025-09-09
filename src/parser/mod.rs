@@ -257,7 +257,7 @@ mod tests {
             fn @test_composite() -> ptr {
               entry:
                 %arr_ptr = alloc.stack [4 x i32]
-                %elem_ptr = getelementptr %arr_ptr, 2
+                %elem_ptr = getelementptr %arr_ptr, 2, i32
                 %elem = load.i32 %elem_ptr
                 
                 %struct_ptr = alloc.stack struct { x: i32, y: i32 }
@@ -305,6 +305,7 @@ mod tests {
                 result,
                 array_ptr,
                 index,
+                element_type: _,
             } => {
                 assert_eq!(*result, "elem_ptr");
                 assert_eq!(*array_ptr, Value::Variable("arr_ptr"));

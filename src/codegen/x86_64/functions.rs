@@ -1494,7 +1494,7 @@ mod tests {
             
             fn @get_char(i64 %idx) -> i8 {
                 entry:
-                    %ptr = getelementptr @message, %idx
+                    %ptr = getelementptr @message, %idx, i8
                     %char = load.i8 %ptr
                     ret.i8 %char
             }
