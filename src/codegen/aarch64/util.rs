@@ -6,10 +6,14 @@ use crate::{LaminaError, Literal, PrimitiveType, Result, Type, Value};
 pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str, u64)> {
     match ty {
         Type::Primitive(pt) => match pt {
-            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => Ok((".byte", 1)),
+            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => {
+                Ok((".byte", 1))
+            }
             PrimitiveType::I16 | PrimitiveType::U16 => Ok((".hword", 2)),
             PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => Ok((".word", 4)),
-            PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => Ok((".xword", 8)),
+            PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => {
+                Ok((".xword", 8))
+            }
         },
         Type::Array { element_type, size } => {
             let (_, elem) = get_type_size_directive_and_bytes(element_type)?;
@@ -63,7 +67,9 @@ pub fn get_value_operand_asm<'a>(
             Literal::F64(_v) => {
                 // Temporarily disable F64 literals
                 Err(LaminaError::CodegenError(
-                    CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown("F64".to_string())),
+                    CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(
+                        "F64".to_string(),
+                    )),
                 ))
             }
             _ => Err(LaminaError::CodegenError(

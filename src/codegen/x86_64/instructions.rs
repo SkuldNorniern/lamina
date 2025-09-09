@@ -167,13 +167,13 @@ pub fn generate_instruction<'a, W: Write>(
                 match result_loc {
                     ValueLocation::Register(reg) => {
                         // Return the address of the allocated space directly in the register
-                    writeln!(
-                        writer,
+                        writeln!(
+                            writer,
                             "        leaq {}(%rbp), {} # Stack allocation data address",
                             data_offset, reg
-                    )?;
-                    writeln!(
-                        writer,
+                        )?;
+                        writeln!(
+                            writer,
                             "        # Stack allocation for {}: {} bytes at offset {}",
                             result, alloc_size, data_offset
                         )?;
@@ -188,8 +188,8 @@ pub fn generate_instruction<'a, W: Write>(
                         writeln!(
                             writer,
                             "        movq %rax, {}(%rbp) # Store data pointer",
-                        offset
-                    )?;
+                            offset
+                        )?;
                         writeln!(
                             writer,
                             "        # Stack allocation for {}: {} bytes at data offset {}",
@@ -449,8 +449,8 @@ pub fn generate_instruction<'a, W: Write>(
                             // If destination is a 64-bit register but we did 32-bit ops,
                             // we need to sign/zero extend the result
                             if matches!(ty, PrimitiveType::I32) {
-                        writeln!(
-                            writer,
+                                writeln!(
+                                    writer,
                                     "        cltq # Sign extend 32-bit result to 64-bit"
                                 )?;
                             } else {
@@ -541,8 +541,8 @@ pub fn generate_instruction<'a, W: Write>(
                     && rhs_val > 0
                     && (rhs_val & (rhs_val - 1)) == 0
                 {
-                        // It's a power of 2, convert to shift
-                        let shift_amount = rhs_val.trailing_zeros();
+                    // It's a power of 2, convert to shift
+                    let shift_amount = rhs_val.trailing_zeros();
                     // Use the appropriate register size based on the operation type
                     let reg_name = match ty {
                         PrimitiveType::I8
@@ -554,23 +554,23 @@ pub fn generate_instruction<'a, W: Write>(
                         _ => "%rax", // 64-bit register for other ops
                     };
 
-                        writeln!(
-                            writer,
+                    writeln!(
+                        writer,
                         "        {} {}, {} # Load value for shift",
                         mov_instr, lhs_op, reg_name
-                        )?;
-                        writeln!(
-                            writer,
+                    )?;
+                    writeln!(
+                        writer,
                         "        shl{} ${}, {} # Shift instead of multiply by power of 2",
                         op_mnemonic, shift_amount, reg_name
-                        )?;
-                        writeln!(
-                            writer,
+                    )?;
+                    writeln!(
+                        writer,
                         "        {} {}, {} # Store Result",
                         mov_instr, reg_name, dest_asm
-                        )?;
-                        return Ok(());
-                    }
+                    )?;
+                    return Ok(());
+                }
             }
 
             // Regular path for operations not handled by special cases
@@ -692,11 +692,11 @@ pub fn generate_instruction<'a, W: Write>(
                     )?;
                 }
                 _ => {
-            writeln!(
-                writer,
-                "        {} {}, {} # Store Binary/Div Result",
-                mov_instr, lhs_reg, dest_asm
-            )?;
+                    writeln!(
+                        writer,
+                        "        {} {}, {} # Store Binary/Div Result",
+                        mov_instr, lhs_reg, dest_asm
+                    )?;
                 }
             }
         }
@@ -1440,7 +1440,7 @@ pub fn generate_instruction<'a, W: Write>(
                     return Err(LaminaError::CodegenError(
                         CodegenError::ZeroExtensionNotSupported(ExtensionInfo::Custom(format!(
                             "{} to {}",
-                        source_type, target_type
+                            source_type, target_type
                         ))),
                     ));
                 }
