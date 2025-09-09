@@ -96,13 +96,11 @@ pub fn generate_instruction<'a, W: Write>(
             AllocType::Stack => {
                 let result_loc = func_ctx.get_value_location(result)?;
 
-                // For stack allocation, return a pointer to stack space within the current frame
-                // This avoids dynamic RSP manipulation which complicates stack cleanup
-                // Use a simple approach: allocate at a fixed offset for each allocation
-                // In a real implementation, this would need proper stack layout management
+                // FIXED: Use proper stack allocation system that tracks current_stack_offset
+                // This prevents memory corruption and overlapping allocations
 
-                // Calculate the size needed for the allocation
-                let _alloc_size = match allocated_ty {
+                // Calculate the actual size needed for this allocation
+                let alloc_size = match allocated_ty {
                     Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) => 1,
                     Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => 2,
                     Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => 4,
@@ -159,18 +157,16 @@ pub fn generate_instruction<'a, W: Write>(
                     _ => 8, // Default fallback
                 };
 
-                // Use different strategies for structs vs regular allocations
-                let data_offset = match allocated_ty {
-                    Type::Struct(_) => -32, // Structs use fixed offset below normal vars
-                    _ => match result_loc {
-                        ValueLocation::StackOffset(ptr_offset) => ptr_offset - 16, // Regular vars: data below pointer
-                        _ => -24, // Default for register allocations
-                    },
-                };
+                // Align to 8-byte boundary for proper alignment
+                let aligned_size = ((alloc_size + 7) / 8) * 8;
+
+                // Allocate space by moving the current stack offset
+                let data_offset = func_ctx.current_stack_offset;
+                func_ctx.current_stack_offset -= aligned_size as i64;
 
                 match result_loc {
                     ValueLocation::Register(reg) => {
-                        // Calculate the address where the data will be stored
+                        // Return the address of the allocated space directly in the register
                         writeln!(
                             writer,
                             "        leaq {}(%rbp), {} # Stack allocation data address",
@@ -178,8 +174,8 @@ pub fn generate_instruction<'a, W: Write>(
                         )?;
                         writeln!(
                             writer,
-                            "        # Stack allocation for {} at offset {}",
-                            result, data_offset
+                            "        # Stack allocation for {}: {} bytes at offset {}",
+                            result, alloc_size, data_offset
                         )?;
                     }
                     ValueLocation::StackOffset(offset) => {
@@ -196,8 +192,8 @@ pub fn generate_instruction<'a, W: Write>(
                         )?;
                         writeln!(
                             writer,
-                            "        # Stack allocation for {} at data offset {}",
-                            result, data_offset
+                            "        # Stack allocation for {}: {} bytes at data offset {}",
+                            result, alloc_size, data_offset
                         )?;
                     }
                 }
