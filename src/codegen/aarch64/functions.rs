@@ -4,7 +4,7 @@ use super::util::get_type_size_directive_and_bytes;
 use crate::codegen::CodegenError;
 use crate::{
     BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType,
-    Result,
+    Result, Type,
 };
 use std::collections::HashSet;
 use std::io::Write;
@@ -238,7 +238,12 @@ fn precompute_function_layout<'a>(
                     ..
                 } => {
                     let (_, s) = get_type_size_directive_and_bytes(allocated_ty)?;
-                    Some((result, s))
+                    // For arrays and structs, we need space for both the pointer (8 bytes) and the actual data
+                    let total_size = match allocated_ty {
+                        Type::Array { .. } | Type::Struct(_) => s + 8, // pointer + data
+                        _ => s, // just the data
+                    };
+                    Some((result, total_size))
                 }
                 Instruction::Binary { result, ty, .. } | Instruction::Cmp { result, ty, .. } => {
                     let s = match ty {
@@ -335,7 +340,15 @@ fn precompute_function_layout<'a>(
         func_ctx
             .value_locations
             .insert(res, ValueLocation::StackOffset(current));
-        current += sz as i64;
+        // For arrays/structs, we need to account for both the pointer and the data
+        // The data goes before the pointer
+        if sz > 8 {
+            // This is an array/struct - data goes first, then pointer
+            current += sz as i64;
+        } else {
+            // This is a primitive - just the data
+            current += sz as i64;
+        }
     }
 
     current = (locals_start / 16) * 16;
