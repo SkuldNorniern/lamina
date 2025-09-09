@@ -298,7 +298,11 @@ fn precompute_function_layout<'a>(
                 | Instruction::ReadByte { result, .. }
                 | Instruction::WritePtr { result, .. }
                 | Instruction::ReadPtr { result, .. } => Some((result, 8)),
-                Instruction::PtrToInt { result, target_type, .. } => {
+                Instruction::PtrToInt {
+                    result,
+                    target_type,
+                    ..
+                } => {
                     let s = match target_type {
                         PrimitiveType::I32 => 4,
                         PrimitiveType::I64 | PrimitiveType::Ptr => 8,
