@@ -82,6 +82,11 @@ fn generate_function_with_allocation<'a, W: Write>(
     let mut func_ctx = FunctionContext::new();
     func_ctx.epilogue_label = format!(".Lfunc_epilogue_{}", func_name); // Set epilogue label early
 
+    // FIXED: Initialize current_stack_offset early to account for dynamic allocation space
+    // This ensures Alloc instructions can properly allocate space
+    let dynamic_alloc_reserve = 4096; // 4KB for dynamic allocations
+    func_ctx.current_stack_offset = -(dynamic_alloc_reserve as i64);
+
     // Use allocation results to optimize register usage
     let callee_saved_needed: Vec<&str> = allocation_result
         .callee_saved_used
@@ -119,10 +124,17 @@ fn generate_function_with_allocation<'a, W: Write>(
 
     // Calculate required stack size for spilled variables
     let spill_stack_size = allocation_result.spilled_vars.len() * 8; // 8 bytes per spilled var
-    let frame_size = ((spill_stack_size + 15) & !15) as u64; // Round up to 16-byte alignment
+
+    // FIXED: Reserve additional space for dynamic allocations (up to 4KB)
+    // This prevents stack corruption when Alloc instructions are executed
+    let dynamic_alloc_reserve = 4096; // 4KB should be sufficient for most programs
+    let total_frame_size = spill_stack_size + dynamic_alloc_reserve;
+    let frame_size = ((total_frame_size + 15) & !15) as u64; // Round up to 16-byte alignment
 
     if frame_size > 0 {
         writeln!(writer, "    subq ${}, %rsp", frame_size)?;
+        writeln!(writer, "    # Allocated {} bytes ({} for spills + {} for dynamic allocs)",
+                 frame_size, spill_stack_size, dynamic_alloc_reserve)?;
     }
 
     // Handle register-allocated vs spilled variables
@@ -228,6 +240,11 @@ pub fn generate_function<'a, W: Write>(
     // Create context and determine epilogue label *before* generating blocks
     let mut func_ctx = FunctionContext::new();
     func_ctx.epilogue_label = format!(".Lfunc_epilogue_{}", func_name); // Set epilogue label early
+
+    // FIXED: Initialize current_stack_offset early to account for dynamic allocation space
+    // This ensures Alloc instructions can properly allocate space
+    let dynamic_alloc_reserve = 4096; // 4KB for dynamic allocations
+    func_ctx.current_stack_offset = -(dynamic_alloc_reserve as i64);
 
     // Analyze which registers this function actually requires and if it should be inlined
     let (required_regs, should_inline) = analyze_register_requirements(func);
