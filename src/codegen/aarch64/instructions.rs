@@ -134,15 +134,41 @@ pub fn generate_instruction<'a, W: Write>(
                 match result_loc {
                     ValueLocation::Register(_reg) => {
                         // For registers, we need to put the stack address in the register
-                        // But this is unusual for stack allocation, so we'll handle it
+                        // The offset should have been calculated during precompute_function_layout
+                        // But if it's a register, we need to get the actual stack offset
+                        // This is unusual - stack allocations should typically be StackOffset
                         return Err(LaminaError::CodegenError(
                             CodegenError::InvalidAllocationLocation,
                         ));
                     }
-                    ValueLocation::StackOffset(_offset) => {
-                        // For stack allocation, we don't need to store anything
-                        // The ValueLocation::StackOffset itself represents the allocated space
-                        // Load/store operations will handle this directly
+                    ValueLocation::StackOffset(offset) => {
+                        // For arrays and structs, we need to store the address of the allocated space
+                        match allocated_ty {
+                            Type::Array { .. } | Type::Struct(_) => {
+                                // For arrays/structs, the offset points to where we store the pointer
+                                // The actual data is stored at a different location
+                                // Calculate the data offset (the data goes after the pointer)
+                                let data_offset = offset + 8; // Data goes 8 bytes after the pointer
+                                
+                                // Use proper addressing for large offsets
+                                if data_offset >= -256 && data_offset <= 255 {
+                                    writeln!(writer, "        add x10, x29, #{}", data_offset)?;
+                                } else {
+                                    materialize_address(writer, "x10", data_offset)?;
+                                }
+                                
+                                if offset >= -256 && offset <= 255 {
+                                    writeln!(writer, "        str x10, [x29, #{}]", offset)?;
+                                } else {
+                                    materialize_address(writer, "x9", offset)?;
+                                    writeln!(writer, "        str x10, [x9]")?;
+                                }
+                            }
+                            _ => {
+                                // For primitives, we don't need to store anything
+                                // The ValueLocation::StackOffset itself represents the allocated space
+                            }
+                        }
                         // Track this as a stack-allocated variable
                         func_ctx.stack_allocated_vars.insert(*result);
                     }
@@ -1036,10 +1062,72 @@ fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -
 }
 
 fn materialize_address<W: Write>(writer: &mut W, dest: &str, offset: i64) -> Result<()> {
-    if offset >= 0 {
-        writeln!(writer, "        add {}, x29, #{}", dest, offset)?;
+    // AArch64 immediate addressing only supports offsets in range [-256, 255]
+    if offset >= -256 && offset <= 255 {
+        if offset >= 0 {
+            writeln!(writer, "        add {}, x29, #{}", dest, offset)?;
+        } else {
+            writeln!(writer, "        sub {}, x29, #{}", dest, (-offset))?;
+        }
     } else {
-        writeln!(writer, "        sub {}, x29, #{}", dest, (-offset))?;
+        // For large offsets, use movz/movk to load the offset into a register
+        // then add it to x29
+        if offset >= 0 {
+            // Load positive offset
+            if offset <= 0xFFFF {
+                writeln!(writer, "        movz {}, #{}, lsl #0", dest, offset as u16)?;
+            } else if offset <= 0xFFFFFFFF {
+                let low = (offset & 0xFFFF) as u16;
+                let high = ((offset >> 16) & 0xFFFF) as u16;
+                writeln!(writer, "        movz {}, #{}, lsl #0", dest, low)?;
+                if high != 0 {
+                    writeln!(writer, "        movk {}, #{}, lsl #16", dest, high)?;
+                }
+            } else {
+                // 64-bit offset
+                let mut first = true;
+                for shift in [0u32, 16, 32, 48] {
+                    let part = ((offset >> shift) & 0xFFFF) as u16;
+                    if part != 0 || first {
+                        if first {
+                            writeln!(writer, "        movz {}, #{}, lsl #{}", dest, part, shift)?;
+                            first = false;
+                        } else {
+                            writeln!(writer, "        movk {}, #{}, lsl #{}", dest, part, shift)?;
+                        }
+                    }
+                }
+            }
+            writeln!(writer, "        add {}, x29, {}", dest, dest)?;
+        } else {
+            // Load negative offset
+            let abs_offset = (-offset) as u64;
+            if abs_offset <= 0xFFFF {
+                writeln!(writer, "        movz {}, #{}, lsl #0", dest, abs_offset as u16)?;
+            } else if abs_offset <= 0xFFFFFFFF {
+                let low = (abs_offset & 0xFFFF) as u16;
+                let high = ((abs_offset >> 16) & 0xFFFF) as u16;
+                writeln!(writer, "        movz {}, #{}, lsl #0", dest, low)?;
+                if high != 0 {
+                    writeln!(writer, "        movk {}, #{}, lsl #16", dest, high)?;
+                }
+            } else {
+                // 64-bit offset
+                let mut first = true;
+                for shift in [0u32, 16, 32, 48] {
+                    let part = ((abs_offset >> shift) & 0xFFFF) as u16;
+                    if part != 0 || first {
+                        if first {
+                            writeln!(writer, "        movz {}, #{}, lsl #{}", dest, part, shift)?;
+                            first = false;
+                        } else {
+                            writeln!(writer, "        movk {}, #{}, lsl #{}", dest, part, shift)?;
+                        }
+                    }
+                }
+            }
+            writeln!(writer, "        sub {}, x29, {}", dest, dest)?;
+        }
     }
     Ok(())
 }
