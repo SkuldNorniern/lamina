@@ -298,6 +298,20 @@ fn precompute_function_layout<'a>(
                 | Instruction::ReadByte { result, .. }
                 | Instruction::WritePtr { result, .. }
                 | Instruction::ReadPtr { result, .. } => Some((result, 8)),
+                Instruction::PtrToInt { result, target_type, .. } => {
+                    let s = match target_type {
+                        PrimitiveType::I32 => 4,
+                        PrimitiveType::I64 | PrimitiveType::Ptr => 8,
+                        PrimitiveType::Bool | PrimitiveType::I8 => 1,
+                        _ => {
+                            return Err(LaminaError::CodegenError(
+                                CodegenError::UnsupportedPrimitiveType(*target_type),
+                            ));
+                        }
+                    };
+                    Some((result, s))
+                }
+                Instruction::IntToPtr { result, .. } => Some((result, 8)),
                 _ => None,
             };
             if let Some((res, size)) = result_info {
