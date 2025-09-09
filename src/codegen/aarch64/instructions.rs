@@ -133,7 +133,7 @@ pub fn generate_instruction<'a, W: Write>(
                         PrimitiveType::I64
                         | PrimitiveType::U64
                         | PrimitiveType::F64
-                        | PrimitiveType::Ptr
+                        | PrimitiveType::Ptr,
                     ) => 8,
                     Type::Array { element_type, size } => {
                         let (_, elem_size) =
@@ -465,10 +465,7 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(writer, "        uxtb w10, w10")?;
                     store_to_location(writer, "x10", &dest)?;
                 }
-                (
-                    PrimitiveType::I8 | PrimitiveType::Bool,
-                    PrimitiveType::I64
-                ) => {
+                (PrimitiveType::I8 | PrimitiveType::Bool, PrimitiveType::I64) => {
                     materialize_to_reg(writer, &src, "x10")?;
                     writeln!(writer, "        and x10, x10, #0xFF")?; // Mask to 8 bits for zero extension
                     store_to_location(writer, "x10", &dest)?;
