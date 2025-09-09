@@ -6,12 +6,10 @@ use crate::{LaminaError, Literal, PrimitiveType, Result, Type, Value};
 pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str, u64)> {
     match ty {
         Type::Primitive(pt) => match pt {
-            PrimitiveType::I8 | PrimitiveType::Bool => Ok((".byte", 1)),
-            PrimitiveType::I32 | PrimitiveType::F32 => Ok((".word", 4)),
-            PrimitiveType::I64 | PrimitiveType::Ptr => Ok((".xword", 8)),
-            _ => Err(LaminaError::CodegenError(
-                CodegenError::UnsupportedPrimitiveType(*pt),
-            )),
+            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => Ok((".byte", 1)),
+            PrimitiveType::I16 | PrimitiveType::U16 => Ok((".hword", 2)),
+            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => Ok((".word", 4)),
+            PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => Ok((".xword", 8)),
         },
         Type::Array { element_type, size } => {
             let (_, elem) = get_type_size_directive_and_bytes(element_type)?;
@@ -46,15 +44,28 @@ pub fn get_value_operand_asm<'a>(
             Literal::I32(v) => Ok(format!("#{}", v)),
             Literal::I64(v) => Ok(format!("#{}", v)),
             Literal::Bool(v) => Ok(format!("#{}", if *v { 1 } else { 0 })),
-            // POTENTIAL BUG: F32 literals not implemented - could cause compilation failures
-            Literal::F32(_v) => Err(LaminaError::CodegenError(
-                CodegenError::F32LiteralNotImplemented,
-            )),
+            // F32 literals - convert to integer representation
+            Literal::F32(v) => {
+                // Convert f32 to raw bits and treat as i32
+                let bits = v.to_bits() as i32;
+                Ok(format!("#{}", bits))
+            }
             // POTENTIAL BUG: String literals not supported in operands - requires global variable workaround
             Literal::String(_) => Err(LaminaError::CodegenError(
                 CodegenError::StringLiteralRequiresGlobal,
             )),
             Literal::I8(v) => Ok(format!("#{}", v)),
+            Literal::U8(v) => Ok(format!("#{}", v)),
+            Literal::I16(v) => Ok(format!("#{}", v)),
+            Literal::U16(v) => Ok(format!("#{}", v)),
+            Literal::U32(v) => Ok(format!("#{}", v)),
+            Literal::U64(v) => Ok(format!("#{}", v)),
+            Literal::F64(_v) => {
+                // Temporarily disable F64 literals
+                Err(LaminaError::CodegenError(
+                    CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown("F64".to_string())),
+                ))
+            }
             _ => Err(LaminaError::CodegenError(
                 CodegenError::UnsupportedLiteralTypeInGlobal(LiteralType::Unknown(format!(
                     "{:?}",
