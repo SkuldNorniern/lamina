@@ -390,7 +390,11 @@ impl fmt::Display for Instruction<'_> {
                 array_ptr,
                 index,
                 element_type,
-            } => write!(f, "%{} = getelem.ptr {}, {}, {}", result, array_ptr, index, element_type),
+            } => write!(
+                f,
+                "%{} = getelem.ptr {}, {}, {}",
+                result, array_ptr, index, element_type
+            ),
             Instruction::PtrToInt {
                 result,
                 ptr_value,
