@@ -1086,10 +1086,7 @@ fn parse_getelem<'a>(
             "bool" => PrimitiveType::Bool,
             "char" => PrimitiveType::Char,
             "ptr" => PrimitiveType::Ptr,
-            _ => return Err(state.error(format!(
-                "Expected primitive type, found '{}'",
-                type_str
-            ))),
+            _ => return Err(state.error(format!("Expected primitive type, found '{}'", type_str))),
         }
     };
 
