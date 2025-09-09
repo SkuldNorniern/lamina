@@ -826,6 +826,222 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
+    /// Convert pointer to integer for pointer arithmetic
+    ///
+    /// This instruction extracts the memory address from a pointer as an integer value,
+    /// enabling pointer arithmetic operations. On 64-bit systems, this typically converts
+    /// to a 64-bit integer representing the absolute memory address.
+    ///
+    /// # Use Cases
+    /// - Pointer arithmetic and address calculations
+    /// - Memory address inspection and debugging
+    /// - Dynamic memory access patterns
+    /// - Brainfuck-style pointer manipulation
+    ///
+    /// # Example
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, PrimitiveType, BinaryOp};
+    /// use lamina::ir::builder::{var, i64};
+    ///
+    /// let mut builder = IRBuilder::new();
+    ///
+    /// // Main function demonstrating pointer arithmetic
+    /// builder
+    ///     .function("pointer_arithmetic_demo", PrimitiveType::I64)
+    ///     .block("entry")
+    ///     // Allocate an array of 5 i64 elements
+    ///     .alloc_stack("arr", PrimitiveType::I64, 5)
+    ///     // Get pointer to first element
+    ///     .getelementptr("base_ptr", var("arr"), i64(0), PrimitiveType::I64)
+    ///     // Store values in the array
+    ///     .store_i64(var("base_ptr"), i64(10))
+    ///     .getelementptr("ptr1", var("arr"), i64(1), PrimitiveType::I64)
+    ///     .store_i64(var("ptr1"), i64(20))
+    ///     .getelementptr("ptr2", var("arr"), i64(2), PrimitiveType::I64)
+    ///     .store_i64(var("ptr2"), i64(30))
+    ///     // Convert base pointer to integer for arithmetic
+    ///     .ptrtoint("base_addr", var("base_ptr"), PrimitiveType::I64)
+    ///     // Calculate address of element at index 3 (8 bytes * 3 = 24 bytes offset)
+    ///     .binary(BinaryOp::Add, PrimitiveType::I64, "target_addr", var("base_addr"), i64(24))
+    ///     // Convert back to pointer
+    ///     .inttoptr("target_ptr", var("target_addr"), PrimitiveType::Ptr)
+    ///     // Store value at computed location
+    ///     .store_i64(var("target_ptr"), i64(40))
+    ///     // Load it back to verify
+    ///     .load_i64("result", var("target_ptr"))
+    ///     .ret(PrimitiveType::I64, var("result"));
+    ///
+    /// // Helper function to print numbers (essential for debugging)
+    /// builder
+    ///     .function("print_number", PrimitiveType::I64)
+    ///     .param("num", PrimitiveType::I64)
+    ///     .block("entry")
+    ///     // Check if number is zero
+    ///     .binary(BinaryOp::Equal, PrimitiveType::I64, "is_zero", var("num"), i64(0))
+    ///     .br("is_zero", "print_zero", "check_negative")
+    ///     .block("print_zero")
+    ///     .write_byte(i64(48)) // ASCII '0'
+    ///     .ret(PrimitiveType::I64, i64(0))
+    ///     .block("check_negative")
+    ///     .binary(BinaryOp::LessThan, PrimitiveType::I64, "is_negative", var("num"), i64(0))
+    ///     .br("is_negative", "handle_negative", "print_digits")
+    ///     .block("handle_negative")
+    ///     .write_byte(i64(45)) // ASCII '-'
+    ///     .binary(BinaryOp::Subtract, PrimitiveType::I64, "abs_num", i64(0), var("num"))
+    ///     .call("dummy", "print_digits", vec![var("abs_num")], PrimitiveType::I64)
+    ///     .ret(PrimitiveType::I64, i64(0))
+    ///     .block("print_digits")
+    ///     .call("dummy", "print_digits", vec![var("num")], PrimitiveType::I64)
+    ///     .ret(PrimitiveType::I64, i64(0));
+    ///
+    /// // Recursive helper for digit printing
+    /// builder
+    ///     .function("print_digits", PrimitiveType::I64)
+    ///     .param("num", PrimitiveType::I64)
+    ///     .block("entry")
+    ///     .binary(BinaryOp::Equal, PrimitiveType::I64, "is_zero", var("num"), i64(0))
+    ///     .br("is_zero", "done", "continue_print")
+    ///     .block("continue_print")
+    ///     .binary(BinaryOp::Divide, PrimitiveType::I64, "quotient", var("num"), i64(10))
+    ///     .binary(BinaryOp::Multiply, PrimitiveType::I64, "temp", var("quotient"), i64(10))
+    ///     .binary(BinaryOp::Subtract, PrimitiveType::I64, "remainder", var("num"), var("temp"))
+    ///     .call("dummy", "print_digits", vec![var("quotient")], PrimitiveType::I64)
+    ///     .binary(BinaryOp::Add, PrimitiveType::I64, "digit", var("remainder"), i64(48))
+    ///     .write_byte(var("digit"))
+    ///     .ret(PrimitiveType::I64, i64(0))
+    ///     .block("done")
+    ///     .ret(PrimitiveType::I64, i64(0));
+    /// ```
+    pub fn ptrtoint(
+        &mut self,
+        result: &'a str,
+        ptr_value: Value<'a>,
+        target_type: PrimitiveType,
+    ) -> &mut Self {
+        self.inst(Instruction::PtrToInt {
+            result,
+            ptr_value,
+            target_type,
+        })
+    }
+
+    /// Convert integer back to pointer
+    ///
+    /// This instruction creates a pointer from an integer address value, enabling
+    /// dynamic pointer creation and memory access at computed addresses. This is
+    /// essential for implementing dynamic memory access patterns and pointer arithmetic.
+    ///
+    /// # Use Cases
+    /// - Creating pointers from computed memory addresses
+    /// - Dynamic memory access with calculated offsets
+    /// - Implementing low-level memory operations
+    /// - Brainfuck interpreter implementation
+    ///
+    /// # Example
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, PrimitiveType, BinaryOp};
+    /// use lamina::ir::builder::{var, i64};
+    ///
+    /// let mut builder = IRBuilder::new();
+    ///
+    /// // Function demonstrating dynamic memory access with pointer arithmetic
+    /// builder
+    ///     .function("brainfuck_cell_access", PrimitiveType::I64)
+    ///     .block("entry")
+    ///     // Simulate Brainfuck tape (array of bytes)
+    ///     .alloc_stack("tape", PrimitiveType::I8, 10)
+    ///     // Initialize some cells
+    ///     .getelementptr("cell0", var("tape"), i64(0), PrimitiveType::I8)
+    ///     .store_i8(var("cell0"), i64(65)) // 'A'
+    ///     .getelementptr("cell5", var("tape"), i64(5), PrimitiveType::I8)
+    ///     .store_i8(var("cell5"), i64(66)) // 'B'
+    ///     // Simulate Brainfuck pointer movement to cell 5
+    ///     .ptrtoint("base_addr", var("cell0"), PrimitiveType::I64)
+    ///     .binary(BinaryOp::Add, PrimitiveType::I64, "target_addr", var("base_addr"), i64(5))
+    ///     .inttoptr("data_ptr", var("target_addr"), PrimitiveType::Ptr)
+    ///     // Load value from dynamically computed location
+    ///     .load_i8("value", var("data_ptr"))
+    ///     .zext_i8_to_i64("result", var("value"))
+    ///     .ret(PrimitiveType::I64, var("result"));
+    ///
+    /// // Helper function to print numbers (essential for debugging pointer operations)
+    /// builder
+    ///     .function("print_number", PrimitiveType::I64)
+    ///     .param("num", PrimitiveType::I64)
+    ///     .block("entry")
+    ///     // Handle zero case
+    ///     .binary(BinaryOp::Equal, PrimitiveType::I64, "is_zero", var("num"), i64(0))
+    ///     .br("is_zero", "print_zero", "check_negative")
+    ///     .block("print_zero")
+    ///     .write_byte(i64(48)) // ASCII '0'
+    ///     .ret(PrimitiveType::I64, i64(0))
+    ///     .block("check_negative")
+    ///     .binary(BinaryOp::LessThan, PrimitiveType::I64, "is_negative", var("num"), i64(0))
+    ///     .br("is_negative", "handle_negative", "print_digits")
+    ///     .block("handle_negative")
+    ///     .write_byte(i64(45)) // ASCII '-'
+    ///     .binary(BinaryOp::Subtract, PrimitiveType::I64, "abs_num", i64(0), var("num"))
+    ///     .call("dummy", "print_digits", vec![var("abs_num")], PrimitiveType::I64)
+    ///     .ret(PrimitiveType::I64, i64(0))
+    ///     .block("print_digits")
+    ///     .call("dummy", "print_digits", vec![var("num")], PrimitiveType::I64)
+    ///     .ret(PrimitiveType::I64, i64(0));
+    ///
+    /// // Recursive digit printing helper
+    /// builder
+    ///     .function("print_digits", PrimitiveType::I64)
+    ///     .param("num", PrimitiveType::I64)
+    ///     .block("entry")
+    ///     .binary(BinaryOp::Equal, PrimitiveType::I64, "is_zero", var("num"), i64(0))
+    ///     .br("is_zero", "done", "continue_print")
+    ///     .block("continue_print")
+    ///     .binary(BinaryOp::Divide, PrimitiveType::I64, "quotient", var("num"), i64(10))
+    ///     .binary(BinaryOp::Multiply, PrimitiveType::I64, "temp", var("quotient"), i64(10))
+    ///     .binary(BinaryOp::Subtract, PrimitiveType::I64, "remainder", var("num"), var("temp"))
+    ///     .call("dummy", "print_digits", vec![var("quotient")], PrimitiveType::I64)
+    ///     .binary(BinaryOp::Add, PrimitiveType::I64, "digit", var("remainder"), i64(48))
+    ///     .write_byte(var("digit"))
+    ///     .ret(PrimitiveType::I64, i64(0))
+    ///     .block("done")
+    ///     .ret(PrimitiveType::I64, i64(0));
+    /// ```
+    ///
+    /// # Note on Removed ptradd Instruction
+    ///
+    /// Initially, a `ptradd` instruction was considered for direct pointer+offset arithmetic.
+    /// However, this instruction was removed as unnecessary because the same functionality
+    /// can be achieved more efficiently using the `ptrtoint` + `inttoptr` sequence:
+    ///
+    /// ```rust
+    /// // Instead of: ptradd result, base_ptr, offset
+    /// // Use:
+    /// .ptrtoint("temp", base_ptr, PrimitiveType::I64)
+    /// .binary(BinaryOp::Add, PrimitiveType::I64, "new_addr", var("temp"), offset)
+    /// .inttoptr("result", var("new_addr"), PrimitiveType::Ptr)
+    /// ```
+    ///
+    /// This approach provides more flexibility and doesn't require additional instruction
+    /// support in the compiler.
+    ///
+    /// # Safety Note
+    /// Creating pointers from arbitrary integer values can lead to undefined behavior
+    /// if the resulting pointer doesn't point to valid memory. Always ensure the
+    /// integer address represents a valid memory location that your program has
+    /// access to.
+    pub fn inttoptr(
+        &mut self,
+        result: &'a str,
+        int_value: Value<'a>,
+        target_type: PrimitiveType,
+    ) -> &mut Self {
+        self.inst(Instruction::IntToPtr {
+            result,
+            int_value,
+            target_type,
+        })
+    }
+
+
     /// Gets a pointer to a struct field (structure field access)
     ///
     /// # Parameters

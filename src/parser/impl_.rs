@@ -841,6 +841,8 @@ fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>>
             "getfieldptr" => parse_getfield(state, result), // Alias for test compatibility
             "getelem" => parse_getelem(state, result),
             "getelementptr" => parse_getelem(state, result), // Alias for test compatibility
+            "ptrtoint" => parse_ptrtoint(state, result),
+            "inttoptr" => parse_inttoptr(state, result),
             "tuple" => parse_tuple(state, result),
             "extract" => parse_extract_tuple(state, result),
             "call" => parse_call(state, Some(result)), // Call with result
@@ -1100,6 +1102,51 @@ fn parse_getelem<'a>(
         element_type,
     })
 }
+
+fn parse_ptrtoint<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>> {
+    // Format: ptrtoint ptr_value, target_type
+    let ptr_value = parse_value(state)?;
+    state.expect_char(',')?;
+    let target_type = parse_type_suffix(state)?;
+
+    // Extract the primitive type from the parsed type
+    let target_primitive_type = match target_type {
+        Type::Primitive(pt) => pt,
+        _ => return Err(LaminaError::ParsingError("Expected primitive type for ptrtoint".to_string())),
+    };
+
+    Ok(Instruction::PtrToInt {
+        result,
+        ptr_value,
+        target_type: target_primitive_type,
+    })
+}
+
+fn parse_inttoptr<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>> {
+    // Format: inttoptr int_value, target_type
+    let int_value = parse_value(state)?;
+    state.expect_char(',')?;
+    let target_type = parse_type_suffix(state)?;
+
+    // Extract the primitive type from the parsed type
+    let target_primitive_type = match target_type {
+        Type::Primitive(pt) => pt,
+        _ => return Err(LaminaError::ParsingError("Expected primitive type for inttoptr".to_string())),
+    };
+
+    Ok(Instruction::IntToPtr {
+        result,
+        int_value,
+        target_type: target_primitive_type,
+    })
+}
+
 
 fn parse_tuple<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
     // tuple.T element1, element2, ... (Simplified: just parse elements)
