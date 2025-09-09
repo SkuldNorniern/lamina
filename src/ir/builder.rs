@@ -328,8 +328,8 @@ impl<'a> IRBuilder<'a> {
         if let Some(func_name) = self.current_function
             && let Some(annotations) = self.function_annotations.get_mut(func_name)
         {
-                annotations.push(annotation);
-            }
+            annotations.push(annotation);
+        }
         self
     }
 
@@ -404,8 +404,8 @@ impl<'a> IRBuilder<'a> {
         if let (Some(_func_name), Some(block_name)) = (self.current_function, self.current_block)
             && let Some(instructions) = self.block_instructions.get_mut(block_name)
         {
-                instructions.push(instruction);
-            }
+            instructions.push(instruction);
+        }
         self
     }
 
