@@ -1,0 +1,83 @@
+# Test case to expose division operation bug with smaller integer types
+# This test uses division operations with i8, i16, and other smaller types
+# If the bug exists, division operations for smaller types may not work correctly
+
+fn @test_i8_division() -> i64 {
+  entry:
+    # Test i8 division
+    %a = add.i8 20, 0    # 20
+    %b = add.i8 3, 0     # 3
+    %quotient = div.i8 %a, %b  # Should be 6 (20/3 = 6 in integer division)
+
+    %result = zext.i8.i64 %quotient
+    ret.i64 %result
+}
+
+fn @test_i16_division() -> i64 {
+  entry:
+    # Test i16 division
+    %a = add.i16 100, 0    # 100
+    %b = add.i16 7, 0      # 7
+    %quotient = div.i16 %a, %b  # Should be 14 (100/7 = 14 in integer division)
+
+    %result = zext.i16.i64 %quotient
+    ret.i64 %result
+}
+
+fn @test_u8_division() -> i64 {
+  entry:
+    # Test u8 division
+    %a = add.i8 25, 0     # 25
+    %b = add.i8 4, 0      # 4
+    %quotient = div.i8 %a, %b  # Should be 6 (25/4 = 6 in integer division)
+
+    %result = zext.i8.i64 %quotient
+    ret.i64 %result
+}
+
+fn @test_u16_division() -> i64 {
+  entry:
+    # Test u16 division
+    %a = add.i16 50, 0     # 50
+    %b = add.i16 3, 0      # 3
+    %quotient = div.i16 %a, %b  # Should be 16 (50/3 = 16 in integer division)
+
+    %result = zext.i16.i64 %quotient
+    ret.i64 %result
+}
+
+fn @test_mixed_division() -> i64 {
+  entry:
+    # Test division with variables and constants
+    %x = add.i8 48, 0
+    %y = add.i8 6, 0
+
+    # Division with constant divisor
+    %result1 = div.i8 %x, 8  # Should be 6
+
+    # Division with variable divisor
+    %result2 = div.i8 %x, %y  # Should be 8
+
+    # Division result of divisions
+    %combined = div.i8 %result1, 2  # Should be 3
+
+    %final = zext.i8.i64 %combined
+    ret.i64 %final
+}
+
+fn @main() -> i64 {
+  entry:
+    %i8_result = call @test_i8_division()
+    %i16_result = call @test_i16_division()
+    %u8_result = call @test_u8_division()
+    %u16_result = call @test_u16_division()
+    %mixed_result = call @test_mixed_division()
+
+    print %i8_result    # Should be 6
+    print %i16_result   # Should be 14
+    print %u8_result    # Should be 6
+    print %u16_result   # Should be 16
+    print %mixed_result # Should be 3
+
+    ret.i64 0
+}

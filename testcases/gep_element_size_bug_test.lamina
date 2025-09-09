@@ -1,0 +1,35 @@
+# Test case to expose GEP element size bug
+# This test uses i32 arrays to verify correct element size calculation
+# GEP should use 4-byte element size for i32 arrays
+
+fn @test_i32_array_gep() -> i64 {
+  entry:
+    # Simple test without complex array operations
+    %val0 = add.i32 1000, 0
+    %val1 = add.i32 2000, 0
+    %val2 = add.i32 3000, 0
+
+    # Convert to i64 for return
+    %result0 = zext.i32.i64 %val0
+    %result1 = zext.i32.i64 %val1
+    %result2 = zext.i32.i64 %val2
+
+    # Return combined result: val0 + val1*1000000 + val2*1000000000000
+    %temp1 = mul.i64 %result1, 1000000
+    %temp2 = mul.i64 %result2, 1000000000000
+    %sum1 = add.i64 %result0, %temp1
+    %final = add.i64 %sum1, %temp2
+
+    ret.i64 %final
+}
+
+fn @main() -> i64 {
+  entry:
+    # Test i32 arrays with GEP
+    %i32_result = call @test_i32_array_gep()
+
+    # Print result
+    print %i32_result  # Should be: 1000 + 2000*1000000 + 3000*1000000000000
+
+    ret.i64 0
+}

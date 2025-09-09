@@ -1,0 +1,101 @@
+# Lamina Language Capabilities Demonstration
+
+fn @simple_func(i64 %x) -> i64 {
+  entry:
+    %result = add.i64 %x, 10
+    ret.i64 %result
+}
+
+fn @main() -> i64 {
+  entry:
+    # Simple ASCII Art using writebyte
+    %r1 = writebyte 42
+    %r2 = writebyte 42
+    %r3 = writebyte 42
+    %r4 = writebyte 32
+    %r5 = writebyte 76
+    %r6 = writebyte 65
+    %r7 = writebyte 77
+    %r8 = writebyte 73
+    %r9 = writebyte 78
+    %r10 = writebyte 65
+    %r11 = writebyte 32
+    %r12 = writebyte 76
+    %r13 = writebyte 65
+    %r14 = writebyte 78
+    %r15 = writebyte 71
+    %r16 = writebyte 85
+    %r17 = writebyte 65
+    %r18 = writebyte 71
+    %r19 = writebyte 69
+    %r20 = writebyte 32
+    %r21 = writebyte 42
+    %r22 = writebyte 42
+    %r23 = writebyte 42
+    %r24 = writebyte 10
+    %r25 = writebyte 10
+
+    # Welcome message
+    %w1 = writebyte 87
+    %w2 = writebyte 101
+    %w3 = writebyte 108
+    %w4 = writebyte 99
+    %w5 = writebyte 111
+    %w6 = writebyte 109
+    %w7 = writebyte 101
+    %w8 = writebyte 32
+    %w9 = writebyte 116
+    %w10 = writebyte 111
+    %w11 = writebyte 32
+    %w12 = writebyte 76
+    %w13 = writebyte 97
+    %w14 = writebyte 109
+    %w15 = writebyte 105
+    %w16 = writebyte 110
+    %w17 = writebyte 97
+    %w18 = writebyte 33
+    %w19 = writebyte 10
+    %w20 = writebyte 10
+
+    # Example calculation
+    %result = call @simple_func(5)
+
+    # Print result
+    %p1 = writebyte 82
+    %p2 = writebyte 101
+    %p3 = writebyte 115
+    %p4 = writebyte 117
+    %p5 = writebyte 108
+    %p6 = writebyte 116
+    %p7 = writebyte 58
+    %p8 = writebyte 32
+
+    # Print the result value
+    %dummy = call @print_digit(%result)
+
+    %final1 = writebyte 10
+    %final2 = writebyte 76
+    %final3 = writebyte 97
+    %final4 = writebyte 109
+    %final5 = writebyte 105
+    %final6 = writebyte 110
+    %final7 = writebyte 97
+    %final8 = writebyte 32
+    %final9 = writebyte 82
+    %final10 = writebyte 111
+    %final11 = writebyte 99
+    %final12 = writebyte 107
+    %final13 = writebyte 115
+    %final14 = writebyte 33
+    %final15 = writebyte 10
+
+    ret.i64 42
+}
+
+# Helper function to print a number (for values 0-9)
+fn @print_digit(i64 %num) -> i64 {
+  entry:
+    %digit = add.i64 %num, 48  # ASCII '0' is 48
+    %dummy = writebyte %digit
+    ret.i64 0
+}

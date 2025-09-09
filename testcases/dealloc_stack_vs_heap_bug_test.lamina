@@ -1,0 +1,100 @@
+# Test case to expose stack vs heap deallocation bug
+# The dealloc instruction always assumes heap memory, but should handle both stack and heap
+# This test creates both stack and heap allocations and tries to deallocate them
+
+fn @test_stack_dealloc() -> i64 {
+  entry:
+    # Allocate on stack
+    %stack_data = alloc.stack i64
+    store.i64 %stack_data, 42
+
+    # Load the value back
+    %val = load.i64 %stack_data
+
+    # Try to deallocate stack allocation (this should be a no-op or error)
+    dealloc.heap %stack_data
+
+    # Return the value
+    ret.i64 %val
+}
+
+fn @test_heap_dealloc() -> i64 {
+  entry:
+    # Allocate on heap
+    %heap_data = alloc.heap i64
+    store.i64 %heap_data, 100
+
+    # Load the value back
+    %val = load.i64 %heap_data
+
+    # Deallocate heap allocation (this should work)
+    dealloc.heap %heap_data
+
+    # Return the value
+    ret.i64 %val
+}
+
+fn @main() -> i64 {
+  entry:
+    # Test both stack and heap deallocation
+    %stack_result = call @test_stack_dealloc()
+    %heap_result = call @test_heap_dealloc()
+
+    # Return combined result: stack_result + heap_result * 1000
+    %heap_scaled = mul.i64 %heap_result, 1000
+    %combined = add.i64 %stack_result, %heap_scaled
+
+    %dummy = call @print_number(%combined)
+    %newline = writebyte 10
+    ret.i64 0
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}
