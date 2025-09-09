@@ -242,13 +242,11 @@ fn precompute_function_layout<'a>(
                 }
                 Instruction::Binary { result, ty, .. } | Instruction::Cmp { result, ty, .. } => {
                     let s = match ty {
-                        PrimitiveType::I32 => 4,
-                        PrimitiveType::I64 | PrimitiveType::Ptr => 8,
-                        PrimitiveType::Bool | PrimitiveType::I8 => 1,
-                        PrimitiveType::F32 => 4,
-                        _ => {
-                            return Err(LaminaError::CodegenError(CodegenError::InternalError));
-                        }
+                        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
+                        PrimitiveType::I16 | PrimitiveType::U16 => 2,
+                        PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+                        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+                        PrimitiveType::Char => 1,
                     };
                     Some((result, s))
                 }
@@ -304,9 +302,11 @@ fn precompute_function_layout<'a>(
                     ..
                 } => {
                     let s = match target_type {
-                        PrimitiveType::I32 => 4,
-                        PrimitiveType::I64 | PrimitiveType::Ptr => 8,
-                        PrimitiveType::Bool | PrimitiveType::I8 => 1,
+                        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
+                        PrimitiveType::I16 | PrimitiveType::U16 => 2,
+                        PrimitiveType::I32 | PrimitiveType::U32 => 4,
+                        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => 8,
+                        PrimitiveType::Char => 1,
                         _ => {
                             return Err(LaminaError::CodegenError(
                                 CodegenError::UnsupportedPrimitiveType(*target_type),
