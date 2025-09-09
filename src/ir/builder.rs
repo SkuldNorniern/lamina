@@ -107,7 +107,7 @@ use super::types::{Literal, PrimitiveType, Type, Value};
 ///     // Allocate an array
 ///     .alloc_stack("arr", Type::Array { element_type: Box::new(Type::Primitive(PrimitiveType::I32)), size: 10 })
 ///     // Get pointer to element at index 5
-///     .getelementptr("elem_ptr", var("arr"), i32(5))
+///     .getelementptr("elem_ptr", var("arr"), i32(5), PrimitiveType::I32)
 ///     // Store value at that location
 ///     .store(Type::Primitive(PrimitiveType::I32), var("elem_ptr"), i32(100))
 ///     .ret_void();
@@ -803,7 +803,7 @@ impl<'a> IRBuilder<'a> {
     ///         size: 10
     ///     })
     ///     // Get pointer to element at index 5
-    ///     .getelementptr("elem_ptr", var("arr"), i32(5))
+    ///     .getelementptr("elem_ptr", var("arr"), i32(5), PrimitiveType::I32)
     ///     // Store value at that location
     ///     .store(Type::Primitive(PrimitiveType::I32), var("elem_ptr"), i32(99))
     ///     // Load it back
@@ -840,77 +840,26 @@ impl<'a> IRBuilder<'a> {
     ///
     /// # Example
     /// ```rust
-    /// use lamina::ir::{IRBuilder, PrimitiveType, BinaryOp};
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType};
     /// use lamina::ir::builder::{var, i64};
     ///
     /// let mut builder = IRBuilder::new();
     ///
-    /// // Main function demonstrating pointer arithmetic
+    /// // Simple pointer arithmetic demonstration
     /// builder
-    ///     .function("pointer_arithmetic_demo", PrimitiveType::I64)
+    ///     .function("simple_ptr_math", Type::Primitive(PrimitiveType::I64))
     ///     .block("entry")
-    ///     // Allocate an array of 5 i64 elements
-    ///     .alloc_stack("arr", PrimitiveType::I64, 5)
-    ///     // Get pointer to first element
-    ///     .getelementptr("base_ptr", var("arr"), i64(0), PrimitiveType::I64)
-    ///     // Store values in the array
-    ///     .store_i64(var("base_ptr"), i64(10))
-    ///     .getelementptr("ptr1", var("arr"), i64(1), PrimitiveType::I64)
-    ///     .store_i64(var("ptr1"), i64(20))
-    ///     .getelementptr("ptr2", var("arr"), i64(2), PrimitiveType::I64)
-    ///     .store_i64(var("ptr2"), i64(30))
-    ///     // Convert base pointer to integer for arithmetic
-    ///     .ptrtoint("base_addr", var("base_ptr"), PrimitiveType::I64)
-    ///     // Calculate address of element at index 3 (8 bytes * 3 = 24 bytes offset)
-    ///     .binary(BinaryOp::Add, PrimitiveType::I64, "target_addr", var("base_addr"), i64(24))
+    ///     // Allocate an i64 variable
+    ///     .alloc_stack("value", Type::Primitive(PrimitiveType::I64))
+    ///     // Store a value
+    ///     .store(Type::Primitive(PrimitiveType::I64), var("value"), i64(42))
+    ///     // Convert pointer to integer
+    ///     .ptrtoint("addr", var("value"), PrimitiveType::I64)
     ///     // Convert back to pointer
-    ///     .inttoptr("target_ptr", var("target_addr"), PrimitiveType::Ptr)
-    ///     // Store value at computed location
-    ///     .store_i64(var("target_ptr"), i64(40))
-    ///     // Load it back to verify
-    ///     .load_i64("result", var("target_ptr"))
-    ///     .ret(PrimitiveType::I64, var("result"));
-    ///
-    /// // Helper function to print numbers (essential for debugging)
-    /// builder
-    ///     .function("print_number", PrimitiveType::I64)
-    ///     .param("num", PrimitiveType::I64)
-    ///     .block("entry")
-    ///     // Check if number is zero
-    ///     .binary(BinaryOp::Equal, PrimitiveType::I64, "is_zero", var("num"), i64(0))
-    ///     .br("is_zero", "print_zero", "check_negative")
-    ///     .block("print_zero")
-    ///     .write_byte(i64(48)) // ASCII '0'
-    ///     .ret(PrimitiveType::I64, i64(0))
-    ///     .block("check_negative")
-    ///     .binary(BinaryOp::LessThan, PrimitiveType::I64, "is_negative", var("num"), i64(0))
-    ///     .br("is_negative", "handle_negative", "print_digits")
-    ///     .block("handle_negative")
-    ///     .write_byte(i64(45)) // ASCII '-'
-    ///     .binary(BinaryOp::Subtract, PrimitiveType::I64, "abs_num", i64(0), var("num"))
-    ///     .call("dummy", "print_digits", vec![var("abs_num")], PrimitiveType::I64)
-    ///     .ret(PrimitiveType::I64, i64(0))
-    ///     .block("print_digits")
-    ///     .call("dummy", "print_digits", vec![var("num")], PrimitiveType::I64)
-    ///     .ret(PrimitiveType::I64, i64(0));
-    ///
-    /// // Recursive helper for digit printing
-    /// builder
-    ///     .function("print_digits", PrimitiveType::I64)
-    ///     .param("num", PrimitiveType::I64)
-    ///     .block("entry")
-    ///     .binary(BinaryOp::Equal, PrimitiveType::I64, "is_zero", var("num"), i64(0))
-    ///     .br("is_zero", "done", "continue_print")
-    ///     .block("continue_print")
-    ///     .binary(BinaryOp::Divide, PrimitiveType::I64, "quotient", var("num"), i64(10))
-    ///     .binary(BinaryOp::Multiply, PrimitiveType::I64, "temp", var("quotient"), i64(10))
-    ///     .binary(BinaryOp::Subtract, PrimitiveType::I64, "remainder", var("num"), var("temp"))
-    ///     .call("dummy", "print_digits", vec![var("quotient")], PrimitiveType::I64)
-    ///     .binary(BinaryOp::Add, PrimitiveType::I64, "digit", var("remainder"), i64(48))
-    ///     .write_byte(var("digit"))
-    ///     .ret(PrimitiveType::I64, i64(0))
-    ///     .block("done")
-    ///     .ret(PrimitiveType::I64, i64(0));
+    ///     .inttoptr("new_ptr", var("addr"), PrimitiveType::Ptr)
+    ///     // Load the original value
+    ///     .load("result", Type::Primitive(PrimitiveType::I64), var("new_ptr"))
+    ///     .ret(Type::Primitive(PrimitiveType::I64), var("result"));
     /// ```
     pub fn ptrtoint(
         &mut self,
@@ -939,86 +888,32 @@ impl<'a> IRBuilder<'a> {
     ///
     /// # Example
     /// ```rust
-    /// use lamina::ir::{IRBuilder, PrimitiveType, BinaryOp};
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType};
     /// use lamina::ir::builder::{var, i64};
     ///
     /// let mut builder = IRBuilder::new();
     ///
-    /// // Function demonstrating dynamic memory access with pointer arithmetic
+    /// // Pointer arithmetic round-trip
     /// builder
-    ///     .function("brainfuck_cell_access", PrimitiveType::I64)
+    ///     .function("pointer_roundtrip", Type::Primitive(PrimitiveType::I64))
     ///     .block("entry")
-    ///     // Simulate Brainfuck tape (array of bytes)
-    ///     .alloc_stack("tape", PrimitiveType::I8, 10)
-    ///     // Initialize some cells
-    ///     .getelementptr("cell0", var("tape"), i64(0), PrimitiveType::I8)
-    ///     .store_i8(var("cell0"), i64(65)) // 'A'
-    ///     .getelementptr("cell5", var("tape"), i64(5), PrimitiveType::I8)
-    ///     .store_i8(var("cell5"), i64(66)) // 'B'
-    ///     // Simulate Brainfuck pointer movement to cell 5
-    ///     .ptrtoint("base_addr", var("cell0"), PrimitiveType::I64)
-    ///     .binary(BinaryOp::Add, PrimitiveType::I64, "target_addr", var("base_addr"), i64(5))
-    ///     .inttoptr("data_ptr", var("target_addr"), PrimitiveType::Ptr)
-    ///     // Load value from dynamically computed location
-    ///     .load_i8("value", var("data_ptr"))
-    ///     .zext_i8_to_i64("result", var("value"))
-    ///     .ret(PrimitiveType::I64, var("result"));
-    ///
-    /// // Helper function to print numbers (essential for debugging pointer operations)
-    /// builder
-    ///     .function("print_number", PrimitiveType::I64)
-    ///     .param("num", PrimitiveType::I64)
-    ///     .block("entry")
-    ///     // Handle zero case
-    ///     .binary(BinaryOp::Equal, PrimitiveType::I64, "is_zero", var("num"), i64(0))
-    ///     .br("is_zero", "print_zero", "check_negative")
-    ///     .block("print_zero")
-    ///     .write_byte(i64(48)) // ASCII '0'
-    ///     .ret(PrimitiveType::I64, i64(0))
-    ///     .block("check_negative")
-    ///     .binary(BinaryOp::LessThan, PrimitiveType::I64, "is_negative", var("num"), i64(0))
-    ///     .br("is_negative", "handle_negative", "print_digits")
-    ///     .block("handle_negative")
-    ///     .write_byte(i64(45)) // ASCII '-'
-    ///     .binary(BinaryOp::Subtract, PrimitiveType::I64, "abs_num", i64(0), var("num"))
-    ///     .call("dummy", "print_digits", vec![var("abs_num")], PrimitiveType::I64)
-    ///     .ret(PrimitiveType::I64, i64(0))
-    ///     .block("print_digits")
-    ///     .call("dummy", "print_digits", vec![var("num")], PrimitiveType::I64)
-    ///     .ret(PrimitiveType::I64, i64(0));
-    ///
-    /// // Recursive digit printing helper
-    /// builder
-    ///     .function("print_digits", PrimitiveType::I64)
-    ///     .param("num", PrimitiveType::I64)
-    ///     .block("entry")
-    ///     .binary(BinaryOp::Equal, PrimitiveType::I64, "is_zero", var("num"), i64(0))
-    ///     .br("is_zero", "done", "continue_print")
-    ///     .block("continue_print")
-    ///     .binary(BinaryOp::Divide, PrimitiveType::I64, "quotient", var("num"), i64(10))
-    ///     .binary(BinaryOp::Multiply, PrimitiveType::I64, "temp", var("quotient"), i64(10))
-    ///     .binary(BinaryOp::Subtract, PrimitiveType::I64, "remainder", var("num"), var("temp"))
-    ///     .call("dummy", "print_digits", vec![var("quotient")], PrimitiveType::I64)
-    ///     .binary(BinaryOp::Add, PrimitiveType::I64, "digit", var("remainder"), i64(48))
-    ///     .write_byte(var("digit"))
-    ///     .ret(PrimitiveType::I64, i64(0))
-    ///     .block("done")
-    ///     .ret(PrimitiveType::I64, i64(0));
+    ///     // Allocate a value
+    ///     .alloc_stack("val", Type::Primitive(PrimitiveType::I64))
+    ///     .store(Type::Primitive(PrimitiveType::I64), var("val"), i64(123))
+    ///     // Convert to integer
+    ///     .ptrtoint("addr", var("val"), PrimitiveType::I64)
+    ///     // Convert back to pointer
+    ///     .inttoptr("reconstructed", var("addr"), PrimitiveType::Ptr)
+    ///     // Load the original value
+    ///     .load("result", Type::Primitive(PrimitiveType::I64), var("reconstructed"))
+    ///     .ret(Type::Primitive(PrimitiveType::I64), var("result"));
     /// ```
     ///
     /// # Note on Removed ptradd Instruction
     ///
     /// Initially, a `ptradd` instruction was considered for direct pointer+offset arithmetic.
     /// However, this instruction was removed as unnecessary because the same functionality
-    /// can be achieved more efficiently using the `ptrtoint` + `inttoptr` sequence:
-    ///
-    /// ```rust
-    /// // Instead of: ptradd result, base_ptr, offset
-    /// // Use:
-    /// .ptrtoint("temp", base_ptr, PrimitiveType::I64)
-    /// .binary(BinaryOp::Add, PrimitiveType::I64, "new_addr", var("temp"), offset)
-    /// .inttoptr("result", var("new_addr"), PrimitiveType::Ptr)
-    /// ```
+    /// can be achieved more efficiently using the `ptrtoint` + `inttoptr` sequence.
     ///
     /// This approach provides more flexibility and doesn't require additional instruction
     /// support in the compiler.
