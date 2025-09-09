@@ -604,10 +604,11 @@ mod tests {
             result: "elem_ptr",
             array_ptr: Value::Variable("array_data_ptr"),
             index: Value::Constant(Literal::I64(3)),
+            element_type: PrimitiveType::I64,
         };
         assert_eq!(
             format!("{}", instr12),
-            "%elem_ptr = getelem.ptr %array_data_ptr, 3"
+            "%elem_ptr = getelem.ptr %array_data_ptr, 3, i64"
         );
 
         // Call (void)
