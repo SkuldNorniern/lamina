@@ -1163,23 +1163,29 @@ pub fn generate_instruction<'a, W: Write>(
 
             writeln!(writer, "        movq {}, %rax # GEP Base Ptr", array_ptr_op)?;
 
-            // Check if index is a stack reference (needs dereferencing) or direct value
-            if index_op.contains("(%rbp)") {
-                // Index is a pointer to the value - dereference it
-                writeln!(
-                    writer,
-                    "        movq {}, %r11 # Load pointer to index",
-                    index_op
-                )?;
-                writeln!(
-                    writer,
-                    "        movslq (%r11), %r10 # Load index value with sign extension"
-                )?;
-            } else {
-                // Index is a direct value
+            // FIXED: Correct handling of variable vs constant indices
+            // Previously: incorrectly treated all (%rbp) operands as pointers to dereference
+            // Now: distinguish between direct values and variable references properly
+            if index_op.starts_with('$') {
+                // Index is a direct constant value (e.g., $2)
                 writeln!(
                     writer,
                     "        movq {}, %r10 # GEP Index (direct value)",
+                    index_op
+                )?;
+            } else if index_op.contains("(%rbp)") {
+                // Index is a variable reference on stack (e.g., -56(%rbp))
+                // Load the value directly from the stack location
+                writeln!(
+                    writer,
+                    "        movq {}, %r10 # Load index value from stack",
+                    index_op
+                )?;
+            } else {
+                // Index is in a register or other location
+                writeln!(
+                    writer,
+                    "        movq {}, %r10 # GEP Index (register/other)",
                     index_op
                 )?;
             }
