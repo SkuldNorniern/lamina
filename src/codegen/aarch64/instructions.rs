@@ -395,7 +395,11 @@ pub fn generate_instruction<'a, W: Write>(
                     writeln!(writer, "        mov w0, w0")?;
                     store_to_location(writer, "w0", &dest)?;
                 }
-                _ => return Err(LaminaError::CodegenError(CodegenError::UnsupportedPrimitiveType(*target_type))),
+                _ => {
+                    return Err(LaminaError::CodegenError(
+                        CodegenError::UnsupportedPrimitiveType(*target_type),
+                    ));
+                }
             }
         }
         Instruction::IntToPtr {
@@ -413,7 +417,9 @@ pub fn generate_instruction<'a, W: Write>(
             if *target_type == PrimitiveType::Ptr {
                 store_to_location(writer, "x0", &dest)?;
             } else {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedPrimitiveType(*target_type)));
+                return Err(LaminaError::CodegenError(
+                    CodegenError::UnsupportedPrimitiveType(*target_type),
+                ));
             }
         }
 

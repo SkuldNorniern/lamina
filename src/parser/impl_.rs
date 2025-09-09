@@ -1112,7 +1112,11 @@ fn parse_ptrtoint<'a>(
     // Extract the primitive type from the parsed type
     let target_primitive_type = match target_type {
         Type::Primitive(pt) => pt,
-        _ => return Err(LaminaError::ParsingError("Expected primitive type for ptrtoint".to_string())),
+        _ => {
+            return Err(LaminaError::ParsingError(
+                "Expected primitive type for ptrtoint".to_string(),
+            ));
+        }
     };
 
     Ok(Instruction::PtrToInt {
@@ -1134,7 +1138,11 @@ fn parse_inttoptr<'a>(
     // Extract the primitive type from the parsed type
     let target_primitive_type = match target_type {
         Type::Primitive(pt) => pt,
-        _ => return Err(LaminaError::ParsingError("Expected primitive type for inttoptr".to_string())),
+        _ => {
+            return Err(LaminaError::ParsingError(
+                "Expected primitive type for inttoptr".to_string(),
+            ));
+        }
     };
 
     Ok(Instruction::IntToPtr {
@@ -1143,7 +1151,6 @@ fn parse_inttoptr<'a>(
         target_type: target_primitive_type,
     })
 }
-
 
 fn parse_tuple<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
     // tuple.T element1, element2, ... (Simplified: just parse elements)
