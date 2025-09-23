@@ -298,12 +298,16 @@ fn precompute_function_layout<'a>(
                     result: Some(res), ..
                 } => Some((res, 8)),
                 // I/O instructions all return i64 syscall results
-                | Instruction::Write { .. } => None,
-                | Instruction::Read { .. } => None,
-                | Instruction::WriteByte { .. } => None,
-                | Instruction::ReadByte { .. } => None,
-                | Instruction::WritePtr { .. } => None,
-                | Instruction::PtrToInt { result, target_type, .. } => {
+                Instruction::Write { .. } => None,
+                Instruction::Read { .. } => None,
+                Instruction::WriteByte { .. } => None,
+                Instruction::ReadByte { .. } => None,
+                Instruction::WritePtr { .. } => None,
+                Instruction::PtrToInt {
+                    result,
+                    target_type,
+                    ..
+                } => {
                     let s = match target_type {
                         PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
                         PrimitiveType::I16 | PrimitiveType::U16 => 2,
@@ -318,8 +322,8 @@ fn precompute_function_layout<'a>(
                     };
                     Some((result, s))
                 }
-                | Instruction::IntToPtr { result, .. } => Some((result, 8)),
-                | _ => None, // Handle remaining instruction types
+                Instruction::IntToPtr { result, .. } => Some((result, 8)),
+                _ => None, // Handle remaining instruction types
             };
             if let Some((res, size)) = result_info {
                 let aligned = (size + 7) & !7;
