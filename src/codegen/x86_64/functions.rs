@@ -579,14 +579,14 @@ fn precompute_function_layout<'a>(
                 }
                 Instruction::Write { .. } => None,
                 Instruction::Read { .. } => None,
-                Instruction::WriteByte { .. } => None,
+                Instruction::WriteByte { result, .. } => {
+                    // WriteByte returns i64 (syscall result)
+                    let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::I64))?;
+                    Some((result, s))
+                }
                 Instruction::ReadByte { .. } => None,
                 Instruction::WritePtr { .. } => None,
-                Instruction::PtrToInt {
-                    result,
-                    target_type,
-                    ..
-                } => {
+                Instruction::PtrToInt { result, target_type, .. } => {
                     let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(*target_type))?;
                     Some((result, s))
                 }
