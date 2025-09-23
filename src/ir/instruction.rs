@@ -274,9 +274,6 @@ pub enum Instruction<'a> {
         ptr: Value<'a>,         // Pointer whose address/value to write to output
         result: Identifier<'a>, // Result (bytes written on success, -1 on error)
     },
-    ReadPtr {
-        result: Identifier<'a>, // Result pointer address read from input
-    },
 
     // --- Debugging ---
     Print {
@@ -464,7 +461,6 @@ impl fmt::Display for Instruction<'_> {
             }
             Instruction::ReadByte { result } => write!(f, "%{} = readbyte", result),
             Instruction::WritePtr { ptr, result } => write!(f, "%{} = writeptr {}", result, ptr),
-            Instruction::ReadPtr { result } => write!(f, "%{} = readptr", result),
             Instruction::Print { value } => write!(f, "print {}", value),
         }
     }

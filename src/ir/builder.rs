@@ -1216,10 +1216,10 @@ impl<'a> IRBuilder<'a> {
     /// builder
     ///     .function("binary_input", Type::Void)
     ///     // Read 8 bytes of binary data from stdin
-    ///     .read_ptr("input_data")
+    ///     .read_byte("input_byte")
     ///     // Use the data (e.g., store it somewhere)
-    ///     .alloc_stack("storage", Type::Primitive(PrimitiveType::I64))
-    ///     .store(Type::Primitive(PrimitiveType::I64), var("storage"), var("input_data"))
+    ///     .alloc_stack("storage", Type::Primitive(PrimitiveType::I8))
+    ///     .store(Type::Primitive(PrimitiveType::I8), var("storage"), var("input_byte"))
     ///     .ret_void();
     /// ```
     ///
@@ -1233,9 +1233,6 @@ impl<'a> IRBuilder<'a> {
     /// - `read()`: Read buffer from stdin
     /// - `read_byte()`: Read single byte from stdin
     /// - `write_ptr()`: Write value to stdout
-    pub fn read_ptr(&mut self, result: &'a str) -> &mut Self {
-        self.inst(Instruction::ReadPtr { result })
-    }
 
     /// Creates a print instruction for debugging
     ///

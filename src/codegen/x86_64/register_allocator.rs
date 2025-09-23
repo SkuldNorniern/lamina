@@ -225,7 +225,6 @@ impl GraphColoringAllocator {
             Instruction::WriteByte { result, .. } => Some(result.to_string()),
             Instruction::ReadByte { result, .. } => Some(result.to_string()),
             Instruction::WritePtr { result, .. } => Some(result.to_string()),
-            Instruction::ReadPtr { result, .. } => Some(result.to_string()),
             _ => None,
         }
     }

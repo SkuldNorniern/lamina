@@ -898,27 +898,6 @@ pub fn generate_instruction<'a, W: Write>(
             }
         }
 
-        Instruction::ReadPtr { result } => {
-            // Read pointer address from stdin (I/O operation)
-            let dest = func_ctx.get_value_location(result)?.to_operand_string();
-
-            // Prepare read syscall arguments
-            writeln!(writer, "        mov x0, #0")?; // stdin fd
-            writeln!(writer, "        mov x2, #8")?; // 8 bytes (64-bit pointer)
-            writeln!(writer, "        mov x16, #3")?; // read syscall number
-            writeln!(writer, "        svc #0x80")?; // Make syscall
-
-            // Store result (bytes read or error) - but we want the actual pointer value
-            // For ReadPtr, we want to return the pointer address that was read, not bytes read
-            if dest.starts_with('x') {
-                // Result is in a register - move the read value to result register
-                writeln!(writer, "        mov {}, x0", dest)?;
-            } else {
-                // Result is on stack - store the read value to stack location
-                materialize_address_operand(writer, &dest, "x9")?;
-                writeln!(writer, "        str x0, [x9]")?;
-            }
-        }
 
         Instruction::Tuple { result, elements } => {
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
