@@ -550,16 +550,22 @@ impl<'a> IRBuilder<'a> {
     /// Creates a binary operation instruction
     ///
     /// Parameters:
-    /// - `op`: The binary operation (Add, Sub, Mul, Div)
+    /// - `op`: The binary operation (Add, Sub, Mul, Div, etc.)
     /// - `result`: Name for the result variable
     /// - `ty`: Primitive type of the operands and result
     /// - `lhs`: Left-hand side operand
     /// - `rhs`: Right-hand side operand
     ///
-    /// Example:
-    /// ```
+    /// # Supported Operations
+    /// - **Arithmetic**: `Add`, `Sub`, `Mul`, `Div` (integer division)
+    /// - **Special**: `PtrToInt`, `IntToPtr` (pointer conversions)
+    ///
+    /// # Examples
+    ///
+    /// ## Basic Arithmetic
+    /// ```rust
     /// use lamina::ir::{IRBuilder, BinaryOp, PrimitiveType};
-    /// use lamina::ir::builder::var;
+    /// use lamina::ir::builder::{var, i32, i64};
     ///
     /// let mut builder = IRBuilder::new();
     /// // Compute x + y
@@ -570,6 +576,32 @@ impl<'a> IRBuilder<'a> {
     ///     var("x"),
     ///     var("y")
     /// );
+    ///
+    /// // Compute x * 2 with constants
+    /// builder.binary(
+    ///     BinaryOp::Mul,
+    ///     "doubled",
+    ///     PrimitiveType::I64,
+    ///     var("x"),
+    ///     i64(2)
+    /// );
+    /// ```
+    ///
+    ///
+    /// ## Complex Expressions
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+    /// use lamina::ir::builder::{var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("complex_arithmetic", Type::Primitive(PrimitiveType::I32))
+    ///     .block("entry")
+    ///         // Compute (a + b) * (c - d)
+    ///         .binary(BinaryOp::Add, "sum", PrimitiveType::I32, var("a"), var("b"))
+    ///         .binary(BinaryOp::Sub, "diff", PrimitiveType::I32, var("c"), var("d"))
+    ///         .binary(BinaryOp::Mul, "result", PrimitiveType::I32, var("sum"), var("diff"))
+    ///         .ret(Type::Primitive(PrimitiveType::I32), var("result"));
     /// ```
     pub fn binary(
         &mut self,
@@ -640,8 +672,10 @@ impl<'a> IRBuilder<'a> {
     ///
     /// This instruction must be the last one in a block.
     ///
-    /// Example:
-    /// ```
+    /// # Control Flow Patterns
+    ///
+    /// ## Simple Conditional
+    /// ```rust
     /// use lamina::ir::{IRBuilder, CmpOp, PrimitiveType};
     /// use lamina::ir::builder::{var, i32};
     ///
@@ -650,6 +684,37 @@ impl<'a> IRBuilder<'a> {
     /// builder
     ///     .cmp(CmpOp::Lt, "is_neg", PrimitiveType::I32, var("x"), i32(0))
     ///     .branch(var("is_neg"), "negative", "non_negative");
+    /// ```
+    ///
+    /// ## Complex Conditional with Multiple Blocks
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp, CmpOp, FunctionParameter};
+    /// use lamina::ir::builder::{var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function_with_params(
+    ///         "conditional_logic",
+    ///         vec![FunctionParameter { name: "x", ty: Type::Primitive(PrimitiveType::I32) }],
+    ///         Type::Primitive(PrimitiveType::I32)
+    ///     )
+    ///     .block("entry")
+    ///         // Check if x > 0
+    ///         .cmp(CmpOp::Gt, "positive", PrimitiveType::I32, var("x"), i32(0))
+    ///         .branch(var("positive"), "positive_branch", "negative_branch")
+    ///
+    ///     .block("positive_branch")
+    ///         // Handle positive case
+    ///         .binary(BinaryOp::Mul, "squared", PrimitiveType::I32, var("x"), var("x"))
+    ///         .jump("end")
+    ///
+    ///     .block("negative_branch")
+    ///         // Handle non-positive case
+    ///         .binary(BinaryOp::Sub, "negated", PrimitiveType::I32, i32(0), var("x"))
+    ///         .jump("end")
+    ///
+    ///     .block("end")
+    ///         .ret(Type::Primitive(PrimitiveType::I32), var("squared")); // Note: need phi node for proper SSA
     /// ```
     pub fn branch(
         &mut self,
@@ -671,13 +736,63 @@ impl<'a> IRBuilder<'a> {
     ///
     /// This instruction must be the last one in a block.
     ///
-    /// Example:
-    /// ```
+    /// # Jump Patterns
+    ///
+    /// ## Simple Jump
+    /// ```rust
     /// use lamina::ir::IRBuilder;
     ///
     /// let mut builder = IRBuilder::new();
     /// // Jump to the "end" block
     /// builder.jump("end");
+    /// ```
+    ///
+    /// ## Loop Control
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, CmpOp, PrimitiveType, BinaryOp, Type};
+    /// use lamina::ir::builder::{var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("loop_example", Type::Void)
+    ///     .block("loop_start")
+    ///         // Loop body
+    ///         .binary(BinaryOp::Add, "counter", PrimitiveType::I32, var("counter"), i32(1))
+    ///         // Check loop condition
+    ///         .cmp(CmpOp::Lt, "continue", PrimitiveType::I32, var("counter"), i32(10))
+    ///         .branch(var("continue"), "loop_start", "loop_end")
+    ///
+    ///     .block("loop_end")
+    ///         .ret_void();
+    /// ```
+    ///
+    /// ## Early Return
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, CmpOp, PrimitiveType, Type, BinaryOp};
+    /// use lamina::ir::builder::{var, i32};
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder
+    ///     .function("early_return", Type::Primitive(PrimitiveType::I32))
+    ///     .block("check_input")
+    ///         // Check if input is valid
+    ///         .cmp(CmpOp::Eq, "is_zero", PrimitiveType::I32, var("input"), i32(0))
+    ///         .branch(var("is_zero"), "error_case", "normal_case")
+    ///
+    ///     .block("error_case")
+    ///         // Handle error case
+    ///         .jump("return_zero")
+    ///
+    ///     .block("normal_case")
+    ///         // Handle normal case
+    ///         .binary(BinaryOp::Mul, "result", PrimitiveType::I32, var("input"), i32(2))
+    ///         .jump("end")
+    ///
+    ///     .block("return_zero")
+    ///         .ret(Type::Primitive(PrimitiveType::I32), i32(0))
+    ///
+    ///     .block("end")
+    ///         .ret(Type::Primitive(PrimitiveType::I32), var("result"));
     /// ```
     pub fn jump(&mut self, target: &'a str) -> &mut Self {
         self.inst(Instruction::Jmp {
