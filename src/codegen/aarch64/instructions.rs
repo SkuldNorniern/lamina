@@ -933,15 +933,16 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Check if this is a stack allocation
             if let Value::Variable(var_name) = ptr
-                && func_ctx.stack_allocated_vars.contains(var_name) {
-                    // This is a stack allocation - no-op for deallocation
-                    writeln!(
-                        writer,
-                        "        // Stack allocation {} - no deallocation needed",
-                        var_name
-                    )?;
-                    return Ok(());
-                }
+                && func_ctx.stack_allocated_vars.contains(var_name)
+            {
+                // This is a stack allocation - no-op for deallocation
+                writeln!(
+                    writer,
+                    "        // Stack allocation {} - no deallocation needed",
+                    var_name
+                )?;
+                return Ok(());
+            }
 
             // This is a heap allocation - call free
             // Save caller-saved registers
