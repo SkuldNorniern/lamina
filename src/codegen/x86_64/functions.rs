@@ -585,7 +585,11 @@ fn precompute_function_layout<'a>(
                     Some((result, s))
                 }
                 Instruction::ReadByte { .. } => None,
-                Instruction::WritePtr { .. } => None,
+                Instruction::WritePtr { result, .. } => {
+                    // WritePtr returns i64 (syscall result)
+                    let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::I64))?;
+                    Some((result, s))
+                }
                 Instruction::PtrToInt { result, target_type, .. } => {
                     let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(*target_type))?;
                     Some((result, s))
