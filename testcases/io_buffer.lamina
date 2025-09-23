@@ -15,5 +15,10 @@ fn @main() -> i32 {
     %c2 = readbyte
     %c3 = readbyte
 
+    # Print the read bytes
+    print %c1
+    print %c2
+    print %c3
+
     ret.i32 0
 }
