@@ -1598,26 +1598,34 @@ pub fn generate_instruction<'a, W: Write>(
         }
 
         Instruction::ReadPtr { result } => {
-            // Read pointer address from stdin (I/O operation)
-            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            // Read pointer address from stdin using read syscall
+            // Save registers
+            writeln!(writer, "        pushq %rax")?;
+            writeln!(writer, "        pushq %rbx")?; // Extra register for buffer isolation
 
             // Prepare read syscall arguments
             writeln!(writer, "        movq $0, %rax")?; // read syscall
             writeln!(writer, "        movq $0, %rdi")?; // stdin fd
-            writeln!(writer, "        leaq -8(%rsp), %rsi")?; // buffer = stack pointer
+            writeln!(writer, "        leaq -32(%rsp), %rsi")?; // Use even more isolated buffer location
             writeln!(writer, "        movq $8, %rdx")?; // 8 bytes (64-bit pointer)
 
             // Make syscall
             writeln!(writer, "        syscall")?;
 
-            // Load the value from stack and store result
+            // Load the 8-byte pointer value from isolated buffer and store to result
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
             if dest.starts_with('%') {
-                // Result is in a register - move the read value to result register
-                writeln!(writer, "        movq -8(%rsp), {}", dest)?;
+                // Result is in a register - load pointer value
+                writeln!(writer, "        movq -32(%rsp), {}", dest)?;
             } else {
-                // Result is on stack - store the read value to stack location
-                writeln!(writer, "        movq -8(%rsp), {}", dest)?;
+                // Result is on stack - use intermediate register to avoid size mismatch
+                writeln!(writer, "        movq -32(%rsp), %r11")?; // Load to intermediate register
+                writeln!(writer, "        movq %r11, {}", dest)?; // Store to destination
             }
+
+            // Restore registers
+            writeln!(writer, "        popq %rbx")?;
+            writeln!(writer, "        popq %rax")?;
         }
 
         _ => {
