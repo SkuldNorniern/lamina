@@ -577,21 +577,12 @@ fn precompute_function_layout<'a>(
                         get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
                     Some((res, s))
                 }
-                Instruction::Write { result, .. }
-                | Instruction::Read { result, .. }
-                | Instruction::WriteByte { result, .. }
-                | Instruction::ReadByte { result, .. }
-                | Instruction::WritePtr { result, .. }
-                | Instruction::ReadPtr { result, .. } => {
-                    let (_, s) =
-                        get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::I64))?;
-                    Some((result, s))
-                }
-                Instruction::PtrToInt {
-                    result,
-                    target_type,
-                    ..
-                } => {
+                Instruction::Write { .. } => None,
+                Instruction::Read { .. } => None,
+                Instruction::WriteByte { .. } => None,
+                Instruction::ReadByte { .. } => None,
+                Instruction::WritePtr { .. } => None,
+                Instruction::PtrToInt { result, target_type, .. } => {
                     let (_, s) = get_type_size_directive_and_bytes(&Type::Primitive(*target_type))?;
                     Some((result, s))
                 }
@@ -600,7 +591,7 @@ fn precompute_function_layout<'a>(
                         get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::Ptr))?;
                     Some((result, s))
                 }
-                _ => None, // Only care about instructions with results
+                | _ => None, // Handle remaining instruction types
             };
 
             if let Some((result, size)) = result_info {
@@ -849,7 +840,6 @@ fn get_instruction_result<'a>(instr: &Instruction<'a>) -> Option<&'a str> {
         Instruction::WriteByte { result, .. } => Some(result),
         Instruction::ReadByte { result, .. } => Some(result),
         Instruction::WritePtr { result, .. } => Some(result),
-        Instruction::ReadPtr { result, .. } => Some(result),
         _ => None,
     }
 }
