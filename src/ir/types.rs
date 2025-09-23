@@ -77,8 +77,7 @@
 //!
 //! #### **Memory-Value I/O** (NEW):
 //! - **`writeptr`**: Write VALUE stored at pointer to stdout
-//! - **`readptr`**: Read binary data from stdin as pointer-sized value
-//! - **Use case**: Memory inspection, binary data output, serialization
+//! //! - **Use case**: Memory inspection, binary data output, serialization
 //!
 //! ### WritePtr Semantics (IMPORTANT):
 //!

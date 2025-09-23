@@ -103,7 +103,7 @@
 //! ##### I/O Instructions
 //! - `write`, `read` - Buffer-based I/O operations
 //! - `writebyte`, `readbyte` - Single byte I/O
-//! - `writeptr`, `readptr` - Pointer-based I/O operations
+//! - `writeptr` - Pointer-based I/O operations
 //! - `print` - Debug output for development
 //!
 //! ### Functions and Basic Blocks Architecture

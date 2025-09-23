@@ -852,7 +852,6 @@ fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>>
             "writebyte" => parse_writebyte_assignment(state, result),
             "readbyte" => parse_readbyte_assignment(state, result),
             "writeptr" => parse_writeptr_assignment(state, result),
-            "readptr" => parse_readptr_assignment(state, result),
             _ => Err(state.error(format!("Unknown opcode after assignment: {}", opcode_str))),
         }
     } else {
@@ -871,7 +870,6 @@ fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>>
             "writebyte" => parse_writebyte(state),
             "readbyte" => parse_readbyte(state),
             "writeptr" => parse_writeptr(state),
-            "readptr" => parse_readptr(state),
             _ => Err(state.error(format!("Unknown instruction opcode: {}", opcode_str))),
         }
     }
@@ -1370,13 +1368,6 @@ fn parse_writeptr_assignment<'a>(
     Ok(Instruction::WritePtr { ptr, result })
 }
 
-fn parse_readptr_assignment<'a>(
-    _state: &mut ParserState<'a>,
-    result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
-    // Format: %result = readptr
-    Ok(Instruction::ReadPtr { result })
-}
 
 // I/O instruction parsers - Non-assignment form (opcode ...)
 fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
@@ -1429,11 +1420,6 @@ fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     Ok(Instruction::WritePtr { ptr, result })
 }
 
-fn parse_readptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
-    // Format: readptr %result
-    let result = state.parse_identifier_str()?;
-    Ok(Instruction::ReadPtr { result })
-}
 
 // Add parse function for zero extend
 fn parse_zext<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
