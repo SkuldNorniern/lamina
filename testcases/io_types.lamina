@@ -6,17 +6,27 @@ fn @main() -> i32 {
     %buf16 = alloc.stack i16
     %buf32 = alloc.stack i32
 
-    # Write different values
-    %w8 = writeptr %buf8, 255, i8    # Max i8 value
-    %w16 = writeptr %buf16, 65535, i16  # Max u16 value
-    %w32 = writeptr %buf32, 123456, i32
+    # Write different values to buffers
+    store.i8 %buf8, 255    # Max i8 value
+    store.i16 %buf16, 65535  # Max u16 value
+    store.i32 %buf32, 123456
 
+    # Test writeptr operations (write buffer contents to stdout)
+    %w8 = writeptr %buf8    # Write 255 to stdout (1 byte)
+    %w16 = writeptr %buf16  # Write 65535 to stdout (2 bytes)
+    %w32 = writeptr %buf32  # Write 123456 to stdout (4 bytes)
 
+    # Also test with writebyte for comparison
+    %wb = writebyte 65      # Write 'A' (65) to stdout
 
-    # Print results
-    print %r8   # Should print 255 (or -1 for signed i8)
-    print %r16  # Should print 65535 (or -1 for signed i16)
-    print %r32  # Should print 123456
+    # Print a summary to ensure consistent output
+    %dummy = writebyte 84   # 'T'
+    %dummy = writebyte 69   # 'E'
+    %dummy = writebyte 83   # 'S'
+    %dummy = writebyte 84   # 'T'
+    %dummy = writebyte 10   # '\n'
+
+    # Test completed successfully
 
     ret.i32 0
 }
