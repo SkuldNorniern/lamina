@@ -898,7 +898,6 @@ pub fn generate_instruction<'a, W: Write>(
             }
         }
 
-
         Instruction::Tuple { result, elements } => {
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
 

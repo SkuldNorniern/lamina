@@ -1368,7 +1368,6 @@ fn parse_writeptr_assignment<'a>(
     Ok(Instruction::WritePtr { ptr, result })
 }
 
-
 // I/O instruction parsers - Non-assignment form (opcode ...)
 fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     // Format: write %buffer, %size, %result
@@ -1419,7 +1418,6 @@ fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     let result = state.parse_identifier_str()?;
     Ok(Instruction::WritePtr { ptr, result })
 }
-
 
 // Add parse function for zero extend
 fn parse_zext<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
