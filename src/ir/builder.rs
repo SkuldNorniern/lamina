@@ -1232,9 +1232,8 @@ impl<'a> IRBuilder<'a> {
     /// # See Also
     /// - `read()`: Read buffer from stdin
     /// - `read_byte()`: Read single byte from stdin
-    /// - `write_ptr()`: Write value to stdout
-
-    /// Creates a print instruction for debugging
+    /// - `write_ptr()`: Write value to stdout    ///
+    ///   Creates a print instruction for debugging
     ///
     /// # Parameters
     /// - `value`: The value to print (can be constants, variables, or expressions)
