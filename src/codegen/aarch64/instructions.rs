@@ -149,13 +149,13 @@ pub fn generate_instruction<'a, W: Write>(
                                 let data_offset = offset + 8; // Data goes 8 bytes after the pointer
 
                                 // Use proper addressing for large offsets
-                                if data_offset >= -256 && data_offset <= 255 {
+                                if (-256..=255).contains(&data_offset) {
                                     writeln!(writer, "        add x10, x29, #{}", data_offset)?;
                                 } else {
                                     materialize_address(writer, "x10", data_offset)?;
                                 }
 
-                                if offset >= -256 && offset <= 255 {
+                                if (-256..=255).contains(&offset) {
                                     writeln!(writer, "        str x10, [x29, #{}]", offset)?;
                                 } else {
                                     materialize_address(writer, "x9", offset)?;
@@ -932,8 +932,8 @@ pub fn generate_instruction<'a, W: Write>(
             let ptr_operand = get_value_operand_asm(ptr, state, func_ctx)?;
 
             // Check if this is a stack allocation
-            if let Value::Variable(var_name) = ptr {
-                if func_ctx.stack_allocated_vars.contains(var_name) {
+            if let Value::Variable(var_name) = ptr
+                && func_ctx.stack_allocated_vars.contains(var_name) {
                     // This is a stack allocation - no-op for deallocation
                     writeln!(
                         writer,
@@ -942,7 +942,6 @@ pub fn generate_instruction<'a, W: Write>(
                     )?;
                     return Ok(());
                 }
-            }
 
             // This is a heap allocation - call free
             // Save caller-saved registers
@@ -1056,7 +1055,7 @@ fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -
 
 fn materialize_address<W: Write>(writer: &mut W, dest: &str, offset: i64) -> Result<()> {
     // AArch64 immediate addressing only supports offsets in range [-256, 255]
-    if offset >= -256 && offset <= 255 {
+    if (-256..=255).contains(&offset) {
         if offset >= 0 {
             writeln!(writer, "        add {}, x29, #{}", dest, offset)?;
         } else {
