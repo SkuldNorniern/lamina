@@ -1597,7 +1597,6 @@ pub fn generate_instruction<'a, W: Write>(
             store_syscall_result(writer, &dest, "%rax")?;
         }
 
-
         _ => {
             writeln!(
                 writer,
