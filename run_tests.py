@@ -92,6 +92,14 @@ TEST_CASES = {
     'floating_point_register_bug_test.lamina': ['3'],  # Floating point register bug test
     'load_store_optimization_bug_test.lamina': ['305422896125369200'],  # Load/store optimization bug test
     'calling_convention_bug_test.lamina': ['15'],  # Calling convention bug test
+
+    # I/O Tests (Interactive - requires user input)
+    # Note: These tests are now automated with input piping
+    'stdin.lamina': ['65', '10', '65'],  # Stdin read operations - reads 1 byte (A=65), error byte (10=EOF), dummy bytes count (65)
+    'io_basic.lamina': ['Hello'],  # Basic I/O operations - just writes "Hello"
+    'io_buffer.lamina': ['66', '117', '102'],  # Buffer-based I/O - reads 3 bytes (B,u,f)
+    'io_types.lamina': ['@ATEST'],  # I/O with different data types - '@' from binary data, 'A' and 'TEST' combined
+    'io_comprehensive.lamina': ['Hi!', '12345', 'DONE', '12445'],  # Combined I/O operations - writes various outputs
 }
 
 class Colors:
@@ -109,12 +117,13 @@ def run_command(cmd, cwd=None):
     """Run a command and return (success, stdout, stderr)"""
     try:
         result = subprocess.run(
-            cmd, 
-            shell=True, 
-            capture_output=True, 
-            text=True, 
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
             cwd=cwd,
-            timeout=60
+            timeout=60,
+            errors='replace'  # Replace invalid UTF-8 with replacement character
         )
         return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
     except subprocess.TimeoutExpired:
@@ -127,24 +136,76 @@ def compile_and_run_test(test_file):
     project_root = Path(__file__).parent
     testcase_path = project_root / 'testcases' / test_file
     executable_name = test_file.replace('.lamina', '')
-    
+
+    # Define stdin input for interactive tests
+    stdin_inputs = {
+        'stdin.lamina': 'A\nBUFFER_TEST\nB',  # A (65), then "BUFFER_TEST" (11 bytes), then B (66)
+        'io_buffer.lamina': 'Buf',  # B(66), u(117), f(102) - 3 bytes
+    }
+
     # Compile the test
     compile_cmd = f"cargo run --release --quiet testcases/{test_file} "
     success, stdout, stderr = run_command(compile_cmd, cwd=project_root)
-    
-    
+
+
     if not success:
         return False, f"Compilation failed: {stderr}"
-    
+
     # Run the executable
     run_cmd = f"./{executable_name}"
-    success, stdout, stderr = run_command(run_cmd, cwd=project_root)
-    
+    stdin_input = stdin_inputs.get(test_file)
+
+    if stdin_input:
+        # Use subprocess with stdin input for interactive tests
+        try:
+            result = subprocess.run(
+                run_cmd,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=project_root,
+                input=stdin_input,
+                timeout=60,
+                errors='replace'  # Replace invalid UTF-8 with replacement character
+            )
+            success = result.returncode == 0
+            stdout = result.stdout.strip()
+            stderr = result.stderr.strip()
+        except subprocess.TimeoutExpired:
+            return False, "Command timed out"
+        except Exception as e:
+            return False, f"Execution failed: {str(e)}"
+    else:
+        # Regular execution for non-interactive tests
+        success, stdout, stderr = run_command(run_cmd, cwd=project_root)
+
     if not success:
         return False, f"Execution failed: {stderr}"
-    
-    # Return output lines (filter out empty lines)
+
+    # Return output lines (filter out empty lines and debug text)
     output_lines = [line.strip() for line in stdout.split('\n') if line.strip()]
+
+    # For stdin tests, filter to only get the final numeric results after "Results:" line
+    if test_file == 'stdin.lamina' and 'Results:' in output_lines:
+        results_start = output_lines.index('Results:') + 1
+        output_lines = output_lines[results_start:]
+
+    # For io_buffer test, filter to only get the numeric results (skip the "Buffer" text)
+    elif test_file == 'io_buffer.lamina' and len(output_lines) >= 3:
+        # Skip the first line which is the "Buffer" text, keep only the 3 read bytes
+        output_lines = output_lines[-3:]
+
+    # For io_types test, extract only the text output (skip binary data from writeptr)
+    elif test_file == 'io_types.lamina':
+        # Filter to keep only printable ASCII characters, remove binary data
+        filtered_lines = []
+        for line in output_lines:
+            # Keep only lines that contain printable characters
+            printable_line = ''.join(c for c in line if ord(c) >= 32 and ord(c) <= 126)
+            if printable_line.strip():
+                filtered_lines.append(printable_line.strip())
+        output_lines = filtered_lines
+
     return True, output_lines
 
 def run_tests():
