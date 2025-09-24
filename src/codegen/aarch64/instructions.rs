@@ -750,6 +750,9 @@ pub fn generate_instruction<'a, W: Write>(
             // syscall #4, args: x0=fd(1=stdout), x1=buffer, x2=size
             // result in x0: bytes written or -1 on error
 
+            // Save registers that might be used by the syscall
+            writeln!(writer, "        stp x9, x10, [sp, #-16]!")?; // Save x9, x10
+
             // Set up syscall arguments
             writeln!(writer, "        mov x0, #1")?; // stdout file descriptor
             let buffer_op = get_value_operand_asm(buffer, state, func_ctx)?;
@@ -759,11 +762,14 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Make syscall
             writeln!(writer, "        mov x16, #4")?; // write syscall number
-            writeln!(writer, "        svc #0x80")?; // software interrupt
+            writeln!(writer, "        svc #0")?; // software interrupt
 
             // Store result
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             store_to_location(writer, "x0", &dest)?;
+
+            // Restore registers
+            writeln!(writer, "        ldp x9, x10, [sp], #16")?; // Restore x9, x10
         }
 
         Instruction::Read {
@@ -775,6 +781,9 @@ pub fn generate_instruction<'a, W: Write>(
             // syscall #3, args: x0=fd(0=stdin), x1=buffer, x2=max_size
             // result in x0: bytes read or -1 on error
 
+            // Save registers that might be used by the syscall
+            writeln!(writer, "        stp x9, x10, [sp, #-16]!")?; // Save x9, x10
+
             // Set up syscall arguments
             writeln!(writer, "        mov x0, #0")?; // stdin file descriptor
             let buffer_op = get_value_operand_asm(buffer, state, func_ctx)?;
@@ -784,17 +793,23 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Make syscall
             writeln!(writer, "        mov x16, #3")?; // read syscall number
-            writeln!(writer, "        svc #0x80")?; // software interrupt
+            writeln!(writer, "        svc #0")?; // software interrupt
 
             // Store result
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             store_to_location(writer, "x0", &dest)?;
+
+            // Restore registers
+            writeln!(writer, "        ldp x9, x10, [sp], #16")?; // Restore x9, x10
         }
 
         Instruction::WriteByte { value, result } => {
             // Write single byte to stdout using write syscall
             // Allocate 1 byte on stack for the buffer
             writeln!(writer, "        sub sp, sp, #16")?; // Allocate stack space
+
+            // Save registers that might be used by the syscall
+            writeln!(writer, "        stp x9, x10, [sp, #-16]!")?; // Save x9, x10
 
             // Store the byte value on stack
             let value_op = get_value_operand_asm(value, state, func_ctx)?;
@@ -808,20 +823,24 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Make syscall
             writeln!(writer, "        mov x16, #4")?; // write syscall
-            writeln!(writer, "        svc #0x80")?; // software interrupt
+            writeln!(writer, "        svc #0")?; // software interrupt
 
             // Store result
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             store_to_location(writer, "x0", &dest)?;
 
-            // Restore stack
-            writeln!(writer, "        add sp, sp, #16")?;
+            // Restore registers and stack
+            writeln!(writer, "        ldp x9, x10, [sp], #16")?; // Restore x9, x10
+            writeln!(writer, "        add sp, sp, #16")?; // Restore stack
         }
 
         Instruction::ReadByte { result } => {
             // Read single byte from stdin using read syscall
             // Allocate 1 byte on stack for the buffer
             writeln!(writer, "        sub sp, sp, #16")?; // Allocate stack space
+
+            // Save registers that might be used by the syscall
+            writeln!(writer, "        stp x9, x10, [sp, #-16]!")?; // Save x9, x10
 
             // Set up syscall arguments
             writeln!(writer, "        mov x0, #0")?; // stdin
@@ -830,7 +849,7 @@ pub fn generate_instruction<'a, W: Write>(
 
             // Make syscall
             writeln!(writer, "        mov x16, #3")?; // read syscall
-            writeln!(writer, "        svc #0x80")?; // software interrupt
+            writeln!(writer, "        svc #0")?; // software interrupt
 
             // Load the byte from stack (if read succeeded)
             writeln!(writer, "        ldrb w10, [sp]")?; // Load byte from stack
@@ -841,17 +860,25 @@ pub fn generate_instruction<'a, W: Write>(
                 // For register destination, check if read succeeded
                 writeln!(writer, "        cmp x0, #1")?; // Check if 1 byte was read
                 writeln!(writer, "        csel {}, w10, x0, eq", dest)?; // Use byte if success, else error code
+                // Zero-extend the result to 64-bit
+                writeln!(writer, "        uxtb {}, {}", dest, dest)?; // Zero-extend byte to 64-bit
             } else {
-                store_to_location(writer, "w10", &dest)?;
+                // Store as 64-bit value on stack - zero-extend the byte
+                writeln!(writer, "        uxtb x10, w10")?; // Zero-extend byte to 64-bit
+                store_to_location(writer, "x10", &dest)?;
             }
 
-            // Restore stack
-            writeln!(writer, "        add sp, sp, #16")?;
+            // Restore registers and stack
+            writeln!(writer, "        ldp x9, x10, [sp], #16")?; // Restore x9, x10
+            writeln!(writer, "        add sp, sp, #16")?; // Restore stack
         }
 
         Instruction::WritePtr { ptr, result } => {
             // Write the value stored at the pointer location to stdout
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
+
+            // Save registers that might be used by the syscall
+            writeln!(writer, "        stp x9, x10, [sp, #-16]!")?; // Save x9, x10
 
             // For stack-allocated variables, we need to handle differently
             if let Value::Variable(ptr_id) = ptr
@@ -879,7 +906,7 @@ pub fn generate_instruction<'a, W: Write>(
             // Prepare write syscall arguments
             writeln!(writer, "        mov x0, #1")?; // stdout fd
             writeln!(writer, "        mov x16, #4")?; // write syscall number
-            writeln!(writer, "        svc #0x80")?; // Make syscall
+            writeln!(writer, "        svc #0")?; // Make syscall
 
             // Restore stack if we used it
             if let Value::Variable(ptr_id) = ptr
@@ -896,6 +923,9 @@ pub fn generate_instruction<'a, W: Write>(
                 materialize_address_operand(writer, &dest, "x9")?;
                 writeln!(writer, "        str x0, [x9]")?;
             }
+
+            // Restore registers
+            writeln!(writer, "        ldp x9, x10, [sp], #16")?; // Restore x9, x10
         }
 
         Instruction::Tuple { result, elements } => {
