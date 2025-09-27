@@ -280,7 +280,7 @@ pub enum WasmInstruction<'a> {
 impl Display for WasmInstruction<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&match self {
-            Self::Comment(data) => format!(";; {data}\n"),
+            Self::Comment(data) => format!("(; {data} ;)"),
             Self::Abs(ty) => format!("{ty}.abs"),
             Self::Add(ty) => format!("{ty}.add"),
             Self::And(ty) => format!("{ty}.and"),
