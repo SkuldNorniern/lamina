@@ -18,10 +18,35 @@ pub trait Transform: Default {
     // Future: fn should_run(
 }
 
+/// Stability level of a transform
+/// 
+/// This indicates the maturity and reliability of the transform,
+/// allowing users to choose appropriate optimization levels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum TransformLevel {
+    /// Transform is deprecated and will be removed
     Deprecated,
+    /// Transform is experimental and may change or have bugs
+    Experimental,
+    /// Transform is well-tested and production-ready
     Stable,
-    Experimental
+}
+
+impl TransformLevel {
+    /// Check if this level should be included at the given optimization level
+    /// 
+    /// - `-O0`: No transforms
+    /// - `-O1`: `Stable` transforms  
+    /// - `-O2`: `Stable` + `Experimental` transforms
+    /// - `-O3`: All transforms (including `Deprecated` for compatibility)
+    pub fn is_enabled_at_opt_level(self, opt_level: u8) -> bool {
+        match (self, opt_level) {
+            (TransformLevel::Deprecated, 3..) => true,  // Only at -O3+
+            (TransformLevel::Experimental, 2..) => true, // At -O2+
+            (TransformLevel::Stable, _) => true,         // Always enabled
+            _ => false,
+        }
+    }
 }
 
 /// Categories of transformations
@@ -64,5 +89,9 @@ impl Transform for ExampleTransform {
     
     fn category(&self) -> TransformCategory {
         TransformCategory::ConstantFolding
+    }
+    
+    fn level(&self) -> TransformLevel {
+        TransformLevel::Experimental
     }
 }
