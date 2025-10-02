@@ -1,5 +1,7 @@
 use std::{
-    borrow::Cow, fmt::{Debug, Display}, ops::{Deref, DerefMut}
+    borrow::Cow,
+    fmt::{Debug, Display},
+    ops::{Deref, DerefMut},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -33,7 +35,7 @@ impl TryFrom<NumericType> for IntegerType {
         match value {
             NumericType::I32 => Ok(Self::I32),
             NumericType::I64 => Ok(Self::I64),
-            _ => Err("invalid numeric type for integer type")
+            _ => Err("invalid numeric type for integer type"),
         }
     }
 }
@@ -341,13 +343,13 @@ impl Display for WasmInstruction<'_> {
             Self::DivF(ty) => format!("{ty}.div"),
             Self::DivS(ty) => format!("{ty}.div_s"),
             Self::DivU(ty) => format!("{ty}.div_u"),
-            Self::Drop => format!("drop"),
+            Self::Drop => "drop".to_string(),
             Self::Eq(ty) => format!("{ty}.eq"),
             Self::Eqz(ty) => format!("{ty}.eqz"),
             Self::Extend8S(ty) => format!("{ty}.extend8_s"),
             Self::Extend16S(ty) => format!("{ty}.extend16_s"),
-            Self::F32_Demote_F64 => format!("f32.demote_f64"),
-            Self::F64_Promote_F32 => format!("f64.promote_f32"),
+            Self::F32_Demote_F64 => "f32.demote_f64".to_string(),
+            Self::F64_Promote_F32 => "f64.promote_f32".to_string(),
             Self::Reinterpret(ty) => format!(
                 "{ty}.reinterpret_{}",
                 match ty {
@@ -374,9 +376,9 @@ impl Display for WasmInstruction<'_> {
 
             Self::GlobalGet(id) => format!("global.get {id}"),
             Self::GlobalSet(id) => format!("global.set {id}"),
-            Self::I32_WrapI64 => format!("i32.wrap_i64"),
-            Self::I64_ExtendI32S => format!("i64.extend_i32_s"),
-            Self::I64_ExtendI32U => format!("i64.extend_i32_u"),
+            Self::I32_WrapI64 => "i32.wrap_i64".to_string(),
+            Self::I64_ExtendI32S => "i64.extend_i32_s".to_string(),
+            Self::I64_ExtendI32U => "i64.extend_i32_u".to_string(),
             Self::I64_Load32S(id) => format!(
                 "i64.load_i32_s{}",
                 if let Some(id) = id {
@@ -432,13 +434,19 @@ impl Display for WasmInstruction<'_> {
                     String::new()
                 }
             ),
-            Self::Loop { identifier, contents } => {
-                format!("(loop {}\n{contents})", if let Some(identifier) = identifier {
-                    format!("${identifier} ")
-                } else {
-                    String::new()
-                },)
-            },
+            Self::Loop {
+                identifier,
+                contents,
+            } => {
+                format!(
+                    "(loop {}\n{contents})",
+                    if let Some(identifier) = identifier {
+                        format!("${identifier} ")
+                    } else {
+                        String::new()
+                    },
+                )
+            }
             Self::Load(ty, id) => format!(
                 "{ty}.load{}",
                 if let Some(id) = id {
@@ -483,20 +491,20 @@ impl Display for WasmInstruction<'_> {
             Self::LocalSet(id) => format!("local.set {id}"),
             Self::LocalTee(id) => format!("local.tee {id}"),
             Self::Max(ty) => format!("{ty}.max"),
-            Self::MemoryGrow => format!("memory.grow"),
-            Self::MemorySize => format!("memory.size"),
-            Self::MemoryCopy => format!("memory.copy"),
+            Self::MemoryGrow => "memory.grow".to_string(),
+            Self::MemorySize => "memory.size".to_string(),
+            Self::MemoryCopy => "memory.copy".to_string(),
             Self::Min(ty) => format!("{ty}.min"),
             Self::Mul(ty) => format!("{ty}.mul"),
             Self::Ne(ty) => format!("{ty}.ne"),
             Self::Nearest(ty) => format!("{ty}.nearest"),
             Self::Neg(ty) => format!("{ty}.neg"),
-            Self::Nop => format!("nop"),
+            Self::Nop => "nop".to_string(),
             Self::Or(ty) => format!("{ty}.or"),
             Self::PopCnt(ty) => format!("{ty}.popcnt"),
             Self::RemS(ty) => format!("{ty}.rem_s"),
             Self::RemU(ty) => format!("{ty}.rem_u"),
-            Self::Return => format!("return"),
+            Self::Return => "return".to_string(),
             Self::ReturnCall(id) => format!("return_call {id}"),
             Self::ReturnCallIndirect {
                 parameters,
@@ -529,7 +537,7 @@ impl Display for WasmInstruction<'_> {
             ),
             Self::RotL(ty) => format!("{ty}.rotl"),
             Self::RotR(ty) => format!("{ty}.rotr"),
-            Self::Select => format!("select"),
+            Self::Select => "select".to_string(),
             Self::Shl(ty) => format!("{ty}.shl"),
             Self::ShrS(ty) => format!("{ty}.shr_s"),
             Self::ShrU(ty) => format!("{ty}.shr_u"),
@@ -562,7 +570,7 @@ impl Display for WasmInstruction<'_> {
             Self::Trunc(ty) => format!("{ty}.trunc"),
             Self::TruncS(ty1, ty2) => format!("{ty1}.trunc_{ty2}_s"),
             Self::TruncU(ty1, ty2) => format!("{ty1}.trunc_{ty2}_u"),
-            Self::Unreachable => format!("unreachable"),
+            Self::Unreachable => "unreachable".to_string(),
             Self::Xor(ty) => format!("{ty}.xor"),
         })
     }
@@ -576,7 +584,7 @@ pub struct Instructions<'a> {
 impl<'a> From<Vec<WasmInstruction<'a>>> for Instructions<'a> {
     fn from(value: Vec<WasmInstruction<'a>>) -> Self {
         Self {
-            data: value.into_boxed_slice()
+            data: value.into_boxed_slice(),
         }
     }
 }
@@ -755,7 +763,7 @@ impl Display for ModuleExpression<'_> {
                         out.push_str(&format!("{ty} "));
                     }
                     out.pop();
-                    out.push_str(")");
+                    out.push(')');
                 }
 
                 for (name, ty) in locals {
@@ -768,7 +776,7 @@ impl Display for ModuleExpression<'_> {
 
                 out.push_str(&format!("{instructions})"));
 
-                format!("{out}")
+                out.to_string()
             }
 
             Self::ExportFunc(id, name) => format!("(export \"{}\" (func {id}))", name),
@@ -799,7 +807,7 @@ impl Display for ModuleExpression<'_> {
                         out.push_str(&format!("{ty} "));
                     }
                     out.pop();
-                    out.push_str(")");
+                    out.push(')');
                 }
 
                 format!("{out}))")
@@ -907,7 +915,11 @@ impl Display for ModuleExpression<'_> {
                     .join(" ")
             ),
 
-            Self::NumericType { name, params, results } => {
+            Self::NumericType {
+                name,
+                params,
+                results,
+            } => {
                 let mut out = String::new();
 
                 for ty in params {
@@ -920,23 +932,35 @@ impl Display for ModuleExpression<'_> {
                         out.push_str(&format!("{ty} "));
                     }
                     out.pop();
-                    out.push_str(")");
+                    out.push(')');
                 }
-                format!("(type {}{out})", if let Some(name) = name {
+                format!(
+                    "(type {}{out})",
+                    if let Some(name) = name {
+                        format!("${name} ")
+                    } else {
+                        String::new()
+                    }
+                )
+            }
+            Self::Table {
+                name,
+                min,
+                max,
+                elem_type,
+            } => format!(
+                "(table {}{min}{} {elem_type})",
+                if let Some(name) = name {
                     format!("${name} ")
                 } else {
                     String::new()
-                })
-            },
-            Self::Table { name, min, max, elem_type } => format!("(table {}{min}{} {elem_type})", if let Some(name) = name {
-                    format!("${name} ")
-                } else {
-                    String::new()
-                }, if let Some(max) = max {
+                },
+                if let Some(max) = max {
                     format!(" {max}")
                 } else {
                     String::new()
-                })
+                }
+            ),
         };
         f.write_str(&v)
     }
