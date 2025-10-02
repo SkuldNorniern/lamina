@@ -1,7 +1,7 @@
 pub mod aarch64;
 pub mod common;
-pub mod x86_64;
 pub mod wasm;
+pub mod x86_64;
 // pub mod riscv;
 
 // Re-export the main codegen functions for external use
