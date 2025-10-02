@@ -497,9 +497,9 @@ fn is_const(
                 Literal::I8(v) => generate::NumericConstant::I32(*v as u32),
                 Literal::U16(v) => generate::NumericConstant::I32(*v as u32),
                 Literal::I16(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::U32(v) => generate::NumericConstant::I32((*v)),
+                Literal::U32(v) => generate::NumericConstant::I32(*v),
                 Literal::I32(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::U64(v) => generate::NumericConstant::I64((*v)),
+                Literal::U64(v) => generate::NumericConstant::I64(*v),
                 Literal::I64(v) => generate::NumericConstant::I64(*v as u64),
 
                 Literal::F32(v) => generate::NumericConstant::F32(*v),
