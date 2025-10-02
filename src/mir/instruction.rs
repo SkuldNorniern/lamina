@@ -1,4 +1,3 @@
-/// LUMIR instruction set
 ///
 /// Low-level, machine-friendly instructions that map closely to actual assembly.
 
@@ -296,26 +295,32 @@ impl Instruction {
     /// Get all registers used by this instruction
     pub fn use_regs(&self) -> Vec<&Register> {
         let mut regs = Vec::new();
-        
-        let add_operand = |regs: &mut Vec<&Register>, op: &Operand| {
-            if let Operand::Register(r) = op {
-                regs.push(r);
-            }
-        };
 
         match self {
             Instruction::IntBinary { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
             | Instruction::IntCmp { lhs, rhs, .. }
             | Instruction::FloatCmp { lhs, rhs, .. } => {
-                add_operand(&mut regs, lhs);
-                add_operand(&mut regs, rhs);
+                if let Operand::Register(r) = lhs {
+                    regs.push(r);
+                }
+                if let Operand::Register(r) = rhs {
+                    regs.push(r);
+                }
             }
-            Instruction::FloatUnary { src, .. } => add_operand(&mut regs, src),
+            Instruction::FloatUnary { src, .. } => {
+                if let Operand::Register(r) = src {
+                    regs.push(r);
+                }
+            }
             Instruction::Select { cond, true_val, false_val, .. } => {
                 regs.push(cond);
-                add_operand(&mut regs, true_val);
-                add_operand(&mut regs, false_val);
+                if let Operand::Register(r) = true_val {
+                    regs.push(r);
+                }
+                if let Operand::Register(r) = false_val {
+                    regs.push(r);
+                }
             }
             Instruction::Load { addr, .. } => {
                 match addr {
@@ -327,7 +332,9 @@ impl Instruction {
                 }
             }
             Instruction::Store { src, addr, .. } => {
-                add_operand(&mut regs, src);
+                if let Operand::Register(r) = src {
+                    regs.push(r);
+                }
                 match addr {
                     AddressMode::BaseOffset { base, .. } => regs.push(base),
                     AddressMode::BaseIndexScale { base, index, .. } => {
@@ -339,17 +346,25 @@ impl Instruction {
             Instruction::Lea { base, .. } => regs.push(base),
             Instruction::VectorOp { operands, .. } => {
                 for op in operands {
-                    add_operand(&mut regs, op);
+                    if let Operand::Register(r) = op {
+                        regs.push(r);
+                    }
                 }
             }
             Instruction::Br { cond, .. } => regs.push(cond),
             Instruction::Switch { value, .. } => regs.push(value),
             Instruction::Call { args, .. } => {
                 for arg in args {
-                    add_operand(&mut regs, arg);
+                    if let Operand::Register(r) = arg {
+                        regs.push(r);
+                    }
                 }
             }
-            Instruction::Ret { value: Some(val), .. } => add_operand(&mut regs, val),
+            Instruction::Ret { value: Some(val), .. } => {
+                if let Operand::Register(r) = val {
+                    regs.push(r);
+                }
+            }
             _ => {}
         }
 
@@ -408,3 +423,4 @@ mod tests {
         assert!(!add.is_terminator());
     }
 }
+
