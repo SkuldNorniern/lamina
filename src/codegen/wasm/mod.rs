@@ -81,11 +81,11 @@ pub fn get_size<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> u
         Type::Struct(fields) => fields
             .iter()
             .map(|v| get_size(&v.ty, is_wasm64, module))
-            .fold(0u64, |acc, v| acc + v),
+            .sum::<u64>(),
         Type::Tuple(fields) => fields
             .iter()
-            .map(|v| get_size(&v, is_wasm64, module))
-            .fold(0u64, |acc, v| acc + v),
+            .map(|v| get_size(v, is_wasm64, module))
+            .sum::<u64>(),
         Type::Void => 0,
     }
 }
@@ -154,7 +154,7 @@ pub fn get_align_primitive(ty: PrimitiveType, is_wasm64: bool) -> u64 {
 
 pub fn get_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> u64 {
     match ty {
-        Type::Primitive(prim) => get_align_primitive(*prim, is_wasm64) as u64,
+        Type::Primitive(prim) => get_align_primitive(*prim, is_wasm64),
         Type::Array {
             element_type,
             size: _,
@@ -203,7 +203,7 @@ pub fn get_wasm_align_primitive(ty: PrimitiveType, is_wasm64: bool) -> u64 {
 
 pub fn get_wasm_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> u64 {
     match ty {
-        Type::Primitive(prim) => get_wasm_align_primitive(*prim, is_wasm64) as u64,
+        Type::Primitive(prim) => get_wasm_align_primitive(*prim, is_wasm64),
         Type::Array { element_type, size } => {
             get_wasm_align(element_type, is_wasm64, module) * size
         }
@@ -241,7 +241,7 @@ pub fn get_wasm_size_value<'a>(
             Literal::I32(_) => 4,
             Literal::U32(_) => 4,
 
-            Literal::String(s) => s.as_bytes().len() as u64,
+            Literal::String(s) => s.len() as u64,
 
             Literal::I64(_) => 8,
             Literal::U64(_) => 8,
@@ -497,9 +497,9 @@ fn is_const(
                 Literal::I8(v) => generate::NumericConstant::I32(*v as u32),
                 Literal::U16(v) => generate::NumericConstant::I32(*v as u32),
                 Literal::I16(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::U32(v) => generate::NumericConstant::I32(*v as u32),
+                Literal::U32(v) => generate::NumericConstant::I32((*v)),
                 Literal::I32(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::U64(v) => generate::NumericConstant::I64(*v as u64),
+                Literal::U64(v) => generate::NumericConstant::I64((*v)),
                 Literal::I64(v) => generate::NumericConstant::I64(*v as u64),
 
                 Literal::F32(v) => generate::NumericConstant::F32(*v),
@@ -686,7 +686,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
 
     let mut func_mapping = HashMap::new();
 
-    for (func_name, _) in &module.functions {
+    for func_name in module.functions.keys() {
         func_mapping.insert(func_name, format!("f{}", func_mapping.len()));
     }
 
@@ -913,7 +913,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 .return_type;
 
                             let (wasm_ty, is_ptr) =
-                                get_wasm_type_for_return(&ret, is_wasm64, &module).unwrap();
+                                get_wasm_type_for_return(ret, is_wasm64, module).unwrap();
 
                             if !is_ptr {
                                 generate_result(
@@ -924,8 +924,8 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                     result,
                                 );
                             } else {
-                                let size = get_size(&ret, is_wasm64, &module);
-                                let align = get_align(&ret, is_wasm64, &module);
+                                let size = get_size(ret, is_wasm64, module);
+                                let align = get_align(ret, is_wasm64, module);
 
                                 let dest = state.get_next_address(size, align);
 
@@ -991,7 +991,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 .unwrap_or(false),
                         );
 
-                        if !is_lhs_zero || *op != crate::CmpOp::Eq || !int_ty.is_some() {
+                        if !is_lhs_zero || *op != crate::CmpOp::Eq || int_ty.is_none() {
                             generate_load_reg(
                                 &mut instructions,
                                 &state,
@@ -1001,7 +1001,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 is_wasm64,
                             );
                         }
-                        if !is_rhs_zero || *op != crate::CmpOp::Eq || !int_ty.is_some() {
+                        if !is_rhs_zero || *op != crate::CmpOp::Eq || int_ty.is_none() {
                             generate_load_reg(
                                 &mut instructions,
                                 &state,
@@ -1596,7 +1596,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             &mut instructions,
                             Some(create_load_reg(&state, ptr, None, &locals, is_wasm64)),
                             get_wasm_type(ty, is_wasm64).0,
-                            get_wasm_size(ty, is_wasm64, &module) as u8,
+                            get_wasm_size(ty, is_wasm64, module) as u8,
                             matches!(
                                 ty,
                                 Type::Primitive(
@@ -1634,9 +1634,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }));
 
                             instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
-                                NumericConstant::I64(get_size(ty, is_wasm64, &module))
+                                NumericConstant::I64(get_size(ty, is_wasm64, module))
                             } else {
-                                NumericConstant::I32(get_size(ty, is_wasm64, &module) as u32)
+                                NumericConstant::I32(get_size(ty, is_wasm64, module) as u32)
                             }));
 
                             instructions.push(generate::WasmInstruction::MemoryCopy);
@@ -1653,7 +1653,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }),
                             create_load_reg(&state, value, None, &locals, is_wasm64),
                             get_wasm_type(ty, is_wasm64).0,
-                            get_size(ty, is_wasm64, &module) as u8,
+                            get_size(ty, is_wasm64, module) as u8,
                             None,
                         );
                     }
@@ -1677,7 +1677,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
 
         let mut locals_vec = locals
             .iter()
-            .map(|v| (*v.0, (*v.1).0, (*v.1).1))
+            .map(|v| (*v.0, v.1.0, v.1.1))
             .collect::<Vec<_>>();
 
         locals_vec.sort_by(|v1, v2| v1.1.cmp(&v2.1));
@@ -1692,7 +1692,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                 locals.get("pc").unwrap().0,
             )),
             generate::WasmInstruction::Eqz(IntegerType::I64),
-            generate::WasmInstruction::Comment(format!("Test for entry block")),
+            generate::WasmInstruction::Comment("Test for entry block".to_string()),
             generate::WasmInstruction::If {
                 identifier: None,
                 result: None,
@@ -1757,7 +1757,8 @@ pub fn generate_wasm_assembly<'a, W: Write>(
             locals: locals_vec.iter().map(|v| (None, v.2)).collect(),
             instructions: vec![
                 generate::WasmInstruction::Comment(format!(
-                    "{next_local_i} locals: {locals_vec:?}; {} block(s)", blocks.len()
+                    "{next_local_i} locals: {locals_vec:?}; {} block(s)",
+                    blocks.len()
                 )),
                 generate::WasmInstruction::Const(NumericConstant::I64(0)),
                 generate::WasmInstruction::LocalSet(generate::Identifier::Index(
@@ -1777,7 +1778,8 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     NumericType::F64 => generate::WasmInstruction::Const(NumericConstant::F64(0.0)),
                 },
                 generate::WasmInstruction::Comment("Implicit return".to_string()),
-            ].into(),
+            ]
+            .into(),
         };
         state.out_expressions.push(new_mod);
     }
