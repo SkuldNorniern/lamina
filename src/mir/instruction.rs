@@ -1,6 +1,5 @@
 ///
 /// Low-level, machine-friendly instructions that map closely to actual assembly.
-
 use super::register::Register;
 use super::types::MirType;
 
@@ -123,7 +122,7 @@ pub enum AddressMode {
     BaseIndexScale {
         base: Register,
         index: Register,
-        scale: u8, // 1, 2, 4, or 8
+        scale: u8,  // 1, 2, 4, or 8
         offset: i8, // 4-bit signed, extended to i8
     },
 }
@@ -257,13 +256,13 @@ pub enum Instruction {
 
     // Meta operations
     Unreachable,
-    
+
     SafePoint,
-    
+
     StackMap {
         id: u32,
     },
-    
+
     PatchPoint {
         id: u32,
     },
@@ -313,7 +312,12 @@ impl Instruction {
                     regs.push(r);
                 }
             }
-            Instruction::Select { cond, true_val, false_val, .. } => {
+            Instruction::Select {
+                cond,
+                true_val,
+                false_val,
+                ..
+            } => {
                 regs.push(cond);
                 if let Operand::Register(r) = true_val {
                     regs.push(r);
@@ -322,15 +326,13 @@ impl Instruction {
                     regs.push(r);
                 }
             }
-            Instruction::Load { addr, .. } => {
-                match addr {
-                    AddressMode::BaseOffset { base, .. } => regs.push(base),
-                    AddressMode::BaseIndexScale { base, index, .. } => {
-                        regs.push(base);
-                        regs.push(index);
-                    }
+            Instruction::Load { addr, .. } => match addr {
+                AddressMode::BaseOffset { base, .. } => regs.push(base),
+                AddressMode::BaseIndexScale { base, index, .. } => {
+                    regs.push(base);
+                    regs.push(index);
                 }
-            }
+            },
             Instruction::Store { src, addr, .. } => {
                 if let Operand::Register(r) = src {
                     regs.push(r);
@@ -360,7 +362,9 @@ impl Instruction {
                     }
                 }
             }
-            Instruction::Ret { value: Some(val), .. } => {
+            Instruction::Ret {
+                value: Some(val), ..
+            } => {
                 if let Operand::Register(r) = val {
                     regs.push(r);
                 }
@@ -394,7 +398,7 @@ mod tests {
     fn test_instruction_def_reg() {
         let v0 = Register::Virtual(VirtualReg::gpr(0));
         let v1 = Register::Virtual(VirtualReg::gpr(1));
-        
+
         let add = Instruction::IntBinary {
             op: IntBinOp::Add,
             ty: MirType::Scalar(ScalarType::I64),
@@ -402,14 +406,16 @@ mod tests {
             lhs: Operand::Register(v1.clone()),
             rhs: Operand::Immediate(Immediate::I64(42)),
         };
-        
+
         assert_eq!(add.def_reg(), Some(&v0));
     }
 
     #[test]
     fn test_instruction_is_terminator() {
         let ret = Instruction::Ret { value: None };
-        let jmp = Instruction::Jmp { target: "bb1".to_string() };
+        let jmp = Instruction::Jmp {
+            target: "bb1".to_string(),
+        };
         let add = Instruction::IntBinary {
             op: IntBinOp::Add,
             ty: MirType::Scalar(ScalarType::I32),
@@ -417,10 +423,9 @@ mod tests {
             lhs: Operand::Immediate(Immediate::I32(1)),
             rhs: Operand::Immediate(Immediate::I32(2)),
         };
-        
+
         assert!(ret.is_terminator());
         assert!(jmp.is_terminator());
         assert!(!add.is_terminator());
     }
 }
-

@@ -102,8 +102,14 @@ mod tests {
 
     #[test]
     fn test_vector_sizes() {
-        assert_eq!(MirType::Vector(VectorType::V128(VectorLane::I32)).size_bytes(), 16);
-        assert_eq!(MirType::Vector(VectorType::V256(VectorLane::F64)).size_bytes(), 32);
+        assert_eq!(
+            MirType::Vector(VectorType::V128(VectorLane::I32)).size_bytes(),
+            16
+        );
+        assert_eq!(
+            MirType::Vector(VectorType::V256(VectorLane::F64)).size_bytes(),
+            32
+        );
     }
 
     #[test]
