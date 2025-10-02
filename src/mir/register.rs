@@ -2,7 +2,6 @@
 ///
 /// Virtual registers are unlimited and assigned sequentially.
 /// Physical registers are assigned during register allocation.
-
 use std::fmt;
 
 /// Register class determines which physical registers can be used
@@ -161,15 +160,15 @@ mod tests {
     #[test]
     fn test_virtual_reg_allocator() {
         let mut allocator = VirtualRegAllocator::new();
-        
+
         let v0 = allocator.allocate_gpr();
         let v1 = allocator.allocate_fpr();
         let v2 = allocator.allocate_vec();
-        
+
         assert_eq!(v0.id, 0);
         assert_eq!(v1.id, 1);
         assert_eq!(v2.id, 2);
-        
+
         assert_eq!(v0.class, RegisterClass::Gpr);
         assert_eq!(v1.class, RegisterClass::Fpr);
         assert_eq!(v2.class, RegisterClass::Vec);
@@ -185,7 +184,7 @@ mod tests {
     fn test_register_enum() {
         let v0 = Register::Virtual(VirtualReg::gpr(0));
         let rax = Register::Physical(PhysicalReg::new("rax", RegisterClass::Gpr));
-        
+
         assert!(v0.is_virtual());
         assert!(!v0.is_physical());
         assert!(rax.is_physical());

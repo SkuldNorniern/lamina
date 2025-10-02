@@ -19,7 +19,7 @@ pub trait Transform: Default {
 }
 
 /// Stability level of a transform
-/// 
+///
 /// This indicates the maturity and reliability of the transform,
 /// allowing users to choose appropriate optimization levels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -34,23 +34,23 @@ pub enum TransformLevel {
 
 impl TransformLevel {
     /// Check if this level should be included at the given optimization level
-    /// 
+    ///
     /// - `-O0`: No transforms
     /// - `-O1`: `Stable` transforms  
     /// - `-O2`: `Stable` + `Experimental` transforms
     /// - `-O3`: All transforms (including `Deprecated` for compatibility)
     pub fn is_enabled_at_opt_level(self, opt_level: u8) -> bool {
         match (self, opt_level) {
-            (TransformLevel::Deprecated, 3..) => true,  // Only at -O3+
+            (TransformLevel::Deprecated, 3..) => true, // Only at -O3+
             (TransformLevel::Experimental, 2..) => true, // At -O2+
-            (TransformLevel::Stable, _) => true,         // Always enabled
+            (TransformLevel::Stable, _) => true,       // Always enabled
             _ => false,
         }
     }
 }
 
 /// Categories of transformations
-/// 
+///
 /// These categorize transforms by their primary purpose, helping with
 /// organizing optimization passes and understanding what each does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,21 +76,22 @@ pub enum TransformCategory {
 // Example placeholder transform implementation
 // This shows the pattern for implementing transforms
 #[derive(Default)]
+#[allow(dead_code)]
 struct ExampleTransform;
 
 impl Transform for ExampleTransform {
     fn name(&self) -> &'static str {
         "example_transform"
     }
-    
+
     fn description(&self) -> &'static str {
         "Example placeholder transform"
     }
-    
+
     fn category(&self) -> TransformCategory {
         TransformCategory::ConstantFolding
     }
-    
+
     fn level(&self) -> TransformLevel {
         TransformLevel::Experimental
     }
