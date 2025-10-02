@@ -1,4 +1,5 @@
-use std::env;
+use std::env
+;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -25,6 +26,7 @@ struct CompileOptions {
     forced_compiler: Option<String>,
     compiler_flags: Vec<String>,
     emit_asm_only: bool,
+    emit_mir:bool,
     target_arch: Option<String>,
 }
 
@@ -46,6 +48,7 @@ fn parse_args() -> Result<CompileOptions, String> {
         forced_compiler: None,
         compiler_flags: Vec::new(),
         emit_asm_only: false,
+        emit_mir:false,
         target_arch: None,
     };
 
@@ -80,6 +83,9 @@ fn parse_args() -> Result<CompileOptions, String> {
             "--emit-asm" => {
                 options.emit_asm_only = true;
                 i += 1;
+            }
+            "--emit-mir" =>{
+                options.emit_mir=true;
             }
             "--target" => {
                 if i + 1 >= args.len() {
