@@ -46,6 +46,12 @@ pub struct CodegenState<'a> {
     mem_registers: Vec<Register<'a>>,
 }
 
+impl<'a> Default for CodegenState<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> CodegenState<'a> {
     pub fn new() -> Self {
         Self {
@@ -76,7 +82,7 @@ impl<'a> CodegenState<'a> {
         self.global_values.get(&name).unwrap()
     }
     fn set_memory_contents_for_value(&mut self, address: usize, val: Value<'a>) {
-        let ptr_addr = address as usize;
+        let ptr_addr = address;
         match val {
             Value::Constant(lit) => match lit {
                 Literal::Bool(v) => self.output_memory[ptr_addr] = if v { 1 } else { 0 },
@@ -109,9 +115,10 @@ impl<'a> CodegenState<'a> {
             },
             Value::Global(id) => {
                 let from = self.mem_registers.iter().find(|v| v.name == id).unwrap();
-                
+
                 let from_bytes = self.output_memory
-                    [(from.address as usize)..(from.address + from.size) as usize].to_vec();
+                    [(from.address as usize)..(from.address + from.size) as usize]
+                    .to_vec();
 
                 self.output_memory[ptr_addr..ptr_addr + from.size as usize]
                     .clone_from_slice(from_bytes.as_slice());
@@ -119,7 +126,11 @@ impl<'a> CodegenState<'a> {
             Value::Variable(_) => unreachable!(),
         }
     }
-    pub fn add_memory_register(&mut self, global: Register<'a>, val: Option<Value<'a>>) -> &mut Self {
+    pub fn add_memory_register(
+        &mut self,
+        global: Register<'a>,
+        val: Option<Value<'a>>,
+    ) -> &mut Self {
         if global.address > self.output_memory.len() as u64 {
             self.output_memory.append(&mut vec![0; 64 * 1024]);
         }
@@ -162,7 +173,7 @@ impl<'a> CodegenState<'a> {
                 .unwrap_or(0);
         }
         options.sort_by(|v1, v2| v1.0.cmp(&v2.0));
-        return options[0].1;
+        options[0].1
     }
 
     pub fn has_any_mem_regs(&self) -> bool {
