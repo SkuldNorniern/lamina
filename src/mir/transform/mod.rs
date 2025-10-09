@@ -1,4 +1,6 @@
 mod deadcode;
+mod peephole;
+
 
 //! Each transform operates on the MIR representation to optimize or
 //! prepare code for code generation. Transforms are composable and
