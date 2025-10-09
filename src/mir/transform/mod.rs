@@ -1,6 +1,6 @@
-/// Each transform operates on the MIR representation to optimize or
-/// prepare code for code generation. Transforms are composable and
-/// can be arranged in pipelines.
+//! Each transform operates on the MIR representation to optimize or
+//! prepare code for code generation. Transforms are composable and
+//! can be arranged in pipelines.
 pub trait Transform: Default {
     /// Unique name for this transform
     fn name(&self) -> &'static str;
@@ -43,7 +43,7 @@ impl TransformLevel {
         match (self, opt_level) {
             (TransformLevel::Deprecated, 3..) => true, // Only at -O3+
             (TransformLevel::Experimental, 2..) => true, // At -O2+
-            (TransformLevel::Stable, _) => true,       // Always enabled
+            (TransformLevel::Stable, 1..) => true,       // At -O1+
             _ => false,
         }
     }
