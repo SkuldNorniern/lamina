@@ -361,16 +361,16 @@ fn is_const(
     value: &Value,
     ty: Option<&PrimitiveType>,
     is_wasm64: bool,
-) -> Option<generate::NumericConstant> {
+) -> Option<NumericConstant> {
     match value {
         Value::Constant(lit) => Some(if let Some(ty) = ty {
             match ty {
                 PrimitiveType::Bool => match lit {
                     Literal::Bool(v) => {
                         if *v {
-                            generate::NumericConstant::I32(1)
+                            NumericConstant::I32(1)
                         } else {
-                            generate::NumericConstant::I32(0)
+                            NumericConstant::I32(0)
                         }
                     }
                     _ => panic!("ICE: Attempted to assign non-bool to bool!"),
@@ -383,103 +383,103 @@ fn is_const(
                 | PrimitiveType::U8
                 | PrimitiveType::I16
                 | PrimitiveType::U16 => match lit {
-                    Literal::Char(v) => generate::NumericConstant::I32(*v as u32),
-                    Literal::U32(v) => generate::NumericConstant::I32(*v),
-                    Literal::I32(v) => generate::NumericConstant::I32(*v as u32),
-                    Literal::I8(v) => generate::NumericConstant::I32(*v as u32),
-                    Literal::U8(v) => generate::NumericConstant::I32(*v as u32),
-                    Literal::I16(v) => generate::NumericConstant::I32(*v as u32),
-                    Literal::U16(v) => generate::NumericConstant::I32(*v as u32),
-                    Literal::I64(v) => generate::NumericConstant::I32(*v as u32),
-                    Literal::U64(v) => generate::NumericConstant::I32(*v as u32),
+                    Literal::Char(v) => NumericConstant::I32(*v as u32),
+                    Literal::U32(v) => NumericConstant::I32(*v),
+                    Literal::I32(v) => NumericConstant::I32(*v as u32),
+                    Literal::I8(v) => NumericConstant::I32(*v as u32),
+                    Literal::U8(v) => NumericConstant::I32(*v as u32),
+                    Literal::I16(v) => NumericConstant::I32(*v as u32),
+                    Literal::U16(v) => NumericConstant::I32(*v as u32),
+                    Literal::I64(v) => NumericConstant::I32(*v as u32),
+                    Literal::U64(v) => NumericConstant::I32(*v as u32),
                     _ => return None,
                 },
 
                 PrimitiveType::Ptr => match lit {
                     Literal::I8(v) => {
                         if is_wasm64 {
-                            generate::NumericConstant::I64(*v as u64)
+                            NumericConstant::I64(*v as u64)
                         } else {
-                            generate::NumericConstant::I32(*v as u32)
+                            NumericConstant::I32(*v as u32)
                         }
                     }
                     Literal::U8(v) => {
                         if is_wasm64 {
-                            generate::NumericConstant::I64(*v as u64)
+                            NumericConstant::I64(*v as u64)
                         } else {
-                            generate::NumericConstant::I32(*v as u32)
+                            NumericConstant::I32(*v as u32)
                         }
                     }
                     Literal::I16(v) => {
                         if is_wasm64 {
-                            generate::NumericConstant::I64(*v as u64)
+                            NumericConstant::I64(*v as u64)
                         } else {
-                            generate::NumericConstant::I32(*v as u32)
+                            NumericConstant::I32(*v as u32)
                         }
                     }
                     Literal::U16(v) => {
                         if is_wasm64 {
-                            generate::NumericConstant::I64(*v as u64)
+                            NumericConstant::I64(*v as u64)
                         } else {
-                            generate::NumericConstant::I32(*v as u32)
+                            NumericConstant::I32(*v as u32)
                         }
                     }
                     Literal::I32(v) => {
                         if is_wasm64 {
-                            generate::NumericConstant::I64(*v as u64)
+                            NumericConstant::I64(*v as u64)
                         } else {
-                            generate::NumericConstant::I32(*v as u32)
+                            NumericConstant::I32(*v as u32)
                         }
                     }
                     Literal::U32(v) => {
                         if is_wasm64 {
-                            generate::NumericConstant::I64(*v as u64)
+                            NumericConstant::I64(*v as u64)
                         } else {
-                            generate::NumericConstant::I32(*v)
+                            NumericConstant::I32(*v)
                         }
                     }
-                    Literal::I64(v) if is_wasm64 => generate::NumericConstant::I64(*v as u64),
-                    Literal::U64(v) if is_wasm64 => generate::NumericConstant::I64(*v),
+                    Literal::I64(v) if is_wasm64 => NumericConstant::I64(*v as u64),
+                    Literal::U64(v) if is_wasm64 => NumericConstant::I64(*v),
                     _ => return None,
                 },
 
                 PrimitiveType::I64 | PrimitiveType::U64 => match lit {
-                    Literal::I64(v) => generate::NumericConstant::I64(*v as u64),
-                    Literal::U64(v) => generate::NumericConstant::I64(*v),
-                    Literal::U32(v) => generate::NumericConstant::I64(*v as u64),
-                    Literal::I32(v) => generate::NumericConstant::I64(*v as u64),
-                    Literal::I8(v) => generate::NumericConstant::I64(*v as u64),
-                    Literal::U8(v) => generate::NumericConstant::I64(*v as u64),
-                    Literal::I16(v) => generate::NumericConstant::I64(*v as u64),
-                    Literal::U16(v) => generate::NumericConstant::I64(*v as u64),
+                    Literal::I64(v) => NumericConstant::I64(*v as u64),
+                    Literal::U64(v) => NumericConstant::I64(*v),
+                    Literal::U32(v) => NumericConstant::I64(*v as u64),
+                    Literal::I32(v) => NumericConstant::I64(*v as u64),
+                    Literal::I8(v) => NumericConstant::I64(*v as u64),
+                    Literal::U8(v) => NumericConstant::I64(*v as u64),
+                    Literal::I16(v) => NumericConstant::I64(*v as u64),
+                    Literal::U16(v) => NumericConstant::I64(*v as u64),
                     _ => return None,
                 },
 
                 PrimitiveType::F32 => match lit {
-                    Literal::I64(v) => generate::NumericConstant::F32(*v as f32),
-                    Literal::U64(v) => generate::NumericConstant::F32(*v as f32),
-                    Literal::U32(v) => generate::NumericConstant::F32(*v as f32),
-                    Literal::I32(v) => generate::NumericConstant::F32(*v as f32),
-                    Literal::I8(v) => generate::NumericConstant::F32(*v as f32),
-                    Literal::U8(v) => generate::NumericConstant::F32(*v as f32),
-                    Literal::I16(v) => generate::NumericConstant::F32(*v as f32),
-                    Literal::U16(v) => generate::NumericConstant::F32(*v as f32),
-                    Literal::F32(v) => generate::NumericConstant::F32(*v),
-                    Literal::F64(v) => generate::NumericConstant::F32(*v as f32),
+                    Literal::I64(v) => NumericConstant::F32(*v as f32),
+                    Literal::U64(v) => NumericConstant::F32(*v as f32),
+                    Literal::U32(v) => NumericConstant::F32(*v as f32),
+                    Literal::I32(v) => NumericConstant::F32(*v as f32),
+                    Literal::I8(v) => NumericConstant::F32(*v as f32),
+                    Literal::U8(v) => NumericConstant::F32(*v as f32),
+                    Literal::I16(v) => NumericConstant::F32(*v as f32),
+                    Literal::U16(v) => NumericConstant::F32(*v as f32),
+                    Literal::F32(v) => NumericConstant::F32(*v),
+                    Literal::F64(v) => NumericConstant::F32(*v as f32),
                     _ => return None,
                 },
 
                 PrimitiveType::F64 => match lit {
-                    Literal::I64(v) => generate::NumericConstant::F64(*v as f64),
-                    Literal::U64(v) => generate::NumericConstant::F64(*v as f64),
-                    Literal::U32(v) => generate::NumericConstant::F64(*v as f64),
-                    Literal::I32(v) => generate::NumericConstant::F64(*v as f64),
-                    Literal::I8(v) => generate::NumericConstant::F64(*v as f64),
-                    Literal::U8(v) => generate::NumericConstant::F64(*v as f64),
-                    Literal::I16(v) => generate::NumericConstant::F64(*v as f64),
-                    Literal::U16(v) => generate::NumericConstant::F64(*v as f64),
-                    Literal::F32(v) => generate::NumericConstant::F64(*v as f64),
-                    Literal::F64(v) => generate::NumericConstant::F64(*v),
+                    Literal::I64(v) => NumericConstant::F64(*v as f64),
+                    Literal::U64(v) => NumericConstant::F64(*v as f64),
+                    Literal::U32(v) => NumericConstant::F64(*v as f64),
+                    Literal::I32(v) => NumericConstant::F64(*v as f64),
+                    Literal::I8(v) => NumericConstant::F64(*v as f64),
+                    Literal::U8(v) => NumericConstant::F64(*v as f64),
+                    Literal::I16(v) => NumericConstant::F64(*v as f64),
+                    Literal::U16(v) => NumericConstant::F64(*v as f64),
+                    Literal::F32(v) => NumericConstant::F64(*v as f64),
+                    Literal::F64(v) => NumericConstant::F64(*v),
                     _ => return None,
                 },
             }
@@ -487,23 +487,23 @@ fn is_const(
             match lit {
                 Literal::Bool(v) => {
                     if *v {
-                        generate::NumericConstant::I32(1)
+                        NumericConstant::I32(1)
                     } else {
-                        generate::NumericConstant::I32(0)
+                        NumericConstant::I32(0)
                     }
                 }
-                Literal::Char(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::U8(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::I8(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::U16(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::I16(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::U32(v) => generate::NumericConstant::I32(*v),
-                Literal::I32(v) => generate::NumericConstant::I32(*v as u32),
-                Literal::U64(v) => generate::NumericConstant::I64(*v),
-                Literal::I64(v) => generate::NumericConstant::I64(*v as u64),
+                Literal::Char(v) => NumericConstant::I32(*v as u32),
+                Literal::U8(v) => NumericConstant::I32(*v as u32),
+                Literal::I8(v) => NumericConstant::I32(*v as u32),
+                Literal::U16(v) => NumericConstant::I32(*v as u32),
+                Literal::I16(v) => NumericConstant::I32(*v as u32),
+                Literal::U32(v) => NumericConstant::I32(*v),
+                Literal::I32(v) => NumericConstant::I32(*v as u32),
+                Literal::U64(v) => NumericConstant::I64(*v),
+                Literal::I64(v) => NumericConstant::I64(*v as u64),
 
-                Literal::F32(v) => generate::NumericConstant::F32(*v),
-                Literal::F64(v) => generate::NumericConstant::F64(*v),
+                Literal::F32(v) => NumericConstant::F32(*v),
+                Literal::F64(v) => NumericConstant::F64(*v),
 
                 Literal::String(_) => return None,
             }
@@ -1647,9 +1647,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         generate_memory_write(
                             &mut instructions,
                             generate::WasmInstruction::Const(if is_wasm64 {
-                                generate::NumericConstant::I64(addr)
+                                NumericConstant::I64(addr)
                             } else {
-                                generate::NumericConstant::I32(addr as u32)
+                                NumericConstant::I32(addr as u32)
                             }),
                             create_load_reg(&state, value, None, &locals, is_wasm64),
                             get_wasm_type(ty, is_wasm64).0,
@@ -1714,7 +1714,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                 } => r#else.as_mut().unwrap(),
                 _ => unreachable!(),
             };
-            (*path) = vec![
+            *path = vec![
                 generate::WasmInstruction::LocalGet(generate::Identifier::Index(
                     locals.get("pc").unwrap().0,
                 )),

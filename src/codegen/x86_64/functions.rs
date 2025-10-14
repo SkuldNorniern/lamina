@@ -867,7 +867,7 @@ fn get_instruction_result<'a>(instr: &Instruction<'a>) -> Option<&'a str> {
 fn generate_optimized_binary<'a, W: Write>(
     op: &crate::ir::instruction::BinaryOp,
     result: &'a str,
-    ty: &crate::ir::types::PrimitiveType,
+    ty: &PrimitiveType,
     lhs: &Value<'a>,
     rhs: &Value<'a>,
     writer: &mut W,
@@ -899,7 +899,7 @@ fn generate_optimized_binary<'a, W: Write>(
         PrimitiveType::I64 | PrimitiveType::Ptr => ("q", "r"),
         _ => {
             return generate_instruction(
-                &crate::Instruction::Binary {
+                &Instruction::Binary {
                     op: op.clone(),
                     result,
                     ty: *ty,
@@ -925,7 +925,7 @@ fn generate_optimized_binary<'a, W: Write>(
             BinaryOp::Div => {
                 // Division is more complex, fall back to regular implementation
                 return generate_instruction(
-                    &crate::Instruction::Binary {
+                    &Instruction::Binary {
                         op: op.clone(),
                         result,
                         ty: *ty,
@@ -1034,7 +1034,7 @@ fn generate_optimized_binary<'a, W: Write>(
             BinaryOp::Div => {
                 // Fall back to regular division
                 return generate_instruction(
-                    &crate::Instruction::Binary {
+                    &Instruction::Binary {
                         op: op.clone(),
                         result,
                         ty: *ty,
@@ -1072,7 +1072,7 @@ fn generate_optimized_binary<'a, W: Write>(
 
     // Fall back to regular instruction generation
     generate_instruction(
-        &crate::Instruction::Binary {
+        &Instruction::Binary {
             op: op.clone(),
             result,
             ty: *ty,
@@ -1090,7 +1090,7 @@ fn generate_optimized_binary<'a, W: Write>(
 fn generate_optimized_cmp<'a, W: Write>(
     op: &crate::ir::instruction::CmpOp,
     result: &'a str,
-    ty: &crate::ir::types::PrimitiveType,
+    ty: &PrimitiveType,
     lhs: &Value<'a>,
     rhs: &Value<'a>,
     writer: &mut W,
@@ -1126,7 +1126,7 @@ fn generate_optimized_cmp<'a, W: Write>(
             PrimitiveType::I8 => "b",
             _ => {
                 return generate_instruction(
-                    &crate::Instruction::Cmp {
+                    &Instruction::Cmp {
                         op: op.clone(),
                         result,
                         ty: *ty,
@@ -1177,7 +1177,7 @@ fn generate_optimized_cmp<'a, W: Write>(
 
     // Fall back to regular instruction generation
     generate_instruction(
-        &crate::Instruction::Cmp {
+        &Instruction::Cmp {
             op: op.clone(),
             result,
             ty: *ty,
@@ -1194,7 +1194,7 @@ fn generate_optimized_cmp<'a, W: Write>(
 // Optimized load generation
 fn generate_optimized_load<'a, W: Write>(
     result: &'a str,
-    ty: &crate::ir::types::Type<'a>,
+    ty: &Type<'a>,
     ptr: &Value<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
@@ -1210,13 +1210,13 @@ fn generate_optimized_load<'a, W: Write>(
             && let Some(ptr_reg) = allocation_result.assignments.get(*ptr_var)
         {
             let load_suffix = match ty {
-                Type::Primitive(crate::ir::types::PrimitiveType::I32) => "l",
-                Type::Primitive(crate::ir::types::PrimitiveType::I64)
-                | Type::Primitive(crate::ir::types::PrimitiveType::Ptr) => "q",
-                Type::Primitive(crate::ir::types::PrimitiveType::I8) => "b",
+                Type::Primitive(PrimitiveType::I32) => "l",
+                Type::Primitive(PrimitiveType::I64)
+                | Type::Primitive(PrimitiveType::Ptr) => "q",
+                Type::Primitive(PrimitiveType::I8) => "b",
                 _ => {
                     return generate_instruction(
-                        &crate::Instruction::Load {
+                        &Instruction::Load {
                             result,
                             ty: ty.clone(),
                             ptr: ptr.clone(),
@@ -1240,7 +1240,7 @@ fn generate_optimized_load<'a, W: Write>(
 
     // Fall back to regular instruction generation
     generate_instruction(
-        &crate::Instruction::Load {
+        &Instruction::Load {
             result,
             ty: ty.clone(),
             ptr: ptr.clone(),
@@ -1254,7 +1254,7 @@ fn generate_optimized_load<'a, W: Write>(
 
 // Optimized store generation
 fn generate_optimized_store<'a, W: Write>(
-    ty: &crate::ir::types::Type<'a>,
+    ty: &Type<'a>,
     ptr: &Value<'a>,
     value: &Value<'a>,
     writer: &mut W,
@@ -1279,13 +1279,13 @@ fn generate_optimized_store<'a, W: Write>(
 
     if let (Some(ptr_reg), Some(value_reg)) = (ptr_in_reg, value_in_reg) {
         let store_suffix = match ty {
-            Type::Primitive(crate::ir::types::PrimitiveType::I32) => "l",
-            Type::Primitive(crate::ir::types::PrimitiveType::I64)
-            | Type::Primitive(crate::ir::types::PrimitiveType::Ptr) => "q",
-            Type::Primitive(crate::ir::types::PrimitiveType::I8) => "b",
+            Type::Primitive(PrimitiveType::I32) => "l",
+            Type::Primitive(PrimitiveType::I64)
+            | Type::Primitive(PrimitiveType::Ptr) => "q",
+            Type::Primitive(PrimitiveType::I8) => "b",
             _ => {
                 return generate_instruction(
-                    &crate::Instruction::Store {
+                    &Instruction::Store {
                         ty: ty.clone(),
                         ptr: ptr.clone(),
                         value: value.clone(),
@@ -1308,7 +1308,7 @@ fn generate_optimized_store<'a, W: Write>(
 
     // Fall back to regular instruction generation
     generate_instruction(
-        &crate::Instruction::Store {
+        &Instruction::Store {
             ty: ty.clone(),
             ptr: ptr.clone(),
             value: value.clone(),
