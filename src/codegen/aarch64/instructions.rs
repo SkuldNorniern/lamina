@@ -1090,7 +1090,7 @@ fn materialize_address<W: Write>(writer: &mut W, dest: &str, offset: i64) -> Res
         if offset >= 0 {
             writeln!(writer, "        add {}, x29, #{}", dest, offset)?;
         } else {
-            writeln!(writer, "        sub {}, x29, #{}", dest, (-offset))?;
+            writeln!(writer, "        sub {}, x29, #{}", dest, -offset)?;
         }
     } else {
         // For large offsets, use movz/movk to load the offset into a register
