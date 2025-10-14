@@ -143,8 +143,20 @@ impl<'a> ParserState<'a> {
         self.advance(); // Consume first char
 
         // Consume subsequent alphanumeric or underscore characters
-        while let Some(byte) = self.bytes.get(self.position) {
-            if byte.is_ascii_alphanumeric() || *byte == b'_' {
+        
+        // while let Some(byte) = self.bytes.get(self.position) {
+        //     if byte.is_ascii_alphanumeric() || *byte == b'_' {
+        //         self.advance();
+        //     } else {
+        //         break;
+        //     }
+        // }
+
+        while self.position < self.bytes.len() {
+            let byte = self.bytes[self.position];
+            println!("byte: {}, position: {}", byte as char, self.position);
+            if byte.is_ascii_alphanumeric() || byte == b'_' {
+                
                 self.advance();
             } else {
                 break;
