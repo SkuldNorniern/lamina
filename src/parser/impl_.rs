@@ -598,10 +598,10 @@ fn parse_value_with_type_hint<'a>(
                     // Try integer first
                     state.position = start_pos;
                     if let Ok(i_val) = state.parse_integer() {
-                        if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
-                            return Ok(Value::Constant(Literal::I32(i_val as i32)));
+                        return if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
+                            Ok(Value::Constant(Literal::I32(i_val as i32)))
                         } else {
-                            return Ok(Value::Constant(Literal::I64(i_val)));
+                            Ok(Value::Constant(Literal::I64(i_val)))
                         }
                     }
 
@@ -646,11 +646,11 @@ fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>> {
         Some(c) if c.is_ascii_digit() || c == '-' => {
             // Try parsing as integer first, defaulting to I32 or upgrading to I64 if needed
             if let Ok(i_val) = state.parse_integer() {
-                if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
-                    return Ok(Value::Constant(Literal::I32(i_val as i32)));
+                return if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
+                    Ok(Value::Constant(Literal::I32(i_val as i32)))
                 } else {
                     // If it doesn't fit in I32, use I64
-                    return Ok(Value::Constant(Literal::I64(i_val)));
+                    Ok(Value::Constant(Literal::I64(i_val)))
                 }
             }
 
@@ -1500,8 +1500,9 @@ impl Instruction<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*; // Import things from outer module
-    use crate::{Identifier, Literal, PrimitiveType, Type, Value};
+    use super::*;
+    // Import things from outer module
+        use crate::{Literal, PrimitiveType, Type, Value};
 
     // Helper to create a ParserState for testing
     fn test_state(input: &str) -> ParserState {

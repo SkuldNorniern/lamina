@@ -386,17 +386,17 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 
     // 2. Generate assembly for the specified target
     match target {
-        "x86_64_unknown" => codegen::generate_x86_64_assembly(&module, output_asm)?,
-        "x86_64_macos" => codegen::generate_x86_64_assembly(&module, output_asm)?,
-        "x86_64_linux" => codegen::generate_x86_64_assembly(&module, output_asm)?,
-        "x86_64_windows" => codegen::generate_x86_64_assembly(&module, output_asm)?,
+        "x86_64_unknown" => generate_x86_64_assembly(&module, output_asm)?,
+        "x86_64_macos" => generate_x86_64_assembly(&module, output_asm)?,
+        "x86_64_linux" => generate_x86_64_assembly(&module, output_asm)?,
+        "x86_64_windows" => generate_x86_64_assembly(&module, output_asm)?,
         // FEAT:TODO Add per-target generation refinements for macOS/Linux/Windows
         "aarch64_unknown" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         "aarch64_macos" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         "aarch64_linux" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         "aarch64_windows" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         _ => {
-            return Err(error::LaminaError::CodegenError(
+            return Err(LaminaError::CodegenError(
                 CodegenError::UnsupportedFeature(codegen::FeatureType::Custom(format!(
                     "Unsupported target architecture: {}",
                     target
