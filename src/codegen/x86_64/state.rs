@@ -97,7 +97,7 @@ pub struct CodegenState<'a> {
     pub rodata_strings: Vec<(String, String)>, // label -> content
     pub next_label_id: u32,
     pub next_rodata_id: u32, // For unique rodata labels
-    pub inlinable_functions: std::collections::HashSet<String>, // Functions that can be inlined
+    pub inlinable_functions: HashSet<String>, // Functions that can be inlined
 }
 
 impl CodegenState<'_> {
@@ -107,7 +107,7 @@ impl CodegenState<'_> {
             rodata_strings: Vec::new(),
             next_label_id: 0,
             next_rodata_id: 0,
-            inlinable_functions: std::collections::HashSet::new(),
+            inlinable_functions: HashSet::new(),
         }
     }
 

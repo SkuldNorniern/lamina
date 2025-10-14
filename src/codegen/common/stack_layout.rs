@@ -202,7 +202,6 @@ pub fn optimize_stack_layout(variables: &mut Vec<(&str, u64, u64)>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::types::PrimitiveType;
 
     #[test]
     fn test_standard_stack_layout() {
