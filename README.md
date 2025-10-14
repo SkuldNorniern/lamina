@@ -178,7 +178,7 @@ Lamina demonstrates competitive performance in computational tasks. The followin
 ## Getting Started
 
 ### Prerequisites
-- Rust 1.70+ (2024 edition)
+- Rust 1.89+ (2024 edition)
 - Clang/GCC for linking generated assembly
 - macOS, Linux, or Windows
 
