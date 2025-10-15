@@ -72,7 +72,13 @@ pub enum FromIRError {
 }
 impl std::fmt::Display for FromIRError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "FromIRError: {}", self)
+        match self{
+            FromIRError::InvalidIR => write!(f,"InvalidIR"),
+            FromIRError::UnsupportedType => write!(f,"Unsupported Type"),
+            FromIRError::UnsupportedInstruction => write!(f,"Unsupported Inst"),
+            FromIRError::MissingEntryBlock => write!(f,"Missing Entry"),
+            FromIRError::UnknownVariable => write!(f,"Variable Unknown"),
+        }
     }
 }
 
@@ -90,7 +96,10 @@ pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRE
     Ok(mir_module)
 }
 
-fn convert_function<'a>(name: &'a str, f: &crate::ir::function::Function<'a>) -> Result<Function, FromIRError> {
+fn convert_function<'a>(
+    name: &'a str,
+    f: &crate::ir::function::Function<'a>,
+) -> Result<Function, FromIRError> {
     use crate::ir::types::Type as IRType;
     // Build MIR function signature
     let mut vreg_alloc = VirtualRegAllocator::new();
@@ -109,7 +118,8 @@ fn convert_function<'a>(name: &'a str, f: &crate::ir::function::Function<'a>) ->
     }
 
     // Map parameters to virtual registers v0.. and add to signature
-    let mut var_to_reg: std::collections::HashMap<&'a str, Register> = std::collections::HashMap::new();
+    let mut var_to_reg: std::collections::HashMap<&'a str, Register> =
+        std::collections::HashMap::new();
 
     for param in &f.signature.params {
         let class = reg_class_for_type(&param.ty);
@@ -182,7 +192,13 @@ fn convert_instruction<'a>(
     }
 
     match instr {
-        crate::ir::instruction::Instruction::Binary { op, result, ty, lhs, rhs } => {
+        crate::ir::instruction::Instruction::Binary {
+            op,
+            result,
+            ty,
+            lhs,
+            rhs,
+        } => {
             // Assign destination register
             let dst = match *ty {
                 IRPrim::F32 | IRPrim::F64 => Register::Virtual(vreg_alloc.allocate_fpr()),
@@ -223,52 +239,216 @@ fn convert_instruction<'a>(
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
-                (IRBin::Add, _) => Instruction::IntBinary { op: IntBinOp::Add, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRBin::Sub, _) => Instruction::IntBinary { op: IntBinOp::Sub, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRBin::Mul, _) => Instruction::IntBinary { op: IntBinOp::Mul, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRBin::Div, _) => Instruction::IntBinary { op: IntBinOp::SDiv, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
+                (IRBin::Add, _) => Instruction::IntBinary {
+                    op: IntBinOp::Add,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRBin::Sub, _) => Instruction::IntBinary {
+                    op: IntBinOp::Sub,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRBin::Mul, _) => Instruction::IntBinary {
+                    op: IntBinOp::Mul,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRBin::Div, _) => Instruction::IntBinary {
+                    op: IntBinOp::SDiv,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
             };
             Ok(Some(mir))
         }
-        crate::ir::instruction::Instruction::Cmp { op, result, ty, lhs, rhs } => {
+        crate::ir::instruction::Instruction::Cmp {
+            op,
+            result,
+            ty,
+            lhs,
+            rhs,
+        } => {
             let dst = Register::Virtual(vreg_alloc.allocate_gpr()); // i1 in gpr class
             var_to_reg.insert(*result, dst.clone());
             let mir_ty = map_ir_prim(*ty)?;
             let lhs_op = ir_value_to_operand(var_to_reg, lhs)?;
             let rhs_op = ir_value_to_operand(var_to_reg, rhs)?;
             let mir = match (*ty, op) {
-                (IRPrim::F32 | IRPrim::F64, IRCmp::Eq) => Instruction::FloatCmp { op: FloatCmpOp::Eq, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::F32 | IRPrim::F64, IRCmp::Ne) => Instruction::FloatCmp { op: FloatCmpOp::Ne, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::F32 | IRPrim::F64, IRCmp::Lt) => Instruction::FloatCmp { op: FloatCmpOp::Lt, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::F32 | IRPrim::F64, IRCmp::Le) => Instruction::FloatCmp { op: FloatCmpOp::Le, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::F32 | IRPrim::F64, IRCmp::Gt) => Instruction::FloatCmp { op: FloatCmpOp::Gt, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::F32 | IRPrim::F64, IRCmp::Ge) => Instruction::FloatCmp { op: FloatCmpOp::Ge, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Eq) => Instruction::IntCmp { op: IntCmpOp::Eq, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Ne) => Instruction::IntCmp { op: IntCmpOp::Ne, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Lt) => Instruction::IntCmp { op: IntCmpOp::ULt, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Le) => Instruction::IntCmp { op: IntCmpOp::ULe, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Gt) => Instruction::IntCmp { op: IntCmpOp::UGt, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Ge) => Instruction::IntCmp { op: IntCmpOp::UGe, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (_, IRCmp::Eq) => Instruction::IntCmp { op: IntCmpOp::Eq, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (_, IRCmp::Ne) => Instruction::IntCmp { op: IntCmpOp::Ne, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (_, IRCmp::Lt) => Instruction::IntCmp { op: IntCmpOp::SLt, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (_, IRCmp::Le) => Instruction::IntCmp { op: IntCmpOp::SLe, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (_, IRCmp::Gt) => Instruction::IntCmp { op: IntCmpOp::SGt, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
-                (_, IRCmp::Ge) => Instruction::IntCmp { op: IntCmpOp::SGe, ty: mir_ty, dst, lhs: lhs_op, rhs: rhs_op },
+                (IRPrim::F32 | IRPrim::F64, IRCmp::Eq) => Instruction::FloatCmp {
+                    op: FloatCmpOp::Eq,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRPrim::F32 | IRPrim::F64, IRCmp::Ne) => Instruction::FloatCmp {
+                    op: FloatCmpOp::Ne,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRPrim::F32 | IRPrim::F64, IRCmp::Lt) => Instruction::FloatCmp {
+                    op: FloatCmpOp::Lt,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRPrim::F32 | IRPrim::F64, IRCmp::Le) => Instruction::FloatCmp {
+                    op: FloatCmpOp::Le,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRPrim::F32 | IRPrim::F64, IRCmp::Gt) => Instruction::FloatCmp {
+                    op: FloatCmpOp::Gt,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRPrim::F32 | IRPrim::F64, IRCmp::Ge) => Instruction::FloatCmp {
+                    op: FloatCmpOp::Ge,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Eq) => {
+                    Instruction::IntCmp {
+                        op: IntCmpOp::Eq,
+                        ty: mir_ty,
+                        dst,
+                        lhs: lhs_op,
+                        rhs: rhs_op,
+                    }
+                }
+                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Ne) => {
+                    Instruction::IntCmp {
+                        op: IntCmpOp::Ne,
+                        ty: mir_ty,
+                        dst,
+                        lhs: lhs_op,
+                        rhs: rhs_op,
+                    }
+                }
+                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Lt) => {
+                    Instruction::IntCmp {
+                        op: IntCmpOp::ULt,
+                        ty: mir_ty,
+                        dst,
+                        lhs: lhs_op,
+                        rhs: rhs_op,
+                    }
+                }
+                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Le) => {
+                    Instruction::IntCmp {
+                        op: IntCmpOp::ULe,
+                        ty: mir_ty,
+                        dst,
+                        lhs: lhs_op,
+                        rhs: rhs_op,
+                    }
+                }
+                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Gt) => {
+                    Instruction::IntCmp {
+                        op: IntCmpOp::UGt,
+                        ty: mir_ty,
+                        dst,
+                        lhs: lhs_op,
+                        rhs: rhs_op,
+                    }
+                }
+                (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Ge) => {
+                    Instruction::IntCmp {
+                        op: IntCmpOp::UGe,
+                        ty: mir_ty,
+                        dst,
+                        lhs: lhs_op,
+                        rhs: rhs_op,
+                    }
+                }
+                (_, IRCmp::Eq) => Instruction::IntCmp {
+                    op: IntCmpOp::Eq,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (_, IRCmp::Ne) => Instruction::IntCmp {
+                    op: IntCmpOp::Ne,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (_, IRCmp::Lt) => Instruction::IntCmp {
+                    op: IntCmpOp::SLt,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (_, IRCmp::Le) => Instruction::IntCmp {
+                    op: IntCmpOp::SLe,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (_, IRCmp::Gt) => Instruction::IntCmp {
+                    op: IntCmpOp::SGt,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (_, IRCmp::Ge) => Instruction::IntCmp {
+                    op: IntCmpOp::SGe,
+                    ty: mir_ty,
+                    dst,
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
             };
             Ok(Some(mir))
         }
-        crate::ir::instruction::Instruction::Br { condition, true_label, false_label } => {
+        crate::ir::instruction::Instruction::Br {
+            condition,
+            true_label,
+            false_label,
+        } => {
             // Only variable conditions supported
             let cond_reg = match condition {
-                IRVal::Variable(id) => var_to_reg.get(id).cloned().ok_or(FromIRError::UnknownVariable)?,
+                IRVal::Variable(id) => var_to_reg
+                    .get(id)
+                    .cloned()
+                    .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            Ok(Some(Instruction::Br { cond: match cond_reg { Register::Virtual(v) => Register::Virtual(v), Register::Physical(p) => Register::Physical(p) }, true_target: (*true_label).to_string(), false_target: (*false_label).to_string() }))
+            Ok(Some(Instruction::Br {
+                cond: match cond_reg {
+                    Register::Virtual(v) => Register::Virtual(v),
+                    Register::Physical(p) => Register::Physical(p),
+                },
+                true_target: (*true_label).to_string(),
+                false_target: (*false_label).to_string(),
+            }))
         }
-        crate::ir::instruction::Instruction::Jmp { target_label } => {
-            Ok(Some(Instruction::Jmp { target: (*target_label).to_string() }))
-        }
+        crate::ir::instruction::Instruction::Jmp { target_label } => Ok(Some(Instruction::Jmp {
+            target: (*target_label).to_string(),
+        })),
         crate::ir::instruction::Instruction::Ret { ty, value } => {
             if matches!(ty, IRType::Void) {
                 return Ok(Some(Instruction::Ret { value: None }));
@@ -284,34 +464,72 @@ fn convert_instruction<'a>(
             var_to_reg.insert(*result, dst.clone());
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
-                IRVal::Variable(id) => var_to_reg.get(id).cloned().ok_or(FromIRError::UnknownVariable)?,
+                IRVal::Variable(id) => var_to_reg
+                    .get(id)
+                    .cloned()
+                    .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             let addr = AddressMode::BaseOffset { base, offset: 0 };
-            Ok(Some(Instruction::Load { ty: mir_ty, dst, addr, attrs: MemoryAttrs { align: mir_ty.alignment() as u8, volatile: false } }))
+            Ok(Some(Instruction::Load {
+                ty: mir_ty,
+                dst,
+                addr,
+                attrs: MemoryAttrs {
+                    align: mir_ty.alignment() as u8,
+                    volatile: false,
+                },
+            }))
         }
         crate::ir::instruction::Instruction::Store { ty, ptr, value } => {
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
-                IRVal::Variable(id) => var_to_reg.get(id).cloned().ok_or(FromIRError::UnknownVariable)?,
+                IRVal::Variable(id) => var_to_reg
+                    .get(id)
+                    .cloned()
+                    .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             let src = ir_value_to_operand(var_to_reg, value)?;
             let addr = AddressMode::BaseOffset { base, offset: 0 };
-            Ok(Some(Instruction::Store { ty: mir_ty, src, addr, attrs: MemoryAttrs { align: mir_ty.alignment() as u8, volatile: false } }))
+            Ok(Some(Instruction::Store {
+                ty: mir_ty,
+                src,
+                addr,
+                attrs: MemoryAttrs {
+                    align: mir_ty.alignment() as u8,
+                    volatile: false,
+                },
+            }))
         }
-        crate::ir::instruction::Instruction::Call { result, func_name, args } => {
+        crate::ir::instruction::Instruction::Call {
+            result,
+            func_name,
+            args,
+        } => {
             let mut mir_args = Vec::new();
-            for a in args { mir_args.push(ir_value_to_operand(var_to_reg, a)?); }
+            for a in args {
+                mir_args.push(ir_value_to_operand(var_to_reg, a)?);
+            }
             let ret = if let Some(res) = result {
                 let dst = Register::Virtual(vreg_alloc.allocate_gpr());
                 var_to_reg.insert(*res, dst.clone());
                 Some(dst)
-            } else { None };
-            Ok(Some(Instruction::Call { name: (*func_name).to_string(), args: mir_args, ret }))
+            } else {
+                None
+            };
+            Ok(Some(Instruction::Call {
+                name: (*func_name).to_string(),
+                args: mir_args,
+                ret,
+            }))
         }
         // Allocation: model as no-op (value becomes a pointer register)
-        crate::ir::instruction::Instruction::Alloc { result, alloc_type: _, allocated_ty: _ } => {
+        crate::ir::instruction::Instruction::Alloc {
+            result,
+            alloc_type: _,
+            allocated_ty: _,
+        } => {
             let dst = Register::Virtual(vreg_alloc.allocate_gpr());
             var_to_reg.insert(*result, dst);
             Ok(None)
@@ -375,10 +593,10 @@ fn reg_class_for_type(ty: &crate::ir::types::Type<'_>) -> RegisterClass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::{IRBuilder, FunctionParameter};
+    use crate::ir::builder::{i64 as ir_i64, var};
     use crate::ir::instruction::BinaryOp;
     use crate::ir::types::{PrimitiveType, Type};
-    use crate::ir::builder::{var, i64 as ir_i64};
+    use crate::ir::{FunctionParameter, IRBuilder};
 
     #[test]
     fn test_from_ir_simple_add() {
@@ -388,8 +606,14 @@ mod tests {
             .function_with_params(
                 "add",
                 vec![
-                    FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I64) },
-                    FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I64) },
+                FunctionParameter {
+                    name: "a",
+                    ty: Type::Primitive(PrimitiveType::I64),
+                },
+                FunctionParameter {
+                    name: "b",
+                    ty: Type::Primitive(PrimitiveType::I64),
+                },
                 ],
                 Type::Primitive(PrimitiveType::I64),
             )
@@ -411,7 +635,13 @@ mod tests {
 
         // Check first instruction is an integer add producing i64
         match &entry.instructions[0] {
-            Instruction::IntBinary { op, ty, dst: _, lhs, rhs } => {
+            Instruction::IntBinary {
+                op,
+                ty,
+                dst: _,
+                lhs,
+                rhs,
+            } => {
                 assert!(matches!(op, IntBinOp::Add));
                 assert!(matches!(ty, MirType::Scalar(ScalarType::I64)));
                 assert!(matches!(lhs, Operand::Register(_)));
@@ -435,7 +665,10 @@ mod tests {
         builder
             .function_with_params(
                 "mem",
-                vec![FunctionParameter { name: "p", ty: Type::Primitive(PrimitiveType::Ptr) }],
+                vec![FunctionParameter {
+                    name: "p",
+                    ty: Type::Primitive(PrimitiveType::Ptr),
+                }],
                 Type::Void,
             )
             .store(Type::Primitive(PrimitiveType::I64), var("p"), ir_i64(42))
