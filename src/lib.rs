@@ -295,6 +295,8 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "aarch64_macos",
     "aarch64_linux",
     "aarch64_windows",
+    "wasm32_unknown",
+    "wasm64_unknown",
 ];
 
 /// Detect the host system's architecture.
@@ -349,7 +351,15 @@ pub fn detect_host_architecture() -> &'static str {
             return "aarch64_unknown";
         }
     }
-    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(target_arch = "wasm32")]
+    {
+        return "wasm32_unknown";
+    }
+    #[cfg(target_arch = "wasm64")]
+    {
+        return "wasm64_unknown";
+    }
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "wasm32", target_arch = "wasm64")))]
     {
         // Default to x86_64 for unsupported architectures
         return "x86_64_unknown";
