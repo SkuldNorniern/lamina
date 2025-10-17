@@ -270,6 +270,7 @@
 pub mod codegen;
 pub mod error;
 pub mod ir;
+pub mod mir;
 pub mod parser;
 
 use std::io::Write;
