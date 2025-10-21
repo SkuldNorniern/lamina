@@ -1211,8 +1211,7 @@ fn generate_optimized_load<'a, W: Write>(
         {
             let load_suffix = match ty {
                 Type::Primitive(PrimitiveType::I32) => "l",
-                Type::Primitive(PrimitiveType::I64)
-                | Type::Primitive(PrimitiveType::Ptr) => "q",
+                Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => "q",
                 Type::Primitive(PrimitiveType::I8) => "b",
                 _ => {
                     return generate_instruction(
@@ -1280,8 +1279,7 @@ fn generate_optimized_store<'a, W: Write>(
     if let (Some(ptr_reg), Some(value_reg)) = (ptr_in_reg, value_in_reg) {
         let store_suffix = match ty {
             Type::Primitive(PrimitiveType::I32) => "l",
-            Type::Primitive(PrimitiveType::I64)
-            | Type::Primitive(PrimitiveType::Ptr) => "q",
+            Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => "q",
             Type::Primitive(PrimitiveType::I8) => "b",
             _ => {
                 return generate_instruction(

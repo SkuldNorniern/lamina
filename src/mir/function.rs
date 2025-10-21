@@ -157,7 +157,9 @@ impl fmt::Display for Function {
         // Signature header
         write!(f, "fn {}(", self.sig.name)?;
         for (i, p) in self.sig.params.iter().enumerate() {
-            if i > 0 { write!(f, ", ")?; }
+            if i > 0 {
+                write!(f, ", ")?;
+            }
             write!(f, "{} {}", p.reg, p.ty)?;
         }
         write!(f, ")")?;

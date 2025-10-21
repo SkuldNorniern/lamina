@@ -143,7 +143,7 @@ impl<'a> ParserState<'a> {
         self.advance(); // Consume first char
 
         // Consume subsequent alphanumeric or underscore characters
-        
+
         // while let Some(byte) = self.bytes.get(self.position) {
         //     if byte.is_ascii_alphanumeric() || *byte == b'_' {
         //         self.advance();
@@ -156,7 +156,6 @@ impl<'a> ParserState<'a> {
             let byte = self.bytes[self.position];
             //println!("byte: {}, position: {}", byte as char, self.position);
             if byte.is_ascii_alphanumeric() || byte == b'_' {
-                
                 self.advance();
             } else {
                 break;
@@ -602,7 +601,7 @@ fn parse_value_with_type_hint<'a>(
                             Ok(Value::Constant(Literal::I32(i_val as i32)))
                         } else {
                             Ok(Value::Constant(Literal::I64(i_val)))
-                        }
+                        };
                     }
 
                     // Reset position and try float
@@ -651,7 +650,7 @@ fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>> {
                 } else {
                     // If it doesn't fit in I32, use I64
                     Ok(Value::Constant(Literal::I64(i_val)))
-                }
+                };
             }
 
             // Reset position and try float
@@ -1502,7 +1501,7 @@ impl Instruction<'_> {
 mod tests {
     use super::*;
     // Import things from outer module
-        use crate::{Literal, PrimitiveType, Type, Value};
+    use crate::{Literal, PrimitiveType, Type, Value};
 
     // Helper to create a ParserState for testing
     fn test_state(input: &str) -> ParserState {

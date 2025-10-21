@@ -47,7 +47,13 @@ impl Peephole {
         for inst in &mut block.instructions {
             let mut local_change = false;
             match inst {
-                Instruction::IntBinary { op, dst: _, ty: _, lhs, rhs } => {
+                Instruction::IntBinary {
+                    op,
+                    dst: _,
+                    ty: _,
+                    lhs,
+                    rhs,
+                } => {
                     // Fold identities on integer arithmetic
                     local_change |= self.try_fold_int_identity(op, lhs, rhs);
                 }
@@ -63,10 +69,21 @@ impl Peephole {
         changed
     }
 
-    fn try_fold_int_identity(&self, op: &mut IntBinOp, lhs: &mut Operand, rhs: &mut Operand) -> bool {
+    fn try_fold_int_identity(
+        &self,
+        op: &mut IntBinOp,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+    ) -> bool {
         // Recognize immediates. Keep by-reference uses minimal to avoid cloning owned types.
-        let lhs_imm = match lhs { Operand::Immediate(i) => Some(*i), _ => None };
-        let rhs_imm = match rhs { Operand::Immediate(i) => Some(*i), _ => None };
+        let lhs_imm = match lhs {
+            Operand::Immediate(i) => Some(*i),
+            _ => None,
+        };
+        let rhs_imm = match rhs {
+            Operand::Immediate(i) => Some(*i),
+            _ => None,
+        };
 
         match op {
             IntBinOp::Add => {
@@ -176,5 +193,3 @@ mod tests {
         assert!(changed);
     }
 }
-
-
