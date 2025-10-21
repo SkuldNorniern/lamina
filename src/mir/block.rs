@@ -2,6 +2,7 @@
 //!
 //! A basic block is a sequence of instructions with a single entry and exit point.
 use super::instruction::Instruction;
+use std::fmt;
 
 /// Block in LUMIR
 #[derive(Debug, Clone, PartialEq)]
@@ -11,6 +12,16 @@ pub struct Block {
 
     /// Instructions in this block
     pub instructions: Vec<Instruction>,
+}
+
+impl fmt::Display for Block {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "{}:", self.label)?;
+        for instr in &self.instructions {
+            writeln!(f, "  {}", instr)?;
+        }
+        Ok(())
+    }
 }
 
 impl Block {

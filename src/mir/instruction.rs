@@ -2,6 +2,7 @@
 /// Low-level, machine-friendly instructions that map closely to actual assembly.
 use super::register::Register;
 use super::types::MirType;
+use std::fmt;
 
 /// Integer binary operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,6 +22,27 @@ pub enum IntBinOp {
     AShr,
 }
 
+impl fmt::Display for IntBinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            IntBinOp::Add => "add",
+            IntBinOp::Sub => "sub",
+            IntBinOp::Mul => "mul",
+            IntBinOp::UDiv => "udiv",
+            IntBinOp::SDiv => "sdiv",
+            IntBinOp::URem => "urem",
+            IntBinOp::SRem => "srem",
+            IntBinOp::And => "and",
+            IntBinOp::Or => "or",
+            IntBinOp::Xor => "xor",
+            IntBinOp::Shl => "shl",
+            IntBinOp::LShr => "lshr",
+            IntBinOp::AShr => "ashr",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 /// Floating-point binary operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FloatBinOp {
@@ -30,11 +52,33 @@ pub enum FloatBinOp {
     FDiv,
 }
 
+impl fmt::Display for FloatBinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            FloatBinOp::FAdd => "fadd",
+            FloatBinOp::FSub => "fsub",
+            FloatBinOp::FMul => "fmul",
+            FloatBinOp::FDiv => "fdiv",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 /// Floating-point unary operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FloatUnOp {
     FNeg,
     FSqrt,
+}
+
+impl fmt::Display for FloatUnOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            FloatUnOp::FNeg => "fneg",
+            FloatUnOp::FSqrt => "fsqrt",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 /// Integer comparison operations
@@ -52,6 +96,24 @@ pub enum IntCmpOp {
     SGe,
 }
 
+impl fmt::Display for IntCmpOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            IntCmpOp::Eq => "eq",
+            IntCmpOp::Ne => "ne",
+            IntCmpOp::ULt => "ult",
+            IntCmpOp::ULe => "ule",
+            IntCmpOp::UGt => "ugt",
+            IntCmpOp::UGe => "uge",
+            IntCmpOp::SLt => "slt",
+            IntCmpOp::SLe => "sle",
+            IntCmpOp::SGt => "sgt",
+            IntCmpOp::SGe => "sge",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 /// Floating-point comparison operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FloatCmpOp {
@@ -61,6 +123,20 @@ pub enum FloatCmpOp {
     Le,
     Gt,
     Ge,
+}
+
+impl fmt::Display for FloatCmpOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            FloatCmpOp::Eq => "eq",
+            FloatCmpOp::Ne => "ne",
+            FloatCmpOp::Lt => "lt",
+            FloatCmpOp::Le => "le",
+            FloatCmpOp::Gt => "gt",
+            FloatCmpOp::Ge => "ge",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 /// Vector operations
@@ -80,6 +156,26 @@ pub enum VectorOp {
     VInsertLane,
 }
 
+impl fmt::Display for VectorOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            VectorOp::VAdd => "vadd",
+            VectorOp::VSub => "vsub",
+            VectorOp::VMul => "vmul",
+            VectorOp::VAnd => "vand",
+            VectorOp::VOr => "vor",
+            VectorOp::VXor => "vxor",
+            VectorOp::VShl => "vshl",
+            VectorOp::VLShr => "vlshr",
+            VectorOp::VAShr => "vashr",
+            VectorOp::VSplat => "vsplat",
+            VectorOp::VExtractLane => "vextractlane",
+            VectorOp::VInsertLane => "vinsertlane",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 /// Immediate value (constant operand)
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Immediate {
@@ -91,11 +187,33 @@ pub enum Immediate {
     F64(f64),
 }
 
+impl fmt::Display for Immediate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Immediate::I8(v) => write!(f, "{}", v),
+            Immediate::I16(v) => write!(f, "{}", v),
+            Immediate::I32(v) => write!(f, "{}", v),
+            Immediate::I64(v) => write!(f, "{}", v),
+            Immediate::F32(v) => write!(f, "{}", v),
+            Immediate::F64(v) => write!(f, "{}", v),
+        }
+    }
+}
+
 /// Operand (register or immediate)
 #[derive(Debug, Clone, PartialEq)]
 pub enum Operand {
     Register(Register),
     Immediate(Immediate),
+}
+
+impl fmt::Display for Operand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Operand::Register(r) => write!(f, "{}", r),
+            Operand::Immediate(i) => write!(f, "{}", i),
+        }
+    }
 }
 
 impl From<Register> for Operand {
@@ -125,6 +243,19 @@ pub enum AddressMode {
         scale: u8,  // 1, 2, 4, or 8
         offset: i8, // 4-bit signed, extended to i8
     },
+}
+
+impl fmt::Display for AddressMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AddressMode::BaseOffset { base, offset } => {
+                if *offset == 0 { write!(f, "[{}]", base) } else { write!(f, "[{} + {}]", base, offset) }
+            }
+            AddressMode::BaseIndexScale { base, index, scale, offset } => {
+                if *offset == 0 { write!(f, "[{} + {}<<{}]", base, index, scale) } else { write!(f, "[{} + {}<<{} + {}]", base, index, scale, offset) }
+            }
+        }
+    }
 }
 
 /// Memory operation attributes
@@ -385,6 +516,80 @@ impl Instruction {
                 | Instruction::Ret { .. }
                 | Instruction::Unreachable
         )
+    }
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Instruction::IntBinary { op, ty, dst, lhs, rhs } => {
+                write!(f, "{} = {}.{} {}, {}", dst, op, ty, lhs, rhs)
+            }
+            Instruction::FloatBinary { op, ty, dst, lhs, rhs } => {
+                write!(f, "{} = {}.{} {}, {}", dst, op, ty, lhs, rhs)
+            }
+            Instruction::FloatUnary { op, ty, dst, src } => {
+                write!(f, "{} = {}.{} {}", dst, op, ty, src)
+            }
+            Instruction::IntCmp { op, ty, dst, lhs, rhs } => {
+                write!(f, "{} = cmp.{}.{} {}, {}", dst, op, ty, lhs, rhs)
+            }
+            Instruction::FloatCmp { op, ty, dst, lhs, rhs } => {
+                write!(f, "{} = fcmp.{}.{} {}, {}", dst, op, ty, lhs, rhs)
+            }
+            Instruction::Select { ty, dst, cond, true_val, false_val } => {
+                write!(f, "{} = select.{} {}, {}, {}", dst, ty, cond, true_val, false_val)
+            }
+            Instruction::Load { ty, dst, addr, attrs } => {
+                write!(f, "ld.{} {}, {} {{align={}, volatile={}}}", ty, dst, addr, attrs.align, attrs.volatile)
+            }
+            Instruction::Store { ty, src, addr, attrs } => {
+                write!(f, "st.{} {}, {} {{align={}, volatile={}}}", ty, src, addr, attrs.align, attrs.volatile)
+            }
+            Instruction::Lea { dst, base, offset } => {
+                write!(f, "lea {}, {}, {}", dst, base, offset)
+            }
+            Instruction::VectorOp { op, ty, dst, operands } => {
+                write!(f, "{} = {}.{}", dst, op, ty)?;
+                for (i, opnd) in operands.iter().enumerate() {
+                    if i == 0 { write!(f, " {}", opnd)?; } else { write!(f, ", {}", opnd)?; }
+                }
+                Ok(())
+            }
+            Instruction::Jmp { target } => write!(f, "jmp {}", target),
+            Instruction::Br { cond, true_target, false_target } => {
+                write!(f, "br {}, {}, {}", cond, true_target, false_target)
+            }
+            Instruction::Switch { value, cases, default } => {
+                write!(f, "switch {} [", value)?;
+                for (i, (val, label)) in cases.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{} -> {}", val, label)?;
+                }
+                write!(f, "] default {}", default)
+            }
+            Instruction::Call { name, args, ret } => {
+                if let Some(r) = ret {
+                    write!(f, "{} = call {}(", r, name)?;
+                } else {
+                    write!(f, "call {}(", name)?;
+                }
+                for (i, a) in args.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", a)?;
+                }
+                write!(f, ")")
+            }
+            Instruction::Ret { value } => match value {
+                Some(v) => write!(f, "ret {}", v),
+                None => write!(f, "ret"),
+            },
+            Instruction::Unreachable => write!(f, "unreachable"),
+            Instruction::SafePoint => write!(f, "safepoint"),
+            Instruction::StackMap { id } => write!(f, "stackmap {}", id),
+            Instruction::PatchPoint { id } => write!(f, "patchpoint {}", id),
+            Instruction::Comment { text } => write!(f, "; {}", text),
+        }
     }
 }
 

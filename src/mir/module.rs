@@ -4,6 +4,7 @@
 use super::function::Function;
 use super::types::MirType;
 use std::collections::HashMap;
+use std::fmt;
 
 /// Global variable declaration
 #[derive(Debug, Clone, PartialEq)]
@@ -136,6 +137,23 @@ impl Module {
     }
 }
 
+impl fmt::Display for Module {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Functions
+        let mut names: Vec<_> = self.functions.keys().collect();
+        names.sort();
+        for (i, name) in names.iter().enumerate() {
+            if let Some(func) = self.functions.get(*name) {
+                writeln!(f, "{}", func)?;
+                if i < names.len() - 1 {
+                    writeln!(f)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Builder for constructing modules
 pub struct ModuleBuilder {
     module: Module,
@@ -212,4 +230,3 @@ mod tests {
         assert_eq!(module.globals.len(), 1);
     }
 }
-

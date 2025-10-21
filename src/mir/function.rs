@@ -2,6 +2,7 @@
 use super::block::Block;
 use super::register::Register;
 use super::types::MirType;
+use std::fmt;
 
 /// Function parameter
 #[derive(Debug, Clone, PartialEq)]
@@ -148,6 +149,29 @@ impl Function {
         }
 
         Ok(())
+    }
+}
+
+impl fmt::Display for Function {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Signature header
+        write!(f, "fn {}(", self.sig.name)?;
+        for (i, p) in self.sig.params.iter().enumerate() {
+            if i > 0 { write!(f, ", ")?; }
+            write!(f, "{} {}", p.reg, p.ty)?;
+        }
+        write!(f, ")")?;
+        if let Some(ret) = &self.sig.ret_ty {
+            write!(f, " -> {}", ret)?;
+        }
+        writeln!(f, " {{")?;
+
+        // Emit blocks in order
+        for block in &self.blocks {
+            writeln!(f, "{}", block)?;
+        }
+
+        write!(f, "}}")
     }
 }
 
