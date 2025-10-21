@@ -96,7 +96,7 @@ pub struct CodegenState<'a> {
     pub global_layout: HashMap<Identifier<'a>, String>,
     pub rodata_strings: Vec<(String, String)>, // label -> content
     pub next_label_id: u32,
-    pub next_rodata_id: u32, // For unique rodata labels
+    pub next_rodata_id: u32,                  // For unique rodata labels
     pub inlinable_functions: HashSet<String>, // Functions that can be inlined
 }
 

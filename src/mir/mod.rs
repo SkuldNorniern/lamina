@@ -1,9 +1,9 @@
 pub mod block;
+pub mod codegen;
 pub mod function;
 pub mod instruction;
 pub mod module;
 pub mod register;
-pub mod codegen;
 /// LUMIR — Lamina Unified Machine Intermediate Representation
 ///
 /// LUMIR is a **low-level, machine-friendly layer** produced after IR Processing
@@ -121,4 +121,3 @@ pub use instruction::{
 pub use module::{Global, Module, ModuleBuilder};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
 pub use types::{MirType, ScalarType, VectorLane, VectorType};
-
