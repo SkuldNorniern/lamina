@@ -297,6 +297,9 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "aarch64_windows",
     "wasm32_unknown",
     "wasm64_unknown",
+    "riscv32_unknown",
+    "riscv64_unknown",
+    "riscv128_unknown",
 ];
 
 /// Detect the host system's architecture.
@@ -359,6 +362,7 @@ pub fn detect_host_architecture() -> &'static str {
     {
         return "wasm64_unknown";
     }
+    
     #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "wasm32", target_arch = "wasm64")))]
     {
         // Default to x86_64 for unsupported architectures
@@ -406,6 +410,10 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         "aarch64_macos" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         "aarch64_linux" => codegen::generate_aarch64_assembly(&module, output_asm)?,
         "aarch64_windows" => codegen::generate_aarch64_assembly(&module, output_asm)?,
+        // RISC-V targets
+        "riscv32_unknown" => codegen::generate_riscv32_assembly(&module, output_asm)?,
+        "riscv64_unknown" => codegen::generate_riscv64_assembly(&module, output_asm)?,
+        "riscv128_unknown" => codegen::generate_riscv128_assembly(&module, output_asm)?,
         _ => {
             return Err(LaminaError::CodegenError(
                 CodegenError::UnsupportedFeature(codegen::FeatureType::Custom(format!(
