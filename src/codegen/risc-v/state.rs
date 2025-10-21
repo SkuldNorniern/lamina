@@ -38,7 +38,7 @@ impl ValueLocation {
     pub fn to_operand_string(&self) -> String {
         match self {
             ValueLocation::Register(reg) => reg.clone(),
-            ValueLocation::StackOffset(offset) => format!("0(s0) # off {}", offset),
+            ValueLocation::StackOffset(offset) => format!("{}(s0)", offset),
         }
     }
 }
