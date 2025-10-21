@@ -1,6 +1,6 @@
 use super::instructions::generate_instruction;
-use super::state::{CodegenState, FunctionContext, ValueLocation, ARG_REGISTERS, RETURN_REGISTER};
-use crate::{BasicBlock, Function, FunctionAnnotation, Identifier, Result};
+use super::state::{CodegenState, FunctionContext, ValueLocation, ARG_REGISTERS};
+use crate::{BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type};
 use std::io::Write;
 
 pub fn generate_functions<'a, W: Write>(
@@ -52,6 +52,12 @@ pub fn generate_function<'a, W: Write>(
 
     precompute_function_layout(func, &mut func_ctx, state)?;
 
+    // Allocate stack frame for locals/spills computed in layout
+    let frame_size = func_ctx.total_stack_size as i64;
+    if frame_size > 0 {
+        writeln!(writer, "    addi sp, sp, -{}", frame_size)?;
+    }
+
     // Spill arguments to assigned stack slots if necessary
     for (i, param) in func.signature.params.iter().enumerate() {
         if let Some(ValueLocation::StackOffset(off)) = func_ctx.value_locations.get(param.name) {
@@ -82,6 +88,10 @@ pub fn generate_function<'a, W: Write>(
 
     // Epilogue
     writeln!(writer, "{}:", func_ctx.epilogue_label)?;
+    // Restore local frame
+    if frame_size > 0 {
+        writeln!(writer, "    addi sp, sp, {}", frame_size)?;
+    }
     match state.width() {
         super::IsaWidth::Rv32 => {
             writeln!(writer, "    lw ra, 4(sp)")?;
@@ -109,19 +119,71 @@ fn precompute_function_layout<'a>(
         func_ctx.block_labels.insert(ir_label, asm_label);
     }
 
-    // Very basic: place all params on stack sequentially at negative offsets
+    // Place params and locals at negative offsets from s0
     let saved_area: i64 = match state.width() { super::IsaWidth::Rv32 => 8, _ => 16 };
-    let slot_size: i64 = match state.width() { super::IsaWidth::Rv32 => 4, super::IsaWidth::Rv64 => 8, super::IsaWidth::Rv128 => 16 };
-    let mut current: i64 = -saved_area; // below saved area
+    let word: i64 = match state.width() { super::IsaWidth::Rv32 => 4, super::IsaWidth::Rv64 => 8, super::IsaWidth::Rv128 => 16 };
+    let mut current: i64 = 0; // locals start at -word, grow downwards
+
+    // Param spill slots
     for param in &func.signature.params {
-        current -= slot_size; // pointer/word-sized slots
-        func_ctx
-            .value_locations
-            .insert(param.name, ValueLocation::StackOffset(current));
+        current -= word;
+        func_ctx.value_locations.insert(param.name, ValueLocation::StackOffset(current));
     }
 
-    // No locals scan for now; keep frame size minimal
-    func_ctx.total_stack_size = (-current) as u64;
+    // Collect SSA results and allocate stack slots
+    use std::collections::HashSet;
+    let mut seen: HashSet<&str> = HashSet::new();
+    for block in func.basic_blocks.values() {
+        for instr in &block.instructions {
+            let (maybe_res, size_bytes) = match instr {
+                Instruction::Alloc { result, allocated_ty, .. } => {
+                    // Allocate space for value or pointer
+                    let sz = match allocated_ty {
+                        Type::Primitive(pt) => prim_size(*pt, word as u64)?,
+                        Type::Array { .. } | Type::Struct(_) => word as u64, // store pointer
+                        _ => word as u64,
+                    };
+                    (Some(*result), sz)
+                }
+                Instruction::Binary { result, ty, .. } | Instruction::Cmp { result, ty, .. } => {
+                    (Some(*result), prim_size(*ty, word as u64)?)
+                }
+                Instruction::Load { result, ty, .. } => {
+                    let (_, sz) = super::util::get_type_size_directive_and_bytes(ty)?;
+                    (Some(*result), align_to(sz, word as u64))
+                }
+                Instruction::GetFieldPtr { result, .. }
+                | Instruction::GetElemPtr { result, .. }
+                | Instruction::Tuple { result, .. }
+                | Instruction::ExtractTuple { result, .. }
+                | Instruction::IntToPtr { result, .. }
+                | Instruction::PtrToInt { result, .. } => (Some(*result), word as u64),
+                Instruction::Phi { result, ty, .. } => {
+                    let (_, sz) = super::util::get_type_size_directive_and_bytes(ty)?;
+                    (Some(*result), align_to(sz, word as u64))
+                }
+                Instruction::Call { result: Some(res), .. } => (Some(*res), word as u64),
+                Instruction::ZeroExtend { result, target_type, .. } => (Some(*result), prim_size(*target_type, word as u64)?),
+                Instruction::Write { result, .. }
+                | Instruction::Read { result, .. }
+                | Instruction::WriteByte { result, .. }
+                | Instruction::ReadByte { result, .. }
+                | Instruction::WritePtr { result, .. } => (Some(*result), word as u64),
+                _ => (None, 0),
+            };
+            if let Some(res) = maybe_res {
+                if !seen.contains(res) {
+                    seen.insert(res);
+                    current -= align_to(size_bytes, word as u64) as i64;
+                    func_ctx.value_locations.insert(res, ValueLocation::StackOffset(current));
+                }
+            }
+        }
+    }
+
+    // Total frame size (locals + param spills), aligned to 16, excluding saved_area handled in prologue
+    let total = (-current) as u64;
+    func_ctx.total_stack_size = align_to(total, 16);
     Ok(())
 }
 
@@ -136,6 +198,19 @@ fn generate_basic_block<'a, W: Write>(
         generate_instruction(instr, writer, state, func_ctx, func_name)?;
     }
     Ok(())
+}
+
+fn prim_size(pt: PrimitiveType, word: u64) -> Result<u64> {
+    Ok(match pt {
+        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
+        PrimitiveType::I16 | PrimitiveType::U16 => 2,
+        PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr | PrimitiveType::F64 => word,
+    })
+}
+
+fn align_to(size: u64, align: u64) -> u64 {
+    (size + align - 1) & !(align - 1)
 }
 
 
