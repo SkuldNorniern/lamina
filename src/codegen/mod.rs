@@ -1,13 +1,13 @@
 pub mod aarch64;
 pub mod common;
+pub mod riscv;
 pub mod wasm;
 pub mod x86_64;
-pub mod riscv;
 
 // Re-export the main codegen functions for external use
 pub use aarch64::generate_aarch64_assembly;
-pub use x86_64::generate_x86_64_assembly;
 pub use riscv::{generate_riscv32_assembly, generate_riscv64_assembly, generate_riscv128_assembly};
+pub use x86_64::generate_x86_64_assembly;
 
 use crate::PrimitiveType;
 
@@ -161,13 +161,20 @@ impl std::fmt::Display for CodegenError {
                 write!(f, "Tuple size calculation not implemented yet")
             }
             CodegenError::NamedTypeNotImplemented => {
-                write!(f, "Named type size calculation requires lookup (not implemented yet)")
+                write!(
+                    f,
+                    "Named type size calculation requires lookup (not implemented yet)"
+                )
             }
             CodegenError::VoidTypeSize => {
                 write!(f, "Cannot get size of void type")
             }
             CodegenError::UnsupportedLiteralTypeInGlobal(lit_type) => {
-                write!(f, "Unsupported literal type in global initializer: {}", lit_type)
+                write!(
+                    f,
+                    "Unsupported literal type in global initializer: {}",
+                    lit_type
+                )
             }
             CodegenError::UnsupportedTypeForOperation(op_type) => {
                 write!(f, "Unsupported type for {} operation", op_type)
@@ -181,10 +188,18 @@ impl std::fmt::Display for CodegenError {
                 write!(f, "Load for type '{}' not implemented yet", type_info)
             }
             CodegenError::BinaryOpNotSupportedForType(type_info) => {
-                write!(f, "Binary operation for type '{}' not supported yet", type_info)
+                write!(
+                    f,
+                    "Binary operation for type '{}' not supported yet",
+                    type_info
+                )
             }
             CodegenError::ComparisonOpNotSupportedForType(type_info) => {
-                write!(f, "Comparison operation for type '{}' not supported yet", type_info)
+                write!(
+                    f,
+                    "Comparison operation for type '{}' not supported yet",
+                    type_info
+                )
             }
             CodegenError::ZeroExtensionNotSupported(ext_info) => {
                 write!(f, "Unsupported zero extension: {}", ext_info)
@@ -229,13 +244,19 @@ impl std::fmt::Display for CodegenError {
 
             // Global/Initializer Errors
             CodegenError::GlobalToGlobalInitNotImplemented => {
-                write!(f, "Global initializer pointing to another global not implemented yet")
+                write!(
+                    f,
+                    "Global initializer pointing to another global not implemented yet"
+                )
             }
             CodegenError::GlobalVarInitNotSupported => {
                 write!(f, "Cannot initialize global with a variable")
             }
             CodegenError::UninitializedGlobalInit => {
-                write!(f, "generate_global_initializer called on uninitialized global")
+                write!(
+                    f,
+                    "generate_global_initializer called on uninitialized global"
+                )
             }
 
             // Feature Support Errors

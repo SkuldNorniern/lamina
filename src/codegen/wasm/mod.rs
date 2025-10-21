@@ -357,11 +357,7 @@ fn get_wasm_type_for_return<'a>(
     }
 }
 
-fn is_const(
-    value: &Value,
-    ty: Option<&PrimitiveType>,
-    is_wasm64: bool,
-) -> Option<NumericConstant> {
+fn is_const(value: &Value, ty: Option<&PrimitiveType>, is_wasm64: bool) -> Option<NumericConstant> {
     match value {
         Value::Constant(lit) => Some(if let Some(ty) = ty {
             match ty {

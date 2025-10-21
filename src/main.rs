@@ -244,15 +244,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Parse IR and lower to MIR, then exit early
         let ir_mod = lamina::parser::parse_module(&ir_source)
             .map_err(|e| format!("IR parse failed: {}", e))?;
-        let mir_mod = lamina::mir::codegen::from_ir(
-            &ir_mod,
-            input_path.to_string_lossy().as_ref(),
-        )
-        .map_err(|e| format!("MIR lowering failed: {}", e))?;
+        let mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
+            .map_err(|e| format!("MIR lowering failed: {}", e))?;
         let mut mir_path = input_path.clone();
         mir_path.set_extension("lumir");
-        let mut mir_file = File::create(&mir_path)
-            .map_err(|e| format!("Failed to create MIR file: {}", e))?;
+        let mut mir_file =
+            File::create(&mir_path).map_err(|e| format!("Failed to create MIR file: {}", e))?;
         let mir_text = format!("{}", mir_mod);
         mir_file
             .write_all(mir_text.as_bytes())

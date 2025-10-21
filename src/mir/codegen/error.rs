@@ -18,5 +18,3 @@ impl std::fmt::Display for FromIRError {
         }
     }
 }
-
-

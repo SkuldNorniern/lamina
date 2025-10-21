@@ -23,5 +23,3 @@ pub fn map_ir_type(ty: &crate::ir::types::Type<'_>) -> Result<MirType, FromIRErr
         _ => Err(FromIRError::UnsupportedType),
     }
 }
-
-
