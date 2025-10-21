@@ -130,5 +130,3 @@ impl<'a> CodegenState<'a> {
         label
     }
 }
-
-

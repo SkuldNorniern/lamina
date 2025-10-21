@@ -53,7 +53,10 @@ pub fn generate_global_data_section<'a, W: Write>(
     Ok(())
 }
 
-fn generate_global_initializer<W: Write>(writer: &mut W, global: &GlobalDeclaration<'_>) -> Result<()> {
+fn generate_global_initializer<W: Write>(
+    writer: &mut W,
+    global: &GlobalDeclaration<'_>,
+) -> Result<()> {
     if let Some(ref initializer) = global.initializer {
         match initializer {
             crate::Value::Constant(literal) => match literal {
@@ -65,7 +68,11 @@ fn generate_global_initializer<W: Write>(writer: &mut W, global: &GlobalDeclarat
                 }
                 Literal::Bool(v) => writeln!(writer, "    .byte {}", if *v { 1 } else { 0 })?,
                 Literal::String(s) => {
-                    writeln!(writer, "    .asciz \"{}\"", crate::codegen::common::utils::escape_asm_string(s))?;
+                    writeln!(
+                        writer,
+                        "    .asciz \"{}\"",
+                        crate::codegen::common::utils::escape_asm_string(s)
+                    )?;
                 }
                 Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
                 _ => {
@@ -105,5 +112,3 @@ pub fn generate_globals<W: Write>(state: &CodegenState, writer: &mut W) -> Resul
     }
     Ok(())
 }
-
-

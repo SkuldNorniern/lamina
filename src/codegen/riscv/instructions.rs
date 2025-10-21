@@ -1,5 +1,5 @@
-use super::state::{CodegenState, FunctionContext, ValueLocation, RETURN_REGISTER};
 use super::IsaWidth;
+use super::state::{CodegenState, FunctionContext, RETURN_REGISTER, ValueLocation};
 use crate::codegen::{CodegenError, TypeInfo};
 use crate::{BinaryOp, Identifier, Instruction, LaminaError, PrimitiveType, Result, Type, Value};
 use std::io::Write;
@@ -14,7 +14,11 @@ pub fn generate_instruction<'a, W: Write>(
     writeln!(writer, "    # IR: {}", instr)?;
 
     match instr {
-        Instruction::Alloc { result, alloc_type, allocated_ty } => {
+        Instruction::Alloc {
+            result,
+            alloc_type,
+            allocated_ty,
+        } => {
             // For stack allocations of aggregates, store the address of the slot into result
             match alloc_type {
                 crate::AllocType::Stack => {
@@ -49,14 +53,24 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "    j {}", func_ctx.epilogue_label)?;
         }
 
-        Instruction::Binary { op, result, ty, lhs, rhs } => {
+        Instruction::Binary {
+            op,
+            result,
+            ty,
+            lhs,
+            rhs,
+        } => {
             let lhs_op = super::util::get_value_operand_asm(lhs, state, func_ctx)?;
             let rhs_op = super::util::get_value_operand_asm(rhs, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
 
             match ty {
-                PrimitiveType::I32 | PrimitiveType::U32 => binary_i32(writer, op, &lhs_op, &rhs_op, &dest, state)?,
-                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => binary_i64(writer, op, &lhs_op, &rhs_op, &dest, state)?,
+                PrimitiveType::I32 | PrimitiveType::U32 => {
+                    binary_i32(writer, op, &lhs_op, &rhs_op, &dest, state)?
+                }
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => {
+                    binary_i64(writer, op, &lhs_op, &rhs_op, &dest, state)?
+                }
                 _ => {
                     return Err(LaminaError::CodegenError(
                         CodegenError::BinaryOpNotSupportedForType(TypeInfo::Primitive(*ty)),
@@ -70,7 +84,11 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "    j {}", label)?;
         }
 
-        Instruction::Br { condition, true_label, false_label } => {
+        Instruction::Br {
+            condition,
+            true_label,
+            false_label,
+        } => {
             let cond = super::util::get_value_operand_asm(condition, state, func_ctx)?;
             materialize_to_reg(writer, &cond, "t0", state)?;
             let tlabel = func_ctx.get_block_label(true_label)?;
@@ -79,7 +97,13 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "    j {}", flabel)?;
         }
 
-        Instruction::Cmp { op, result, ty: _, lhs, rhs } => {
+        Instruction::Cmp {
+            op,
+            result,
+            ty: _,
+            lhs,
+            rhs,
+        } => {
             // Very basic: compute lhs - rhs and set 1/0 in dest
             let lhs_op = super::util::get_value_operand_asm(lhs, state, func_ctx)?;
             let rhs_op = super::util::get_value_operand_asm(rhs, state, func_ctx)?;
@@ -118,7 +142,12 @@ pub fn generate_instruction<'a, W: Write>(
             }
         }
 
-        Instruction::GetElemPtr { result, array_ptr, index, element_type } => {
+        Instruction::GetElemPtr {
+            result,
+            array_ptr,
+            index,
+            element_type,
+        } => {
             // base + index * elem_size
             let base = super::util::get_value_operand_asm(array_ptr, state, func_ctx)?;
             let idx = super::util::get_value_operand_asm(index, state, func_ctx)?;
@@ -126,10 +155,16 @@ pub fn generate_instruction<'a, W: Write>(
             materialize_to_reg(writer, &base, "t0", state)?;
             materialize_to_reg(writer, &idx, "t1", state)?;
             let elem_size = match element_type {
-                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
+                PrimitiveType::I8
+                | PrimitiveType::U8
+                | PrimitiveType::Bool
+                | PrimitiveType::Char => 1,
                 PrimitiveType::I16 | PrimitiveType::U16 => 2,
                 PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
-                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+                PrimitiveType::I64
+                | PrimitiveType::U64
+                | PrimitiveType::F64
+                | PrimitiveType::Ptr => 8,
             } as i64;
             if elem_size == 1 {
                 // no scale
@@ -145,39 +180,71 @@ pub fn generate_instruction<'a, W: Write>(
             store_to_location(writer, "t0", &dest, state)?;
         }
 
-        Instruction::GetFieldPtr { result, struct_ptr, field_index } => {
+        Instruction::GetFieldPtr {
+            result,
+            struct_ptr,
+            field_index,
+        } => {
             // Simplified: assume 8-byte fields
             let base = super::util::get_value_operand_asm(struct_ptr, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             materialize_to_reg(writer, &base, "t0", state)?;
-            let scale = if matches!(state.width(), IsaWidth::Rv32) { 4 } else { 8 };
+            let scale = if matches!(state.width(), IsaWidth::Rv32) {
+                4
+            } else {
+                8
+            };
             writeln!(writer, "    li t1, {}", field_index * scale)?;
             writeln!(writer, "    add t0, t0, t1")?;
             store_to_location(writer, "t0", &dest, state)?;
         }
 
-        Instruction::PtrToInt { result, ptr_value, .. } => {
+        Instruction::PtrToInt {
+            result, ptr_value, ..
+        } => {
             let src = super::util::get_value_operand_asm(ptr_value, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             materialize_to_reg(writer, &src, "t0", state)?;
             store_to_location(writer, "t0", &dest, state)?;
         }
 
-        Instruction::IntToPtr { result, int_value, .. } => {
+        Instruction::IntToPtr {
+            result, int_value, ..
+        } => {
             let src = super::util::get_value_operand_asm(int_value, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             materialize_to_reg(writer, &src, "t0", state)?;
             store_to_location(writer, "t0", &dest, state)?;
         }
 
-        Instruction::ZeroExtend { result, source_type, target_type, value } => {
+        Instruction::ZeroExtend {
+            result,
+            source_type,
+            target_type,
+            value,
+        } => {
             let src = super::util::get_value_operand_asm(value, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
             materialize_to_reg(writer, &src, "t0", state)?;
             let mask = match (source_type, target_type) {
-                (PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool, PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::I64 | PrimitiveType::U64) => Some(0xFFu64),
-                (PrimitiveType::I16 | PrimitiveType::U16, PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::I64 | PrimitiveType::U64) => Some(0xFFFFu64),
-                (PrimitiveType::I32 | PrimitiveType::U32, PrimitiveType::I64 | PrimitiveType::U64) => None,
+                (
+                    PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool,
+                    PrimitiveType::I32
+                    | PrimitiveType::U32
+                    | PrimitiveType::I64
+                    | PrimitiveType::U64,
+                ) => Some(0xFFu64),
+                (
+                    PrimitiveType::I16 | PrimitiveType::U16,
+                    PrimitiveType::I32
+                    | PrimitiveType::U32
+                    | PrimitiveType::I64
+                    | PrimitiveType::U64,
+                ) => Some(0xFFFFu64),
+                (
+                    PrimitiveType::I32 | PrimitiveType::U32,
+                    PrimitiveType::I64 | PrimitiveType::U64,
+                ) => None,
                 _ => None,
             };
             if let Some(m) = mask {
@@ -187,12 +254,23 @@ pub fn generate_instruction<'a, W: Write>(
             store_to_location(writer, "t0", &dest, state)?;
         }
 
-        Instruction::Call { func_name, args, result } => {
+        Instruction::Call {
+            func_name,
+            args,
+            result,
+        } => {
             // Pass up to 8 args in a0-a7
             for (i, arg) in args.iter().enumerate().take(8) {
                 let op = super::util::get_value_operand_asm(arg, state, func_ctx)?;
                 let reg = match i {
-                    0 => "a0", 1 => "a1", 2 => "a2", 3 => "a3", 4 => "a4", 5 => "a5", 6 => "a6", _ => "a7",
+                    0 => "a0",
+                    1 => "a1",
+                    2 => "a2",
+                    3 => "a3",
+                    4 => "a4",
+                    5 => "a5",
+                    6 => "a6",
+                    _ => "a7",
                 };
                 materialize_to_reg(writer, &op, reg, state)?;
             }
@@ -231,7 +309,11 @@ pub fn generate_instruction<'a, W: Write>(
 
         Instruction::WriteByte { value, result } => {
             // Allocate small buffer on stack and write one byte via Linux write syscall
-            let stack_alloc = if matches!(state.width(), IsaWidth::Rv32) { 8 } else { 16 };
+            let stack_alloc = if matches!(state.width(), IsaWidth::Rv32) {
+                8
+            } else {
+                16
+            };
             writeln!(writer, "    addi sp, sp, -{}", stack_alloc)?;
 
             // Store byte to [sp]
@@ -254,7 +336,11 @@ pub fn generate_instruction<'a, W: Write>(
             writeln!(writer, "    addi sp, sp, {}", stack_alloc)?;
         }
 
-        Instruction::Write { buffer, size, result } => {
+        Instruction::Write {
+            buffer,
+            size,
+            result,
+        } => {
             // Linux RISC-V write syscall: a7=64, a0=fd, a1=buf, a2=count
             writeln!(writer, "    li a0, 1")?; // stdout
             let buf_op = super::util::get_value_operand_asm(buffer, state, func_ctx)?;
@@ -267,7 +353,11 @@ pub fn generate_instruction<'a, W: Write>(
             store_to_location(writer, "a0", &dest, state)?;
         }
 
-        Instruction::Read { buffer, size, result } => {
+        Instruction::Read {
+            buffer,
+            size,
+            result,
+        } => {
             // Linux RISC-V read syscall: a7=63, a0=fd, a1=buf, a2=count
             writeln!(writer, "    li a0, 0")?; // stdin
             let buf_op = super::util::get_value_operand_asm(buffer, state, func_ctx)?;
@@ -282,7 +372,11 @@ pub fn generate_instruction<'a, W: Write>(
 
         Instruction::ReadByte { result } => {
             // Read one byte from stdin into stack buffer, return byte or error code
-            let stack_alloc = if matches!(state.width(), IsaWidth::Rv32) { 8 } else { 16 };
+            let stack_alloc = if matches!(state.width(), IsaWidth::Rv32) {
+                8
+            } else {
+                16
+            };
             writeln!(writer, "    addi sp, sp, -{}", stack_alloc)?;
             writeln!(writer, "    li a0, 0")?; // stdin
             writeln!(writer, "    mv a1, sp")?; // buffer
@@ -308,7 +402,10 @@ pub fn generate_instruction<'a, W: Write>(
             if ptr_op.contains("(s0)") {
                 // Direct stack slot load
                 match ty {
-                    Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) | Type::Primitive(PrimitiveType::Bool) | Type::Primitive(PrimitiveType::Char) => {
+                    Type::Primitive(PrimitiveType::I8)
+                    | Type::Primitive(PrimitiveType::U8)
+                    | Type::Primitive(PrimitiveType::Bool)
+                    | Type::Primitive(PrimitiveType::Char) => {
                         writeln!(writer, "    lbu t0, {}", ptr_op)?;
                         store_to_location(writer, "t0", &dest, state)?;
                     }
@@ -320,7 +417,9 @@ pub fn generate_instruction<'a, W: Write>(
                         writeln!(writer, "    lw t0, {}", ptr_op)?;
                         store_to_location(writer, "t0", &dest, state)?;
                     }
-                    Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) | Type::Primitive(PrimitiveType::Ptr) => {
+                    Type::Primitive(PrimitiveType::I64)
+                    | Type::Primitive(PrimitiveType::U64)
+                    | Type::Primitive(PrimitiveType::Ptr) => {
                         if matches!(state.width(), IsaWidth::Rv32) {
                             // Minimal RV32: load low word only
                             writeln!(writer, "    lw t0, {}", ptr_op)?;
@@ -329,7 +428,13 @@ pub fn generate_instruction<'a, W: Write>(
                         }
                         store_to_location(writer, "t0", &dest, state)?;
                     }
-                    _ => return Err(LaminaError::CodegenError(CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())))),
+                    _ => {
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(
+                                ty.to_string(),
+                            )),
+                        ));
+                    }
                 }
             } else {
                 // Treat ptr_op as an address in a register or label
@@ -350,7 +455,10 @@ pub fn generate_instruction<'a, W: Write>(
             materialize_to_reg(writer, &val_op, "t0", state)?;
             if ptr_op.contains("(s0)") {
                 match ty {
-                    Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) | Type::Primitive(PrimitiveType::Bool) | Type::Primitive(PrimitiveType::Char) => {
+                    Type::Primitive(PrimitiveType::I8)
+                    | Type::Primitive(PrimitiveType::U8)
+                    | Type::Primitive(PrimitiveType::Bool)
+                    | Type::Primitive(PrimitiveType::Char) => {
                         writeln!(writer, "    sb t0, {}", ptr_op)?;
                     }
                     Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => {
@@ -359,14 +467,22 @@ pub fn generate_instruction<'a, W: Write>(
                     Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => {
                         writeln!(writer, "    sw t0, {}", ptr_op)?;
                     }
-                    Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) | Type::Primitive(PrimitiveType::Ptr) => {
+                    Type::Primitive(PrimitiveType::I64)
+                    | Type::Primitive(PrimitiveType::U64)
+                    | Type::Primitive(PrimitiveType::Ptr) => {
                         if matches!(state.width(), IsaWidth::Rv32) {
                             writeln!(writer, "    sw t0, {}", ptr_op)?;
                         } else {
                             writeln!(writer, "    sd t0, {}", ptr_op)?;
                         }
                     }
-                    _ => return Err(LaminaError::CodegenError(CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())))),
+                    _ => {
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(
+                                ty.to_string(),
+                            )),
+                        ));
+                    }
                 }
             } else {
                 materialize_address(writer, &ptr_op, "t1")?;
@@ -386,7 +502,12 @@ pub fn generate_instruction<'a, W: Write>(
     Ok(())
 }
 
-fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str, state: &CodegenState) -> Result<()> {
+fn materialize_to_reg<W: Write>(
+    writer: &mut W,
+    op: &str,
+    dest: &str,
+    state: &CodegenState,
+) -> Result<()> {
     if let Ok(imm) = op.parse::<i64>() {
         writeln!(writer, "    li {}, {}", dest, imm)?;
     } else if op.ends_with("(adrp+add)") || op.contains("(adrp+add)") {
@@ -407,7 +528,12 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str, state: &Co
     Ok(())
 }
 
-fn store_to_location<W: Write>(writer: &mut W, src_op: &str, dest: &str, state: &CodegenState) -> Result<()> {
+fn store_to_location<W: Write>(
+    writer: &mut W,
+    src_op: &str,
+    dest: &str,
+    state: &CodegenState,
+) -> Result<()> {
     if dest.starts_with('a') || dest.starts_with('t') || dest.starts_with('s') {
         writeln!(writer, "    mv {}, {}", dest, src_op)?;
     } else if dest.contains("(s0)") {
@@ -422,7 +548,14 @@ fn store_to_location<W: Write>(writer: &mut W, src_op: &str, dest: &str, state: 
     Ok(())
 }
 
-fn binary_i32<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, dest: &str, state: &CodegenState) -> Result<()> {
+fn binary_i32<W: Write>(
+    writer: &mut W,
+    op: &BinaryOp,
+    lhs: &str,
+    rhs: &str,
+    dest: &str,
+    state: &CodegenState,
+) -> Result<()> {
     materialize_to_reg(writer, lhs, "t0", state)?;
     materialize_to_reg(writer, rhs, "t1", state)?;
     match op {
@@ -434,7 +567,14 @@ fn binary_i32<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, des
     store_to_location(writer, "t2", dest, state)
 }
 
-fn binary_i64<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, dest: &str, state: &CodegenState) -> Result<()> {
+fn binary_i64<W: Write>(
+    writer: &mut W,
+    op: &BinaryOp,
+    lhs: &str,
+    rhs: &str,
+    dest: &str,
+    state: &CodegenState,
+) -> Result<()> {
     materialize_to_reg(writer, lhs, "t0", state)?;
     materialize_to_reg(writer, rhs, "t1", state)?;
     match op {
@@ -465,5 +605,3 @@ fn materialize_address<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result
     }
     Ok(())
 }
-
-
