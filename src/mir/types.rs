@@ -1,6 +1,7 @@
 /// Type system for LUMIR
 ///
 /// LUMIR types are lower-level than IR types, focused on machine representation.
+use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScalarType {
@@ -86,6 +87,52 @@ impl MirType {
     /// Check if this is a vector type
     pub fn is_vector(&self) -> bool {
         matches!(self, MirType::Vector(_))
+    }
+}
+
+impl fmt::Display for ScalarType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ScalarType::I1 => write!(f, "i1"),
+            ScalarType::I8 => write!(f, "i8"),
+            ScalarType::I16 => write!(f, "i16"),
+            ScalarType::I32 => write!(f, "i32"),
+            ScalarType::I64 => write!(f, "i64"),
+            ScalarType::F32 => write!(f, "f32"),
+            ScalarType::F64 => write!(f, "f64"),
+            ScalarType::Ptr => write!(f, "ptr"),
+        }
+    }
+}
+
+impl fmt::Display for VectorLane {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VectorLane::I8 => write!(f, "i8"),
+            VectorLane::I16 => write!(f, "i16"),
+            VectorLane::I32 => write!(f, "i32"),
+            VectorLane::I64 => write!(f, "i64"),
+            VectorLane::F32 => write!(f, "f32"),
+            VectorLane::F64 => write!(f, "f64"),
+        }
+    }
+}
+
+impl fmt::Display for VectorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VectorType::V128(lane) => write!(f, "v128<{}>", lane),
+            VectorType::V256(lane) => write!(f, "v256<{}>", lane),
+        }
+    }
+}
+
+impl fmt::Display for MirType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MirType::Scalar(s) => write!(f, "{}", s),
+            MirType::Vector(v) => write!(f, "{}", v),
+        }
     }
 }
 
