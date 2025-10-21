@@ -1,4 +1,5 @@
 use super::state::{CodegenState, FunctionContext, ValueLocation, RETURN_REGISTER};
+use super::IsaWidth;
 use crate::codegen::{CodegenError, TypeInfo};
 use crate::{BinaryOp, Identifier, Instruction, LaminaError, PrimitiveType, Result, Type, Value};
 use std::io::Write;
@@ -16,7 +17,7 @@ pub fn generate_instruction<'a, W: Write>(
         Instruction::Ret { ty: _, value } => {
             if let Some(val) = value {
                 let src = super::util::get_value_operand_asm(val, state, func_ctx)?;
-                materialize_to_reg(writer, &src, RETURN_REGISTER)?;
+                materialize_to_reg(writer, &src, RETURN_REGISTER, state)?;
             }
             writeln!(writer, "    j {}", func_ctx.epilogue_label)?;
         }
@@ -27,8 +28,8 @@ pub fn generate_instruction<'a, W: Write>(
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
 
             match ty {
-                PrimitiveType::I32 | PrimitiveType::U32 => binary_i32(writer, op, &lhs_op, &rhs_op, &dest)?,
-                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => binary_i64(writer, op, &lhs_op, &rhs_op, &dest)?,
+                PrimitiveType::I32 | PrimitiveType::U32 => binary_i32(writer, op, &lhs_op, &rhs_op, &dest, state)?,
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::Ptr => binary_i64(writer, op, &lhs_op, &rhs_op, &dest, state)?,
                 _ => {
                     return Err(LaminaError::CodegenError(
                         CodegenError::BinaryOpNotSupportedForType(TypeInfo::Primitive(*ty)),
@@ -44,7 +45,7 @@ pub fn generate_instruction<'a, W: Write>(
 
         Instruction::Br { condition, true_label, false_label } => {
             let cond = super::util::get_value_operand_asm(condition, state, func_ctx)?;
-            materialize_to_reg(writer, &cond, "t0")?;
+            materialize_to_reg(writer, &cond, "t0", state)?;
             let tlabel = func_ctx.get_block_label(true_label)?;
             let flabel = func_ctx.get_block_label(false_label)?;
             writeln!(writer, "    bnez t0, {}", tlabel)?;
@@ -56,32 +57,185 @@ pub fn generate_instruction<'a, W: Write>(
             let lhs_op = super::util::get_value_operand_asm(lhs, state, func_ctx)?;
             let rhs_op = super::util::get_value_operand_asm(rhs, state, func_ctx)?;
             let dest = func_ctx.get_value_location(result)?.to_operand_string();
-            materialize_to_reg(writer, &lhs_op, "t0")?;
-            materialize_to_reg(writer, &rhs_op, "t1")?;
+            materialize_to_reg(writer, &lhs_op, "t0", state)?;
+            materialize_to_reg(writer, &rhs_op, "t1", state)?;
             match op {
                 crate::CmpOp::Eq => {
                     writeln!(writer, "    sub t2, t0, t1")?;
-                    store_to_location(writer, "seqz t3, t2", &dest, true)?;
+                    writeln!(writer, "    seqz t3, t2")?;
+                    store_to_location(writer, "t3", &dest, state)?;
                 }
                 crate::CmpOp::Ne => {
                     writeln!(writer, "    sub t2, t0, t1")?;
-                    store_to_location(writer, "snez t3, t2", &dest, true)?;
+                    writeln!(writer, "    snez t3, t2")?;
+                    store_to_location(writer, "t3", &dest, state)?;
                 }
                 crate::CmpOp::Lt => {
                     writeln!(writer, "    slt t3, t0, t1")?;
-                    store_to_location(writer, "mv t3, t3", &dest, false)?;
+                    store_to_location(writer, "t3", &dest, state)?;
                 }
                 crate::CmpOp::Le => {
                     writeln!(writer, "    sgt t2, t0, t1")?;
-                    store_to_location(writer, "seqz t3, t2", &dest, true)?;
+                    writeln!(writer, "    seqz t3, t2")?;
+                    store_to_location(writer, "t3", &dest, state)?;
                 }
                 crate::CmpOp::Gt => {
                     writeln!(writer, "    sgt t3, t0, t1")?;
-                    store_to_location(writer, "mv t3, t3", &dest, false)?;
+                    store_to_location(writer, "t3", &dest, state)?;
                 }
                 crate::CmpOp::Ge => {
                     writeln!(writer, "    slt t2, t0, t1")?;
-                    store_to_location(writer, "seqz t3, t2", &dest, true)?;
+                    writeln!(writer, "    seqz t3, t2")?;
+                    store_to_location(writer, "t3", &dest, state)?;
+                }
+            }
+        }
+
+        Instruction::WriteByte { value, result } => {
+            // Allocate small buffer on stack and write one byte via Linux write syscall
+            let stack_alloc = if matches!(state.width(), IsaWidth::Rv32) { 8 } else { 16 };
+            writeln!(writer, "    addi sp, sp, -{}", stack_alloc)?;
+
+            // Store byte to [sp]
+            let val_op = super::util::get_value_operand_asm(value, state, func_ctx)?;
+            materialize_to_reg(writer, &val_op, "t0", state)?;
+            writeln!(writer, "    sb t0, 0(sp)")?;
+
+            // a0=1 (stdout), a1=sp, a2=1, a7=64 (sys_write), ecall
+            writeln!(writer, "    li a0, 1")?;
+            writeln!(writer, "    mv a1, sp")?;
+            writeln!(writer, "    li a2, 1")?;
+            writeln!(writer, "    li a7, 64")?;
+            writeln!(writer, "    ecall")?;
+
+            // Store syscall result (bytes written or -1)
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            store_to_location(writer, "a0", &dest, state)?;
+
+            // Restore stack
+            writeln!(writer, "    addi sp, sp, {}", stack_alloc)?;
+        }
+
+        Instruction::Write { buffer, size, result } => {
+            // Linux RISC-V write syscall: a7=64, a0=fd, a1=buf, a2=count
+            writeln!(writer, "    li a0, 1")?; // stdout
+            let buf_op = super::util::get_value_operand_asm(buffer, state, func_ctx)?;
+            materialize_address(writer, &buf_op, "a1")?;
+            let size_op = super::util::get_value_operand_asm(size, state, func_ctx)?;
+            materialize_to_reg(writer, &size_op, "a2", state)?;
+            writeln!(writer, "    li a7, 64")?;
+            writeln!(writer, "    ecall")?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            store_to_location(writer, "a0", &dest, state)?;
+        }
+
+        Instruction::Read { buffer, size, result } => {
+            // Linux RISC-V read syscall: a7=63, a0=fd, a1=buf, a2=count
+            writeln!(writer, "    li a0, 0")?; // stdin
+            let buf_op = super::util::get_value_operand_asm(buffer, state, func_ctx)?;
+            materialize_address(writer, &buf_op, "a1")?;
+            let size_op = super::util::get_value_operand_asm(size, state, func_ctx)?;
+            materialize_to_reg(writer, &size_op, "a2", state)?;
+            writeln!(writer, "    li a7, 63")?;
+            writeln!(writer, "    ecall")?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            store_to_location(writer, "a0", &dest, state)?;
+        }
+
+        Instruction::ReadByte { result } => {
+            // Read one byte from stdin into stack buffer, return byte or error code
+            let stack_alloc = if matches!(state.width(), IsaWidth::Rv32) { 8 } else { 16 };
+            writeln!(writer, "    addi sp, sp, -{}", stack_alloc)?;
+            writeln!(writer, "    li a0, 0")?; // stdin
+            writeln!(writer, "    mv a1, sp")?; // buffer
+            writeln!(writer, "    li a2, 1")?; // size
+            writeln!(writer, "    li a7, 63")?; // read
+            writeln!(writer, "    ecall")?;
+            // a0 = bytes read or -1
+            // If a0 == 1, load the byte and return it; else return a0
+            writeln!(writer, "    li t1, 1")?;
+            writeln!(writer, "    bne a0, t1, 1f")?;
+            writeln!(writer, "    lbu t0, 0(sp)")?;
+            writeln!(writer, "    mv a0, t0")?;
+            writeln!(writer, "1:")?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            store_to_location(writer, "a0", &dest, state)?;
+            writeln!(writer, "    addi sp, sp, {}", stack_alloc)?;
+        }
+
+        Instruction::Load { result, ty, ptr } => {
+            // Only support stack offsets and simple registers/globals for now
+            let ptr_op = super::util::get_value_operand_asm(ptr, state, func_ctx)?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            if ptr_op.contains("(s0)") {
+                // Direct stack slot load
+                match ty {
+                    Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) | Type::Primitive(PrimitiveType::Bool) | Type::Primitive(PrimitiveType::Char) => {
+                        writeln!(writer, "    lbu t0, {}", ptr_op)?;
+                        store_to_location(writer, "t0", &dest, state)?;
+                    }
+                    Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => {
+                        writeln!(writer, "    lhu t0, {}", ptr_op)?;
+                        store_to_location(writer, "t0", &dest, state)?;
+                    }
+                    Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => {
+                        writeln!(writer, "    lw t0, {}", ptr_op)?;
+                        store_to_location(writer, "t0", &dest, state)?;
+                    }
+                    Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) | Type::Primitive(PrimitiveType::Ptr) => {
+                        if matches!(state.width(), IsaWidth::Rv32) {
+                            // Minimal RV32: load low word only
+                            writeln!(writer, "    lw t0, {}", ptr_op)?;
+                        } else {
+                            writeln!(writer, "    ld t0, {}", ptr_op)?;
+                        }
+                        store_to_location(writer, "t0", &dest, state)?;
+                    }
+                    _ => return Err(LaminaError::CodegenError(CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(ty.to_string())))),
+                }
+            } else {
+                // Treat ptr_op as an address in a register or label
+                materialize_address(writer, &ptr_op, "t1")?;
+                // Load 64-bit by default (or 32-bit on RV32)
+                if matches!(state.width(), IsaWidth::Rv32) {
+                    writeln!(writer, "    lw t0, 0(t1)")?;
+                } else {
+                    writeln!(writer, "    ld t0, 0(t1)")?;
+                }
+                store_to_location(writer, "t0", &dest, state)?;
+            }
+        }
+
+        Instruction::Store { ty, ptr, value } => {
+            let ptr_op = super::util::get_value_operand_asm(ptr, state, func_ctx)?;
+            let val_op = super::util::get_value_operand_asm(value, state, func_ctx)?;
+            materialize_to_reg(writer, &val_op, "t0", state)?;
+            if ptr_op.contains("(s0)") {
+                match ty {
+                    Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::U8) | Type::Primitive(PrimitiveType::Bool) | Type::Primitive(PrimitiveType::Char) => {
+                        writeln!(writer, "    sb t0, {}", ptr_op)?;
+                    }
+                    Type::Primitive(PrimitiveType::I16) | Type::Primitive(PrimitiveType::U16) => {
+                        writeln!(writer, "    sh t0, {}", ptr_op)?;
+                    }
+                    Type::Primitive(PrimitiveType::I32) | Type::Primitive(PrimitiveType::U32) => {
+                        writeln!(writer, "    sw t0, {}", ptr_op)?;
+                    }
+                    Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::U64) | Type::Primitive(PrimitiveType::Ptr) => {
+                        if matches!(state.width(), IsaWidth::Rv32) {
+                            writeln!(writer, "    sw t0, {}", ptr_op)?;
+                        } else {
+                            writeln!(writer, "    sd t0, {}", ptr_op)?;
+                        }
+                    }
+                    _ => return Err(LaminaError::CodegenError(CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(ty.to_string())))),
+                }
+            } else {
+                materialize_address(writer, &ptr_op, "t1")?;
+                if matches!(state.width(), IsaWidth::Rv32) {
+                    writeln!(writer, "    sw t0, 0(t1)")?;
+                } else {
+                    writeln!(writer, "    sd t0, 0(t1)")?;
                 }
             }
         }
@@ -94,7 +248,7 @@ pub fn generate_instruction<'a, W: Write>(
     Ok(())
 }
 
-fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<()> {
+fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str, state: &CodegenState) -> Result<()> {
     if let Ok(imm) = op.parse::<i64>() {
         writeln!(writer, "    li {}, {}", dest, imm)?;
     } else if op.ends_with("(adrp+add)") || op.contains("(adrp+add)") {
@@ -103,7 +257,11 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
         writeln!(writer, "    la {}, {}", dest, label)?;
     } else if op.contains("(s0)") || op.contains("(fp)") || op.contains("(sp)") {
         // already an address expression; load from it
-        writeln!(writer, "    ld {}, {}", dest, op.replace("0(s0) # off ", ""))?;
+        if matches!(state.width(), IsaWidth::Rv32) {
+            writeln!(writer, "    lw {}, {}", dest, op)?;
+        } else {
+            writeln!(writer, "    ld {}, {}", dest, op)?;
+        }
     } else {
         // assume register name
         writeln!(writer, "    mv {}, {}", dest, op)?;
@@ -111,21 +269,14 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
     Ok(())
 }
 
-fn store_to_location<W: Write>(writer: &mut W, src_op: &str, dest: &str, is_pseudo: bool) -> Result<()> {
+fn store_to_location<W: Write>(writer: &mut W, src_op: &str, dest: &str, state: &CodegenState) -> Result<()> {
     if dest.starts_with('a') || dest.starts_with('t') || dest.starts_with('s') {
-        if is_pseudo {
-            writeln!(writer, "    {}", src_op)?;
-            writeln!(writer, "    mv {}, t3", dest)?;
-        } else {
-            // src_op assumed to be register
-            writeln!(writer, "    mv {}, {}", dest, src_op.split_whitespace().last().unwrap_or("t3"))?;
-        }
+        writeln!(writer, "    mv {}, {}", dest, src_op)?;
     } else if dest.contains("(s0)") {
-        if is_pseudo {
-            writeln!(writer, "    {}", src_op)?;
-            writeln!(writer, "    sd t3, {}", dest.replace("0(s0) # off ", ""))?;
+        if matches!(state.width(), IsaWidth::Rv32) {
+            writeln!(writer, "    sw {}, {}", src_op, dest)?;
         } else {
-            writeln!(writer, "    sd {}, {}", src_op, dest.replace("0(s0) # off ", ""))?;
+            writeln!(writer, "    sd {}, {}", src_op, dest)?;
         }
     } else {
         return Err(LaminaError::CodegenError(CodegenError::InternalError));
@@ -133,28 +284,48 @@ fn store_to_location<W: Write>(writer: &mut W, src_op: &str, dest: &str, is_pseu
     Ok(())
 }
 
-fn binary_i32<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, dest: &str) -> Result<()> {
-    materialize_to_reg(writer, lhs, "t0")?;
-    materialize_to_reg(writer, rhs, "t1")?;
+fn binary_i32<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, dest: &str, state: &CodegenState) -> Result<()> {
+    materialize_to_reg(writer, lhs, "t0", state)?;
+    materialize_to_reg(writer, rhs, "t1", state)?;
     match op {
         BinaryOp::Add => writeln!(writer, "    addw t2, t0, t1")?,
         BinaryOp::Sub => writeln!(writer, "    subw t2, t0, t1")?,
         BinaryOp::Mul => writeln!(writer, "    mulw t2, t0, t1")?,
         BinaryOp::Div => writeln!(writer, "    divw t2, t0, t1")?,
     }
-    store_to_location(writer, "t2", dest, false)
+    store_to_location(writer, "t2", dest, state)
 }
 
-fn binary_i64<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, dest: &str) -> Result<()> {
-    materialize_to_reg(writer, lhs, "t0")?;
-    materialize_to_reg(writer, rhs, "t1")?;
+fn binary_i64<W: Write>(writer: &mut W, op: &BinaryOp, lhs: &str, rhs: &str, dest: &str, state: &CodegenState) -> Result<()> {
+    materialize_to_reg(writer, lhs, "t0", state)?;
+    materialize_to_reg(writer, rhs, "t1", state)?;
     match op {
         BinaryOp::Add => writeln!(writer, "    add t2, t0, t1")?,
         BinaryOp::Sub => writeln!(writer, "    sub t2, t0, t1")?,
         BinaryOp::Mul => writeln!(writer, "    mul t2, t0, t1")?,
         BinaryOp::Div => writeln!(writer, "    div t2, t0, t1")?,
     }
-    store_to_location(writer, "t2", dest, false)
+    store_to_location(writer, "t2", dest, state)
+}
+
+fn materialize_address<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<()> {
+    if let Some(idx) = op.find('(') {
+        // form: offset(s0)
+        let off_str = &op[..idx];
+        let offset: i64 = off_str.trim().parse().unwrap_or(0);
+        if offset == 0 {
+            writeln!(writer, "    mv {}, s0", dest)?;
+        } else {
+            writeln!(writer, "    addi {}, s0, {}", dest, offset)?;
+        }
+    } else if op.starts_with('a') || op.starts_with('t') || op.starts_with('s') {
+        // register already holds an address
+        writeln!(writer, "    mv {}, {}", dest, op)?;
+    } else {
+        // assume label
+        writeln!(writer, "    la {}, {}", dest, op)?;
+    }
+    Ok(())
 }
 
 

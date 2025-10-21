@@ -35,10 +35,20 @@ pub fn generate_function<'a, W: Write>(
     writeln!(writer, "{}:", asm_label)?;
 
     // Prologue: save ra, s0; set up frame pointer
-    writeln!(writer, "    addi sp, sp, -16")?;
-    writeln!(writer, "    sd ra, 8(sp)")?;
-    writeln!(writer, "    sd s0, 0(sp)")?;
-    writeln!(writer, "    addi s0, sp, 16")?; // s0 points above saved area
+    match state.width() {
+        super::IsaWidth::Rv32 => {
+            writeln!(writer, "    addi sp, sp, -8")?;
+            writeln!(writer, "    sw ra, 4(sp)")?;
+            writeln!(writer, "    sw s0, 0(sp)")?;
+            writeln!(writer, "    addi s0, sp, 8")?;
+        }
+        _ => {
+            writeln!(writer, "    addi sp, sp, -16")?;
+            writeln!(writer, "    sd ra, 8(sp)")?;
+            writeln!(writer, "    sd s0, 0(sp)")?;
+            writeln!(writer, "    addi s0, sp, 16")?; // s0 points above saved area
+        }
+    }
 
     precompute_function_layout(func, &mut func_ctx, state)?;
 
@@ -47,7 +57,10 @@ pub fn generate_function<'a, W: Write>(
         if let Some(ValueLocation::StackOffset(off)) = func_ctx.value_locations.get(param.name) {
             if i < ARG_REGISTERS.len() {
                 writeln!(writer, "    addi t0, s0, {}", off)?;
-                writeln!(writer, "    sd {}, 0(t0)", ARG_REGISTERS[i])?;
+                match state.width() {
+                    super::IsaWidth::Rv32 => writeln!(writer, "    sw {}, 0(t0)", ARG_REGISTERS[i])?,
+                    _ => writeln!(writer, "    sd {}, 0(t0)", ARG_REGISTERS[i])?,
+                }
             } else {
                 // For simplicity, skip stack-passed args for now
             }
@@ -69,9 +82,18 @@ pub fn generate_function<'a, W: Write>(
 
     // Epilogue
     writeln!(writer, "{}:", func_ctx.epilogue_label)?;
-    writeln!(writer, "    ld ra, 8(sp)")?;
-    writeln!(writer, "    ld s0, 0(sp)")?;
-    writeln!(writer, "    addi sp, sp, 16")?;
+    match state.width() {
+        super::IsaWidth::Rv32 => {
+            writeln!(writer, "    lw ra, 4(sp)")?;
+            writeln!(writer, "    lw s0, 0(sp)")?;
+            writeln!(writer, "    addi sp, sp, 8")?;
+        }
+        _ => {
+            writeln!(writer, "    ld ra, 8(sp)")?;
+            writeln!(writer, "    ld s0, 0(sp)")?;
+            writeln!(writer, "    addi sp, sp, 16")?;
+        }
+    }
     writeln!(writer, "    ret")?;
     Ok(())
 }
@@ -88,9 +110,11 @@ fn precompute_function_layout<'a>(
     }
 
     // Very basic: place all params on stack sequentially at negative offsets
-    let mut current: i64 = -16; // below saved area
+    let saved_area: i64 = match state.width() { super::IsaWidth::Rv32 => 8, _ => 16 };
+    let slot_size: i64 = match state.width() { super::IsaWidth::Rv32 => 4, super::IsaWidth::Rv64 => 8, super::IsaWidth::Rv128 => 16 };
+    let mut current: i64 = -saved_area; // below saved area
     for param in &func.signature.params {
-        current -= 8; // 8-byte slots
+        current -= slot_size; // pointer/word-sized slots
         func_ctx
             .value_locations
             .insert(param.name, ValueLocation::StackOffset(current));
