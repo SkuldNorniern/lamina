@@ -14,6 +14,33 @@ pub fn generate_instruction<'a, W: Write>(
     writeln!(writer, "    # IR: {}", instr)?;
 
     match instr {
+        Instruction::Alloc { result, alloc_type, allocated_ty } => {
+            // For stack allocations of aggregates, store the address of the slot into result
+            match alloc_type {
+                crate::AllocType::Stack => {
+                    let dest = func_ctx.get_value_location(result)?.to_operand_string();
+                    // Compute address of destination stack slot into t0 and store to dest
+                    if dest.contains("(s0)") {
+                        materialize_address(writer, &dest, "t0")?;
+                        store_to_location(writer, "t0", &dest, state)?;
+                    } else {
+                        // Destination is a register
+                        // Materialize its own stack slot address: find its location from context
+                        let loc = func_ctx.get_value_location(result)?;
+                        match loc {
+                            super::state::ValueLocation::StackOffset(off) => {
+                                writeln!(writer, "    addi t0, s0, {}", off)?;
+                                store_to_location(writer, "t0", &dest, state)?;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                crate::AllocType::Heap => {
+                    // Not implemented: requires runtime malloc; leave as no-op or error
+                }
+            }
+        }
         Instruction::Ret { ty: _, value } => {
             if let Some(val) = value {
                 let src = super::util::get_value_operand_asm(val, state, func_ctx)?;
@@ -89,6 +116,117 @@ pub fn generate_instruction<'a, W: Write>(
                     store_to_location(writer, "t3", &dest, state)?;
                 }
             }
+        }
+
+        Instruction::GetElemPtr { result, array_ptr, index, element_type } => {
+            // base + index * elem_size
+            let base = super::util::get_value_operand_asm(array_ptr, state, func_ctx)?;
+            let idx = super::util::get_value_operand_asm(index, state, func_ctx)?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            materialize_to_reg(writer, &base, "t0", state)?;
+            materialize_to_reg(writer, &idx, "t1", state)?;
+            let elem_size = match element_type {
+                PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
+                PrimitiveType::I16 | PrimitiveType::U16 => 2,
+                PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+            } as i64;
+            if elem_size == 1 {
+                // no scale
+            } else if (elem_size & (elem_size - 1)) == 0 {
+                // power of two -> shift
+                let sh = (elem_size as u64).trailing_zeros();
+                writeln!(writer, "    slli t1, t1, {}", sh)?;
+            } else {
+                writeln!(writer, "    li t2, {}", elem_size)?;
+                writeln!(writer, "    mul t1, t1, t2")?;
+            }
+            writeln!(writer, "    add t0, t0, t1")?;
+            store_to_location(writer, "t0", &dest, state)?;
+        }
+
+        Instruction::GetFieldPtr { result, struct_ptr, field_index } => {
+            // Simplified: assume 8-byte fields
+            let base = super::util::get_value_operand_asm(struct_ptr, state, func_ctx)?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            materialize_to_reg(writer, &base, "t0", state)?;
+            let scale = if matches!(state.width(), IsaWidth::Rv32) { 4 } else { 8 };
+            writeln!(writer, "    li t1, {}", field_index * scale)?;
+            writeln!(writer, "    add t0, t0, t1")?;
+            store_to_location(writer, "t0", &dest, state)?;
+        }
+
+        Instruction::PtrToInt { result, ptr_value, .. } => {
+            let src = super::util::get_value_operand_asm(ptr_value, state, func_ctx)?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            materialize_to_reg(writer, &src, "t0", state)?;
+            store_to_location(writer, "t0", &dest, state)?;
+        }
+
+        Instruction::IntToPtr { result, int_value, .. } => {
+            let src = super::util::get_value_operand_asm(int_value, state, func_ctx)?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            materialize_to_reg(writer, &src, "t0", state)?;
+            store_to_location(writer, "t0", &dest, state)?;
+        }
+
+        Instruction::ZeroExtend { result, source_type, target_type, value } => {
+            let src = super::util::get_value_operand_asm(value, state, func_ctx)?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            materialize_to_reg(writer, &src, "t0", state)?;
+            let mask = match (source_type, target_type) {
+                (PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool, PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::I64 | PrimitiveType::U64) => Some(0xFFu64),
+                (PrimitiveType::I16 | PrimitiveType::U16, PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::I64 | PrimitiveType::U64) => Some(0xFFFFu64),
+                (PrimitiveType::I32 | PrimitiveType::U32, PrimitiveType::I64 | PrimitiveType::U64) => None,
+                _ => None,
+            };
+            if let Some(m) = mask {
+                writeln!(writer, "    li t1, {}", m)?;
+                writeln!(writer, "    and t0, t0, t1")?;
+            }
+            store_to_location(writer, "t0", &dest, state)?;
+        }
+
+        Instruction::Call { func_name, args, result } => {
+            // Pass up to 8 args in a0-a7
+            for (i, arg) in args.iter().enumerate().take(8) {
+                let op = super::util::get_value_operand_asm(arg, state, func_ctx)?;
+                let reg = match i {
+                    0 => "a0", 1 => "a1", 2 => "a2", 3 => "a3", 4 => "a4", 5 => "a5", 6 => "a6", _ => "a7",
+                };
+                materialize_to_reg(writer, &op, reg, state)?;
+            }
+            // Call target (match function label convention)
+            writeln!(writer, "    call func_{}", func_name)?;
+            if let Some(res) = result {
+                let dest = func_ctx.get_value_location(res)?.to_operand_string();
+                store_to_location(writer, "a0", &dest, state)?;
+            }
+        }
+
+        Instruction::WritePtr { ptr, result } => {
+            // Expect ptr to be stack slot holding an address; write pointer-sized value to stdout
+            let ptr_op = super::util::get_value_operand_asm(ptr, state, func_ctx)?;
+            // Load target address into a1
+            if ptr_op.contains("(s0)") {
+                if matches!(state.width(), IsaWidth::Rv32) {
+                    writeln!(writer, "    lw a1, {}", ptr_op)?;
+                } else {
+                    writeln!(writer, "    ld a1, {}", ptr_op)?;
+                }
+            } else {
+                materialize_to_reg(writer, &ptr_op, "a1", state)?;
+            }
+            // a0=1 (stdout), a2=word size, a7=64 write
+            writeln!(writer, "    li a0, 1")?;
+            match state.width() {
+                IsaWidth::Rv32 => writeln!(writer, "    li a2, 4")?,
+                _ => writeln!(writer, "    li a2, 8")?,
+            }
+            writeln!(writer, "    li a7, 64")?;
+            writeln!(writer, "    ecall")?;
+            let dest = func_ctx.get_value_location(result)?.to_operand_string();
+            store_to_location(writer, "a0", &dest, state)?;
         }
 
         Instruction::WriteByte { value, result } => {
