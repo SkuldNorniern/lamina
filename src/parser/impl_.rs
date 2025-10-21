@@ -154,7 +154,7 @@ impl<'a> ParserState<'a> {
 
         while self.position < self.bytes.len() {
             let byte = self.bytes[self.position];
-            println!("byte: {}, position: {}", byte as char, self.position);
+            //println!("byte: {}, position: {}", byte as char, self.position);
             if byte.is_ascii_alphanumeric() || byte == b'_' {
                 
                 self.advance();
