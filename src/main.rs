@@ -1,5 +1,4 @@
-use std::env
-;
+use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -16,6 +15,8 @@ fn print_usage() {
     eprintln!("  -f, --flag <flag>       Pass additional flag to compiler");
     eprintln!("  --emit-asm              Only emit assembly file without compiling");
     eprintln!("  --target <arch>         Specify target architecture (x86_64, aarch64)");
+    eprintln!("  --emit-mir              Only emit MIR (.mlamina) and exit");
+    eprintln!("  --timeout <secs>        Abort after N seconds (best-effort)");
     eprintln!("  -h, --help              Display this help message");
 }
 
@@ -28,6 +29,7 @@ struct CompileOptions {
     emit_asm_only: bool,
     emit_mir: bool,
     target_arch: Option<String>,
+    timeout_secs: Option<u64>,
 }
 
 fn parse_args() -> Result<CompileOptions, String> {
@@ -50,6 +52,7 @@ fn parse_args() -> Result<CompileOptions, String> {
         emit_asm_only: false,
         emit_mir: false,
         target_arch: None,
+        timeout_secs: None,
     };
 
     let mut i = 1;
@@ -86,6 +89,7 @@ fn parse_args() -> Result<CompileOptions, String> {
             }
             "--emit-mir" => {
                 options.emit_mir = true;
+                i += 1;
             }
             "--target" => {
                 if i + 1 >= args.len() {
@@ -101,6 +105,16 @@ fn parse_args() -> Result<CompileOptions, String> {
                     ));
                 }
                 options.target_arch = Some(target);
+                i += 2;
+            }
+            "--timeout" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for --timeout".to_string());
+                }
+                let secs = args[i + 1]
+                    .parse::<u64>()
+                    .map_err(|_| "Invalid --timeout value (must be integer seconds)".to_string())?;
+                options.timeout_secs = Some(secs);
                 i += 2;
             }
             _ => {
@@ -224,6 +238,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. Compile IR to Assembly
     let mut asm_buffer = Vec::<u8>::new();
+
+    // 2-1 Optionally lower the IR to MIR and emit
+    if options.emit_mir {
+        // Parse IR and lower to MIR, then exit early
+        let ir_mod = lamina::parser::parse_module(&ir_source)
+            .map_err(|e| format!("IR parse failed: {}", e))?;
+        let mir_mod = lamina::mir::codegen::from_ir(
+            &ir_mod,
+            input_path.to_string_lossy().as_ref(),
+        )
+        .map_err(|e| format!("MIR lowering failed: {}", e))?;
+        let mut mir_path = input_path.clone();
+        mir_path.set_extension("lumir");
+        let mut mir_file = File::create(&mir_path)
+            .map_err(|e| format!("Failed to create MIR file: {}", e))?;
+        let mir_text = format!("{}", mir_mod);
+        mir_file
+            .write_all(mir_text.as_bytes())
+            .map_err(|e| format!("Failed to write MIR file: {}", e))?;
+        println!("[INFO] MIR written to {}", mir_path.display());
+        return Ok(());
+    }
 
     // Choose compilation method based on target
     let compilation_result = if let Some(target) = &options.target_arch {
