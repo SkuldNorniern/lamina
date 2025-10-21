@@ -1,6 +1,8 @@
 use super::instructions::generate_instruction;
-use super::state::{CodegenState, FunctionContext, ValueLocation, ARG_REGISTERS};
-use crate::{BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type};
+use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
+use crate::{
+    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type,
+};
 use std::io::Write;
 
 pub fn generate_functions<'a, W: Write>(
@@ -22,7 +24,11 @@ pub fn generate_function<'a, W: Write>(
 ) -> Result<()> {
     let is_exported = func.annotations.contains(&FunctionAnnotation::Export);
     let is_main = func_name == "main";
-    let asm_label = if is_main { "main".to_string() } else { format!("func_{}", func_name) };
+    let asm_label = if is_main {
+        "main".to_string()
+    } else {
+        format!("func_{}", func_name)
+    };
 
     let mut func_ctx = FunctionContext::new();
     func_ctx.epilogue_label = format!(".Lfunc_epilogue_{}", func_name);
@@ -64,7 +70,9 @@ pub fn generate_function<'a, W: Write>(
             if i < ARG_REGISTERS.len() {
                 writeln!(writer, "    addi t0, s0, {}", off)?;
                 match state.width() {
-                    super::IsaWidth::Rv32 => writeln!(writer, "    sw {}, 0(t0)", ARG_REGISTERS[i])?,
+                    super::IsaWidth::Rv32 => {
+                        writeln!(writer, "    sw {}, 0(t0)", ARG_REGISTERS[i])?
+                    }
                     _ => writeln!(writer, "    sd {}, 0(t0)", ARG_REGISTERS[i])?,
                 }
             } else {
@@ -120,14 +128,23 @@ fn precompute_function_layout<'a>(
     }
 
     // Place params and locals at negative offsets from s0
-    let saved_area: i64 = match state.width() { super::IsaWidth::Rv32 => 8, _ => 16 };
-    let word: i64 = match state.width() { super::IsaWidth::Rv32 => 4, super::IsaWidth::Rv64 => 8, super::IsaWidth::Rv128 => 16 };
+    let saved_area: i64 = match state.width() {
+        super::IsaWidth::Rv32 => 8,
+        _ => 16,
+    };
+    let word: i64 = match state.width() {
+        super::IsaWidth::Rv32 => 4,
+        super::IsaWidth::Rv64 => 8,
+        super::IsaWidth::Rv128 => 16,
+    };
     let mut current: i64 = 0; // locals start at -word, grow downwards
 
     // Param spill slots
     for param in &func.signature.params {
         current -= word;
-        func_ctx.value_locations.insert(param.name, ValueLocation::StackOffset(current));
+        func_ctx
+            .value_locations
+            .insert(param.name, ValueLocation::StackOffset(current));
     }
 
     // Collect SSA results and allocate stack slots
@@ -136,7 +153,11 @@ fn precompute_function_layout<'a>(
     for block in func.basic_blocks.values() {
         for instr in &block.instructions {
             let (maybe_res, size_bytes) = match instr {
-                Instruction::Alloc { result, allocated_ty, .. } => {
+                Instruction::Alloc {
+                    result,
+                    allocated_ty,
+                    ..
+                } => {
                     // Allocate space for value or pointer
                     let sz = match allocated_ty {
                         Type::Primitive(pt) => prim_size(*pt, word as u64)?,
@@ -162,8 +183,14 @@ fn precompute_function_layout<'a>(
                     let (_, sz) = super::util::get_type_size_directive_and_bytes(ty)?;
                     (Some(*result), align_to(sz, word as u64))
                 }
-                Instruction::Call { result: Some(res), .. } => (Some(*res), word as u64),
-                Instruction::ZeroExtend { result, target_type, .. } => (Some(*result), prim_size(*target_type, word as u64)?),
+                Instruction::Call {
+                    result: Some(res), ..
+                } => (Some(*res), word as u64),
+                Instruction::ZeroExtend {
+                    result,
+                    target_type,
+                    ..
+                } => (Some(*result), prim_size(*target_type, word as u64)?),
                 Instruction::Write { result, .. }
                 | Instruction::Read { result, .. }
                 | Instruction::WriteByte { result, .. }
@@ -175,7 +202,9 @@ fn precompute_function_layout<'a>(
                 if !seen.contains(res) {
                     seen.insert(res);
                     current -= align_to(size_bytes, word as u64) as i64;
-                    func_ctx.value_locations.insert(res, ValueLocation::StackOffset(current));
+                    func_ctx
+                        .value_locations
+                        .insert(res, ValueLocation::StackOffset(current));
                 }
             }
         }
@@ -212,5 +241,3 @@ fn prim_size(pt: PrimitiveType, word: u64) -> Result<u64> {
 fn align_to(size: u64, align: u64) -> u64 {
     (size + align - 1) & !(align - 1)
 }
-
-

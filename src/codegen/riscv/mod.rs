@@ -46,5 +46,3 @@ pub fn generate_riscv128_assembly<'a, W: Write>(
     writeln!(writer, "\n.text")?;
     functions::generate_functions(module, writer, &mut state)
 }
-
-

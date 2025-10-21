@@ -67,5 +67,3 @@ pub fn get_value_operand_asm<'a>(
         Value::Global(name) => Ok(format!("{}", name)),
     }
 }
-
-
