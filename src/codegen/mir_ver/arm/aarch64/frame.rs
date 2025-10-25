@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+ use std::collections::{HashMap, HashSet};
 use crate::mir::{Function, Register};
 
 /// Simple frame map that assigns each virtual register a stack slot.
@@ -42,5 +42,4 @@ impl FrameMap {
         self.slots.get(r).copied()
     }
 }
-
 
