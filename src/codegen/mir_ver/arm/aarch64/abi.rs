@@ -23,6 +23,10 @@ pub fn call_stub(name: &str, os: TargetOs) -> Option<&'static str> {
     match (name, os) {
         ("print", TargetOs::MacOs) => Some("_printf"),
         ("print", _) => Some("printf"),
+        ("malloc", TargetOs::MacOs) => Some("_malloc"),
+        ("malloc", _) => Some("malloc"),
+        ("dealloc", TargetOs::MacOs) => Some("_free"),
+        ("dealloc", _) => Some("free"),
         _ => None,
     }
 }
