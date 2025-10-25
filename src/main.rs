@@ -16,6 +16,7 @@ fn print_usage() {
     eprintln!("  --emit-asm              Only emit assembly file without compiling");
     eprintln!("  --target <arch>         Specify target architecture (x86_64, aarch64)");
     eprintln!("  --emit-mir              Only emit MIR (.mlamina) and exit");
+    eprintln!("  --emit-mir-asm <os>     EXPERIMENTAL: emit AArch64 asm from MIR (os: macos|linux|windows)");
     eprintln!("  --timeout <secs>        Abort after N seconds (best-effort)");
     eprintln!("  -h, --help              Display this help message");
 }
@@ -28,6 +29,7 @@ struct CompileOptions {
     compiler_flags: Vec<String>,
     emit_asm_only: bool,
     emit_mir: bool,
+    emit_mir_asm: Option<String>,
     target_arch: Option<String>,
     timeout_secs: Option<u64>,
 }
@@ -51,6 +53,7 @@ fn parse_args() -> Result<CompileOptions, String> {
         compiler_flags: Vec::new(),
         emit_asm_only: false,
         emit_mir: false,
+        emit_mir_asm: None,
         target_arch: None,
         timeout_secs: None,
     };
@@ -90,6 +93,13 @@ fn parse_args() -> Result<CompileOptions, String> {
             "--emit-mir" => {
                 options.emit_mir = true;
                 i += 1;
+            }
+            "--emit-mir-asm" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for --emit-mir-asm".to_string());
+                }
+                options.emit_mir_asm = Some(args[i + 1].to_lowercase());
+                i += 2;
             }
             "--target" => {
                 if i + 1 >= args.len() {
@@ -198,7 +208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     asm_path.set_extension(asm_extension);
 
     // Ensure output executable has correct extension
-    let mut exec_path = output_stem;
+    let mut exec_path = output_stem.clone();
     if cfg!(windows) && exec_path.extension().is_none() {
         exec_path.set_extension("exe");
     }
@@ -239,72 +249,87 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Compile IR to Assembly
     let mut asm_buffer = Vec::<u8>::new();
 
-    // 2-1 Optionally lower the IR to MIR and emit
-    if options.emit_mir {
+    // 2-1 Optionally lower the IR to MIR and emit (.lumir) or experimental MIR->AArch64 asm
+    if options.emit_mir || options.emit_mir_asm.is_some() {
         // Parse IR and lower to MIR, then exit early
         let ir_mod = lamina::parser::parse_module(&ir_source)
             .map_err(|e| format!("IR parse failed: {}", e))?;
         let mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
             .map_err(|e| format!("MIR lowering failed: {}", e))?;
-        let mut mir_path = input_path.clone();
-        mir_path.set_extension("lumir");
-        let mut mir_file =
-            File::create(&mir_path).map_err(|e| format!("Failed to create MIR file: {}", e))?;
-        let mir_text = format!("{}", mir_mod);
-        mir_file
-            .write_all(mir_text.as_bytes())
-            .map_err(|e| format!("Failed to write MIR file: {}", e))?;
-        println!("[INFO] MIR written to {}", mir_path.display());
-        return Ok(());
+        if options.emit_mir {
+            let mut mir_path = output_stem.clone();
+            mir_path.set_extension("lumir");
+            let mut mir_file = File::create(&mir_path)
+                .map_err(|e| format!("Failed to create MIR file: {}", e))?;
+            let mir_text = format!("{}", mir_mod);
+            mir_file
+                .write_all(mir_text.as_bytes())
+                .map_err(|e| format!("Failed to write MIR file: {}", e))?;
+            println!("[INFO] MIR written to {}", mir_path.display());
+        }
+
+        if let Some(os) = &options.emit_mir_asm {
+            let mut out_path = input_path.clone();
+            out_path.set_extension("s");
+            let mut out = Vec::<u8>::new();
+            lamina::generate_mir_to_aarch64(&mir_mod, &mut out, os)
+                .map_err(|e| format!("MIR→AArch64 emission failed: {}", e))?;
+            File::create(&asm_path)
+                .and_then(|mut f| f.write_all(&out))
+                .map_err(|e| format!("Failed to write MIR asm: {}", e))?;
+            println!("[INFO] MIR AArch64 asm (experimental) written to {}", asm_path.display());
+        }
+
+        // return Ok(());
     }
+    // if mir asm is not emmit
+    if !options.emit_mir_asm.is_some() && !options.emit_mir {
+        // Choose compilation method based on target
+        let compilation_result = if let Some(target) = &options.target_arch {
+            if options.verbose {
+                println!("[VERBOSE] Using explicit target architecture: {}", target);
+            }
+            lamina::compile_lamina_ir_to_target_assembly(&ir_source, &mut asm_buffer, target)
+        } else {
+            // Get the architecture that will be used by default (from the detect_host_architecture function)
+            let default_arch = lamina::detect_host_architecture();
+            if options.verbose {
+                println!("[VERBOSE] Using host architecture: {}", default_arch);
+            }
+            lamina::compile_lamina_ir_to_assembly(&ir_source, &mut asm_buffer)
+        };
 
-    // Choose compilation method based on target
-    let compilation_result = if let Some(target) = &options.target_arch {
-        if options.verbose {
-            println!("[VERBOSE] Using explicit target architecture: {}", target);
-        }
-        lamina::compile_lamina_ir_to_target_assembly(&ir_source, &mut asm_buffer, target)
-    } else {
-        // Get the architecture that will be used by default (from the detect_host_architecture function)
-        let default_arch = lamina::detect_host_architecture();
-        if options.verbose {
-            println!("[VERBOSE] Using host architecture: {}", default_arch);
-        }
-        lamina::compile_lamina_ir_to_assembly(&ir_source, &mut asm_buffer)
-    };
-
-    match compilation_result {
-        Ok(_) => {
-            println!(
-                "[INFO] Assembly generated successfully ({} bytes).",
-                asm_buffer.len()
-            );
-        }
-        Err(e) => {
-            eprintln!("\n[ERROR] Compilation failed: {}", e);
-            eprintln!(
-                "[HINT] If you see dependency errors, make sure all required crates are in Cargo.toml"
-            );
-            std::process::exit(1);
-        }
-    }
-
-    // 3. Write Assembly to file
-    match File::create(&asm_path) {
-        Ok(mut file) => {
-            if let Err(e) = file.write_all(&asm_buffer) {
-                eprintln!("[ERROR] Failed to write assembly file: {}", e);
+        match compilation_result {
+            Ok(_) => {
+                println!(
+                    "[INFO] Assembly generated successfully ({} bytes).",
+                    asm_buffer.len()
+                );
+            }
+            Err(e) => {
+                eprintln!("\n[ERROR] Compilation failed: {}", e);
+                eprintln!(
+                    "[HINT] If you see dependency errors, make sure all required crates are in Cargo.toml"
+                );
                 std::process::exit(1);
             }
         }
-        Err(e) => {
-            eprintln!("[ERROR] Failed to create assembly file: {}", e);
-            std::process::exit(1);
-        }
-    };
+        // 3. Write Assembly to file
+        match File::create(&asm_path) {
+            Ok(mut file) => {
+                if let Err(e) = file.write_all(&asm_buffer) {
+                    eprintln!("[ERROR] Failed to write assembly file: {}", e);
+                    std::process::exit(1);
+                }
+            }
+            Err(e) => {
+                eprintln!("[ERROR] Failed to create assembly file: {}", e);
+                std::process::exit(1);
+            }
+        };
 
-    println!("[INFO] Assembly written to {}", asm_path.display());
-
+        println!("[INFO] Assembly written to {}", asm_path.display());
+    }
     // Skip compilation step if --emit-asm flag is present
     if options.emit_asm_only {
         println!("[INFO] Skipping compilation as requested (--emit-asm flag)");
