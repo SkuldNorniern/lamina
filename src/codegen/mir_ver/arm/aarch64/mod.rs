@@ -314,23 +314,54 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
             }
             MirInst::Lea { dst, base, offset } => {
                 let t = ra.alloc_scratch().unwrap_or("x19");
-                load_reg_to(w, base, t, frame, ra)?;
-                if *offset != 0 {
-                    // Use immediate add/sub when small; otherwise materialize into a temp and add
-                    let off = *offset as i64;
-                    if off >= 0 && off <= 4095 {
-                        writeln!(w, "    add {}, {}, #{}", t, t, off)?;
-                    } else if off < 0 && -off <= 4095 {
-                        writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
-                    } else {
-                        let oreg = ra.alloc_scratch().unwrap_or("x20");
-                        emit_mov_imm64(w, oreg, off as u64)?;
-                        if off >= 0 {
-                            writeln!(w, "    add {}, {}, {}", t, t, oreg)?;
+                // LEA computes address of base's stack slot + offset
+                match base {
+                    Register::Virtual(_) => {
+                        if let Some(slot_off) = frame.slot_of(base) {
+                            // Compute address: x29 + slot_off + offset
+                            let total = slot_off as i64 + (*offset as i64);
+                            if total >= 0 && total <= 4095 {
+                                writeln!(w, "    add {}, x29, #{}", t, total)?;
+                            } else if total < 0 && -total <= 4095 {
+                                writeln!(w, "    sub {}, x29, #{}", t, -total)?;
+                            } else {
+                                emit_mov_imm64(w, t, total as u64)?;
+                                writeln!(w, "    add {}, x29, {}", t, t)?;
+                            }
                         } else {
-                            writeln!(w, "    sub {}, {}, {}", t, t, oreg)?;
+                            // No stack slot: load value from physical reg and add offset
+                            load_reg_to(w, base, t, frame, ra)?;
+                            if *offset != 0 {
+                                let off = *offset as i64;
+                                if off >= 0 && off <= 4095 {
+                                    writeln!(w, "    add {}, {}, #{}", t, t, off)?;
+                                } else if off < 0 && -off <= 4095 {
+                                    writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
+                                } else {
+                                    let oreg = ra.alloc_scratch().unwrap_or("x20");
+                                    emit_mov_imm64(w, oreg, off as u64)?;
+                                    writeln!(w, "    add {}, {}, {}", t, t, oreg)?;
+                                    ra.free_scratch(oreg);
+                                }
+                            }
                         }
-                        ra.free_scratch(oreg);
+                    }
+                    _ => {
+                        // Physical register: load value and add offset
+                        load_reg_to(w, base, t, frame, ra)?;
+                        if *offset != 0 {
+                            let off = *offset as i64;
+                            if off >= 0 && off <= 4095 {
+                                writeln!(w, "    add {}, {}, #{}", t, t, off)?;
+                            } else if off < 0 && -off <= 4095 {
+                                writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
+                            } else {
+                                let oreg = ra.alloc_scratch().unwrap_or("x20");
+                                emit_mov_imm64(w, oreg, off as u64)?;
+                                writeln!(w, "    add {}, {}, {}", t, t, oreg)?;
+                                ra.free_scratch(oreg);
+                            }
+                        }
                     }
                 }
                 store_result(w, dst, t, frame, ra)?;
@@ -359,6 +390,152 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                     }
                     if let Some(dst) = ret {
                         store_result(w, dst, "x0", frame, ra)?;
+                    }
+                } else if name == "writebyte" && args.len() == 1 {
+                    // Write a single byte to stdout using macOS ARM64 syscall
+                    match os {
+                        TargetOs::MacOs => {
+                            // Reserve stack space to hold 1 byte buffer (keep 16B alignment)
+                            writeln!(w, "    sub sp, sp, #16")?;
+                            // Materialize byte value and store to [sp]
+                            emit_materialize_operand(w, &args[0], "x9", frame, ra)?;
+                            writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
+                            // Setup write(fd=1, buf=sp, size=1)
+                            writeln!(w, "    mov x0, #1")?;
+                            writeln!(w, "    mov x1, sp")?;
+                            writeln!(w, "    mov x2, #1")?;
+                            writeln!(w, "    mov x16, #4")?; // write syscall
+                            writeln!(w, "    svc #0")?;
+                            // Return result in x0
+                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            // Restore stack
+                            writeln!(w, "    add sp, sp, #16")?;
+                        }
+                        _ => {
+                            // Fallback: call C library write(int,void*,size_t)
+                            emit_materialize_operand(w, &args[0], "x9", frame, ra)?;
+                            writeln!(w, "    sub sp, sp, #16")?;
+                            writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
+                            writeln!(w, "    mov x0, #1")?;
+                            writeln!(w, "    mov x1, sp")?;
+                            writeln!(w, "    mov x2, #1")?;
+                            writeln!(w, "    bl write")?;
+                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            writeln!(w, "    add sp, sp, #16")?;
+                        }
+                    }
+                } else if name == "readbyte" && args.is_empty() {
+                    match os {
+                        TargetOs::MacOs => {
+                            // Reserve stack for 1 byte buffer
+                            writeln!(w, "    sub sp, sp, #16")?;
+                            // Setup read(fd=0, buf=sp, size=1)
+                            writeln!(w, "    mov x0, #0")?;
+                            writeln!(w, "    mov x1, sp")?;
+                            writeln!(w, "    mov x2, #1")?;
+                            writeln!(w, "    mov x16, #3")?; // read syscall
+                            writeln!(w, "    svc #0")?;
+                            // Load byte and select return value: byte if 1 read, else error code in x0
+                            writeln!(w, "    ldrb {}, [sp]", w_alias("x9"))?;
+                            if let Some(dst) = ret {
+                                let dst_reg = ra.alloc_scratch().unwrap_or("x10");
+                                // Compare and select in 64-bit, then zero-extend if needed
+                                writeln!(w, "    cmp x0, #1")?;
+                                // Place read byte into x form register first
+                                writeln!(w, "    uxtb {}, {}", x_alias("x9"), w_alias("x9"))?;
+                                writeln!(w, "    csel {}, {}, x0, eq", x_alias(dst_reg), x_alias("x9"))?;
+                                store_result(w, dst, &x_alias(dst_reg), frame, ra)?;
+                                ra.free_scratch(dst_reg);
+                            }
+                            // Restore stack
+                            writeln!(w, "    add sp, sp, #16")?;
+                        }
+                        _ => {
+                            // Fallback to libc read
+                            writeln!(w, "    sub sp, sp, #16")?;
+                            writeln!(w, "    mov x0, #0")?;
+                            writeln!(w, "    mov x1, sp")?;
+                            writeln!(w, "    mov x2, #1")?;
+                            writeln!(w, "    bl read")?;
+                            writeln!(w, "    ldrb {}, [sp]", w_alias("x9"))?;
+                            if let Some(dst) = ret {
+                                let dst_reg = ra.alloc_scratch().unwrap_or("x10");
+                                writeln!(w, "    cmp x0, #1")?;
+                                writeln!(w, "    uxtb {}, {}", x_alias("x9"), w_alias("x9"))?;
+                                writeln!(w, "    csel {}, {}, x0, eq", x_alias(dst_reg), x_alias("x9"))?;
+                                store_result(w, dst, &x_alias(dst_reg), frame, ra)?;
+                                ra.free_scratch(dst_reg);
+                            }
+                            writeln!(w, "    add sp, sp, #16")?;
+                        }
+                    }
+                } else if name == "writeptr" && args.len() == 1 {
+                    // Write the byte value at pointer to stdout
+                    match os {
+                        TargetOs::MacOs => {
+                            // Load pointer into x1 and byte into w9, write 1 byte
+                            emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
+                            writeln!(w, "    ldrb {}, [x1]", w_alias("x9"))?;
+                            writeln!(w, "    sub sp, sp, #16")?;
+                            writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
+                            writeln!(w, "    mov x0, #1")?;
+                            writeln!(w, "    mov x1, sp")?;
+                            writeln!(w, "    mov x2, #1")?;
+                            writeln!(w, "    mov x16, #4")?;
+                            writeln!(w, "    svc #0")?;
+                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            writeln!(w, "    add sp, sp, #16")?;
+                        }
+                        _ => {
+                            emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
+                            writeln!(w, "    ldrb {}, [x1]", w_alias("x9"))?;
+                            writeln!(w, "    sub sp, sp, #16")?;
+                            writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
+                            writeln!(w, "    mov x0, #1")?;
+                            writeln!(w, "    mov x1, sp")?;
+                            writeln!(w, "    mov x2, #1")?;
+                            writeln!(w, "    bl write")?;
+                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            writeln!(w, "    add sp, sp, #16")?;
+                        }
+                    }
+                } else if name == "write" && args.len() == 2 {
+                    match os {
+                        TargetOs::MacOs => {
+                            // write(fd=1, buf=args[0], size=args[1])
+                            emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
+                            emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
+                            writeln!(w, "    mov x0, #1")?;
+                            writeln!(w, "    mov x16, #4")?;
+                            writeln!(w, "    svc #0")?;
+                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                        }
+                        _ => {
+                            emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
+                            emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
+                            writeln!(w, "    mov x0, #1")?;
+                            writeln!(w, "    bl write")?;
+                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                        }
+                    }
+                } else if name == "read" && args.len() == 2 {
+                    match os {
+                        TargetOs::MacOs => {
+                            // read(fd=0, buf=args[0], size=args[1])
+                            emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
+                            emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
+                            writeln!(w, "    mov x0, #0")?;
+                            writeln!(w, "    mov x16, #3")?;
+                            writeln!(w, "    svc #0")?;
+                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                        }
+                        _ => {
+                            emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
+                            emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
+                            writeln!(w, "    mov x0, #0")?;
+                            writeln!(w, "    bl read")?;
+                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                        }
                     }
                 } else {
                     // Generic call: pass up to 8 args in x0..x7
@@ -418,18 +595,23 @@ fn load_reg_to<W: Write>(w: &mut W, r: &Register, dest: &str, frame: &FrameMap, 
         Register::Virtual(_v) => {
             // Always load from stack slot for correctness across blocks
             if let Some(off) = frame.slot_of(r) {
-                let mut addr = ra.alloc_scratch().unwrap_or("x12");
-                if addr == dest {
-                    if let Some(other) = ra.alloc_scratch() { addr = other; } else { addr = if dest != "x11" { "x11" } else { "x10" }; }
-                }
-                if off >= 0 {
-                    writeln!(w, "    add {}, x29, #{}", addr, off)?;
+                // Use ldur with signed 9-bit offset when possible, otherwise compute address
+                if off >= -256 && off <= 255 {
+                    writeln!(w, "    ldur {}, [x29, #{}]", dest, off)?;
                 } else {
-                    writeln!(w, "    sub {}, x29, #{}", addr, -off)?;
-                }
-                writeln!(w, "    ldr {}, [{}]", dest, addr)?;
-                if matches!(addr, "x9" | "x10" | "x11" | "x12") {
-                    ra.free_scratch(addr);
+                    let mut addr = ra.alloc_scratch().unwrap_or("x12");
+                    if addr == dest {
+                        if let Some(other) = ra.alloc_scratch() { addr = other; } else { addr = if dest != "x11" { "x11" } else { "x10" }; }
+                    }
+                    if off >= 0 {
+                        writeln!(w, "    add {}, x29, #{}", addr, off)?;
+                    } else {
+                        writeln!(w, "    sub {}, x29, #{}", addr, -off)?;
+                    }
+                    writeln!(w, "    ldr {}, [{}]", dest, addr)?;
+                    if matches!(addr, "x9" | "x10" | "x11" | "x12") {
+                        ra.free_scratch(addr);
+                    }
                 }
             } else {
                 writeln!(w, "    // no slot for {}, leaving {} unchanged", r, dest)?;
@@ -449,18 +631,23 @@ fn store_result<W: Write>(w: &mut W, dst: &Register, src_reg: &str, frame: &Fram
         Register::Virtual(_v) => {
             // Always store to stack slot for correctness across blocks
             if let Some(off) = frame.slot_of(dst) {
-                let mut addr = ra.alloc_scratch().unwrap_or("x12");
-                if addr == src_reg {
-                    if let Some(other) = ra.alloc_scratch() { addr = other; } else { addr = if src_reg != "x11" { "x11" } else { "x10" }; }
-                }
-                if off >= 0 {
-                    writeln!(w, "    add {}, x29, #{}", addr, off)?;
+                // Use stur with signed 9-bit offset when possible, otherwise compute address
+                if off >= -256 && off <= 255 {
+                    writeln!(w, "    stur {}, [x29, #{}]", src_reg, off)?;
                 } else {
-                    writeln!(w, "    sub {}, x29, #{}", addr, -off)?;
-                }
-                writeln!(w, "    str {}, [{}]", src_reg, addr)?;
-                if matches!(addr, "x9" | "x10" | "x11" | "x12") {
-                    ra.free_scratch(addr);
+                    let mut addr = ra.alloc_scratch().unwrap_or("x12");
+                    if addr == src_reg {
+                        if let Some(other) = ra.alloc_scratch() { addr = other; } else { addr = if src_reg != "x11" { "x11" } else { "x10" }; }
+                    }
+                    if off >= 0 {
+                        writeln!(w, "    add {}, x29, #{}", addr, off)?;
+                    } else {
+                        writeln!(w, "    sub {}, x29, #{}", addr, -off)?;
+                    }
+                    writeln!(w, "    str {}, [{}]", src_reg, addr)?;
+                    if matches!(addr, "x9" | "x10" | "x11" | "x12") {
+                        ra.free_scratch(addr);
+                    }
                 }
             } else {
                 writeln!(w, "    // no slot for {}", dst)?;
@@ -478,6 +665,7 @@ fn store_result<W: Write>(w: &mut W, dst: &Register, src_reg: &str, frame: &Fram
 fn materialize_address<W: Write>(w: &mut W, addr: &crate::mir::AddressMode, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<()> {
     match addr {
         crate::mir::AddressMode::BaseOffset { base, offset } => {
+            // Materialize base value (should be an address) into dest
             load_reg_to(w, base, dest, frame, ra)?;
             if *offset != 0 {
                 if *offset > 0 {
@@ -488,7 +676,8 @@ fn materialize_address<W: Write>(w: &mut W, addr: &crate::mir::AddressMode, dest
             }
         }
         crate::mir::AddressMode::BaseIndexScale { base, index, scale, offset } => {
-            load_reg_to(w, base, dest, frame, ra)?; // dest = base
+            // dest = base (base holds an address)
+            load_reg_to(w, base, dest, frame, ra)?;
             let mut idx = ra.alloc_scratch().unwrap_or("x19");
             if idx == dest {
                 if let Some(other) = ra.alloc_scratch() { idx = other; } else { idx = "x20"; }

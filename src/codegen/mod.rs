@@ -1,4 +1,5 @@
 pub mod aarch64;
+pub mod mir_ver;
 pub mod common;
 pub mod riscv;
 pub mod wasm;
