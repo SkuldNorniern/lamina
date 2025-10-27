@@ -61,3 +61,4 @@ benchmarks/*/_*
 *.csproj.vssscc.user
 *.csproj.vssscc.vspscc
 *.csproj.vssscc.vspscc.user
+.DS_Store
