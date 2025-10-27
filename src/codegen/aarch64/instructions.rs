@@ -48,34 +48,72 @@ pub fn generate_instruction<'a, W: Write>(
                 // Direct stack access - no dereferencing needed
                 if let Some(offset) = parse_fp_offset(&ptr_op) {
                     materialize_to_reg(writer, &val, "x10")?;
-                    match ty {
-                        Type::Primitive(PrimitiveType::I8)
-                        | Type::Primitive(PrimitiveType::U8)
-                        | Type::Primitive(PrimitiveType::Bool) => {
-                            writeln!(writer, "        strb w10, [x29, #{}]", offset)?;
+
+                    // Check if offset is within immediate addressing range
+                    if (-256..=255).contains(&offset) {
+                        // Use direct immediate offset
+                        match ty {
+                            Type::Primitive(PrimitiveType::I8)
+                            | Type::Primitive(PrimitiveType::U8)
+                            | Type::Primitive(PrimitiveType::Bool) => {
+                                writeln!(writer, "        strb w10, [x29, #{}]", offset)?;
+                            }
+                            Type::Primitive(PrimitiveType::I16)
+                            | Type::Primitive(PrimitiveType::U16) => {
+                                writeln!(writer, "        strh w10, [x29, #{}]", offset)?;
+                            }
+                            Type::Primitive(PrimitiveType::I32)
+                            | Type::Primitive(PrimitiveType::U32) => {
+                                writeln!(writer, "        str w10, [x29, #{}]", offset)?;
+                            }
+                            Type::Primitive(PrimitiveType::I64)
+                            | Type::Primitive(PrimitiveType::U64)
+                            | Type::Primitive(PrimitiveType::Ptr) => {
+                                writeln!(writer, "        str x10, [x29, #{}]", offset)?;
+                            }
+                            Type::Primitive(PrimitiveType::Char) => {
+                                writeln!(writer, "        strb w10, [x29, #{}]", offset)?;
+                            }
+                            _ => {
+                                return Err(LaminaError::CodegenError(
+                                    CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(
+                                        ty.to_string(),
+                                    )),
+                                ));
+                            }
                         }
-                        Type::Primitive(PrimitiveType::I16)
-                        | Type::Primitive(PrimitiveType::U16) => {
-                            writeln!(writer, "        strh w10, [x29, #{}]", offset)?;
-                        }
-                        Type::Primitive(PrimitiveType::I32)
-                        | Type::Primitive(PrimitiveType::U32) => {
-                            writeln!(writer, "        str w10, [x29, #{}]", offset)?;
-                        }
-                        Type::Primitive(PrimitiveType::I64)
-                        | Type::Primitive(PrimitiveType::U64)
-                        | Type::Primitive(PrimitiveType::Ptr) => {
-                            writeln!(writer, "        str x10, [x29, #{}]", offset)?;
-                        }
-                        Type::Primitive(PrimitiveType::Char) => {
-                            writeln!(writer, "        strb w10, [x29, #{}]", offset)?;
-                        }
-                        _ => {
-                            return Err(LaminaError::CodegenError(
-                                CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(
-                                    ty.to_string(),
-                                )),
-                            ));
+                    } else {
+                        // Offset is too large for immediate addressing, materialize address into x9
+                        materialize_address(writer, "x9", offset)?;
+                        match ty {
+                            Type::Primitive(PrimitiveType::I8)
+                            | Type::Primitive(PrimitiveType::U8)
+                            | Type::Primitive(PrimitiveType::Bool) => {
+                                writeln!(writer, "        strb w10, [x9]")?;
+                            }
+                            Type::Primitive(PrimitiveType::I16)
+                            | Type::Primitive(PrimitiveType::U16) => {
+                                writeln!(writer, "        strh w10, [x9]")?;
+                            }
+                            Type::Primitive(PrimitiveType::I32)
+                            | Type::Primitive(PrimitiveType::U32) => {
+                                writeln!(writer, "        str w10, [x9]")?;
+                            }
+                            Type::Primitive(PrimitiveType::I64)
+                            | Type::Primitive(PrimitiveType::U64)
+                            | Type::Primitive(PrimitiveType::Ptr) => {
+                                writeln!(writer, "        str x10, [x9]")?;
+                            }
+                            Type::Primitive(PrimitiveType::Char) => {
+                                writeln!(writer, "        strb w10, [x9]")?;
+                            }
+                            _ => {
+                                return Err(LaminaError::CodegenError(
+                                    CodegenError::StoreNotImplementedForType(TypeInfo::Unknown(
+                                        ty.to_string(),
+                                    )),
+                                ));
+                            }
                         }
                     }
                 } else {
@@ -271,39 +309,81 @@ pub fn generate_instruction<'a, W: Write>(
             {
                 // Direct stack access - no dereferencing needed
                 if let Some(offset) = parse_fp_offset(&ptr_op) {
-                    match ty {
-                        Type::Primitive(PrimitiveType::I8)
-                        | Type::Primitive(PrimitiveType::U8)
-                        | Type::Primitive(PrimitiveType::Bool) => {
-                            writeln!(writer, "        ldr w10, [x29, #{}]", offset)?;
-                            store_to_location(writer, "x10", &dest)?;
+                    // Check if offset is within immediate addressing range
+                    if (-256..=255).contains(&offset) {
+                        // Use direct immediate offset
+                        match ty {
+                            Type::Primitive(PrimitiveType::I8)
+                            | Type::Primitive(PrimitiveType::U8)
+                            | Type::Primitive(PrimitiveType::Bool) => {
+                                writeln!(writer, "        ldr w10, [x29, #{}]", offset)?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            Type::Primitive(PrimitiveType::I16)
+                            | Type::Primitive(PrimitiveType::U16) => {
+                                writeln!(writer, "        ldr w10, [x29, #{}]", offset)?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            Type::Primitive(PrimitiveType::I32)
+                            | Type::Primitive(PrimitiveType::U32) => {
+                                writeln!(writer, "        ldr w10, [x29, #{}]", offset)?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            Type::Primitive(PrimitiveType::I64)
+                            | Type::Primitive(PrimitiveType::U64)
+                            | Type::Primitive(PrimitiveType::Ptr) => {
+                                writeln!(writer, "        ldr x10, [x29, #{}]", offset)?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            Type::Primitive(PrimitiveType::Char) => {
+                                writeln!(writer, "        ldrb w10, [x29, #{}]", offset)?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            _ => {
+                                return Err(LaminaError::CodegenError(
+                                    CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(
+                                        ty.to_string(),
+                                    )),
+                                ));
+                            }
                         }
-                        Type::Primitive(PrimitiveType::I16)
-                        | Type::Primitive(PrimitiveType::U16) => {
-                            writeln!(writer, "        ldr w10, [x29, #{}]", offset)?;
-                            store_to_location(writer, "x10", &dest)?;
-                        }
-                        Type::Primitive(PrimitiveType::I32)
-                        | Type::Primitive(PrimitiveType::U32) => {
-                            writeln!(writer, "        ldr w10, [x29, #{}]", offset)?;
-                            store_to_location(writer, "x10", &dest)?;
-                        }
-                        Type::Primitive(PrimitiveType::I64)
-                        | Type::Primitive(PrimitiveType::U64)
-                        | Type::Primitive(PrimitiveType::Ptr) => {
-                            writeln!(writer, "        ldr x10, [x29, #{}]", offset)?;
-                            store_to_location(writer, "x10", &dest)?;
-                        }
-                        Type::Primitive(PrimitiveType::Char) => {
-                            writeln!(writer, "        ldrb w10, [x29, #{}]", offset)?;
-                            store_to_location(writer, "x10", &dest)?;
-                        }
-                        _ => {
-                            return Err(LaminaError::CodegenError(
-                                CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(
-                                    ty.to_string(),
-                                )),
-                            ));
+                    } else {
+                        // Offset is too large for immediate addressing, materialize address into x9
+                        materialize_address(writer, "x9", offset)?;
+                        match ty {
+                            Type::Primitive(PrimitiveType::I8)
+                            | Type::Primitive(PrimitiveType::U8)
+                            | Type::Primitive(PrimitiveType::Bool) => {
+                                writeln!(writer, "        ldr w10, [x9]")?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            Type::Primitive(PrimitiveType::I16)
+                            | Type::Primitive(PrimitiveType::U16) => {
+                                writeln!(writer, "        ldr w10, [x9]")?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            Type::Primitive(PrimitiveType::I32)
+                            | Type::Primitive(PrimitiveType::U32) => {
+                                writeln!(writer, "        ldr w10, [x9]")?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            Type::Primitive(PrimitiveType::I64)
+                            | Type::Primitive(PrimitiveType::U64)
+                            | Type::Primitive(PrimitiveType::Ptr) => {
+                                writeln!(writer, "        ldr x10, [x9]")?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            Type::Primitive(PrimitiveType::Char) => {
+                                writeln!(writer, "        ldrb w10, [x9]")?;
+                                store_to_location(writer, "x10", &dest)?;
+                            }
+                            _ => {
+                                return Err(LaminaError::CodegenError(
+                                    CodegenError::LoadNotImplementedForType(TypeInfo::Unknown(
+                                        ty.to_string(),
+                                    )),
+                                ));
+                            }
                         }
                     }
                 } else {
