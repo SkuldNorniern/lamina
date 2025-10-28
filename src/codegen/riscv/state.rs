@@ -1,6 +1,7 @@
 use crate::codegen::CodegenError;
-use crate::{Identifier, Label, LaminaError, Result};
+use crate::{Identifier, Label, LaminaError};
 use std::collections::{HashMap, HashSet};
+use std::result::Result;
 
 use super::IsaWidth;
 
@@ -66,13 +67,13 @@ impl<'a> FunctionContext<'a> {
         }
     }
 
-    pub fn get_block_label(&self, ir_label: &Label<'a>) -> Result<String> {
+    pub fn get_block_label(&self, ir_label: &Label<'a>) -> Result<String, LaminaError> {
         self.block_labels.get(ir_label).cloned().ok_or_else(|| {
             LaminaError::CodegenError(CodegenError::BlockLabelNotFound(ir_label.to_string()))
         })
     }
 
-    pub fn get_value_location(&self, name: Identifier<'a>) -> Result<ValueLocation> {
+    pub fn get_value_location(&self, name: Identifier<'a>) -> Result<ValueLocation, LaminaError> {
         self.value_locations.get(name).cloned().ok_or_else(|| {
             LaminaError::CodegenError(CodegenError::ValueLocationNotFound(name.to_string()))
         })

@@ -45,5 +45,3 @@ impl From<CodegenError> for LaminaError {
         LaminaError::CodegenError(err)
     }
 }
-
-pub type Result<T> = std::result::Result<T, LaminaError>;

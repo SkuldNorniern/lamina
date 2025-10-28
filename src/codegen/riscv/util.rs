@@ -1,9 +1,10 @@
 use super::state::{CodegenState, FunctionContext};
 use crate::codegen::{CodegenError, LiteralType};
-use crate::{LaminaError, Literal, PrimitiveType, Result, Type, Value};
+use crate::{LaminaError, Literal, PrimitiveType, Type, Value};
+use std::result::Result;
 
 // Convert an IR Type into RISC-V storage width in bytes and a directive for data sections
-pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str, u64)> {
+pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str, u64), LaminaError> {
     match ty {
         Type::Primitive(pt) => match pt {
             PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => {
@@ -40,7 +41,7 @@ pub fn get_value_operand_asm<'a>(
     value: &Value<'a>,
     _state: &CodegenState<'a>,
     func_ctx: &FunctionContext<'a>,
-) -> Result<String> {
+) -> Result<String, LaminaError> {
     match value {
         Value::Constant(literal) => match literal {
             Literal::I32(v) => Ok(format!("{}", v)),

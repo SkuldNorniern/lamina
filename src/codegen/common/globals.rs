@@ -1,8 +1,9 @@
 use super::types::GlobalLayout;
 use super::utils::{escape_asm_string, get_type_size_bytes};
-use crate::{GlobalDeclaration, LaminaError, Literal, Module, Result, Value};
+use crate::{GlobalDeclaration, LaminaError, Literal, Module, Value};
 use std::collections::HashMap;
 use std::io::Write;
+use std::result::Result;
 
 /// Common interface for global variable generation
 pub trait GlobalGenerator<'a> {
@@ -12,7 +13,7 @@ pub trait GlobalGenerator<'a> {
         module: &'a Module<'a>,
         writer: &mut W,
         layout: &mut GlobalLayout,
-    ) -> Result<()>;
+    ) -> Result<(), LaminaError>;
 
     /// Generate a single global variable
     fn generate_global<W: Write>(
@@ -20,7 +21,7 @@ pub trait GlobalGenerator<'a> {
         name: &str,
         global: &GlobalDeclaration<'a>,
         writer: &mut W,
-    ) -> Result<()>;
+    ) -> Result<(), LaminaError>;
 }
 
 /// Common global variable manager
@@ -133,7 +134,7 @@ impl<'a> GlobalGenerator<'a> for StandardGlobalGenerator {
         module: &'a Module<'a>,
         writer: &mut W,
         layout: &mut GlobalLayout,
-    ) -> Result<()> {
+    ) -> Result<(), LaminaError> {
         // Separate globals into initialized and uninitialized
         let mut initialized_globals = Vec::new();
         let mut uninitialized_globals = Vec::new();
@@ -189,7 +190,7 @@ impl<'a> GlobalGenerator<'a> for StandardGlobalGenerator {
         name: &str,
         global: &GlobalDeclaration<'a>,
         writer: &mut W,
-    ) -> Result<()> {
+    ) -> Result<(), LaminaError> {
         let label = format!("global_{}", name);
 
         if global.initializer.is_some() {
@@ -218,7 +219,7 @@ impl StandardGlobalGenerator {
         global: &GlobalDeclaration,
         label: &str,
         writer: &mut W,
-    ) -> Result<()> {
+    ) -> Result<(), LaminaError> {
         // Make symbol global
         writeln!(writer, ".globl {}", label)?;
 
@@ -248,7 +249,7 @@ impl StandardGlobalGenerator {
         &self,
         global: &GlobalDeclaration,
         writer: &mut W,
-    ) -> Result<()> {
+    ) -> Result<(), LaminaError> {
         if let Some(ref initializer) = global.initializer {
             match initializer {
                 Value::Constant(literal) => {
@@ -273,7 +274,7 @@ impl StandardGlobalGenerator {
     }
 
     /// Generate literal data
-    fn generate_literal_data<W: Write>(&self, literal: &Literal, writer: &mut W) -> Result<()> {
+    fn generate_literal_data<W: Write>(&self, literal: &Literal, writer: &mut W) -> Result<(), LaminaError> {
         match literal {
             Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
             Literal::I16(v) => writeln!(writer, "    .word {}", v)?,
@@ -306,7 +307,7 @@ impl StandardGlobalGenerator {
         global: &GlobalDeclaration,
         label: &str,
         writer: &mut W,
-    ) -> Result<()> {
+    ) -> Result<(), LaminaError> {
         let size = get_type_size_bytes(&global.ty)?;
         let alignment = get_alignment_for_type(&global.ty)?;
 
@@ -318,7 +319,7 @@ impl StandardGlobalGenerator {
 }
 
 /// Get alignment for a type
-fn get_alignment_for_type(ty: &crate::Type) -> Result<u64> {
+fn get_alignment_for_type(ty: &crate::Type) -> Result<u64, LaminaError> {
     use crate::PrimitiveType;
     use crate::Type;
 

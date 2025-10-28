@@ -1,14 +1,15 @@
 use super::state::CodegenState;
 use crate::codegen::{CodegenError, LiteralType};
-use crate::{GlobalDeclaration, LaminaError, Literal, Module, Result, Type};
+use crate::{GlobalDeclaration, LaminaError, Literal, Module, Type};
 use std::io::Write;
+use std::result::Result;
 
 // Emit data and bss for RISC-V (ELF-friendly directives)
 pub fn generate_global_data_section<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let mut has_data = false;
     let mut has_bss = false;
 
@@ -56,7 +57,7 @@ pub fn generate_global_data_section<'a, W: Write>(
 fn generate_global_initializer<W: Write>(
     writer: &mut W,
     global: &GlobalDeclaration<'_>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     if let Some(ref initializer) = global.initializer {
         match initializer {
             crate::Value::Constant(literal) => match literal {
@@ -102,7 +103,7 @@ fn generate_global_initializer<W: Write>(
     Ok(())
 }
 
-pub fn generate_globals<W: Write>(state: &CodegenState, writer: &mut W) -> Result<()> {
+pub fn generate_globals<W: Write>(state: &CodegenState, writer: &mut W) -> Result<(), LaminaError> {
     if !state.rodata_strings.is_empty() {
         writeln!(writer, "\n.section .rodata")?;
         for (label, content) in &state.rodata_strings {

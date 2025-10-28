@@ -1,6 +1,7 @@
 use super::register_info::CALLEE_SAVED_REGISTERS;
-use crate::{Function, Instruction, Result, Value};
+use crate::{Function, Instruction, LaminaError, Value};
 use std::collections::{HashMap, HashSet};
+use std::result::Result;
 
 /// Available x86_64 general-purpose registers for allocation
 const ALLOCATABLE_REGISTERS: &[&str] = &[
@@ -60,7 +61,7 @@ impl GraphColoringAllocator {
     pub fn allocate_registers<'a>(
         &mut self,
         function: &'a Function<'a>,
-    ) -> Result<AllocationResult> {
+    ) -> Result<AllocationResult, LaminaError> {
         // Build live intervals for all variables
         self.build_live_intervals(function)?;
 
@@ -69,7 +70,7 @@ impl GraphColoringAllocator {
     }
 
     /// Build live intervals for all variables in the function
-    fn build_live_intervals<'a>(&mut self, function: &'a Function<'a>) -> Result<()> {
+    fn build_live_intervals<'a>(&mut self, function: &'a Function<'a>) -> Result<(), LaminaError> {
         self.instruction_count = 0;
         let mut var_first_def = HashMap::new();
         let mut var_last_use = HashMap::new();
@@ -127,7 +128,7 @@ impl GraphColoringAllocator {
     }
 
     /// Simplified graph coloring algorithm
-    fn simple_coloring(&self) -> Result<AllocationResult> {
+    fn simple_coloring(&self) -> Result<AllocationResult, LaminaError> {
         let mut result = AllocationResult {
             assignments: HashMap::new(),
             spilled_vars: HashSet::new(),

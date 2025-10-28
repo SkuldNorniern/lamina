@@ -1,7 +1,8 @@
-use crate::{PrimitiveType, Result, Type};
+use crate::{PrimitiveType, LaminaError, Type};
+use std::result::Result;
 
 /// Get type size in bytes for any architecture
-pub fn get_type_size_bytes(ty: &Type<'_>) -> Result<u64> {
+pub fn get_type_size_bytes(ty: &Type<'_>) -> Result<u64, LaminaError> {
     match ty {
         Type::Primitive(pt) => Ok(match pt {
             PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
@@ -29,7 +30,7 @@ pub fn get_type_size_bytes(ty: &Type<'_>) -> Result<u64> {
 }
 
 /// Calculate required alignment for a type
-pub fn get_type_alignment(ty: &Type<'_>) -> Result<u64> {
+pub fn get_type_alignment(ty: &Type<'_>) -> Result<u64, LaminaError> {
     match ty {
         Type::Primitive(pt) => Ok(match pt {
             PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,

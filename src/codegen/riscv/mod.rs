@@ -4,14 +4,15 @@ pub mod instructions;
 pub mod state;
 pub mod util;
 
-use crate::{Module, Result};
+use crate::{Module, LaminaError};
 use std::io::Write;
+use Result;
 
 /// Generate RISC-V RV32I assembly for a module
 pub fn generate_riscv32_assembly<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let mut state = state::CodegenState::new(IsaWidth::Rv32);
     globals::generate_global_data_section(module, writer, &mut state)?;
     writeln!(writer, "\n.text")?;
@@ -22,7 +23,7 @@ pub fn generate_riscv32_assembly<'a, W: Write>(
 pub fn generate_riscv64_assembly<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let mut state = state::CodegenState::new(IsaWidth::Rv64);
     globals::generate_global_data_section(module, writer, &mut state)?;
     writeln!(writer, "\n.text")?;
@@ -40,7 +41,7 @@ pub enum IsaWidth {
 pub fn generate_riscv128_assembly<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let mut state = state::CodegenState::new(IsaWidth::Rv128);
     globals::generate_global_data_section(module, writer, &mut state)?;
     writeln!(writer, "\n.text")?;

@@ -1,6 +1,4 @@
 pub mod arm;
-
-use crate::Result;
 use std::io::Write;
 
 /// Generate AArch64 assembly from MIR for the requested host OS.
@@ -10,7 +8,7 @@ pub fn generate_mir_to_aarch64<'a, W: Write>(
     module: &'a crate::mir::Module,
     writer: &mut W,
     host_os: &str,
-) -> Result<()> {
+) -> std::result::Result<(), crate::error::LaminaError> {
     match host_os {
         "macos" | "darwin" => arm::aarch64::generate_mir_aarch64(module, writer, TargetOs::MacOs),
         "linux" => arm::aarch64::generate_mir_aarch64(module, writer, TargetOs::Linux),
@@ -39,7 +37,7 @@ pub enum CodegenOptions {
 // | Your CodegenType Approach seems fine but How about just Stating how many threads to use?
 // | I think that would be more clear and easier to extend. 
 
-pub trait Codegen: Default + Debug {
+pub trait Codegen{
     // The binary extension of the target architecture
     const BIN_EXT: &'static str;
     // Whether this codegen can output assembly.
@@ -56,9 +54,9 @@ pub trait Codegen: Default + Debug {
 
     fn prepare(
         &mut self,
-        types:
-        globals:
-        funcs:
+        //types:
+        //globals:
+        //funcs:
         verbose: bool,
         options: [CodegenOptions],
         input_name: &str,
@@ -77,15 +75,16 @@ pub trait Codegen: Default + Debug {
     )-> Result<(),CodegenError>;
 }
 
-CodegenError {
-    UnsupportedFeature(FeatureType),
+// The Strings are the placeholder for the types
+pub enum CodegenError {
+    UnsupportedFeature(String),
     InvalidCodegenOptions(String),
     InvalidTargetOs(String),
     InvalidMaxBitWidth(u8),
     InvalidInputName(String),
     InvalidVerbose(bool),
     InvalidOptions(Vec<CodegenOptions>),
-    InvalidTypes(Vec<Type>),
-    InvalidGlobals(Vec<Global>),
-    InvalidFuncs(Vec<Function>),
+    InvalidTypes(Vec<String>),
+    InvalidGlobals(Vec<String>),
+    InvalidFuncs(Vec<String>),
 }

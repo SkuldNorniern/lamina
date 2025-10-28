@@ -4,14 +4,15 @@ pub mod instructions;
 pub mod state;
 pub mod util;
 
-use crate::{Module, Result};
+use crate::{Module, LaminaError};
 use std::io::Write;
+use std::result::Result;
 
 /// Generate aarch64 assembly for a module
 pub fn generate_aarch64_assembly<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let mut state = state::CodegenState::new();
 
     // --- 1. Process Globals and emit data/BSS ---

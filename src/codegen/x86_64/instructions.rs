@@ -3,13 +3,13 @@ use super::util::get_value_operand_asm;
 use crate::codegen::{CodegenError, ExtensionInfo, TypeInfo};
 use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType,
-    Result, /*Identifier*/
     Type, Value,
 };
 use std::io::Write;
+use std::result::Result;
 
 // Helper function to store syscall result
-fn store_syscall_result<W: Write>(writer: &mut W, dest: &str, src_reg: &str) -> Result<()> {
+fn store_syscall_result<W: Write>(writer: &mut W, dest: &str, src_reg: &str) -> Result<(), LaminaError> {
     writeln!(writer, "        movq {}, {}", src_reg, dest)?;
     Ok(())
 }
@@ -21,7 +21,7 @@ pub fn generate_instruction<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     _func_name: Identifier<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     // Original instruction generation logic follows...
     writeln!(writer, "        # IR: {}", instr)?; // Comment with the original IR
 

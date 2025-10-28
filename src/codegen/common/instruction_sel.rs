@@ -1,10 +1,12 @@
 use super::types::ValueLocation;
-use crate::{Instruction, PrimitiveType, Result, Type, Value};
+use crate::{Instruction, PrimitiveType, Type, Value};
+
+use std::result::Result;
 
 /// Common instruction selection patterns that can be shared across architectures
 pub trait InstructionSelector<'a> {
     /// Select the best instruction pattern for a given IR instruction
-    fn select_instruction(&self, instr: &Instruction<'a>) -> Result<Vec<String>>;
+    fn select_instruction(&self, instr: &Instruction<'a>) -> Result<Vec<String>, String>;
 
     /// Get the optimal operand representation for a value
     fn select_operand(&self, value: &Value<'a>, location: &ValueLocation) -> String;
