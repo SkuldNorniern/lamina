@@ -2,7 +2,6 @@ pub mod arm;
 use std::io::Write;
 
 /// Generate AArch64 assembly from MIR for the requested host OS.
-///
 /// host_os: "macos" | "linux" | "windows"
 pub fn generate_mir_to_aarch64<W: Write>(
     module: &crate::mir::Module,
@@ -18,6 +17,7 @@ pub fn generate_mir_to_aarch64<W: Write>(
     }
 }
 
+/// Mark the target operating system
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TargetOs {
     MacOs,
@@ -26,30 +26,33 @@ pub enum TargetOs {
     BSD,
 }
 
+/// The options for the codegen
 pub enum CodegenOptions {
-    Debug,   // Debug mode is the default mode, it will output with the full debug information
-    Release, // Release mode is the optimized mode, it will output without debug information
-    // FEAT: TODO: Add more options for codegen
+    /// Debug mode is the default mode, it will output with the full debug information
+    Debug,   
+    /// Release mode is the optimized mode, it will output without debug information
+    Release, 
+    /// FEAT: TODO: Add more options for codegen
     Custom((String, String)),
 }
 
-// FEAT: TODO: State Multithreaded Codegen
-// | Your CodegenType Approach seems fine but How about just Stating how many threads to use?
-// | I think that would be more clear and easier to extend.
+// FEAT: TODO: Support multithreaded codegen
 
+
+/// The trait for the codegen
 pub trait Codegen {
-    // The binary extension of the target architecture
+    /// The binary extension of the target architecture
     const BIN_EXT: &'static str;
-    // Whether this codegen can output assembly.
+    /// Whether this codegen can output assembly.
     const CAN_OUTPUT_ASM: bool;
-    // Whether this codegen can output binary.
+    /// Whether this codegen can output binary.
     const CAN_OUTPUT_BIN: bool;
 
-    // The Supported codegen options
+    /// The Supported codegen options
     const SUPPORTED_CODEGEN_OPTS: [CodegenOptions];
-    // The target operating system
+    /// The target operating system
     const TARGET_OS: TargetOs;
-    // The max bit width of the target architecture
+    /// The max bit width of the target architecture
     const MAX_BIT_WIDTH: u8;
 
     fn prepare(
@@ -61,6 +64,7 @@ pub trait Codegen {
         options: [CodegenOptions],
         input_name: &str,
     ) -> Result<(), CodegenError>;
+
     fn compile(&mut self) -> Result<(), CodegenError>;
     fn finalize(&mut self) -> Result<(), CodegenError>;
     fn emit_asm(&mut self) -> Result<(), CodegenError>;
