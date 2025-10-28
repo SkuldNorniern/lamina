@@ -5,10 +5,11 @@ use super::util::get_type_size_directive_and_bytes;
 use crate::codegen::CodegenError;
 use crate::{
     BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType,
-    Result, Type, Value,
+    Type, Value,
 };
 use std::collections::HashSet;
 use std::io::Write;
+use std::result::Result;
 
 /// Generates x86_64 assembly for all functions in the module
 ///
@@ -27,7 +28,7 @@ pub fn generate_functions<'a, W: Write>(
     module: &'a crate::Module<'a>, // Use full path to avoid ambiguity
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     for (func_name, func) in &module.functions {
         generate_function(func_name, func, writer, state)?;
     }
@@ -39,7 +40,7 @@ pub fn generate_functions_with_optimization<'a, W: Write>(
     module: &'a crate::Module<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     for (func_name, func) in &module.functions {
         generate_function_with_register_allocation(func_name, func, writer, state)?;
     }
@@ -52,7 +53,7 @@ pub fn generate_function_with_register_allocation<'a, W: Write>(
     func: &'a Function<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     // Apply graph coloring register allocation
     let mut allocator = GraphColoringAllocator::new();
     let allocation_result = allocator.allocate_registers(func)?;
@@ -68,7 +69,7 @@ fn generate_function_with_allocation<'a, W: Write>(
     writer: &mut W,
     state: &mut CodegenState<'a>,
     allocation_result: &AllocationResult,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     // Determine assembly label
     let is_exported = func.annotations.contains(&FunctionAnnotation::Export);
     let is_main = func_name == "main";
@@ -230,7 +231,7 @@ pub fn generate_function<'a, W: Write>(
     func: &'a Function<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     // Determine assembly label
     let is_exported = func.annotations.contains(&FunctionAnnotation::Export);
     let is_main = func_name == "main";
@@ -490,7 +491,7 @@ fn precompute_function_layout<'a>(
     func_ctx: &mut FunctionContext<'a>,
     state: &mut CodegenState<'a>,
     required_regs: &HashSet<&'static str>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let mut current_stack_offset: i64;
     let mut current_param_stack_offset = 16i64; // For args passed via stack (> 6th arg)
 
@@ -680,7 +681,7 @@ fn generate_basic_block<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     func_name: Identifier<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     for instr in &block.instructions {
         generate_instruction(instr, writer, state, func_ctx, func_name)?;
     }
@@ -693,7 +694,7 @@ fn precompute_optimized_function_layout<'a>(
     func_ctx: &mut FunctionContext<'a>,
     state: &mut CodegenState<'a>,
     allocation_result: &AllocationResult,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     // Use simplified layout for register-allocated variables
     let mut current_stack_offset = -8i64; // Start below RBP
 
@@ -766,7 +767,7 @@ fn generate_optimized_basic_block<'a, W: Write>(
     func_ctx: &mut FunctionContext<'a>,
     func_name: Identifier<'a>,
     allocation_result: &AllocationResult,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     for instr in &block.instructions {
         // Use optimized instruction generation that prefers registers
         generate_optimized_instruction(
@@ -789,7 +790,7 @@ fn generate_optimized_instruction<'a, W: Write>(
     func_ctx: &mut FunctionContext<'a>,
     func_name: Identifier<'a>,
     allocation_result: &AllocationResult,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     // Try to generate highly optimized assembly based on register allocation
     match instr {
         Instruction::Binary {
@@ -874,7 +875,7 @@ fn generate_optimized_binary<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     allocation_result: &AllocationResult,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     use crate::ir::instruction::BinaryOp;
     use crate::ir::types::{Literal, PrimitiveType};
 
@@ -1097,7 +1098,7 @@ fn generate_optimized_cmp<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     allocation_result: &AllocationResult,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     use crate::ir::instruction::CmpOp;
     use crate::ir::types::PrimitiveType;
 
@@ -1200,7 +1201,7 @@ fn generate_optimized_load<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     allocation_result: &AllocationResult,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     use crate::ir::types::Type;
 
     // Check if result is in a register
@@ -1260,7 +1261,7 @@ fn generate_optimized_store<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     allocation_result: &AllocationResult,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     use crate::ir::types::Type;
 
     // Check if both pointer and value are in registers

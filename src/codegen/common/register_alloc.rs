@@ -1,11 +1,12 @@
 use super::types::{AllocationResult, InterferenceNode, LiveRange};
-use crate::{Function, Instruction, Result, Value};
+use crate::{Function, Instruction, Value};
 use std::collections::{HashMap, HashSet};
+use std::result::Result;
 
 /// Common interface for register allocators
 pub trait RegisterAllocator<'a> {
     /// Allocate registers for a function
-    fn allocate_registers(&mut self, func: &'a Function<'a>) -> Result<AllocationResult>;
+    fn allocate_registers(&mut self, func: &'a Function<'a>) -> Result<AllocationResult, String>;
 
     /// Get available registers for allocation
     fn available_registers(&self) -> &[String];
@@ -32,7 +33,7 @@ impl LinearScanAllocator {
 }
 
 impl<'a> RegisterAllocator<'a> for LinearScanAllocator {
-    fn allocate_registers(&mut self, func: &'a Function<'a>) -> Result<AllocationResult> {
+    fn allocate_registers(&mut self, func: &'a Function<'a>) -> Result<AllocationResult, String> {
         let live_ranges = compute_live_ranges(func)?;
 
         // Sort intervals by start point
@@ -117,7 +118,7 @@ impl GraphColoringAllocator {
 }
 
 impl<'a> RegisterAllocator<'a> for GraphColoringAllocator {
-    fn allocate_registers(&mut self, func: &'a Function<'a>) -> Result<AllocationResult> {
+    fn allocate_registers(&mut self, func: &'a Function<'a>) -> Result<AllocationResult, String> {
         let live_ranges = compute_live_ranges(func)?;
         let interference_graph = build_interference_graph(&live_ranges);
 
@@ -166,7 +167,7 @@ impl GraphColoringAllocator {
 }
 
 /// Compute live ranges for all variables in a function
-pub fn compute_live_ranges<'a>(func: &'a Function<'a>) -> Result<HashMap<String, LiveRange>> {
+pub fn compute_live_ranges<'a>(func: &'a Function<'a>) -> Result<HashMap<String, LiveRange>, String> {
     let mut live_ranges: HashMap<String, LiveRange> = HashMap::new();
     let mut instruction_index = 0;
 

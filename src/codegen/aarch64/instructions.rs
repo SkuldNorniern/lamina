@@ -3,9 +3,10 @@ use super::util::{get_value_operand_asm, materialize_label_address};
 use crate::codegen::{CodegenError, ExtensionInfo, TypeInfo};
 use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, Literal, PrimitiveType,
-    Result, Type, Value,
+    Type, Value,
 };
 use std::io::Write;
+use std::result::Result;
 
 pub fn generate_instruction<'a, W: Write>(
     instr: &Instruction<'a>,
@@ -13,7 +14,7 @@ pub fn generate_instruction<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     _func_name: Identifier<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     writeln!(writer, "        // IR: {}", instr)?;
 
     match instr {
@@ -1074,7 +1075,7 @@ pub fn generate_instruction<'a, W: Write>(
     Ok(())
 }
 
-fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<()> {
+fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<(), LaminaError> {
     if op.starts_with('x') {
         writeln!(writer, "        mov {}, {}", dest, op)?;
     } else if op.starts_with("[x29,") {
@@ -1147,7 +1148,7 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
     Ok(())
 }
 
-fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<()> {
+fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<(), LaminaError> {
     if op.starts_with("[x29,")
         && let Some(off) = parse_fp_offset(op)
     {
@@ -1164,7 +1165,7 @@ fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -
     Err(LaminaError::CodegenError(CodegenError::InternalError))
 }
 
-fn materialize_address<W: Write>(writer: &mut W, dest: &str, offset: i64) -> Result<()> {
+fn materialize_address<W: Write>(writer: &mut W, dest: &str, offset: i64) -> Result<(), LaminaError> {
     // AArch64 immediate addressing only supports offsets in range [-256, 255]
     if (-256..=255).contains(&offset) {
         if offset >= 0 {
@@ -1245,7 +1246,7 @@ fn parse_fp_offset(s: &str) -> Option<i64> {
     s[start..end].parse().ok()
 }
 
-fn store_to_location<W: Write>(writer: &mut W, src_reg: &str, dest: &str) -> Result<()> {
+fn store_to_location<W: Write>(writer: &mut W, src_reg: &str, dest: &str) -> Result<(), LaminaError> {
     if dest.starts_with('x') {
         writeln!(writer, "        mov {}, {}", dest, src_reg)?;
     } else if dest.starts_with("[x29,") {
@@ -1263,7 +1264,7 @@ fn binary_i32<W: Write>(
     lhs: &str,
     rhs: &str,
     dest: &str,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     materialize_to_reg(writer, lhs, "x10")?;
     materialize_to_reg(writer, rhs, "x11")?;
     match op {
@@ -1288,7 +1289,7 @@ fn binary_i8_bool<W: Write>(
     lhs: &str,
     rhs: &str,
     dest: &str,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     materialize_to_reg(writer, lhs, "x10")?;
     materialize_to_reg(writer, rhs, "x11")?;
     match op {
@@ -1316,7 +1317,7 @@ fn binary_i16<W: Write>(
     lhs: &str,
     rhs: &str,
     dest: &str,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     materialize_to_reg(writer, lhs, "x10")?;
     materialize_to_reg(writer, rhs, "x11")?;
     match op {
@@ -1341,7 +1342,7 @@ fn binary_i64<W: Write>(
     lhs: &str,
     rhs: &str,
     dest: &str,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     materialize_to_reg(writer, lhs, "x10")?;
     materialize_to_reg(writer, rhs, "x11")?;
     match op {

@@ -8,8 +8,8 @@ use frame::FrameMap;
 use regalloc::A64RegAlloc;
 use util::{emit_mov_imm64, imm_to_u64};
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
-use crate::Result;
 use std::io::Write;
+use std::result::Result;    
 
 fn w_alias(xreg: &str) -> String {
     if let Some(rest) = xreg.strip_prefix('x') { format!("w{}", rest) } else { xreg.to_string() }
@@ -23,7 +23,7 @@ pub fn generate_mir_aarch64<'a, W: Write>(
     module: &'a MirModule,
     writer: &mut W,
     target_os: TargetOs,
-) -> Result<()> {
+) -> Result<(), crate::error::LaminaError> {
     // Emit a shared format string for print intrinsics, then text section header
     match target_os {
         TargetOs::MacOs => {
@@ -108,7 +108,7 @@ pub fn generate_mir_aarch64<'a, W: Write>(
     Ok(())
 }
 
-fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: TargetOs, ra: &mut A64RegAlloc, epilogue_label: &str) -> Result<()> {
+fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: TargetOs, ra: &mut A64RegAlloc, epilogue_label: &str) -> Result<(), crate::error::LaminaError> {
     for inst in insts {
         match inst {
             MirInst::IntBinary { op, lhs, rhs, dst, ty } => {
@@ -582,7 +582,7 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
     Ok(())
 }
 
-fn emit_materialize_operand<W: Write>(w: &mut W, op: &crate::mir::Operand, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<()> {
+fn emit_materialize_operand<W: Write>(w: &mut W, op: &crate::mir::Operand, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<(), crate::error::LaminaError> {
     match op {
         crate::mir::Operand::Immediate(imm) => emit_mov_imm64(w, dest, imm_to_u64(imm))?,
         crate::mir::Operand::Register(r) => load_reg_to(w, r, dest, frame, ra)?,
@@ -590,7 +590,7 @@ fn emit_materialize_operand<W: Write>(w: &mut W, op: &crate::mir::Operand, dest:
     Ok(())
 }
 
-fn load_reg_to<W: Write>(w: &mut W, r: &Register, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<()> {
+fn load_reg_to<W: Write>(w: &mut W, r: &Register, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<(), crate::error::LaminaError> {
     match r {
         Register::Virtual(_v) => {
             // Always load from stack slot for correctness across blocks
@@ -626,7 +626,7 @@ fn load_reg_to<W: Write>(w: &mut W, r: &Register, dest: &str, frame: &FrameMap, 
     Ok(())
 }
 
-fn store_result<W: Write>(w: &mut W, dst: &Register, src_reg: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<()> {
+fn store_result<W: Write>(w: &mut W, dst: &Register, src_reg: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<(), crate::error::LaminaError> {
     match dst {
         Register::Virtual(_v) => {
             // Always store to stack slot for correctness across blocks
@@ -662,7 +662,7 @@ fn store_result<W: Write>(w: &mut W, dst: &Register, src_reg: &str, frame: &Fram
     Ok(())
 }
 
-fn materialize_address<W: Write>(w: &mut W, addr: &crate::mir::AddressMode, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<()> {
+fn materialize_address<W: Write>(w: &mut W, addr: &crate::mir::AddressMode, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<(), crate::error::LaminaError> {
     match addr {
         crate::mir::AddressMode::BaseOffset { base, offset } => {
             // Materialize base value (should be an address) into dest

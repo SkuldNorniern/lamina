@@ -1,10 +1,12 @@
 pub mod generate;
 pub mod state;
 
-use crate::{BinaryOp, Instruction, Literal, Module, PrimitiveType, Result, Type, Value};
+use crate::codegen::{CodegenError, FeatureType, OperationType, InstructionType};
+use crate::{BinaryOp, Instruction, Literal, Module, PrimitiveType, LaminaError, Type, Value};
 use generate::{FloatType, IntegerType, ModuleExpression, NumericConstant, NumericType};
 use state::Register;
 use std::{collections::HashMap, io::Write};
+use std::result::Result;
 
 pub fn get_wasm_type_primitive(
     ty: PrimitiveType,
@@ -641,7 +643,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
     is_wasm64: bool,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let mut state = state::CodegenState::new();
 
     for (name, decl) in &module.global_declarations {
@@ -795,9 +797,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         allocated_ty: _,
                     }
                     | Instruction::Dealloc { ptr: _ } => {
-                        return Err(crate::LaminaError::CodegenError(
-                            crate::codegen::CodegenError::UnsupportedFeature(
-                                crate::codegen::FeatureType::HeapAllocation,
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::UnsupportedFeature(
+                                FeatureType::HeapAllocation,
                             ),
                         ));
                     }
@@ -1391,7 +1393,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             &mut instructions,
                             &state,
                             buffer,
-                            Some(&PrimitiveType::Ptr),
+                            Some(&if is_wasm64 {
+                                PrimitiveType::U64
+                            } else {
+                                PrimitiveType::U32
+                            }),
                             &locals,
                             is_wasm64,
                         );
@@ -1483,9 +1489,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         result: _,
                     }
                     | Instruction::ReadByte { result: _ } => {
-                        return Err(crate::LaminaError::CodegenError(
-                            crate::codegen::CodegenError::UnsupportedFeature(
-                                crate::codegen::FeatureType::Custom("reading data".to_string()),
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::UnsupportedFeature(
+                                FeatureType::Custom("reading data".to_string()),
                             ),
                         ));
                     }
@@ -1541,9 +1547,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                     PrimitiveType::I32
                                 }
                         {
-                            return Err(crate::LaminaError::CodegenError(
-                                crate::codegen::CodegenError::UnsupportedTypeForOperation(
-                                    crate::codegen::OperationType::Custom("ptr to int".to_string()),
+                            return Err(LaminaError::CodegenError(
+                                CodegenError::UnsupportedTypeForOperation(
+                                    OperationType::Custom("ptr to int".to_string()),
                                 ),
                             ));
                         }
@@ -1659,9 +1665,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         ty: _,
                         incoming: _,
                     } => {
-                        return Err(crate::LaminaError::CodegenError(
-                            crate::codegen::CodegenError::InvalidInstructionForTarget(
-                                crate::codegen::InstructionType::Custom("phi".to_string()),
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::InvalidInstructionForTarget(
+                                InstructionType::Custom("phi".to_string()),
                             ),
                         ));
                     }
