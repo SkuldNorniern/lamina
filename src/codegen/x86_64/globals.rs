@@ -1,15 +1,16 @@
 use super::state::CodegenState;
 use super::util::get_type_size_directive_and_bytes;
 use crate::codegen::CodegenError;
-use crate::{GlobalDeclaration, LaminaError, Literal, Module, Result, Value};
+use crate::{GlobalDeclaration, LaminaError, Literal, Module, Value};
 use std::io::Write;
+use std::result::Result;
 
 // Helper to generate the .data and .bss sections based on globals
 pub fn generate_global_data_section<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let mut has_data = false;
     let mut has_bss = false;
 
@@ -63,7 +64,7 @@ pub fn generate_global_data_section<'a, W: Write>(
 fn generate_global_initializer<W: Write>(
     writer: &mut W,
     global: &GlobalDeclaration<'_>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     if let Some(ref initializer) = global.initializer {
         match initializer {
             Value::Constant(literal) => match literal {
@@ -133,7 +134,7 @@ fn escape_asm_string(s: &str) -> String {
     escaped
 }
 
-pub fn generate_globals<W: Write>(state: &CodegenState, writer: &mut W) -> Result<()> {
+pub fn generate_globals<W: Write>(state: &CodegenState, writer: &mut W) -> Result<(), LaminaError> {
     // --- Read-Only Data ---
     if !state.rodata_strings.is_empty() {
         writeln!(writer, "\n.section .rodata")?;

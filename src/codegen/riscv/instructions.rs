@@ -1,8 +1,9 @@
 use super::IsaWidth;
 use super::state::{CodegenState, FunctionContext, RETURN_REGISTER, ValueLocation};
 use crate::codegen::{CodegenError, TypeInfo};
-use crate::{BinaryOp, Identifier, Instruction, LaminaError, PrimitiveType, Result, Type, Value};
+use crate::{BinaryOp, Identifier, Instruction, LaminaError, PrimitiveType, Type, Value};
 use std::io::Write;
+use std::result::Result;
 
 pub fn generate_instruction<'a, W: Write>(
     instr: &Instruction<'a>,
@@ -10,7 +11,7 @@ pub fn generate_instruction<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     _func_name: Identifier<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     writeln!(writer, "    # IR: {}", instr)?;
 
     match instr {
@@ -507,7 +508,7 @@ fn materialize_to_reg<W: Write>(
     op: &str,
     dest: &str,
     state: &CodegenState,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     if let Ok(imm) = op.parse::<i64>() {
         writeln!(writer, "    li {}, {}", dest, imm)?;
     } else if op.ends_with("(adrp+add)") || op.contains("(adrp+add)") {
@@ -533,7 +534,7 @@ fn store_to_location<W: Write>(
     src_op: &str,
     dest: &str,
     state: &CodegenState,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     if dest.starts_with('a') || dest.starts_with('t') || dest.starts_with('s') {
         writeln!(writer, "    mv {}, {}", dest, src_op)?;
     } else if dest.contains("(s0)") {
@@ -555,7 +556,7 @@ fn binary_i32<W: Write>(
     rhs: &str,
     dest: &str,
     state: &CodegenState,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     materialize_to_reg(writer, lhs, "t0", state)?;
     materialize_to_reg(writer, rhs, "t1", state)?;
     match op {
@@ -574,7 +575,7 @@ fn binary_i64<W: Write>(
     rhs: &str,
     dest: &str,
     state: &CodegenState,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     materialize_to_reg(writer, lhs, "t0", state)?;
     materialize_to_reg(writer, rhs, "t1", state)?;
     match op {
@@ -586,7 +587,7 @@ fn binary_i64<W: Write>(
     store_to_location(writer, "t2", dest, state)
 }
 
-fn materialize_address<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<()> {
+fn materialize_address<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<(), LaminaError> {
     if let Some(idx) = op.find('(') {
         // form: offset(s0)
         let off_str = &op[..idx];

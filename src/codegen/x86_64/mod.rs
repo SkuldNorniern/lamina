@@ -8,14 +8,15 @@ pub mod register_info;
 pub mod state;
 pub mod util;
 
-use crate::{Module, Result};
+use crate::{Module, LaminaError};
 use std::io::Write;
+use std::result::Result;
 
 /// Generate x86_64 assembly for a module
 pub fn generate_x86_64_assembly<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let mut state = state::CodegenState::new();
 
     // Add note for non-executable stack

@@ -1,5 +1,6 @@
-use crate::{Function, Instruction, Result};
+use crate::{Function, Instruction, LaminaError};
 use std::collections::HashMap;
+use std::result::Result;
 
 /// Different optimization levels for x86_64 codegen
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,7 +73,7 @@ impl OptimizationConfig {
 }
 
 /// Simple peephole optimizations on assembly output
-pub fn apply_peephole_optimizations(assembly_lines: &mut Vec<String>) -> Result<bool> {
+pub fn apply_peephole_optimizations(assembly_lines: &mut Vec<String>) -> Result<bool, LaminaError> {
     let mut changed = false;
     let mut i = 0;
 

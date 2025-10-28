@@ -1,15 +1,16 @@
 use super::instructions::generate_instruction;
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use crate::{
-    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, PrimitiveType, Result, Type,
+    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType, Type,
 };
 use std::io::Write;
+use std::result::Result;
 
 pub fn generate_functions<'a, W: Write>(
     module: &'a crate::Module<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     for (func_name, func) in &module.functions {
         generate_function(func_name, func, writer, state)?;
     }
@@ -21,7 +22,7 @@ pub fn generate_function<'a, W: Write>(
     func: &'a Function<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let is_exported = func.annotations.contains(&FunctionAnnotation::Export);
     let is_main = func_name == "main";
     let asm_label = if is_main {
@@ -120,7 +121,7 @@ fn precompute_function_layout<'a>(
     func: &'a Function<'a>,
     func_ctx: &mut FunctionContext<'a>,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     // Assign simple block labels
     for ir_label in func.basic_blocks.keys() {
         let asm_label = state.new_label(&format!("block_{}", ir_label));
@@ -222,14 +223,14 @@ fn generate_basic_block<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     func_name: Identifier<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     for instr in &block.instructions {
         generate_instruction(instr, writer, state, func_ctx, func_name)?;
     }
     Ok(())
 }
 
-fn prim_size(pt: PrimitiveType, word: u64) -> Result<u64> {
+fn prim_size(pt: PrimitiveType, word: u64) -> Result<u64, LaminaError> {
     Ok(match pt {
         PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
         PrimitiveType::I16 | PrimitiveType::U16 => 2,

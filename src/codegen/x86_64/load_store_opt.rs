@@ -1,6 +1,7 @@
 use super::state::{CodegenState, FunctionContext};
-use crate::{Instruction, Result, Value};
+use crate::{Instruction, LaminaError, Value};
 use std::collections::{HashMap, HashSet};
+use std::result::Result;
 
 /// Represents an optimized load/store operation
 #[derive(Debug)]
@@ -37,7 +38,7 @@ pub fn optimize_load_store<'a>(
     instructions: &'a [Instruction<'a>],
     func_ctx: &FunctionContext<'a>,
     _state: &mut CodegenState<'a>,
-) -> Result<Vec<OptimizedOperation<'a>>> {
+) -> Result<Vec<OptimizedOperation<'a>>, LaminaError> {
     let mut optimized_ops = Vec::with_capacity(instructions.len());
 
     // Maps memory locations to registers containing their values

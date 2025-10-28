@@ -1,7 +1,8 @@
 use super::types::{StackFrame, ValueLocation};
 use super::utils::{align_to, align_to_signed, get_type_alignment, get_type_size_bytes};
-use crate::{Function, Instruction, Result, Type};
+use crate::{Function, Instruction, LaminaError, Type};
 use std::collections::HashMap;
+use std::result::Result;
 
 /// Common stack layout computation that works for most architectures
 pub struct StandardStackLayout {
@@ -28,7 +29,7 @@ impl StandardStackLayout {
         func: &'a Function<'a>,
         arg_registers: &[&str],
         value_locations: &mut HashMap<&'a str, ValueLocation>,
-    ) -> Result<StackFrame> {
+    ) -> Result<StackFrame, LaminaError> {
         let mut frame = StackFrame {
             total_size: 0,
             locals_size: 0,
@@ -172,7 +173,7 @@ impl AArch64StackLayout {
 pub fn calculate_outgoing_args_size<'a>(
     func: &'a Function<'a>,
     arg_registers: &[&str],
-) -> Result<u64> {
+) -> Result<u64, LaminaError> {
     let mut max_stack_args = 0;
 
     for block in func.basic_blocks.values() {

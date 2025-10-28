@@ -1,6 +1,7 @@
-use crate::{Function, Instruction, Module, Result};
+use crate::{Function, Instruction, Module, LaminaError};
 use std::collections::HashMap;
 use std::io::Write;
+use std::result::Result;
 
 /// Core trait that all codegen backends must implement
 pub trait CodegenBackend<'a> {
@@ -9,7 +10,7 @@ pub trait CodegenBackend<'a> {
 
     /// Generate assembly for an entire module
     fn generate_assembly<W: Write>(&mut self, module: &'a Module<'a>, writer: &mut W)
-    -> Result<()>;
+    -> Result<(), LaminaError>;
 
     /// Generate assembly for a single function
     fn generate_function<W: Write>(
@@ -18,7 +19,7 @@ pub trait CodegenBackend<'a> {
         func: &'a Function<'a>,
         writer: &mut W,
         state: &mut Self::State,
-    ) -> Result<()>;
+    ) -> Result<(), LaminaError>;
 
     /// Get the calling convention for this backend
     fn calling_convention(&self) -> &dyn CallingConvention;
@@ -48,10 +49,10 @@ pub trait FunctionContext<'a> {
     fn new() -> Self;
 
     /// Get the location of a value (register or stack)
-    fn get_value_location(&self, name: &'a str) -> Result<ValueLocation>;
+    fn get_value_location(&self, name: &'a str) -> Result<ValueLocation, LaminaError>;
 
     /// Get the assembly label for a basic block
-    fn get_block_label(&self, ir_label: &'a str) -> Result<String>;
+    fn get_block_label(&self, ir_label: &'a str) -> Result<String, LaminaError>;
 
     /// Get the total stack size needed
     fn get_stack_size(&self) -> u64;
@@ -77,7 +78,7 @@ pub trait InstructionGenerator<'a> {
         writer: &mut W,
         state: &mut Self::State,
         context: &Self::Context,
-    ) -> Result<()>;
+    ) -> Result<(), LaminaError>;
 }
 
 /// Trait for calling convention handling
@@ -103,7 +104,7 @@ pub trait RegisterAllocator<'a> {
     type AllocationResult;
 
     /// Allocate registers for a function
-    fn allocate_registers(&mut self, func: &'a Function<'a>) -> Result<Self::AllocationResult>;
+    fn allocate_registers(&mut self, func: &'a Function<'a>) -> Result<Self::AllocationResult, LaminaError>;
 }
 
 /// Trait for register information
@@ -126,7 +127,7 @@ pub trait StackLayoutComputer<'a> {
     type Context: FunctionContext<'a>;
 
     /// Compute stack layout for a function
-    fn compute_layout(&self, func: &'a Function<'a>, context: &mut Self::Context) -> Result<()>;
+    fn compute_layout(&self, func: &'a Function<'a>, context: &mut Self::Context) -> Result<(), LaminaError>;
 }
 
 /// Trait for global variable handling
@@ -139,5 +140,5 @@ pub trait GlobalGenerator<'a> {
         module: &'a Module<'a>,
         writer: &mut W,
         state: &mut Self::State,
-    ) -> Result<()>;
+    ) -> Result<(), LaminaError>;
 }

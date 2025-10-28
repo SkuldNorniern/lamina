@@ -11,6 +11,9 @@ pub use riscv::{generate_riscv32_assembly, generate_riscv64_assembly, generate_r
 pub use x86_64::generate_x86_64_assembly;
 
 use crate::PrimitiveType;
+use crate::LaminaError;
+
+use std::result::Result;
 
 // Codegen Errors for Detailed Error Handling
 
@@ -353,17 +356,17 @@ impl std::fmt::Display for InstructionType {
 /// This demonstrates replacing unwrap() calls with proper error handling
 pub mod error_examples {
     use super::{CodegenError, LiteralType, TypeInfo};
-    use crate::{PrimitiveType, Result};
+    use crate::{PrimitiveType, LaminaError};
 
     /// Example: Replace unwrap() with proper error handling
-    pub fn safe_parse_immediate(value: &str) -> Result<u64> {
+    pub fn safe_parse_immediate(value: &str) -> Result<u64, LaminaError> {
         value
             .parse::<u64>()
             .map_err(|_| CodegenError::InvalidImmediateValue.into())
     }
 
     /// Example: Replace string-based errors with typed errors
-    pub fn safe_check_primitive_type(pt: PrimitiveType) -> Result<()> {
+    pub fn safe_check_primitive_type(pt: PrimitiveType) -> Result<(), LaminaError> {
         match pt {
             PrimitiveType::I8
             | PrimitiveType::I32
@@ -378,7 +381,7 @@ pub mod error_examples {
     pub fn safe_global_lookup(
         name: &str,
         globals: &std::collections::HashMap<String, String>,
-    ) -> Result<String> {
+    ) -> Result<String, LaminaError> {
         globals
             .get(name)
             .cloned()
@@ -386,7 +389,7 @@ pub mod error_examples {
     }
 
     /// Example: Using specific type information instead of strings
-    pub fn safe_store_operation(pt: PrimitiveType) -> Result<()> {
+    pub fn safe_store_operation(pt: PrimitiveType) -> Result<(), LaminaError> {
         match pt {
             PrimitiveType::F32 | PrimitiveType::F64 => {
                 Err(CodegenError::StoreNotImplementedForType(TypeInfo::Primitive(pt)).into())
@@ -396,7 +399,7 @@ pub mod error_examples {
     }
 
     /// Example: Using specific literal type information
-    pub fn safe_literal_check(lit_type: &str) -> Result<()> {
+    pub fn safe_literal_check(lit_type: &str) -> Result<(), LaminaError> {
         let literal_type = match lit_type {
             "f32" => LiteralType::F32,
             "f64" => LiteralType::F64,

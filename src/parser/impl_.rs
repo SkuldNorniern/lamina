@@ -1,9 +1,10 @@
 use crate::{
     AllocType, BasicBlock, BinaryOp, CmpOp, Function, FunctionAnnotation, FunctionParameter,
     FunctionSignature, GlobalDeclaration, Identifier, Instruction, Label, LaminaError, Literal,
-    Module, PrimitiveType, Result, StructField, Type, TypeDeclaration, Value,
+    Module, PrimitiveType, StructField, Type, TypeDeclaration, Value,
 };
 use std::collections::HashMap;
+use std::result::Result;
 
 // --- Parser State ---
 
@@ -81,7 +82,7 @@ impl<'a> ParserState<'a> {
 
     // --- Token/Keyword Parsing ---
 
-    fn expect_char(&mut self, expected: char) -> Result<()> {
+    fn expect_char(&mut self, expected: char) -> Result<(), LaminaError> {
         self.skip_whitespace_and_comments();
         if self.current_char() == Some(expected) {
             self.advance();
@@ -95,7 +96,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume_keyword(&mut self, keyword: &str) -> Result<()> {
+    fn consume_keyword(&mut self, keyword: &str) -> Result<(), LaminaError> {
         self.skip_whitespace_and_comments();
         if self.input[self.position..].starts_with(keyword) {
             // Check if keyword is followed by non-alphanumeric (or EOF)
@@ -120,7 +121,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn parse_identifier_str(&mut self) -> Result<&'a str> {
+    fn parse_identifier_str(&mut self) -> Result<&'a str, LaminaError> {
         self.skip_whitespace_and_comments();
         let start = self.position;
 
@@ -166,22 +167,22 @@ impl<'a> ParserState<'a> {
         Ok(&self.input[start..self.position])
     }
 
-    fn parse_type_identifier(&mut self) -> Result<Identifier<'a>> {
+    fn parse_type_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
         self.expect_char('@')?;
         self.parse_identifier_str()
     }
 
-    fn parse_value_identifier(&mut self) -> Result<Identifier<'a>> {
+    fn parse_value_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
         self.expect_char('%')?;
         self.parse_identifier_str()
     }
 
-    fn parse_label_identifier(&mut self) -> Result<Label<'a>> {
+    fn parse_label_identifier(&mut self) -> Result<Label<'a>, LaminaError> {
         self.parse_identifier_str()
     }
 
     // Basic integer parsing (replace with more robust later)
-    fn parse_integer(&mut self) -> Result<i64> {
+    fn parse_integer(&mut self) -> Result<i64, LaminaError> {
         self.skip_whitespace_and_comments();
         let start = self.position;
 
@@ -226,7 +227,7 @@ impl<'a> ParserState<'a> {
     }
 
     // Basic float parsing (improved to handle negative values)
-    fn parse_float(&mut self) -> Result<f32> {
+    fn parse_float(&mut self) -> Result<f32, LaminaError> {
         self.skip_whitespace_and_comments();
         let start = self.position;
 
@@ -267,7 +268,7 @@ impl<'a> ParserState<'a> {
     }
 
     // String literal parsing (basic)
-    fn parse_string_literal(&mut self) -> Result<&'a str> {
+    fn parse_string_literal(&mut self) -> Result<&'a str, LaminaError> {
         self.expect_char('"')?;
         let start = self.position;
         while !self.is_eof() && self.bytes[self.position] != b'"' {
@@ -290,7 +291,7 @@ impl<'a> ParserState<'a> {
 
 /// Parses a string containing Lamina IR text into a Module.
 /// The lifetime 'a is tied to the input string slice.
-pub fn parse_module(input: &str) -> Result<Module<'_>> {
+pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
     let mut module = Module::new();
 
@@ -324,7 +325,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>> {
 
 // --- Type Parsing ---
 
-fn parse_type_declaration<'a>(state: &mut ParserState<'a>) -> Result<TypeDeclaration<'a>> {
+fn parse_type_declaration<'a>(state: &mut ParserState<'a>) -> Result<TypeDeclaration<'a>, LaminaError> {
     state.consume_keyword("type")?;
     let name = state.parse_type_identifier()?;
     state.expect_char('=')?;
@@ -332,7 +333,7 @@ fn parse_type_declaration<'a>(state: &mut ParserState<'a>) -> Result<TypeDeclara
     Ok(TypeDeclaration { name, ty })
 }
 
-fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>> {
+fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
     let keyword_slice = state.peek_slice(6).unwrap_or(""); // Peek "struct"
     if keyword_slice.starts_with("struct") {
@@ -378,7 +379,7 @@ fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>> {
     }
 }
 
-fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>> {
+fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
     match state.current_char() {
         Some('@') => {
@@ -422,7 +423,7 @@ fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>> {
 
 // --- Global Parsing ---
 
-fn parse_global_declaration<'a>(state: &mut ParserState<'a>) -> Result<GlobalDeclaration<'a>> {
+fn parse_global_declaration<'a>(state: &mut ParserState<'a>) -> Result<GlobalDeclaration<'a>, LaminaError> {
     state.consume_keyword("global")?;
     let name = state.parse_type_identifier()?; // Globals start with @
     state.expect_char(':')?;
@@ -449,7 +450,7 @@ fn parse_global_declaration<'a>(state: &mut ParserState<'a>) -> Result<GlobalDec
 fn parse_value_with_type_hint<'a>(
     state: &mut ParserState<'a>,
     type_hint: &Type<'a>,
-) -> Result<Value<'a>> {
+) -> Result<Value<'a>, LaminaError> {
     let start_pos = state.position; // Remember position for backtracking
     state.skip_whitespace_and_comments();
 
@@ -621,7 +622,7 @@ fn parse_value_with_type_hint<'a>(
 
 // Parses a value: literal or %variable or @global
 // This version tries I32 for integer literals first, but will use I64 for larger values.
-fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>> {
+fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaError> {
     // Special case for numeric literals without a context
     let start_pos = state.position;
 
@@ -683,7 +684,7 @@ fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>> {
 
 // --- Function Parsing ---
 
-fn parse_annotations(state: &mut ParserState<'_>) -> Result<Vec<FunctionAnnotation>> {
+fn parse_annotations(state: &mut ParserState<'_>) -> Result<Vec<FunctionAnnotation>, LaminaError> {
     let mut annotations = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
@@ -706,7 +707,7 @@ fn parse_annotations(state: &mut ParserState<'_>) -> Result<Vec<FunctionAnnotati
     Ok(annotations)
 }
 
-fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a>> {
+fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a>, LaminaError> {
     let annotations = parse_annotations(state)?;
     state.consume_keyword("fn")?;
     let name = state.parse_type_identifier()?; // Functions also start with @ in decl
@@ -747,7 +748,7 @@ fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a>> {
     })
 }
 
-fn parse_fn_signature<'a>(state: &mut ParserState<'a>) -> Result<FunctionSignature<'a>> {
+fn parse_fn_signature<'a>(state: &mut ParserState<'a>) -> Result<FunctionSignature<'a>, LaminaError> {
     state.expect_char('(')?;
     let params = parse_param_list(state)?;
     state.expect_char(')')?;
@@ -759,7 +760,7 @@ fn parse_fn_signature<'a>(state: &mut ParserState<'a>) -> Result<FunctionSignatu
     })
 }
 
-fn parse_param_list<'a>(state: &mut ParserState<'a>) -> Result<Vec<FunctionParameter<'a>>> {
+fn parse_param_list<'a>(state: &mut ParserState<'a>) -> Result<Vec<FunctionParameter<'a>>, LaminaError> {
     let mut params = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
@@ -785,7 +786,7 @@ fn parse_param_list<'a>(state: &mut ParserState<'a>) -> Result<Vec<FunctionParam
 
 // --- Block and Instruction Parsing (Placeholders) ---
 
-fn parse_basic_block<'a>(state: &mut ParserState<'a>) -> Result<(Label<'a>, BasicBlock<'a>)> {
+fn parse_basic_block<'a>(state: &mut ParserState<'a>) -> Result<(Label<'a>, BasicBlock<'a>), LaminaError> {
     // Example: entry: instruction
     let label = state.parse_label_identifier()?;
     state.expect_char(':')?;
@@ -829,7 +830,7 @@ fn parse_basic_block<'a>(state: &mut ParserState<'a>) -> Result<(Label<'a>, Basi
     Ok((label, BasicBlock { instructions }))
 }
 
-fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
     let _start_pos = state.position; // Prefixed with _
 
@@ -888,7 +889,7 @@ fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>>
 
 // --- Specific Instruction Parsers ---
 
-fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveType> {
+fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveType, LaminaError> {
     state.expect_char('.')?;
     let type_str = state.parse_identifier_str()?;
     match type_str {
@@ -912,7 +913,7 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
     }
 }
 
-fn parse_type_suffix<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>> {
+fn parse_type_suffix<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.expect_char('.')?;
     parse_type(state) // Can be any type after the dot
 }
@@ -921,7 +922,7 @@ fn parse_binary_op<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
     op_str: &str,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     let op = match op_str {
         "add" => BinaryOp::Add,
         "sub" => BinaryOp::Sub,
@@ -946,7 +947,7 @@ fn parse_cmp_op<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
     op_str: &str,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     let op = match op_str {
         "eq" => CmpOp::Eq,
         "ne" => CmpOp::Ne,
@@ -969,7 +970,7 @@ fn parse_cmp_op<'a>(
     })
 }
 
-fn parse_alloc<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_alloc<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
     // Format: alloc.ptr.stack T or alloc.ptr.heap T
     // Also support: alloc.stack T or alloc.heap T directly
     state.expect_char('.')?;
@@ -1012,14 +1013,14 @@ fn parse_alloc<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Resul
     })
 }
 
-fn parse_load<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_load<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
     // load.T ptr
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
     Ok(Instruction::Load { result, ty, ptr })
 }
 
-fn parse_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // store.T ptr, val
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
@@ -1031,7 +1032,7 @@ fn parse_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
 fn parse_getfield<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // Format should be: getfield.ptr struct_ptr, index
     // Support both formats:
     // 1. getfield.ptr struct_ptr, index
@@ -1059,7 +1060,7 @@ fn parse_getfield<'a>(
 fn parse_getelem<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // Format should be: getelem.ptr array_ptr, index, element_type
     // Support both formats:
     // 1. getelem.ptr array_ptr, index, element_type
@@ -1112,7 +1113,7 @@ fn parse_getelem<'a>(
 fn parse_ptrtoint<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // Format: ptrtoint ptr_value, target_type
     let ptr_value = parse_value(state)?;
     state.expect_char(',')?;
@@ -1138,7 +1139,7 @@ fn parse_ptrtoint<'a>(
 fn parse_inttoptr<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // Format: inttoptr int_value, target_type
     let int_value = parse_value(state)?;
     state.expect_char(',')?;
@@ -1161,7 +1162,7 @@ fn parse_inttoptr<'a>(
     })
 }
 
-fn parse_tuple<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_tuple<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
     // tuple.T element1, element2, ... (Simplified: just parse elements)
     let mut elements = Vec::new();
     loop {
@@ -1191,7 +1192,7 @@ fn parse_tuple<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Resul
 fn parse_extract_tuple<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // extract.tuple tuple_val, index
     state.expect_char('.')?;
     state.consume_keyword("tuple")?;
@@ -1208,7 +1209,7 @@ fn parse_extract_tuple<'a>(
 fn parse_call<'a>(
     state: &mut ParserState<'a>,
     result: Option<Identifier<'a>>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // call @func(arg1, arg2, ...)
     let func_name = state.parse_type_identifier()?; // @func
     state.expect_char('(')?;
@@ -1234,7 +1235,7 @@ fn parse_call<'a>(
     })
 }
 
-fn parse_phi<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_phi<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
     // phi.T [val1, label1], [val2, label2], ...
     let ty = parse_type_suffix(state)?;
     let mut incoming = Vec::new();
@@ -1266,7 +1267,7 @@ fn parse_phi<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<
     })
 }
 
-fn parse_br<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_br<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // br cond, label1, label2
     let condition = parse_value(state)?;
     state.expect_char(',')?;
@@ -1280,13 +1281,13 @@ fn parse_br<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     })
 }
 
-fn parse_jmp<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_jmp<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // jmp label
     let target_label = state.parse_label_identifier()?;
     Ok(Instruction::Jmp { target_label })
 }
 
-fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // ret.T val  OR ret.void
     state.expect_char('.')?;
     state.skip_whitespace_and_comments();
@@ -1307,7 +1308,7 @@ fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     }
 }
 
-fn parse_dealloc<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_dealloc<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // dealloc.heap ptr
     state.expect_char('.')?;
     state.consume_keyword("heap")?;
@@ -1316,7 +1317,7 @@ fn parse_dealloc<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
 }
 
 // Add parser function for print
-fn parse_print<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_print<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // Expects: print <value>
     let value = parse_value(state)?;
     Ok(Instruction::Print { value })
@@ -1326,7 +1327,7 @@ fn parse_print<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
 fn parse_write_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // Format: %result = write %buffer, %size
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
@@ -1341,7 +1342,7 @@ fn parse_write_assignment<'a>(
 fn parse_read_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // Format: %result = read %buffer, %size
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
@@ -1356,7 +1357,7 @@ fn parse_read_assignment<'a>(
 fn parse_writebyte_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // Format: %result = writebyte %value
     let value = parse_value(state)?;
     Ok(Instruction::WriteByte { value, result })
@@ -1365,7 +1366,7 @@ fn parse_writebyte_assignment<'a>(
 fn parse_readbyte_assignment<'a>(
     _state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // Format: %result = readbyte
     Ok(Instruction::ReadByte { result })
 }
@@ -1373,14 +1374,14 @@ fn parse_readbyte_assignment<'a>(
 fn parse_writeptr_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
-) -> Result<Instruction<'a>> {
+) -> Result<Instruction<'a>, LaminaError> {
     // Format: %result = writeptr %ptr
     let ptr = parse_value(state)?;
     Ok(Instruction::WritePtr { ptr, result })
 }
 
 // I/O instruction parsers - Non-assignment form (opcode ...)
-fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // Format: write %buffer, %size, %result
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
@@ -1394,7 +1395,7 @@ fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     })
 }
 
-fn parse_read<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_read<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // Format: read %buffer, %size, %result
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
@@ -1408,7 +1409,7 @@ fn parse_read<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     })
 }
 
-fn parse_writebyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_writebyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // Format: writebyte %value, %result
     let value = parse_value(state)?;
     state.expect_char(',')?;
@@ -1416,13 +1417,13 @@ fn parse_writebyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
     Ok(Instruction::WriteByte { value, result })
 }
 
-fn parse_readbyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_readbyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // Format: readbyte %result
     let result = state.parse_identifier_str()?;
     Ok(Instruction::ReadByte { result })
 }
 
-fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
+fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     // Format: writeptr %ptr, %result
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
@@ -1431,7 +1432,7 @@ fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>> {
 }
 
 // Add parse function for zero extend
-fn parse_zext<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>> {
+fn parse_zext<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
     // Format: zext.i32.i64 %value
     state.expect_char('.')?;
     let source_type_str = state.parse_identifier_str()?;

@@ -4,10 +4,11 @@ use super::util::get_type_size_directive_and_bytes;
 use crate::codegen::CodegenError;
 use crate::{
     BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType,
-    Result, Type,
+    Type,
 };
 use std::collections::HashSet;
 use std::io::Write;
+use std::result::Result;
 
 /// Generates AArch64 assembly for all functions in the module
 ///
@@ -25,7 +26,7 @@ pub fn generate_functions<'a, W: Write>(
     module: &'a crate::Module<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     for (func_name, func) in &module.functions {
         generate_function(func_name, func, writer, state)?;
     }
@@ -37,7 +38,7 @@ pub fn generate_function<'a, W: Write>(
     func: &'a Function<'a>,
     writer: &mut W,
     state: &mut CodegenState<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     let is_exported = func.annotations.contains(&FunctionAnnotation::Export);
     let is_main = func_name == "main";
     let asm_label = if is_main {
@@ -203,7 +204,7 @@ fn precompute_function_layout<'a>(
     func_ctx: &mut FunctionContext<'a>,
     state: &mut CodegenState<'a>,
     _required_regs: &HashSet<&'static str>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     // FIXED: Use local AArch64 function instead of x86_64 import
     use super::util::get_type_size_directive_and_bytes as aarch64_size;
 
@@ -392,7 +393,7 @@ fn generate_basic_block<'a, W: Write>(
     state: &mut CodegenState<'a>,
     func_ctx: &mut FunctionContext<'a>,
     func_name: Identifier<'a>,
-) -> Result<()> {
+) -> Result<(), LaminaError> {
     for instr in &block.instructions {
         generate_instruction(instr, writer, state, func_ctx, func_name)?;
     }

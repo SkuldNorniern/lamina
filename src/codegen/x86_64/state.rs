@@ -4,10 +4,10 @@ use crate::{
     Label,
     // Value, Type,
     LaminaError,
-    Result,
     // Module, GlobalDeclaration, PrimitiveType
 };
 use std::collections::{HashMap, HashSet}; // Re-add HashMap and HashSet
+use std::result::Result;
 // Using HashMap for standard library compatibility
 // IndexMap dependency removed for release
 
@@ -76,14 +76,14 @@ impl<'a> FunctionContext<'a> {
 
     // Get the location (register, stack offset, spilled arg) of an IR value
     // This version assumes layout_function_stack has already run and populated locations.
-    pub fn get_value_location(&self, name: Identifier<'a>) -> Result<ValueLocation> {
+    pub fn get_value_location(&self, name: Identifier<'a>) -> Result<ValueLocation, LaminaError> {
         self.value_locations.get(name).cloned().ok_or_else(|| {
             LaminaError::CodegenError(CodegenError::ValueLocationNotFound(name.to_string()))
         })
     }
 
     // Get the assembly label for a basic block
-    pub fn get_block_label(&self, ir_label: &Label<'a>) -> Result<String> {
+    pub fn get_block_label(&self, ir_label: &Label<'a>) -> Result<String, LaminaError> {
         self.block_labels.get(ir_label).cloned().ok_or_else(|| {
             LaminaError::CodegenError(CodegenError::BlockLabelNotFound(ir_label.to_string()))
         })
