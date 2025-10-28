@@ -2,7 +2,7 @@ use super::error::FromIRError;
 use super::mapping::{map_ir_prim, map_ir_type};
 use crate::mir::{
     AddressMode, Block, Instruction, MemoryAttrs, Module, Operand, Parameter, Register,
-    RegisterClass, Signature, VirtualRegAllocator,
+    RegisterClass, Signature, VirtualRegAllocator, MirType
 };
 
 pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRError> {
