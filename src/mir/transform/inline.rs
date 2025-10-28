@@ -1,0 +1,3 @@
+// Inlining
+
+// Function Inlining
