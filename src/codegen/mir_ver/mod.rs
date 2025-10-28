@@ -28,4 +28,64 @@ pub enum TargetOs {
     BSD,
 }
 
+pub enum CodegenOptions {
+    Debug, // Debug mode is the default mode, it will output with the full debug information
+    Release, // Release mode is the optimized mode, it will output without debug information
+    // FEAT: TODO: Add more options for codegen
+    Custom((String, String)),
+}
 
+// FEAT: TODO: State Multithreaded Codegen
+// | Your CodegenType Approach seems fine but How about just Stating how many threads to use?
+// | I think that would be more clear and easier to extend. 
+
+pub trait Codegen: Default + Debug {
+    // The binary extension of the target architecture
+    const BIN_EXT: &'static str;
+    // Whether this codegen can output assembly.
+    const CAN_OUTOUT_ASM: bool;
+    // Whether this codegen can output binary.
+    const CAN_OUTOUT_BIN: bool;
+
+    // The Supported codegen options
+    const SUPPORTED_CODEGEN_OPTS: [CodegenOptions];
+    // The target operating system
+    const TARGET_OS: TargetOs;
+    // The max bit width of the target architecture
+    const MAX_BIT_WIDTH: u8;
+
+    fn prepare(
+        &mut self,
+        types:
+        globals:
+        funcs:
+        verbose: bool,
+        options: [CodegenOptions],
+        input_name: &str,
+    ) -> Result<(),CodegenError>;
+    fn compile(
+        &mut self
+    ) -> Result<(),CodegenError>;
+    fn finalize(
+        &mut self
+    ) -> Result<(),CodegenError>;
+    fn emit_asm(
+        &mut self
+    )-> Result<(),CodegenError>;
+    fn emit_bin(
+        &mut self
+    )-> Result<(),CodegenError>;
+}
+
+CodegenError {
+    UnsupportedFeature(FeatureType),
+    InvalidCodegenOptions(String),
+    InvalidTargetOs(String),
+    InvalidMaxBitWidth(u8),
+    InvalidInputName(String),
+    InvalidVerbose(bool),
+    InvalidOptions(Vec<CodegenOptions>),
+    InvalidTypes(Vec<Type>),
+    InvalidGlobals(Vec<Global>),
+    InvalidFuncs(Vec<Function>),
+}
