@@ -1,7 +1,7 @@
 use super::IsaWidth;
-use super::state::{CodegenState, FunctionContext, RETURN_REGISTER, ValueLocation};
+use super::state::{CodegenState, FunctionContext, RETURN_REGISTER};
 use crate::codegen::{CodegenError, TypeInfo};
-use crate::{BinaryOp, Identifier, Instruction, LaminaError, PrimitiveType, Type, Value};
+use crate::{BinaryOp, Identifier, Instruction, LaminaError, PrimitiveType, Type};
 use std::io::Write;
 use std::result::Result;
 
@@ -32,12 +32,9 @@ pub fn generate_instruction<'a, W: Write>(
                         // Destination is a register
                         // Materialize its own stack slot address: find its location from context
                         let loc = func_ctx.get_value_location(result)?;
-                        match loc {
-                            super::state::ValueLocation::StackOffset(off) => {
-                                writeln!(writer, "    addi t0, s0, {}", off)?;
-                                store_to_location(writer, "t0", &dest, state)?;
-                            }
-                            _ => {}
+                        if let super::state::ValueLocation::StackOffset(off) = loc {
+                            writeln!(writer, "    addi t0, s0, {}", off)?;
+                            store_to_location(writer, "t0", &dest, state)?;
                         }
                     }
                 }

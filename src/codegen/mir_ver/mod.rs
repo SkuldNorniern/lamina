@@ -4,8 +4,8 @@ use std::io::Write;
 /// Generate AArch64 assembly from MIR for the requested host OS.
 ///
 /// host_os: "macos" | "linux" | "windows"
-pub fn generate_mir_to_aarch64<'a, W: Write>(
-    module: &'a crate::mir::Module,
+pub fn generate_mir_to_aarch64<W: Write>(
+    module: &crate::mir::Module,
     writer: &mut W,
     host_os: &str,
 ) -> std::result::Result<(), crate::error::LaminaError> {

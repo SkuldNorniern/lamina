@@ -27,8 +27,8 @@ fn x_alias(reg: &str) -> String {
     }
 }
 
-pub fn generate_mir_aarch64<'a, W: Write>(
-    module: &'a MirModule,
+pub fn generate_mir_aarch64<W: Write>(
+    module: &MirModule,
     writer: &mut W,
     target_os: TargetOs,
 ) -> Result<(), crate::error::LaminaError> {
@@ -74,8 +74,8 @@ pub fn generate_mir_aarch64<'a, W: Write>(
 
         // Spill incoming arguments (x0..x7) to their slots
         for (i, p) in func.sig.params.iter().enumerate() {
-            if i < 8 {
-                if let Some(off) = frame.slot_of(&p.reg) {
+            if i < 8
+                && let Some(off) = frame.slot_of(&p.reg) {
                     // use scratch reg for address calculation
                     let addr = ra_pro.alloc_scratch().unwrap_or("x19");
                     if off >= 0 {
@@ -86,7 +86,6 @@ pub fn generate_mir_aarch64<'a, W: Write>(
                     writeln!(writer, "    str x{}, [{}]", i, addr)?;
                     ra_pro.free_scratch(addr);
                 }
-            }
         }
 
         // Prepare epilogue label so `ret` can branch to it safely
@@ -373,7 +372,7 @@ fn emit_block<W: Write>(
                         if let Some(slot_off) = frame.slot_of(base) {
                             // Compute address: x29 + slot_off + offset
                             let total = slot_off as i64 + (*offset as i64);
-                            if total >= 0 && total <= 4095 {
+                            if (0..=4095).contains(&total) {
                                 writeln!(w, "    add {}, x29, #{}", t, total)?;
                             } else if total < 0 && -total <= 4095 {
                                 writeln!(w, "    sub {}, x29, #{}", t, -total)?;
@@ -386,7 +385,7 @@ fn emit_block<W: Write>(
                             load_reg_to(w, base, t, frame, ra)?;
                             if *offset != 0 {
                                 let off = *offset as i64;
-                                if off >= 0 && off <= 4095 {
+                                if (0..=4095).contains(&off) {
                                     writeln!(w, "    add {}, {}, #{}", t, t, off)?;
                                 } else if off < 0 && -off <= 4095 {
                                     writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
@@ -404,7 +403,7 @@ fn emit_block<W: Write>(
                         load_reg_to(w, base, t, frame, ra)?;
                         if *offset != 0 {
                             let off = *offset as i64;
-                            if off >= 0 && off <= 4095 {
+                            if (0..=4095).contains(&off) {
                                 writeln!(w, "    add {}, {}, #{}", t, t, off)?;
                             } else if off < 0 && -off <= 4095 {
                                 writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
@@ -691,7 +690,7 @@ fn load_reg_to<W: Write>(
             // Always load from stack slot for correctness across blocks
             if let Some(off) = frame.slot_of(r) {
                 // Use ldur with signed 9-bit offset when possible, otherwise compute address
-                if off >= -256 && off <= 255 {
+                if (-256..=255).contains(&off) {
                     writeln!(w, "    ldur {}, [x29, #{}]", dest, off)?;
                 } else {
                     let mut addr = ra.alloc_scratch().unwrap_or("x12");
@@ -737,7 +736,7 @@ fn store_result<W: Write>(
             // Always store to stack slot for correctness across blocks
             if let Some(off) = frame.slot_of(dst) {
                 // Use stur with signed 9-bit offset when possible, otherwise compute address
-                if off >= -256 && off <= 255 {
+                if (-256..=255).contains(&off) {
                     writeln!(w, "    stur {}, [x29, #{}]", src_reg, off)?;
                 } else {
                     let mut addr = ra.alloc_scratch().unwrap_or("x12");

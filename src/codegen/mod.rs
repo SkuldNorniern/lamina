@@ -10,10 +10,8 @@ pub use aarch64::generate_aarch64_assembly;
 pub use riscv::{generate_riscv32_assembly, generate_riscv64_assembly, generate_riscv128_assembly};
 pub use x86_64::generate_x86_64_assembly;
 
-use crate::LaminaError;
 use crate::PrimitiveType;
 
-use std::result::Result;
 
 // Codegen Errors for Detailed Error Handling
 
