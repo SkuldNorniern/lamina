@@ -67,6 +67,6 @@ pub fn get_value_operand_asm<'a>(
             )),
         },
         Value::Variable(name) => Ok(func_ctx.get_value_location(name)?.to_operand_string()),
-        Value::Global(name) => Ok(format!("{}", name)),
+        Value::Global(name) => Ok(name.to_string()),
     }
 }

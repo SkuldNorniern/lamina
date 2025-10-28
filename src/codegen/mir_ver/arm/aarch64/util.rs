@@ -32,7 +32,7 @@ pub fn imm_to_u64(i: &crate::mir::Immediate) -> u64 {
         crate::mir::Immediate::I8(v) => *v as i64 as u64,
         crate::mir::Immediate::I16(v) => *v as i64 as u64,
         crate::mir::Immediate::I32(v) => *v as i64 as u64,
-        crate::mir::Immediate::I64(v) => *v as i64 as u64,
+        crate::mir::Immediate::I64(v) => *v as u64,
         crate::mir::Immediate::F32(v) => v.to_bits() as u64,
         crate::mir::Immediate::F64(v) => v.to_bits(),
     }
