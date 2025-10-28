@@ -3,7 +3,11 @@ use std::io::Write;
 use crate::error::LaminaError;
 
 /// Materialize a 64-bit immediate into a destination register using movz/movk sequence.
-pub fn emit_mov_imm64<W: Write>(w: &mut W, dest: &str, value: u64) -> std::result::Result<(), LaminaError> {
+pub fn emit_mov_imm64<W: Write>(
+    w: &mut W,
+    dest: &str,
+    value: u64,
+) -> std::result::Result<(), LaminaError> {
     if value <= 0xFFFF {
         writeln!(w, "    mov {}, #{}", dest, value)?;
         return Ok(());
@@ -33,8 +37,3 @@ pub fn imm_to_u64(i: &crate::mir::Immediate) -> u64 {
         crate::mir::Immediate::F64(v) => v.to_bits(),
     }
 }
-
-
-
-
-

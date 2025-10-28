@@ -325,7 +325,9 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
 
 // --- Type Parsing ---
 
-fn parse_type_declaration<'a>(state: &mut ParserState<'a>) -> Result<TypeDeclaration<'a>, LaminaError> {
+fn parse_type_declaration<'a>(
+    state: &mut ParserState<'a>,
+) -> Result<TypeDeclaration<'a>, LaminaError> {
     state.consume_keyword("type")?;
     let name = state.parse_type_identifier()?;
     state.expect_char('=')?;
@@ -423,7 +425,9 @@ fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> 
 
 // --- Global Parsing ---
 
-fn parse_global_declaration<'a>(state: &mut ParserState<'a>) -> Result<GlobalDeclaration<'a>, LaminaError> {
+fn parse_global_declaration<'a>(
+    state: &mut ParserState<'a>,
+) -> Result<GlobalDeclaration<'a>, LaminaError> {
     state.consume_keyword("global")?;
     let name = state.parse_type_identifier()?; // Globals start with @
     state.expect_char(':')?;
@@ -748,7 +752,9 @@ fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a>, L
     })
 }
 
-fn parse_fn_signature<'a>(state: &mut ParserState<'a>) -> Result<FunctionSignature<'a>, LaminaError> {
+fn parse_fn_signature<'a>(
+    state: &mut ParserState<'a>,
+) -> Result<FunctionSignature<'a>, LaminaError> {
     state.expect_char('(')?;
     let params = parse_param_list(state)?;
     state.expect_char(')')?;
@@ -760,7 +766,9 @@ fn parse_fn_signature<'a>(state: &mut ParserState<'a>) -> Result<FunctionSignatu
     })
 }
 
-fn parse_param_list<'a>(state: &mut ParserState<'a>) -> Result<Vec<FunctionParameter<'a>>, LaminaError> {
+fn parse_param_list<'a>(
+    state: &mut ParserState<'a>,
+) -> Result<Vec<FunctionParameter<'a>>, LaminaError> {
     let mut params = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
@@ -786,7 +794,9 @@ fn parse_param_list<'a>(state: &mut ParserState<'a>) -> Result<Vec<FunctionParam
 
 // --- Block and Instruction Parsing (Placeholders) ---
 
-fn parse_basic_block<'a>(state: &mut ParserState<'a>) -> Result<(Label<'a>, BasicBlock<'a>), LaminaError> {
+fn parse_basic_block<'a>(
+    state: &mut ParserState<'a>,
+) -> Result<(Label<'a>, BasicBlock<'a>), LaminaError> {
     // Example: entry: instruction
     let label = state.parse_label_identifier()?;
     state.expect_char(':')?;
@@ -970,7 +980,10 @@ fn parse_cmp_op<'a>(
     })
 }
 
-fn parse_alloc<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
+fn parse_alloc<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
     // Format: alloc.ptr.stack T or alloc.ptr.heap T
     // Also support: alloc.stack T or alloc.heap T directly
     state.expect_char('.')?;
@@ -1013,7 +1026,10 @@ fn parse_alloc<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Resul
     })
 }
 
-fn parse_load<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
+fn parse_load<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
     // load.T ptr
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
@@ -1162,7 +1178,10 @@ fn parse_inttoptr<'a>(
     })
 }
 
-fn parse_tuple<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
+fn parse_tuple<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
     // tuple.T element1, element2, ... (Simplified: just parse elements)
     let mut elements = Vec::new();
     loop {
@@ -1235,7 +1254,10 @@ fn parse_call<'a>(
     })
 }
 
-fn parse_phi<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
+fn parse_phi<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
     // phi.T [val1, label1], [val2, label2], ...
     let ty = parse_type_suffix(state)?;
     let mut incoming = Vec::new();
@@ -1432,7 +1454,10 @@ fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, La
 }
 
 // Add parse function for zero extend
-fn parse_zext<'a>(state: &mut ParserState<'a>, result: Identifier<'a>) -> Result<Instruction<'a>, LaminaError> {
+fn parse_zext<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
     // Format: zext.i32.i64 %value
     state.expect_char('.')?;
     let source_type_str = state.parse_identifier_str()?;

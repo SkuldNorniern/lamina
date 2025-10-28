@@ -27,7 +27,7 @@ pub enum TargetOs {
 }
 
 pub enum CodegenOptions {
-    Debug, // Debug mode is the default mode, it will output with the full debug information
+    Debug,   // Debug mode is the default mode, it will output with the full debug information
     Release, // Release mode is the optimized mode, it will output without debug information
     // FEAT: TODO: Add more options for codegen
     Custom((String, String)),
@@ -35,9 +35,9 @@ pub enum CodegenOptions {
 
 // FEAT: TODO: State Multithreaded Codegen
 // | Your CodegenType Approach seems fine but How about just Stating how many threads to use?
-// | I think that would be more clear and easier to extend. 
+// | I think that would be more clear and easier to extend.
 
-pub trait Codegen{
+pub trait Codegen {
     // The binary extension of the target architecture
     const BIN_EXT: &'static str;
     // Whether this codegen can output assembly.
@@ -60,19 +60,11 @@ pub trait Codegen{
         verbose: bool,
         options: [CodegenOptions],
         input_name: &str,
-    ) -> Result<(),CodegenError>;
-    fn compile(
-        &mut self
-    ) -> Result<(),CodegenError>;
-    fn finalize(
-        &mut self
-    ) -> Result<(),CodegenError>;
-    fn emit_asm(
-        &mut self
-    )-> Result<(),CodegenError>;
-    fn emit_bin(
-        &mut self
-    )-> Result<(),CodegenError>;
+    ) -> Result<(), CodegenError>;
+    fn compile(&mut self) -> Result<(), CodegenError>;
+    fn finalize(&mut self) -> Result<(), CodegenError>;
+    fn emit_asm(&mut self) -> Result<(), CodegenError>;
+    fn emit_bin(&mut self) -> Result<(), CodegenError>;
 }
 
 // The Strings are the placeholder for the types

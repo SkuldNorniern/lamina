@@ -274,7 +274,11 @@ impl StandardGlobalGenerator {
     }
 
     /// Generate literal data
-    fn generate_literal_data<W: Write>(&self, literal: &Literal, writer: &mut W) -> Result<(), LaminaError> {
+    fn generate_literal_data<W: Write>(
+        &self,
+        literal: &Literal,
+        writer: &mut W,
+    ) -> Result<(), LaminaError> {
         match literal {
             Literal::I8(v) => writeln!(writer, "    .byte {}", v)?,
             Literal::I16(v) => writeln!(writer, "    .word {}", v)?,

@@ -1,7 +1,8 @@
 use super::instructions::generate_instruction;
 use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use crate::{
-    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType, Type,
+    BasicBlock, Function, FunctionAnnotation, Identifier, Instruction, LaminaError, PrimitiveType,
+    Type,
 };
 use std::io::Write;
 use std::result::Result;

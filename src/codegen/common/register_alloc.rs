@@ -167,7 +167,9 @@ impl GraphColoringAllocator {
 }
 
 /// Compute live ranges for all variables in a function
-pub fn compute_live_ranges<'a>(func: &'a Function<'a>) -> Result<HashMap<String, LiveRange>, String> {
+pub fn compute_live_ranges<'a>(
+    func: &'a Function<'a>,
+) -> Result<HashMap<String, LiveRange>, String> {
     let mut live_ranges: HashMap<String, LiveRange> = HashMap::new();
     let mut instruction_index = 0;
 

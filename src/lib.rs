@@ -278,7 +278,7 @@ use std::io::Write;
 // Re-export core IR structures for easier access
 use codegen::CodegenError;
 pub use codegen::generate_x86_64_assembly;
-pub use codegen::mir_ver::{generate_mir_to_aarch64, TargetOs};
+pub use codegen::mir_ver::{TargetOs, generate_mir_to_aarch64};
 pub use error::LaminaError;
 pub use ir::{
     function::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
@@ -382,7 +382,10 @@ pub fn detect_host_architecture() -> &'static str {
 /// # Arguments
 /// * `input_ir` - A string slice containing the Lamina IR code.
 /// * `output_asm` - A mutable writer where the generated assembly will be written.
-pub fn compile_lamina_ir_to_assembly<W: Write>(input_ir: &str, output_asm: &mut W) -> std::result::Result<(), LaminaError> {
+pub fn compile_lamina_ir_to_assembly<W: Write>(
+    input_ir: &str,
+    output_asm: &mut W,
+) -> std::result::Result<(), LaminaError> {
     // Use the host architecture as the default target
     let target = detect_host_architecture();
     compile_lamina_ir_to_target_assembly(input_ir, output_asm, target)
@@ -401,7 +404,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     input_ir: &str,
     output_asm: &mut W,
     target: &str,
-) -> std::result::Result<(),LaminaError> {
+) -> std::result::Result<(), LaminaError> {
     // 1. Parse the input string into an IR Module
     let module = parser::parse_module(input_ir)?;
 

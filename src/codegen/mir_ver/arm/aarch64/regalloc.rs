@@ -19,8 +19,7 @@ pub struct A64RegAlloc {
 // Provide a pool that is unlikely to conflict with ABI conventions for leaf codegen
 // Pool for mapping virtual registers (never used for scratch temps)
 const MAP_GPRS: &[&str] = &[
-    "x13", "x14", "x15",
-    "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
+    "x13", "x14", "x15", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 ];
 
 // Dedicated scratch pool for short-lived temporaries; kept disjoint from MAP_GPRS
@@ -121,5 +120,3 @@ impl A64RegAlloc {
         }
     }
 }
-
-
