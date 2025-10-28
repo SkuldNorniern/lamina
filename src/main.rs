@@ -16,7 +16,9 @@ fn print_usage() {
     eprintln!("  --emit-asm              Only emit assembly file without compiling");
     eprintln!("  --target <arch>         Specify target architecture (x86_64, aarch64)");
     eprintln!("  --emit-mir              Only emit MIR (.mlamina) and exit");
-    eprintln!("  --emit-mir-asm <os>     EXPERIMENTAL: emit AArch64 asm from MIR (os: macos|linux|windows)");
+    eprintln!(
+        "  --emit-mir-asm <os>     EXPERIMENTAL: emit AArch64 asm from MIR (os: macos|linux|windows)"
+    );
     eprintln!("  --timeout <secs>        Abort after N seconds (best-effort)");
     eprintln!("  -h, --help              Display this help message");
 }
@@ -259,8 +261,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if options.emit_mir {
             let mut mir_path = output_stem.clone();
             mir_path.set_extension("lumir");
-            let mut mir_file = File::create(&mir_path)
-                .map_err(|e| format!("Failed to create MIR file: {}", e))?;
+            let mut mir_file =
+                File::create(&mir_path).map_err(|e| format!("Failed to create MIR file: {}", e))?;
             let mir_text = format!("{}", mir_mod);
             mir_file
                 .write_all(mir_text.as_bytes())
@@ -277,7 +279,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             File::create(&asm_path)
                 .and_then(|mut f| f.write_all(&out))
                 .map_err(|e| format!("Failed to write MIR asm: {}", e))?;
-            println!("[INFO] MIR AArch64 asm (experimental) written to {}", asm_path.display());
+            println!(
+                "[INFO] MIR AArch64 asm (experimental) written to {}",
+                asm_path.display()
+            );
         }
 
         // return Ok(());

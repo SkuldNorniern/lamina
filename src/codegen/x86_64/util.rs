@@ -4,7 +4,9 @@ use crate::{LaminaError, Literal, PrimitiveType, Type, Value};
 use std::result::Result;
 
 // Helper to get assembly size directive and size in bytes (simplified)
-pub fn get_type_size_directive_and_bytes(ty: &Type<'_>) -> Result<(&'static str, u64), LaminaError> {
+pub fn get_type_size_directive_and_bytes(
+    ty: &Type<'_>,
+) -> Result<(&'static str, u64), LaminaError> {
     match ty {
         Type::Primitive(pt) => match pt {
             PrimitiveType::I8 => Ok((".byte", 1)),

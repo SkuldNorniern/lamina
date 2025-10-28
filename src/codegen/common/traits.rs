@@ -1,4 +1,4 @@
-use crate::{Function, Instruction, Module, LaminaError};
+use crate::{Function, Instruction, LaminaError, Module};
 use std::collections::HashMap;
 use std::io::Write;
 use std::result::Result;
@@ -9,8 +9,11 @@ pub trait CodegenBackend<'a> {
     type Context: FunctionContext<'a>;
 
     /// Generate assembly for an entire module
-    fn generate_assembly<W: Write>(&mut self, module: &'a Module<'a>, writer: &mut W)
-    -> Result<(), LaminaError>;
+    fn generate_assembly<W: Write>(
+        &mut self,
+        module: &'a Module<'a>,
+        writer: &mut W,
+    ) -> Result<(), LaminaError>;
 
     /// Generate assembly for a single function
     fn generate_function<W: Write>(
@@ -104,7 +107,10 @@ pub trait RegisterAllocator<'a> {
     type AllocationResult;
 
     /// Allocate registers for a function
-    fn allocate_registers(&mut self, func: &'a Function<'a>) -> Result<Self::AllocationResult, LaminaError>;
+    fn allocate_registers(
+        &mut self,
+        func: &'a Function<'a>,
+    ) -> Result<Self::AllocationResult, LaminaError>;
 }
 
 /// Trait for register information
@@ -127,7 +133,11 @@ pub trait StackLayoutComputer<'a> {
     type Context: FunctionContext<'a>;
 
     /// Compute stack layout for a function
-    fn compute_layout(&self, func: &'a Function<'a>, context: &mut Self::Context) -> Result<(), LaminaError>;
+    fn compute_layout(
+        &self,
+        func: &'a Function<'a>,
+        context: &mut Self::Context,
+    ) -> Result<(), LaminaError>;
 }
 
 /// Trait for global variable handling

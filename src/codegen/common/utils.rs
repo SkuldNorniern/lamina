@@ -1,4 +1,4 @@
-use crate::{PrimitiveType, LaminaError, Type};
+use crate::{LaminaError, PrimitiveType, Type};
 use std::result::Result;
 
 /// Get type size in bytes for any architecture

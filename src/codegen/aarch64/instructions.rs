@@ -2,8 +2,8 @@ use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, RETURN_REGISTER
 use super::util::{get_value_operand_asm, materialize_label_address};
 use crate::codegen::{CodegenError, ExtensionInfo, TypeInfo};
 use crate::{
-    AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, Literal, PrimitiveType,
-    Type, Value,
+    AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, Literal, PrimitiveType, Type,
+    Value,
 };
 use std::io::Write;
 use std::result::Result;
@@ -1148,7 +1148,11 @@ fn materialize_to_reg<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<
     Ok(())
 }
 
-fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -> Result<(), LaminaError> {
+fn materialize_address_operand<W: Write>(
+    writer: &mut W,
+    op: &str,
+    dest: &str,
+) -> Result<(), LaminaError> {
     if op.starts_with("[x29,")
         && let Some(off) = parse_fp_offset(op)
     {
@@ -1165,7 +1169,11 @@ fn materialize_address_operand<W: Write>(writer: &mut W, op: &str, dest: &str) -
     Err(LaminaError::CodegenError(CodegenError::InternalError))
 }
 
-fn materialize_address<W: Write>(writer: &mut W, dest: &str, offset: i64) -> Result<(), LaminaError> {
+fn materialize_address<W: Write>(
+    writer: &mut W,
+    dest: &str,
+    offset: i64,
+) -> Result<(), LaminaError> {
     // AArch64 immediate addressing only supports offsets in range [-256, 255]
     if (-256..=255).contains(&offset) {
         if offset >= 0 {
@@ -1246,7 +1254,11 @@ fn parse_fp_offset(s: &str) -> Option<i64> {
     s[start..end].parse().ok()
 }
 
-fn store_to_location<W: Write>(writer: &mut W, src_reg: &str, dest: &str) -> Result<(), LaminaError> {
+fn store_to_location<W: Write>(
+    writer: &mut W,
+    src_reg: &str,
+    dest: &str,
+) -> Result<(), LaminaError> {
     if dest.starts_with('x') {
         writeln!(writer, "        mov {}, {}", dest, src_reg)?;
     } else if dest.starts_with("[x29,") {

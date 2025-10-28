@@ -1,12 +1,12 @@
 pub mod generate;
 pub mod state;
 
-use crate::codegen::{CodegenError, FeatureType, OperationType, InstructionType};
-use crate::{BinaryOp, Instruction, Literal, Module, PrimitiveType, LaminaError, Type, Value};
+use crate::codegen::{CodegenError, FeatureType, InstructionType, OperationType};
+use crate::{BinaryOp, Instruction, LaminaError, Literal, Module, PrimitiveType, Type, Value};
 use generate::{FloatType, IntegerType, ModuleExpression, NumericConstant, NumericType};
 use state::Register;
-use std::{collections::HashMap, io::Write};
 use std::result::Result;
+use std::{collections::HashMap, io::Write};
 
 pub fn get_wasm_type_primitive(
     ty: PrimitiveType,
@@ -797,11 +797,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         allocated_ty: _,
                     }
                     | Instruction::Dealloc { ptr: _ } => {
-                        return Err(LaminaError::CodegenError(
-                            CodegenError::UnsupportedFeature(
-                                FeatureType::HeapAllocation,
-                            ),
-                        ));
+                        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                            FeatureType::HeapAllocation,
+                        )));
                     }
                     Instruction::Br {
                         condition,
@@ -1489,11 +1487,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         result: _,
                     }
                     | Instruction::ReadByte { result: _ } => {
-                        return Err(LaminaError::CodegenError(
-                            CodegenError::UnsupportedFeature(
-                                FeatureType::Custom("reading data".to_string()),
-                            ),
-                        ));
+                        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                            FeatureType::Custom("reading data".to_string()),
+                        )));
                     }
 
                     Instruction::Ret { ty, value } => {
@@ -1548,9 +1544,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 }
                         {
                             return Err(LaminaError::CodegenError(
-                                CodegenError::UnsupportedTypeForOperation(
-                                    OperationType::Custom("ptr to int".to_string()),
-                                ),
+                                CodegenError::UnsupportedTypeForOperation(OperationType::Custom(
+                                    "ptr to int".to_string(),
+                                )),
                             ));
                         }
 
@@ -1666,9 +1662,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         incoming: _,
                     } => {
                         return Err(LaminaError::CodegenError(
-                            CodegenError::InvalidInstructionForTarget(
-                                InstructionType::Custom("phi".to_string()),
-                            ),
+                            CodegenError::InvalidInstructionForTarget(InstructionType::Custom(
+                                "phi".to_string(),
+                            )),
                         ));
                     }
                 }

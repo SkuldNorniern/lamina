@@ -2,14 +2,17 @@ use super::state::{ARG_REGISTERS, CodegenState, FunctionContext, ValueLocation};
 use super::util::get_value_operand_asm;
 use crate::codegen::{CodegenError, ExtensionInfo, TypeInfo};
 use crate::{
-    AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType,
-    Type, Value,
+    AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType, Type, Value,
 };
 use std::io::Write;
 use std::result::Result;
 
 // Helper function to store syscall result
-fn store_syscall_result<W: Write>(writer: &mut W, dest: &str, src_reg: &str) -> Result<(), LaminaError> {
+fn store_syscall_result<W: Write>(
+    writer: &mut W,
+    dest: &str,
+    src_reg: &str,
+) -> Result<(), LaminaError> {
     writeln!(writer, "        movq {}, {}", src_reg, dest)?;
     Ok(())
 }
