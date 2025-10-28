@@ -41,9 +41,9 @@ pub trait Codegen {
     // The binary extension of the target architecture
     const BIN_EXT: &'static str;
     // Whether this codegen can output assembly.
-    const CAN_OUTOUT_ASM: bool;
+    const CAN_OUTPUT_ASM: bool;
     // Whether this codegen can output binary.
-    const CAN_OUTOUT_BIN: bool;
+    const CAN_OUTPUT_BIN: bool;
 
     // The Supported codegen options
     const SUPPORTED_CODEGEN_OPTS: [CodegenOptions];
