@@ -4,9 +4,9 @@ pub mod instructions;
 pub mod state;
 pub mod util;
 
-use crate::{Module, LaminaError};
-use std::io::Write;
+use crate::{LaminaError, Module};
 use Result;
+use std::io::Write;
 
 /// Generate RISC-V RV32I assembly for a module
 pub fn generate_riscv32_assembly<'a, W: Write>(

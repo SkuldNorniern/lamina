@@ -4,7 +4,7 @@ pub mod instructions;
 pub mod state;
 pub mod util;
 
-use crate::{Module, LaminaError};
+use crate::{LaminaError, Module};
 use std::io::Write;
 use std::result::Result;
 

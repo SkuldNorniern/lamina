@@ -215,11 +215,14 @@ fn convert_instruction<'a>(
                 },
             };
             // Now update mapping for the result name to the newly allocated destination
-            var_to_reg.insert(*result, match &mir {
-                Instruction::FloatBinary { dst, .. } => dst.clone(),
-                Instruction::IntBinary { dst, .. } => dst.clone(),
-                _ => dst, // unreachable for other arms here
-            });
+            var_to_reg.insert(
+                *result,
+                match &mir {
+                    Instruction::FloatBinary { dst, .. } => dst.clone(),
+                    Instruction::IntBinary { dst, .. } => dst.clone(),
+                    _ => dst, // unreachable for other arms here
+                },
+            );
             Ok(Some(mir))
         }
         // SSA merge: create a binding for the phi result so subsequent uses resolve.
@@ -501,10 +504,15 @@ fn convert_instruction<'a>(
             // Compute mask based on source type bit-width
             use crate::ir::types::PrimitiveType as IRPrim;
             let (mask, mir_ty) = match (source_type, target_type) {
-                (IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char, _) => (0xFFu64, map_ir_prim(*target_type)?),
+                (IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char, _) => {
+                    (0xFFu64, map_ir_prim(*target_type)?)
+                }
                 (IRPrim::I16 | IRPrim::U16, _) => (0xFFFFu64, map_ir_prim(*target_type)?),
                 (IRPrim::I32 | IRPrim::U32, _) => (0xFFFF_FFFFu64, map_ir_prim(*target_type)?),
-                (IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr, IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr) => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
+                (
+                    IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr,
+                    IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr,
+                ) => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
                 _ => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
             };
             let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
@@ -602,7 +610,7 @@ fn convert_instruction<'a>(
             };
             let dst = Register::Virtual(vreg_alloc.allocate_gpr());
             var_to_reg.insert(*result, dst.clone());
-            
+
             if let Some(iv) = idx_const {
                 // Constant index: use simple LEA with offset
                 let offset = (iv as i32).saturating_mul(elem_size);
@@ -614,7 +622,7 @@ fn convert_instruction<'a>(
                 // Step 2: Add to base: result = base + scaled
                 // Since we can only return one instr, we'll emit the multiply and rely on a follow-up pass
                 // Or: just use simplified single-instruction form
-                
+
                 // Simpler workaround: emit index * elem_size into a temp, then user must manually add
                 // But this breaks semantics. Better: just not support variable index for now
                 // The tests don't actually call these functions, so let's keep the error
@@ -689,7 +697,11 @@ fn convert_instruction<'a>(
                 ret: Some(dst),
             }))
         }
-        crate::ir::instruction::Instruction::Alloc { result, alloc_type, allocated_ty } => {
+        crate::ir::instruction::Instruction::Alloc {
+            result,
+            alloc_type,
+            allocated_ty,
+        } => {
             use crate::ir::types::PrimitiveType as IRPrim;
             // Allocate a destination vreg representing the pointer
             let dst = Register::Virtual(vreg_alloc.allocate_gpr());
@@ -708,11 +720,17 @@ fn convert_instruction<'a>(
                                 IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 4,
                                 IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 8,
                             }),
-                            IRType::Array { element_type, size } => sizeof_ty(element_type).map(|es| es.saturating_mul(*size)),
+                            IRType::Array { element_type, size } => {
+                                sizeof_ty(element_type).map(|es| es.saturating_mul(*size))
+                            }
                             IRType::Struct(fields) => {
                                 let mut total = 0u64;
                                 for f in fields {
-                                    if let Some(sz) = sizeof_ty(&f.ty) { total = total.saturating_add(sz); } else { return None; }
+                                    if let Some(sz) = sizeof_ty(&f.ty) {
+                                        total = total.saturating_add(sz);
+                                    } else {
+                                        return None;
+                                    }
                                 }
                                 Some(total)
                             }
@@ -733,7 +751,11 @@ fn convert_instruction<'a>(
                         }
                     }
                     // Lea computes address of storage's stack slot into dst
-                    Ok(Some(Instruction::Lea { dst: dst.clone(), base: storage, offset: 0 }))
+                    Ok(Some(Instruction::Lea {
+                        dst: dst.clone(),
+                        base: storage,
+                        offset: 0,
+                    }))
                 }
                 crate::ir::instruction::AllocType::Heap => {
                     // Compute size in bytes for the allocated type and call malloc(size)
@@ -746,11 +768,17 @@ fn convert_instruction<'a>(
                                 IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 4,
                                 IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 8,
                             }),
-                            IRType::Array { element_type, size } => sizeof_ty(element_type).map(|es| es.saturating_mul(*size)),
+                            IRType::Array { element_type, size } => {
+                                sizeof_ty(element_type).map(|es| es.saturating_mul(*size))
+                            }
                             IRType::Struct(fields) => {
                                 let mut total = 0u64;
                                 for f in fields {
-                                    if let Some(sz) = sizeof_ty(&f.ty) { total = total.saturating_add(sz); } else { return None; }
+                                    if let Some(sz) = sizeof_ty(&f.ty) {
+                                        total = total.saturating_add(sz);
+                                    } else {
+                                        return None;
+                                    }
                                 }
                                 Some(total)
                             }
@@ -772,7 +800,11 @@ fn convert_instruction<'a>(
         crate::ir::instruction::Instruction::Dealloc { ptr } => {
             // Lower heap dealloc to a conventional call that backends can map
             let p = get_operand_permissive(ptr, vreg_alloc, var_to_reg)?;
-            Ok(Some(Instruction::Call { name: "dealloc".to_string(), args: vec![p], ret: None }))
+            Ok(Some(Instruction::Call {
+                name: "dealloc".to_string(),
+                args: vec![p],
+                ret: None,
+            }))
         }
         _ => Err(FromIRError::UnsupportedInstruction),
     }

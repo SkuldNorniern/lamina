@@ -11,10 +11,9 @@ pub fn public_symbol(func_name: &str, os: TargetOs) -> (Option<String>, String) 
                 format!("_{}", func_name)
             },
         ),
-        TargetOs::Linux | TargetOs::Windows | TargetOs::BSD => (
-            Some(format!(".globl {}", func_name)),
-            func_name.to_string(),
-        ),
+        TargetOs::Linux | TargetOs::Windows | TargetOs::BSD => {
+            (Some(format!(".globl {}", func_name)), func_name.to_string())
+        }
     }
 }
 
@@ -30,5 +29,3 @@ pub fn call_stub(name: &str, os: TargetOs) -> Option<&'static str> {
         _ => None,
     }
 }
-
-

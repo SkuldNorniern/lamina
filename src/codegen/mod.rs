@@ -1,6 +1,6 @@
 pub mod aarch64;
-pub mod mir_ver;
 pub mod common;
+pub mod mir_ver;
 pub mod riscv;
 pub mod wasm;
 pub mod x86_64;
@@ -10,8 +10,8 @@ pub use aarch64::generate_aarch64_assembly;
 pub use riscv::{generate_riscv32_assembly, generate_riscv64_assembly, generate_riscv128_assembly};
 pub use x86_64::generate_x86_64_assembly;
 
-use crate::PrimitiveType;
 use crate::LaminaError;
+use crate::PrimitiveType;
 
 use std::result::Result;
 
@@ -356,7 +356,7 @@ impl std::fmt::Display for InstructionType {
 /// This demonstrates replacing unwrap() calls with proper error handling
 pub mod error_examples {
     use super::{CodegenError, LiteralType, TypeInfo};
-    use crate::{PrimitiveType, LaminaError};
+    use crate::{LaminaError, PrimitiveType};
 
     /// Example: Replace unwrap() with proper error handling
     pub fn safe_parse_immediate(value: &str) -> Result<u64, LaminaError> {

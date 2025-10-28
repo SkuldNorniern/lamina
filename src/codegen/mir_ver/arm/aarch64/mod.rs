@@ -3,20 +3,28 @@ mod abi;
 mod frame;
 mod regalloc;
 mod util;
+use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use abi::{call_stub, public_symbol};
 use frame::FrameMap;
 use regalloc::A64RegAlloc;
-use util::{emit_mov_imm64, imm_to_u64};
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use std::io::Write;
-use std::result::Result;    
+use std::result::Result;
+use util::{emit_mov_imm64, imm_to_u64};
 
 fn w_alias(xreg: &str) -> String {
-    if let Some(rest) = xreg.strip_prefix('x') { format!("w{}", rest) } else { xreg.to_string() }
+    if let Some(rest) = xreg.strip_prefix('x') {
+        format!("w{}", rest)
+    } else {
+        xreg.to_string()
+    }
 }
 
 fn x_alias(reg: &str) -> String {
-    if let Some(rest) = reg.strip_prefix('w') { format!("x{}", rest) } else { reg.to_string() }
+    if let Some(rest) = reg.strip_prefix('w') {
+        format!("x{}", rest)
+    } else {
+        reg.to_string()
+    }
 }
 
 pub fn generate_mir_aarch64<'a, W: Write>(
@@ -87,13 +95,27 @@ pub fn generate_mir_aarch64<'a, W: Write>(
         // Emit blocks
         if let Some(entry) = func.get_block(&func.entry) {
             let mut ra = A64RegAlloc::new();
-            emit_block(entry.instructions.as_slice(), writer, &frame, target_os, &mut ra, &epilogue_label)?;
+            emit_block(
+                entry.instructions.as_slice(),
+                writer,
+                &frame,
+                target_os,
+                &mut ra,
+                &epilogue_label,
+            )?;
         }
         for b in &func.blocks {
             if b.label != func.entry {
                 writeln!(writer, "{}:", b.label)?;
                 let mut ra = A64RegAlloc::new();
-                emit_block(b.instructions.as_slice(), writer, &frame, target_os, &mut ra, &epilogue_label)?;
+                emit_block(
+                    b.instructions.as_slice(),
+                    writer,
+                    &frame,
+                    target_os,
+                    &mut ra,
+                    &epilogue_label,
+                )?;
             }
         }
 
@@ -108,10 +130,23 @@ pub fn generate_mir_aarch64<'a, W: Write>(
     Ok(())
 }
 
-fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: TargetOs, ra: &mut A64RegAlloc, epilogue_label: &str) -> Result<(), crate::error::LaminaError> {
+fn emit_block<W: Write>(
+    insts: &[MirInst],
+    w: &mut W,
+    frame: &FrameMap,
+    os: TargetOs,
+    ra: &mut A64RegAlloc,
+    epilogue_label: &str,
+) -> Result<(), crate::error::LaminaError> {
     for inst in insts {
         match inst {
-            MirInst::IntBinary { op, lhs, rhs, dst, ty } => {
+            MirInst::IntBinary {
+                op,
+                lhs,
+                rhs,
+                dst,
+                ty,
+            } => {
                 let s_l = ra.alloc_scratch().unwrap_or("x19");
                 let s_r = ra.alloc_scratch().unwrap_or("x20");
                 let s_d = ra.alloc_scratch().unwrap_or("x21");
@@ -180,48 +215,42 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    eor {}, {}, {}", dl, rl, rr)?;
                     }
-                    crate::mir::IntBinOp::Shl => {
-                        match rhs {
-                            crate::mir::Operand::Immediate(imm) => {
-                                let mut sh = imm_to_u64(imm) as u32;
-                                sh &= if is32 { 31 } else { 63 };
-                                writeln!(w, "    lsl {}, {}, #{}", dl, rl, sh)?;
-                            }
-                            _ => {
-                                emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                                let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                                writeln!(w, "    lslv {}, {}, {}", dl, rl, rr)?;
-                            }
+                    crate::mir::IntBinOp::Shl => match rhs {
+                        crate::mir::Operand::Immediate(imm) => {
+                            let mut sh = imm_to_u64(imm) as u32;
+                            sh &= if is32 { 31 } else { 63 };
+                            writeln!(w, "    lsl {}, {}, #{}", dl, rl, sh)?;
                         }
-                    }
-                    crate::mir::IntBinOp::LShr => {
-                        match rhs {
-                            crate::mir::Operand::Immediate(imm) => {
-                                let mut sh = imm_to_u64(imm) as u32;
-                                sh &= if is32 { 31 } else { 63 };
-                                writeln!(w, "    lsr {}, {}, #{}", dl, rl, sh)?;
-                            }
-                            _ => {
-                                emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                                let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                                writeln!(w, "    lsrv {}, {}, {}", dl, rl, rr)?;
-                            }
+                        _ => {
+                            emit_materialize_operand(w, rhs, s_r, frame, ra)?;
+                            let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
+                            writeln!(w, "    lslv {}, {}, {}", dl, rl, rr)?;
                         }
-                    }
-                    crate::mir::IntBinOp::AShr => {
-                        match rhs {
-                            crate::mir::Operand::Immediate(imm) => {
-                                let mut sh = imm_to_u64(imm) as u32;
-                                sh &= if is32 { 31 } else { 63 };
-                                writeln!(w, "    asr {}, {}, #{}", dl, rl, sh)?;
-                            }
-                            _ => {
-                                emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                                let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                                writeln!(w, "    asrv {}, {}, {}", dl, rl, rr)?;
-                            }
+                    },
+                    crate::mir::IntBinOp::LShr => match rhs {
+                        crate::mir::Operand::Immediate(imm) => {
+                            let mut sh = imm_to_u64(imm) as u32;
+                            sh &= if is32 { 31 } else { 63 };
+                            writeln!(w, "    lsr {}, {}, #{}", dl, rl, sh)?;
                         }
-                    }
+                        _ => {
+                            emit_materialize_operand(w, rhs, s_r, frame, ra)?;
+                            let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
+                            writeln!(w, "    lsrv {}, {}, {}", dl, rl, rr)?;
+                        }
+                    },
+                    crate::mir::IntBinOp::AShr => match rhs {
+                        crate::mir::Operand::Immediate(imm) => {
+                            let mut sh = imm_to_u64(imm) as u32;
+                            sh &= if is32 { 31 } else { 63 };
+                            writeln!(w, "    asr {}, {}, #{}", dl, rl, sh)?;
+                        }
+                        _ => {
+                            emit_materialize_operand(w, rhs, s_r, frame, ra)?;
+                            let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
+                            writeln!(w, "    asrv {}, {}, {}", dl, rl, rr)?;
+                        }
+                    },
                     _ => writeln!(w, "    // TODO: unimplemented binop {}", op)?,
                 }
                 store_result(w, dst, &x_alias(s_d), frame, ra)?;
@@ -229,7 +258,13 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                 ra.free_scratch(s_r);
                 ra.free_scratch(s_d);
             }
-            MirInst::IntCmp { op, lhs, rhs, dst, ty } => {
+            MirInst::IntCmp {
+                op,
+                lhs,
+                rhs,
+                dst,
+                ty,
+            } => {
                 let s_l = ra.alloc_scratch().unwrap_or("x19");
                 let s_r = ra.alloc_scratch().unwrap_or("x20");
                 let s_d = ra.alloc_scratch().unwrap_or("x21");
@@ -274,7 +309,13 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                 ra.free_scratch(a);
                 ra.free_scratch(t);
             }
-            MirInst::Select { ty, dst, cond, true_val, false_val } => {
+            MirInst::Select {
+                ty,
+                dst,
+                cond,
+                true_val,
+                false_val,
+            } => {
                 // dst = cond ? true_val : false_val
                 let r_cond = ra.alloc_scratch().unwrap_or("x19");
                 let r_t = ra.alloc_scratch().unwrap_or("x20");
@@ -285,12 +326,24 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                 // Compare cond against zero, then csel based on NE
                 if ty.size_bytes() == 4 {
                     writeln!(w, "    cmp {}, #0", w_alias(r_cond))?;
-                    writeln!(w, "    csel {}, {}, {}, ne", w_alias(r_t), w_alias(r_t), w_alias(r_f))?;
+                    writeln!(
+                        w,
+                        "    csel {}, {}, {}, ne",
+                        w_alias(r_t),
+                        w_alias(r_t),
+                        w_alias(r_f)
+                    )?;
                     // Store result from r_t (holds selected)
                     store_result(w, dst, &x_alias(r_t), frame, ra)?;
                 } else {
                     writeln!(w, "    cmp {}, #0", x_alias(r_cond))?;
-                    writeln!(w, "    csel {}, {}, {}, ne", x_alias(r_t), x_alias(r_t), x_alias(r_f))?;
+                    writeln!(
+                        w,
+                        "    csel {}, {}, {}, ne",
+                        x_alias(r_t),
+                        x_alias(r_t),
+                        x_alias(r_f)
+                    )?;
                     store_result(w, dst, &x_alias(r_t), frame, ra)?;
                 }
                 ra.free_scratch(r_cond);
@@ -407,7 +460,9 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                             writeln!(w, "    mov x16, #4")?; // write syscall
                             writeln!(w, "    svc #0")?;
                             // Return result in x0
-                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            if let Some(dst) = ret {
+                                store_result(w, dst, "x0", frame, ra)?;
+                            }
                             // Restore stack
                             writeln!(w, "    add sp, sp, #16")?;
                         }
@@ -420,7 +475,9 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    bl write")?;
-                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            if let Some(dst) = ret {
+                                store_result(w, dst, "x0", frame, ra)?;
+                            }
                             writeln!(w, "    add sp, sp, #16")?;
                         }
                     }
@@ -443,7 +500,12 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                                 writeln!(w, "    cmp x0, #1")?;
                                 // Place read byte into x form register first
                                 writeln!(w, "    uxtb {}, {}", x_alias("x9"), w_alias("x9"))?;
-                                writeln!(w, "    csel {}, {}, x0, eq", x_alias(dst_reg), x_alias("x9"))?;
+                                writeln!(
+                                    w,
+                                    "    csel {}, {}, x0, eq",
+                                    x_alias(dst_reg),
+                                    x_alias("x9")
+                                )?;
                                 store_result(w, dst, &x_alias(dst_reg), frame, ra)?;
                                 ra.free_scratch(dst_reg);
                             }
@@ -462,7 +524,12 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                                 let dst_reg = ra.alloc_scratch().unwrap_or("x10");
                                 writeln!(w, "    cmp x0, #1")?;
                                 writeln!(w, "    uxtb {}, {}", x_alias("x9"), w_alias("x9"))?;
-                                writeln!(w, "    csel {}, {}, x0, eq", x_alias(dst_reg), x_alias("x9"))?;
+                                writeln!(
+                                    w,
+                                    "    csel {}, {}, x0, eq",
+                                    x_alias(dst_reg),
+                                    x_alias("x9")
+                                )?;
                                 store_result(w, dst, &x_alias(dst_reg), frame, ra)?;
                                 ra.free_scratch(dst_reg);
                             }
@@ -483,7 +550,9 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    mov x16, #4")?;
                             writeln!(w, "    svc #0")?;
-                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            if let Some(dst) = ret {
+                                store_result(w, dst, "x0", frame, ra)?;
+                            }
                             writeln!(w, "    add sp, sp, #16")?;
                         }
                         _ => {
@@ -495,7 +564,9 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    bl write")?;
-                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            if let Some(dst) = ret {
+                                store_result(w, dst, "x0", frame, ra)?;
+                            }
                             writeln!(w, "    add sp, sp, #16")?;
                         }
                     }
@@ -508,14 +579,18 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                             writeln!(w, "    mov x0, #1")?;
                             writeln!(w, "    mov x16, #4")?;
                             writeln!(w, "    svc #0")?;
-                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            if let Some(dst) = ret {
+                                store_result(w, dst, "x0", frame, ra)?;
+                            }
                         }
                         _ => {
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
                             writeln!(w, "    mov x0, #1")?;
                             writeln!(w, "    bl write")?;
-                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            if let Some(dst) = ret {
+                                store_result(w, dst, "x0", frame, ra)?;
+                            }
                         }
                     }
                 } else if name == "read" && args.len() == 2 {
@@ -527,14 +602,18 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    mov x16, #3")?;
                             writeln!(w, "    svc #0")?;
-                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            if let Some(dst) = ret {
+                                store_result(w, dst, "x0", frame, ra)?;
+                            }
                         }
                         _ => {
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    bl read")?;
-                            if let Some(dst) = ret { store_result(w, dst, "x0", frame, ra)?; }
+                            if let Some(dst) = ret {
+                                store_result(w, dst, "x0", frame, ra)?;
+                            }
                         }
                     }
                 } else {
@@ -565,7 +644,11 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
             MirInst::Jmp { target } => {
                 writeln!(w, "    b {}", target)?;
             }
-            MirInst::Br { cond, true_target, false_target } => {
+            MirInst::Br {
+                cond,
+                true_target,
+                false_target,
+            } => {
                 let t = ra.alloc_scratch().unwrap_or("x19");
                 load_reg_to(w, cond, t, frame, ra)?;
                 // Compare condition against zero explicitly for robustness
@@ -582,7 +665,13 @@ fn emit_block<W: Write>(insts: &[MirInst], w: &mut W, frame: &FrameMap, os: Targ
     Ok(())
 }
 
-fn emit_materialize_operand<W: Write>(w: &mut W, op: &crate::mir::Operand, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<(), crate::error::LaminaError> {
+fn emit_materialize_operand<W: Write>(
+    w: &mut W,
+    op: &crate::mir::Operand,
+    dest: &str,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(), crate::error::LaminaError> {
     match op {
         crate::mir::Operand::Immediate(imm) => emit_mov_imm64(w, dest, imm_to_u64(imm))?,
         crate::mir::Operand::Register(r) => load_reg_to(w, r, dest, frame, ra)?,
@@ -590,7 +679,13 @@ fn emit_materialize_operand<W: Write>(w: &mut W, op: &crate::mir::Operand, dest:
     Ok(())
 }
 
-fn load_reg_to<W: Write>(w: &mut W, r: &Register, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<(), crate::error::LaminaError> {
+fn load_reg_to<W: Write>(
+    w: &mut W,
+    r: &Register,
+    dest: &str,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(), crate::error::LaminaError> {
     match r {
         Register::Virtual(_v) => {
             // Always load from stack slot for correctness across blocks
@@ -601,7 +696,11 @@ fn load_reg_to<W: Write>(w: &mut W, r: &Register, dest: &str, frame: &FrameMap, 
                 } else {
                     let mut addr = ra.alloc_scratch().unwrap_or("x12");
                     if addr == dest {
-                        if let Some(other) = ra.alloc_scratch() { addr = other; } else { addr = if dest != "x11" { "x11" } else { "x10" }; }
+                        if let Some(other) = ra.alloc_scratch() {
+                            addr = other;
+                        } else {
+                            addr = if dest != "x11" { "x11" } else { "x10" };
+                        }
                     }
                     if off >= 0 {
                         writeln!(w, "    add {}, x29, #{}", addr, off)?;
@@ -626,7 +725,13 @@ fn load_reg_to<W: Write>(w: &mut W, r: &Register, dest: &str, frame: &FrameMap, 
     Ok(())
 }
 
-fn store_result<W: Write>(w: &mut W, dst: &Register, src_reg: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<(), crate::error::LaminaError> {
+fn store_result<W: Write>(
+    w: &mut W,
+    dst: &Register,
+    src_reg: &str,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(), crate::error::LaminaError> {
     match dst {
         Register::Virtual(_v) => {
             // Always store to stack slot for correctness across blocks
@@ -637,7 +742,11 @@ fn store_result<W: Write>(w: &mut W, dst: &Register, src_reg: &str, frame: &Fram
                 } else {
                     let mut addr = ra.alloc_scratch().unwrap_or("x12");
                     if addr == src_reg {
-                        if let Some(other) = ra.alloc_scratch() { addr = other; } else { addr = if src_reg != "x11" { "x11" } else { "x10" }; }
+                        if let Some(other) = ra.alloc_scratch() {
+                            addr = other;
+                        } else {
+                            addr = if src_reg != "x11" { "x11" } else { "x10" };
+                        }
                     }
                     if off >= 0 {
                         writeln!(w, "    add {}, x29, #{}", addr, off)?;
@@ -662,7 +771,13 @@ fn store_result<W: Write>(w: &mut W, dst: &Register, src_reg: &str, frame: &Fram
     Ok(())
 }
 
-fn materialize_address<W: Write>(w: &mut W, addr: &crate::mir::AddressMode, dest: &str, frame: &FrameMap, ra: &mut A64RegAlloc) -> Result<(), crate::error::LaminaError> {
+fn materialize_address<W: Write>(
+    w: &mut W,
+    addr: &crate::mir::AddressMode,
+    dest: &str,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(), crate::error::LaminaError> {
     match addr {
         crate::mir::AddressMode::BaseOffset { base, offset } => {
             // Materialize base value (should be an address) into dest
@@ -675,16 +790,33 @@ fn materialize_address<W: Write>(w: &mut W, addr: &crate::mir::AddressMode, dest
                 }
             }
         }
-        crate::mir::AddressMode::BaseIndexScale { base, index, scale, offset } => {
+        crate::mir::AddressMode::BaseIndexScale {
+            base,
+            index,
+            scale,
+            offset,
+        } => {
             // dest = base (base holds an address)
             load_reg_to(w, base, dest, frame, ra)?;
             let mut idx = ra.alloc_scratch().unwrap_or("x19");
             if idx == dest {
-                if let Some(other) = ra.alloc_scratch() { idx = other; } else { idx = "x20"; }
+                if let Some(other) = ra.alloc_scratch() {
+                    idx = other;
+                } else {
+                    idx = "x20";
+                }
             }
             load_reg_to(w, index, idx, frame, ra)?; // idx = index
-            let sh = match *scale { 1 => 0, 2 => 1, 4 => 2, 8 => 3, _ => 0 };
-            if sh > 0 { writeln!(w, "    lsl {}, {}, #{}", idx, idx, sh)?; }
+            let sh = match *scale {
+                1 => 0,
+                2 => 1,
+                4 => 2,
+                8 => 3,
+                _ => 0,
+            };
+            if sh > 0 {
+                writeln!(w, "    lsl {}, {}, #{}", idx, idx, sh)?;
+            }
             writeln!(w, "    add {}, {}, {}", dest, dest, idx)?;
             ra.free_scratch(idx);
             if *offset != 0 {
@@ -698,5 +830,3 @@ fn materialize_address<W: Write>(w: &mut W, addr: &crate::mir::AddressMode, dest
     }
     Ok(())
 }
-
-
