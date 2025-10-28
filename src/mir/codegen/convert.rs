@@ -1,7 +1,7 @@
 use super::error::FromIRError;
 use super::mapping::{map_ir_prim, map_ir_type};
 use crate::mir::{
-    AddressMode, Block, Instruction, MemoryAttrs, MirType, Module, Operand, Parameter, Register,
+    AddressMode, Block, Instruction, MemoryAttrs, Module, Operand, Parameter, Register,
     RegisterClass, Signature, VirtualRegAllocator,
 };
 
@@ -600,7 +600,7 @@ fn convert_instruction<'a>(
             };
             let idx_const = match index {
                 IRVal::Constant(lit) => match lit {
-                    crate::ir::types::Literal::I64(v) => Some(*v as i64),
+                    crate::ir::types::Literal::I64(v) => Some(*v),
                     crate::ir::types::Literal::I32(v) => Some(*v as i64),
                     crate::ir::types::Literal::U64(v) => Some(*v as i64),
                     crate::ir::types::Literal::U32(v) => Some(*v as i64),
@@ -744,7 +744,7 @@ fn convert_instruction<'a>(
                     // For now, each vreg gets 8 bytes; arrays/structs need contiguous slots
                     // Simple approach: allocate (size/8) vregs to reserve space
                     if let Some(sz) = sizeof_ty(allocated_ty) {
-                        let slots_needed = ((sz + 7) / 8) as usize;
+                        let slots_needed = sz.div_ceil(8) as usize;
                         // Allocate additional dummy vregs to reserve stack space
                         for _ in 1..slots_needed {
                             vreg_alloc.allocate_gpr();

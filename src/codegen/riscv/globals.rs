@@ -1,6 +1,6 @@
 use super::state::CodegenState;
 use crate::codegen::{CodegenError, LiteralType};
-use crate::{GlobalDeclaration, LaminaError, Literal, Module, Type};
+use crate::{GlobalDeclaration, LaminaError, Literal, Module};
 use std::io::Write;
 use std::result::Result;
 

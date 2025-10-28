@@ -46,18 +46,15 @@ impl Peephole {
 
         for inst in &mut block.instructions {
             let mut local_change = false;
-            match inst {
-                Instruction::IntBinary {
+            if let Instruction::IntBinary {
                     op,
                     dst: _,
                     ty: _,
                     lhs,
                     rhs,
-                } => {
-                    // Fold identities on integer arithmetic
-                    local_change |= self.try_fold_int_identity(op, lhs, rhs);
-                }
-                _ => {}
+                } = inst {
+                // Fold identities on integer arithmetic
+                local_change |= self.try_fold_int_identity(op, lhs, rhs);
             }
 
             if local_change {
