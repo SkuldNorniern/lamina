@@ -201,13 +201,14 @@ fn precompute_function_layout<'a>(
                 _ => (None, 0),
             };
             if let Some(res) = maybe_res
-                && !seen.contains(res) {
-                    seen.insert(res);
-                    current -= align_to(size_bytes, word as u64) as i64;
-                    func_ctx
-                        .value_locations
-                        .insert(res, ValueLocation::StackOffset(current));
-                }
+                && !seen.contains(res)
+            {
+                seen.insert(res);
+                current -= align_to(size_bytes, word as u64) as i64;
+                func_ctx
+                    .value_locations
+                    .insert(res, ValueLocation::StackOffset(current));
+            }
         }
     }
 

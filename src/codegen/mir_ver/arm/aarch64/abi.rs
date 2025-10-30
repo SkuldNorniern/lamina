@@ -11,7 +11,7 @@ pub fn public_symbol(func_name: &str, os: TargetOs) -> (Option<String>, String) 
                 format!("_{}", func_name)
             },
         ),
-        TargetOs::Linux | TargetOs::Windows | TargetOs::BSD => {
+        TargetOs::Linux | TargetOs::Windows | TargetOs::BSD | TargetOs::Redox => {
             (Some(format!(".globl {}", func_name)), func_name.to_string())
         }
     }

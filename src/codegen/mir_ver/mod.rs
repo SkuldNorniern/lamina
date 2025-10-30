@@ -34,15 +34,14 @@ pub enum TargetOs {
 /// The options for the codegen
 pub enum CodegenOptions {
     /// Debug mode is the default mode, it will output with the full debug information (example)
-    Debug,   
+    Debug,
     /// Release mode is the optimized mode, it will output without debug information (example)
-    Release, 
+    Release,
     /// FEAT: TODO: Add more options for codegen
     Custom((String, String)),
 }
 
 // FEAT: TODO: Support multithreaded codegen
-
 
 /// The trait for the codegen
 pub trait Codegen {

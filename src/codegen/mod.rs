@@ -12,7 +12,6 @@ pub use x86_64::generate_x86_64_assembly;
 
 use crate::PrimitiveType;
 
-
 // Codegen Errors for Detailed Error Handling
 
 /// Error types specific to codegen
