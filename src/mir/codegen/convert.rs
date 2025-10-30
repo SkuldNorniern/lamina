@@ -847,6 +847,7 @@ mod tests {
     use crate::ir::instruction::BinaryOp;
     use crate::ir::types::{PrimitiveType, Type};
     use crate::ir::{FunctionParameter, IRBuilder};
+    use crate::mir::MirType;
 
     #[test]
     fn test_from_ir_simple_add() {
