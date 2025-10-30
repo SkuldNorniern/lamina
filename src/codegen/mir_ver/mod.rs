@@ -24,13 +24,14 @@ pub enum TargetOs {
     Linux,
     Windows,
     BSD,
+    Redox,
 }
 
 /// The options for the codegen
 pub enum CodegenOptions {
-    /// Debug mode is the default mode, it will output with the full debug information
+    /// Debug mode is the default mode, it will output with the full debug information (example)
     Debug,   
-    /// Release mode is the optimized mode, it will output without debug information
+    /// Release mode is the optimized mode, it will output without debug information (example)
     Release, 
     /// FEAT: TODO: Add more options for codegen
     Custom((String, String)),
