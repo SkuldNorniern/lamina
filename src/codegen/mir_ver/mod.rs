@@ -1,4 +1,8 @@
 pub mod arm;
+
+use crate::mir::{Global, MirType, Signature};
+
+use std::collections::HashMap;
 use std::io::Write;
 
 /// Generate AArch64 assembly from MIR for the requested host OS.
@@ -58,11 +62,11 @@ pub trait Codegen {
 
     fn prepare(
         &mut self,
-        //types:
-        //globals:
-        //funcs:
+        types: &HashMap<String, MirType>,
+        globals: &HashMap<String, Global>,
+        funcs: &HashMap<String, Signature>,
         verbose: bool,
-        options: [CodegenOptions],
+        options: &[CodegenOptions],
         input_name: &str,
     ) -> Result<(), CodegenError>;
 
