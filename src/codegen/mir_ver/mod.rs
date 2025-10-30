@@ -54,7 +54,7 @@ pub trait Codegen {
     const CAN_OUTPUT_BIN: bool;
 
     /// The Supported codegen options
-    const SUPPORTED_CODEGEN_OPTS: [CodegenOptions];
+    const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions];
     /// The target operating system
     const TARGET_OS: TargetOs;
     /// The max bit width of the target architecture
