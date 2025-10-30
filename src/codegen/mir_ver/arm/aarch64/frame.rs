@@ -1,4 +1,3 @@
-
 use crate::mir::{Function, Register};
 use std::collections::{HashMap, HashSet};
 

@@ -75,17 +75,18 @@ pub fn generate_mir_aarch64<W: Write>(
         // Spill incoming arguments (x0..x7) to their slots
         for (i, p) in func.sig.params.iter().enumerate() {
             if i < 8
-                && let Some(off) = frame.slot_of(&p.reg) {
-                    // use scratch reg for address calculation
-                    let addr = ra_pro.alloc_scratch().unwrap_or("x19");
-                    if off >= 0 {
-                        writeln!(writer, "    add {}, x29, #{}", addr, off)?;
-                    } else {
-                        writeln!(writer, "    sub {}, x29, #{}", addr, -off)?;
-                    }
-                    writeln!(writer, "    str x{}, [{}]", i, addr)?;
-                    ra_pro.free_scratch(addr);
+                && let Some(off) = frame.slot_of(&p.reg)
+            {
+                // use scratch reg for address calculation
+                let addr = ra_pro.alloc_scratch().unwrap_or("x19");
+                if off >= 0 {
+                    writeln!(writer, "    add {}, x29, #{}", addr, off)?;
+                } else {
+                    writeln!(writer, "    sub {}, x29, #{}", addr, -off)?;
                 }
+                writeln!(writer, "    str x{}, [{}]", i, addr)?;
+                ra_pro.free_scratch(addr);
+            }
         }
 
         // Prepare epilogue label so `ret` can branch to it safely
