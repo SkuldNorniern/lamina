@@ -1,15 +1,19 @@
-use crate::codegen::mir_ver::TargetOs;
 mod abi;
 mod frame;
 mod regalloc;
 mod util;
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+
 use abi::{call_stub, public_symbol};
 use frame::FrameMap;
 use regalloc::A64RegAlloc;
 use std::io::Write;
 use std::result::Result;
 use util::{emit_mov_imm64, imm_to_u64};
+
+use crate::codegen::mir_ver::{Codegen, CodegenError, CodegenOptions, TargetOs};
+use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+
+
 
 fn w_alias(xreg: &str) -> String {
     if let Some(rest) = xreg.strip_prefix('x') {
@@ -829,4 +833,118 @@ fn materialize_address<W: Write>(
         }
     }
     Ok(())
+}
+
+/// Trait-backed MIR ⇒ AArch64 code generator.
+pub struct AArch64Codegen<'a> {
+    target_os: TargetOs,
+    module: Option<&'a MirModule>,
+    prepared: bool,
+    verbose: bool,
+    output: Vec<u8>,
+}
+
+impl<'a> AArch64Codegen<'a> {
+    pub fn new(target_os: TargetOs) -> Self {
+        Self {
+            target_os,
+            module: None,
+            prepared: false,
+            verbose: false,
+            output: Vec::new(),
+        }
+    }
+
+    /// Attach the MIR module that should be emitted in the next codegen pass.
+    pub fn set_module(&mut self, module: &'a MirModule) {
+        self.module = Some(module);
+    }
+
+    /// Drain the internal assembly buffer produced by `emit_asm`.
+    pub fn drain_output(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.output)
+    }
+
+    /// Emit assembly for the provided module directly into the supplied writer.
+    pub fn emit_into<W: Write>(
+        &mut self,
+        module: &'a MirModule,
+        writer: &mut W,
+    ) -> Result<(), crate::error::LaminaError> {
+        generate_mir_aarch64(module, writer, self.target_os)
+    }
+}
+
+impl<'a> Codegen for AArch64Codegen<'a> {
+    const BIN_EXT: &'static str = "o";
+    const CAN_OUTPUT_ASM: bool = true;
+    const CAN_OUTPUT_BIN: bool = false;
+    const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions] = &[CodegenOptions::Debug, CodegenOptions::Release];
+    const TARGET_OS: TargetOs = TargetOs::Linux;
+    const MAX_BIT_WIDTH: u8 = 64;
+
+    fn prepare(
+        &mut self,
+        types: &std::collections::HashMap<String, crate::mir::MirType>,
+        globals: &std::collections::HashMap<String, crate::mir::Global>,
+        funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        verbose: bool,
+        _options: &[CodegenOptions],
+        _input_name: &str,
+    ) -> Result<(), CodegenError> {
+        let _ = (types.len(), globals.len(), funcs.len());
+        self.prepared = true;
+        self.verbose = verbose;
+        Ok(())
+    }
+
+    fn compile(&mut self) -> Result<(), CodegenError> {
+        if !self.prepared {
+            return Err(CodegenError::UnsupportedFeature(
+                "AArch64 backend compile called before prepare".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn finalize(&mut self) -> Result<(), CodegenError> {
+        self.module = None;
+        self.prepared = false;
+        Ok(())
+    }
+
+    fn emit_asm(&mut self) -> Result<(), CodegenError> {
+        if !self.prepared {
+            return Err(CodegenError::UnsupportedFeature(
+                "emit_asm called before prepare".into(),
+            ));
+        }
+        let module = self.module.ok_or_else(|| {
+            CodegenError::UnsupportedFeature("No module attached to AArch64 backend".into())
+        })?;
+        self.output.clear();
+        generate_mir_aarch64(module, &mut self.output, self.target_os)
+            .map_err(lamina_to_codegen_error)?;
+        Ok(())
+    }
+
+    fn emit_bin(&mut self) -> Result<(), CodegenError> {
+        Err(CodegenError::UnsupportedFeature(
+            "Binary emission not implemented for AArch64 MIR backend".into(),
+        ))
+    }
+}
+
+fn lamina_to_codegen_error(err: crate::error::LaminaError) -> CodegenError {
+    match err {
+        crate::error::LaminaError::CodegenError(inner) => {
+            CodegenError::UnsupportedFeature(inner.to_string())
+        }
+        crate::error::LaminaError::ParsingError(msg)
+        | crate::error::LaminaError::ValidationError(msg)
+        | crate::error::LaminaError::IoError(msg)
+        | crate::error::LaminaError::Utf8Error(msg) => {
+            CodegenError::UnsupportedFeature(msg)
+        }
+    }
 }
