@@ -12,13 +12,75 @@ pub fn generate_mir_to_aarch64<W: Write>(
     writer: &mut W,
     host_os: &str,
 ) -> std::result::Result<(), crate::error::LaminaError> {
-    match host_os {
-        "macos" | "darwin" => arm::aarch64::generate_mir_aarch64(module, writer, TargetOs::MacOs),
-        "linux" => arm::aarch64::generate_mir_aarch64(module, writer, TargetOs::Linux),
-        "windows" | "win" => arm::aarch64::generate_mir_aarch64(module, writer, TargetOs::Windows),
-        "bsd" => arm::aarch64::generate_mir_aarch64(module, writer, TargetOs::BSD),
-        _ => arm::aarch64::generate_mir_aarch64(module, writer, TargetOs::Linux),
-    }
+    use crate::error::LaminaError;
+
+    let target_os = match host_os {
+        "macos" | "darwin" => TargetOs::MacOs,
+        "linux" => TargetOs::Linux,
+        "windows" | "win" => TargetOs::Windows,
+        "bsd" => TargetOs::BSD,
+        _ => TargetOs::Linux,
+    };
+
+    let types: HashMap<String, MirType> = HashMap::new();
+    let globals: HashMap<String, Global> = module
+        .globals
+        .iter()
+        .map(|(name, global)| (name.clone(), global.clone()))
+        .collect();
+    let funcs: HashMap<String, Signature> = module
+        .functions
+        .iter()
+        .map(|(name, func)| (name.clone(), func.sig.clone()))
+        .collect();
+
+    let mut backend = arm::aarch64::AArch64Codegen::new(target_os);
+    backend
+        .prepare(&types, &globals, &funcs, false, &[], &module.name)
+        .map_err(wrap_codegen_error)?;
+    backend.set_module(module);
+    backend.compile().map_err(wrap_codegen_error)?;
+    backend.emit_asm().map_err(wrap_codegen_error)?;
+    let asm_output = backend.drain_output();
+    writer.write_all(&asm_output).map_err(LaminaError::from)?;
+    backend.finalize().map_err(wrap_codegen_error)?;
+
+    Ok(())
+}
+
+fn wrap_codegen_error(err: CodegenError) -> crate::error::LaminaError {
+    use crate::codegen::{CodegenError as CoreCodegenError, FeatureType};
+
+    let message = match err {
+        CodegenError::UnsupportedFeature(msg) => msg,
+        CodegenError::InvalidCodegenOptions(msg) => {
+            format!("Invalid codegen options: {}", msg)
+        }
+        CodegenError::InvalidTargetOs(msg) => format!("Invalid target OS: {}", msg),
+        CodegenError::InvalidMaxBitWidth(bits) => {
+            format!("Invalid max bit width: {}", bits)
+        }
+        CodegenError::InvalidInputName(name) => format!("Invalid input name: {}", name),
+        CodegenError::InvalidVerbose(flag) => {
+            format!("Invalid verbose flag supplied: {}", flag)
+        }
+        CodegenError::InvalidOptions(opts) => {
+            format!("Invalid options provided ({} entries)", opts.len())
+        }
+        CodegenError::InvalidTypes(types) => {
+            format!("Invalid types referenced: {}", types.join(", "))
+        }
+        CodegenError::InvalidGlobals(globals) => {
+            format!("Invalid globals referenced: {}", globals.join(", "))
+        }
+        CodegenError::InvalidFuncs(funcs) => {
+            format!("Invalid functions referenced: {}", funcs.join(", "))
+        }
+    };
+
+    crate::error::LaminaError::CodegenError(CoreCodegenError::UnsupportedFeature(
+        FeatureType::Custom(message),
+    ))
 }
 
 /// Mark the target operating system
