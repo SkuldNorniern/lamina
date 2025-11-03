@@ -148,11 +148,10 @@ impl MirRegisterAllocator for A64RegAlloc {
     }
 
     fn occupy(&mut self, phys: Self::PhysReg) {
-        if self.used_gprs.insert(phys) {
-            if let Some(pos) = self.free_gprs.iter().position(|&p| p == phys) {
+        if self.used_gprs.insert(phys)
+            && let Some(pos) = self.free_gprs.iter().position(|&p| p == phys) {
                 self.free_gprs.remove(pos);
             }
-        }
     }
 
     fn release(&mut self, phys: Self::PhysReg) {

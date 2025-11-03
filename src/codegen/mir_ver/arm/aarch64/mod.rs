@@ -13,8 +13,6 @@ use util::{emit_mov_imm64, imm_to_u64};
 use crate::codegen::mir_ver::{Codegen, CodegenError, CodegenOptions, TargetOs};
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 
-
-
 fn w_alias(xreg: &str) -> String {
     if let Some(rest) = xreg.strip_prefix('x') {
         format!("w{}", rest)
@@ -879,7 +877,8 @@ impl<'a> Codegen for AArch64Codegen<'a> {
     const BIN_EXT: &'static str = "o";
     const CAN_OUTPUT_ASM: bool = true;
     const CAN_OUTPUT_BIN: bool = false;
-    const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions] = &[CodegenOptions::Debug, CodegenOptions::Release];
+    const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions] =
+        &[CodegenOptions::Debug, CodegenOptions::Release];
     const TARGET_OS: TargetOs = TargetOs::Linux;
     const MAX_BIT_WIDTH: u8 = 64;
 
@@ -943,8 +942,6 @@ fn lamina_to_codegen_error(err: crate::error::LaminaError) -> CodegenError {
         crate::error::LaminaError::ParsingError(msg)
         | crate::error::LaminaError::ValidationError(msg)
         | crate::error::LaminaError::IoError(msg)
-        | crate::error::LaminaError::Utf8Error(msg) => {
-            CodegenError::UnsupportedFeature(msg)
-        }
+        | crate::error::LaminaError::Utf8Error(msg) => CodegenError::UnsupportedFeature(msg),
     }
 }

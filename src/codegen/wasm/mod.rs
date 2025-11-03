@@ -1,12 +1,14 @@
 pub mod generate;
 pub mod state;
 
+use std::result::Result;
+use std::{collections::HashMap, io::Write};
+
 use crate::codegen::{CodegenError, FeatureType, InstructionType, OperationType};
 use crate::{BinaryOp, Instruction, LaminaError, Literal, Module, PrimitiveType, Type, Value};
 use generate::{FloatType, IntegerType, ModuleExpression, NumericConstant, NumericType};
 use state::Register;
-use std::result::Result;
-use std::{collections::HashMap, io::Write};
+
 
 pub fn get_wasm_type_primitive(
     ty: PrimitiveType,
