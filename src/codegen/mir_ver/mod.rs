@@ -1,9 +1,15 @@
-pub mod arm;
+pub mod regalloc;
 
-use crate::mir::{Global, MirType, Signature};
+pub mod x86_64;
+pub mod arm;
+pub mod riscv;
 
 use std::collections::HashMap;
 use std::io::Write;
+
+use crate::mir::{Global, MirType, Signature};
+
+
 
 /// Generate AArch64 assembly from MIR for the requested host OS.
 /// host_os: "macos" | "linux" | "windows"
