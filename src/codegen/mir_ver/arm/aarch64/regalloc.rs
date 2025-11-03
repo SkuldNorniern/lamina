@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use crate::codegen::mir_ver::regalloc::RegisterAllocator as MirRegisterAllocator;
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
 
 /// Very simple AArch64 register allocator for MIR virtual registers.
@@ -38,10 +39,12 @@ impl A64RegAlloc {
         for &r in MAP_GPRS {
             free_gprs.push_back(r);
         }
+
         let mut scratch_free = VecDeque::new();
         for &r in SCRATCH_GPRS {
             scratch_free.push_back(r);
         }
+
         Self {
             free_gprs,
             used_gprs: HashSet::new(),
@@ -51,72 +54,114 @@ impl A64RegAlloc {
         }
     }
 
-    /// Allocate a scratch physical GPR not tied to any virtual register mapping.
+    #[inline]
     pub fn alloc_scratch(&mut self) -> Option<&'static str> {
+        MirRegisterAllocator::alloc_scratch(self)
+    }
+
+    #[inline]
+    pub fn free_scratch(&mut self, phys: &'static str) {
+        MirRegisterAllocator::free_scratch(self, phys);
+    }
+
+    #[inline]
+    pub fn is_occupied(&self, phys: &'static str) -> bool {
+        MirRegisterAllocator::is_occupied(self, phys)
+    }
+
+    #[inline]
+    pub fn occupy(&mut self, phys: &'static str) {
+        MirRegisterAllocator::occupy(self, phys);
+    }
+
+    #[inline]
+    pub fn release(&mut self, phys: &'static str) {
+        MirRegisterAllocator::release(self, phys);
+    }
+
+    #[inline]
+    pub fn get_mapping_for(&self, v: &VirtualReg) -> Option<&'static str> {
+        MirRegisterAllocator::get_mapping(self, v)
+    }
+
+    #[inline]
+    pub fn ensure_mapping(&mut self, v: VirtualReg) -> Option<&'static str> {
+        MirRegisterAllocator::ensure_mapping(self, v)
+    }
+
+    #[inline]
+    pub fn ensure_mapping_for_gpr(&mut self, v: VirtualReg) -> Option<&'static str> {
+        MirRegisterAllocator::ensure_mapping(self, v)
+    }
+
+    #[inline]
+    pub fn mapped_for_register(&self, r: &Register) -> Option<&'static str> {
+        MirRegisterAllocator::mapped_for_register(self, r)
+    }
+}
+
+impl MirRegisterAllocator for A64RegAlloc {
+    type PhysReg = &'static str;
+
+    fn alloc_scratch(&mut self) -> Option<Self::PhysReg> {
         if let Some(phys) = self.scratch_free.pop_front() {
             self.scratch_used.insert(phys);
-            return Some(phys);
-        }
-        None
-    }
-
-    /// Free a previously allocated scratch register.
-    pub fn free_scratch(&mut self, phys: &'static str) {
-        if self.scratch_used.remove(phys) {
-            self.scratch_free.push_back(phys);
-        }
-    }
-
-    /// Returns true if the physical register is currently occupied by any mapping.
-    pub fn is_occupied(&self, phys: &str) -> bool {
-        self.used_gprs.contains(phys)
-    }
-
-    /// Mark a physical register as occupied (removed from free list) if present.
-    pub fn occupy(&mut self, phys: &'static str) {
-        if !self.used_gprs.contains(phys) {
-            self.used_gprs.insert(phys);
-            if let Some(pos) = self.free_gprs.iter().position(|&p| p == phys) {
-                self.free_gprs.remove(pos);
-            }
-        }
-    }
-
-    /// Release a physical register back to the free list (not used in the simple stable mapping).
-    pub fn release(&mut self, phys: &'static str) {
-        if self.used_gprs.remove(phys) {
-            self.free_gprs.push_back(phys);
-        }
-    }
-
-    /// Get an existing mapping for a virtual register if any.
-    pub fn get_mapping_for(&self, v: &VirtualReg) -> Option<&'static str> {
-        self.vreg_to_preg.get(v).copied()
-    }
-
-    /// Ensure a mapping for a GPR-class virtual register; returns the assigned physical register,
-    /// or None if no registers remain (caller should spill to stack in that case).
-    pub fn ensure_mapping_for_gpr(&mut self, v: VirtualReg) -> Option<&'static str> {
-        if let Some(&p) = self.vreg_to_preg.get(&v) {
-            return Some(p);
-        }
-        if v.class != RegisterClass::Gpr {
-            return None;
-        }
-        if let Some(phys) = self.free_gprs.pop_front() {
-            self.used_gprs.insert(phys);
-            self.vreg_to_preg.insert(v, phys);
             Some(phys)
         } else {
             None
         }
     }
 
-    /// Get the mapped physical register for any Register (virtual or physical).
-    pub fn mapped_for_register(&self, r: &Register) -> Option<&'static str> {
-        match r {
-            Register::Virtual(v) => self.get_mapping_for(v),
+    fn free_scratch(&mut self, phys: Self::PhysReg) {
+        if self.scratch_used.remove(&phys) {
+            self.scratch_free.push_back(phys);
+        }
+    }
+
+    fn get_mapping(&self, vreg: &VirtualReg) -> Option<Self::PhysReg> {
+        self.vreg_to_preg.get(vreg).copied()
+    }
+
+    fn ensure_mapping(&mut self, vreg: VirtualReg) -> Option<Self::PhysReg> {
+        if let Some(&phys) = self.vreg_to_preg.get(&vreg) {
+            return Some(phys);
+        }
+
+        if vreg.class != RegisterClass::Gpr {
+            return None;
+        }
+
+        if let Some(phys) = self.free_gprs.pop_front() {
+            self.used_gprs.insert(phys);
+            self.vreg_to_preg.insert(vreg, phys);
+            Some(phys)
+        } else {
+            None
+        }
+    }
+
+    fn mapped_for_register(&self, reg: &Register) -> Option<Self::PhysReg> {
+        match reg {
+            Register::Virtual(v) => self.vreg_to_preg.get(v).copied(),
             Register::Physical(p) => Some(p.name),
         }
+    }
+
+    fn occupy(&mut self, phys: Self::PhysReg) {
+        if self.used_gprs.insert(phys) {
+            if let Some(pos) = self.free_gprs.iter().position(|&p| p == phys) {
+                self.free_gprs.remove(pos);
+            }
+        }
+    }
+
+    fn release(&mut self, phys: Self::PhysReg) {
+        if self.used_gprs.remove(&phys) {
+            self.free_gprs.push_back(phys);
+        }
+    }
+
+    fn is_occupied(&self, phys: Self::PhysReg) -> bool {
+        self.used_gprs.contains(&phys)
     }
 }
