@@ -1,0 +1,471 @@
+fn @main() -> void {
+entry:
+  %tape = alloc.ptr.stack [100 x i8]
+  %data_ptr = alloc.ptr.stack i32
+  store.i32 %data_ptr, 0
+  %op_counter = alloc.ptr.stack i32
+  store.i32 %op_counter, 0
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %loop_counter = alloc.ptr.stack i32
+  store.i32 %loop_counter, 0
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %loop_counter = alloc.ptr.stack i32
+  store.i32 %loop_counter, 0
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_left = sub.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_left
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_left = sub.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_left
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_left = sub.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_left
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_left = sub.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_left
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_loop = add.i32 %loop_counter, 1
+  store.i32 %loop_counter, %temp_loop
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %loop_counter = alloc.ptr.stack i32
+  store.i32 %loop_counter, 0
+  %temp_left = sub.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_left
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_loop = add.i32 %loop_counter, 1
+  store.i32 %loop_counter, %temp_loop
+  %temp_left = sub.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_left
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_loop = add.i32 %loop_counter, 1
+  store.i32 %loop_counter, %temp_loop
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_left = sub.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_left
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_left = sub.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_left
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_dec = sub.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_dec
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_right = add.i32 %data_ptr, 1
+  store.i32 %data_ptr, %temp_right
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_inc = add.i8 1, 1
+  %op_var = alloc.ptr.stack i8
+  store.i8 %op_var, %temp_inc
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %result = writebyte 65
+  %counter_var = add.i32 %op_counter, 1
+  store.i32 %op_counter, %counter_var
+  %temp_total = add.i32 %op_counter, 103
+  store.i32 %op_counter, %temp_total
+  ret.void
+}

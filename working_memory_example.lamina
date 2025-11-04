@@ -1,0 +1,64 @@
+# Working example demonstrating memory operations with visible output
+fn @main() -> void {
+  entry:
+    # Print "Memory Demo:" message
+    %m = writebyte 77  # 'M'
+    %e = writebyte 101 # 'e'
+    %m2 = writebyte 109 # 'm'
+    %o = writebyte 111 # 'o'
+    %r = writebyte 114 # 'r'
+    %y = writebyte 121 # 'y'
+    %space = writebyte 32 # ' '
+    %d = writebyte 68  # 'D'
+    %e2 = writebyte 101 # 'e'
+    %m3 = writebyte 109 # 'm'
+    %o2 = writebyte 111 # 'o'
+    %colon = writebyte 58 # ':'
+    %nl = writebyte 10  # newline
+
+    # Allocate buffer and demonstrate store/load cycle
+    %buffer = alloc.stack i8
+
+    # Store ASCII 'A' (65) in the buffer
+    store.i8 %buffer, 65
+
+    # Load the value back (demonstrates load operation)
+    %loaded_value = load.i8 %buffer
+
+    # Print "Stored and loaded: A" message
+    %s = writebyte 83  # 'S'
+    %t = writebyte 116 # 't'
+    %o3 = writebyte 111 # 'o'
+    %r2 = writebyte 114 # 'r'
+    %e3 = writebyte 101 # 'e'
+    %d2 = writebyte 100 # 'd'
+    %space2 = writebyte 32 # ' '
+    %a = writebyte 97  # 'a'
+    %n = writebyte 110 # 'n'
+    %d3 = writebyte 100 # 'd'
+    %space3 = writebyte 32 # ' '
+    %l = writebyte 108 # 'l'
+    %o4 = writebyte 111 # 'o'
+    %a2 = writebyte 97  # 'a'
+    %d4 = writebyte 100 # 'd'
+    %e4 = writebyte 101 # 'e'
+    %d5 = writebyte 100 # 'd'
+    %colon2 = writebyte 58 # ':'
+    %space4 = writebyte 32 # ' '
+
+    # Use writeptr to output the raw binary value from the buffer
+    # This will output the actual binary value 65 (which is 'A')
+    %result = writeptr %buffer
+
+    # Print newline
+    %nl2 = writebyte 10
+
+    ret.void
+}
+
+
+
+
+
+
+

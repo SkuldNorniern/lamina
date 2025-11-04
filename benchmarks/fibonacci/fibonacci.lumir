@@ -1,0 +1,54 @@
+fn fibonacci_iter(v0 i64, v1 i64, v2 i64, v3 i64) -> i64 {
+entry:
+  v4 = cmp.sgt.i64 v3, v0
+  br v4, return_result, continue_iter
+
+return_result:
+  ret v2
+
+continue_iter:
+  v5 = add.i64 v1, v2
+  v6 = add.i64 v2, 0
+  v7 = add.i64 v5, 0
+  v8 = add.i64 v3, 1
+  v9 = call fibonacci_iter(v0, v6, v7, v8)
+  ret v9
+
+}
+
+fn fibonacci_iterative(v0 i64) -> i64 {
+entry:
+  v1 = cmp.eq.i64 v0, 0
+  br v1, return_zero, check_one
+
+return_zero:
+  ret 0
+
+check_one:
+  v2 = cmp.eq.i64 v0, 1
+  br v2, return_one, start_iteration
+
+return_one:
+  ret 1
+
+start_iteration:
+  v3 = call fibonacci_iter(v0, 0, 1, 2)
+  ret v3
+
+}
+
+fn main() -> i64 {
+entry:
+  call print(123456789)
+  v0 = call fibonacci_iterative(10)
+  call print(v0)
+  v1 = call fibonacci_iterative(20)
+  call print(v1)
+  v2 = call fibonacci_iterative(30)
+  call print(v2)
+  v3 = call fibonacci_iterative(35)
+  call print(v3)
+  call print(987654321)
+  ret 0
+
+}

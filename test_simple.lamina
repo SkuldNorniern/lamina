@@ -1,0 +1,5 @@
+fn @main() -> void {
+  entry:
+    %result = writebyte 72
+    ret.void
+}

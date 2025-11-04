@@ -1,0 +1,7 @@
+fn main() -> i64 {
+entry:
+  v0 = cmp.sgt.i64 3, 2
+  call print(v0)
+  ret 0
+
+}

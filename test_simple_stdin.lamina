@@ -1,0 +1,26 @@
+fn @main() -> i64 {
+    entry:
+        %byte1 = readbyte
+        print %byte1
+
+        %byte2 = readbyte
+        print %byte2
+
+        %byte3 = readbyte
+        print %byte3
+
+        ret.i64 %byte1
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
