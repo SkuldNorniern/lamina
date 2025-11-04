@@ -1,0 +1,211 @@
+# Cool Pattern Generator: Mathematical Art Creation
+# Creates beautiful ASCII patterns using mathematical formulas
+# Demonstrates Lamina's artistic and creative programming capabilities
+#
+# Features:
+# - Generates diamond patterns using loops and math
+# - Creates fractal-like patterns with recursive functions
+# - Shows creative use of arithmetic for visual output
+# - Demonstrates pattern generation algorithms
+
+# Function to print a line with specific width and pattern
+fn @print_diamond_line(i64 %line_num, i64 %total_lines) -> i64 {
+  entry:
+    # Calculate spaces needed: total_lines - line_num
+    %spaces = sub.i64 %total_lines, %line_num
+
+    # Calculate stars needed: 2 * line_num - 1
+    %stars = mul.i64 2, %line_num
+    %stars_final = sub.i64 %stars, 1
+
+    # Print leading spaces
+    %dummy1 = call @print_chars(32, %spaces)  # ASCII space
+
+    # Print stars
+    %dummy2 = call @print_chars(42, %stars_final)  # ASCII '*'
+
+    # Print trailing spaces (for alignment)
+    %dummy3 = call @print_chars(32, %spaces)
+
+    # New line
+    print 10
+
+    ret.i64 0
+}
+
+# Function to print N characters
+fn @print_chars(i64 %char_code, i64 %count) -> i64 {
+  entry:
+    %is_zero = eq.i64 %count, 0
+    br %is_zero, done, print_and_recurse
+
+  print_and_recurse:
+    print %char_code
+    %new_count = sub.i64 %count, 1
+    %result = call @print_chars(%char_code, %new_count)
+    ret.i64 %result
+
+  done:
+    ret.i64 0
+}
+
+# Function to generate a mathematical pattern
+fn @generate_math_pattern(i64 %size) -> i64 {
+  entry:
+    %is_zero = eq.i64 %size, 0
+    br %is_zero, done, generate
+
+  generate:
+    # Calculate pattern value using fibonacci-like sequence
+    %fib_val = call @fib_pattern(%size)
+
+    # Use fibonacci value to determine pattern
+    %pattern_code = add.i64 65, %fib_val  # ASCII letters A, B, C, etc.
+    %pattern_width = mul.i64 %size, 2
+
+    # Print the pattern
+    %dummy1 = call @print_chars(%pattern_code, %pattern_width)
+    print 10  # New line
+
+    # Recurse with smaller size
+    %next_size = sub.i64 %size, 1
+    %result = call @generate_math_pattern(%next_size)
+    ret.i64 %result
+
+  done:
+    ret.i64 0
+}
+
+# Function to compute fibonacci-like pattern values
+fn @fib_pattern(i64 %n) -> i64 {
+  entry:
+    %is_zero = eq.i64 %n, 0
+    br %is_zero, return_zero, check_one
+
+  return_zero:
+    ret.i64 0
+
+  check_one:
+    %is_one = eq.i64 %n, 1
+    br %is_one, return_one, compute
+
+  return_one:
+    ret.i64 1
+
+  compute:
+    %n_minus_1 = sub.i64 %n, 1
+    %n_minus_2 = sub.i64 %n, 2
+    %val1 = call @fib_pattern(%n_minus_1)
+    %val2 = call @fib_pattern(%n_minus_2)
+    %sum = add.i64 %val1, %val2
+    # Keep sum small for ASCII range (A-Z is 65-90)
+    %result = div.i64 %sum, 2  # Simple way to keep values small
+    ret.i64 %result
+}
+
+# Function to create a spiral pattern
+fn @generate_spiral(i64 %size, i64 %current) -> i64 {
+  entry:
+    %is_done = gt.i64 %current, %size
+    br %is_done, done, continue
+
+  continue:
+    # Calculate spiral position
+    %angle = mul.i64 %current, 15  # Pseudo-angle
+    %radius = div.i64 %current, 2
+
+    # Simple spiral pattern using fibonacci
+    %fib_val = call @fib_pattern(%current)
+    %pattern_char = add.i64 48, %fib_val  # ASCII digits 0-9
+
+    # Print pattern (simplified spiral)
+    %dummy = call @print_chars(%pattern_char, %radius)
+
+    # Add some spaces for visual effect
+    %spaces = sub.i64 %size, %radius
+    %dummy2 = call @print_chars(32, %spaces)
+    print 10
+
+    # Continue spiral
+    %next = add.i64 %current, 1
+    %result = call @generate_spiral(%size, %next)
+    ret.i64 %result
+
+  done:
+    ret.i64 0
+}
+
+# Main pattern generator function
+fn @main() -> i64 {
+  entry:
+    # Header
+    print 3001  # Pattern generator start
+
+    # Pattern 1: Diamond
+    print 2001  # Diamond marker
+    %dummy1 = call @generate_diamond(5)
+
+    # Pattern 2: Mathematical pattern
+    print 2002  # Math pattern marker
+    %dummy2 = call @generate_math_pattern(8)
+
+    # Pattern 3: Spiral pattern
+    print 2003  # Spiral marker
+    %dummy3 = call @generate_spiral(10, 1)
+
+    # Footer
+    print 3999  # Pattern generator end
+
+    ret.i64 0
+}
+
+# Function to generate diamond pattern
+fn @generate_diamond(i64 %size) -> i64 {
+  entry:
+    %is_zero = eq.i64 %size, 0
+    br %is_zero, done, generate_top
+
+  generate_top:
+    # Top half of diamond
+    %dummy1 = call @generate_diamond_top(%size, 1)
+
+    # Bottom half of diamond
+    %dummy2 = call @generate_diamond_bottom(%size, %size)
+
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}
+
+# Generate top half of diamond
+fn @generate_diamond_top(i64 %max_size, i64 %current) -> i64 {
+  entry:
+    %is_done = gt.i64 %current, %max_size
+    br %is_done, done, continue
+
+  continue:
+    %dummy = call @print_diamond_line(%current, %max_size)
+    %next = add.i64 %current, 1
+    %result = call @generate_diamond_top(%max_size, %next)
+    ret.i64 %result
+
+  done:
+    ret.i64 0
+}
+
+# Generate bottom half of diamond
+fn @generate_diamond_bottom(i64 %max_size, i64 %current) -> i64 {
+  entry:
+    %is_done = lt.i64 %current, 1
+    br %is_done, done, continue
+
+  continue:
+    %dummy = call @print_diamond_line(%current, %max_size)
+    %next = sub.i64 %current, 1
+    %result = call @generate_diamond_bottom(%max_size, %next)
+    ret.i64 %result
+
+  done:
+    ret.i64 0
+}

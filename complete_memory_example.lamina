@@ -1,0 +1,105 @@
+# Complete memory operations example with visible output
+fn @main() -> void {
+  entry:
+    # Print header
+    %h1 = writebyte 61  # '='
+    %h2 = writebyte 32  # ' '
+    %m = writebyte 77  # 'M'
+    %e = writebyte 101 # 'e'
+    %m2 = writebyte 109 # 'm'
+    %o = writebyte 111 # 'o'
+    %r = writebyte 114 # 'r'
+    %y = writebyte 121 # 'y'
+    %space = writebyte 32 # ' '
+    %o2 = writebyte 79  # 'O'
+    %p = writebyte 112 # 'p'
+    %e2 = writebyte 101 # 'e'
+    %r2 = writebyte 114 # 'r'
+    %a = writebyte 97  # 'a'
+    %t = writebyte 116 # 't'
+    %i = writebyte 105 # 'i'
+    %o3 = writebyte 111 # 'o'
+    %n = writebyte 110 # 'n'
+    %s = writebyte 115 # 's'
+    %space2 = writebyte 32 # ' '
+    %h3 = writebyte 61  # '='
+    %nl = writebyte 10  # newline
+
+    # Allocate buffer
+    %buffer = alloc.stack i8
+
+    # Store ASCII 'X' (88) in buffer
+    store.i8 %buffer, 88
+
+    # Load the value back
+    %loaded = load.i8 %buffer
+
+    # Print "Value stored: "
+    %v = writebyte 86  # 'V'
+    %a2 = writebyte 97  # 'a'
+    %l = writebyte 108 # 'l'
+    %u = writebyte 117 # 'u'
+    %e3 = writebyte 101 # 'e'
+    %space3 = writebyte 32 # ' '
+    %s2 = writebyte 115 # 's'
+    %t2 = writebyte 116 # 't'
+    %o4 = writebyte 111 # 'o'
+    %r3 = writebyte 114 # 'r'
+    %e4 = writebyte 101 # 'e'
+    %d = writebyte 100 # 'd'
+    %colon = writebyte 58 # ':'
+    %space4 = writebyte 32 # ' '
+
+    # Write the raw binary value using writeptr
+    %raw_output = writeptr %buffer
+
+    # Print " (raw binary)"
+    %space5 = writebyte 32 # ' '
+    %lparen = writebyte 40 # '('
+    %r = writebyte 114 # 'r'
+    %a3 = writebyte 97  # 'a'
+    %w = writebyte 119 # 'w'
+    %space6 = writebyte 32 # ' '
+    %b = writebyte 98  # 'b'
+    %i2 = writebyte 105 # 'i'
+    %n2 = writebyte 110 # 'n'
+    %a4 = writebyte 97  # 'a'
+    %r4 = writebyte 114 # 'r'
+    %y2 = writebyte 121 # 'y'
+    %rparen = writebyte 41 # ')'
+    %nl2 = writebyte 10  # newline
+
+    # Demonstrate with different value
+    store.i8 %buffer, 89  # ASCII 'Y' (89)
+
+    # Load and display again
+    %loaded2 = load.i8 %buffer
+
+    # Print "New value: "
+    %n3 = writebyte 78  # 'N'
+    %e5 = writebyte 101 # 'e'
+    %w = writebyte 119 # 'w'
+    %space7 = writebyte 32 # ' '
+    %v2 = writebyte 86  # 'V'
+    %a5 = writebyte 97  # 'a'
+    %l2 = writebyte 108 # 'l'
+    %u2 = writebyte 117 # 'u'
+    %e6 = writebyte 101 # 'e'
+    %colon2 = writebyte 58 # ':'
+    %space8 = writebyte 32 # ' '
+
+    # Write the new raw binary value
+    %raw_output2 = writeptr %buffer
+
+    # Print newline
+    %nl3 = writebyte 10
+
+    ret.void
+}
+
+
+
+
+
+
+

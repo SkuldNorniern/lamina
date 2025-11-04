@@ -1,0 +1,27 @@
+# Simple store-load-writeptr example
+fn @main() -> void {
+  entry:
+    # Allocate a buffer
+    %ptr = alloc.stack i8
+
+    # Store value (ASCII 'X' = 88)
+    store.i8 %ptr, 88
+
+    # Load the value back
+    %val = load.i8 %ptr
+
+    # Write the value to stdout using writeptr
+    %written = writeptr %ptr
+
+    # Newline
+    %nl = writebyte 10
+
+    ret.void
+}
+
+
+
+
+
+
+
