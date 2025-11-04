@@ -1,0 +1,51 @@
+# Simple Hello World using writebyte instead of print
+fn @main() -> void {
+  entry:
+    # Write 'H' (ASCII 72)
+    %h = writebyte 72
+
+    # Write 'e' (ASCII 101)
+    %e = writebyte 101
+
+    # Write 'l' (ASCII 108)
+    %l1 = writebyte 108
+
+    # Write 'l' (ASCII 108)
+    %l2 = writebyte 108
+
+    # Write 'o' (ASCII 111)
+    %o = writebyte 111
+
+    # Write ' ' (ASCII 32)
+    %space = writebyte 32
+
+    # Write 'W' (ASCII 87)
+    %w = writebyte 87
+
+    # Write 'o' (ASCII 111)
+    %o2 = writebyte 111
+
+    # Write 'r' (ASCII 114)
+    %r = writebyte 114
+
+    # Write 'l' (ASCII 108)
+    %l3 = writebyte 108
+
+    # Write 'd' (ASCII 100)
+    %d = writebyte 100
+
+    # Write '!' (ASCII 33)
+    %excl = writebyte 33
+
+    # Write newline (ASCII 10)
+    %nl = writebyte 10
+
+    ret.void
+}
+
+
+
+
+
+
+

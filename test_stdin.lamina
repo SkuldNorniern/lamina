@@ -1,0 +1,20 @@
+fn @main() -> i64 {
+    entry:
+        %byte = readbyte
+        ret.i64 %byte
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,8 @@
+fn @main() -> i32 {
+  entry:
+    %buffer = alloc.stack i32
+    %write_result = writeptr %buffer, 42, i32
+    %read_value = readptr %buffer, i32
+    print %read_value
+    ret.i32 0
+}
