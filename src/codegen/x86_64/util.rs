@@ -4,7 +4,6 @@ use super::state::{CodegenState, FunctionContext};
 use crate::codegen::CodegenError;
 use crate::{LaminaError, Literal, PrimitiveType, Type, Value};
 
-
 // Helper to get assembly size directive and size in bytes (simplified)
 pub fn get_type_size_directive_and_bytes(
     ty: &Type<'_>,

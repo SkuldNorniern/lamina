@@ -9,7 +9,6 @@ use crate::{BinaryOp, Instruction, LaminaError, Literal, Module, PrimitiveType, 
 use generate::{FloatType, IntegerType, ModuleExpression, NumericConstant, NumericType};
 use state::Register;
 
-
 pub fn get_wasm_type_primitive(
     ty: PrimitiveType,
     is_wasm64: bool,
