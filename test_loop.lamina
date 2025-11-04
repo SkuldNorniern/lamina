@@ -1,7 +1,0 @@
-# Simple test for comparison functionality
-fn @main() -> i64 {
-  entry:
-    %result = gt.i64 3, 2
-    print %result
-    ret.i64 0
-}
