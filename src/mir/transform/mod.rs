@@ -1,10 +1,31 @@
 mod deadcode;
 mod peephole;
 
+// Re-export transforms for easy access
+pub use deadcode::DeadCodeElimination;
+pub use peephole::Peephole;
+
 // Each transform operates on the MIR representation to optimize or
 // prepare code for code generation. Transforms are composable and
 // can be arranged in pipelines.
-pub trait Transform: Default {
+//
+// ## Example Usage
+//
+// ```rust
+// use lamina::mir::{Module, Function, TransformPipeline, Peephole, DeadCodeElimination};
+//
+// // Parse IR and convert to MIR
+// let ir_mod = /* parse your IR */;
+// let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, "example").unwrap();
+//
+// // Create and run optimization pipeline
+// let pipeline = TransformPipeline::default_for_opt_level(1);
+// let stats = pipeline.apply_to_module(&mut mir_mod).unwrap();
+//
+// println!("Ran {} transforms, {} made changes",
+//          stats.transforms_run, stats.transforms_changed);
+// ```
+pub trait Transform {
     /// Unique name for this transform
     fn name(&self) -> &'static str;
 
@@ -17,8 +38,8 @@ pub trait Transform: Default {
     /// Level of this transform
     fn level(&self) -> TransformLevel;
 
-    // Future: fn apply
-    // Future: fn should_run(
+    /// Apply this transform to a function. Returns true if any changes were made.
+    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String>;
 }
 
 // Stability level of a transform
@@ -39,7 +60,7 @@ impl TransformLevel {
     /// Check if this level should be included at the given optimization level
     ///
     /// - `-O0`: No transforms
-    /// - `-O1`: `Stable` transforms  
+    /// - `-O1`: `Stable` transforms
     /// - `-O2`: `Stable` + `Experimental` transforms
     /// - `-O3`: All transforms (including `Deprecated` for compatibility)
     pub fn is_enabled_at_opt_level(self, opt_level: u8) -> bool {
@@ -49,6 +70,180 @@ impl TransformLevel {
             (TransformLevel::Stable, 1..) => true,     // At -O1+
             _ => false,
         }
+    }
+}
+
+/// Statistics about a transform run
+#[derive(Debug, Default)]
+pub struct TransformStats {
+    /// Number of transforms that were run
+    pub transforms_run: usize,
+    /// Number of transforms that made changes
+    pub transforms_changed: usize,
+    /// Total number of iterations performed (for fixed-point transforms)
+    pub iterations: usize,
+}
+
+/// A pipeline of transforms that can be applied to MIR
+pub struct TransformPipeline {
+    transforms: Vec<Box<dyn Transform>>,
+}
+
+impl TransformPipeline {
+    /// Create a new empty transform pipeline
+    pub fn new() -> Self {
+        Self {
+            transforms: Vec::new(),
+        }
+    }
+
+    /// Add a transform to the pipeline
+    pub fn add_transform<T: Transform + 'static>(mut self, transform: T) -> Self {
+        self.transforms.push(Box::new(transform));
+        self
+    }
+
+    /// Create a default optimization pipeline for the given optimization level
+    pub fn default_for_opt_level(opt_level: u8) -> Self {
+        let mut pipeline = Self::new();
+
+        if opt_level == 0 {
+            return pipeline; // No transforms at -O0
+        }
+
+        // Always include peephole optimizations (fast and safe)
+        pipeline = pipeline.add_transform(Peephole::default());
+
+        // Add dead code elimination for -O1+
+        if opt_level >= 1 {
+            pipeline = pipeline.add_transform(DeadCodeElimination::default());
+        }
+
+        // TODO: Add more transforms as they are implemented
+        // if opt_level >= 2 {
+        //     pipeline = pipeline.add_transform(ConstantFolding::default());
+        //     pipeline = pipeline.add_transform(CopyPropagation::default());
+        // }
+
+        pipeline
+    }
+
+    /// Apply all transforms in the pipeline to a function
+    pub fn apply_to_function(&self, func: &mut crate::mir::Function) -> Result<TransformStats, String> {
+        let mut stats = TransformStats::default();
+
+        for transform in &self.transforms {
+            stats.transforms_run += 1;
+            match transform.apply(func) {
+                Ok(changed) => {
+                    if changed {
+                        stats.transforms_changed += 1;
+                    }
+                }
+                Err(e) => {
+                    return Err(format!("Transform '{}' failed: {}", transform.name(), e));
+                }
+            }
+        }
+
+        Ok(stats)
+    }
+
+    /// Apply all transforms in the pipeline to a module (all functions)
+    pub fn apply_to_module(&self, module: &mut crate::mir::Module) -> Result<TransformStats, String> {
+        let mut total_stats = TransformStats::default();
+
+        for func in module.functions.values_mut() {
+            let func_stats = self.apply_to_function(func)?;
+            total_stats.transforms_run += func_stats.transforms_run;
+            total_stats.transforms_changed += func_stats.transforms_changed;
+            total_stats.iterations += func_stats.iterations;
+        }
+
+        Ok(total_stats)
+    }
+
+    /// Get the number of transforms in this pipeline
+    pub fn len(&self) -> usize {
+        self.transforms.len()
+    }
+
+    /// Check if the pipeline is empty
+    pub fn is_empty(&self) -> bool {
+        self.transforms.is_empty()
+    }
+}
+
+impl Default for TransformPipeline {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{Function, FunctionBuilder, MirType, ScalarType, VirtualReg};
+
+    #[test]
+    fn test_transform_pipeline_empty() {
+        let pipeline = TransformPipeline::new();
+        assert!(pipeline.is_empty());
+        assert_eq!(pipeline.len(), 0);
+    }
+
+    #[test]
+    fn test_transform_pipeline_add_transform() {
+        let pipeline = TransformPipeline::new()
+            .add_transform(Peephole::default())
+            .add_transform(DeadCodeElimination::default());
+
+        assert_eq!(pipeline.len(), 2);
+        assert!(!pipeline.is_empty());
+    }
+
+    #[test]
+    fn test_transform_pipeline_default_for_opt_level() {
+        // -O0 should have no transforms
+        let pipeline = TransformPipeline::default_for_opt_level(0);
+        assert!(pipeline.is_empty());
+
+        // -O1 should have peephole and dead code elimination
+        let pipeline = TransformPipeline::default_for_opt_level(1);
+        assert_eq!(pipeline.len(), 2);
+
+        // -O2 should have the same transforms (for now)
+        let pipeline = TransformPipeline::default_for_opt_level(2);
+        assert_eq!(pipeline.len(), 2);
+    }
+
+    #[test]
+    fn test_transform_pipeline_apply_to_function() {
+        // Create a simple function with some dead code
+        let func = FunctionBuilder::new("test")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .build();
+
+        let mut func = func;
+        let pipeline = TransformPipeline::new().add_transform(Peephole::default());
+
+        // Should not fail
+        let stats = pipeline.apply_to_function(&mut func).unwrap();
+        assert_eq!(stats.transforms_run, 1);
+    }
+
+    #[test]
+    fn test_transform_pipeline_apply_to_module() {
+        // Create a simple module
+        let module = crate::mir::Module::new("test");
+        let mut module = module;
+        let pipeline = TransformPipeline::new().add_transform(Peephole::default());
+
+        // Should not fail
+        let stats = pipeline.apply_to_module(&mut module).unwrap();
+        assert_eq!(stats.transforms_run, 0); // No functions in module
     }
 }
 
@@ -76,26 +271,3 @@ pub enum TransformCategory {
     MemoryOptimization,
 }
 
-// Example placeholder transform implementation
-// This shows the pattern for implementing transforms
-#[derive(Default)]
-#[allow(dead_code)]
-struct ExampleTransform;
-
-impl Transform for ExampleTransform {
-    fn name(&self) -> &'static str {
-        "example_transform"
-    }
-
-    fn description(&self) -> &'static str {
-        "Example placeholder transform"
-    }
-
-    fn category(&self) -> TransformCategory {
-        TransformCategory::ConstantFolding
-    }
-
-    fn level(&self) -> TransformLevel {
-        TransformLevel::Experimental
-    }
-}
