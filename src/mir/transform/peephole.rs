@@ -27,6 +27,10 @@ impl Transform for Peephole {
     fn level(&self) -> TransformLevel {
         TransformLevel::Experimental
     }
+
+    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+        Ok(self.run_on_function(func))
+    }
 }
 
 impl Peephole {

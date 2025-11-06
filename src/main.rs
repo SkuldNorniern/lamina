@@ -19,6 +19,7 @@ fn print_usage() {
     eprintln!(
         "  --emit-mir-asm <os>     EXPERIMENTAL: emit AArch64 asm from MIR (os: macos|linux|windows)"
     );
+    eprintln!("  --opt-level <n>         Set optimization level (0-3, default: 1)");
     eprintln!("  --timeout <secs>        Abort after N seconds (best-effort)");
     eprintln!("  -h, --help              Display this help message");
 }
@@ -34,6 +35,7 @@ struct CompileOptions {
     emit_mir_asm: Option<String>,
     target_arch: Option<String>,
     timeout_secs: Option<u64>,
+    opt_level: u8,
 }
 
 fn parse_args() -> Result<CompileOptions, String> {
@@ -58,6 +60,7 @@ fn parse_args() -> Result<CompileOptions, String> {
         emit_mir_asm: None,
         target_arch: None,
         timeout_secs: None,
+        opt_level: 1, // Default optimization level
     };
 
     let mut i = 1;
@@ -117,6 +120,19 @@ fn parse_args() -> Result<CompileOptions, String> {
                     ));
                 }
                 options.target_arch = Some(target);
+                i += 2;
+            }
+            "--opt-level" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for optimization level".to_string());
+                }
+                let level = args[i + 1]
+                    .parse::<u8>()
+                    .map_err(|_| "Invalid --opt-level value (must be 0-3)".to_string())?;
+                if level > 3 {
+                    return Err("--opt-level must be between 0 and 3".to_string());
+                }
+                options.opt_level = level;
                 i += 2;
             }
             "--timeout" => {
@@ -225,6 +241,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if options.verbose {
         println!("[VERBOSE] Compiler options:");
         println!("  Verbose mode: {}", options.verbose);
+        println!("  Optimization level: {}", options.opt_level);
         if let Some(compiler) = &options.forced_compiler {
             println!("  Forced compiler: {}", compiler);
         }
@@ -256,8 +273,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Parse IR and lower to MIR, then exit early
         let ir_mod = lamina::parser::parse_module(&ir_source)
             .map_err(|e| format!("IR parse failed: {}", e))?;
-        let mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
+        let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
             .map_err(|e| format!("MIR lowering failed: {}", e))?;
+
+        // Apply MIR optimizations
+        if options.opt_level > 0 {
+            let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
+            let transform_stats = pipeline.apply_to_module(&mut mir_mod)
+                .map_err(|e| format!("MIR optimization failed: {}", e))?;
+
+            if options.verbose {
+                println!("[VERBOSE] MIR optimizations: {} transforms run, {} made changes",
+                         transform_stats.transforms_run, transform_stats.transforms_changed);
+            }
+        }
         if options.emit_mir {
             let mut mir_path = output_stem.clone();
             mir_path.set_extension("lumir");

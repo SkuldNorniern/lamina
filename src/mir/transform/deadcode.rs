@@ -35,6 +35,10 @@ impl Transform for DeadCodeElimination {
     fn level(&self) -> TransformLevel {
         TransformLevel::Experimental
     }
+
+    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+        self.apply_internal(func).map(|stats| stats.instructions_removed > 0)
+    }
 }
 
 impl DeadCodeElimination {
@@ -42,7 +46,7 @@ impl DeadCodeElimination {
     ///
     /// This method performs a backward liveness analysis to identify dead registers
     /// and removes instructions that only define dead registers.
-    pub fn apply(&self, func: &mut Function) -> Result<DeadCodeStats, String> {
+    pub fn apply_internal(&self, func: &mut Function) -> Result<DeadCodeStats, String> {
         let mut stats = DeadCodeStats::default();
         let mut changed = true;
 
@@ -241,11 +245,10 @@ mod tests {
         let mut func = func;
         let dce = DeadCodeElimination::default();
 
-        let stats = dce.apply(&mut func).expect("DCE should succeed");
+        let changed = dce.apply(&mut func).expect("DCE should succeed");
 
-        // Should have removed 1 dead instruction
-        assert_eq!(stats.instructions_removed, 1);
-        assert_eq!(stats.registers_freed, 1);
+        // Should have made changes (removed dead instruction)
+        assert!(changed);
 
         // Check that the dead instruction was removed
         let entry = func.get_block("entry").expect("entry block exists");
@@ -295,10 +298,10 @@ mod tests {
 
         let mut func = func;
         let dce = DeadCodeElimination::default();
-        let stats = dce.apply(&mut func).expect("DCE should succeed");
+        let changed = dce.apply(&mut func).expect("DCE should succeed");
 
-        // Should have removed 1 dead instruction (the arithmetic), but not the store
-        assert_eq!(stats.instructions_removed, 1);
+        // Should have made changes (removed dead instruction)
+        assert!(changed);
 
         let entry = func.get_block("entry").expect("entry block exists");
         assert_eq!(entry.instructions.len(), 2); // Store + ret
@@ -328,10 +331,10 @@ mod tests {
 
         let mut func = func;
         let dce = DeadCodeElimination::default();
-        let stats = dce.apply(&mut func).expect("DCE should succeed");
+        let changed = dce.apply(&mut func).expect("DCE should succeed");
 
-        // Should have removed the dead instruction
-        assert_eq!(stats.instructions_removed, 1);
+        // Should have made changes (removed dead instruction)
+        assert!(changed);
 
         let entry = func.get_block("entry").expect("entry block exists");
         assert_eq!(entry.instructions.len(), 1); // Only ret
@@ -361,11 +364,10 @@ mod tests {
 
         let mut func = func;
         let dce = DeadCodeElimination::default();
-        let stats = dce.apply(&mut func).expect("DCE should succeed");
+        let changed = dce.apply(&mut func).expect("DCE should succeed");
 
-        // Should have removed no instructions
-        assert_eq!(stats.instructions_removed, 0);
-        assert_eq!(stats.registers_freed, 0);
+        // Should have made no changes
+        assert!(!changed);
 
         let entry = func.get_block("entry").expect("entry block exists");
         assert_eq!(entry.instructions.len(), 2); // All instructions preserved
