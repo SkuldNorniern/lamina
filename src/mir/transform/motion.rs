@@ -238,13 +238,47 @@ impl ConstantFolding {
                 (self.extract_constant(lhs), self.extract_constant(rhs))
             {
                 let result = match op {
-                    crate::mir::IntBinOp::Add => lhs_val + rhs_val,
-                    crate::mir::IntBinOp::Sub => lhs_val - rhs_val,
-                    crate::mir::IntBinOp::Mul => lhs_val * rhs_val,
-                    crate::mir::IntBinOp::UDiv if rhs_val != 0 => lhs_val / rhs_val,
-                    crate::mir::IntBinOp::SDiv if rhs_val != 0 => lhs_val / rhs_val,
-                    crate::mir::IntBinOp::URem if rhs_val != 0 => lhs_val % rhs_val,
-                    crate::mir::IntBinOp::SRem if rhs_val != 0 => lhs_val % rhs_val,
+                    crate::mir::IntBinOp::Add => {
+                        // Use checked arithmetic to prevent overflow panics/wrapping
+                        match lhs_val.checked_add(rhs_val) {
+                            Some(res) => res,
+                            None => return false, // Skip folding on overflow
+                        }
+                    }
+                    crate::mir::IntBinOp::Sub => {
+                        // Use checked arithmetic to prevent overflow panics/wrapping
+                        match lhs_val.checked_sub(rhs_val) {
+                            Some(res) => res,
+                            None => return false, // Skip folding on overflow
+                        }
+                    }
+                    crate::mir::IntBinOp::Mul => {
+                        // Use checked arithmetic to prevent overflow panics/wrapping
+                        match lhs_val.checked_mul(rhs_val) {
+                            Some(res) => res,
+                            None => return false, // Skip folding on overflow
+                        }
+                    }
+                    crate::mir::IntBinOp::UDiv if rhs_val != 0 => {
+                        // Cast to u64 for proper unsigned division semantics
+                        let lhs_u = lhs_val as u64;
+                        let rhs_u = rhs_val as u64;
+                        (lhs_u / rhs_u) as i64
+                    }
+                    crate::mir::IntBinOp::SDiv if rhs_val != 0 => {
+                        // Keep signed division for SDiv
+                        lhs_val / rhs_val
+                    }
+                    crate::mir::IntBinOp::URem if rhs_val != 0 => {
+                        // Cast to u64 for proper unsigned remainder semantics
+                        let lhs_u = lhs_val as u64;
+                        let rhs_u = rhs_val as u64;
+                        (lhs_u % rhs_u) as i64
+                    }
+                    crate::mir::IntBinOp::SRem if rhs_val != 0 => {
+                        // Keep signed remainder for SRem
+                        lhs_val % rhs_val
+                    }
                     _ => return false,
                 };
 
