@@ -202,6 +202,7 @@ impl DeadCodeElimination {
             Instruction::Load { .. }
             | Instruction::Store { .. }
             | Instruction::Call { .. }
+            | Instruction::TailCall { .. }
             | Instruction::Ret { .. }
             | Instruction::Jmp { .. }
             | Instruction::Br { .. }
