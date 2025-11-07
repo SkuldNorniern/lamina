@@ -63,18 +63,33 @@ impl Peephole {
     /// Try to optimize a single instruction through various peephole patterns
     fn try_optimize_instruction(&self, inst: &mut Instruction) -> bool {
         match inst {
-            Instruction::IntBinary { op, dst: _, ty: _, lhs, rhs } => {
-                self.try_fold_int_binary(op, lhs, rhs)
-            }
-            Instruction::IntCmp { op, dst: _, ty: _, lhs, rhs } => {
-                self.try_fold_int_comparison(op, lhs, rhs)
-            }
-            Instruction::FloatUnary { op, dst: _, ty: _, src } => {
-                self.try_fold_float_unary(op, src)
-            }
-            Instruction::Select { dst: _, ty: _, cond, true_val, false_val } => {
-                self.try_fold_select(cond, true_val, false_val)
-            }
+            Instruction::IntBinary {
+                op,
+                dst: _,
+                ty: _,
+                lhs,
+                rhs,
+            } => self.try_fold_int_binary(op, lhs, rhs),
+            Instruction::IntCmp {
+                op,
+                dst: _,
+                ty: _,
+                lhs,
+                rhs,
+            } => self.try_fold_int_comparison(op, lhs, rhs),
+            Instruction::FloatUnary {
+                op,
+                dst: _,
+                ty: _,
+                src,
+            } => self.try_fold_float_unary(op, src),
+            Instruction::Select {
+                dst: _,
+                ty: _,
+                cond,
+                true_val,
+                false_val,
+            } => self.try_fold_select(cond, true_val, false_val),
             _ => false,
         }
     }
@@ -101,7 +116,13 @@ impl Peephole {
         }
     }
 
-    fn fold_add(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>) -> bool {
+    fn fold_add(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+    ) -> bool {
         // x + 0 => x
         if is_zero(rhs_imm) {
             return true;
@@ -120,7 +141,13 @@ impl Peephole {
         false
     }
 
-    fn fold_sub(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>) -> bool {
+    fn fold_sub(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+    ) -> bool {
         // x - 0 => x
         if is_zero(rhs_imm) {
             return true;
@@ -134,7 +161,13 @@ impl Peephole {
         false
     }
 
-    fn fold_mul(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>) -> bool {
+    fn fold_mul(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+    ) -> bool {
         // x * 1 => x
         if is_one(rhs_imm) {
             return true;
@@ -159,37 +192,63 @@ impl Peephole {
         false
     }
 
-    fn fold_div(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>, signed: bool) -> bool {
+    fn fold_div(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+        signed: bool,
+    ) -> bool {
         // x / 1 => x
         if is_one(rhs_imm) {
             return true;
         }
         // Constant folding with safety check
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            if c2 != 0 {
-                let result = if signed { c1 / c2 } else { ((c1 as u64) / (c2 as u64)) as i64 };
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
+            && c2 != 0 {
+                let result = if signed {
+                    c1 / c2
+                } else {
+                    ((c1 as u64) / (c2 as u64)) as i64
+                };
                 *lhs = Operand::Immediate(Immediate::I64(result));
                 *rhs = Operand::Immediate(Immediate::I64(0));
                 return true;
             }
-        }
         false
     }
 
-    fn fold_rem(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>, signed: bool) -> bool {
+    fn fold_rem(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+        signed: bool,
+    ) -> bool {
         // Constant folding with safety check
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            if c2 != 0 {
-                let result = if signed { c1 % c2 } else { ((c1 as u64) % (c2 as u64)) as i64 };
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
+            && c2 != 0 {
+                let result = if signed {
+                    c1 % c2
+                } else {
+                    ((c1 as u64) % (c2 as u64)) as i64
+                };
                 *lhs = Operand::Immediate(Immediate::I64(result));
                 *rhs = Operand::Immediate(Immediate::I64(0));
                 return true;
             }
-        }
         false
     }
 
-    fn fold_bitwise_and(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>) -> bool {
+    fn fold_bitwise_and(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+    ) -> bool {
         // x & -1 => x (all bits set)
         if is_all_ones(rhs_imm) {
             return true;
@@ -214,7 +273,13 @@ impl Peephole {
         false
     }
 
-    fn fold_bitwise_or(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>) -> bool {
+    fn fold_bitwise_or(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+    ) -> bool {
         // x | 0 => x
         if is_zero(rhs_imm) {
             return true;
@@ -233,7 +298,13 @@ impl Peephole {
         false
     }
 
-    fn fold_bitwise_xor(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>) -> bool {
+    fn fold_bitwise_xor(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+    ) -> bool {
         // x ^ 0 => x
         if is_zero(rhs_imm) {
             return true;
@@ -244,13 +315,12 @@ impl Peephole {
             return true;
         }
         // x ^ x => 0 (if same register)
-        if let (Operand::Register(r1), Operand::Register(r2)) = (&*lhs, &*rhs) {
-            if r1 == r2 {
+        if let (Operand::Register(r1), Operand::Register(r2)) = (&*lhs, &*rhs)
+            && r1 == r2 {
                 *lhs = Operand::Immediate(Immediate::I64(0));
                 *rhs = Operand::Immediate(Immediate::I64(0));
                 return true;
             }
-        }
         // Constant folding
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
             *lhs = Operand::Immediate(Immediate::I64(c1 ^ c2));
@@ -260,56 +330,76 @@ impl Peephole {
         false
     }
 
-    fn fold_shift_left(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>) -> bool {
+    fn fold_shift_left(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+    ) -> bool {
         // x << 0 => x
         if is_zero(rhs_imm) {
             return true;
         }
         // Constant folding
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            if c2 >= 0 && c2 < 64 {
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
+            && (0..64).contains(&c2) {
                 *lhs = Operand::Immediate(Immediate::I64(c1 << c2));
                 *rhs = Operand::Immediate(Immediate::I64(0));
                 return true;
             }
-        }
         false
     }
 
-    fn fold_shift_right_logical(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>) -> bool {
+    fn fold_shift_right_logical(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+    ) -> bool {
         // x >>> 0 => x
         if is_zero(rhs_imm) {
             return true;
         }
         // Constant folding
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            if c2 >= 0 && c2 < 64 {
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
+            && (0..64).contains(&c2) {
                 *lhs = Operand::Immediate(Immediate::I64(((c1 as u64) >> c2) as i64));
                 *rhs = Operand::Immediate(Immediate::I64(0));
                 return true;
             }
-        }
         false
     }
 
-    fn fold_shift_right_arithmetic(&self, lhs: &mut Operand, rhs: &mut Operand, lhs_imm: Option<i64>, rhs_imm: Option<i64>) -> bool {
+    fn fold_shift_right_arithmetic(
+        &self,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+        lhs_imm: Option<i64>,
+        rhs_imm: Option<i64>,
+    ) -> bool {
         // x >> 0 => x
         if is_zero(rhs_imm) {
             return true;
         }
         // Constant folding
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            if c2 >= 0 && c2 < 64 {
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
+            && (0..64).contains(&c2) {
                 *lhs = Operand::Immediate(Immediate::I64(c1 >> c2));
                 *rhs = Operand::Immediate(Immediate::I64(0));
                 return true;
             }
-        }
         false
     }
 
     /// Optimize integer comparisons
-    fn try_fold_int_comparison(&self, op: &mut IntCmpOp, lhs: &mut Operand, rhs: &mut Operand) -> bool {
+    fn try_fold_int_comparison(
+        &self,
+        op: &mut IntCmpOp,
+        lhs: &mut Operand,
+        rhs: &mut Operand,
+    ) -> bool {
         let lhs_imm = extract_constant(lhs);
         let rhs_imm = extract_constant(rhs);
 
@@ -337,7 +427,11 @@ impl Peephole {
     }
 
     /// Optimize float unary operations
-    fn try_fold_float_unary(&self, op: &mut crate::mir::instruction::FloatUnOp, src: &mut Operand) -> bool {
+    fn try_fold_float_unary(
+        &self,
+        op: &mut crate::mir::instruction::FloatUnOp,
+        src: &mut Operand,
+    ) -> bool {
         let src_imm = extract_float_constant(src);
 
         if let Some(c) = src_imm {
@@ -354,7 +448,12 @@ impl Peephole {
     }
 
     /// Optimize select operations
-    fn try_fold_select(&self, _cond: &mut crate::mir::Register, true_val: &mut Operand, false_val: &mut Operand) -> bool {
+    fn try_fold_select(
+        &self,
+        _cond: &mut crate::mir::Register,
+        true_val: &mut Operand,
+        false_val: &mut Operand,
+    ) -> bool {
         // For now, we can only optimize selects when both values are identical
         // More complex optimizations would require interprocedural analysis
 
@@ -466,7 +565,11 @@ mod tests {
         // Check that the result is folded to 8
         if let Some(block) = func.get_block("entry") {
             if let Some(Instruction::IntBinary { lhs, rhs, .. }) = block.instructions.first() {
-                if let (Operand::Immediate(Immediate::I64(val)), Operand::Immediate(Immediate::I64(0))) = (lhs, rhs) {
+                if let (
+                    Operand::Immediate(Immediate::I64(val)),
+                    Operand::Immediate(Immediate::I64(0)),
+                ) = (lhs, rhs)
+                {
                     assert_eq!(*val, 8);
                 } else {
                     panic!("Expected constant 8 + 0");

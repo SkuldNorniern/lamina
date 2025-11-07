@@ -118,21 +118,21 @@ impl TransformPipeline {
         }
 
         // Always include peephole optimizations (fast and safe)
-        pipeline = pipeline.add_transform(Peephole::default());
+        pipeline = pipeline.add_transform(Peephole);
 
         if opt_level >= 1 {
-            pipeline = pipeline.add_transform(DeadCodeElimination::default());
+            pipeline = pipeline.add_transform(DeadCodeElimination);
         }
 
         if opt_level >= 2 {
-            pipeline = pipeline.add_transform(LoopInvariantCodeMotion::default());
+            pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
         }
 
         if opt_level >= 3 {
-            pipeline = pipeline.add_transform(FunctionInlining::default());
-            pipeline = pipeline.add_transform(ConstantFolding::default());
-            pipeline = pipeline.add_transform(CopyPropagation::default());
-            pipeline = pipeline.add_transform(CommonSubexpressionElimination::default());
+            pipeline = pipeline.add_transform(FunctionInlining);
+            pipeline = pipeline.add_transform(ConstantFolding);
+            pipeline = pipeline.add_transform(CopyPropagation);
+            pipeline = pipeline.add_transform(CommonSubexpressionElimination);
         }
 
         // TODO: Add more transforms as they are implemented
@@ -145,7 +145,10 @@ impl TransformPipeline {
     }
 
     /// Apply all transforms in the pipeline to a function
-    pub fn apply_to_function(&self, func: &mut crate::mir::Function) -> Result<TransformStats, String> {
+    pub fn apply_to_function(
+        &self,
+        func: &mut crate::mir::Function,
+    ) -> Result<TransformStats, String> {
         let mut stats = TransformStats::default();
 
         for transform in &self.transforms {
@@ -166,7 +169,10 @@ impl TransformPipeline {
     }
 
     /// Apply all transforms in the pipeline to a module (all functions)
-    pub fn apply_to_module(&self, module: &mut crate::mir::Module) -> Result<TransformStats, String> {
+    pub fn apply_to_module(
+        &self,
+        module: &mut crate::mir::Module,
+    ) -> Result<TransformStats, String> {
         let mut total_stats = TransformStats::default();
 
         for func in module.functions.values_mut() {
@@ -290,4 +296,3 @@ pub enum TransformCategory {
     // Optimizes memory access patterns
     MemoryOptimization,
 }
-

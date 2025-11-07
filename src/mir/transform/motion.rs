@@ -1,6 +1,6 @@
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Operand, Register, Immediate};
-use std::collections::{HashMap, HashSet};
+use crate::mir::{Block, Function, Immediate, Instruction, Operand, Register};
+use std::collections::HashMap;
 
 /// Copy Propagation Transform
 /// Replaces variable uses with their source values when safe to do so
@@ -46,14 +46,14 @@ impl CopyPropagation {
                     lhs,
                     rhs,
                     ..
-                } = instr {
+                } = instr
+                {
                     // Check for x = y + 0 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = rhs {
-                        if let Operand::Register(src_reg) = lhs {
+                    if let Operand::Immediate(Immediate::I64(0)) = rhs
+                        && let Operand::Register(src_reg) = lhs {
                             value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
                             worklist.push((dst.clone(), block.label.clone()));
                         }
-                    }
                 }
             }
         }
@@ -72,7 +72,11 @@ impl CopyPropagation {
         Ok(changed)
     }
 
-    fn propagate_copies(&self, instr: &mut Instruction, value_map: &HashMap<Register, Operand>) -> bool {
+    fn propagate_copies(
+        &self,
+        instr: &mut Instruction,
+        value_map: &HashMap<Register, Operand>,
+    ) -> bool {
         let mut changed = false;
 
         match instr {
@@ -86,30 +90,31 @@ impl CopyPropagation {
             Instruction::FloatUnary { src, .. } => {
                 changed |= self.replace_operand(src, value_map);
             }
-            Instruction::Select { cond: _, true_val, false_val, .. } => {
+            Instruction::Select {
+                cond: _,
+                true_val,
+                false_val,
+                ..
+            } => {
                 changed |= self.replace_operand(true_val, value_map);
                 changed |= self.replace_operand(false_val, value_map);
             }
             Instruction::Load { addr, .. } => {
-                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr {
-                    if let Some(new_base) = value_map.get(base) {
-                        if let Operand::Register(new_reg) = new_base {
+                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr
+                    && let Some(new_base) = value_map.get(base)
+                        && let Operand::Register(new_reg) = new_base {
                             *base = new_reg.clone();
                             changed = true;
                         }
-                    }
-                }
             }
             Instruction::Store { src, addr, .. } => {
                 changed |= self.replace_operand(src, value_map);
-                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr {
-                    if let Some(new_base) = value_map.get(base) {
-                        if let Operand::Register(new_reg) = new_base {
+                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr
+                    && let Some(new_base) = value_map.get(base)
+                        && let Operand::Register(new_reg) = new_base {
                             *base = new_reg.clone();
                             changed = true;
                         }
-                    }
-                }
             }
             Instruction::Call { args, .. } => {
                 for arg in args {
@@ -117,20 +122,18 @@ impl CopyPropagation {
                 }
             }
             Instruction::Br { cond, .. } => {
-                if let Some(new_cond) = value_map.get(cond) {
-                    if let Operand::Register(new_reg) = new_cond {
+                if let Some(new_cond) = value_map.get(cond)
+                    && let Operand::Register(new_reg) = new_cond {
                         *cond = new_reg.clone();
                         changed = true;
                     }
-                }
             }
             Instruction::Switch { value, .. } => {
-                if let Some(new_value) = value_map.get(value) {
-                    if let Operand::Register(new_reg) = new_value {
+                if let Some(new_value) = value_map.get(value)
+                    && let Operand::Register(new_reg) = new_value {
                         *value = new_reg.clone();
                         changed = true;
                     }
-                }
             }
             Instruction::Ret { value } => {
                 if let Some(val) = value {
@@ -143,13 +146,16 @@ impl CopyPropagation {
         changed
     }
 
-    fn replace_operand(&self, operand: &mut Operand, value_map: &HashMap<Register, Operand>) -> bool {
-        if let Operand::Register(reg) = operand {
-            if let Some(replacement) = value_map.get(reg) {
+    fn replace_operand(
+        &self,
+        operand: &mut Operand,
+        value_map: &HashMap<Register, Operand>,
+    ) -> bool {
+        if let Operand::Register(reg) = operand
+            && let Some(replacement) = value_map.get(reg) {
                 *operand = replacement.clone();
                 return true;
             }
-        }
         false
     }
 }
@@ -197,32 +203,33 @@ impl ConstantFolding {
     }
 
     fn try_fold_constants(&self, instr: &mut Instruction) -> bool {
-        match instr {
-            Instruction::IntBinary { op, dst, lhs, rhs, .. } => {
-                if let (Some(lhs_val), Some(rhs_val)) = (self.extract_constant(lhs), self.extract_constant(rhs)) {
-                    let result = match op {
-                        crate::mir::IntBinOp::Add => lhs_val + rhs_val,
-                        crate::mir::IntBinOp::Sub => lhs_val - rhs_val,
-                        crate::mir::IntBinOp::Mul => lhs_val * rhs_val,
-                        crate::mir::IntBinOp::UDiv if rhs_val != 0 => lhs_val / rhs_val,
-                        crate::mir::IntBinOp::SDiv if rhs_val != 0 => lhs_val / rhs_val,
-                        crate::mir::IntBinOp::URem if rhs_val != 0 => lhs_val % rhs_val,
-                        crate::mir::IntBinOp::SRem if rhs_val != 0 => lhs_val % rhs_val,
-                        _ => return false,
-                    };
+        if let Instruction::IntBinary {
+                op, dst, lhs, rhs, ..
+            } = instr {
+            if let (Some(lhs_val), Some(rhs_val)) =
+                (self.extract_constant(lhs), self.extract_constant(rhs))
+            {
+                let result = match op {
+                    crate::mir::IntBinOp::Add => lhs_val + rhs_val,
+                    crate::mir::IntBinOp::Sub => lhs_val - rhs_val,
+                    crate::mir::IntBinOp::Mul => lhs_val * rhs_val,
+                    crate::mir::IntBinOp::UDiv if rhs_val != 0 => lhs_val / rhs_val,
+                    crate::mir::IntBinOp::SDiv if rhs_val != 0 => lhs_val / rhs_val,
+                    crate::mir::IntBinOp::URem if rhs_val != 0 => lhs_val % rhs_val,
+                    crate::mir::IntBinOp::SRem if rhs_val != 0 => lhs_val % rhs_val,
+                    _ => return false,
+                };
 
-                    // Replace the instruction with a load immediate
-                    *instr = Instruction::IntBinary {
-                        op: crate::mir::IntBinOp::Add,
-                        dst: dst.clone(),
-                        ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
-                        lhs: Operand::Immediate(Immediate::I64(result)),
-                        rhs: Operand::Immediate(Immediate::I64(0)),
-                    };
-                    return true;
-                }
+                // Replace the instruction with a load immediate
+                *instr = Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Add,
+                    dst: dst.clone(),
+                    ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                    lhs: Operand::Immediate(Immediate::I64(result)),
+                    rhs: Operand::Immediate(Immediate::I64(0)),
+                };
+                return true;
             }
-            _ => {}
         }
         false
     }
