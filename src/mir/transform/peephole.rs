@@ -133,14 +133,13 @@ impl Peephole {
             return true;
         }
         // Constant folding: c1 + c2 => (c1+c2) with overflow check
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            if let Some(result) = c1.checked_add(c2) {
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
+            && let Some(result) = c1.checked_add(c2) {
                 *lhs = Operand::Immediate(Immediate::I64(result));
                 *rhs = Operand::Immediate(Immediate::I64(0));
                 return true;
             }
             // Skip folding on overflow
-        }
         false
     }
 
@@ -156,14 +155,13 @@ impl Peephole {
             return true;
         }
         // Constant folding: c1 - c2 => (c1-c2) with overflow check
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            if let Some(result) = c1.checked_sub(c2) {
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
+            && let Some(result) = c1.checked_sub(c2) {
                 *lhs = Operand::Immediate(Immediate::I64(result));
                 *rhs = Operand::Immediate(Immediate::I64(0));
                 return true;
             }
             // Skip folding on overflow
-        }
         false
     }
 
@@ -190,14 +188,13 @@ impl Peephole {
             return true;
         }
         // Constant folding: c1 * c2 => (c1*c2) with overflow check
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            if let Some(result) = c1.checked_mul(c2) {
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
+            && let Some(result) = c1.checked_mul(c2) {
                 *lhs = Operand::Immediate(Immediate::I64(result));
                 *rhs = Operand::Immediate(Immediate::I64(0));
                 return true;
             }
             // Skip folding on overflow
-        }
         false
     }
 
