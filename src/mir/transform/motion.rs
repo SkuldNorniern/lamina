@@ -1,5 +1,5 @@
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Immediate, Instruction, Operand, Register};
+use crate::mir::{Block, Function, Immediate, Instruction, MirType, Operand, Register, ScalarType};
 use std::collections::HashMap;
 
 /// Copy Propagation Transform
@@ -168,6 +168,24 @@ impl CopyPropagation {
             }
         false
     }
+
+    /// Extract the type from an instruction for use in replacement instructions
+    fn extract_instruction_type(&self, instr: &Instruction) -> MirType {
+        match instr {
+            Instruction::IntBinary { ty, .. }
+            | Instruction::FloatBinary { ty, .. }
+            | Instruction::FloatUnary { ty, .. }
+            | Instruction::IntCmp { ty, .. }
+            | Instruction::FloatCmp { ty, .. }
+            | Instruction::Select { ty, .. }
+            | Instruction::Load { ty, .. }
+            | Instruction::Store { ty, .. }
+            | Instruction::VectorOp { ty, .. } => ty.clone(),
+            // For other instructions that don't have explicit types, default to I64
+            // This should be rare and these instructions probably shouldn't be CSE'd
+            _ => MirType::Scalar(ScalarType::I64),
+        }
+    }
 }
 
 /// Constant Folding Transform
@@ -279,6 +297,24 @@ impl Transform for CommonSubexpressionElimination {
 }
 
 impl CommonSubexpressionElimination {
+    /// Extract the type from an instruction for use in replacement instructions
+    fn extract_instruction_type(&self, instr: &Instruction) -> MirType {
+        match instr {
+            Instruction::IntBinary { ty, .. }
+            | Instruction::FloatBinary { ty, .. }
+            | Instruction::FloatUnary { ty, .. }
+            | Instruction::IntCmp { ty, .. }
+            | Instruction::FloatCmp { ty, .. }
+            | Instruction::Select { ty, .. }
+            | Instruction::Load { ty, .. }
+            | Instruction::Store { ty, .. }
+            | Instruction::VectorOp { ty, .. } => ty.clone(),
+            // For other instructions that don't have explicit types, default to I64
+            // This should be rare and these instructions probably shouldn't be CSE'd
+            _ => MirType::Scalar(ScalarType::I64),
+        }
+    }
+
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
         let mut changed = false;
 
@@ -303,10 +339,11 @@ impl CommonSubexpressionElimination {
                 if let Some(existing_reg) = expr_to_reg.get(&expr_key) {
                     // Replace this instruction with a copy from the existing register
                     if let Some(dst) = instr.def_reg() {
+                        let instr_type = self.extract_instruction_type(instr);
                         let copy_instr = Instruction::IntBinary {
                             op: crate::mir::IntBinOp::Add,
                             dst: dst.clone(),
-                            ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                            ty: instr_type,
                             lhs: Operand::Register(existing_reg.clone()),
                             rhs: Operand::Immediate(Immediate::I64(0)),
                         };
