@@ -105,8 +105,24 @@ impl Peephole {
             IntBinOp::Mul => self.fold_mul(lhs, rhs, lhs_imm, rhs_imm),
             IntBinOp::UDiv => self.fold_div(lhs, rhs, lhs_imm, rhs_imm, false),
             IntBinOp::SDiv => self.fold_div(lhs, rhs, lhs_imm, rhs_imm, true),
-            IntBinOp::URem => self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, false),
-            IntBinOp::SRem => self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, true),
+            IntBinOp::URem => {
+                // Special optimization: x % 2 -> x & 1 (for even/odd checks common in prime generation)
+                if rhs_imm == Some(2) {
+                    *op = IntBinOp::And;
+                    *rhs = Operand::Immediate(Immediate::I64(1));
+                    return true;
+                }
+                self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, false)
+            }
+            IntBinOp::SRem => {
+                // Special optimization: x % 2 -> x & 1 (for even/odd checks common in prime generation)
+                if rhs_imm == Some(2) {
+                    *op = IntBinOp::And;
+                    *rhs = Operand::Immediate(Immediate::I64(1));
+                    return true;
+                }
+                self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, true)
+            }
             IntBinOp::And => self.fold_bitwise_and(lhs, rhs, lhs_imm, rhs_imm),
             IntBinOp::Or => self.fold_bitwise_or(lhs, rhs, lhs_imm, rhs_imm),
             IntBinOp::Xor => self.fold_bitwise_xor(lhs, rhs, lhs_imm, rhs_imm),
