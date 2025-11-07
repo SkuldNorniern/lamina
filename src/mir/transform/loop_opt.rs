@@ -210,9 +210,10 @@ impl LoopInvariantCodeMotion {
     }
 
     fn is_invariant_register(&self, func: &Function, loop_info: &LoopInfo, reg: &Register) -> bool {
-        // A register is invariant if it's defined outside the loop or is a physical register
+        // A register is invariant if it's defined outside the loop
+        // Physical registers are conservatively treated as non-invariant since they can be modified
         match reg {
-            Register::Physical(_) => true, // Physical registers are always invariant
+            Register::Physical(_) => false, // Physical registers can be modified within loops
             Register::Virtual(_) => {
                 // Check if defined outside the loop
                 for block in &func.blocks {
