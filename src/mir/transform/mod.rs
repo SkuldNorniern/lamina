@@ -3,6 +3,8 @@ mod inline;
 mod loop_opt;
 mod motion;
 mod peephole;
+mod strength_reduction;
+mod tail_call;
 
 // Re-export transforms for easy access
 pub use deadcode::DeadCodeElimination;
@@ -10,6 +12,8 @@ pub use inline::{FunctionInlining, ModuleInlining};
 pub use loop_opt::{LoopFusion, LoopInvariantCodeMotion, LoopUnrolling};
 pub use motion::{CommonSubexpressionElimination, ConstantFolding, CopyPropagation};
 pub use peephole::Peephole;
+pub use strength_reduction::StrengthReduction;
+pub use tail_call::TailCallOptimization;
 
 // Each transform operates on the MIR representation to optimize or
 // prepare code for code generation. Transforms are composable and
@@ -126,6 +130,8 @@ impl TransformPipeline {
 
         if opt_level >= 2 {
             pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
+            pipeline = pipeline.add_transform(StrengthReduction);
+            pipeline = pipeline.add_transform(TailCallOptimization);
         }
 
         if opt_level >= 3 {
@@ -234,13 +240,13 @@ mod tests {
         let pipeline = TransformPipeline::default_for_opt_level(1);
         assert_eq!(pipeline.len(), 2);
 
-        // -O2 should have peephole, dead code elimination, and loop invariant code motion
+        // -O2 should have peephole, dead code elimination, loop invariant code motion, strength reduction, and tail call optimization
         let pipeline = TransformPipeline::default_for_opt_level(2);
-        assert_eq!(pipeline.len(), 3);
+        assert_eq!(pipeline.len(), 5);
 
         // -O3 should have all transforms including function inlining and motion optimizations
         let pipeline = TransformPipeline::default_for_opt_level(3);
-        assert_eq!(pipeline.len(), 7);
+        assert_eq!(pipeline.len(), 9);
     }
 
     #[test]
