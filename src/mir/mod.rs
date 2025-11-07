@@ -120,5 +120,5 @@ pub use instruction::{
 };
 pub use module::{Global, Module, ModuleBuilder};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
-pub use transform::{DeadCodeElimination, Peephole, TransformPipeline, TransformStats, Transform};
+pub use transform::{DeadCodeElimination, FunctionInlining, LoopFusion, LoopInvariantCodeMotion, LoopUnrolling, ModuleInlining, Peephole, TransformPipeline, TransformStats, Transform};
 pub use types::{MirType, ScalarType, VectorLane, VectorType};
