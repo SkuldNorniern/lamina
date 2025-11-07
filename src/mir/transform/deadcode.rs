@@ -37,7 +37,8 @@ impl Transform for DeadCodeElimination {
     }
 
     fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
-        self.apply_internal(func).map(|stats| stats.instructions_removed > 0)
+        self.apply_internal(func)
+            .map(|stats| stats.instructions_removed > 0)
     }
 }
 

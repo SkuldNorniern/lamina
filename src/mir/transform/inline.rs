@@ -35,6 +35,12 @@ impl Transform for FunctionInlining {
 /// Module-level function inlining that can analyze the entire program
 pub struct ModuleInlining;
 
+impl Default for ModuleInlining {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ModuleInlining {
     pub fn new() -> Self {
         Self
@@ -95,9 +101,10 @@ impl ModuleInlining {
 
             // 2. Function has no calls to other functions (leaf function)
             let has_calls = callee_func.blocks.iter().any(|block| {
-                block.instructions.iter().any(|instr| {
-                    matches!(instr, Instruction::Call { .. })
-                })
+                block
+                    .instructions
+                    .iter()
+                    .any(|instr| matches!(instr, Instruction::Call { .. }))
             });
 
             if has_calls && total_instructions > 10 {
@@ -106,9 +113,10 @@ impl ModuleInlining {
 
             // 3. Function doesn't have complex control flow
             let has_complex_cf = callee_func.blocks.iter().any(|block| {
-                block.instructions.iter().any(|instr| {
-                    matches!(instr, Instruction::Switch { .. })
-                })
+                block
+                    .instructions
+                    .iter()
+                    .any(|instr| matches!(instr, Instruction::Switch { .. }))
             });
 
             if has_complex_cf && total_instructions > 15 {
@@ -123,7 +131,12 @@ impl ModuleInlining {
             // 5. Function has no branches or jumps (strict control flow check)
             let has_control_flow = callee_func.blocks.iter().any(|block| {
                 block.instructions.iter().any(|instr| {
-                    matches!(instr, Instruction::Jmp { .. } | Instruction::Br { .. } | Instruction::Switch { .. })
+                    matches!(
+                        instr,
+                        Instruction::Jmp { .. }
+                            | Instruction::Br { .. }
+                            | Instruction::Switch { .. }
+                    )
                 })
             });
 
@@ -149,7 +162,9 @@ impl ModuleInlining {
     /// Perform the actual inlining operation
     fn perform_inline(&self, call_site: &CallSite, module: &mut Module) -> Result<(), String> {
         // Clone the callee function to avoid borrowing issues
-        let callee_func = module.functions.get(&call_site.callee)
+        let callee_func = module
+            .functions
+            .get(&call_site.callee)
             .ok_or_else(|| format!("Callee function '{}' not found", call_site.callee))?
             .clone();
 
@@ -157,10 +172,14 @@ impl ModuleInlining {
 
         // Extract call information before mutating
         let call_args = {
-            let caller_func = module.functions.get(&call_site.caller)
+            let caller_func = module
+                .functions
+                .get(&call_site.caller)
                 .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
 
-            let call_block = caller_func.blocks.iter()
+            let call_block = caller_func
+                .blocks
+                .iter()
                 .find(|b| b.label == call_site.block_label)
                 .ok_or_else(|| format!("Call block '{}' not found", call_site.block_label))?;
 
@@ -195,11 +214,19 @@ impl ModuleInlining {
         for block in &func.blocks {
             for instr in &block.instructions {
                 match instr {
-                    Instruction::Jmp { .. } | Instruction::Br { .. } | Instruction::Switch { .. } => {
-                        return Err("Function contains control flow - not suitable for simple inlining".to_string());
+                    Instruction::Jmp { .. }
+                    | Instruction::Br { .. }
+                    | Instruction::Switch { .. } => {
+                        return Err(
+                            "Function contains control flow - not suitable for simple inlining"
+                                .to_string(),
+                        );
                     }
                     Instruction::Call { .. } => {
-                        return Err("Function contains nested calls - not suitable for simple inlining".to_string());
+                        return Err(
+                            "Function contains nested calls - not suitable for simple inlining"
+                                .to_string(),
+                        );
                     }
                     _ => {} // Other instructions are OK
                 }
@@ -219,7 +246,9 @@ impl ModuleInlining {
         // Get the call instruction details first
         let (call_result_reg, call_instr) = {
             let caller_func = module.functions.get(&call_site.caller).unwrap();
-            let call_block = caller_func.blocks.iter()
+            let call_block = caller_func
+                .blocks
+                .iter()
                 .find(|b| b.label == call_site.block_label)
                 .unwrap();
 
@@ -234,7 +263,9 @@ impl ModuleInlining {
         };
 
         // Get the single block from the callee
-        let callee_block = callee_func.blocks.first()
+        let callee_block = callee_func
+            .blocks
+            .first()
             .ok_or_else(|| "Callee function has no blocks".to_string())?;
 
         // Create new instructions for the inlined code
@@ -248,8 +279,8 @@ impl ModuleInlining {
             let mut new_instr = instr.clone();
 
             // Handle return instructions specially
-            if let Instruction::Ret { value } = &new_instr {
-                if let Some(ret_val) = value {
+            if let Instruction::Ret { value } = &new_instr
+                && let Some(ret_val) = value {
                     // Replace return with assignment to call result register
                     if let Some(ref result_reg) = call_result_reg {
                         let assign_instr = Instruction::IntBinary {
@@ -264,7 +295,6 @@ impl ModuleInlining {
                     // Skip the original return instruction
                     continue;
                 }
-            }
 
             // Substitute parameters and rename registers
             self.substitute_parameters_and_rename(&mut new_instr, param_mapping, caller_func)?;
@@ -274,14 +304,16 @@ impl ModuleInlining {
 
         // Now modify the caller function
         let caller_func = module.functions.get_mut(&call_site.caller).unwrap();
-        let call_block = caller_func.blocks.iter_mut()
+        let call_block = caller_func
+            .blocks
+            .iter_mut()
             .find(|b| b.label == call_site.block_label)
             .unwrap();
 
         // Replace the call instruction with the inlined instructions
         call_block.instructions.splice(
             call_site.instr_idx..=call_site.instr_idx,
-            inlined_instructions
+            inlined_instructions,
         );
 
         Ok(())
@@ -305,11 +337,10 @@ impl ModuleInlining {
             }
 
             // Check if this register should be substituted with a parameter
-            if let Some(param_operand) = param_mapping.get(reg) {
-                if let Operand::Register(param_reg) = param_operand {
+            if let Some(param_operand) = param_mapping.get(reg)
+                && let Operand::Register(param_reg) = param_operand {
                     return param_reg.clone();
                 }
-            }
 
             // Generate a new unique register name
             let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(next_reg_id));
@@ -329,19 +360,16 @@ impl ModuleInlining {
         let mut max_id = 0;
         for block in &func.blocks {
             for instr in &block.instructions {
-                if let Some(reg) = instr.def_reg() {
-                    if let Register::Virtual(vreg) = reg {
-                        if vreg.class == crate::mir::RegisterClass::Gpr {
+                if let Some(reg) = instr.def_reg()
+                    && let Register::Virtual(vreg) = reg
+                        && vreg.class == crate::mir::RegisterClass::Gpr {
                             max_id = max_id.max(vreg.id);
                         }
-                    }
-                }
                 for use_reg in instr.use_regs() {
-                    if let Register::Virtual(vreg) = use_reg {
-                        if vreg.class == crate::mir::RegisterClass::Gpr {
+                    if let Register::Virtual(vreg) = use_reg
+                        && vreg.class == crate::mir::RegisterClass::Gpr {
                             max_id = max_id.max(vreg.id);
                         }
-                    }
                 }
             }
         }
@@ -378,7 +406,13 @@ impl ModuleInlining {
                 self.map_operand_register(lhs, map_reg);
                 self.map_operand_register(rhs, map_reg);
             }
-            Instruction::Select { dst, cond, true_val, false_val, .. } => {
+            Instruction::Select {
+                dst,
+                cond,
+                true_val,
+                false_val,
+                ..
+            } => {
                 *dst = map_reg(dst);
                 *cond = map_reg(cond);
                 self.map_operand_register(true_val, map_reg);
@@ -429,7 +463,11 @@ impl ModuleInlining {
     }
 
     /// Create mapping from callee parameters to caller arguments
-    fn create_param_mapping(&self, callee_func: &Function, call_args: &[Operand]) -> Result<HashMap<Register, Operand>, String> {
+    fn create_param_mapping(
+        &self,
+        callee_func: &Function,
+        call_args: &[Operand],
+    ) -> Result<HashMap<Register, Operand>, String> {
         if callee_func.sig.params.len() != call_args.len() {
             return Err(format!(
                 "Parameter count mismatch: expected {}, got {}",
@@ -447,28 +485,33 @@ impl ModuleInlining {
     }
 
     /// Clone callee blocks and rename registers to avoid conflicts
-    fn clone_and_rename_blocks(&self, blocks: &[Block], param_mapping: &HashMap<Register, Operand>) -> Result<Vec<Block>, String> {
+    fn clone_and_rename_blocks(
+        &self,
+        blocks: &[Block],
+        param_mapping: &HashMap<Register, Operand>,
+    ) -> Result<Vec<Block>, String> {
         let mut renamed_blocks = Vec::new();
         let mut register_mapping = HashMap::new();
 
         // First pass: collect all registers that need renaming
         for block in blocks {
             for instr in &block.instructions {
-                if let Some(dst) = instr.def_reg() {
-                    if !register_mapping.contains_key(dst) {
+                if let Some(dst) = instr.def_reg()
+                    && !register_mapping.contains_key(dst) {
                         // Generate a new virtual register for this destination
                         // In a real implementation, we'd get this from a register allocator
                         let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(
-                            register_mapping.len() as u32 + 1000 // Offset to avoid conflicts
+                            register_mapping.len() as u32 + 1000, // Offset to avoid conflicts
                         ));
                         register_mapping.insert(dst.clone(), new_reg);
                     }
-                }
 
                 for use_reg in instr.use_regs() {
-                    if !register_mapping.contains_key(use_reg) && !param_mapping.contains_key(use_reg) {
+                    if !register_mapping.contains_key(use_reg)
+                        && !param_mapping.contains_key(use_reg)
+                    {
                         let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(
-                            register_mapping.len() as u32 + 1000
+                            register_mapping.len() as u32 + 1000,
                         ));
                         register_mapping.insert(use_reg.clone(), new_reg);
                     }
@@ -484,11 +527,10 @@ impl ModuleInlining {
                 let mut new_instr = instr.clone();
 
                 // Rename destination register
-                if let Some(dst) = new_instr.def_reg() {
-                    if let Some(new_dst) = register_mapping.get(dst) {
+                if let Some(dst) = new_instr.def_reg()
+                    && let Some(new_dst) = register_mapping.get(dst) {
                         self.rename_instruction_dst(&mut new_instr, new_dst.clone());
                     }
-                }
 
                 // Rename used registers
                 self.rename_instruction_uses(&mut new_instr, &register_mapping, param_mapping)?;
@@ -527,8 +569,10 @@ impl ModuleInlining {
                     new_instructions.push(instr.clone());
                 } else if let Instruction::Ret { value } = instr {
                     // Replace return with assignment to call destination
-                    if let Instruction::Call { ret: Some(ret_reg), .. } = call_instr {
-                        if let Some(return_val) = value {
+                    if let Instruction::Call {
+                        ret: Some(ret_reg), ..
+                    } = call_instr
+                        && let Some(return_val) = value {
                             // Create assignment: ret_reg = return_val
                             let assign_instr = Instruction::IntBinary {
                                 op: crate::mir::IntBinOp::Add,
@@ -539,7 +583,6 @@ impl ModuleInlining {
                             };
                             new_instructions.push(assign_instr);
                         }
-                    }
                 }
             }
         }
@@ -592,7 +635,12 @@ impl ModuleInlining {
             Instruction::FloatUnary { src, .. } => {
                 *src = self.map_operand(src, register_mapping, param_mapping)?;
             }
-            Instruction::Select { cond, true_val, false_val, .. } => {
+            Instruction::Select {
+                cond,
+                true_val,
+                false_val,
+                ..
+            } => {
                 *cond = self.map_register(cond, register_mapping)?;
                 *true_val = self.map_operand(true_val, register_mapping, param_mapping)?;
                 *false_val = self.map_operand(false_val, register_mapping, param_mapping)?;
@@ -653,7 +701,11 @@ impl ModuleInlining {
         }
     }
 
-    fn map_register(&self, reg: &Register, register_mapping: &HashMap<Register, Register>) -> Result<Register, String> {
+    fn map_register(
+        &self,
+        reg: &Register,
+        register_mapping: &HashMap<Register, Register>,
+    ) -> Result<Register, String> {
         if let Some(mapped) = register_mapping.get(reg) {
             Ok(mapped.clone())
         } else {
@@ -661,7 +713,11 @@ impl ModuleInlining {
         }
     }
 
-    fn map_address_mode(&self, addr: &crate::mir::AddressMode, register_mapping: &HashMap<Register, Register>) -> Result<crate::mir::AddressMode, String> {
+    fn map_address_mode(
+        &self,
+        addr: &crate::mir::AddressMode,
+        register_mapping: &HashMap<Register, Register>,
+    ) -> Result<crate::mir::AddressMode, String> {
         match addr {
             crate::mir::AddressMode::BaseOffset { base, offset } => {
                 Ok(crate::mir::AddressMode::BaseOffset {
@@ -669,14 +725,17 @@ impl ModuleInlining {
                     offset: *offset,
                 })
             }
-            crate::mir::AddressMode::BaseIndexScale { base, index, scale, offset } => {
-                Ok(crate::mir::AddressMode::BaseIndexScale {
-                    base: self.map_register(base, register_mapping)?,
-                    index: self.map_register(index, register_mapping)?,
-                    scale: *scale,
-                    offset: *offset,
-                })
-            }
+            crate::mir::AddressMode::BaseIndexScale {
+                base,
+                index,
+                scale,
+                offset,
+            } => Ok(crate::mir::AddressMode::BaseIndexScale {
+                base: self.map_register(base, register_mapping)?,
+                index: self.map_register(index, register_mapping)?,
+                scale: *scale,
+                offset: *offset,
+            }),
         }
     }
 }

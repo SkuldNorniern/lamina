@@ -1,6 +1,6 @@
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Operand, Register};
-use std::collections::{HashMap, HashSet};
+use crate::mir::{Function, Instruction, Register};
+use std::collections::HashSet;
 
 /// Loop Invariant Code Motion (LICM)
 /// Moves computations that don't depend on loop variables outside the loop
@@ -52,26 +52,29 @@ impl LoopInvariantCodeMotion {
 
         for block in &func.blocks {
             for instr in &block.instructions {
-                if let Instruction::Br { true_target, false_target, .. } = instr {
+                if let Instruction::Br {
+                    true_target,
+                    false_target,
+                    ..
+                } = instr
+                {
                     // Check if either target is a predecessor (simple loop detection)
-                    if self.is_back_edge(func, &block.label, true_target) {
-                        if let Some(loop_info) = self.analyze_loop(func, &block.label, true_target) {
+                    if self.is_back_edge(func, &block.label, true_target)
+                        && let Some(loop_info) = self.analyze_loop(func, &block.label, true_target)
+                        {
                             loops.push(loop_info);
                         }
-                    }
-                    if self.is_back_edge(func, &block.label, false_target) {
-                        if let Some(loop_info) = self.analyze_loop(func, &block.label, false_target) {
+                    if self.is_back_edge(func, &block.label, false_target)
+                        && let Some(loop_info) = self.analyze_loop(func, &block.label, false_target)
+                        {
                             loops.push(loop_info);
                         }
-                    }
                 }
-                if let Instruction::Jmp { target } = instr {
-                    if self.is_back_edge(func, &block.label, target) {
-                        if let Some(loop_info) = self.analyze_loop(func, &block.label, target) {
+                if let Instruction::Jmp { target } = instr
+                    && self.is_back_edge(func, &block.label, target)
+                        && let Some(loop_info) = self.analyze_loop(func, &block.label, target) {
                             loops.push(loop_info);
                         }
-                    }
-                }
             }
         }
 
@@ -89,7 +92,12 @@ impl LoopInvariantCodeMotion {
         }
     }
 
-    fn analyze_loop(&self, func: &Function, header: &str, back_edge_target: &str) -> Option<LoopInfo> {
+    fn analyze_loop(
+        &self,
+        func: &Function,
+        header: &str,
+        back_edge_target: &str,
+    ) -> Option<LoopInfo> {
         // Find all blocks in the loop
         let mut loop_blocks = HashSet::new();
         let mut to_visit = vec![header.to_string()];
@@ -123,8 +131,11 @@ impl LoopInvariantCodeMotion {
             for instr in &block.instructions {
                 match instr {
                     Instruction::Jmp { target } if target == to => return true,
-                    Instruction::Br { true_target, false_target, .. }
-                        if true_target == to || false_target == to => return true,
+                    Instruction::Br {
+                        true_target,
+                        false_target,
+                        ..
+                    } if true_target == to || false_target == to => return true,
                     _ => {}
                 }
             }
@@ -147,7 +158,11 @@ impl LoopInvariantCodeMotion {
         Ok(changed)
     }
 
-    fn find_invariant_instructions(&self, func: &Function, loop_info: &LoopInfo) -> Result<Vec<usize>, String> {
+    fn find_invariant_instructions(
+        &self,
+        func: &Function,
+        loop_info: &LoopInfo,
+    ) -> Result<Vec<usize>, String> {
         let mut invariant = Vec::new();
 
         for (block_idx, block) in func.blocks.iter().enumerate() {
@@ -167,7 +182,12 @@ impl LoopInvariantCodeMotion {
         Ok(invariant)
     }
 
-    fn is_invariant_instruction(&self, func: &Function, loop_info: &LoopInfo, instr: &Instruction) -> bool {
+    fn is_invariant_instruction(
+        &self,
+        func: &Function,
+        loop_info: &LoopInfo,
+        instr: &Instruction,
+    ) -> bool {
         // An instruction is invariant if:
         // 1. It defines a register
         // 2. All its operands are either constants or defined outside the loop
@@ -175,9 +195,10 @@ impl LoopInvariantCodeMotion {
 
         if let Some(def_reg) = instr.def_reg() {
             // Check if all operands are invariant
-            let operands_invariant = instr.use_regs().iter().all(|reg| {
-                self.is_invariant_register(func, loop_info, reg)
-            });
+            let operands_invariant = instr
+                .use_regs()
+                .iter()
+                .all(|reg| self.is_invariant_register(func, loop_info, reg));
 
             // Check if instruction has no side effects
             let no_side_effects = !self.has_side_effects(instr);
@@ -218,9 +239,17 @@ impl LoopInvariantCodeMotion {
         )
     }
 
-    fn move_invariant_instructions(&self, func: &mut Function, loop_info: &LoopInfo, invariant_instrs: &[usize]) -> Result<(), String> {
+    fn move_invariant_instructions(
+        &self,
+        func: &mut Function,
+        loop_info: &LoopInfo,
+        invariant_instrs: &[usize],
+    ) -> Result<(), String> {
         // Find the loop header block
-        let header_idx = func.blocks.iter().position(|b| b.label == loop_info.header)
+        let header_idx = func
+            .blocks
+            .iter()
+            .position(|b| b.label == loop_info.header)
             .ok_or_else(|| format!("Loop header '{}' not found", loop_info.header))?;
 
         let mut instructions_to_move = Vec::new();
@@ -253,7 +282,9 @@ impl LoopInvariantCodeMotion {
             let block_idx = encoded >> 16;
             let instr_idx = encoded & 0xFFFF;
 
-            if block_idx < func.blocks.len() && instr_idx < func.blocks[block_idx].instructions.len() {
+            if block_idx < func.blocks.len()
+                && instr_idx < func.blocks[block_idx].instructions.len()
+            {
                 func.blocks[block_idx].instructions.remove(instr_idx);
             }
         }
