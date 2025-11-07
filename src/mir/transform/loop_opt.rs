@@ -162,7 +162,7 @@ impl LoopInvariantCodeMotion {
         &self,
         func: &Function,
         loop_info: &LoopInfo,
-    ) -> Result<Vec<usize>, String> {
+    ) -> Result<Vec<(usize, usize)>, String> {
         let mut invariant = Vec::new();
 
         for (block_idx, block) in func.blocks.iter().enumerate() {
@@ -172,9 +172,8 @@ impl LoopInvariantCodeMotion {
 
             for (instr_idx, instr) in block.instructions.iter().enumerate() {
                 if self.is_invariant_instruction(func, loop_info, instr) {
-                    // Store as (block_idx, instr_idx) encoded in a single usize
-                    let encoded = (block_idx << 16) | instr_idx;
-                    invariant.push(encoded);
+                    // Store as (block_idx, instr_idx) tuple to avoid overflow
+                    invariant.push((block_idx, instr_idx));
                 }
             }
         }
@@ -244,7 +243,7 @@ impl LoopInvariantCodeMotion {
         &self,
         func: &mut Function,
         loop_info: &LoopInfo,
-        invariant_instrs: &[usize],
+        invariant_instrs: &[(usize, usize)],
     ) -> Result<(), String> {
         // Find the loop header block
         let header_idx = func
@@ -256,10 +255,7 @@ impl LoopInvariantCodeMotion {
         let mut instructions_to_move = Vec::new();
 
         // Collect instructions to move (in reverse order to maintain dependencies)
-        for &encoded in invariant_instrs.iter().rev() {
-            let block_idx = encoded >> 16;
-            let instr_idx = encoded & 0xFFFF;
-
+        for &(block_idx, instr_idx) in invariant_instrs.iter().rev() {
             if block_idx >= func.blocks.len() {
                 continue;
             }
@@ -279,10 +275,7 @@ impl LoopInvariantCodeMotion {
         }
 
         // Remove original instructions from loop blocks
-        for &encoded in invariant_instrs {
-            let block_idx = encoded >> 16;
-            let instr_idx = encoded & 0xFFFF;
-
+        for &(block_idx, instr_idx) in invariant_instrs {
             if block_idx < func.blocks.len()
                 && instr_idx < func.blocks[block_idx].instructions.len()
             {
