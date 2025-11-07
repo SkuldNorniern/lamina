@@ -145,6 +145,10 @@ fn parse_args() -> Result<CompileOptions, String> {
                 options.timeout_secs = Some(secs);
                 i += 2;
             }
+            "--version" => {
+                println!("lamina {}", env!("CARGO_PKG_VERSION"));
+                std::process::exit(0);
+            }
             _ => {
                 if options.input_file.as_os_str().is_empty() {
                     options.input_file = PathBuf::from(&args[i]);
