@@ -33,43 +33,53 @@ impl CopyPropagation {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
         let mut changed = false;
 
-        // Build a map of register -> value for copies and constants
-        let mut value_map = HashMap::new();
-        let mut worklist = Vec::new();
-
-        // First pass: find copy operations and constant assignments
-        for block in &func.blocks {
-            for instr in &block.instructions {
-                if let Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Add,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } = instr
-                {
-                    // Check for x = y + 0 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = rhs
-                        && let Operand::Register(src_reg) = lhs {
-                            value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                            worklist.push((dst.clone(), block.label.clone()));
-                        }
-                }
-            }
-        }
-
-        // Apply copy propagation
-        if !value_map.is_empty() {
-            for block in &mut func.blocks {
-                for instr in &mut block.instructions {
-                    if self.propagate_copies(instr, &value_map) {
-                        changed = true;
-                    }
-                }
+        // Apply copy propagation within each basic block (safe: no control flow issues)
+        for block in &mut func.blocks {
+            if self.propagate_copies_in_block(block) {
+                changed = true;
             }
         }
 
         Ok(changed)
+    }
+
+    fn propagate_copies_in_block(&self, block: &mut Block) -> bool {
+        let mut changed = false;
+        let mut value_map = HashMap::new();
+
+        // Process instructions in the block, building and using the value map
+        let mut new_instructions = Vec::new();
+
+        for instr in &block.instructions {
+            let mut new_instr = instr.clone();
+
+            // First, propagate any known copies into this instruction
+            if self.propagate_copies(&mut new_instr, &value_map) {
+                changed = true;
+            }
+
+            // Then, check if this instruction defines a copy that we should track
+            if let Instruction::IntBinary {
+                op: crate::mir::IntBinOp::Add,
+                dst,
+                lhs,
+                rhs,
+                ..
+            } = &new_instr
+            {
+                // Check for x = y + 0 (copy pattern)
+                if let Operand::Immediate(Immediate::I64(0)) = rhs
+                    && let Operand::Register(src_reg) = lhs {
+                        // Record this copy for future propagation within this block
+                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
+                    }
+            }
+
+            new_instructions.push(new_instr);
+        }
+
+        block.instructions = new_instructions;
+        changed
     }
 
     fn propagate_copies(
