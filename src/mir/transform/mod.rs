@@ -1,8 +1,14 @@
 mod deadcode;
+mod inline;
+mod loop_opt;
+mod motion;
 mod peephole;
 
 // Re-export transforms for easy access
 pub use deadcode::DeadCodeElimination;
+pub use inline::{FunctionInlining, ModuleInlining};
+pub use loop_opt::{LoopFusion, LoopInvariantCodeMotion, LoopUnrolling};
+pub use motion::{CommonSubexpressionElimination, ConstantFolding, CopyPropagation};
 pub use peephole::Peephole;
 
 // Each transform operates on the MIR representation to optimize or
@@ -114,15 +120,25 @@ impl TransformPipeline {
         // Always include peephole optimizations (fast and safe)
         pipeline = pipeline.add_transform(Peephole::default());
 
-        // Add dead code elimination for -O1+
         if opt_level >= 1 {
             pipeline = pipeline.add_transform(DeadCodeElimination::default());
         }
 
+        if opt_level >= 2 {
+            pipeline = pipeline.add_transform(LoopInvariantCodeMotion::default());
+        }
+
+        if opt_level >= 3 {
+            pipeline = pipeline.add_transform(FunctionInlining::default());
+            pipeline = pipeline.add_transform(ConstantFolding::default());
+            pipeline = pipeline.add_transform(CopyPropagation::default());
+            pipeline = pipeline.add_transform(CommonSubexpressionElimination::default());
+        }
+
         // TODO: Add more transforms as they are implemented
-        // if opt_level >= 2 {
-        //     pipeline = pipeline.add_transform(ConstantFolding::default());
-        //     pipeline = pipeline.add_transform(CopyPropagation::default());
+        // if opt_level >= 3 {
+        //     pipeline = pipeline.add_transform(LoopUnrolling::default());
+        //     pipeline = pipeline.add_transform(LoopFusion::default());
         // }
 
         pipeline
@@ -212,9 +228,13 @@ mod tests {
         let pipeline = TransformPipeline::default_for_opt_level(1);
         assert_eq!(pipeline.len(), 2);
 
-        // -O2 should have the same transforms (for now)
+        // -O2 should have peephole, dead code elimination, and loop invariant code motion
         let pipeline = TransformPipeline::default_for_opt_level(2);
-        assert_eq!(pipeline.len(), 2);
+        assert_eq!(pipeline.len(), 3);
+
+        // -O3 should have all transforms including function inlining and motion optimizations
+        let pipeline = TransformPipeline::default_for_opt_level(3);
+        assert_eq!(pipeline.len(), 7);
     }
 
     #[test]
