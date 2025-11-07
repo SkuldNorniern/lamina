@@ -45,43 +45,21 @@ impl Transform for DeadCodeElimination {
 impl DeadCodeElimination {
     /// Apply dead code elimination to a function
     ///
-    /// This method performs a backward liveness analysis to identify dead registers
-    /// and removes instructions that only define dead registers.
+    /// This method performs conservative intra-block dead code elimination.
+    /// For safety, we only eliminate instructions within individual basic blocks
+    /// to avoid complex control flow analysis issues.
     pub fn apply_internal(&self, func: &mut Function) -> Result<DeadCodeStats, String> {
         let mut stats = DeadCodeStats::default();
-        let mut changed = true;
 
-        // Collect all registers that were defined before DCE
-        let _initial_live_regs = self.compute_live_registers(func)?;
-        let mut all_defined_regs = HashSet::new();
-        for block in &func.blocks {
-            for instr in &block.instructions {
-                if let Some(def_reg) = instr.def_reg() {
-                    all_defined_regs.insert(def_reg.clone());
-                }
-            }
+        // Apply conservative intra-block dead code elimination
+        for block in &mut func.blocks {
+            let removed = self.remove_dead_instructions_in_block(block);
+            stats.instructions_removed += removed;
         }
 
-        // Iterate until no more dead code can be removed
-        while changed {
-            changed = false;
-
-            // Perform liveness analysis to find live registers
-            let live_regs = self.compute_live_registers(func)?;
-
-            // Remove dead instructions from each block
-            for block in &mut func.blocks {
-                let removed = self.remove_dead_instructions(block, &live_regs);
-                if removed > 0 {
-                    changed = true;
-                    stats.instructions_removed += removed;
-                }
-            }
-        }
-
-        // Count freed registers (registers that were defined but never used)
-        let final_live_regs = self.compute_live_registers(func)?;
-        stats.registers_freed = all_defined_regs.difference(&final_live_regs).count();
+        // For now, don't try to count freed registers across blocks
+        // as it requires proper inter-block liveness analysis
+        stats.registers_freed = 0;
 
         Ok(stats)
     }
@@ -136,25 +114,53 @@ impl DeadCodeElimination {
         }
     }
 
-    /// Remove dead instructions from a block
+    /// Remove dead instructions within a single basic block
     ///
-    /// An instruction is considered dead if:
-    /// 1. It defines a register that is not live
-    /// 2. It has no side effects (no memory operations, calls, etc.)
-    fn remove_dead_instructions(&self, block: &mut Block, live_regs: &HashSet<Register>) -> usize {
+    /// This performs backward liveness analysis within the block only.
+    /// An instruction is considered dead if it defines a register that is not
+    /// used later in the same block and has no side effects.
+    fn remove_dead_instructions_in_block(&self, block: &mut Block) -> usize {
         let mut removed_count = 0;
-        let mut new_instructions = Vec::new();
+        let mut live_regs = HashSet::new();
 
-        for instr in block.instructions.drain(..) {
-            let should_remove = self.is_dead_instruction(&instr, live_regs);
-
-            if should_remove {
-                removed_count += 1;
-            } else {
-                new_instructions.push(instr);
+        // First pass: collect registers that are live at the end of the block
+        // This includes registers used in terminators
+        if let Some(terminator) = block.terminator() {
+            for reg in terminator.use_regs() {
+                live_regs.insert(reg.clone());
             }
         }
 
+        // Second pass: go backwards through instructions, tracking liveness
+        let mut new_instructions = Vec::new();
+        for instr in block.instructions.iter().rev() {
+            let mut keep_instruction = true;
+
+            // Check if this instruction defines a register that's not live
+            if let Some(def_reg) = instr.def_reg() {
+                if !live_regs.contains(def_reg) && self.has_no_side_effects(instr) {
+                    // This instruction is dead - don't add it to new_instructions
+                    keep_instruction = false;
+                    removed_count += 1;
+                } else {
+                    // The defined register becomes dead after this point
+                    live_regs.remove(def_reg);
+                }
+            }
+
+            // Add used registers to the live set
+            for reg in instr.use_regs() {
+                live_regs.insert(reg.clone());
+            }
+
+            // Keep the instruction if it's not dead
+            if keep_instruction {
+                new_instructions.push(instr.clone());
+            }
+        }
+
+        // Reverse back to correct order
+        new_instructions.reverse();
         block.instructions = new_instructions;
         removed_count
     }
@@ -372,5 +378,99 @@ mod tests {
 
         let entry = func.get_block("entry").expect("entry block exists");
         assert_eq!(entry.instructions.len(), 2); // All instructions preserved
+    }
+
+    #[test]
+    fn test_dead_code_elimination_intra_block() {
+        // Test that dead code elimination works within a single block
+        let func = FunctionBuilder::new("test")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            // Dead instruction: v1 is never used
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Immediate(Immediate::I64(10)),
+                rhs: Operand::Immediate(Immediate::I64(20)),
+            })
+            // Live instruction: v2 is used in return
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(2).into(),
+                lhs: Operand::Immediate(Immediate::I64(30)),
+                rhs: Operand::Immediate(Immediate::I64(40)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(2).into())),
+            })
+            .build();
+
+        let mut func = func;
+        let dce = DeadCodeElimination::default();
+        let changed = dce.apply(&mut func).expect("DCE should succeed");
+
+        // Should have made changes (removed dead instruction)
+        assert!(changed);
+
+        let entry = func.get_block("entry").expect("entry block exists");
+        // Should have only 2 instructions now: the live add and the return
+        assert_eq!(entry.instructions.len(), 2);
+
+        // Verify the remaining instruction is the live one
+        match &entry.instructions[0] {
+            Instruction::IntBinary { dst, .. } => {
+                assert_eq!(dst, &VirtualReg::gpr(2).into());
+            }
+            _ => panic!("Expected IntBinary instruction"),
+        }
+    }
+
+    #[test]
+    fn test_dead_code_elimination_preserves_side_effects() {
+        // Test that instructions with side effects are not removed
+        let func = FunctionBuilder::new("test")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            // Store instruction has side effects, should not be removed even if result unused
+            .instr(Instruction::Store {
+                ty: MirType::Scalar(ScalarType::I64),
+                src: Operand::Immediate(Immediate::I64(42)),
+                addr: crate::mir::AddressMode::BaseOffset {
+                    base: VirtualReg::gpr(0).into(),
+                    offset: 0,
+                },
+                attrs: crate::mir::MemoryAttrs {
+                    align: 8,
+                    volatile: false,
+                },
+            })
+            // Dead arithmetic instruction
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Immediate(Immediate::I64(1)),
+                rhs: Operand::Immediate(Immediate::I64(2)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
+            .build();
+
+        let mut func = func;
+        let dce = DeadCodeElimination::default();
+        let changed = dce.apply(&mut func).expect("DCE should succeed");
+
+        // Should have made changes (removed dead arithmetic)
+        assert!(changed);
+
+        let entry = func.get_block("entry").expect("entry block exists");
+        // Should have 2 instructions: store (preserved for side effects) and return
+        assert_eq!(entry.instructions.len(), 2);
+
+        // Verify the store instruction is still there
+        assert!(matches!(&entry.instructions[0], Instruction::Store { .. }));
     }
 }

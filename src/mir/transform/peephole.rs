@@ -132,11 +132,14 @@ impl Peephole {
             core::mem::swap(lhs, rhs);
             return true;
         }
-        // Constant folding: c1 + c2 => (c1+c2)
+        // Constant folding: c1 + c2 => (c1+c2) with overflow check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            *lhs = Operand::Immediate(Immediate::I64(c1 + c2));
-            *rhs = Operand::Immediate(Immediate::I64(0));
-            return true;
+            if let Some(result) = c1.checked_add(c2) {
+                *lhs = Operand::Immediate(Immediate::I64(result));
+                *rhs = Operand::Immediate(Immediate::I64(0));
+                return true;
+            }
+            // Skip folding on overflow
         }
         false
     }
@@ -152,11 +155,14 @@ impl Peephole {
         if is_zero(rhs_imm) {
             return true;
         }
-        // Constant folding: c1 - c2 => (c1-c2)
+        // Constant folding: c1 - c2 => (c1-c2) with overflow check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            *lhs = Operand::Immediate(Immediate::I64(c1 - c2));
-            *rhs = Operand::Immediate(Immediate::I64(0));
-            return true;
+            if let Some(result) = c1.checked_sub(c2) {
+                *lhs = Operand::Immediate(Immediate::I64(result));
+                *rhs = Operand::Immediate(Immediate::I64(0));
+                return true;
+            }
+            // Skip folding on overflow
         }
         false
     }
@@ -183,11 +189,14 @@ impl Peephole {
             *rhs = Operand::Immediate(Immediate::I64(0));
             return true;
         }
-        // Constant folding: c1 * c2 => (c1*c2)
+        // Constant folding: c1 * c2 => (c1*c2) with overflow check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            *lhs = Operand::Immediate(Immediate::I64(c1 * c2));
-            *rhs = Operand::Immediate(Immediate::I64(0));
-            return true;
+            if let Some(result) = c1.checked_mul(c2) {
+                *lhs = Operand::Immediate(Immediate::I64(result));
+                *rhs = Operand::Immediate(Immediate::I64(0));
+                return true;
+            }
+            // Skip folding on overflow
         }
         false
     }
@@ -616,5 +625,85 @@ mod tests {
         let pass = Peephole::default();
         let changed = pass.run_on_function(&mut func);
         assert!(changed);
+    }
+
+    #[test]
+    fn test_overflow_prevention_add() {
+        // Test that overflow in addition skips folding (conservative behavior)
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(i64::MAX)),
+            rhs: Operand::Immediate(Immediate::I64(1)), // This would overflow
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        // Should NOT change due to overflow prevention
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_overflow_prevention_mul() {
+        // Test that overflow in multiplication skips folding
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Mul,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(i64::MAX)),
+            rhs: Operand::Immediate(Immediate::I64(2)), // This would overflow
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        // Should NOT change due to overflow prevention
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_unsigned_division() {
+        // Test that UDiv uses proper unsigned semantics
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::UDiv,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(-8)), // -8 as i64 = 18446744073709551608 as u64
+            rhs: Operand::Immediate(Immediate::I64(2)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+
+        // Check that the result is correct for unsigned division: -8 u64 / 2 = 9223372036854775804
+        if let Some(block) = func.get_block("entry") {
+            if let Some(Instruction::IntBinary { lhs, rhs, .. }) = block.instructions.first() {
+                if let (
+                    Operand::Immediate(Immediate::I64(result)),
+                    Operand::Immediate(Immediate::I64(0)),
+                ) = (lhs, rhs)
+                {
+                    // -8 as u64 = 18446744073709551608, divided by 2 = 9223372036854775804
+                    assert_eq!(*result, 9223372036854775804i64);
+                } else {
+                    panic!("Expected constant result");
+                }
+            } else {
+                panic!("Expected IntBinary instruction");
+            }
+        }
     }
 }
