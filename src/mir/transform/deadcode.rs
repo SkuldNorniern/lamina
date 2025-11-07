@@ -148,15 +148,16 @@ impl DeadCodeElimination {
                 }
             }
 
-            // Add used registers to the live set
-            for reg in instr.use_regs() {
-                live_regs.insert(reg.clone());
-            }
-
             // Keep the instruction if it's not dead
             if keep_instruction {
+                // Add used registers to the live set only for kept instructions
+                for reg in instr.use_regs() {
+                    live_regs.insert(reg.clone());
+                }
                 new_instructions.push(instr.clone());
             }
+            // Note: For removed instructions, don't add their used registers to live set
+            // This allows chains of dead instructions to be properly eliminated
         }
 
         // Reverse back to correct order
@@ -472,5 +473,42 @@ mod tests {
 
         // Verify the store instruction is still there
         assert!(matches!(&entry.instructions[0], Instruction::Store { .. }));
+    }
+
+    #[test]
+    fn test_dead_code_elimination_chain() {
+        // Test elimination of a chain of dead instructions
+        let func = FunctionBuilder::new("test")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            // Both instructions are dead and form a chain
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Immediate(Immediate::I64(10)),
+                rhs: Operand::Immediate(Immediate::I64(20)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(2).into(),
+                lhs: Operand::Register(VirtualReg::gpr(1).into()), // Uses v1
+                rhs: Operand::Immediate(Immediate::I64(30)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
+            .build();
+
+        let mut func = func;
+        let dce = DeadCodeElimination::default();
+        let changed = dce.apply(&mut func).expect("DCE should succeed");
+
+        assert!(changed);
+        let entry = func.get_block("entry").expect("entry block exists");
+        // Should only have the return instruction
+        assert_eq!(entry.instructions.len(), 1);
+        assert!(matches!(&entry.instructions[0], Instruction::Ret { .. }));
     }
 }
