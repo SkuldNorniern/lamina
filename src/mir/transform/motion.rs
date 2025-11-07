@@ -278,6 +278,10 @@ impl ConstantFolding {
                     (lhs_u / rhs_u) as i64
                 }
                 crate::mir::IntBinOp::SDiv if rhs_val != 0 => {
+                    // Check for overflow: i64::MIN / -1
+                    if lhs_val == i64::MIN && rhs_val == -1 {
+                        return false; // Skip folding to avoid overflow
+                    }
                     // Keep signed division for SDiv
                     lhs_val / rhs_val
                 }
@@ -484,6 +488,27 @@ mod tests {
             }
             _ => panic!("Expected IntBinary instruction"),
         }
+    }
+
+    #[test]
+    fn test_signed_division_overflow_prevention() {
+        // Test that i64::MIN / -1 is prevented (would overflow)
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::SDiv,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(i64::MIN)),
+            rhs: Operand::Immediate(Immediate::I64(-1)),
+        });
+        func.add_block(bb);
+
+        let pass = ConstantFolding::default();
+        let changed = pass.try_fold_constants(&mut func.blocks[0].instructions[0]);
+        // Should NOT change due to overflow prevention
+        assert!(!changed);
     }
 
     #[test]
