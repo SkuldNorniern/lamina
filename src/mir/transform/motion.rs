@@ -186,7 +186,7 @@ impl CopyPropagation {
             | Instruction::Select { ty, .. }
             | Instruction::Load { ty, .. }
             | Instruction::Store { ty, .. }
-            | Instruction::VectorOp { ty, .. } => ty.clone(),
+            | Instruction::VectorOp { ty, .. } => *ty,
             // For other instructions that don't have explicit types, default to I64
             // This should be rare and these instructions probably shouldn't be CSE'd
             _ => MirType::Scalar(ScalarType::I64),
@@ -348,7 +348,7 @@ impl CommonSubexpressionElimination {
             | Instruction::Select { ty, .. }
             | Instruction::Load { ty, .. }
             | Instruction::Store { ty, .. }
-            | Instruction::VectorOp { ty, .. } => ty.clone(),
+            | Instruction::VectorOp { ty, .. } => *ty,
             // For other instructions that don't have explicit types, default to I64
             // This should be rare and these instructions probably shouldn't be CSE'd
             _ => MirType::Scalar(ScalarType::I64),
