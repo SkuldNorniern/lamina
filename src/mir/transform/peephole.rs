@@ -215,16 +215,17 @@ impl Peephole {
         }
         // Constant folding with safety check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
-            && c2 != 0 {
-                let result = if signed {
-                    c1 / c2
-                } else {
-                    ((c1 as u64) / (c2 as u64)) as i64
-                };
-                *lhs = Operand::Immediate(Immediate::I64(result));
-                *rhs = Operand::Immediate(Immediate::I64(0));
-                return true;
-            }
+            && c2 != 0
+        {
+            let result = if signed {
+                c1 / c2
+            } else {
+                ((c1 as u64) / (c2 as u64)) as i64
+            };
+            *lhs = Operand::Immediate(Immediate::I64(result));
+            *rhs = Operand::Immediate(Immediate::I64(0));
+            return true;
+        }
         false
     }
 
@@ -238,16 +239,17 @@ impl Peephole {
     ) -> bool {
         // Constant folding with safety check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
-            && c2 != 0 {
-                let result = if signed {
-                    c1 % c2
-                } else {
-                    ((c1 as u64) % (c2 as u64)) as i64
-                };
-                *lhs = Operand::Immediate(Immediate::I64(result));
-                *rhs = Operand::Immediate(Immediate::I64(0));
-                return true;
-            }
+            && c2 != 0
+        {
+            let result = if signed {
+                c1 % c2
+            } else {
+                ((c1 as u64) % (c2 as u64)) as i64
+            };
+            *lhs = Operand::Immediate(Immediate::I64(result));
+            *rhs = Operand::Immediate(Immediate::I64(0));
+            return true;
+        }
         false
     }
 
@@ -325,11 +327,12 @@ impl Peephole {
         }
         // x ^ x => 0 (if same register)
         if let (Operand::Register(r1), Operand::Register(r2)) = (&*lhs, &*rhs)
-            && r1 == r2 {
-                *lhs = Operand::Immediate(Immediate::I64(0));
-                *rhs = Operand::Immediate(Immediate::I64(0));
-                return true;
-            }
+            && r1 == r2
+        {
+            *lhs = Operand::Immediate(Immediate::I64(0));
+            *rhs = Operand::Immediate(Immediate::I64(0));
+            return true;
+        }
         // Constant folding
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
             *lhs = Operand::Immediate(Immediate::I64(c1 ^ c2));
@@ -352,11 +355,12 @@ impl Peephole {
         }
         // Constant folding
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
-            && (0..64).contains(&c2) {
-                *lhs = Operand::Immediate(Immediate::I64(c1 << c2));
-                *rhs = Operand::Immediate(Immediate::I64(0));
-                return true;
-            }
+            && (0..64).contains(&c2)
+        {
+            *lhs = Operand::Immediate(Immediate::I64(c1 << c2));
+            *rhs = Operand::Immediate(Immediate::I64(0));
+            return true;
+        }
         false
     }
 
@@ -373,11 +377,12 @@ impl Peephole {
         }
         // Constant folding
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
-            && (0..64).contains(&c2) {
-                *lhs = Operand::Immediate(Immediate::I64(((c1 as u64) >> c2) as i64));
-                *rhs = Operand::Immediate(Immediate::I64(0));
-                return true;
-            }
+            && (0..64).contains(&c2)
+        {
+            *lhs = Operand::Immediate(Immediate::I64(((c1 as u64) >> c2) as i64));
+            *rhs = Operand::Immediate(Immediate::I64(0));
+            return true;
+        }
         false
     }
 
@@ -394,11 +399,12 @@ impl Peephole {
         }
         // Constant folding
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
-            && (0..64).contains(&c2) {
-                *lhs = Operand::Immediate(Immediate::I64(c1 >> c2));
-                *rhs = Operand::Immediate(Immediate::I64(0));
-                return true;
-            }
+            && (0..64).contains(&c2)
+        {
+            *lhs = Operand::Immediate(Immediate::I64(c1 >> c2));
+            *rhs = Operand::Immediate(Immediate::I64(0));
+            return true;
+        }
         false
     }
 
