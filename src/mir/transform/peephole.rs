@@ -123,14 +123,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
-        // x + 0 => x
+        // x + 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
-            return true;
+            return false; // No change made
         }
-        // 0 + x => x
+        // 0 + x => x (swap operands to canonical form)
         if is_zero(lhs_imm) {
             core::mem::swap(lhs, rhs);
-            return true;
+            return true; // Operands were swapped
         }
         // Constant folding: c1 + c2 => (c1+c2) with overflow check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
@@ -150,9 +150,9 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
-        // x - 0 => x
+        // x - 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
-            return true;
+            return false; // No change made
         }
         // Constant folding: c1 - c2 => (c1-c2) with overflow check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
@@ -172,14 +172,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
-        // x * 1 => x
+        // x * 1 => x (already in optimal form, no change needed)
         if is_one(rhs_imm) {
-            return true;
+            return false; // No change made
         }
-        // 1 * x => x
+        // 1 * x => x (swap operands to canonical form)
         if is_one(lhs_imm) {
             core::mem::swap(lhs, rhs);
-            return true;
+            return true; // Operands were swapped
         }
         // x * 0 => 0, 0 * x => 0
         if is_zero(lhs_imm) || is_zero(rhs_imm) {
@@ -206,9 +206,9 @@ impl Peephole {
         rhs_imm: Option<i64>,
         signed: bool,
     ) -> bool {
-        // x / 1 => x
+        // x / 1 => x (already in optimal form, no change needed)
         if is_one(rhs_imm) {
-            return true;
+            return false; // No change made
         }
         // Constant folding with safety check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
@@ -257,14 +257,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
-        // x & -1 => x (all bits set)
+        // x & -1 => x (already in optimal form, no change needed)
         if is_all_ones(rhs_imm) {
-            return true;
+            return false; // No change made
         }
-        // -1 & x => x
+        // -1 & x => x (swap operands to canonical form)
         if is_all_ones(lhs_imm) {
             core::mem::swap(lhs, rhs);
-            return true;
+            return true; // Operands were swapped
         }
         // x & 0 => 0, 0 & x => 0
         if is_zero(lhs_imm) || is_zero(rhs_imm) {
@@ -288,14 +288,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
-        // x | 0 => x
+        // x | 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
-            return true;
+            return false; // No change made
         }
-        // 0 | x => x
+        // 0 | x => x (swap operands to canonical form)
         if is_zero(lhs_imm) {
             core::mem::swap(lhs, rhs);
-            return true;
+            return true; // Operands were swapped
         }
         // Constant folding
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
@@ -313,14 +313,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
-        // x ^ 0 => x
+        // x ^ 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
-            return true;
+            return false; // No change made
         }
-        // 0 ^ x => x
+        // 0 ^ x => x (swap operands to canonical form)
         if is_zero(lhs_imm) {
             core::mem::swap(lhs, rhs);
-            return true;
+            return true; // Operands were swapped
         }
         // x ^ x => 0 (if same register)
         if let (Operand::Register(r1), Operand::Register(r2)) = (&*lhs, &*rhs)
@@ -346,9 +346,9 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
-        // x << 0 => x
+        // x << 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
-            return true;
+            return false; // No change made
         }
         // Constant folding
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
@@ -368,9 +368,9 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
-        // x >>> 0 => x
+        // x >>> 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
-            return true;
+            return false; // No change made
         }
         // Constant folding
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
@@ -390,9 +390,9 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
-        // x >> 0 => x
+        // x >> 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
-            return true;
+            return false; // No change made
         }
         // Constant folding
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
@@ -520,6 +520,7 @@ mod tests {
 
     #[test]
     fn fold_add_zero_right() {
+        // x + 0 is already in optimal form (represents a move), so no change should be made
         let mut func = Function::new(crate::mir::function::Signature::new("f"))
             .with_entry("entry".to_string());
         let mut bb = Block::new("entry");
@@ -534,7 +535,7 @@ mod tests {
 
         let pass = Peephole::default();
         let changed = pass.run_on_function(&mut func);
-        assert!(changed);
+        assert!(!changed); // No change should be made
     }
 
     #[test]
@@ -594,6 +595,7 @@ mod tests {
 
     #[test]
     fn fold_bitwise_and_all_ones() {
+        // x & -1 is already in optimal form (no-op), so no change should be made
         let mut func = Function::new(crate::mir::function::Signature::new("f"))
             .with_entry("entry".to_string());
         let mut bb = Block::new("entry");
@@ -608,11 +610,12 @@ mod tests {
 
         let pass = Peephole::default();
         let changed = pass.run_on_function(&mut func);
-        assert!(changed);
+        assert!(!changed); // No change should be made
     }
 
     #[test]
     fn fold_shift_by_zero() {
+        // x << 0 is already in optimal form (represents a move), so no change should be made
         let mut func = Function::new(crate::mir::function::Signature::new("f"))
             .with_entry("entry".to_string());
         let mut bb = Block::new("entry");
@@ -627,7 +630,7 @@ mod tests {
 
         let pass = Peephole::default();
         let changed = pass.run_on_function(&mut func);
-        assert!(changed);
+        assert!(!changed); // No change should be made
     }
 
     #[test]
