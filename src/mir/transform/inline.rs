@@ -285,14 +285,13 @@ impl ModuleInlining {
                 // Replace return with assignment to call result register
                 if let Some(ref result_reg) = call_result_reg {
                     // Extract the return type from the function signature
-                    let return_type = callee_func
+                    let return_type = *callee_func
                         .sig
                         .ret_ty
                         .as_ref()
                         .ok_or_else(|| {
                             "Function has return value but no return type in signature".to_string()
-                        })?
-                        .clone();
+                        })?;
 
                     let assign_instr = Instruction::IntBinary {
                         op: crate::mir::IntBinOp::Add,
