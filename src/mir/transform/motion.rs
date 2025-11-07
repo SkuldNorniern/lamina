@@ -69,10 +69,11 @@ impl CopyPropagation {
             {
                 // Check for x = y + 0 (copy pattern)
                 if let Operand::Immediate(Immediate::I64(0)) = rhs
-                    && let Operand::Register(src_reg) = lhs {
-                        // Record this copy for future propagation within this block
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
+                    && let Operand::Register(src_reg) = lhs
+                {
+                    // Record this copy for future propagation within this block
+                    value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
+                }
             }
 
             new_instructions.push(new_instr);
@@ -112,19 +113,21 @@ impl CopyPropagation {
             Instruction::Load { addr, .. } => {
                 if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr
                     && let Some(new_base) = value_map.get(base)
-                        && let Operand::Register(new_reg) = new_base {
-                            *base = new_reg.clone();
-                            changed = true;
-                        }
+                    && let Operand::Register(new_reg) = new_base
+                {
+                    *base = new_reg.clone();
+                    changed = true;
+                }
             }
             Instruction::Store { src, addr, .. } => {
                 changed |= self.replace_operand(src, value_map);
                 if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr
                     && let Some(new_base) = value_map.get(base)
-                        && let Operand::Register(new_reg) = new_base {
-                            *base = new_reg.clone();
-                            changed = true;
-                        }
+                    && let Operand::Register(new_reg) = new_base
+                {
+                    *base = new_reg.clone();
+                    changed = true;
+                }
             }
             Instruction::Call { args, .. } => {
                 for arg in args {
@@ -133,17 +136,19 @@ impl CopyPropagation {
             }
             Instruction::Br { cond, .. } => {
                 if let Some(new_cond) = value_map.get(cond)
-                    && let Operand::Register(new_reg) = new_cond {
-                        *cond = new_reg.clone();
-                        changed = true;
-                    }
+                    && let Operand::Register(new_reg) = new_cond
+                {
+                    *cond = new_reg.clone();
+                    changed = true;
+                }
             }
             Instruction::Switch { value, .. } => {
                 if let Some(new_value) = value_map.get(value)
-                    && let Operand::Register(new_reg) = new_value {
-                        *value = new_reg.clone();
-                        changed = true;
-                    }
+                    && let Operand::Register(new_reg) = new_value
+                {
+                    *value = new_reg.clone();
+                    changed = true;
+                }
             }
             Instruction::Ret { value } => {
                 if let Some(val) = value {
@@ -162,10 +167,11 @@ impl CopyPropagation {
         value_map: &HashMap<Register, Operand>,
     ) -> bool {
         if let Operand::Register(reg) = operand
-            && let Some(replacement) = value_map.get(reg) {
-                *operand = replacement.clone();
-                return true;
-            }
+            && let Some(replacement) = value_map.get(reg)
+        {
+            *operand = replacement.clone();
+            return true;
+        }
         false
     }
 
@@ -232,66 +238,66 @@ impl ConstantFolding {
 
     fn try_fold_constants(&self, instr: &mut Instruction) -> bool {
         if let Instruction::IntBinary {
-                op, dst, lhs, rhs, ..
-            } = instr
+            op, dst, lhs, rhs, ..
+        } = instr
             && let (Some(lhs_val), Some(rhs_val)) =
                 (self.extract_constant(lhs), self.extract_constant(rhs))
-            {
-                let result = match op {
-                    crate::mir::IntBinOp::Add => {
-                        // Use checked arithmetic to prevent overflow panics/wrapping
-                        match lhs_val.checked_add(rhs_val) {
-                            Some(res) => res,
-                            None => return false, // Skip folding on overflow
-                        }
+        {
+            let result = match op {
+                crate::mir::IntBinOp::Add => {
+                    // Use checked arithmetic to prevent overflow panics/wrapping
+                    match lhs_val.checked_add(rhs_val) {
+                        Some(res) => res,
+                        None => return false, // Skip folding on overflow
                     }
-                    crate::mir::IntBinOp::Sub => {
-                        // Use checked arithmetic to prevent overflow panics/wrapping
-                        match lhs_val.checked_sub(rhs_val) {
-                            Some(res) => res,
-                            None => return false, // Skip folding on overflow
-                        }
+                }
+                crate::mir::IntBinOp::Sub => {
+                    // Use checked arithmetic to prevent overflow panics/wrapping
+                    match lhs_val.checked_sub(rhs_val) {
+                        Some(res) => res,
+                        None => return false, // Skip folding on overflow
                     }
-                    crate::mir::IntBinOp::Mul => {
-                        // Use checked arithmetic to prevent overflow panics/wrapping
-                        match lhs_val.checked_mul(rhs_val) {
-                            Some(res) => res,
-                            None => return false, // Skip folding on overflow
-                        }
+                }
+                crate::mir::IntBinOp::Mul => {
+                    // Use checked arithmetic to prevent overflow panics/wrapping
+                    match lhs_val.checked_mul(rhs_val) {
+                        Some(res) => res,
+                        None => return false, // Skip folding on overflow
                     }
-                    crate::mir::IntBinOp::UDiv if rhs_val != 0 => {
-                        // Cast to u64 for proper unsigned division semantics
-                        let lhs_u = lhs_val as u64;
-                        let rhs_u = rhs_val as u64;
-                        (lhs_u / rhs_u) as i64
-                    }
-                    crate::mir::IntBinOp::SDiv if rhs_val != 0 => {
-                        // Keep signed division for SDiv
-                        lhs_val / rhs_val
-                    }
-                    crate::mir::IntBinOp::URem if rhs_val != 0 => {
-                        // Cast to u64 for proper unsigned remainder semantics
-                        let lhs_u = lhs_val as u64;
-                        let rhs_u = rhs_val as u64;
-                        (lhs_u % rhs_u) as i64
-                    }
-                    crate::mir::IntBinOp::SRem if rhs_val != 0 => {
-                        // Keep signed remainder for SRem
-                        lhs_val % rhs_val
-                    }
-                    _ => return false,
-                };
+                }
+                crate::mir::IntBinOp::UDiv if rhs_val != 0 => {
+                    // Cast to u64 for proper unsigned division semantics
+                    let lhs_u = lhs_val as u64;
+                    let rhs_u = rhs_val as u64;
+                    (lhs_u / rhs_u) as i64
+                }
+                crate::mir::IntBinOp::SDiv if rhs_val != 0 => {
+                    // Keep signed division for SDiv
+                    lhs_val / rhs_val
+                }
+                crate::mir::IntBinOp::URem if rhs_val != 0 => {
+                    // Cast to u64 for proper unsigned remainder semantics
+                    let lhs_u = lhs_val as u64;
+                    let rhs_u = rhs_val as u64;
+                    (lhs_u % rhs_u) as i64
+                }
+                crate::mir::IntBinOp::SRem if rhs_val != 0 => {
+                    // Keep signed remainder for SRem
+                    lhs_val % rhs_val
+                }
+                _ => return false,
+            };
 
-                // Replace the instruction with a load immediate
-                *instr = Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Add,
-                    dst: dst.clone(),
-                    ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
-                    lhs: Operand::Immediate(Immediate::I64(result)),
-                    rhs: Operand::Immediate(Immediate::I64(0)),
-                };
-                return true;
-            }
+            // Replace the instruction with a load immediate
+            *instr = Instruction::IntBinary {
+                op: crate::mir::IntBinOp::Add,
+                dst: dst.clone(),
+                ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                lhs: Operand::Immediate(Immediate::I64(result)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            };
+            return true;
+        }
         false
     }
 

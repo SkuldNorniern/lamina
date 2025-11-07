@@ -280,26 +280,32 @@ impl ModuleInlining {
 
             // Handle return instructions specially
             if let Instruction::Ret { value } = &new_instr
-                && let Some(ret_val) = value {
-                    // Replace return with assignment to call result register
-                    if let Some(ref result_reg) = call_result_reg {
-                        // Extract the return type from the function signature
-                        let return_type = callee_func.sig.ret_ty.as_ref()
-                            .ok_or_else(|| "Function has return value but no return type in signature".to_string())?
-                            .clone();
+                && let Some(ret_val) = value
+            {
+                // Replace return with assignment to call result register
+                if let Some(ref result_reg) = call_result_reg {
+                    // Extract the return type from the function signature
+                    let return_type = callee_func
+                        .sig
+                        .ret_ty
+                        .as_ref()
+                        .ok_or_else(|| {
+                            "Function has return value but no return type in signature".to_string()
+                        })?
+                        .clone();
 
-                        let assign_instr = Instruction::IntBinary {
-                            op: crate::mir::IntBinOp::Add,
-                            dst: result_reg.clone(),
-                            ty: return_type,
-                            lhs: ret_val.clone(),
-                            rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
-                        };
-                        inlined_instructions.push(assign_instr);
-                    }
-                    // Skip the original return instruction
-                    continue;
+                    let assign_instr = Instruction::IntBinary {
+                        op: crate::mir::IntBinOp::Add,
+                        dst: result_reg.clone(),
+                        ty: return_type,
+                        lhs: ret_val.clone(),
+                        rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                    };
+                    inlined_instructions.push(assign_instr);
                 }
+                // Skip the original return instruction
+                continue;
+            }
 
             // Substitute parameters and rename registers
             self.substitute_parameters_and_rename(&mut new_instr, param_mapping, caller_func)?;
@@ -343,9 +349,10 @@ impl ModuleInlining {
 
             // Check if this register should be substituted with a parameter
             if let Some(param_operand) = param_mapping.get(reg)
-                && let Operand::Register(param_reg) = param_operand {
-                    return param_reg.clone();
-                }
+                && let Operand::Register(param_reg) = param_operand
+            {
+                return param_reg.clone();
+            }
 
             // Generate a new unique register name
             let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(next_reg_id));
@@ -367,14 +374,16 @@ impl ModuleInlining {
             for instr in &block.instructions {
                 if let Some(reg) = instr.def_reg()
                     && let Register::Virtual(vreg) = reg
-                        && vreg.class == crate::mir::RegisterClass::Gpr {
-                            max_id = max_id.max(vreg.id);
-                        }
+                    && vreg.class == crate::mir::RegisterClass::Gpr
+                {
+                    max_id = max_id.max(vreg.id);
+                }
                 for use_reg in instr.use_regs() {
                     if let Register::Virtual(vreg) = use_reg
-                        && vreg.class == crate::mir::RegisterClass::Gpr {
-                            max_id = max_id.max(vreg.id);
-                        }
+                        && vreg.class == crate::mir::RegisterClass::Gpr
+                    {
+                        max_id = max_id.max(vreg.id);
+                    }
                 }
             }
         }
@@ -502,14 +511,15 @@ impl ModuleInlining {
         for block in blocks {
             for instr in &block.instructions {
                 if let Some(dst) = instr.def_reg()
-                    && !register_mapping.contains_key(dst) {
-                        // Generate a new virtual register for this destination
-                        // In a real implementation, we'd get this from a register allocator
-                        let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(
-                            register_mapping.len() as u32 + 1000, // Offset to avoid conflicts
-                        ));
-                        register_mapping.insert(dst.clone(), new_reg);
-                    }
+                    && !register_mapping.contains_key(dst)
+                {
+                    // Generate a new virtual register for this destination
+                    // In a real implementation, we'd get this from a register allocator
+                    let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(
+                        register_mapping.len() as u32 + 1000, // Offset to avoid conflicts
+                    ));
+                    register_mapping.insert(dst.clone(), new_reg);
+                }
 
                 for use_reg in instr.use_regs() {
                     if !register_mapping.contains_key(use_reg)
@@ -533,9 +543,10 @@ impl ModuleInlining {
 
                 // Rename destination register
                 if let Some(dst) = new_instr.def_reg()
-                    && let Some(new_dst) = register_mapping.get(dst) {
-                        self.rename_instruction_dst(&mut new_instr, new_dst.clone());
-                    }
+                    && let Some(new_dst) = register_mapping.get(dst)
+                {
+                    self.rename_instruction_dst(&mut new_instr, new_dst.clone());
+                }
 
                 // Rename used registers
                 self.rename_instruction_uses(&mut new_instr, &register_mapping, param_mapping)?;
@@ -577,17 +588,18 @@ impl ModuleInlining {
                     if let Instruction::Call {
                         ret: Some(ret_reg), ..
                     } = call_instr
-                        && let Some(return_val) = value {
-                            // Create assignment: ret_reg = return_val
-                            let assign_instr = Instruction::IntBinary {
-                                op: crate::mir::IntBinOp::Add,
-                                ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
-                                dst: ret_reg.clone(),
-                                lhs: return_val.clone(),
-                                rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
-                            };
-                            new_instructions.push(assign_instr);
-                        }
+                        && let Some(return_val) = value
+                    {
+                        // Create assignment: ret_reg = return_val
+                        let assign_instr = Instruction::IntBinary {
+                            op: crate::mir::IntBinOp::Add,
+                            ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                            dst: ret_reg.clone(),
+                            lhs: return_val.clone(),
+                            rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                        };
+                        new_instructions.push(assign_instr);
+                    }
                 }
             }
         }

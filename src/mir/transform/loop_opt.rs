@@ -61,20 +61,21 @@ impl LoopInvariantCodeMotion {
                     // Check if either target is a predecessor (simple loop detection)
                     if self.is_back_edge(func, &block.label, true_target)
                         && let Some(loop_info) = self.analyze_loop(func, &block.label, true_target)
-                        {
-                            loops.push(loop_info);
-                        }
+                    {
+                        loops.push(loop_info);
+                    }
                     if self.is_back_edge(func, &block.label, false_target)
                         && let Some(loop_info) = self.analyze_loop(func, &block.label, false_target)
-                        {
-                            loops.push(loop_info);
-                        }
+                    {
+                        loops.push(loop_info);
+                    }
                 }
                 if let Instruction::Jmp { target } = instr
                     && self.is_back_edge(func, &block.label, target)
-                        && let Some(loop_info) = self.analyze_loop(func, &block.label, target) {
-                            loops.push(loop_info);
-                        }
+                    && let Some(loop_info) = self.analyze_loop(func, &block.label, target)
+                {
+                    loops.push(loop_info);
+                }
             }
         }
 
