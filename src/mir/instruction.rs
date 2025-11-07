@@ -394,6 +394,12 @@ pub enum Instruction {
         ret: Option<Register>,
     },
 
+    // Tail call - function call in tail position that can be optimized to a jump
+    TailCall {
+        name: String,
+        args: Vec<Operand>,
+    },
+
     Ret {
         value: Option<Operand>,
     },
@@ -499,7 +505,7 @@ impl Instruction {
             }
             Instruction::Br { cond, .. } => regs.push(cond),
             Instruction::Switch { value, .. } => regs.push(value),
-            Instruction::Call { args, .. } => {
+            Instruction::Call { args, .. } | Instruction::TailCall { args, .. } => {
                 for arg in args {
                     if let Operand::Register(r) = arg {
                         regs.push(r);
@@ -527,6 +533,7 @@ impl Instruction {
                 | Instruction::Br { .. }
                 | Instruction::Switch { .. }
                 | Instruction::Ret { .. }
+                | Instruction::TailCall { .. }
                 | Instruction::Unreachable
         )
     }
@@ -658,6 +665,16 @@ impl fmt::Display for Instruction {
                 } else {
                     write!(f, "call {}(", name)?;
                 }
+                for (i, a) in args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", a)?;
+                }
+                write!(f, ")")
+            }
+            Instruction::TailCall { name, args } => {
+                write!(f, "tailcall {}(", name)?;
                 for (i, a) in args.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
