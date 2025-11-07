@@ -105,7 +105,7 @@ pub fn generate_function<'a, W: Write>(
         {
             if i < ARG_REGISTERS.len() {
                 writeln!(writer, "        add x10, x29, #{}", offset)?;
-                // POTENTIAL BUG: No validation that ARG_REGISTERS[i] is a valid register string
+                // Validity ensured by bounds check and static ARG_REGISTERS array
                 writeln!(
                     writer,
                     "        str {}, [x10] // Spill arg {}",
