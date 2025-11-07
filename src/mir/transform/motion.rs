@@ -58,7 +58,13 @@ impl CopyPropagation {
                 changed = true;
             }
 
-            // Then, check if this instruction defines a copy that we should track
+            // Then, handle register definitions: invalidate mappings for redefined registers
+            if let Some(def_reg) = new_instr.def_reg() {
+                // Remove any existing mapping for this register since it's being redefined
+                value_map.remove(def_reg);
+            }
+
+            // Finally, check if this instruction defines a copy that we should track
             if let Instruction::IntBinary {
                 op: crate::mir::IntBinOp::Add,
                 dst,
@@ -421,6 +427,114 @@ impl CommonSubexpressionElimination {
                 Some(format!("FloatCmp_{:?}_{:?}_{:?}", op, lhs, rhs))
             }
             _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg};
+
+    #[test]
+    fn test_copy_propagation_basic() {
+        // Test basic copy propagation within a block
+        let func = FunctionBuilder::new("test")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            // Copy: v1 = v0 + 0
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            // Should be replaced: v2 = v1 + 0 -> v2 = v0 + 0
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(2).into(),
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(2).into())),
+            })
+            .build();
+
+        let mut func = func;
+        let cp = CopyPropagation::default();
+        let changed = cp.apply(&mut func).expect("Copy propagation should succeed");
+
+        assert!(changed);
+        let entry = func.get_block("entry").expect("entry block exists");
+        assert_eq!(entry.instructions.len(), 3);
+
+        // Check that the second instruction was modified to use v0 directly
+        match &entry.instructions[1] {
+            Instruction::IntBinary { dst, lhs, rhs, .. } => {
+                assert_eq!(dst, &VirtualReg::gpr(2).into());
+                assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(0).into()));
+                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            }
+            _ => panic!("Expected IntBinary instruction"),
+        }
+    }
+
+    #[test]
+    fn test_copy_propagation_register_redefinition() {
+        // Test that copy mappings are invalidated when registers are redefined
+        let func = FunctionBuilder::new("test")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            // Copy: v1 = v0 + 0
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            // Redefine v1: v1 = v3 + v4 (not a copy)
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(3).into()),
+                rhs: Operand::Register(VirtualReg::gpr(4).into()),
+            })
+            // Should NOT be replaced: v2 = v1 + 0 should stay as v2 = v1 + 0
+            // (not become v2 = v0 + 0 since v1 was redefined)
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(2).into(),
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(2).into())),
+            })
+            .build();
+
+        let mut func = func;
+        let cp = CopyPropagation::default();
+        let changed = cp.apply(&mut func).expect("Copy propagation should succeed");
+
+        // Should have made changes (first copy propagation), but not invalid ones
+        assert!(changed);
+        let entry = func.get_block("entry").expect("entry block exists");
+        assert_eq!(entry.instructions.len(), 4);
+
+        // Check that the third instruction was NOT modified (still uses v1)
+        match &entry.instructions[2] {
+            Instruction::IntBinary { dst, lhs, rhs, .. } => {
+                assert_eq!(dst, &VirtualReg::gpr(2).into());
+                assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(1).into())); // Should still be v1
+                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            }
+            _ => panic!("Expected IntBinary instruction"),
         }
     }
 }
