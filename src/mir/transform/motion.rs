@@ -434,7 +434,9 @@ impl CommonSubexpressionElimination {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg};
+    use crate::mir::{
+        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
+    };
 
     #[test]
     fn test_copy_propagation_basic() {
@@ -465,7 +467,9 @@ mod tests {
 
         let mut func = func;
         let cp = CopyPropagation::default();
-        let changed = cp.apply(&mut func).expect("Copy propagation should succeed");
+        let changed = cp
+            .apply(&mut func)
+            .expect("Copy propagation should succeed");
 
         assert!(changed);
         let entry = func.get_block("entry").expect("entry block exists");
@@ -520,7 +524,9 @@ mod tests {
 
         let mut func = func;
         let cp = CopyPropagation::default();
-        let changed = cp.apply(&mut func).expect("Copy propagation should succeed");
+        let changed = cp
+            .apply(&mut func)
+            .expect("Copy propagation should succeed");
 
         // Should have made changes (first copy propagation), but not invalid ones
         assert!(changed);
