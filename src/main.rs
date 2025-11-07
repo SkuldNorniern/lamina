@@ -273,26 +273,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Parse IR and lower to MIR, then exit early
         let ir_mod = lamina::parser::parse_module(&ir_source)
             .map_err(|e| format!("IR parse failed: {}", e))?;
-        let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-            .map_err(|e| format!("MIR lowering failed: {}", e))?;
+        let mut mir_mod =
+            lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
+                .map_err(|e| format!("MIR lowering failed: {}", e))?;
 
         // Apply MIR optimizations
         if options.opt_level > 0 {
             let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
-            let transform_stats = pipeline.apply_to_module(&mut mir_mod)
+            let transform_stats = pipeline
+                .apply_to_module(&mut mir_mod)
                 .map_err(|e| format!("MIR optimization failed: {}", e))?;
 
             // Apply function inlining at higher optimization levels
             let mut inlined_count = 0;
             if options.opt_level >= 3 {
                 let inliner = lamina::mir::ModuleInlining::new();
-                inlined_count = inliner.inline_functions(&mut mir_mod)
+                inlined_count = inliner
+                    .inline_functions(&mut mir_mod)
                     .map_err(|e| format!("Function inlining failed: {}", e))?;
             }
 
             if options.verbose {
-                println!("[VERBOSE] MIR optimizations: {} transforms run, {} made changes, {} functions inlined",
-                         transform_stats.transforms_run, transform_stats.transforms_changed, inlined_count);
+                println!(
+                    "[VERBOSE] MIR optimizations: {} transforms run, {} made changes, {} functions inlined",
+                    transform_stats.transforms_run,
+                    transform_stats.transforms_changed,
+                    inlined_count
+                );
             }
         }
         if options.emit_mir {
