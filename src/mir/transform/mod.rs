@@ -217,8 +217,8 @@ mod tests {
     #[test]
     fn test_transform_pipeline_add_transform() {
         let pipeline = TransformPipeline::new()
-            .add_transform(Peephole::default())
-            .add_transform(DeadCodeElimination::default());
+            .add_transform(Peephole)
+            .add_transform(DeadCodeElimination);
 
         assert_eq!(pipeline.len(), 2);
         assert!(!pipeline.is_empty());
@@ -253,7 +253,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let pipeline = TransformPipeline::new().add_transform(Peephole::default());
+        let pipeline = TransformPipeline::new().add_transform(Peephole);
 
         // Should not fail
         let stats = pipeline.apply_to_function(&mut func).unwrap();
@@ -265,7 +265,7 @@ mod tests {
         // Create a simple module
         let module = crate::mir::Module::new("test");
         let mut module = module;
-        let pipeline = TransformPipeline::new().add_transform(Peephole::default());
+        let pipeline = TransformPipeline::new().add_transform(Peephole);
 
         // Should not fail
         let stats = pipeline.apply_to_module(&mut module).unwrap();
