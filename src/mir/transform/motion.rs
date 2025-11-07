@@ -205,8 +205,8 @@ impl ConstantFolding {
     fn try_fold_constants(&self, instr: &mut Instruction) -> bool {
         if let Instruction::IntBinary {
                 op, dst, lhs, rhs, ..
-            } = instr {
-            if let (Some(lhs_val), Some(rhs_val)) =
+            } = instr
+            && let (Some(lhs_val), Some(rhs_val)) =
                 (self.extract_constant(lhs), self.extract_constant(rhs))
             {
                 let result = match op {
@@ -230,7 +230,6 @@ impl ConstantFolding {
                 };
                 return true;
             }
-        }
         false
     }
 
