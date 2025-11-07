@@ -213,6 +213,7 @@ impl Peephole {
         // Constant folding with safety check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
             && c2 != 0
+            && !(signed && c1 == i64::MIN && c2 == -1) // Overflow check for i64::MIN / -1
         {
             let result = if signed {
                 c1 / c2
@@ -711,5 +712,26 @@ mod tests {
                 panic!("Expected IntBinary instruction");
             }
         }
+    }
+
+    #[test]
+    fn test_signed_division_overflow_prevention() {
+        // Test that i64::MIN / -1 is prevented (would overflow)
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::SDiv,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(i64::MIN)),
+            rhs: Operand::Immediate(Immediate::I64(-1)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        // Should NOT change due to overflow prevention
+        assert!(!changed);
     }
 }
