@@ -156,6 +156,17 @@ fn emit_block<W: Write>(
                 let is32 = ty.size_bytes() == 4;
                 let dl = if is32 { w_alias(s_d) } else { x_alias(s_d) };
                 let rl = if is32 { w_alias(s_l) } else { x_alias(s_l) };
+                // Track if lhs is a register (for potential slot copying)
+                let lhs_is_reg = matches!(lhs, crate::mir::Operand::Register(_));
+                let lhs_reg = if lhs_is_reg {
+                    if let crate::mir::Operand::Register(r) = lhs {
+                        Some(r.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
                 // Delay materializing rhs when we can use an immediate form (for shifts)
                 match op {
                     crate::mir::IntBinOp::Add => {
@@ -809,10 +820,33 @@ fn materialize_address<W: Write>(
             // Materialize base value (should be an address) into dest
             load_reg_to(w, base, dest, frame, ra)?;
             if *offset != 0 {
-                if *offset > 0 {
-                    writeln!(w, "    add {}, {}, #{}", dest, dest, offset)?;
+                let off_val = *offset as i64; // Sign-extend i16 to i64 for range checking
+                // AArch64 add/sub with immediate supports 12-bit signed immediates (-2048 to 2047)
+                if (0..=4095).contains(&off_val) {
+                    writeln!(w, "    add {}, {}, #{}", dest, dest, off_val)?;
+                } else if off_val < 0 && -off_val <= 4095 {
+                    writeln!(w, "    sub {}, {}, #{}", dest, dest, -off_val)?;
                 } else {
-                    writeln!(w, "    sub {}, {}, #{}", dest, dest, -(*offset as i32))?;
+                    // Offset too large, materialize in register
+                    let oreg = ra.alloc_scratch().unwrap_or("x20");
+                    if oreg == dest {
+                        // Need a different register
+                        if let Some(other) = ra.alloc_scratch() {
+                            let temp = other;
+                            emit_mov_imm64(w, temp, off_val as u64)?;
+                            writeln!(w, "    add {}, {}, {}", dest, dest, temp)?;
+                            ra.free_scratch(temp);
+                        } else {
+                            // Fallback: use x20 if dest is not x20
+                            let temp = if dest != "x20" { "x20" } else { "x19" };
+                            emit_mov_imm64(w, temp, off_val as u64)?;
+                            writeln!(w, "    add {}, {}, {}", dest, dest, temp)?;
+                        }
+                    } else {
+                        emit_mov_imm64(w, oreg, off_val as u64)?;
+                        writeln!(w, "    add {}, {}, {}", dest, dest, oreg)?;
+                        ra.free_scratch(oreg);
+                    }
                 }
             }
         }
@@ -846,10 +880,25 @@ fn materialize_address<W: Write>(
             writeln!(w, "    add {}, {}, {}", dest, dest, idx)?;
             ra.free_scratch(idx);
             if *offset != 0 {
-                if *offset > 0 {
-                    writeln!(w, "    add {}, {}, #{}", dest, dest, offset)?;
+                let off_val = *offset as i64; // Sign-extend i8 to i64 for range checking
+                // AArch64 add/sub with immediate supports 12-bit signed immediates (-2048 to 2047)
+                // i8 is always within this range, but check for consistency
+                if (0..=4095).contains(&off_val) {
+                    writeln!(w, "    add {}, {}, #{}", dest, dest, off_val)?;
+                } else if off_val < 0 && -off_val <= 4095 {
+                    writeln!(w, "    sub {}, {}, #{}", dest, dest, -off_val)?;
                 } else {
-                    writeln!(w, "    sub {}, {}, #{}", dest, dest, -(*offset as i32))?;
+                    // Offset too large (shouldn't happen with i8, but handle for safety)
+                    let oreg = ra.alloc_scratch().unwrap_or("x20");
+                    if oreg == dest {
+                        let temp = if dest != "x20" { "x20" } else { "x19" };
+                        emit_mov_imm64(w, temp, off_val as u64)?;
+                        writeln!(w, "    add {}, {}, {}", dest, dest, temp)?;
+                    } else {
+                        emit_mov_imm64(w, oreg, off_val as u64)?;
+                        writeln!(w, "    add {}, {}, {}", dest, dest, oreg)?;
+                        ra.free_scratch(oreg);
+                    }
                 }
             }
         }
