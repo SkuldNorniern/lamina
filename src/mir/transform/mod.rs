@@ -1,6 +1,7 @@
 mod deadcode;
 mod inline;
 mod loop_opt;
+mod memory;
 mod motion;
 mod peephole;
 mod strength_reduction;
@@ -10,6 +11,7 @@ mod tail_call;
 pub use deadcode::DeadCodeElimination;
 pub use inline::{FunctionInlining, ModuleInlining};
 pub use loop_opt::{LoopFusion, LoopInvariantCodeMotion, LoopUnrolling};
+pub use memory::MemoryOptimization;
 pub use motion::{CommonSubexpressionElimination, ConstantFolding, CopyPropagation};
 pub use peephole::Peephole;
 pub use strength_reduction::StrengthReduction;
@@ -139,6 +141,7 @@ impl TransformPipeline {
             pipeline = pipeline.add_transform(ConstantFolding);
             pipeline = pipeline.add_transform(CopyPropagation);
             pipeline = pipeline.add_transform(CommonSubexpressionElimination);
+            pipeline = pipeline.add_transform(MemoryOptimization);
         }
 
         // TODO: Add more transforms as they are implemented
