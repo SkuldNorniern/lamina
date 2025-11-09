@@ -139,6 +139,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
+        // Canonicalize: prefer register on LHS, immediate on RHS
+        match (&lhs, &rhs) {
+            (Operand::Immediate(_), Operand::Register(_)) => {
+                core::mem::swap(lhs, rhs);
+                return true;
+            }
+            _ => {}
+        }
         // x + 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
             return false; // No change made
@@ -190,6 +198,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
+        // Canonicalize: prefer register on LHS, immediate on RHS
+        match (&lhs, &rhs) {
+            (Operand::Immediate(_), Operand::Register(_)) => {
+                core::mem::swap(lhs, rhs);
+                return true;
+            }
+            _ => {}
+        }
         // x * 1 => x (already in optimal form, no change needed)
         if is_one(rhs_imm) {
             return false; // No change made
@@ -278,6 +294,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
+        // Canonicalize: prefer register on LHS, immediate on RHS
+        match (&lhs, &rhs) {
+            (Operand::Immediate(_), Operand::Register(_)) => {
+                core::mem::swap(lhs, rhs);
+                return true;
+            }
+            _ => {}
+        }
         // x & -1 => x (already in optimal form, no change needed)
         if is_all_ones(rhs_imm) {
             return false; // No change made
@@ -309,6 +333,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
+        // Canonicalize: prefer register on LHS, immediate on RHS
+        match (&lhs, &rhs) {
+            (Operand::Immediate(_), Operand::Register(_)) => {
+                core::mem::swap(lhs, rhs);
+                return true;
+            }
+            _ => {}
+        }
         // x | 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
             return false; // No change made
@@ -334,6 +366,14 @@ impl Peephole {
         lhs_imm: Option<i64>,
         rhs_imm: Option<i64>,
     ) -> bool {
+        // Canonicalize: prefer register on LHS, immediate on RHS
+        match (&lhs, &rhs) {
+            (Operand::Immediate(_), Operand::Register(_)) => {
+                core::mem::swap(lhs, rhs);
+                return true;
+            }
+            _ => {}
+        }
         // x ^ 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
             return false; // No change made
