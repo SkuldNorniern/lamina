@@ -939,6 +939,22 @@ fn generate_optimized_binary<'a, W: Write>(
                     "",
                 );
             }
+            &BinaryOp::Rem => {
+                // Remainder is complex, fall back to regular implementation
+                return generate_instruction(
+                    &Instruction::Binary {
+                        op: op.clone(),
+                        result,
+                        ty: *ty,
+                        lhs: lhs.clone(),
+                        rhs: rhs.clone(),
+                    },
+                    writer,
+                    state,
+                    func_ctx,
+                    "",
+                );
+            }
         };
 
         // Ultra-fast register-to-register operations
@@ -983,6 +999,13 @@ fn generate_optimized_binary<'a, W: Write>(
             BinaryOp::Div => {
                 if *rhs_val != 0 {
                     lhs_val / rhs_val
+                } else {
+                    0
+                }
+            }
+            &BinaryOp::Rem => {
+                if *rhs_val != 0 {
+                    lhs_val % rhs_val
                 } else {
                     0
                 }
@@ -1034,6 +1057,22 @@ fn generate_optimized_binary<'a, W: Write>(
             }
             BinaryOp::Div => {
                 // Fall back to regular division
+                return generate_instruction(
+                    &Instruction::Binary {
+                        op: op.clone(),
+                        result,
+                        ty: *ty,
+                        lhs: lhs.clone(),
+                        rhs: rhs.clone(),
+                    },
+                    writer,
+                    state,
+                    func_ctx,
+                    "",
+                );
+            }
+            &BinaryOp::Rem => {
+                // Fall back to regular remainder
                 return generate_instruction(
                     &Instruction::Binary {
                         op: op.clone(),

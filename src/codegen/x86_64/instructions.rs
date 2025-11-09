@@ -387,6 +387,11 @@ pub fn generate_instruction<'a, W: Write>(
                         let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         if rhs_val == 0 { 0 } else { lhs_val / rhs_val }
                     }
+                    &BinaryOp::Rem => {
+                        let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        if rhs_val == 0 { 0 } else { lhs_val % rhs_val }
+                    }
                 };
                 writeln!(
                     writer,
@@ -673,6 +678,80 @@ pub fn generate_instruction<'a, W: Write>(
                         div_instr, rhs_reg
                     )?;
                     // Quotient is now in lhs_reg (%rax or %eax)
+                }
+                &BinaryOp::Rem => {
+                    // Remainder is stored in the remainder register (%rdx or %edx)
+                    // The setup is the same as division
+                    match ty {
+                        PrimitiveType::I8 | PrimitiveType::U8 => {
+                            // For 8-bit remainder, sign extend al to ax (for i8) or zero extend (for u8)
+                            if matches!(ty, PrimitiveType::I8) {
+                                writeln!(writer, "        cbw # Sign extend %al to %ax")?;
+                            } else {
+                                // Zero extend by moving to ax
+                                writeln!(
+                                    writer,
+                                    "        movzbw %al, %ax # Zero extend %al to %ax"
+                                )?;
+                            }
+                            // Divide ax by rhs_reg (8-bit)
+                            writeln!(writer, "        idivb {} # Signed 8-bit division", rhs_reg)?;
+                            // Remainder is in %ah, store it
+                            writeln!(
+                                writer,
+                                "        {} %ah, {} # Store 8-bit remainder result",
+                                mov_instr, dest_asm
+                            )?;
+                            return Ok(());
+                        }
+                        PrimitiveType::I16 | PrimitiveType::U16 => {
+                            // For 16-bit remainder, sign extend ax to dx:ax (for i16) or zero extend (for u16)
+                            if matches!(ty, PrimitiveType::I16) {
+                                writeln!(writer, "        cwd # Sign extend %ax to %dx:%ax")?;
+                            } else {
+                                // Zero extend by moving to dx:ax
+                                writeln!(
+                                    writer,
+                                    "        movzwl %ax, %eax # Zero extend %ax to %eax"
+                                )?;
+                                writeln!(writer, "        cdq # Sign extend %eax to %edx:%eax")?;
+                            }
+                            // Divide dx:ax by rhs_reg (16-bit)
+                            writeln!(writer, "        idivw {} # Signed 16-bit division", rhs_reg)?;
+                            // Remainder is in %dx, store it
+                            writeln!(
+                                writer,
+                                "        {} %dx, {} # Store 16-bit remainder result",
+                                mov_instr, dest_asm
+                            )?;
+                            return Ok(());
+                        }
+                        PrimitiveType::I32 => {
+                            writeln!(writer, "        cltd # Sign extend %eax to %edx")?
+                        }
+                        PrimitiveType::I64 | PrimitiveType::Ptr => {
+                            writeln!(writer, "        cqto # Sign extend %rax to %rdx")?
+                        }
+                        _ => unreachable!(),
+                    }
+                    // Divide rdx:rax by rhs register
+                    writeln!(
+                        writer,
+                        "        {} {} # Signed division for remainder",
+                        div_instr, rhs_reg
+                    )?;
+                    // Remainder is now in remainder register (%rdx or %edx)
+                    let remainder_reg = match ty {
+                        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::I16 | PrimitiveType::U16 | PrimitiveType::I32 => "%edx",
+                        PrimitiveType::I64 | PrimitiveType::Ptr => "%rdx",
+                        _ => unreachable!(),
+                    };
+                    // Store the result
+                    writeln!(
+                        writer,
+                        "        {} {}, {} # Store remainder result",
+                        mov_instr, remainder_reg, dest_asm
+                    )?;
                 }
             };
             // Store result from lhs_reg (need to use correct mov instruction for smaller types)

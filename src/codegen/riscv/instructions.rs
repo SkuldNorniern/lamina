@@ -561,6 +561,7 @@ fn binary_i32<W: Write>(
         BinaryOp::Sub => writeln!(writer, "    subw t2, t0, t1")?,
         BinaryOp::Mul => writeln!(writer, "    mulw t2, t0, t1")?,
         BinaryOp::Div => writeln!(writer, "    divw t2, t0, t1")?,
+        &BinaryOp::Rem => writeln!(writer, "    // TODO: implement remainder")?,
     }
     store_to_location(writer, "t2", dest, state)
 }
@@ -580,6 +581,7 @@ fn binary_i64<W: Write>(
         BinaryOp::Sub => writeln!(writer, "    sub t2, t0, t1")?,
         BinaryOp::Mul => writeln!(writer, "    mul t2, t0, t1")?,
         BinaryOp::Div => writeln!(writer, "    div t2, t0, t1")?,
+        &BinaryOp::Rem => writeln!(writer, "    // TODO: implement remainder")?,
     }
     store_to_location(writer, "t2", dest, state)
 }
