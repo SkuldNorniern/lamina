@@ -183,6 +183,11 @@ impl StrengthReduction {
             *rhs = Operand::Immediate(Immediate::I64((1i64 << power_of_2) - 1));
             return true;
         }
+
+        // For small constants, we could potentially use multiplication-based modulo
+        // x % c = x - (x / c) * c, but this might not always be faster
+        // For now, keep it simple and only optimize powers of 2
+
         false
     }
 }
