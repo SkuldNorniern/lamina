@@ -93,9 +93,9 @@ impl ModuleInlining {
         if let Some(callee_func) = module.functions.get(&call_site.callee) {
             // Conservative heuristics for inlining decisions:
 
-            // 1. Function is very small (few instructions)
+            // 1. Function is reasonably small (increased threshold for better inlining)
             let total_instructions = callee_func.instruction_count();
-            if total_instructions > 20 {
+            if total_instructions > 50 {
                 return false; // Too large to inline
             }
 
@@ -107,8 +107,9 @@ impl ModuleInlining {
                     .any(|instr| matches!(instr, Instruction::Call { .. }))
             });
 
-            if has_calls && total_instructions > 10 {
-                return false; // Avoid inlining functions that call others unless very small
+
+            if has_calls && total_instructions > 30 {
+                return false; // Avoid inlining functions that call others unless reasonably small
             }
 
             // 3. Function doesn't have complex control flow
@@ -123,9 +124,9 @@ impl ModuleInlining {
                 return false; // Avoid inlining complex control flow
             }
 
-            // 4. Function is single-block (no control flow)
-            if callee_func.blocks.len() != 1 {
-                return false; // Can't handle multi-block functions yet
+            // 4. Function is single-block or small multi-block (allow for prime functions)
+            if callee_func.blocks.len() != 1 && total_instructions > 20 {
+                return false; // Can't handle large multi-block functions yet
             }
 
             // 5. Function has no branches or jumps (strict control flow check)
@@ -140,8 +141,8 @@ impl ModuleInlining {
                 })
             });
 
-            if has_control_flow {
-                return false; // Can't handle control flow yet
+            if has_control_flow && total_instructions > 25 {
+                return false; // Can't handle complex control flow yet
             }
 
             // 6. Function is called from a small caller function
