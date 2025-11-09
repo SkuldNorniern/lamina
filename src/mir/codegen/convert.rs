@@ -213,6 +213,13 @@ fn convert_instruction<'a>(
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
+                (IRBin::Rem, _) => Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::SRem,
+                    ty: mir_ty,
+                    dst: dst.clone(),
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
             };
             // Now update mapping for the result name to the newly allocated destination
             var_to_reg.insert(
