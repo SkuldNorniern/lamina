@@ -854,7 +854,7 @@ fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>,
 
         // Parse based on opcode
         match opcode_str {
-            "add" | "sub" | "mul" | "div" => parse_binary_op(state, result, opcode_str),
+            "add" | "sub" | "mul" | "div" | "rem" => parse_binary_op(state, result, opcode_str),
             "eq" | "ne" | "gt" | "ge" | "lt" | "le" => parse_cmp_op(state, result, opcode_str),
             "zext" => parse_zext(state, result),
             "alloc" => parse_alloc(state, result),
@@ -938,6 +938,7 @@ fn parse_binary_op<'a>(
         "sub" => BinaryOp::Sub,
         "mul" => BinaryOp::Mul,
         "div" => BinaryOp::Div,
+        "rem" => BinaryOp::Rem,
         _ => unreachable!(), // Should be checked before calling
     };
     let ty = parse_primitive_type_suffix(state)?;

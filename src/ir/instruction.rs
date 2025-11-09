@@ -79,7 +79,9 @@ pub enum BinaryOp {
     /// Multiplication: `result = lhs * rhs`
     Mul,
     /// Division: `result = lhs / rhs`
-    Div, // Add more as needed (SDiv, UDiv, Rem, etc.)
+    Div,
+    /// Remainder: `result = lhs % rhs`
+    Rem,
 }
 
 /// Comparison operations that produce boolean results.
@@ -293,6 +295,7 @@ impl fmt::Display for BinaryOp {
                 BinaryOp::Sub => "sub",
                 BinaryOp::Mul => "mul",
                 BinaryOp::Div => "div",
+                BinaryOp::Rem => "rem",
             }
         )
     }
@@ -477,6 +480,7 @@ mod tests {
         assert_eq!(format!("{}", BinaryOp::Sub), "sub");
         assert_eq!(format!("{}", BinaryOp::Mul), "mul");
         assert_eq!(format!("{}", BinaryOp::Div), "div");
+        assert_eq!(format!("{}", BinaryOp::Rem), "rem");
     }
 
     #[test]
