@@ -58,21 +58,21 @@ impl LoopInvariantCodeMotion {
                     ..
                 } = instr
                 {
-                    // Check if either target is a predecessor (simple loop detection)
+                    // Check for back edges: target comes before source in block order
                     if self.is_back_edge(func, &block.label, true_target)
-                        && let Some(loop_info) = self.analyze_loop(func, &block.label, true_target)
+                        && let Some(loop_info) = self.analyze_loop(func, true_target, &block.label)
                     {
                         loops.push(loop_info);
                     }
                     if self.is_back_edge(func, &block.label, false_target)
-                        && let Some(loop_info) = self.analyze_loop(func, &block.label, false_target)
+                        && let Some(loop_info) = self.analyze_loop(func, false_target, &block.label)
                     {
                         loops.push(loop_info);
                     }
                 }
                 if let Instruction::Jmp { target } = instr
                     && self.is_back_edge(func, &block.label, target)
-                    && let Some(loop_info) = self.analyze_loop(func, &block.label, target)
+                    && let Some(loop_info) = self.analyze_loop(func, target, &block.label)
                 {
                     loops.push(loop_info);
                 }
@@ -97,32 +97,49 @@ impl LoopInvariantCodeMotion {
         &self,
         func: &Function,
         header: &str,
-        back_edge_target: &str,
+        back_edge_source: &str,
     ) -> Option<LoopInfo> {
-        // Find all blocks in the loop
+        // Natural loop identification: find all blocks that can reach the back edge source
+        // and are dominated by the header (simplified approximation)
         let mut loop_blocks = HashSet::new();
-        let mut to_visit = vec![header.to_string()];
+        let mut to_visit = vec![back_edge_source.to_string()];
+        let mut visited = HashSet::new();
 
+        // First, collect all blocks that can reach the back edge source
         while let Some(block_label) = to_visit.pop() {
-            if !loop_blocks.contains(&block_label) {
-                loop_blocks.insert(block_label.clone());
+            if visited.contains(&block_label) {
+                continue;
+            }
+            visited.insert(block_label.clone());
 
-                // Find predecessors and successors
-                for block in &func.blocks {
-                    if self.has_edge_to(func, &block.label, &block_label) {
-                        to_visit.push(block.label.clone());
-                    }
+            // Add this block to the loop if it's between header and back edge source
+            // (simplified: just add all blocks we can reach from back edge source)
+            loop_blocks.insert(block_label.clone());
+
+            // Find predecessors (blocks that can reach this block)
+            for block in &func.blocks {
+                if self.has_edge_to(func, &block.label, &block_label) {
+                    to_visit.push(block.label.clone());
                 }
             }
         }
 
-        if loop_blocks.is_empty() {
+        // Add the header if not already included
+        loop_blocks.insert(header.to_string());
+
+        // Basic sanity check: ensure we have at least header and back edge source
+        if !loop_blocks.contains(header) || !loop_blocks.contains(back_edge_source) {
+            return None;
+        }
+
+        // Limit loop size to prevent pathological cases
+        if loop_blocks.len() > 50 {
             return None;
         }
 
         Some(LoopInfo {
             header: header.to_string(),
-            back_edge_target: back_edge_target.to_string(),
+            back_edge_target: back_edge_source.to_string(), // Note: this field is misnamed in the struct
             blocks: loop_blocks,
         })
     }
