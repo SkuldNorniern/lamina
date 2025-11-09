@@ -79,6 +79,10 @@ impl LoopInvariantCodeMotion {
             }
         }
 
+        // Remove duplicates (same loop found multiple ways)
+        loops.sort_by(|a, b| a.header.cmp(&b.header));
+        loops.dedup_by(|a, b| a.header == b.header);
+
         loops
     }
 
@@ -189,7 +193,9 @@ impl LoopInvariantCodeMotion {
             }
 
             for (instr_idx, instr) in block.instructions.iter().enumerate() {
-                if self.is_invariant_instruction(func, loop_info, instr) {
+                // Use both the precise check and the heuristic to catch more invariants
+                if self.is_invariant_instruction(func, loop_info, instr)
+                    || self.is_likely_invariant_instruction(func, loop_info, instr) {
                     // Store as (block_idx, instr_idx) tuple to avoid overflow
                     invariant.push((block_idx, instr_idx));
                 }
@@ -223,6 +229,52 @@ impl LoopInvariantCodeMotion {
             operands_invariant && no_side_effects
         } else {
             false
+        }
+    }
+
+    /// Check if an instruction is likely to be loop invariant based on common patterns
+    /// This is a heuristic to catch more invariant instructions
+    fn is_likely_invariant_instruction(
+        &self,
+        func: &Function,
+        loop_info: &LoopInfo,
+        instr: &Instruction,
+    ) -> bool {
+        match instr {
+            // Constant loads are always invariant
+            Instruction::Load { addr, .. } => {
+                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr {
+                    // If base is defined outside loop, it's invariant (offset is always constant)
+                    self.is_invariant_register(func, loop_info, base)
+                } else {
+                    false
+                }
+            }
+            // Arithmetic with constants and loop-invariant registers
+            Instruction::IntBinary { lhs, rhs, .. } => {
+                let lhs_invariant = match lhs {
+                    crate::mir::Operand::Register(reg) => self.is_invariant_register(func, loop_info, reg),
+                    crate::mir::Operand::Immediate(_) => true,
+                };
+                let rhs_invariant = match rhs {
+                    crate::mir::Operand::Register(reg) => self.is_invariant_register(func, loop_info, reg),
+                    crate::mir::Operand::Immediate(_) => true,
+                };
+                lhs_invariant && rhs_invariant
+            }
+            // Comparisons with constants and loop-invariant registers
+            Instruction::IntCmp { lhs, rhs, .. } => {
+                let lhs_invariant = match lhs {
+                    crate::mir::Operand::Register(reg) => self.is_invariant_register(func, loop_info, reg),
+                    crate::mir::Operand::Immediate(_) => true,
+                };
+                let rhs_invariant = match rhs {
+                    crate::mir::Operand::Register(reg) => self.is_invariant_register(func, loop_info, reg),
+                    crate::mir::Operand::Immediate(_) => true,
+                };
+                lhs_invariant && rhs_invariant
+            }
+            _ => false,
         }
     }
 
