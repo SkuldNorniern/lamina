@@ -782,6 +782,10 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             BinaryOp::Sub => {
                                 instructions.push(generate::WasmInstruction::Sub(wasm_ty))
                             }
+                            &BinaryOp::Rem => {
+                                // TODO: implement remainder
+                                instructions.push(generate::WasmInstruction::RemS(int_ty.unwrap()))
+                            }
                         }
 
                         generate_result(
