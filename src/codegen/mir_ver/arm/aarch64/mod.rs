@@ -638,19 +638,11 @@ fn emit_block<W: Write>(
                 }
             }
             MirInst::TailCall { name, args } => {
-                // Tail call: prepare arguments, clean up stack frame, and jump (don't return)
-
-                // First, materialize arguments to registers before cleaning up stack
+                // Tail call: pass arguments and jump (don't return)
+                // Pass up to 8 args in x0..x7
                 for (i, a) in args.iter().enumerate().take(8) {
                     emit_materialize_operand(w, a, &format!("x{}", i), frame, ra)?;
                 }
-
-                // Clean up the current function's stack frame (same as epilogue)
-                if frame.frame_size > 0 {
-                    writeln!(w, "    add sp, sp, #{}", frame.frame_size)?;
-                }
-                writeln!(w, "    ldp x29, x30, [sp], #16")?;
-
                 // Resolve symbol: intrinsic stub or platform-mangled function name
                 let target_sym: String = match call_stub(name, os) {
                     Some(sym) => sym.to_string(),
@@ -659,6 +651,12 @@ fn emit_block<W: Write>(
                         _ => name.to_string(),
                     },
                 };
+                // Restore stack frame before tail call
+                if frame.frame_size > 0 {
+                    writeln!(w, "    add sp, sp, #{}", frame.frame_size)?;
+                }
+                // Restore caller's frame pointer and link register
+                writeln!(w, "    ldp x29, x30, [sp], #16")?;
                 // For tail call, use branch instead of branch-and-link
                 writeln!(w, "    b {}", target_sym)?;
                 // Note: No return value handling since tail calls don't return
