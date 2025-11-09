@@ -24,9 +24,13 @@ impl FrameMap {
             }
         }
 
+        // Convert to Vec and sort for deterministic ordering
+        let mut reg_vec: Vec<Register> = regs.into_iter().collect();
+        reg_vec.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+
         let mut slots = HashMap::new();
         let mut offset: i32 = -8;
-        for r in regs.into_iter() {
+        for r in reg_vec {
             if matches!(r, Register::Virtual(_)) {
                 slots.insert(r, offset);
                 offset -= 8;
