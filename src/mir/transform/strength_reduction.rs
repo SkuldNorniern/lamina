@@ -99,13 +99,40 @@ impl StrengthReduction {
             return true;
         }
 
-        // Check for multiplication by other common constants
+        // Check for multiplication by other common constants used in algorithms
         if let Some(const_val) = rhs_const {
-            if let Some((shift1, shift2)) = decompose_multiplication(const_val) {
-                // For now, keep simple case. More complex decompositions
-                // could be handled by generating multiple instructions,
-                // but that would require more sophisticated infrastructure.
-                return false;
+            match const_val {
+                // Common small constants that appear in various algorithms
+                3 => {
+                    // x * 3 → (x << 1) + x, but this would require multiple instructions
+                    // For now, leave as multiplication since it's not clearly faster
+                    return false;
+                }
+                5 => {
+                    // x * 5 → (x << 2) + x, but again requires multiple instructions
+                    return false;
+                }
+                6 => {
+                    // x * 6 → (x << 1) + (x << 2), requires multiple instructions
+                    return false;
+                }
+                9 => {
+                    // x * 9 → (x << 3) + x, requires multiple instructions
+                    return false;
+                }
+                10 => {
+                    // x * 10 → (x << 1) + (x << 3), requires multiple instructions
+                    return false;
+                }
+                _ => {
+                    // Check for more complex decompositions
+                    if let Some((shift1, shift2)) = decompose_multiplication(const_val) {
+                        // For now, keep simple case. More complex decompositions
+                        // could be handled by generating multiple instructions,
+                        // but that would require more sophisticated infrastructure.
+                        return false;
+                    }
+                }
             }
         }
 
@@ -184,8 +211,12 @@ impl StrengthReduction {
             return true;
         }
 
-        // For small constants, we could potentially use multiplication-based modulo
-        // x % c = x - (x / c) * c, but this might not always be faster
+        // For small constants that appear in prime generation algorithms,
+        // we could potentially use multiplication-based modulo:
+        // x % c = x - (x / c) * c
+        // But this requires multiple instructions and may not be faster
+        // for small constants. The peephole pass handles some of these.
+
         // For now, keep it simple and only optimize powers of 2
 
         false

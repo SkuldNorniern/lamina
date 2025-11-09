@@ -106,20 +106,58 @@ impl Peephole {
             IntBinOp::UDiv => self.fold_div(lhs, rhs, lhs_imm, rhs_imm, false),
             IntBinOp::SDiv => self.fold_div(lhs, rhs, lhs_imm, rhs_imm, true),
             IntBinOp::URem => {
-                // Special optimization: x % 2 -> x & 1 (for even/odd checks common in prime generation)
-                if rhs_imm == Some(2) {
-                    *op = IntBinOp::And;
-                    *rhs = Operand::Immediate(Immediate::I64(1));
-                    return true;
+                // Special optimizations: x % c -> x & (c-1) for small powers of 2
+                // Common in prime generation and divisibility testing
+                if let Some(c) = rhs_imm {
+                    if c == 2 {
+                        // x % 2 -> x & 1 (extract LSB for even/odd)
+                        *op = IntBinOp::And;
+                        *rhs = Operand::Immediate(Immediate::I64(1));
+                        return true;
+                    } else if c == 4 {
+                        // x % 4 -> x & 3 (mask bottom 2 bits)
+                        *op = IntBinOp::And;
+                        *rhs = Operand::Immediate(Immediate::I64(3));
+                        return true;
+                    } else if c == 8 {
+                        // x % 8 -> x & 7 (mask bottom 3 bits)
+                        *op = IntBinOp::And;
+                        *rhs = Operand::Immediate(Immediate::I64(7));
+                        return true;
+                    } else if c == 16 {
+                        // x % 16 -> x & 15 (mask bottom 4 bits)
+                        *op = IntBinOp::And;
+                        *rhs = Operand::Immediate(Immediate::I64(15));
+                        return true;
+                    }
                 }
                 self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, false)
             }
             IntBinOp::SRem => {
-                // Special optimization: x % 2 -> x & 1 (for even/odd checks common in prime generation)
-                if rhs_imm == Some(2) {
-                    *op = IntBinOp::And;
-                    *rhs = Operand::Immediate(Immediate::I64(1));
-                    return true;
+                // Special optimizations: x % c -> x & (c-1) for small powers of 2
+                // Common in prime generation and divisibility testing
+                if let Some(c) = rhs_imm {
+                    if c == 2 {
+                        // x % 2 -> x & 1 (extract LSB for even/odd)
+                        *op = IntBinOp::And;
+                        *rhs = Operand::Immediate(Immediate::I64(1));
+                        return true;
+                    } else if c == 4 {
+                        // x % 4 -> x & 3 (mask bottom 2 bits)
+                        *op = IntBinOp::And;
+                        *rhs = Operand::Immediate(Immediate::I64(3));
+                        return true;
+                    } else if c == 8 {
+                        // x % 8 -> x & 7 (mask bottom 3 bits)
+                        *op = IntBinOp::And;
+                        *rhs = Operand::Immediate(Immediate::I64(7));
+                        return true;
+                    } else if c == 16 {
+                        // x % 16 -> x & 15 (mask bottom 4 bits)
+                        *op = IntBinOp::And;
+                        *rhs = Operand::Immediate(Immediate::I64(15));
+                        return true;
+                    }
                 }
                 self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, true)
             }
@@ -476,7 +514,7 @@ impl Peephole {
         let lhs_imm = extract_constant(lhs);
         let rhs_imm = extract_constant(rhs);
 
-        // Constant folding for comparisons
+        // Constant folding for comparisons: replace with constant result using Add of immediates
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
             let result = match op {
                 IntCmpOp::Eq => c1 == c2,
@@ -490,10 +528,26 @@ impl Peephole {
                 IntCmpOp::UGt => (c1 as u64) > (c2 as u64),
                 IntCmpOp::UGe => (c1 as u64) >= (c2 as u64),
             };
-            // Note: We can't actually change the comparison result here since this would
-            // require changing the instruction type. The constant folding should be handled
-            // by later passes that can see the comparison result.
-            return false; // For now, don't modify comparisons
+            // We can't set the destination here, but the caller will rewrite the instruction,
+            // so we return true to indicate change by converting to immediate. The actual
+            // replacement occurs outside; here we just canonicalize operands.
+            *lhs = Operand::Immediate(Immediate::I64(if result { 1 } else { 0 }));
+            *rhs = Operand::Immediate(Immediate::I64(0));
+            return true;
+        }
+
+        // Comparisons of identical registers can be folded
+        if let (Operand::Register(r1), Operand::Register(r2)) = (&*lhs, &*rhs) {
+            if r1 == r2 {
+                // x==x => 1, x!=x => 0, x< x => 0, x<=x => 1, etc.
+                let result = match op {
+                    IntCmpOp::Eq | IntCmpOp::SLe | IntCmpOp::ULe | IntCmpOp::SGe | IntCmpOp::UGe => true,
+                    IntCmpOp::Ne | IntCmpOp::SLt | IntCmpOp::ULt | IntCmpOp::SGt | IntCmpOp::UGt => false,
+                };
+                *lhs = Operand::Immediate(Immediate::I64(if result { 1 } else { 0 }));
+                *rhs = Operand::Immediate(Immediate::I64(0));
+                return true;
+            }
         }
 
         false
