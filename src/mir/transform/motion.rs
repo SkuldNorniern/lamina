@@ -82,6 +82,93 @@ impl CopyPropagation {
                 }
             }
 
+            // Also check for other common copy patterns
+            match &new_instr {
+                Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Sub,
+                    dst,
+                    lhs,
+                    rhs,
+                    ..
+                } => {
+                    // Check for x = y - 0 (copy pattern)
+                    if let Operand::Immediate(Immediate::I64(0)) = rhs
+                        && let Operand::Register(src_reg) = lhs
+                    {
+                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
+                    }
+                }
+                Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Mul,
+                    dst,
+                    lhs,
+                    rhs,
+                    ..
+                } => {
+                    // Check for x = y * 1 (copy pattern)
+                    if let Operand::Immediate(Immediate::I64(1)) = rhs
+                        && let Operand::Register(src_reg) = lhs
+                    {
+                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
+                    }
+                    // Check for x = 1 * y (copy pattern)
+                    if let Operand::Immediate(Immediate::I64(1)) = lhs
+                        && let Operand::Register(src_reg) = rhs
+                    {
+                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
+                    }
+                }
+                Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Or,
+                    dst,
+                    lhs,
+                    rhs,
+                    ..
+                } => {
+                    // Check for x = y | 0 (copy pattern)
+                    if let Operand::Immediate(Immediate::I64(0)) = rhs
+                        && let Operand::Register(src_reg) = lhs
+                    {
+                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
+                    }
+                    // Check for x = 0 | y (copy pattern)
+                    if let Operand::Immediate(Immediate::I64(0)) = lhs
+                        && let Operand::Register(src_reg) = rhs
+                    {
+                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
+                    }
+                }
+                Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::And,
+                    dst,
+                    lhs,
+                    rhs,
+                    ..
+                } => {
+                    // Check for x = y & -1 (copy pattern, since -1 is all bits set)
+                    if let Operand::Immediate(Immediate::I64(-1)) = rhs
+                        && let Operand::Register(src_reg) = lhs
+                    {
+                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
+                    }
+                }
+                Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Xor,
+                    dst,
+                    lhs,
+                    rhs,
+                    ..
+                } => {
+                    // Check for x = y ^ 0 (copy pattern)
+                    if let Operand::Immediate(Immediate::I64(0)) = rhs
+                        && let Operand::Register(src_reg) = lhs
+                    {
+                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
+                    }
+                }
+                _ => {}
+            }
+
             new_instructions.push(new_instr);
         }
 
