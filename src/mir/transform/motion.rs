@@ -454,8 +454,13 @@ impl CommonSubexpressionElimination {
 
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
         let mut changed = false;
+        let loop_headers = compute_back_edge_headers(func);
 
         for block in &mut func.blocks {
+            // Be conservative: skip CSE in loop header blocks
+            if loop_headers.contains(&block.label) {
+                continue;
+            }
             if self.eliminate_in_block(block) {
                 changed = true;
             }
@@ -466,37 +471,79 @@ impl CommonSubexpressionElimination {
 
     fn eliminate_in_block(&self, block: &mut Block) -> bool {
         let mut changed = false;
-        let mut expr_to_reg: HashMap<String, Register> = HashMap::new();
+        // Map from expression key (including operand versions) to (destination register, dest version)
+        let mut expr_to_reg: HashMap<String, (Register, u64)> = HashMap::new();
+        // Per-register version counter to detect intervening re-definitions
+        let mut def_version: HashMap<Register, u64> = HashMap::new();
         let mut instructions = Vec::new();
 
         for instr in &block.instructions {
-            let expr_key = self.expr_key(instr);
+            let expr_key = self.expr_key_with_versions(instr, &def_version);
 
             if let Some(expr_key) = expr_key {
-                if let Some(existing_reg) = expr_to_reg.get(&expr_key) {
+                if let Some((existing_reg, existing_ver)) = expr_to_reg.get(&expr_key) {
                     // Replace this instruction with a copy from the existing register
                     if let Some(dst) = instr.def_reg() {
+                        // Ensure the producing register has not been redefined since
+                        let cur_ver = def_version.get(existing_reg).copied().unwrap_or(0);
+                        if cur_ver != *existing_ver {
+                            // Stale producer, cannot reuse
+                        } else {
                         let instr_type = self.extract_instruction_type(instr);
-                        let copy_instr = Instruction::IntBinary {
-                            op: crate::mir::IntBinOp::Add,
-                            dst: dst.clone(),
-                            ty: instr_type,
-                            lhs: Operand::Register(existing_reg.clone()),
-                            rhs: Operand::Immediate(Immediate::I64(0)),
+                        let copy_instr = match instr_type {
+                            MirType::Scalar(ScalarType::F64) | MirType::Scalar(ScalarType::F32) => {
+                                // For float types, create a float add with 0.0
+                                let zero = match instr_type {
+                                    MirType::Scalar(ScalarType::F64) => Immediate::F64(0.0),
+                                    MirType::Scalar(ScalarType::F32) => Immediate::F32(0.0),
+                                    _ => unreachable!(),
+                                };
+                                Instruction::FloatBinary {
+                                    op: crate::mir::FloatBinOp::FAdd,
+                                    dst: dst.clone(),
+                                    ty: instr_type,
+                                    lhs: Operand::Register(existing_reg.clone()),
+                                    rhs: Operand::Immediate(zero),
+                                }
+                            }
+                            _ => {
+                                // For integer types, use integer add with 0
+                                Instruction::IntBinary {
+                                    op: crate::mir::IntBinOp::Add,
+                                    dst: dst.clone(),
+                                    ty: instr_type,
+                                    lhs: Operand::Register(existing_reg.clone()),
+                                    rhs: Operand::Immediate(Immediate::I64(0)),
+                                }
+                            }
                         };
                         instructions.push(copy_instr);
                         changed = true;
+                        // Destination has now been defined; bump its version
+                        def_version
+                            .entry(dst.clone())
+                            .and_modify(|v| *v += 1)
+                            .or_insert(1);
                         continue;
+                        }
                     }
                 } else {
                     // First time seeing this expression, record it
                     if let Some(dst) = instr.def_reg() {
-                        expr_to_reg.insert(expr_key, dst.clone());
+                        let dst_ver = def_version.get(&dst).copied().unwrap_or(0);
+                        expr_to_reg.insert(expr_key, (dst.clone(), dst_ver));
                     }
                 }
             }
 
             instructions.push(instr.clone());
+            // Bump version for any destination defined by this instruction
+            if let Some(dst) = instr.def_reg() {
+                def_version
+                    .entry(dst.clone())
+                    .and_modify(|v| *v += 1)
+                    .or_insert(1);
+            }
         }
 
         block.instructions = instructions;
@@ -520,6 +567,59 @@ impl CommonSubexpressionElimination {
             _ => None,
         }
     }
+
+    fn expr_key_with_versions(
+        &self,
+        instr: &Instruction,
+        def_version: &HashMap<Register, u64>,
+    ) -> Option<String> {
+        // Base structural key
+        let base = self.expr_key(instr)?;
+        // Append operand versions to ensure no intervening re-definitions occurred
+        let mut parts = vec![base];
+        for reg in instr.use_regs() {
+            let ver = def_version.get(reg).copied().unwrap_or(0);
+            parts.push(format!("{}@{}", reg, ver));
+        }
+        Some(parts.join("|"))
+    }
+}
+
+/// Identify loop headers via simple back-edge detection using block order.
+fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<String> {
+    use std::collections::{HashMap, HashSet};
+    let mut label_index: HashMap<&str, usize> = HashMap::new();
+    for (i, b) in func.blocks.iter().enumerate() {
+        label_index.insert(&b.label, i);
+    }
+    let mut headers: HashSet<String> = HashSet::new();
+    for (i, b) in func.blocks.iter().enumerate() {
+        if let Some(term) = b.instructions.last() {
+            match term {
+                Instruction::Jmp { target } => {
+                    if let Some(&tidx) = label_index.get(target.as_str()) {
+                        if tidx <= i {
+                            headers.insert(target.clone());
+                        }
+                    }
+                }
+                Instruction::Br { true_target, false_target, .. } => {
+                    if let Some(&tidx) = label_index.get(true_target.as_str()) {
+                        if tidx <= i {
+                            headers.insert(true_target.clone());
+                        }
+                    }
+                    if let Some(&fidx) = label_index.get(false_target.as_str()) {
+                        if fidx <= i {
+                            headers.insert(false_target.clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    headers
 }
 
 #[cfg(test)]
