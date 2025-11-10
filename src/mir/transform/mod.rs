@@ -1,18 +1,22 @@
+mod addressing;
+mod cfg;
 mod deadcode;
 mod inline;
 mod loop_opt;
-mod memory;
 mod motion;
 mod peephole;
 mod strength_reduction;
 mod tail_call;
+mod memory;
 
 // Re-export transforms for easy access
+pub use addressing::AddressingCanonicalization;
+pub use cfg::{CfgSimplify, JumpThreading};
 pub use deadcode::DeadCodeElimination;
 pub use inline::{FunctionInlining, ModuleInlining};
 pub use loop_opt::{LoopFusion, LoopInvariantCodeMotion, LoopUnrolling};
-pub use memory::MemoryOptimization;
 pub use motion::{CommonSubexpressionElimination, ConstantFolding, CopyPropagation};
+pub use memory::MemoryOptimization;
 pub use peephole::Peephole;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
@@ -123,32 +127,38 @@ impl TransformPipeline {
             return pipeline; // No transforms at -O0
         }
 
-        // Always include peephole optimizations (fast and safe)
-        pipeline = pipeline.add_transform(Peephole);
-
+        // At -O1: only stable, conservative transforms
         if opt_level >= 1 {
-            pipeline = pipeline.add_transform(DeadCodeElimination);
+            // CFG cleanups
+            pipeline = pipeline.add_transform(CfgSimplify);
+            pipeline = pipeline.add_transform(JumpThreading);
         }
 
+        // At -O2: add experimental but generally safe optimizations
         if opt_level >= 2 {
+            // DCE (conservative intra-block) and memory/addressing
+            pipeline = pipeline.add_transform(DeadCodeElimination);
+            // Memory and addressing canonicalization
+            pipeline = pipeline.add_transform(MemoryOptimization);
+            pipeline = pipeline.add_transform(AddressingCanonicalization);
+            // Loop and call improvements
             pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
-            pipeline = pipeline.add_transform(StrengthReduction);
             pipeline = pipeline.add_transform(TailCallOptimization);
         }
 
+        // At -O3: high-cost transforms
         if opt_level >= 3 {
+            // Local algebraic peepholes and strength reduction at highest level
+            pipeline = pipeline.add_transform(Peephole);
+            pipeline = pipeline.add_transform(StrengthReduction);
             pipeline = pipeline.add_transform(FunctionInlining);
             pipeline = pipeline.add_transform(ConstantFolding);
             pipeline = pipeline.add_transform(CopyPropagation);
             pipeline = pipeline.add_transform(CommonSubexpressionElimination);
-            pipeline = pipeline.add_transform(MemoryOptimization);
+            // Potential future:
+            // pipeline = pipeline.add_transform(LoopUnrolling::default());
+            // pipeline = pipeline.add_transform(LoopFusion::default());
         }
-
-        // TODO: Add more transforms as they are implemented
-        // if opt_level >= 3 {
-        //     pipeline = pipeline.add_transform(LoopUnrolling::default());
-        //     pipeline = pipeline.add_transform(LoopFusion::default());
-        // }
 
         pipeline
     }
@@ -245,11 +255,11 @@ mod tests {
 
         // -O2 should have peephole, dead code elimination, loop invariant code motion, strength reduction, and tail call optimization
         let pipeline = TransformPipeline::default_for_opt_level(2);
-        assert_eq!(pipeline.len(), 5);
+        assert_eq!(pipeline.len(), 6);
 
         // -O3 should have all transforms including function inlining and motion optimizations
         let pipeline = TransformPipeline::default_for_opt_level(3);
-        assert_eq!(pipeline.len(), 9);
+        assert_eq!(pipeline.len(), 13);
     }
 
     #[test]
