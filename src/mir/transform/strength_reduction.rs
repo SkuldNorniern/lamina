@@ -345,7 +345,8 @@ mod tests {
 
     #[test]
     fn test_signed_division_by_power_of_2() {
-        // Test x / 16 → x >> 4
+        // Signed division by powers of 2 is disabled for safety (requires range analysis)
+        // Test that x / 16 does NOT get transformed
         let mut func = FunctionBuilder::new("test")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
@@ -365,15 +366,16 @@ mod tests {
         let pass = StrengthReduction::default();
         let changed = pass.apply(&mut func).expect("Strength reduction should succeed");
 
-        assert!(changed);
+        // Signed division should NOT be transformed without range analysis
+        assert!(!changed);
 
         let entry = func.get_block("entry").expect("entry block exists");
 
-        // Check that signed division was converted to arithmetic shift right
+        // Check that signed division remains unchanged
         match &entry.instructions[0] {
             Instruction::IntBinary { op, rhs, .. } => {
-                assert_eq!(*op, IntBinOp::AShr);
-                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(4))); // log2(16) = 4
+                assert_eq!(*op, IntBinOp::SDiv);
+                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(16)));
             }
             _ => panic!("Expected IntBinary instruction"),
         }

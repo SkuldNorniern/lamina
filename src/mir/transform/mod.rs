@@ -252,13 +252,14 @@ mod tests {
         let pipeline = TransformPipeline::default_for_opt_level(1);
         assert_eq!(pipeline.len(), 2);
 
-        // -O2 should have peephole, dead code elimination, loop invariant code motion, strength reduction, and tail call optimization
+        // -O2 should have memory optimization, addressing canonicalization, loop invariant code motion,
+        // tail call optimization, and peephole
         let pipeline = TransformPipeline::default_for_opt_level(2);
-        assert_eq!(pipeline.len(), 6);
+        assert_eq!(pipeline.len(), 7);
 
         // -O3 should have all transforms including function inlining and motion optimizations
         let pipeline = TransformPipeline::default_for_opt_level(3);
-        assert_eq!(pipeline.len(), 13);
+        assert_eq!(pipeline.len(), 12);
     }
 
     #[test]
