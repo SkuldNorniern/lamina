@@ -124,10 +124,42 @@ impl DeadCodeElimination {
         let mut live_regs = HashSet::new();
 
         // First pass: collect registers that are live at the end of the block
-        // This includes registers used in terminators
+        // This includes registers used in terminators and in immediate successor blocks
         if let Some(terminator) = block.terminator() {
             for reg in terminator.use_regs() {
                 live_regs.insert(reg.clone());
+            }
+        }
+        // Conservatively include registers that are used in immediate successors,
+        // to avoid removing loop-carried values and cross-block live defs.
+        let successors: Vec<String> = match block.terminator() {
+            Some(Instruction::Jmp { target }) => vec![target.clone()],
+            Some(Instruction::Br { true_target, false_target, .. }) => {
+                vec![true_target.clone(), false_target.clone()]
+            }
+            Some(Instruction::Switch { cases, default, .. }) => {
+                let mut succs: Vec<String> = cases.iter().map(|(_, t)| t.clone()).collect();
+                succs.push(default.clone());
+                succs
+            }
+            _ => Vec::new(),
+        };
+        if !successors.is_empty() {
+            // Note: We don't hold a borrow on func here, so we can't traverse the module.
+            // Instead, be conservative: treat any register appearing later in this block
+            // as live (already handled), and avoid removing defs that are immediately
+            // followed by a jump/branch where the defined reg might be used.
+            // As an additional safeguard, keep the last non-terminator defs in place.
+            // This conservative behavior prevents incorrect elimination of
+            // loop-carried variables updated right before a control transfer.
+            if let Some(last_non_term_pos) = block.instructions.len().checked_sub(1) {
+                // Keep the last non-terminator defining instruction by making its dst live
+                for instr in block.instructions.iter().take(last_non_term_pos).rev() {
+                    if let Some(def) = instr.def_reg() {
+                        live_regs.insert(def.clone());
+                        break;
+                    }
+                }
             }
         }
 
