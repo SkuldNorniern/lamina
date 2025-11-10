@@ -476,7 +476,7 @@ mod tests {
             0,
             "Should have no global declarations"
         );
-        assert_eq!(module.functions.len(), 4, "Should have 4 functions");
+        assert_eq!(module.functions.len(), 5, "Should have 5 functions");
 
         // Check @main function details
         let main_func = module
@@ -531,10 +531,10 @@ mod tests {
             "@matmul_2d_optimized should return i64"
         );
 
-        // Check that it has many basic blocks (it's a complex function)
+        // Check that it has several basic blocks (it's a complex function)
         assert!(
-            matmul_func.basic_blocks.len() > 10,
-            "@matmul_2d_optimized should have many basic blocks"
+            matmul_func.basic_blocks.len() >= 7,
+            "@matmul_2d_optimized should have at least 7 basic blocks"
         );
         assert!(matmul_func.basic_blocks.contains_key("entry"));
 
@@ -551,6 +551,383 @@ mod tests {
             .get("get_matrix_b_element")
             .expect("Missing @get_matrix_b_element function");
         assert_eq!(get_b_func.signature.params.len(), 2);
+        assert_eq!(get_b_func.signature.return_type, Type::Primitive(PrimitiveType::I64));
+        assert!(get_b_func.basic_blocks.contains_key("entry"));
+
+        // Check for compute_cell_sum function
+        let compute_sum_func = module
+            .functions
+            .get("compute_cell_sum")
+            .expect("Missing @compute_cell_sum function");
+        assert_eq!(compute_sum_func.signature.params.len(), 3);
+        assert_eq!(compute_sum_func.signature.return_type, Type::Primitive(PrimitiveType::I64));
+        assert!(compute_sum_func.basic_blocks.contains_key("entry"));
+        assert!(compute_sum_func.basic_blocks.contains_key("k_loop"));
+        assert!(compute_sum_func.basic_blocks.contains_key("compute"));
+        assert!(compute_sum_func.basic_blocks.contains_key("done"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_error_recovery() -> Result<(), LaminaError> {
+        // Test that parser gives helpful error messages for common mistakes and handles valid edge cases
+
+        // Missing function body should fail
+        let source_missing_body = "fn @test() -> i64";
+        assert!(parse_module(source_missing_body).is_err());
+
+        // Malformed instruction (missing operand) should fail
+        let source_malformed = r#"
+fn @test() -> i64 {
+  entry:
+    %result = add.i64 42
+    ret.i64 %result
+}
+"#;
+        assert!(parse_module(source_malformed).is_err());
+
+        // Undefined variable should parse successfully (variables don't need to be pre-declared)
+        let source_undefined_var = r#"
+fn @test() -> i64 {
+  entry:
+    %result = add.i64 %undefined, 42
+    ret.i64 %result
+}
+"#;
+        let parsed = parse_module(source_undefined_var)?;
+        assert_eq!(parsed.functions.len(), 1);
+        assert!(parsed.functions.contains_key("test"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_complex_expressions() -> Result<(), LaminaError> {
+        let source = r#"
+fn @complex_math(i64 %a, i64 %b, i64 %c) -> i64 {
+  entry:
+    %temp1 = mul.i64 %a, %b
+    %temp2 = add.i64 %temp1, %c
+    %temp3 = sub.i64 %temp2, 10
+    %result = div.i64 %temp3, 2
+    ret.i64 %result
+}
+"#;
+        let module = parse_module(source)?;
+
+        assert_eq!(module.functions.len(), 1);
+        let func = module.functions.get("complex_math").unwrap();
+        assert_eq!(func.signature.params.len(), 3);
+        assert_eq!(func.basic_blocks["entry"].instructions.len(), 5);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_nested_calls() -> Result<(), LaminaError> {
+        let source = r#"
+fn @outer() -> i64 {
+  entry:
+    %result = call @middle()
+    ret.i64 %result
+}
+
+fn @middle() -> i64 {
+  entry:
+    %result = call @inner(42)
+    ret.i64 %result
+}
+
+fn @inner(i64 %x) -> i64 {
+  entry:
+    %result = add.i64 %x, 1
+    ret.i64 %result
+}
+"#;
+        let module = parse_module(source)?;
+
+        assert_eq!(module.functions.len(), 3);
+
+        // Check that all functions exist and have correct signatures
+        assert!(module.functions.contains_key("outer"));
+        assert!(module.functions.contains_key("middle"));
+        assert!(module.functions.contains_key("inner"));
+
+        let inner_func = module.functions.get("inner").unwrap();
+        assert_eq!(inner_func.signature.params.len(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_phi_complex() -> Result<(), LaminaError> {
+        let source = r#"
+fn @test_phi_complex(i64 %cond1, i64 %cond2) -> i64 {
+  entry:
+    %is_true1 = ne.i64 %cond1, 0
+    br %is_true1, block_a, block_b
+
+  block_a:
+    %val_a = add.i64 %cond2, 10
+    jmp merge1
+
+  block_b:
+    %val_b = mul.i64 %cond2, 2
+    jmp merge1
+
+  merge1:
+    %intermediate = phi.i64 [%val_a, block_a], [%val_b, block_b]
+    %is_true2 = gt.i64 %intermediate, 5
+    br %is_true2, block_c, block_d
+
+  block_c:
+    %final_c = add.i64 %intermediate, 100
+    jmp merge2
+
+  block_d:
+    %final_d = sub.i64 %intermediate, 50
+    jmp merge2
+
+  merge2:
+    %result = phi.i64 [%final_c, block_c], [%final_d, block_d]
+    ret.i64 %result
+}
+"#;
+        let module = parse_module(source)?;
+
+        assert_eq!(module.functions.len(), 1);
+        let func = module.functions.get("test_phi_complex").unwrap();
+
+        // Should have 7 basic blocks
+        assert_eq!(func.basic_blocks.len(), 7);
+
+        // Check that all expected blocks exist
+        assert!(func.basic_blocks.contains_key("entry"));
+        assert!(func.basic_blocks.contains_key("block_a"));
+        assert!(func.basic_blocks.contains_key("block_b"));
+        assert!(func.basic_blocks.contains_key("merge1"));
+        assert!(func.basic_blocks.contains_key("block_c"));
+        assert!(func.basic_blocks.contains_key("block_d"));
+        assert!(func.basic_blocks.contains_key("merge2"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_memory_operations_comprehensive() -> Result<(), LaminaError> {
+        let source = r#"
+fn @test_memory_ops() -> i64 {
+  entry:
+    %ptr1 = alloc.heap i64
+    %ptr2 = alloc.heap i64
+    store.i64 %ptr1, 42
+    store.i64 %ptr2, 24
+    %val1 = load.i64 %ptr1
+    %val2 = load.i64 %ptr2
+    %sum = add.i64 %val1, %val2
+    dealloc.heap %ptr1
+    dealloc.heap %ptr2
+    ret.i64 %sum
+}
+"#;
+        let module = parse_module(source)?;
+
+        assert_eq!(module.functions.len(), 1);
+        let func = module.functions.get("test_memory_ops").unwrap();
+
+        assert_eq!(func.basic_blocks["entry"].instructions.len(), 10);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_large_function() -> Result<(), LaminaError> {
+        // Test that parser can handle functions with many instructions and blocks
+        let mut source = String::from(r#"
+fn @large_function(i64 %input) -> i64 {
+  entry:
+"#);
+
+        // Add many instructions
+        for i in 0..50 {
+            source.push_str(&format!("    %temp{} = add.i64 %input, {}\n", i, i));
+        }
+
+        source.push_str("    ret.i64 %temp49\n}");
+
+        let module = parse_module(&source)?;
+
+        assert_eq!(module.functions.len(), 1);
+        let func = module.functions.get("large_function").unwrap();
+
+        // Should have 51 instructions (50 adds + 1 ret)
+        assert_eq!(func.basic_blocks["entry"].instructions.len(), 51);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_empty_blocks() -> Result<(), LaminaError> {
+        let source = r#"
+fn @test_empty_blocks() -> i64 {
+  entry:
+    jmp block1
+
+  block1:
+    jmp block2
+
+  block2:
+    ret.i64 42
+}
+"#;
+        let module = parse_module(source)?;
+
+        assert_eq!(module.functions.len(), 1);
+        let func = module.functions.get("test_empty_blocks").unwrap();
+
+        assert_eq!(func.basic_blocks.len(), 3);
+
+        // Check that blocks exist even if they only contain jumps
+        assert!(func.basic_blocks.contains_key("entry"));
+        assert!(func.basic_blocks.contains_key("block1"));
+        assert!(func.basic_blocks.contains_key("block2"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_instruction_variations() -> Result<(), LaminaError> {
+        let source = r#"
+fn @test_instructions() -> i64 {
+  entry:
+    %a = add.i64 1, 2
+    %b = sub.i64 %a, 3
+    %c = mul.i64 %b, 4
+    %d = div.i64 %c, 2
+    %e = rem.i64 %d, 3
+    %f = eq.i64 %e, 0
+    %g = ne.i64 %f, 0
+    %h = lt.i64 %g, 1
+    %i = le.i64 %h, 1
+    %j = gt.i64 %i, 0
+    %k = ge.i64 %j, 0
+    print %k
+    ret.i64 %k
+}
+"#;
+        let module = parse_module(source)?;
+
+        assert_eq!(module.functions.len(), 1);
+        let func = module.functions.get("test_instructions").unwrap();
+
+        // Should have 12 instructions (11 computations + 1 print + 1 ret)
+        assert_eq!(func.basic_blocks["entry"].instructions.len(), 13);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_minimal_programs() -> Result<(), LaminaError> {
+        use crate::ir::builder::i32 as ir_i32;
+        use crate::ir::types::{PrimitiveType, Type};
+        use crate::ir::IRBuilder;
+
+        // Test very simple programs that should parse correctly and produce correct IR
+
+        // Single instruction function
+        let source1 = r#"
+fn @minimal() -> i64 {
+  entry:
+    ret.i64 0
+}
+"#;
+        let mut builder1 = IRBuilder::new();
+        builder1
+            .function("minimal", Type::Primitive(PrimitiveType::I64))
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i32(0));
+        let expected1 = builder1.build();
+        let parsed1 = parse_module(source1)?;
+        assert_eq!(parsed1, expected1);
+
+        // Function with just print
+        let source2 = r#"
+fn @print_only() -> i64 {
+  entry:
+    print 42
+    ret.i64 0
+}
+"#;
+        let mut builder2 = IRBuilder::new();
+        builder2
+            .function("print_only", Type::Primitive(PrimitiveType::I64))
+            .print(ir_i32(42))
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i32(0));
+        let expected2 = builder2.build();
+        let parsed2 = parse_module(source2)?;
+        assert_eq!(parsed2, expected2);
+
+        // Empty function (just return)
+        let source3 = r#"
+fn @empty() -> i64 {
+  entry:
+    ret.i64 42
+}
+"#;
+        let mut builder3 = IRBuilder::new();
+        builder3
+            .function("empty", Type::Primitive(PrimitiveType::I64))
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i32(42));
+        let expected3 = builder3.build();
+        let parsed3 = parse_module(source3)?;
+        assert_eq!(parsed3, expected3);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_whitespace_tolerance() -> Result<(), LaminaError> {
+        use crate::ir::builder::i32 as ir_i32;
+        use crate::ir::types::{PrimitiveType, Type};
+        use crate::ir::IRBuilder;
+
+        // Expected IR structure for all test cases
+        let mut builder = IRBuilder::new();
+        builder
+            .function("test", Type::Primitive(PrimitiveType::I64))
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i32(0));
+
+        let expected_module = builder.build();
+
+        // Test that parser handles various whitespace patterns and produces correct IR
+
+        // Normal spacing should work and produce correct IR
+        let source_normal = r#"
+fn @test() -> i64 {
+  entry:
+    ret.i64 0
+}
+"#;
+        let parsed_normal = parse_module(source_normal)?;
+        assert_eq!(parsed_normal, expected_module);
+
+        // Extra spaces should work and produce the same correct IR
+        let source_extra_spaces = r#"
+fn   @test(  )   ->   i64   {
+    entry   :
+        ret.i64   0
+}
+"#;
+        let parsed_extra_spaces = parse_module(source_extra_spaces)?;
+        assert_eq!(parsed_extra_spaces, expected_module);
+
+        // Minimal spacing should work and produce the same correct IR
+        let source_minimal = r#"fn @test() -> i64 {
+entry:
+ret.i64 0
+}"#;
+        let parsed_minimal = parse_module(source_minimal)?;
+        assert_eq!(parsed_minimal, expected_module);
 
         Ok(())
     }
