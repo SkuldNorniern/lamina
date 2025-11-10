@@ -1,4 +1,4 @@
-use crate::codegen::mir_ver::TargetOs;
+use super::TargetOs;
 
 /// Return optional global directive and public label name for a function on the given OS.
 pub fn public_symbol(func_name: &str, os: TargetOs) -> (Option<String>, String) {
