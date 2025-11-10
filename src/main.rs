@@ -17,7 +17,7 @@ fn print_usage() {
     eprintln!("  --target <arch>         Specify target architecture (x86_64, aarch64)");
     eprintln!("  --emit-mir              Only emit MIR (.mlamina) and exit");
     eprintln!(
-        "  --emit-mir-asm <os>     EXPERIMENTAL: emit AArch64 asm from MIR (os: macos|linux|windows)"
+        "  --emit-mir-asm <os>     EXPERIMENTAL: emit assembly from MIR (os: macos|linux|windows)"
     );
     eprintln!("  --opt-level <n>         Set optimization level (0-3, default: 1)");
     eprintln!("  --timeout <secs>        Abort after N seconds (best-effort)");
