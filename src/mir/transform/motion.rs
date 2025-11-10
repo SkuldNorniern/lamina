@@ -47,6 +47,10 @@ impl CopyPropagation {
         let mut changed = false;
         let mut value_map = HashMap::new();
 
+        // Limit the number of copy propagations per block for stability
+        let mut propagations_this_block = 0;
+        let max_propagations_per_block = 50;
+
         // Process instructions in the block, building and using the value map
         let mut new_instructions = Vec::new();
 
@@ -54,8 +58,10 @@ impl CopyPropagation {
             let mut new_instr = instr.clone();
 
             // First, propagate any known copies into this instruction
-            if self.propagate_copies(&mut new_instr, &value_map) {
+            if propagations_this_block < max_propagations_per_block
+                && self.propagate_copies(&mut new_instr, &value_map) {
                 changed = true;
+                propagations_this_block += 1;
             }
 
             // Then, handle register definitions: invalidate mappings for redefined registers
