@@ -1,0 +1,10 @@
+# Expected Output for Prime Generation Benchmark
+# Counts prime numbers up to given limits using trial division
+# Format: header_marker, primes_up_to_100, primes_up_to_1000, primes_up_to_10000, primes_up_to_50000, footer_marker
+
+123456789
+25
+168
+1229
+5133
+987654321
