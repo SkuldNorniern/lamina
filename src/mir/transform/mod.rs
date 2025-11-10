@@ -139,8 +139,8 @@ impl TransformPipeline {
             // Memory and addressing canonicalization
             pipeline = pipeline.add_transform(MemoryOptimization);
             pipeline = pipeline.add_transform(AddressingCanonicalization);
-            // Loop and call improvements
-            // pipeline = pipeline.add_transform(LoopInvariantCodeMotion); // STILL CAUSES HANG
+            // Loop and call improvements (now with safety limits)
+            pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
             pipeline = pipeline.add_transform(TailCallOptimization);
             // Local algebraic rewrites (now safe for IntCmp folding)
             pipeline = pipeline.add_transform(Peephole);
