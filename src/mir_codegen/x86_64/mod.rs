@@ -1,17 +1,114 @@
-mod regalloc;
+pub mod regalloc;
+pub mod abi;
+pub mod frame;
+pub mod util;
 
 use regalloc::X64RegAlloc;
+use abi::X86ABI;
+use frame::X86Frame;
+use util::*;
 use std::io::Write;
 use std::result::Result;
 
 use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 
+/// Trait-backed MIR ⇒ x86_64 code generator.
+pub struct X86Codegen<'a> {
+    target_os: TargetOs,
+    module: Option<&'a MirModule>,
+    prepared: bool,
+    verbose: bool,
+    output: Vec<u8>,
+}
+
+impl<'a> X86Codegen<'a> {
+    pub fn new(target_os: TargetOs) -> Self {
+        Self {
+            target_os,
+            module: None,
+            prepared: false,
+            verbose: false,
+            output: Vec::new(),
+        }
+    }
+
+    /// Attach the MIR module that should be emitted in the next codegen pass.
+    pub fn set_module(&mut self, module: &'a MirModule) {
+        self.module = Some(module);
+    }
+
+    /// Drain the internal assembly buffer produced by `emit_asm`.
+    pub fn drain_output(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.output)
+    }
+
+    /// Emit assembly for the provided module directly into the supplied writer.
+    pub fn emit_into<W: Write>(
+        &mut self,
+        module: &'a MirModule,
+        writer: &mut W,
+    ) -> Result<(), crate::error::LaminaError> {
+        generate_mir_x86_64(module, writer, self.target_os)
+    }
+}
+
+impl<'a> Codegen for X86Codegen<'a> {
+    const BIN_EXT: &'static str = "o";
+    const CAN_OUTPUT_ASM: bool = true;
+    const CAN_OUTPUT_BIN: bool = false;
+    const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions] =
+        &[CodegenOptions::Debug, CodegenOptions::Release];
+    const TARGET_OS: TargetOs = TargetOs::Linux;
+    const MAX_BIT_WIDTH: u8 = 64;
+
+    fn prepare(
+        &mut self,
+        _types: &std::collections::HashMap<String, crate::mir::MirType>,
+        _globals: &std::collections::HashMap<String, crate::mir::Global>,
+        _funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        verbose: bool,
+        _options: &[CodegenOptions],
+        _input_name: &str,
+    ) -> Result<(), CodegenError> {
+        self.verbose = verbose;
+        self.prepared = true;
+        Ok(())
+    }
+
+    fn compile(&mut self) -> Result<(), CodegenError> {
+        if !self.prepared {
+            return Err(CodegenError::InvalidCodegenOptions("Codegen not prepared".to_string()));
+        }
+        Ok(())
+    }
+
+    fn finalize(&mut self) -> Result<(), CodegenError> {
+        Ok(())
+    }
+
+    fn emit_asm(&mut self) -> Result<(), CodegenError> {
+        if let Some(module) = self.module {
+            generate_mir_x86_64(module, &mut self.output, self.target_os)
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("Assembly emission failed: {}", e)))?;
+        } else {
+            return Err(CodegenError::InvalidCodegenOptions("No module set for emission".to_string()));
+        }
+        Ok(())
+    }
+
+    fn emit_bin(&mut self) -> Result<(), CodegenError> {
+        Err(CodegenError::UnsupportedFeature("Binary emission not supported".to_string()))
+    }
+}
+
 pub fn generate_mir_x86_64<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOs,
 ) -> Result<(), crate::error::LaminaError> {
+    let abi = X86ABI::new(target_os);
+
     // Emit format strings for print intrinsics
     match target_os {
         TargetOs::MacOs => {
@@ -30,30 +127,18 @@ pub fn generate_mir_x86_64<W: Write>(
 
     // Text section header
     writeln!(writer, ".text")?;
-    writeln!(writer, ".globl main")?; // Will be adjusted per platform in function loop
+    writeln!(writer, "{}", abi.get_main_global())?;
 
     for (func_name, func) in &module.functions {
         // Function label
-        let label = if target_os == TargetOs::MacOs && func_name == "main" {
-            "_main".to_string()
-        } else if target_os == TargetOs::MacOs {
-            format!("_{}", func_name)
-        } else {
-            func_name.to_string()
-        };
-
+        let label = abi.mangle_function_name(func_name);
         writeln!(writer, "{}:", label)?;
 
-        // Prologue: save callee-saved registers and set up frame
-        writeln!(writer, "    pushq %rbp")?;
-        writeln!(writer, "    movq %rsp, %rbp")?;
-
         // Create register allocator for this function
-        let mut reg_alloc = X64RegAlloc::new();
+        let mut reg_alloc = X64RegAlloc::new(target_os);
 
         // Allocate stack space for virtual registers
         let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> = std::collections::HashMap::new();
-        let mut stack_offset = -8i32;
 
         // Assign stack slots to all virtual registers used in the function
         for block in &func.blocks {
@@ -61,8 +146,7 @@ pub fn generate_mir_x86_64<W: Write>(
                 if let Some(dst) = inst.def_reg() {
                     if let Register::Virtual(vreg) = dst {
                         if !stack_slots.contains_key(&vreg) {
-                            stack_slots.insert(*vreg, stack_offset);
-                            stack_offset -= 8;
+                            stack_slots.insert(*vreg, X86Frame::calculate_stack_offset(stack_slots.len()));
                         }
                     }
                 }
@@ -70,19 +154,16 @@ pub fn generate_mir_x86_64<W: Write>(
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg {
                         if !stack_slots.contains_key(&vreg) {
-                            stack_slots.insert(*vreg, stack_offset);
-                            stack_offset -= 8;
+                            stack_slots.insert(*vreg, X86Frame::calculate_stack_offset(stack_slots.len()));
                         }
                     }
                 }
             }
         }
 
-        // Allocate stack space
-        let stack_size = if stack_offset < -8 { (-stack_offset) as u32 } else { 0 };
-        if stack_size > 0 {
-            writeln!(writer, "    subq ${}, %rsp", stack_size)?;
-        }
+        // Generate function prologue
+        let stack_size = stack_slots.len() * 8;
+        X86Frame::generate_prologue(writer, stack_size)?;
 
         // Process each block
         for block in &func.blocks {
@@ -97,58 +178,13 @@ pub fn generate_mir_x86_64<W: Write>(
     Ok(())
 }
 
-fn load_register_to_rax(
-    reg: &Register,
-    writer: &mut impl Write,
-    reg_alloc: &X64RegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
-) -> Result<(), crate::error::LaminaError> {
-    match reg {
-        Register::Physical(p) => {
-            writeln!(writer, "    movq %{}, %rax", p.name)?;
-        }
-        Register::Virtual(v) => {
-            if let Some(phys) = reg_alloc.get_mapping_for(v) {
-                writeln!(writer, "    movq %{}, %rax", phys)?;
-            } else if let Some(offset) = stack_slots.get(v) {
-                writeln!(writer, "    movq {}(%rbp), %rax", offset)?;
-            } else {
-                writeln!(writer, "    # ERROR: no mapping for virtual register")?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn store_rax_to_register(
-    reg: &Register,
-    writer: &mut impl Write,
-    reg_alloc: &X64RegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
-) -> Result<(), crate::error::LaminaError> {
-    match reg {
-        Register::Physical(p) => {
-            writeln!(writer, "    movq %rax, %{}", p.name)?;
-        }
-        Register::Virtual(v) => {
-            if let Some(phys) = reg_alloc.get_mapping_for(v) {
-                writeln!(writer, "    movq %rax, %{}", phys)?;
-            } else if let Some(offset) = stack_slots.get(v) {
-                writeln!(writer, "    movq %rax, {}(%rbp)", offset)?;
-            } else {
-                writeln!(writer, "    # ERROR: no mapping for virtual register")?;
-            }
-        }
-    }
-    Ok(())
-}
 
 fn emit_instruction_x86_64(
     inst: &MirInst,
     writer: &mut impl Write,
     reg_alloc: &mut X64RegAlloc,
     stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
-    stack_size: u32,
+    stack_size: usize,
     target_os: TargetOs,
 ) -> Result<(), crate::error::LaminaError> {
     match inst {
@@ -191,7 +227,9 @@ fn emit_instruction_x86_64(
             }
 
             // Store result
-            store_rax_to_register(dst, writer, reg_alloc, stack_slots)?;
+            if let Register::Virtual(vreg) = dst {
+                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            }
 
             // Free scratch register
             if scratch != "rbx" {
@@ -222,7 +260,9 @@ fn emit_instruction_x86_64(
             writeln!(writer, "    movzbq %al, %rax")?;
 
             // Store result
-            store_rax_to_register(dst, writer, reg_alloc, stack_slots)?;
+            if let Register::Virtual(vreg) = dst {
+                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            }
 
             // Free scratch register
             if scratch != "rbx" {
@@ -248,16 +288,22 @@ fn emit_instruction_x86_64(
             }
 
             if let Some(ret_reg) = ret {
-                // For now, assume return value is in rax
-                store_rax_to_register(ret_reg, writer, reg_alloc, stack_slots)?;
+                if let Register::Virtual(vreg) = ret_reg {
+                    // For now, assume return value is in rax
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
             }
         }
         MirInst::Load { dst, addr, ty: _, attrs: _ } => {
             // Simple direct load for now - assume addr is BaseOffset with offset 0
             if let crate::mir::AddressMode::BaseOffset { base, offset: 0 } = addr {
-                load_register_to_rax(base, writer, reg_alloc, stack_slots)?;
+                if let Register::Virtual(vreg) = base {
+                    load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
+                }
                 writeln!(writer, "    movq (%rax), %rax")?;
-                store_rax_to_register(dst, writer, reg_alloc, stack_slots)?;
+                if let Register::Virtual(vreg) = dst {
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
             }
         }
         MirInst::Store { addr, src, ty: _, attrs: _ } => {
@@ -265,7 +311,9 @@ fn emit_instruction_x86_64(
             load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
             if let crate::mir::AddressMode::BaseOffset { base, offset: 0 } = addr {
                 let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
-                load_register_to_register(base, writer, reg_alloc, stack_slots, scratch)?;
+                if let Register::Virtual(vreg) = base {
+                    load_register_to_register(vreg, writer, reg_alloc, stack_slots, scratch)?;
+                }
                 writeln!(writer, "    movq %rax, (%{})", scratch)?;
                 if scratch != "rbx" {
                     reg_alloc.free_scratch(scratch);
@@ -277,18 +325,16 @@ fn emit_instruction_x86_64(
                 load_operand_to_rax(val, writer, reg_alloc, stack_slots)?;
             }
             // Epilogue
-            if stack_size > 0 {
-                writeln!(writer, "    addq ${}, %rsp", stack_size)?;
-            }
-            writeln!(writer, "    popq %rbp")?;
-            writeln!(writer, "    ret")?;
+            X86Frame::generate_epilogue(writer, stack_size)?;
         }
         MirInst::Jmp { target } => {
             writeln!(writer, "    jmp .L_{}", target)?;
         }
         MirInst::Br { cond, true_target, false_target } => {
             // Load condition to register
-            load_register_to_rax(cond, writer, reg_alloc, stack_slots)?;
+            if let Register::Virtual(vreg) = cond {
+                load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
+            }
             writeln!(writer, "    testq %rax, %rax")?;
             writeln!(writer, "    jnz .L_{}", true_target)?;
             writeln!(writer, "    jmp .L_{}", false_target)?;
@@ -298,76 +344,5 @@ fn emit_instruction_x86_64(
         }
     }
 
-    Ok(())
-}
-
-fn load_operand_to_rax(
-    operand: &crate::mir::Operand,
-    writer: &mut impl Write,
-    reg_alloc: &X64RegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
-) -> Result<(), crate::error::LaminaError> {
-    match operand {
-        crate::mir::Operand::Register(reg) => {
-            load_register_to_rax(reg, writer, reg_alloc, stack_slots)?;
-        }
-        crate::mir::Operand::Immediate(imm) => {
-            match imm {
-                crate::mir::Immediate::I64(val) => {
-                    writeln!(writer, "    movq ${}, %rax", val)?;
-                }
-                _ => writeln!(writer, "    # TODO: other immediate types")?,
-            }
-        }
-        _ => writeln!(writer, "    # TODO: other operand types")?,
-    }
-    Ok(())
-}
-
-fn load_operand_to_register(
-    operand: &crate::mir::Operand,
-    writer: &mut impl Write,
-    reg_alloc: &X64RegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
-    target_reg: &str,
-) -> Result<(), crate::error::LaminaError> {
-    match operand {
-        crate::mir::Operand::Register(reg) => {
-            load_register_to_register(reg, writer, reg_alloc, stack_slots, target_reg)?;
-        }
-        crate::mir::Operand::Immediate(imm) => {
-            match imm {
-                crate::mir::Immediate::I64(val) => {
-                    writeln!(writer, "    movq ${}, %{}", val, target_reg)?;
-                }
-                _ => writeln!(writer, "    # TODO: other immediate types")?,
-            }
-        }
-        _ => writeln!(writer, "    # TODO: other operand types")?,
-    }
-    Ok(())
-}
-
-fn load_register_to_register(
-    reg: &Register,
-    writer: &mut impl Write,
-    reg_alloc: &X64RegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
-    target_reg: &str,
-) -> Result<(), crate::error::LaminaError> {
-    match reg {
-        Register::Physical(p) => {
-            writeln!(writer, "    movq %{}, %{}", p.name, target_reg)?;
-        }
-        Register::Virtual(v) => {
-            if let Some(phys) = reg_alloc.get_mapping_for(v) {
-                writeln!(writer, "    movq %{}, %{}", phys, target_reg)?;
-            } else if let Some(offset) = stack_slots.get(v) {
-                writeln!(writer, "    movq {}(%rbp), %{}", offset, target_reg)?;
-            } else {
-                writeln!(writer, "    # ERROR: no mapping for virtual register")?;
-            }
-        }
-    }
     Ok(())
 }
