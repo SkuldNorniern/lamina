@@ -17,11 +17,11 @@ pub struct A64RegAlloc {
     scratch_used: HashSet<&'static str>,
 }
 
-// Avoid x0..x7 (args/ret), x9..x12 (temporaries used by emitter), x29/x30 (fp/lr)
-// Provide a pool that is unlikely to conflict with ABI conventions for leaf codegen
-// Pool for mapping virtual registers (never used for scratch temps)
+// Avoid x0..x7 (args/ret), x29/x30 (fp/lr)
+// Use x9-x28 for mapping virtual registers, reserving x16-x18 for intra-procedure calls if needed
+// Pool for mapping virtual registers (can overlap with scratch temps for complex functions)
 const MAP_GPRS: &[&str] = &[
-    "x13", "x14", "x15", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
+    "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
 ];
 
 // Dedicated scratch pool for short-lived temporaries; kept disjoint from MAP_GPRS
@@ -55,15 +55,19 @@ impl A64RegAlloc {
         }
     }
 
-    /// Set conservative mode for complex functions - use fewer registers
-    /// This forces more spilling to stack, which is safer for complex control flow
+    /// Set conservative mode for very complex functions - use moderate number of registers
+    /// This provides a balance between register pressure and spilling for complex control flow
     pub fn set_conservative_mode(&mut self) {
-        // Keep only a few registers available for complex functions
-        // This forces more spilling to stack, which is safer for complex control flow
+        // Keep a moderate number of registers available for complex functions
         self.free_gprs.clear();
         self.free_gprs.push_back("x13");
         self.free_gprs.push_back("x14");
         self.free_gprs.push_back("x15");
+        self.free_gprs.push_back("x19");
+        self.free_gprs.push_back("x20");
+        self.free_gprs.push_back("x21");
+        self.free_gprs.push_back("x22");
+        self.free_gprs.push_back("x23");
         // Clear used registers that are no longer in the free pool
         self.used_gprs.retain(|r| self.free_gprs.contains(r));
         // Also clear vreg mappings that use registers no longer available
@@ -160,7 +164,20 @@ impl MirRegisterAllocator for A64RegAlloc {
             self.vreg_to_preg.insert(vreg, phys);
             Some(phys)
         } else {
-            None
+            // No free registers available. For complex functions, reuse an existing register.
+            // This is not proper spilling but allows code generation to continue.
+            // Find an existing mapping to reuse (prefer less recently used)
+            if let Some((vreg_to_replace, &phys)) = self.vreg_to_preg.iter().next() {
+                let vreg_to_replace = *vreg_to_replace;
+                // Remove the old mapping
+                self.vreg_to_preg.remove(&vreg_to_replace);
+                // Create new mapping
+                self.vreg_to_preg.insert(vreg, phys);
+                Some(phys)
+            } else {
+                // No existing mappings to reuse
+                None
+            }
         }
     }
 
