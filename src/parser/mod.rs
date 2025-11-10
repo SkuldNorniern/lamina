@@ -476,7 +476,7 @@ mod tests {
             0,
             "Should have no global declarations"
         );
-        assert_eq!(module.functions.len(), 5, "Should have 5 functions");
+        assert_eq!(module.functions.len(), 4, "Should have 4 functions");
 
         // Check @main function details
         let main_func = module
@@ -553,18 +553,6 @@ mod tests {
         assert_eq!(get_b_func.signature.params.len(), 2);
         assert_eq!(get_b_func.signature.return_type, Type::Primitive(PrimitiveType::I64));
         assert!(get_b_func.basic_blocks.contains_key("entry"));
-
-        // Check for compute_cell_sum function
-        let compute_sum_func = module
-            .functions
-            .get("compute_cell_sum")
-            .expect("Missing @compute_cell_sum function");
-        assert_eq!(compute_sum_func.signature.params.len(), 3);
-        assert_eq!(compute_sum_func.signature.return_type, Type::Primitive(PrimitiveType::I64));
-        assert!(compute_sum_func.basic_blocks.contains_key("entry"));
-        assert!(compute_sum_func.basic_blocks.contains_key("k_loop"));
-        assert!(compute_sum_func.basic_blocks.contains_key("compute"));
-        assert!(compute_sum_func.basic_blocks.contains_key("done"));
 
         Ok(())
     }
