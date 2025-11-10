@@ -26,7 +26,7 @@ impl Transform for StrengthReduction {
     }
 
     fn level(&self) -> TransformLevel {
-        TransformLevel::Experimental
+        TransformLevel::Stable
     }
 
     fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
