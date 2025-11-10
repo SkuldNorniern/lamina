@@ -136,20 +136,19 @@ impl TransformPipeline {
 
         // At -O2: add experimental but generally safe optimizations
         if opt_level >= 2 {
-            // DCE (conservative intra-block) and memory/addressing
-            pipeline = pipeline.add_transform(DeadCodeElimination);
             // Memory and addressing canonicalization
             pipeline = pipeline.add_transform(MemoryOptimization);
             pipeline = pipeline.add_transform(AddressingCanonicalization);
             // Loop and call improvements
-            pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
+            // pipeline = pipeline.add_transform(LoopInvariantCodeMotion); // STILL CAUSES HANG
             pipeline = pipeline.add_transform(TailCallOptimization);
+            // Local algebraic rewrites (now safe for IntCmp folding)
+            pipeline = pipeline.add_transform(Peephole);
         }
 
         // At -O3: high-cost transforms
         if opt_level >= 3 {
-            // Local algebraic peepholes and strength reduction at highest level
-            pipeline = pipeline.add_transform(Peephole);
+            // Strength reduction and inlining added at highest level
             pipeline = pipeline.add_transform(StrengthReduction);
             pipeline = pipeline.add_transform(FunctionInlining);
             pipeline = pipeline.add_transform(ConstantFolding);

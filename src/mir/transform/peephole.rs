@@ -1,4 +1,5 @@
 use crate::mir::instruction::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
+use crate::mir::types::{MirType, ScalarType};
 use crate::mir::{Block, Function};
 
 use super::{Transform, TransformCategory, TransformLevel};
@@ -40,19 +41,21 @@ impl Peephole {
     /// Apply peephole rewrites to a function. Returns true if any change occurred.
     pub fn run_on_function(&self, func: &mut Function) -> bool {
         let mut changed = false;
+        let loop_headers = compute_back_edge_headers(func);
         for block in &mut func.blocks {
-            if self.run_on_block(block) {
+            let in_loop_block = loop_headers.contains(&block.label);
+            if self.run_on_block(block, in_loop_block) {
                 changed = true;
             }
         }
         changed
     }
 
-    fn run_on_block(&self, block: &mut Block) -> bool {
+    fn run_on_block(&self, block: &mut Block, in_loop_block: bool) -> bool {
         let mut changed = false;
 
         for inst in &mut block.instructions {
-            if self.try_optimize_instruction(inst) {
+            if self.try_optimize_instruction(inst, in_loop_block) {
                 changed = true;
             }
         }
@@ -61,7 +64,7 @@ impl Peephole {
     }
 
     /// Try to optimize a single instruction through various peephole patterns
-    fn try_optimize_instruction(&self, inst: &mut Instruction) -> bool {
+    fn try_optimize_instruction(&self, inst: &mut Instruction, in_loop_block: bool) -> bool {
         match inst {
             Instruction::IntBinary {
                 op,
@@ -70,13 +73,26 @@ impl Peephole {
                 lhs,
                 rhs,
             } => self.try_fold_int_binary(op, lhs, rhs),
-            Instruction::IntCmp {
-                op,
-                dst: _,
-                ty: _,
-                lhs,
-                rhs,
-            } => self.try_fold_int_comparison(op, lhs, rhs),
+            // For IntCmp, allow full replacement with a constant-producing move
+            Instruction::IntCmp { op, dst, ty: _cmp_ty, lhs, rhs } => {
+                // Be conservative inside loop blocks to avoid changing loop progress/termination subtly
+                if !in_loop_block {
+                    if let Some(b) = Self::evaluate_int_cmp(op, lhs, rhs) {
+                        // Replace comparison with a constant move: dst = (b ? 1 : 0)
+                        let new_inst = Instruction::IntBinary {
+                            op: IntBinOp::Add,
+                            ty: MirType::Scalar(ScalarType::I64),
+                            dst: dst.clone(),
+                            lhs: Operand::Immediate(Immediate::I64(if b { 1 } else { 0 })),
+                            rhs: Operand::Immediate(Immediate::I64(0)),
+                        };
+                        *inst = new_inst;
+                        return true;
+                    }
+                }
+                // If not fully reducible (or guarded), do not rewrite
+                false
+            }
             Instruction::FloatUnary {
                 op,
                 dst: _,
@@ -134,31 +150,6 @@ impl Peephole {
                 self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, false)
             }
             IntBinOp::SRem => {
-                // Special optimizations: x % c -> x & (c-1) for small powers of 2
-                // Common in prime generation and divisibility testing
-                if let Some(c) = rhs_imm {
-                    if c == 2 {
-                        // x % 2 -> x & 1 (extract LSB for even/odd)
-                        *op = IntBinOp::And;
-                        *rhs = Operand::Immediate(Immediate::I64(1));
-                        return true;
-                    } else if c == 4 {
-                        // x % 4 -> x & 3 (mask bottom 2 bits)
-                        *op = IntBinOp::And;
-                        *rhs = Operand::Immediate(Immediate::I64(3));
-                        return true;
-                    } else if c == 8 {
-                        // x % 8 -> x & 7 (mask bottom 3 bits)
-                        *op = IntBinOp::And;
-                        *rhs = Operand::Immediate(Immediate::I64(7));
-                        return true;
-                    } else if c == 16 {
-                        // x % 16 -> x & 15 (mask bottom 4 bits)
-                        *op = IntBinOp::And;
-                        *rhs = Operand::Immediate(Immediate::I64(15));
-                        return true;
-                    }
-                }
                 self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, true)
             }
             IntBinOp::And => self.fold_bitwise_and(lhs, rhs, lhs_imm, rhs_imm),
@@ -504,19 +495,13 @@ impl Peephole {
         false
     }
 
-    /// Optimize integer comparisons
-    fn try_fold_int_comparison(
-        &self,
-        op: &mut IntCmpOp,
-        lhs: &mut Operand,
-        rhs: &mut Operand,
-    ) -> bool {
+    /// Evaluate integer comparison into a boolean if possible (purely local).
+    fn evaluate_int_cmp(op: &IntCmpOp, lhs: &Operand, rhs: &Operand) -> Option<bool> {
         let lhs_imm = extract_constant(lhs);
         let rhs_imm = extract_constant(rhs);
-
-        // Constant folding for comparisons: replace with constant result using Add of immediates
+        // Constant-vs-constant
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
-            let result = match op {
+            return Some(match op {
                 IntCmpOp::Eq => c1 == c2,
                 IntCmpOp::Ne => c1 != c2,
                 IntCmpOp::SLt => c1 < c2,
@@ -527,30 +512,18 @@ impl Peephole {
                 IntCmpOp::ULe => (c1 as u64) <= (c2 as u64),
                 IntCmpOp::UGt => (c1 as u64) > (c2 as u64),
                 IntCmpOp::UGe => (c1 as u64) >= (c2 as u64),
-            };
-            // We can't set the destination here, but the caller will rewrite the instruction,
-            // so we return true to indicate change by converting to immediate. The actual
-            // replacement occurs outside; here we just canonicalize operands.
-            *lhs = Operand::Immediate(Immediate::I64(if result { 1 } else { 0 }));
-            *rhs = Operand::Immediate(Immediate::I64(0));
-            return true;
+            });
         }
-
-        // Comparisons of identical registers can be folded
-        if let (Operand::Register(r1), Operand::Register(r2)) = (&*lhs, &*rhs) {
+        // x ? x patterns
+        if let (Operand::Register(r1), Operand::Register(r2)) = (lhs, rhs) {
             if r1 == r2 {
-                // x==x => 1, x!=x => 0, x< x => 0, x<=x => 1, etc.
-                let result = match op {
+                return Some(match op {
                     IntCmpOp::Eq | IntCmpOp::SLe | IntCmpOp::ULe | IntCmpOp::SGe | IntCmpOp::UGe => true,
                     IntCmpOp::Ne | IntCmpOp::SLt | IntCmpOp::ULt | IntCmpOp::SGt | IntCmpOp::UGt => false,
-                };
-                *lhs = Operand::Immediate(Immediate::I64(if result { 1 } else { 0 }));
-                *rhs = Operand::Immediate(Immediate::I64(0));
-                return true;
+                });
             }
         }
-
-        false
+        None
     }
 
     /// Optimize float unary operations
@@ -625,6 +598,43 @@ fn is_one(i: Option<i64>) -> bool {
 
 fn is_all_ones(i: Option<i64>) -> bool {
     i == Some(-1)
+}
+
+/// Identify loop headers via simple back-edge detection using block order.
+fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<String> {
+    use std::collections::{HashMap, HashSet};
+    let mut label_index: HashMap<&str, usize> = HashMap::new();
+    for (i, b) in func.blocks.iter().enumerate() {
+        label_index.insert(&b.label, i);
+    }
+    let mut headers: HashSet<String> = HashSet::new();
+    for (i, b) in func.blocks.iter().enumerate() {
+        if let Some(term) = b.instructions.last() {
+            match term {
+                Instruction::Jmp { target } => {
+                    if let Some(&tidx) = label_index.get(target.as_str()) {
+                        if tidx <= i {
+                            headers.insert(target.clone());
+                        }
+                    }
+                }
+                Instruction::Br { true_target, false_target, .. } => {
+                    if let Some(&tidx) = label_index.get(true_target.as_str()) {
+                        if tidx <= i {
+                            headers.insert(true_target.clone());
+                        }
+                    }
+                    if let Some(&fidx) = label_index.get(false_target.as_str()) {
+                        if fidx <= i {
+                            headers.insert(false_target.clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    headers
 }
 
 #[cfg(test)]

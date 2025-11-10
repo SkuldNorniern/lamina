@@ -290,13 +290,19 @@ impl ModuleInlining {
                         "Function has return value but no return type in signature".to_string()
                     })?;
 
-                    let assign_instr = Instruction::IntBinary {
+                    let mut assign_instr = Instruction::IntBinary {
                         op: crate::mir::IntBinOp::Add,
                         dst: result_reg.clone(),
                         ty: return_type,
                         lhs: ret_val.clone(),
                         rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
                     };
+                    // Apply parameter substitution and renaming to the operand(s)
+                    // Then restore destination to the intended call result register
+                    self.substitute_parameters_and_rename(&mut assign_instr, param_mapping, caller_func)?;
+                    if let Instruction::IntBinary { dst, .. } = &mut assign_instr {
+                        *dst = result_reg.clone();
+                    }
                     inlined_instructions.push(assign_instr);
                 }
                 // Skip the original return instruction

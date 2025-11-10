@@ -186,16 +186,21 @@ impl LoopInvariantCodeMotion {
         loop_info: &LoopInfo,
     ) -> Result<Vec<(usize, usize)>, String> {
         let mut invariant = Vec::new();
+        let defs_in_loop = self.collect_defs_in_loop(func, loop_info);
 
         for (block_idx, block) in func.blocks.iter().enumerate() {
             if !loop_info.blocks.contains(&block.label) {
                 continue;
             }
 
+            // Don't hoist from the loop header - these might be needed for loop control
+            if block.label == loop_info.header {
+                continue;
+            }
+
             for (instr_idx, instr) in block.instructions.iter().enumerate() {
-                // Use both the precise check and the heuristic to catch more invariants
-                if self.is_invariant_instruction(func, loop_info, instr)
-                    || self.is_likely_invariant_instruction(func, loop_info, instr) {
+                // Only use precise check, avoid heuristic to prevent over-optimization
+                if self.is_invariant_instruction(func, loop_info, &defs_in_loop, instr) {
                     // Store as (block_idx, instr_idx) tuple to avoid overflow
                     invariant.push((block_idx, instr_idx));
                 }
@@ -209,6 +214,7 @@ impl LoopInvariantCodeMotion {
         &self,
         func: &Function,
         loop_info: &LoopInfo,
+        defs_in_loop: &std::collections::HashSet<crate::mir::Register>,
         instr: &Instruction,
     ) -> bool {
         // An instruction is invariant if:
@@ -221,7 +227,7 @@ impl LoopInvariantCodeMotion {
             let operands_invariant = instr
                 .use_regs()
                 .iter()
-                .all(|reg| self.is_invariant_register(func, loop_info, reg));
+                .all(|reg| self.is_invariant_register(func, loop_info, defs_in_loop, reg));
 
             // Check if instruction has no side effects
             let no_side_effects = !self.has_side_effects(instr);
@@ -234,67 +240,31 @@ impl LoopInvariantCodeMotion {
 
     /// Check if an instruction is likely to be loop invariant based on common patterns
     /// This is a heuristic to catch more invariant instructions
+    /// DISABLED: Too aggressive, can cause incorrect optimizations
     fn is_likely_invariant_instruction(
+        &self,
+        _func: &Function,
+        _loop_info: &LoopInfo,
+        _defs_in_loop: &std::collections::HashSet<crate::mir::Register>,
+        _instr: &Instruction,
+    ) -> bool {
+        // Disabled heuristic to prevent over-optimization that can break loop behavior
+        false
+    }
+
+    fn is_invariant_register(
         &self,
         func: &Function,
         loop_info: &LoopInfo,
-        instr: &Instruction,
+        defs_in_loop: &std::collections::HashSet<Register>,
+        reg: &Register,
     ) -> bool {
-        match instr {
-            // Constant loads are always invariant
-            Instruction::Load { addr, .. } => {
-                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr {
-                    // If base is defined outside loop, it's invariant (offset is always constant)
-                    self.is_invariant_register(func, loop_info, base)
-                } else {
-                    false
-                }
-            }
-            // Arithmetic with constants and loop-invariant registers
-            Instruction::IntBinary { lhs, rhs, .. } => {
-                let lhs_invariant = match lhs {
-                    crate::mir::Operand::Register(reg) => self.is_invariant_register(func, loop_info, reg),
-                    crate::mir::Operand::Immediate(_) => true,
-                };
-                let rhs_invariant = match rhs {
-                    crate::mir::Operand::Register(reg) => self.is_invariant_register(func, loop_info, reg),
-                    crate::mir::Operand::Immediate(_) => true,
-                };
-                lhs_invariant && rhs_invariant
-            }
-            // Comparisons with constants and loop-invariant registers
-            Instruction::IntCmp { lhs, rhs, .. } => {
-                let lhs_invariant = match lhs {
-                    crate::mir::Operand::Register(reg) => self.is_invariant_register(func, loop_info, reg),
-                    crate::mir::Operand::Immediate(_) => true,
-                };
-                let rhs_invariant = match rhs {
-                    crate::mir::Operand::Register(reg) => self.is_invariant_register(func, loop_info, reg),
-                    crate::mir::Operand::Immediate(_) => true,
-                };
-                lhs_invariant && rhs_invariant
-            }
-            _ => false,
-        }
-    }
-
-    fn is_invariant_register(&self, func: &Function, loop_info: &LoopInfo, reg: &Register) -> bool {
-        // A register is invariant if it's defined outside the loop
+        // A register is invariant if it's not defined inside the loop.
         // Physical registers are conservatively treated as non-invariant since they can be modified
         match reg {
             Register::Physical(_) => false, // Physical registers can be modified within loops
             Register::Virtual(_) => {
-                // Check if defined outside the loop
-                for block in &func.blocks {
-                    if !loop_info.blocks.contains(&block.label) {
-                        for instr in &block.instructions {
-                            if instr.def_reg() == Some(reg) {
-                                return true;
-                            }
-                        }
-                    }
-                }
-                false
+                !defs_in_loop.contains(reg)
             }
         }
     }
@@ -322,6 +292,14 @@ impl LoopInvariantCodeMotion {
             .position(|b| b.label == loop_info.header)
             .ok_or_else(|| format!("Loop header '{}' not found", loop_info.header))?;
 
+        // Create a pre-header block to hold invariant instructions
+        // This avoids executing them before the loop condition check
+        let pre_header_label = format!("{}_pre", loop_info.header);
+        let mut pre_header_block = crate::mir::Block {
+            label: pre_header_label.clone(),
+            instructions: Vec::new(),
+        };
+
         let mut instructions_to_move = Vec::new();
 
         // Collect instructions to move (in reverse order to maintain dependencies)
@@ -339,21 +317,75 @@ impl LoopInvariantCodeMotion {
             instructions_to_move.push((block_idx, instr_idx, instr));
         }
 
-        // Move instructions before the loop header
+        // Move instructions to the pre-header block
         for (_, _, instr) in instructions_to_move {
-            func.blocks[header_idx].instructions.insert(0, instr);
+            pre_header_block.instructions.push(instr);
         }
 
+        // Add jump to the original header
+        pre_header_block.instructions.push(Instruction::Jmp {
+            target: loop_info.header.clone(),
+        });
+
+        // Insert pre-header before the original header
+        func.blocks.insert(header_idx, pre_header_block);
+
         // Remove original instructions from loop blocks
-        for &(block_idx, instr_idx) in invariant_instrs {
-            if block_idx < func.blocks.len()
-                && instr_idx < func.blocks[block_idx].instructions.len()
+        // Sort by block and instruction index in reverse order to avoid index shifting
+        let mut sorted_invariant = invariant_instrs.to_vec();
+        sorted_invariant.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by instruction index descending
+        sorted_invariant.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by block index descending
+
+        for &(block_idx, instr_idx) in &sorted_invariant {
+            // Adjust for the inserted pre-header block
+            let adjusted_block_idx = if block_idx >= header_idx { block_idx + 1 } else { block_idx };
+            if adjusted_block_idx < func.blocks.len()
+                && instr_idx < func.blocks[adjusted_block_idx].instructions.len()
             {
-                func.blocks[block_idx].instructions.remove(instr_idx);
+                func.blocks[adjusted_block_idx].instructions.remove(instr_idx);
+            }
+        }
+
+        // Update any jumps that target the original header to target the pre-header instead
+        for block in &mut func.blocks {
+            for instr in &mut block.instructions {
+                match instr {
+                    Instruction::Jmp { target } if *target == loop_info.header => {
+                        *target = pre_header_label.clone();
+                    }
+                    Instruction::Br { true_target, false_target, .. } => {
+                        if *true_target == loop_info.header {
+                            *true_target = pre_header_label.clone();
+                        }
+                        if *false_target == loop_info.header {
+                            *false_target = pre_header_label.clone();
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
 
         Ok(())
+    }
+
+    fn collect_defs_in_loop(
+        &self,
+        func: &Function,
+        loop_info: &LoopInfo,
+    ) -> std::collections::HashSet<Register> {
+        let mut defs = std::collections::HashSet::new();
+        for block in &func.blocks {
+            if !loop_info.blocks.contains(&block.label) {
+                continue;
+            }
+            for instr in &block.instructions {
+                if let Some(def) = instr.def_reg() {
+                    defs.insert(def.clone());
+                }
+            }
+        }
+        defs
     }
 }
 
