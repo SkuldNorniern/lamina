@@ -1,5 +1,5 @@
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Function, Instruction, Register};
+use crate::mir::{Block, Function, Instruction, Operand, Register};
 use std::collections::HashSet;
 
 /// Loop Invariant Code Motion (LICM)
@@ -21,7 +21,7 @@ impl Transform for LoopInvariantCodeMotion {
     }
 
     fn level(&self) -> TransformLevel {
-        TransformLevel::Experimental
+        TransformLevel::Deprecated
     }
 
     fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
@@ -36,13 +36,29 @@ impl LoopInvariantCodeMotion {
         // Find all loops in the function
         let loops = self.find_loops(func);
 
-        // Limit the number of loops processed for stability
+        // Safety limits to prevent infinite loops and excessive processing
         let max_loops = 10;
+        let max_iterations_per_loop = 5;
         let loops_to_process = loops.into_iter().take(max_loops);
 
         for loop_info in loops_to_process {
-            if self.optimize_loop(func, &loop_info)? {
+            // Skip loops that are too complex (too many blocks) to avoid pathological cases
+            if loop_info.blocks.len() > 50 {
+                continue;
+            }
+
+            let mut iterations = 0;
+            while iterations < max_iterations_per_loop {
+                if !self.optimize_loop(func, &loop_info)? {
+                    break; // No more changes possible
+                }
                 changed = true;
+                iterations += 1;
+
+                // Safety check: if we've made many changes, stop to avoid infinite loops
+                if iterations >= max_iterations_per_loop {
+                    break;
+                }
             }
         }
 
@@ -301,6 +317,10 @@ impl LoopInvariantCodeMotion {
         loop_info: &LoopInfo,
         invariant_instrs: &[(usize, usize)],
     ) -> Result<(), String> {
+        if invariant_instrs.is_empty() {
+            return Ok(());
+        }
+
         // Find the loop header block
         let header_idx = func
             .blocks
@@ -316,25 +336,31 @@ impl LoopInvariantCodeMotion {
             instructions: Vec::new(),
         };
 
-        let mut instructions_to_move = Vec::new();
+        // Collect and sort invariant instructions by block and instruction index
+        // Sort by (block_idx, instr_idx) descending to avoid index shifting issues
+        let mut sorted_invariant = invariant_instrs.to_vec();
+        sorted_invariant.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by instruction index descending
+        sorted_invariant.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by block index descending
 
-        // Collect instructions to move (in reverse order to maintain dependencies)
-        for &(block_idx, instr_idx) in invariant_instrs.iter().rev() {
+        // Remove duplicate positions (same instruction appearing multiple times)
+        sorted_invariant.dedup();
+
+        // Collect instructions to move, validating indices
+        let mut instructions_to_move = Vec::new();
+        for &(block_idx, instr_idx) in &sorted_invariant {
             if block_idx >= func.blocks.len() {
                 continue;
             }
-
             let block = &func.blocks[block_idx];
             if instr_idx >= block.instructions.len() {
                 continue;
             }
-
             let instr = block.instructions[instr_idx].clone();
-            instructions_to_move.push((block_idx, instr_idx, instr));
+            instructions_to_move.push(instr);
         }
 
         // Move instructions to the pre-header block
-        for (_, _, instr) in instructions_to_move {
+        for instr in instructions_to_move {
             pre_header_block.instructions.push(instr);
         }
 
@@ -347,11 +373,7 @@ impl LoopInvariantCodeMotion {
         func.blocks.insert(header_idx, pre_header_block);
 
         // Remove original instructions from loop blocks
-        // Sort by block and instruction index in reverse order to avoid index shifting
-        let mut sorted_invariant = invariant_instrs.to_vec();
-        sorted_invariant.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by instruction index descending
-        sorted_invariant.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by block index descending
-
+        // Since we sorted by (block_idx, instr_idx) descending, we can remove them safely
         for &(block_idx, instr_idx) in &sorted_invariant {
             // Adjust for the inserted pre-header block
             let adjusted_block_idx = if block_idx >= header_idx { block_idx + 1 } else { block_idx };
@@ -363,7 +385,13 @@ impl LoopInvariantCodeMotion {
         }
 
         // Update any jumps that target the original header to target the pre-header instead
-        for block in &mut func.blocks {
+        // Skip the pre-header block itself when updating jumps
+        for (block_idx, block) in func.blocks.iter_mut().enumerate() {
+            // Skip the pre-header block we just inserted
+            if block_idx == header_idx {
+                continue;
+            }
+
             for instr in &mut block.instructions {
                 match instr {
                     Instruction::Jmp { target } if *target == loop_info.header => {
@@ -412,6 +440,14 @@ struct LoopInfo {
     blocks: HashSet<String>,
 }
 
+#[derive(Debug)]
+struct UnrollableLoop {
+    header: String,
+    body_blocks: Vec<String>,
+    bound: i64,
+    induction_var: Option<Register>,
+}
+
 /// Loop Unrolling
 /// Unrolls loops to reduce overhead and improve ILP
 #[derive(Default)]
@@ -441,30 +477,70 @@ impl Transform for LoopUnrolling {
 
 impl LoopUnrolling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        // Simple unrolling: look for loops with small constant bounds
-        // This is a simplified implementation - real loop unrolling is much more complex
-
         let mut changed = false;
 
-        // For now, just mark as changed if we find any loops
-        // Full implementation would require:
-        // 1. Loop analysis to determine bounds
-        // 2. Induction variable detection
-        // 3. Body duplication with variable renaming
-        // 4. Exit condition adjustment
+        // Find loops that can be safely unrolled
+        let loops = self.find_unrollable_loops(func);
 
-        let loops = self.find_simple_loops(func);
-        if !loops.is_empty() {
-            changed = true;
-            // TODO: Implement actual unrolling logic
+        for loop_info in loops {
+            if self.unroll_loop(func, &loop_info)? {
+                changed = true;
+            }
         }
 
         Ok(changed)
     }
 
-    fn find_simple_loops(&self, _func: &Function) -> Vec<LoopInfo> {
-        // Placeholder - would need proper loop analysis
-        Vec::new()
+    /// Find loops that can be safely unrolled (small constant bounds)
+    fn find_unrollable_loops(&self, func: &Function) -> Vec<UnrollableLoop> {
+        let mut unrollable = Vec::new();
+
+        for block in &func.blocks {
+            if let Some(last_instr) = block.instructions.last() {
+                match last_instr {
+                    Instruction::Br { cond, true_target, false_target, .. } => {
+                        // Look for simple counting loops: while (i < N) or similar
+                        if let Some(loop_bound) = self.analyze_loop_bound(func, block, &Operand::Register(cond.clone()), true_target, false_target) {
+                            if loop_bound <= 8 { // Only unroll very small loops for safety
+                                unrollable.push(UnrollableLoop {
+                                    header: block.label.clone(),
+                                    body_blocks: vec![true_target.clone()],
+                                    bound: loop_bound,
+                                    induction_var: None, // TODO: detect induction variable
+                                });
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        unrollable
+    }
+
+    /// Analyze if a loop has a constant bound that can be unrolled
+    fn analyze_loop_bound(&self, _func: &Function, _block: &Block, _cond: &Operand, _true_target: &str, _false_target: &str) -> Option<i64> {
+        // Simplified analysis: look for patterns like i < 4, i < 8, etc.
+        // This is a very basic implementation for demonstration
+        // Real loop unrolling would need much more sophisticated analysis
+
+        // For now, return None to disable unrolling until properly implemented
+        // This prevents potential bugs while keeping the framework in place
+        None
+    }
+
+    /// Unroll a loop by duplicating its body
+    fn unroll_loop(&self, _func: &mut Function, _loop_info: &UnrollableLoop) -> Result<bool, String> {
+        // TODO: Implement actual loop unrolling logic
+        // This would involve:
+        // 1. Finding the loop body blocks
+        // 2. Duplicating instructions with induction variable updates
+        // 3. Adjusting branch conditions
+        // 4. Removing the original loop structure
+
+        // For now, return false (no changes)
+        Ok(false)
     }
 }
 
