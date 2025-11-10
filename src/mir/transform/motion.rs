@@ -21,7 +21,7 @@ impl Transform for CopyPropagation {
     }
 
     fn level(&self) -> TransformLevel {
-        TransformLevel::Experimental
+        TransformLevel::Stable
     }
 
     fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
@@ -312,7 +312,7 @@ impl Transform for ConstantFolding {
     }
 
     fn level(&self) -> TransformLevel {
-        TransformLevel::Experimental
+        TransformLevel::Stable
     }
 
     fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
@@ -431,7 +431,7 @@ impl Transform for CommonSubexpressionElimination {
     }
 
     fn level(&self) -> TransformLevel {
-        TransformLevel::Experimental
+        TransformLevel::Stable
     }
 
     fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
@@ -463,11 +463,14 @@ impl CommonSubexpressionElimination {
         let loop_headers = compute_back_edge_headers(func);
 
         for block in &mut func.blocks {
-            // Be conservative: skip CSE in loop header blocks
+            // Skip only loop header blocks to avoid complex control flow issues
+            // Allow CSE within loop bodies where it's safe and beneficial
             if loop_headers.contains(&block.label) {
                 continue;
             }
-            if self.eliminate_in_block(block) {
+
+            // Apply CSE to this block, but be conservative about loop-related blocks
+            if self.eliminate_in_block_safe(block, &loop_headers) {
                 changed = true;
             }
         }
@@ -475,8 +478,69 @@ impl CommonSubexpressionElimination {
         Ok(changed)
     }
 
+    fn eliminate_in_block_safe(&self, block: &mut Block, loop_headers: &std::collections::HashSet<String>) -> bool {
+        // For blocks that are part of loops, be more conservative
+        // Only apply CSE if the block is small and contains simple operations
+        let is_in_loop_body = self.is_block_in_loop_body(block, loop_headers);
+
+        if is_in_loop_body && block.instructions.len() > 50 {
+            return false; // Skip large loop body blocks
+        }
+
+        if !is_in_loop_body && block.instructions.len() > 200 {
+            return false; // Skip large non-loop blocks
+        }
+
+        self.eliminate_in_block_conservative(block, is_in_loop_body)
+    }
+
+    fn is_block_in_loop_body(&self, block: &Block, loop_headers: &std::collections::HashSet<String>) -> bool {
+        // Check if this block can reach a loop header (simplified check)
+        // This is a conservative approximation
+        for instr in &block.instructions {
+            match instr {
+                Instruction::Jmp { target } | Instruction::Br { true_target: target, .. } => {
+                    if loop_headers.contains(target) {
+                        return true;
+                    }
+                }
+                Instruction::Br { false_target: target, .. } => {
+                    if loop_headers.contains(target) {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
     fn eliminate_in_block(&self, block: &mut Block) -> bool {
+        self.eliminate_in_block_conservative(block, false)
+    }
+
+    fn is_simple_cse_candidate(&self, instr: &Instruction) -> bool {
+        // Only allow simple arithmetic operations for CSE in loop bodies
+        match instr {
+            Instruction::IntBinary { op, .. } => {
+                matches!(op, crate::mir::IntBinOp::Add | crate::mir::IntBinOp::Sub | crate::mir::IntBinOp::Mul)
+            }
+            Instruction::FloatBinary { op, .. } => {
+                matches!(op, crate::mir::FloatBinOp::FAdd | crate::mir::FloatBinOp::FSub | crate::mir::FloatBinOp::FMul)
+            }
+            _ => false, // Only simple arithmetic for loop CSE
+        }
+    }
+
+    fn eliminate_in_block_conservative(&self, block: &mut Block, is_in_loop_body: bool) -> bool {
         let mut changed = false;
+
+        // Skip CSE in blocks with too many instructions to avoid excessive processing
+        if (!is_in_loop_body && block.instructions.len() > 200) ||
+           (is_in_loop_body && block.instructions.len() > 50) {
+            return false;
+        }
+
         // Map from expression key (including operand versions) to (destination register, dest version)
         let mut expr_to_reg: HashMap<String, (Register, u64)> = HashMap::new();
         // Per-register version counter to detect intervening re-definitions
@@ -495,42 +559,47 @@ impl CommonSubexpressionElimination {
                         if cur_ver != *existing_ver {
                             // Stale producer, cannot reuse
                         } else {
-                        let instr_type = self.extract_instruction_type(instr);
-                        let copy_instr = match instr_type {
-                            MirType::Scalar(ScalarType::F64) | MirType::Scalar(ScalarType::F32) => {
-                                // For float types, create a float add with 0.0
-                                let zero = match instr_type {
-                                    MirType::Scalar(ScalarType::F64) => Immediate::F64(0.0),
-                                    MirType::Scalar(ScalarType::F32) => Immediate::F32(0.0),
-                                    _ => unreachable!(),
+                            // In loop bodies, be extra conservative: only CSE simple operations
+                            if is_in_loop_body && !self.is_simple_cse_candidate(instr) {
+                                instructions.push(instr.clone());
+                            } else {
+                                let instr_type = self.extract_instruction_type(instr);
+                                let copy_instr = match instr_type {
+                                    MirType::Scalar(ScalarType::F64) | MirType::Scalar(ScalarType::F32) => {
+                                        // For float types, create a float add with 0.0
+                                        let zero = match instr_type {
+                                            MirType::Scalar(ScalarType::F64) => Immediate::F64(0.0),
+                                            MirType::Scalar(ScalarType::F32) => Immediate::F32(0.0),
+                                            _ => unreachable!(),
+                                        };
+                                        Instruction::FloatBinary {
+                                            op: crate::mir::FloatBinOp::FAdd,
+                                            dst: dst.clone(),
+                                            ty: instr_type,
+                                            lhs: Operand::Register(existing_reg.clone()),
+                                            rhs: Operand::Immediate(zero),
+                                        }
+                                    }
+                                    _ => {
+                                        // For integer types, use integer add with 0
+                                        Instruction::IntBinary {
+                                            op: crate::mir::IntBinOp::Add,
+                                            dst: dst.clone(),
+                                            ty: instr_type,
+                                            lhs: Operand::Register(existing_reg.clone()),
+                                            rhs: Operand::Immediate(Immediate::I64(0)),
+                                        }
+                                    }
                                 };
-                                Instruction::FloatBinary {
-                                    op: crate::mir::FloatBinOp::FAdd,
-                                    dst: dst.clone(),
-                                    ty: instr_type,
-                                    lhs: Operand::Register(existing_reg.clone()),
-                                    rhs: Operand::Immediate(zero),
-                                }
+                                instructions.push(copy_instr);
+                                changed = true;
+                                // Destination has now been defined; bump its version
+                                def_version
+                                    .entry(dst.clone())
+                                    .and_modify(|v| *v += 1)
+                                    .or_insert(1);
+                                continue;
                             }
-                            _ => {
-                                // For integer types, use integer add with 0
-                                Instruction::IntBinary {
-                                    op: crate::mir::IntBinOp::Add,
-                                    dst: dst.clone(),
-                                    ty: instr_type,
-                                    lhs: Operand::Register(existing_reg.clone()),
-                                    rhs: Operand::Immediate(Immediate::I64(0)),
-                                }
-                            }
-                        };
-                        instructions.push(copy_instr);
-                        changed = true;
-                        // Destination has now been defined; bump its version
-                        def_version
-                            .entry(dst.clone())
-                            .and_modify(|v| *v += 1)
-                            .or_insert(1);
-                        continue;
                         }
                     }
                 } else {
