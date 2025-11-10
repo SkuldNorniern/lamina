@@ -77,18 +77,18 @@ impl Peephole {
             Instruction::IntCmp { op, dst, ty: _cmp_ty, lhs, rhs } => {
                 // Be conservative inside loop blocks to avoid changing loop progress/termination subtly
                 if !in_loop_block {
-                    if let Some(b) = Self::evaluate_int_cmp(op, lhs, rhs) {
-                        // Replace comparison with a constant move: dst = (b ? 1 : 0)
-                        let new_inst = Instruction::IntBinary {
-                            op: IntBinOp::Add,
-                            ty: MirType::Scalar(ScalarType::I64),
-                            dst: dst.clone(),
-                            lhs: Operand::Immediate(Immediate::I64(if b { 1 } else { 0 })),
-                            rhs: Operand::Immediate(Immediate::I64(0)),
-                        };
-                        *inst = new_inst;
+                if let Some(b) = Self::evaluate_int_cmp(op, lhs, rhs) {
+                    // Replace comparison with a constant move: dst = (b ? 1 : 0)
+                    let new_inst = Instruction::IntBinary {
+                        op: IntBinOp::Add,
+                        ty: MirType::Scalar(ScalarType::I64),
+                        dst: dst.clone(),
+                        lhs: Operand::Immediate(Immediate::I64(if b { 1 } else { 0 })),
+                        rhs: Operand::Immediate(Immediate::I64(0)),
+                    };
+                    *inst = new_inst;
                         return true;
-                    }
+                }
                 }
                 // If not fully reducible (or guarded), do not rewrite
                 false
