@@ -166,13 +166,8 @@ impl StrengthReduction {
         rhs_const: Option<i64>,
         ty: &MirType,
     ) -> bool {
-        if let Some(power_of_2) = rhs_const.and_then(is_power_of_2) {
-            // x / 2^k → x >> k (arithmetic shift right)
-            // Note: This is only correct for positive numbers in two's complement
-            *op = IntBinOp::AShr;
-            *rhs = Operand::Immediate(Immediate::I64(power_of_2));
-            return true;
-        }
+        // Without range analysis we cannot prove non-negativity; do not transform.
+        let _ = (op, lhs, rhs, rhs_const, ty);
         false
     }
 
@@ -203,22 +198,8 @@ impl StrengthReduction {
         rhs_const: Option<i64>,
         ty: &MirType,
     ) -> bool {
-        if let Some(power_of_2) = rhs_const.and_then(is_power_of_2) {
-            // x % 2^k → x & (2^k - 1) for positive x
-            // Note: This is a simplification; full signed modulo is more complex
-            *op = IntBinOp::And;
-            *rhs = Operand::Immediate(Immediate::I64((1i64 << power_of_2) - 1));
-            return true;
-        }
-
-        // For small constants that appear in prime generation algorithms,
-        // we could potentially use multiplication-based modulo:
-        // x % c = x - (x / c) * c
-        // But this requires multiple instructions and may not be faster
-        // for small constants. The peephole pass handles some of these.
-
-        // For now, keep it simple and only optimize powers of 2
-
+        // Without range analysis, do not rewrite signed remainder to bitmasking.
+        let _ = (op, lhs, rhs, rhs_const, ty);
         false
     }
 }
