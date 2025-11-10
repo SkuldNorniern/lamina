@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::codegen::mir_ver::regalloc::RegisterAllocator as MirRegisterAllocator;
+use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
+
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
 
 /// Very simple AArch64 register allocator for MIR virtual registers.
@@ -52,6 +53,29 @@ impl A64RegAlloc {
             scratch_free,
             scratch_used: HashSet::new(),
         }
+    }
+
+    /// Set conservative mode for complex functions - use fewer registers
+    /// This forces more spilling to stack, which is safer for complex control flow
+    pub fn set_conservative_mode(&mut self) {
+        // Keep only a few registers available for complex functions
+        // This forces more spilling to stack, which is safer for complex control flow
+        self.free_gprs.clear();
+        self.free_gprs.push_back("x13");
+        self.free_gprs.push_back("x14");
+        self.free_gprs.push_back("x15");
+        // Clear used registers that are no longer in the free pool
+        self.used_gprs.retain(|r| self.free_gprs.contains(r));
+        // Also clear vreg mappings that use registers no longer available
+        let free_set: HashSet<&str> = self.free_gprs.iter().copied().collect();
+        self.vreg_to_preg.retain(|_, preg| {
+            if free_set.contains(preg) {
+                true
+            } else {
+                // Register is no longer available, remove mapping
+                false
+            }
+        });
     }
 
     #[inline]

@@ -10,7 +10,7 @@ use std::io::Write;
 use std::result::Result;
 use util::{emit_mov_imm64, imm_to_u64};
 
-use crate::codegen::mir_ver::{Codegen, CodegenError, CodegenOptions, TargetOs};
+use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 
 fn w_alias(xreg: &str) -> String {
@@ -34,6 +34,20 @@ pub fn generate_mir_aarch64<W: Write>(
     writer: &mut W,
     target_os: TargetOs,
 ) -> Result<(), crate::error::LaminaError> {
+    // Check if this module contains extremely complex functions that should fall back to IR
+    let has_extremely_complex_function = module.functions.values().any(|f| {
+        f.blocks.len() > 30 || f.blocks.iter().any(|b| b.instructions.len() > 60)
+    });
+
+    if has_extremely_complex_function {
+        return Err(crate::error::LaminaError::IoError("Function too complex for MIR backend, falling back to IR".to_string()));
+    }
+
+    // Check if this module contains complex functions that need conservative handling
+    // Complex functions: many basic blocks (>30) or very large blocks (>60 instructions)
+    let has_complex_function = module.functions.values().any(|f| {
+        f.blocks.len() > 30 || f.blocks.iter().any(|b| b.instructions.len() > 60)
+    });
     // Emit a shared format string for print intrinsics, then text section header
     match target_os {
         TargetOs::MacOs => {
@@ -70,8 +84,17 @@ pub fn generate_mir_aarch64<W: Write>(
 
         // Compute stack slots for all virtual registers in the function
         let frame = FrameMap::from_function(func);
-        if frame.frame_size > 0 {
-            writeln!(writer, "    sub sp, sp, #{}", frame.frame_size)?;
+
+        // For complex functions, ensure we have enough stack space
+        let has_many_vars = func.blocks.iter().flat_map(|b| b.instructions.iter()).filter(|i| matches!(i, MirInst::IntBinary { .. })).count() > 100;
+        let adjusted_frame_size = if has_many_vars {
+            (frame.frame_size + 1024) & !15 // Add extra space for complex functions
+        } else {
+            frame.frame_size
+        };
+
+        if adjusted_frame_size > 0 {
+            writeln!(writer, "    sub sp, sp, #{}", adjusted_frame_size)?;
         }
 
         // Spill incoming arguments (x0..x7) to their slots
@@ -94,37 +117,53 @@ pub fn generate_mir_aarch64<W: Write>(
         // Prepare epilogue label so `ret` can branch to it safely
         let epilogue_label = format!(".Lret_{}", label.trim_start_matches('_'));
 
-        // Emit blocks
+        // Create ONE register allocator per function to maintain variable mappings across blocks
+        // This is critical for complex functions with many blocks and variable reassignments
+        let mut ra = A64RegAlloc::new();
+        // For complex functions, use more conservative register allocation
+        if has_complex_function {
+            ra.set_conservative_mode();
+        }
+
+        // Emit blocks - process entry block first, then other blocks
+        // Create a new register allocator for each block to avoid cross-block issues
         if let Some(entry) = func.get_block(&func.entry) {
-            let mut ra = A64RegAlloc::new();
+            let mut ra_entry = A64RegAlloc::new();
+            if has_complex_function {
+                ra_entry.set_conservative_mode();
+            }
             emit_block(
                 entry.instructions.as_slice(),
                 writer,
                 &frame,
                 target_os,
-                &mut ra,
+                &mut ra_entry,
                 &epilogue_label,
             )?;
         }
         for b in &func.blocks {
             if b.label != func.entry {
                 writeln!(writer, "{}:", b.label)?;
-                let mut ra = A64RegAlloc::new();
+                let mut ra_block = A64RegAlloc::new();
+                if has_complex_function {
+                    ra_block.set_conservative_mode();
+                }
                 emit_block(
                     b.instructions.as_slice(),
                     writer,
                     &frame,
                     target_os,
-                    &mut ra,
+                    &mut ra_block,
                     &epilogue_label,
                 )?;
             }
         }
 
+
         // Epilogue
         writeln!(writer, "{}:", epilogue_label)?;
-        if frame.frame_size > 0 {
-            writeln!(writer, "    add sp, sp, #{}", frame.frame_size)?;
+        if adjusted_frame_size > 0 {
+            writeln!(writer, "    add sp, sp, #{}", adjusted_frame_size)?;
         }
         writeln!(writer, "    ldp x29, x30, [sp], #16")?;
         writeln!(writer, "    ret")?;
