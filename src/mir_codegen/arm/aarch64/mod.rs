@@ -34,19 +34,10 @@ pub fn generate_mir_aarch64<W: Write>(
     writer: &mut W,
     target_os: TargetOs,
 ) -> Result<(), crate::error::LaminaError> {
-    // Check if this module contains extremely complex functions that should fall back to IR
-    let has_extremely_complex_function = module.functions.values().any(|f| {
-        f.blocks.len() > 30 || f.blocks.iter().any(|b| b.instructions.len() > 60)
-    });
-
-    if has_extremely_complex_function {
-        return Err(crate::error::LaminaError::IoError("Function too complex for MIR backend, falling back to IR".to_string()));
-    }
-
     // Check if this module contains complex functions that need conservative handling
-    // Complex functions: many basic blocks (>30) or very large blocks (>60 instructions)
+    // Complex functions: many basic blocks (>50) or very large blocks (>100 instructions)
     let has_complex_function = module.functions.values().any(|f| {
-        f.blocks.len() > 30 || f.blocks.iter().any(|b| b.instructions.len() > 60)
+        f.blocks.len() > 50 || f.blocks.iter().any(|b| b.instructions.len() > 100)
     });
     // Emit a shared format string for print intrinsics, then text section header
     match target_os {
@@ -143,6 +134,7 @@ pub fn generate_mir_aarch64<W: Write>(
         }
         for b in &func.blocks {
             if b.label != func.entry {
+                writeln!(writer, "    .align 2")?;
                 writeln!(writer, "{}:", b.label)?;
                 let mut ra_block = A64RegAlloc::new();
                 if has_complex_function {
@@ -1053,6 +1045,7 @@ fn lamina_to_codegen_error(err: crate::error::LaminaError) -> CodegenError {
         }
         crate::error::LaminaError::ParsingError(msg)
         | crate::error::LaminaError::ValidationError(msg)
+        | crate::error::LaminaError::MirError(msg)
         | crate::error::LaminaError::IoError(msg)
         | crate::error::LaminaError::Utf8Error(msg) => CodegenError::UnsupportedFeature(msg),
     }
