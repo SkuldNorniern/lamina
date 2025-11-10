@@ -36,7 +36,11 @@ impl LoopInvariantCodeMotion {
         // Find all loops in the function
         let loops = self.find_loops(func);
 
-        for loop_info in loops {
+        // Limit the number of loops processed for stability
+        let max_loops = 10;
+        let loops_to_process = loops.into_iter().take(max_loops);
+
+        for loop_info in loops_to_process {
             if self.optimize_loop(func, &loop_info)? {
                 changed = true;
             }
@@ -188,6 +192,9 @@ impl LoopInvariantCodeMotion {
         let mut invariant = Vec::new();
         let defs_in_loop = self.collect_defs_in_loop(func, loop_info);
 
+        // Limit the number of invariant instructions to move for stability
+        let max_invariant_instructions = 20;
+
         for (block_idx, block) in func.blocks.iter().enumerate() {
             if !loop_info.blocks.contains(&block.label) {
                 continue;
@@ -203,7 +210,16 @@ impl LoopInvariantCodeMotion {
                 if self.is_invariant_instruction(func, loop_info, &defs_in_loop, instr) {
                     // Store as (block_idx, instr_idx) tuple to avoid overflow
                     invariant.push((block_idx, instr_idx));
+
+                    // Limit the number of invariant instructions for stability
+                    if invariant.len() >= max_invariant_instructions {
+                        break;
+                    }
                 }
+            }
+
+            if invariant.len() >= max_invariant_instructions {
+                break;
             }
         }
 
