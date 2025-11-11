@@ -65,7 +65,7 @@ impl InstructionScheduling {
     /// Schedule multiply-accumulate patterns for better ILP
     /// This is particularly important for matrix operations
     fn schedule_multiply_accumulate_patterns(&self, block: &mut Block) -> bool {
-        let mut changed = false;
+        let changed = false;
 
         // Find sequences of multiply and add operations
         let mut i = 0;
@@ -87,11 +87,11 @@ impl InstructionScheduling {
             ) = (&block.instructions[i], &block.instructions[i + 1])
             {
                 // Check if the add uses the result of the mul
-                if let crate::mir::Operand::Register(rhs_reg) = add_rhs {
-                    if self.is_same_register(mul_dst, rhs_reg) {
+                if let crate::mir::Operand::Register(rhs_reg) = add_rhs
+                    && self.is_same_register(mul_dst, rhs_reg) {
                         // Check if this is an accumulation: dst += (lhs * rhs)
-                        if let crate::mir::Operand::Register(lhs_reg) = add_lhs {
-                            if self.is_same_register(add_dst, lhs_reg) {
+                        if let crate::mir::Operand::Register(lhs_reg) = add_lhs
+                            && self.is_same_register(add_dst, lhs_reg) {
                                 // Found multiply-accumulate pattern
                                 // In a real scheduler, we might:
                                 // 1. Move independent instructions between mul and add
@@ -100,9 +100,7 @@ impl InstructionScheduling {
 
                                 // For now, this serves as pattern recognition
                             }
-                        }
                     }
-                }
             }
             i += 1;
         }
@@ -112,7 +110,7 @@ impl InstructionScheduling {
 
     /// Schedule load-use chains to hide memory latency
     fn schedule_load_use_chains(&self, block: &mut Block) -> bool {
-        let mut changed = false;
+        let changed = false;
 
         // Find load instructions and try to schedule independent work between
         // the load and its first use
@@ -132,13 +130,12 @@ impl InstructionScheduling {
             let first_use =
                 self.find_first_use_after(&block.instructions, &loaded_reg, load_idx + 1);
 
-            if let Some(use_idx) = first_use {
-                if use_idx > load_idx + 1 {
+            if let Some(use_idx) = first_use
+                && use_idx > load_idx + 1 {
                     // There are instructions between load and use
                     // Check if any can be moved or reordered for better scheduling
                     // This is complex and would need sophisticated dependency analysis
                 }
-            }
         }
 
         changed

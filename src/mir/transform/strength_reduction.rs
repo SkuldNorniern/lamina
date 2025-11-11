@@ -1,6 +1,6 @@
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::instruction::Immediate;
-use crate::mir::{Block, Function, Instruction, IntBinOp, MirType, Operand, Register};
+use crate::mir::{Function, Instruction, IntBinOp, MirType, Operand};
 
 /// Strength Reduction Transform
 ///

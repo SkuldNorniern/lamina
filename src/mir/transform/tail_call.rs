@@ -54,8 +54,8 @@ impl TailCallOptimization {
         let mut changed = false;
 
         // Find the last instruction in the block
-        if let Some(last_instr) = block.instructions.last() {
-            if let Instruction::Ret { value } = last_instr {
+        if let Some(last_instr) = block.instructions.last()
+            && let Instruction::Ret { value } = last_instr {
                 // Check if there's a call instruction before the return
                 if block.instructions.len() >= 2 {
                     let second_last_idx = block.instructions.len() - 2;
@@ -73,7 +73,6 @@ impl TailCallOptimization {
                     }
                 }
             }
-        }
 
         changed
     }
