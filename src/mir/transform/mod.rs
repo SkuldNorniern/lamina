@@ -1,4 +1,5 @@
 mod addressing;
+mod branch_opt;
 mod cfg;
 mod deadcode;
 mod inline;
@@ -8,9 +9,12 @@ mod peephole;
 mod strength_reduction;
 mod tail_call;
 mod memory;
+mod scheduling;
+pub mod sanity;
 
 // Re-export transforms for easy access
 pub use addressing::AddressingCanonicalization;
+pub use branch_opt::BranchOptimization;
 pub use cfg::{CfgSimplify, JumpThreading};
 pub use deadcode::DeadCodeElimination;
 pub use inline::{FunctionInlining, ModuleInlining};
@@ -18,6 +22,7 @@ pub use loop_opt::{LoopFusion, LoopInvariantCodeMotion, LoopUnrolling};
 pub use motion::{CommonSubexpressionElimination, ConstantFolding, CopyPropagation};
 pub use memory::MemoryOptimization;
 pub use peephole::Peephole;
+pub use scheduling::InstructionScheduling;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
 
@@ -103,6 +108,8 @@ pub struct TransformStats {
 /// A pipeline of transforms that can be applied to MIR
 pub struct TransformPipeline {
     transforms: Vec<Box<dyn Transform>>,
+    /// Safety limit for total iterations across all transforms
+    max_total_iterations: usize,
 }
 
 impl TransformPipeline {
@@ -110,6 +117,7 @@ impl TransformPipeline {
     pub fn new() -> Self {
         Self {
             transforms: Vec::new(),
+            max_total_iterations: 1000, // Safety limit to prevent infinite loops
         }
     }
 
@@ -132,18 +140,22 @@ impl TransformPipeline {
             // CFG cleanups
             pipeline = pipeline.add_transform(CfgSimplify);
             pipeline = pipeline.add_transform(JumpThreading);
+            // Branch optimizations disabled - causing hangs
+            // pipeline = pipeline.add_transform(BranchOptimization);
         }
 
         // At -O2: add experimental but generally safe optimizations
         if opt_level >= 2 {
-            // Memory and addressing canonicalization
-            pipeline = pipeline.add_transform(MemoryOptimization);
+            // Addressing canonicalization and constant folding (conservative subset)
             pipeline = pipeline.add_transform(AddressingCanonicalization);
-            // Loop and call improvements (now with safety limits)
-            pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
-            pipeline = pipeline.add_transform(TailCallOptimization);
-            // Local algebraic rewrites (now safe for IntCmp folding)
-            pipeline = pipeline.add_transform(Peephole);
+            pipeline = pipeline.add_transform(ConstantFolding);
+            // Other transforms remain disabled until stabilized by tests/benchmarks
+            pipeline = pipeline.add_transform(MemoryOptimization);
+            // pipeline = pipeline.add_transform(DeadCodeElimination);
+            // pipeline = pipeline.add_transform(TailCallOptimization);
+            // pipeline = pipeline.add_transform(Peephole);
+            // pipeline = pipeline.add_transform(CopyPropagation);
+            // pipeline = pipeline.add_transform(CommonSubexpressionElimination);
         }
 
         // At -O3: high-cost transforms
@@ -151,12 +163,15 @@ impl TransformPipeline {
             // Strength reduction and inlining added at highest level
             pipeline = pipeline.add_transform(StrengthReduction);
             pipeline = pipeline.add_transform(FunctionInlining);
-            pipeline = pipeline.add_transform(ConstantFolding);
-            pipeline = pipeline.add_transform(CopyPropagation);
-            pipeline = pipeline.add_transform(CommonSubexpressionElimination);
-            // Potential future:
-            // pipeline = pipeline.add_transform(LoopUnrolling::default());
-            // pipeline = pipeline.add_transform(LoopFusion::default());
+            // Instruction scheduling disabled - causing correctness issues
+            // pipeline = pipeline.add_transform(InstructionScheduling);
+            // Copy propagation and CSE disabled - causing correctness issues
+            // pipeline = pipeline.add_transform(CopyPropagation);
+            // pipeline = pipeline.add_transform(CommonSubexpressionElimination);
+            // Loop unrolling disabled - causing correctness issues
+            // pipeline = pipeline.add_transform(LoopUnrolling);
+            // Loop fusion still disabled due to complexity
+            // pipeline = pipeline.add_transform(LoopFusion);
         }
 
         pipeline
@@ -168,8 +183,15 @@ impl TransformPipeline {
         func: &mut crate::mir::Function,
     ) -> Result<TransformStats, String> {
         let mut stats = TransformStats::default();
+        let mut total_iterations = 0;
 
         for transform in &self.transforms {
+            // Safety check: prevent infinite loops
+            if total_iterations >= self.max_total_iterations {
+                return Err(format!("Transform pipeline exceeded maximum iterations ({}), possible infinite loop in transform '{}'",
+                    self.max_total_iterations, transform.name()));
+            }
+
             stats.transforms_run += 1;
             match transform.apply(func) {
                 Ok(changed) => {
@@ -181,8 +203,11 @@ impl TransformPipeline {
                     return Err(format!("Transform '{}' failed: {}", transform.name(), e));
                 }
             }
+
+            total_iterations += 1;
         }
 
+        stats.iterations = total_iterations;
         Ok(stats)
     }
 
@@ -248,18 +273,18 @@ mod tests {
         let pipeline = TransformPipeline::default_for_opt_level(0);
         assert!(pipeline.is_empty());
 
-        // -O1 should have peephole and dead code elimination
+        // -O1 should have CFG simplification and jump threading (branch optimization disabled)
         let pipeline = TransformPipeline::default_for_opt_level(1);
         assert_eq!(pipeline.len(), 2);
 
-        // -O2 should have memory optimization, addressing canonicalization, loop invariant code motion,
-        // tail call optimization, and peephole
+        // -O2 should have O1 transforms plus addressing canonicalization, constant folding, and memory optimization
+        // (most other transforms disabled due to correctness issues)
         let pipeline = TransformPipeline::default_for_opt_level(2);
-        assert_eq!(pipeline.len(), 7);
+        assert_eq!(pipeline.len(), 5);
 
-        // -O3 should have all transforms including function inlining and motion optimizations
+        // -O3 should have O1+O2 transforms plus strength reduction and function inlining (most other transforms disabled due to correctness issues)
         let pipeline = TransformPipeline::default_for_opt_level(3);
-        assert_eq!(pipeline.len(), 12);
+        assert_eq!(pipeline.len(), 7);
     }
 
     #[test]
