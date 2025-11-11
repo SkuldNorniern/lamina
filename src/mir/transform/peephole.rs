@@ -97,8 +97,8 @@ impl Peephole {
                 rhs,
             } => {
                 // Be conservative inside loop blocks to avoid changing loop progress/termination subtly
-                if !in_loop_block {
-                    if let Some(b) = Self::evaluate_int_cmp(op, lhs, rhs) {
+                if !in_loop_block
+                    && let Some(b) = Self::evaluate_int_cmp(op, lhs, rhs) {
                         // Replace comparison with a constant move: dst = (b ? 1 : 0)
                         let new_inst = Instruction::IntBinary {
                             op: IntBinOp::Add,
@@ -110,7 +110,6 @@ impl Peephole {
                         *inst = new_inst;
                         return true;
                     }
-                }
                 // If not fully reducible (or guarded), do not rewrite
                 false
             }
@@ -160,8 +159,8 @@ impl Peephole {
             IntBinOp::URem => {
                 // Special optimizations: x % c -> x & (c-1) for powers of 2
                 // Critical for matrix operations, array indexing, and modular arithmetic
-                if let Some(c) = rhs_imm {
-                    if c > 0 && (c & (c - 1)) == 0 {
+                if let Some(c) = rhs_imm
+                    && c > 0 && (c & (c - 1)) == 0 {
                         let mask = c - 1;
                         // x % (2^n) -> x & (2^n - 1)
                         *op = IntBinOp::And;
@@ -170,7 +169,6 @@ impl Peephole {
                     }
                     // For other small constants, we could use more complex sequences
                     // but that requires instruction sequence changes
-                }
                 self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, false)
             }
             IntBinOp::SRem => self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, true),
@@ -191,12 +189,9 @@ impl Peephole {
         rhs_imm: Option<i64>,
     ) -> bool {
         // Canonicalize: prefer register on LHS, immediate on RHS
-        match (&lhs, &rhs) {
-            (Operand::Immediate(_), Operand::Register(_)) => {
-                core::mem::swap(lhs, rhs);
-                return true;
-            }
-            _ => {}
+        if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
+            core::mem::swap(lhs, rhs);
+            return true;
         }
         // x + 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
@@ -255,12 +250,9 @@ impl Peephole {
         rhs_imm: Option<i64>,
     ) -> bool {
         // Canonicalize: prefer register on LHS, immediate on RHS
-        match (&lhs, &rhs) {
-            (Operand::Immediate(_), Operand::Register(_)) => {
-                core::mem::swap(lhs, rhs);
-                return true;
-            }
-            _ => {}
+        if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
+            core::mem::swap(lhs, rhs);
+            return true;
         }
         // x * 1 => x (already in optimal form, no change needed)
         if is_one(rhs_imm) {
@@ -280,15 +272,14 @@ impl Peephole {
 
         // Strength reduction for multiplication by small constants
         // This is critical for matrix operations where we multiply by strides/sizes
-        if let Some(const_val) = rhs_imm {
-            if let Some((shift, add)) = decompose_multiplication(const_val) {
+        if let Some(const_val) = rhs_imm
+            && let Some((shift, add)) = decompose_multiplication(const_val) {
                 // Convert multiplication to shifts and adds for better performance
                 // This would typically be handled by the strength reduction pass
                 // but we can mark it for optimization here
                 // Note: This requires changing the operation type, which we can't do here
                 // So we just leave it for other passes to handle
             }
-        }
 
         // Constant folding: c1 * c2 => (c1*c2) with overflow check
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
@@ -370,12 +361,9 @@ impl Peephole {
         rhs_imm: Option<i64>,
     ) -> bool {
         // Canonicalize: prefer register on LHS, immediate on RHS
-        match (&lhs, &rhs) {
-            (Operand::Immediate(_), Operand::Register(_)) => {
-                core::mem::swap(lhs, rhs);
-                return true;
-            }
-            _ => {}
+        if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
+            core::mem::swap(lhs, rhs);
+            return true;
         }
         // x & -1 => x (already in optimal form, no change needed)
         if is_all_ones(rhs_imm) {
@@ -409,12 +397,9 @@ impl Peephole {
         rhs_imm: Option<i64>,
     ) -> bool {
         // Canonicalize: prefer register on LHS, immediate on RHS
-        match (&lhs, &rhs) {
-            (Operand::Immediate(_), Operand::Register(_)) => {
-                core::mem::swap(lhs, rhs);
-                return true;
-            }
-            _ => {}
+        if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
+            core::mem::swap(lhs, rhs);
+            return true;
         }
         // x | 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
@@ -442,12 +427,9 @@ impl Peephole {
         rhs_imm: Option<i64>,
     ) -> bool {
         // Canonicalize: prefer register on LHS, immediate on RHS
-        match (&lhs, &rhs) {
-            (Operand::Immediate(_), Operand::Register(_)) => {
-                core::mem::swap(lhs, rhs);
-                return true;
-            }
-            _ => {}
+        if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
+            core::mem::swap(lhs, rhs);
+            return true;
         }
         // x ^ 0 => x (already in optimal form, no change needed)
         if is_zero(rhs_imm) {
@@ -561,8 +543,8 @@ impl Peephole {
             });
         }
         // x ? x patterns
-        if let (Operand::Register(r1), Operand::Register(r2)) = (lhs, rhs) {
-            if r1 == r2 {
+        if let (Operand::Register(r1), Operand::Register(r2)) = (lhs, rhs)
+            && r1 == r2 {
                 return Some(match op {
                     IntCmpOp::Eq
                     | IntCmpOp::SLe
@@ -576,7 +558,6 @@ impl Peephole {
                     | IntCmpOp::UGt => false,
                 });
             }
-        }
         None
     }
 
@@ -733,24 +714,21 @@ impl Peephole {
             {
                 // Check if this is an accumulation: dst += something
                 if let (Operand::Register(lhs_reg), Operand::Register(rhs_reg)) = (add_lhs, add_rhs)
-                {
-                    if self.is_same_register(add_dst, lhs_reg) {
+                    && self.is_same_register(add_dst, lhs_reg) {
                         // This is dst += rhs_reg, now check if rhs_reg is a multiplication result
                         if let Some(mul_idx) = self.find_multiplication_result(
                             block,
                             &Operand::Register(rhs_reg.clone()),
                             i,
-                        ) {
-                            if let Instruction::IntBinary {
+                        )
+                            && let Instruction::IntBinary {
                                 op: IntBinOp::Mul, ..
                             } = &block.instructions[mul_idx]
                             {
                                 // Found multiply-accumulate pattern
                                 patterns.push((i, mul_idx));
                             }
-                        }
                     }
-                }
             }
         }
 
@@ -830,11 +808,9 @@ impl Peephole {
                     dst: mul_dst,
                     ..
                 } = &block.instructions[i]
-                {
-                    if self.is_same_register(mul_dst, reg) {
+                    && self.is_same_register(mul_dst, reg) {
                         return Some(i);
                     }
-                }
             }
         }
         None
@@ -851,7 +827,7 @@ impl Peephole {
     /// Optimize for vectorization opportunities
     /// Look for parallel operations that could benefit from SIMD
     fn try_optimize_for_vectorization(&self, block: &mut Block) -> bool {
-        let mut changed = false;
+        let changed = false;
 
         // Look for consecutive similar operations that could be vectorized
         // This is a simplified version - real vectorization requires much more analysis
@@ -870,13 +846,12 @@ impl Peephole {
                 &block.instructions[i],
                 &block.instructions[i + 1],
                 &block.instructions[i + 2],
-            ) {
-                if op1 == op2 && op2 == op3 && ty1 == ty2 && ty2 == ty3 {
+            )
+                && op1 == op2 && op2 == op3 && ty1 == ty2 && ty2 == ty3 {
                     // Three consecutive operations of the same type and type
                     // This could potentially be vectorized, though we can't do that here
                     // We could mark it for the backend to consider
                 }
-            }
         }
 
         changed
@@ -965,27 +940,24 @@ fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<Strin
         if let Some(term) = b.instructions.last() {
             match term {
                 Instruction::Jmp { target } => {
-                    if let Some(&tidx) = label_index.get(target.as_str()) {
-                        if tidx <= i {
+                    if let Some(&tidx) = label_index.get(target.as_str())
+                        && tidx <= i {
                             headers.insert(target.clone());
                         }
-                    }
                 }
                 Instruction::Br {
                     true_target,
                     false_target,
                     ..
                 } => {
-                    if let Some(&tidx) = label_index.get(true_target.as_str()) {
-                        if tidx <= i {
+                    if let Some(&tidx) = label_index.get(true_target.as_str())
+                        && tidx <= i {
                             headers.insert(true_target.clone());
                         }
-                    }
-                    if let Some(&fidx) = label_index.get(false_target.as_str()) {
-                        if fidx <= i {
+                    if let Some(&fidx) = label_index.get(false_target.as_str())
+                        && fidx <= i {
                             headers.insert(false_target.clone());
                         }
-                    }
                 }
                 _ => {}
             }

@@ -504,36 +504,31 @@ impl LoopUnrolling {
         let mut unrollable = Vec::new();
 
         for block in &func.blocks {
-            if let Some(last_instr) = block.instructions.last() {
-                match last_instr {
-                    Instruction::Br {
+            if let Some(last_instr) = block.instructions.last()
+                && let Instruction::Br {
                         cond,
                         true_target,
                         false_target,
                         ..
-                    } => {
-                        // Look for simple counting loops: while (i < N) or similar
-                        if let Some(loop_bound) = self.analyze_loop_bound(
-                            func,
-                            block,
-                            &Operand::Register(cond.clone()),
-                            true_target,
-                            false_target,
-                        ) {
-                            if loop_bound <= 8 {
-                                // Only unroll very small loops for safety
-                                unrollable.push(UnrollableLoop {
-                                    header: block.label.clone(),
-                                    body_blocks: vec![true_target.clone()],
-                                    bound: loop_bound,
-                                    induction_var: None, // TODO: detect induction variable
-                                });
-                            }
+                    } = last_instr {
+                    // Look for simple counting loops: while (i < N) or similar
+                    if let Some(loop_bound) = self.analyze_loop_bound(
+                        func,
+                        block,
+                        &Operand::Register(cond.clone()),
+                        true_target,
+                        false_target,
+                    )
+                        && loop_bound <= 8 {
+                            // Only unroll very small loops for safety
+                            unrollable.push(UnrollableLoop {
+                                header: block.label.clone(),
+                                body_blocks: vec![true_target.clone()],
+                                bound: loop_bound,
+                                induction_var: None, // TODO: detect induction variable
+                            });
                         }
-                    }
-                    _ => {}
                 }
-            }
         }
 
         unrollable

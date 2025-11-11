@@ -95,8 +95,8 @@ impl AddressingCanonicalization {
         match addr {
             AddressMode::BaseOffset { base, offset } => {
                 // base is a temp; see if it's defined by an add with scaled index
-                if let Some(def_pos) = def_index.get(base) {
-                    if let Some((base_reg, index_reg, scale)) = self.match_add_scaled_index(
+                if let Some(def_pos) = def_index.get(base)
+                    && let Some((base_reg, index_reg, scale)) = self.match_add_scaled_index(
                         &instructions[*def_pos],
                         def_index,
                         instructions,
@@ -117,7 +117,6 @@ impl AddressingCanonicalization {
                         }
                         return true;
                     }
-                }
             }
             AddressMode::BaseIndexScale { .. } => {}
         }
@@ -139,23 +138,18 @@ impl AddressingCanonicalization {
             def_index: &std::collections::HashMap<Register, usize>,
             instructions: &[Instruction],
         ) -> Option<(Register, u8)> {
-            if let Some(&pos) = def_index.get(r) {
-                if let Instruction::IntBinary {
+            if let Some(&pos) = def_index.get(r)
+                && let Instruction::IntBinary {
                     op: IntBinOp::Shl,
                     lhs,
                     rhs,
                     ..
                 } = &instructions[pos]
-                {
-                    if let Operand::Register(idx) = lhs {
-                        if let Operand::Immediate(Immediate::I64(shift)) = rhs {
-                            if (0..=3).contains(&(*shift as i64)) {
+                    && let Operand::Register(idx) = lhs
+                        && let Operand::Immediate(Immediate::I64(shift)) = rhs
+                            && (0..=3).contains(&{ *shift }) {
                                 return Some((idx.clone(), 1u8 << (*shift as u8)));
                             }
-                        }
-                    }
-                }
-            }
             None
         }
 
@@ -165,24 +159,20 @@ impl AddressingCanonicalization {
             def_index: &std::collections::HashMap<Register, usize>,
             instructions: &[Instruction],
         ) -> Option<(Register, u8)> {
-            if let Some(&pos) = def_index.get(r) {
-                if let Instruction::IntBinary {
+            if let Some(&pos) = def_index.get(r)
+                && let Instruction::IntBinary {
                     op: IntBinOp::Mul,
                     lhs,
                     rhs,
                     ..
                 } = &instructions[pos]
-                {
-                    if let Operand::Register(idx) = lhs {
-                        if let Operand::Immediate(Immediate::I64(scale)) = rhs {
+                    && let Operand::Register(idx) = lhs
+                        && let Operand::Immediate(Immediate::I64(scale)) = rhs {
                             match *scale {
                                 1 | 2 | 4 | 8 => return Some((idx.clone(), *scale as u8)),
                                 _ => {}
                             }
                         }
-                    }
-                }
-            }
             None
         }
 
@@ -193,15 +183,13 @@ impl AddressingCanonicalization {
             def_index: &std::collections::HashMap<Register, usize>,
             instructions: &[Instruction],
         ) -> Option<(Register, Register, u8)> {
-            if let Operand::Register(base_reg) = base_op {
-                if let Operand::Register(r2) = other_op {
-                    if let Some((idx, scale)) = scaled_from_shift(r2, def_index, instructions)
+            if let Operand::Register(base_reg) = base_op
+                && let Operand::Register(r2) = other_op
+                    && let Some((idx, scale)) = scaled_from_shift(r2, def_index, instructions)
                         .or_else(|| scaled_from_mul(r2, def_index, instructions))
                     {
                         return Some((base_reg.clone(), idx, scale));
                     }
-                }
-            }
             None
         }
 

@@ -60,7 +60,7 @@ pub fn generate_mir_to_x86_64<W: Write>(
     writer: &mut W,
     host_os: &str,
 ) -> std::result::Result<(), crate::error::LaminaError> {
-    use crate::error::LaminaError;
+    
 
     let target_os = match host_os {
         "macos" | "darwin" => TargetOs::MacOs,
@@ -84,7 +84,7 @@ pub fn generate_mir_to_wasm<W: Write>(
     writer: &mut W,
     host_os: &str,
 ) -> std::result::Result<(), crate::error::LaminaError> {
-    use crate::error::LaminaError;
+    
 
     let target_os = match host_os {
         "macos" | "darwin" => TargetOs::MacOs,
@@ -108,7 +108,7 @@ pub fn generate_mir_to_riscv<W: Write>(
     writer: &mut W,
     host_os: &str,
 ) -> std::result::Result<(), crate::error::LaminaError> {
-    use crate::error::LaminaError;
+    
 
     let target_os = match host_os {
         "macos" | "darwin" => TargetOs::MacOs,

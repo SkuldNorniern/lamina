@@ -1,6 +1,6 @@
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Operand, Register};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 /// Memory Optimization Transform
 /// Performs various memory-related optimizations including dead store elimination
@@ -121,44 +121,42 @@ impl MemoryOptimization {
                         if attrs.volatile {
                             last_store.clear();
                             last_load.clear();
-                        } else {
-                            if let AddressMode::BaseOffset { base, offset } = addr {
-                                let key = (base.clone(), *offset);
-                                if let Some(stored_val) = last_store.get(&key) {
-                                    // store-to-load forwarding: replace load with a copy of stored_val
-                                    replacement = Some(Instruction::IntBinary {
-                                        op: crate::mir::IntBinOp::Add,
-                                        ty: *ty,
-                                        dst: dst.clone(),
-                                        lhs: stored_val.clone(),
-                                        rhs: Operand::Immediate(
-                                            crate::mir::instruction::Immediate::I64(0),
-                                        ),
-                                    });
-                                    // record latest load destination
-                                    last_load.insert(key, dst.clone());
-                                } else if let Some(prev_reg) = last_load.get(&key) {
-                                    // Redundant load: reuse previous loaded register
-                                    replacement = Some(Instruction::IntBinary {
-                                        op: crate::mir::IntBinOp::Add,
-                                        ty: *ty,
-                                        dst: dst.clone(),
-                                        lhs: Operand::Register(prev_reg.clone()),
-                                        rhs: Operand::Immediate(
-                                            crate::mir::instruction::Immediate::I64(0),
-                                        ),
-                                    });
-                                    // record latest load destination
-                                    last_load.insert(key, dst.clone());
-                                } else {
-                                    // first load of this address
-                                    last_load.insert(key, dst.clone());
-                                }
+                        } else if let AddressMode::BaseOffset { base, offset } = addr {
+                            let key = (base.clone(), *offset);
+                            if let Some(stored_val) = last_store.get(&key) {
+                                // store-to-load forwarding: replace load with a copy of stored_val
+                                replacement = Some(Instruction::IntBinary {
+                                    op: crate::mir::IntBinOp::Add,
+                                    ty: *ty,
+                                    dst: dst.clone(),
+                                    lhs: stored_val.clone(),
+                                    rhs: Operand::Immediate(
+                                        crate::mir::instruction::Immediate::I64(0),
+                                    ),
+                                });
+                                // record latest load destination
+                                last_load.insert(key, dst.clone());
+                            } else if let Some(prev_reg) = last_load.get(&key) {
+                                // Redundant load: reuse previous loaded register
+                                replacement = Some(Instruction::IntBinary {
+                                    op: crate::mir::IntBinOp::Add,
+                                    ty: *ty,
+                                    dst: dst.clone(),
+                                    lhs: Operand::Register(prev_reg.clone()),
+                                    rhs: Operand::Immediate(
+                                        crate::mir::instruction::Immediate::I64(0),
+                                    ),
+                                });
+                                // record latest load destination
+                                last_load.insert(key, dst.clone());
                             } else {
-                                // Unknown addressing, be conservative
-                                last_store.clear();
-                                last_load.clear();
+                                // first load of this address
+                                last_load.insert(key, dst.clone());
                             }
+                        } else {
+                            // Unknown addressing, be conservative
+                            last_store.clear();
+                            last_load.clear();
                         }
                     }
                     Instruction::Call { .. } | Instruction::TailCall { .. } => {
@@ -201,7 +199,7 @@ impl MemoryOptimization {
 
     /// Optimize memory access patterns within a basic block
     fn optimize_block_memory_patterns(&self, block: &mut Block) -> bool {
-        let mut changed = false;
+        let changed = false;
 
         // Look for patterns that suggest matrix operations
         let mut load_addresses = Vec::new();
@@ -212,7 +210,7 @@ impl MemoryOptimization {
             match inst {
                 Instruction::Load { addr, .. } => {
                     if let crate::mir::AddressMode::BaseOffset { base, offset } = addr {
-                        load_addresses.push((base.clone(), *offset as i16));
+                        load_addresses.push((base.clone(), (*offset)));
                     } else if let crate::mir::AddressMode::BaseIndexScale {
                         base,
                         index,
@@ -226,7 +224,7 @@ impl MemoryOptimization {
                 }
                 Instruction::Store { addr, .. } => {
                     if let crate::mir::AddressMode::BaseOffset { base, offset } = addr {
-                        store_addresses.push((base.clone(), *offset as i16));
+                        store_addresses.push((base.clone(), (*offset)));
                     } else if let crate::mir::AddressMode::BaseIndexScale {
                         base,
                         index,
