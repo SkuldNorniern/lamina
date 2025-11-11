@@ -280,7 +280,7 @@ use std::io::Write;
 // Re-export core IR structures for easier access
 use codegen::CodegenError;
 pub use codegen::generate_x86_64_assembly;
-pub use mir_codegen::{TargetOs, generate_mir_to_aarch64};
+pub use mir_codegen::{TargetOs, generate_mir_to_aarch64, generate_mir_to_x86_64, generate_mir_to_wasm};
 pub use error::LaminaError;
 pub use ir::{
     function::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
