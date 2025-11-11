@@ -1,5 +1,5 @@
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Function, Instruction, Operand, AddressMode, Register};
+use crate::mir::{AddressMode, Function, Instruction, Operand, Register};
 
 /// AddressingCanonicalization
 /// - Rewrites address formation patterns like base + (idx << scale) into BaseIndexScale addressing
@@ -35,7 +35,8 @@ impl AddressingCanonicalization {
 
         for block in &mut func.blocks {
             // Build a simple def map for this block: reg -> (idx of instr)
-            let mut def_index: std::collections::HashMap<Register, usize> = std::collections::HashMap::new();
+            let mut def_index: std::collections::HashMap<Register, usize> =
+                std::collections::HashMap::new();
             for (i, instr) in block.instructions.iter().enumerate() {
                 if let Some(reg) = instr.def_reg() {
                     def_index.insert(reg.clone(), i);
@@ -95,9 +96,11 @@ impl AddressingCanonicalization {
             AddressMode::BaseOffset { base, offset } => {
                 // base is a temp; see if it's defined by an add with scaled index
                 if let Some(def_pos) = def_index.get(base) {
-                    if let Some((base_reg, index_reg, scale)) =
-                        self.match_add_scaled_index(&instructions[*def_pos], def_index, instructions)
-                    {
+                    if let Some((base_reg, index_reg, scale)) = self.match_add_scaled_index(
+                        &instructions[*def_pos],
+                        def_index,
+                        instructions,
+                    ) {
                         // Keep original offset, scale is guaranteed in {1,2,4,8}
                         // Only convert if offset fits in i8 range to avoid information loss
                         if (*offset >= i8::MIN as i16) && (*offset <= i8::MAX as i16) {
@@ -137,7 +140,13 @@ impl AddressingCanonicalization {
             instructions: &[Instruction],
         ) -> Option<(Register, u8)> {
             if let Some(&pos) = def_index.get(r) {
-                if let Instruction::IntBinary { op: IntBinOp::Shl, lhs, rhs, .. } = &instructions[pos] {
+                if let Instruction::IntBinary {
+                    op: IntBinOp::Shl,
+                    lhs,
+                    rhs,
+                    ..
+                } = &instructions[pos]
+                {
                     if let Operand::Register(idx) = lhs {
                         if let Operand::Immediate(Immediate::I64(shift)) = rhs {
                             if (0..=3).contains(&(*shift as i64)) {
@@ -157,7 +166,13 @@ impl AddressingCanonicalization {
             instructions: &[Instruction],
         ) -> Option<(Register, u8)> {
             if let Some(&pos) = def_index.get(r) {
-                if let Instruction::IntBinary { op: IntBinOp::Mul, lhs, rhs, .. } = &instructions[pos] {
+                if let Instruction::IntBinary {
+                    op: IntBinOp::Mul,
+                    lhs,
+                    rhs,
+                    ..
+                } = &instructions[pos]
+                {
                     if let Operand::Register(idx) = lhs {
                         if let Operand::Immediate(Immediate::I64(scale)) = rhs {
                             match *scale {
@@ -190,7 +205,13 @@ impl AddressingCanonicalization {
             None
         }
 
-        if let Instruction::IntBinary { op: IntBinOp::Add, lhs, rhs, .. } = def_instr {
+        if let Instruction::IntBinary {
+            op: IntBinOp::Add,
+            lhs,
+            rhs,
+            ..
+        } = def_instr
+        {
             if let Some(m) = try_base_plus_scaled(lhs, rhs, def_index, instructions) {
                 return Some(m);
             }
@@ -202,5 +223,3 @@ impl AddressingCanonicalization {
         None
     }
 }
-
-

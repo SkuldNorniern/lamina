@@ -1,8 +1,8 @@
 use std::io::Write;
 use std::result::Result;
 
-use crate::mir::{Operand, Register, VirtualReg, Immediate};
 use crate::error::LaminaError;
+use crate::mir::{Immediate, Operand, Register, VirtualReg};
 
 /// Load an operand into the WASM stack
 pub fn load_operand_wasm<W: Write>(
@@ -14,26 +14,24 @@ pub fn load_operand_wasm<W: Write>(
         Operand::Register(reg) => {
             load_register_wasm(reg, writer, vreg_to_local)?;
         }
-        Operand::Immediate(imm) => {
-            match imm {
-                Immediate::I8(val) => {
-                    writeln!(writer, "      i64.const {}", *val as i64)?;
-                }
-                Immediate::I16(val) => {
-                    writeln!(writer, "      i64.const {}", *val as i64)?;
-                }
-                Immediate::I32(val) => {
-                    writeln!(writer, "      i64.const {}", *val as i64)?;
-                }
-                Immediate::I64(val) => {
-                    writeln!(writer, "      i64.const {}", val)?;
-                }
-                Immediate::F32(_) | Immediate::F64(_) => {
-                    writeln!(writer, "      ;; TODO: floating point immediates")?;
-                    writeln!(writer, "      i64.const 0")?;
-                }
+        Operand::Immediate(imm) => match imm {
+            Immediate::I8(val) => {
+                writeln!(writer, "      i64.const {}", *val as i64)?;
             }
-        }
+            Immediate::I16(val) => {
+                writeln!(writer, "      i64.const {}", *val as i64)?;
+            }
+            Immediate::I32(val) => {
+                writeln!(writer, "      i64.const {}", *val as i64)?;
+            }
+            Immediate::I64(val) => {
+                writeln!(writer, "      i64.const {}", val)?;
+            }
+            Immediate::F32(_) | Immediate::F64(_) => {
+                writeln!(writer, "      ;; TODO: floating point immediates")?;
+                writeln!(writer, "      i64.const 0")?;
+            }
+        },
         _ => {
             writeln!(writer, "      ;; TODO: other operand types")?;
             writeln!(writer, "      i64.const 0")?;
@@ -73,7 +71,11 @@ pub fn store_to_register_wasm<W: Write>(
 ) -> Result<(), LaminaError> {
     match reg {
         Register::Physical(p) => {
-            writeln!(writer, "      ;; TODO: store to physical register {}", p.name)?;
+            writeln!(
+                writer,
+                "      ;; TODO: store to physical register {}",
+                p.name
+            )?;
         }
         Register::Virtual(v) => {
             if let Some(local_idx) = vreg_to_local.get(v) {

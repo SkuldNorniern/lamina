@@ -1284,7 +1284,10 @@ fn binary_i32<W: Write>(
         BinaryOp::Sub => writeln!(writer, "        sub w12, w10, w11")?,
         BinaryOp::Mul => writeln!(writer, "        mul w12, w10, w11")?,
         BinaryOp::Div => writeln!(writer, "        sdiv w12, w10, w11")?,
-        BinaryOp::Rem => writeln!(writer, "        // TODO: Modulo operation not implemented in legacy IR-based AArch64 backend")?,
+        BinaryOp::Rem => writeln!(
+            writer,
+            "        // TODO: Modulo operation not implemented in legacy IR-based AArch64 backend"
+        )?,
     }
     if dest.starts_with("[x29,") {
         materialize_address_operand(writer, dest, "x9")?;
@@ -1341,7 +1344,10 @@ fn binary_i16<W: Write>(
         BinaryOp::Sub => writeln!(writer, "        sub w12, w10, w11")?,
         BinaryOp::Mul => writeln!(writer, "        mul w12, w10, w11")?,
         BinaryOp::Div => writeln!(writer, "        sdiv w12, w10, w11")?,
-        BinaryOp::Rem => writeln!(writer, "        // TODO: Modulo operation not implemented in legacy IR-based AArch64 backend")?,
+        BinaryOp::Rem => writeln!(
+            writer,
+            "        // TODO: Modulo operation not implemented in legacy IR-based AArch64 backend"
+        )?,
     }
     if dest.starts_with("[x29,") {
         materialize_address_operand(writer, dest, "x9")?;
@@ -1367,7 +1373,10 @@ fn binary_i64<W: Write>(
         BinaryOp::Sub => writeln!(writer, "        sub x12, x10, x11")?,
         BinaryOp::Mul => writeln!(writer, "        mul x12, x10, x11")?,
         BinaryOp::Div => writeln!(writer, "        sdiv x12, x10, x11")?,
-        BinaryOp::Rem => writeln!(writer, "        // TODO: Modulo operation not implemented in legacy IR-based AArch64 backend")?,
+        BinaryOp::Rem => writeln!(
+            writer,
+            "        // TODO: Modulo operation not implemented in legacy IR-based AArch64 backend"
+        )?,
     }
     if dest.starts_with("[x29,") {
         materialize_address_operand(writer, dest, "x9")?;

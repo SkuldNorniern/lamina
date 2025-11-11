@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::mir_codegen::regalloc::{RegisterAllocator as MirRegisterAllocator};
-use crate::mir_codegen::TargetOs;
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
+use crate::mir_codegen::TargetOs;
+use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 
 /// x86_64 register allocator with platform-aware register selection.
 ///
@@ -95,7 +95,8 @@ impl X64RegAlloc {
                 self.free_gprs.push_back("r13");
                 self.free_gprs.push_back("r14");
             }
-            _ => { // SysV
+            _ => {
+                // SysV
                 self.free_gprs.push_back("r12");
                 self.free_gprs.push_back("r13");
                 self.free_gprs.push_back("r14");

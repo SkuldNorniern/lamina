@@ -1,5 +1,7 @@
-use crate::mir_codegen::regalloc::{PhysRegConvertible, PhysRegHandle, RegisterAllocator as MirRegisterAllocator};
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
+use crate::mir_codegen::regalloc::{
+    PhysRegConvertible, PhysRegHandle, RegisterAllocator as MirRegisterAllocator,
+};
 
 /// WASM "register allocator" for stack-based virtual machine.
 ///

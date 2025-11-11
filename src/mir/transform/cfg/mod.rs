@@ -1,5 +1,5 @@
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Function, Instruction, Operand, Block};
+use crate::mir::{Block, Function, Instruction, Operand};
 use std::collections::HashMap;
 
 /// Simple CFG simplifications:
@@ -80,11 +80,24 @@ impl CfgSimplify {
                 if term.is_terminator() {
                     match term {
                         Instruction::Jmp { target } => {
-                            preds.entry(target.clone()).or_insert_with(Vec::new).push(block.label.clone());
+                            preds
+                                .entry(target.clone())
+                                .or_insert_with(Vec::new)
+                                .push(block.label.clone());
                         }
-                        Instruction::Br { true_target, false_target, .. } => {
-                            preds.entry(true_target.clone()).or_insert_with(Vec::new).push(block.label.clone());
-                            preds.entry(false_target.clone()).or_insert_with(Vec::new).push(block.label.clone());
+                        Instruction::Br {
+                            true_target,
+                            false_target,
+                            ..
+                        } => {
+                            preds
+                                .entry(true_target.clone())
+                                .or_insert_with(Vec::new)
+                                .push(block.label.clone());
+                            preds
+                                .entry(false_target.clone())
+                                .or_insert_with(Vec::new)
+                                .push(block.label.clone());
                         }
                         _ => {} // Ignore switch, ret, etc. for simplicity
                     }
@@ -225,7 +238,9 @@ impl JumpThreading {
                             }
                         }
                     }
-                    Instruction::Switch { value: _, cases, .. } => {
+                    Instruction::Switch {
+                        value: _, cases, ..
+                    } => {
                         let mut local_change = false;
                         for (_val, tgt) in cases.iter_mut() {
                             if let Some(new_tgt) = simple_jumps.get(tgt) {
@@ -247,5 +262,3 @@ impl JumpThreading {
         Ok(changed)
     }
 }
-
-

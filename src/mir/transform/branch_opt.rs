@@ -38,9 +38,8 @@ impl BranchOptimization {
         let reachable_blocks = self.compute_reachable_blocks(func);
         let original_count = func.blocks.len();
 
-        func.blocks.retain(|block| {
-            reachable_blocks.contains(&block.label)
-        });
+        func.blocks
+            .retain(|block| reachable_blocks.contains(&block.label));
 
         if func.blocks.len() != original_count {
             changed = true;
@@ -72,7 +71,11 @@ impl BranchOptimization {
                                 worklist.push_back(target.clone());
                             }
                         }
-                        Instruction::Br { true_target, false_target, .. } => {
+                        Instruction::Br {
+                            true_target,
+                            false_target,
+                            ..
+                        } => {
                             if reachable.insert(true_target.clone()) {
                                 worklist.push_back(true_target.clone());
                             }

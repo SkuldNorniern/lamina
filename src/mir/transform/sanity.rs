@@ -15,7 +15,11 @@ pub fn validate_cfg(func: &Function) -> Result<(), String> {
                         ));
                     }
                 }
-                Instruction::Br { true_target, false_target, .. } => {
+                Instruction::Br {
+                    true_target,
+                    false_target,
+                    ..
+                } => {
                     if !labels.contains(true_target) {
                         return Err(format!(
                             "Invalid CFG: block '{}' branches to missing true_target '{}'",
@@ -35,5 +39,3 @@ pub fn validate_cfg(func: &Function) -> Result<(), String> {
     }
     Ok(())
 }
-
-

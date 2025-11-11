@@ -59,7 +59,8 @@ impl CopyPropagation {
 
             // First, propagate any known copies into this instruction
             if propagations_this_block < max_propagations_per_block
-                && self.propagate_copies(&mut new_instr, &value_map) {
+                && self.propagate_copies(&mut new_instr, &value_map)
+            {
                 changed = true;
                 propagations_this_block += 1;
             }
@@ -478,7 +479,11 @@ impl CommonSubexpressionElimination {
         Ok(changed)
     }
 
-    fn eliminate_in_block_safe(&self, block: &mut Block, loop_headers: &std::collections::HashSet<String>) -> bool {
+    fn eliminate_in_block_safe(
+        &self,
+        block: &mut Block,
+        loop_headers: &std::collections::HashSet<String>,
+    ) -> bool {
         // For blocks that are part of loops, be more conservative
         // Only apply CSE if the block is small and contains simple operations
         let is_in_loop_body = self.is_block_in_loop_body(block, loop_headers);
@@ -494,17 +499,28 @@ impl CommonSubexpressionElimination {
         self.eliminate_in_block_conservative(block, is_in_loop_body)
     }
 
-    fn is_block_in_loop_body(&self, block: &Block, loop_headers: &std::collections::HashSet<String>) -> bool {
+    fn is_block_in_loop_body(
+        &self,
+        block: &Block,
+        loop_headers: &std::collections::HashSet<String>,
+    ) -> bool {
         // Check if this block can reach a loop header (simplified check)
         // This is a conservative approximation
         for instr in &block.instructions {
             match instr {
-                Instruction::Jmp { target } | Instruction::Br { true_target: target, .. } => {
+                Instruction::Jmp { target }
+                | Instruction::Br {
+                    true_target: target,
+                    ..
+                } => {
                     if loop_headers.contains(target) {
                         return true;
                     }
                 }
-                Instruction::Br { false_target: target, .. } => {
+                Instruction::Br {
+                    false_target: target,
+                    ..
+                } => {
                     if loop_headers.contains(target) {
                         return true;
                     }
@@ -523,10 +539,20 @@ impl CommonSubexpressionElimination {
         // Only allow simple arithmetic operations for CSE in loop bodies
         match instr {
             Instruction::IntBinary { op, .. } => {
-                matches!(op, crate::mir::IntBinOp::Add | crate::mir::IntBinOp::Sub | crate::mir::IntBinOp::Mul)
+                matches!(
+                    op,
+                    crate::mir::IntBinOp::Add
+                        | crate::mir::IntBinOp::Sub
+                        | crate::mir::IntBinOp::Mul
+                )
             }
             Instruction::FloatBinary { op, .. } => {
-                matches!(op, crate::mir::FloatBinOp::FAdd | crate::mir::FloatBinOp::FSub | crate::mir::FloatBinOp::FMul)
+                matches!(
+                    op,
+                    crate::mir::FloatBinOp::FAdd
+                        | crate::mir::FloatBinOp::FSub
+                        | crate::mir::FloatBinOp::FMul
+                )
             }
             _ => false, // Only simple arithmetic for loop CSE
         }
@@ -536,8 +562,9 @@ impl CommonSubexpressionElimination {
         let mut changed = false;
 
         // Skip CSE in blocks with too many instructions to avoid excessive processing
-        if (!is_in_loop_body && block.instructions.len() > 200) ||
-           (is_in_loop_body && block.instructions.len() > 50) {
+        if (!is_in_loop_body && block.instructions.len() > 200)
+            || (is_in_loop_body && block.instructions.len() > 50)
+        {
             return false;
         }
 
@@ -565,7 +592,8 @@ impl CommonSubexpressionElimination {
                             } else {
                                 let instr_type = self.extract_instruction_type(instr);
                                 let copy_instr = match instr_type {
-                                    MirType::Scalar(ScalarType::F64) | MirType::Scalar(ScalarType::F32) => {
+                                    MirType::Scalar(ScalarType::F64)
+                                    | MirType::Scalar(ScalarType::F32) => {
                                         // For float types, create a float add with 0.0
                                         let zero = match instr_type {
                                             MirType::Scalar(ScalarType::F64) => Immediate::F64(0.0),
@@ -678,7 +706,11 @@ fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<Strin
                         }
                     }
                 }
-                Instruction::Br { true_target, false_target, .. } => {
+                Instruction::Br {
+                    true_target,
+                    false_target,
+                    ..
+                } => {
                     if let Some(&tidx) = label_index.get(true_target.as_str()) {
                         if tidx <= i {
                             headers.insert(true_target.clone());
