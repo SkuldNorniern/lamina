@@ -3,6 +3,7 @@ pub mod regalloc;
 pub mod arm;
 pub mod riscv;
 pub mod x86_64;
+pub mod wasm;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -52,6 +53,78 @@ pub fn generate_mir_to_aarch64<W: Write>(
     Ok(())
 }
 
+/// Generate x86_64 assembly from MIR for the requested host OS.
+/// host_os: "macos" | "linux" | "windows"
+pub fn generate_mir_to_x86_64<W: Write>(
+    module: &crate::mir::Module,
+    writer: &mut W,
+    host_os: &str,
+) -> std::result::Result<(), crate::error::LaminaError> {
+    use crate::error::LaminaError;
+
+    let target_os = match host_os {
+        "macos" | "darwin" => TargetOs::MacOs,
+        "linux" => TargetOs::Linux,
+        "windows" | "win" => TargetOs::Windows,
+        "bsd" => TargetOs::BSD,
+        _ => TargetOs::Linux,
+    };
+
+    let mut codegen = x86_64::X86Codegen::new(target_os);
+    codegen.set_module(module);
+    codegen.emit_into(module, writer)?;
+
+    Ok(())
+}
+
+/// Generate WASM from MIR for the requested host OS.
+/// host_os: "macos" | "linux" | "windows"
+pub fn generate_mir_to_wasm<W: Write>(
+    module: &crate::mir::Module,
+    writer: &mut W,
+    host_os: &str,
+) -> std::result::Result<(), crate::error::LaminaError> {
+    use crate::error::LaminaError;
+
+    let target_os = match host_os {
+        "macos" | "darwin" => TargetOs::MacOs,
+        "linux" => TargetOs::Linux,
+        "windows" | "win" => TargetOs::Windows,
+        "bsd" => TargetOs::BSD,
+        _ => TargetOs::Linux,
+    };
+
+    let mut codegen = wasm::WasmCodegen::new(target_os);
+    codegen.set_module(module);
+    codegen.emit_into(module, writer)?;
+
+    Ok(())
+}
+
+/// Generate RISC-V assembly from MIR for the requested host OS.
+/// host_os: "macos" | "linux" | "windows"
+pub fn generate_mir_to_riscv<W: Write>(
+    module: &crate::mir::Module,
+    writer: &mut W,
+    host_os: &str,
+) -> std::result::Result<(), crate::error::LaminaError> {
+    use crate::error::LaminaError;
+
+    let target_os = match host_os {
+        "macos" | "darwin" => TargetOs::MacOs,
+        "linux" => TargetOs::Linux,
+        "windows" | "win" => TargetOs::Windows,
+        "bsd" => TargetOs::BSD,
+        _ => TargetOs::Linux,
+    };
+
+    let mut codegen = riscv::RiscVCodegen::new(target_os);
+    codegen.set_module(module);
+    codegen.emit_into(module, writer)?;
+
+    Ok(())
+}
+
 fn wrap_codegen_error(err: CodegenError) -> crate::error::LaminaError {
     use crate::codegen::{CodegenError as CoreCodegenError, FeatureType};
 
@@ -95,6 +168,8 @@ pub enum TargetOs {
     Windows,
     BSD,
     Redox,
+    Artery,
+    Unknown,
 }
 
 /// The options for the codegen
