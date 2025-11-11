@@ -1,17 +1,17 @@
-pub mod regalloc;
 pub mod abi;
 pub mod frame;
+pub mod regalloc;
 pub mod util;
 
-use regalloc::X64RegAlloc;
 use abi::X86ABI;
 use frame::X86Frame;
-use util::*;
+use regalloc::X64RegAlloc;
 use std::io::Write;
 use std::result::Result;
+use util::*;
 
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 
 /// Trait-backed MIR ⇒ x86_64 code generator.
 pub struct X86Codegen<'a> {
@@ -78,7 +78,9 @@ impl<'a> Codegen for X86Codegen<'a> {
 
     fn compile(&mut self) -> Result<(), CodegenError> {
         if !self.prepared {
-            return Err(CodegenError::InvalidCodegenOptions("Codegen not prepared".to_string()));
+            return Err(CodegenError::InvalidCodegenOptions(
+                "Codegen not prepared".to_string(),
+            ));
         }
         Ok(())
     }
@@ -89,16 +91,21 @@ impl<'a> Codegen for X86Codegen<'a> {
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
         if let Some(module) = self.module {
-            generate_mir_x86_64(module, &mut self.output, self.target_os)
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("Assembly emission failed: {}", e)))?;
+            generate_mir_x86_64(module, &mut self.output, self.target_os).map_err(|e| {
+                CodegenError::InvalidCodegenOptions(format!("Assembly emission failed: {}", e))
+            })?;
         } else {
-            return Err(CodegenError::InvalidCodegenOptions("No module set for emission".to_string()));
+            return Err(CodegenError::InvalidCodegenOptions(
+                "No module set for emission".to_string(),
+            ));
         }
         Ok(())
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
-        Err(CodegenError::UnsupportedFeature("Binary emission not supported".to_string()))
+        Err(CodegenError::UnsupportedFeature(
+            "Binary emission not supported".to_string(),
+        ))
     }
 }
 
@@ -138,7 +145,8 @@ pub fn generate_mir_x86_64<W: Write>(
         let mut reg_alloc = X64RegAlloc::new(target_os);
 
         // Allocate stack space for virtual registers
-        let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> = std::collections::HashMap::new();
+        let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
+            std::collections::HashMap::new();
 
         // Assign stack slots to all virtual registers used in the function
         for block in &func.blocks {
@@ -146,7 +154,8 @@ pub fn generate_mir_x86_64<W: Write>(
                 if let Some(dst) = inst.def_reg() {
                     if let Register::Virtual(vreg) = dst {
                         if !stack_slots.contains_key(&vreg) {
-                            stack_slots.insert(*vreg, X86Frame::calculate_stack_offset(stack_slots.len()));
+                            stack_slots
+                                .insert(*vreg, X86Frame::calculate_stack_offset(stack_slots.len()));
                         }
                     }
                 }
@@ -154,7 +163,8 @@ pub fn generate_mir_x86_64<W: Write>(
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg {
                         if !stack_slots.contains_key(&vreg) {
-                            stack_slots.insert(*vreg, X86Frame::calculate_stack_offset(stack_slots.len()));
+                            stack_slots
+                                .insert(*vreg, X86Frame::calculate_stack_offset(stack_slots.len()));
                         }
                     }
                 }
@@ -170,14 +180,20 @@ pub fn generate_mir_x86_64<W: Write>(
             writeln!(writer, ".L_{}:", block.label)?;
 
             for inst in &block.instructions {
-                emit_instruction_x86_64(inst, writer, &mut reg_alloc, &stack_slots, stack_size, target_os)?;
+                emit_instruction_x86_64(
+                    inst,
+                    writer,
+                    &mut reg_alloc,
+                    &stack_slots,
+                    stack_size,
+                    target_os,
+                )?;
             }
         }
     }
 
     Ok(())
 }
-
 
 fn emit_instruction_x86_64(
     inst: &MirInst,
@@ -188,7 +204,13 @@ fn emit_instruction_x86_64(
     target_os: TargetOs,
 ) -> Result<(), crate::error::LaminaError> {
     match inst {
-        MirInst::IntBinary { op, dst, lhs, rhs, ty: _ } => {
+        MirInst::IntBinary {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty: _,
+        } => {
             // Load lhs to rax
             load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
             // Load rhs to scratch register
@@ -236,7 +258,13 @@ fn emit_instruction_x86_64(
                 reg_alloc.free_scratch(scratch);
             }
         }
-        MirInst::IntCmp { op, dst, lhs, rhs, ty: _ } => {
+        MirInst::IntCmp {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty: _,
+        } => {
             // Load lhs to rax
             load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
             // Load rhs to scratch register
@@ -294,7 +322,12 @@ fn emit_instruction_x86_64(
                 }
             }
         }
-        MirInst::Load { dst, addr, ty: _, attrs: _ } => {
+        MirInst::Load {
+            dst,
+            addr,
+            ty: _,
+            attrs: _,
+        } => {
             // Simple direct load for now - assume addr is BaseOffset with offset 0
             if let crate::mir::AddressMode::BaseOffset { base, offset: 0 } = addr {
                 if let Register::Virtual(vreg) = base {
@@ -306,7 +339,12 @@ fn emit_instruction_x86_64(
                 }
             }
         }
-        MirInst::Store { addr, src, ty: _, attrs: _ } => {
+        MirInst::Store {
+            addr,
+            src,
+            ty: _,
+            attrs: _,
+        } => {
             // Simple direct store for now
             load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
             if let crate::mir::AddressMode::BaseOffset { base, offset: 0 } = addr {
@@ -330,7 +368,11 @@ fn emit_instruction_x86_64(
         MirInst::Jmp { target } => {
             writeln!(writer, "    jmp .L_{}", target)?;
         }
-        MirInst::Br { cond, true_target, false_target } => {
+        MirInst::Br {
+            cond,
+            true_target,
+            false_target,
+        } => {
             // Load condition to register
             if let Register::Virtual(vreg) = cond {
                 load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;

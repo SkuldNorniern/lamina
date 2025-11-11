@@ -1,17 +1,17 @@
-mod regalloc;
 mod abi;
 mod frame;
+mod regalloc;
 mod util;
 
-use regalloc::RiscVRegAlloc;
 use abi::RiscVAbi;
 use frame::RiscVFrame;
-use util::*;
+use regalloc::RiscVRegAlloc;
 use std::io::Write;
 use std::result::Result;
+use util::*;
 
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 
 /// Trait-backed MIR ⇒ RISC-V code generator.
 pub struct RiscVCodegen<'a> {
@@ -78,7 +78,9 @@ impl<'a> Codegen for RiscVCodegen<'a> {
 
     fn compile(&mut self) -> Result<(), CodegenError> {
         if !self.prepared {
-            return Err(CodegenError::InvalidCodegenOptions("Codegen not prepared".to_string()));
+            return Err(CodegenError::InvalidCodegenOptions(
+                "Codegen not prepared".to_string(),
+            ));
         }
         Ok(())
     }
@@ -89,16 +91,21 @@ impl<'a> Codegen for RiscVCodegen<'a> {
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
         if let Some(module) = self.module {
-            generate_mir_riscv(module, &mut self.output, self.target_os)
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("RISC-V emission failed: {}", e)))?;
+            generate_mir_riscv(module, &mut self.output, self.target_os).map_err(|e| {
+                CodegenError::InvalidCodegenOptions(format!("RISC-V emission failed: {}", e))
+            })?;
         } else {
-            return Err(CodegenError::InvalidCodegenOptions("No module set for emission".to_string()));
+            return Err(CodegenError::InvalidCodegenOptions(
+                "No module set for emission".to_string(),
+            ));
         }
         Ok(())
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
-        Err(CodegenError::UnsupportedFeature("Binary emission not supported".to_string()))
+        Err(CodegenError::UnsupportedFeature(
+            "Binary emission not supported".to_string(),
+        ))
     }
 }
 
@@ -126,7 +133,8 @@ pub fn generate_mir_riscv<W: Write>(
         let mut reg_alloc = RiscVRegAlloc::new(target_os);
 
         // Allocate stack space for virtual registers
-        let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> = std::collections::HashMap::new();
+        let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
+            std::collections::HashMap::new();
         let mut next_slot = 0;
 
         // Assign stack slots to all virtual registers used in the function
@@ -135,7 +143,8 @@ pub fn generate_mir_riscv<W: Write>(
                 if let Some(dst) = inst.def_reg() {
                     if let Register::Virtual(vreg) = dst {
                         if !stack_slots.contains_key(&vreg) {
-                            stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
+                            stack_slots
+                                .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
                             next_slot += 1;
                         }
                     }
@@ -144,7 +153,8 @@ pub fn generate_mir_riscv<W: Write>(
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg {
                         if !stack_slots.contains_key(&vreg) {
-                            stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
+                            stack_slots
+                                .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
                             next_slot += 1;
                         }
                     }
@@ -176,7 +186,13 @@ fn emit_instruction_riscv<W: Write>(
     stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
 ) -> Result<(), crate::error::LaminaError> {
     match inst {
-        MirInst::IntBinary { op, dst, lhs, rhs, ty: _ } => {
+        MirInst::IntBinary {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty: _,
+        } => {
             // Load lhs to a0
             load_operand_to_register(lhs, writer, reg_alloc, "a0")?;
 
@@ -206,7 +222,13 @@ fn emit_instruction_riscv<W: Write>(
                 store_register_to_register("a0", vreg, writer, reg_alloc)?;
             }
         }
-        MirInst::IntCmp { op, dst, lhs, rhs, ty: _ } => {
+        MirInst::IntCmp {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty: _,
+        } => {
             // Load lhs to a0
             load_operand_to_register(lhs, writer, reg_alloc, "a0")?;
 
@@ -240,14 +262,24 @@ fn emit_instruction_riscv<W: Write>(
                 }
             }
         }
-        MirInst::Load { dst, addr, ty: _, attrs: _ } => {
+        MirInst::Load {
+            dst,
+            addr,
+            ty: _,
+            attrs: _,
+        } => {
             writeln!(writer, "    # TODO: load instruction")?;
             // For now, just push a dummy value
             if let Register::Virtual(vreg) = dst {
                 store_register_to_register("zero", vreg, writer, reg_alloc)?;
             }
         }
-        MirInst::Store { addr: _, src: _, ty: _, attrs: _ } => {
+        MirInst::Store {
+            addr: _,
+            src: _,
+            ty: _,
+            attrs: _,
+        } => {
             writeln!(writer, "    # TODO: store instruction")?;
         }
         MirInst::Ret { value } => {
@@ -261,7 +293,11 @@ fn emit_instruction_riscv<W: Write>(
         MirInst::Jmp { target } => {
             writeln!(writer, "    j .L_{}", target)?;
         }
-        MirInst::Br { cond, true_target, false_target } => {
+        MirInst::Br {
+            cond,
+            true_target,
+            false_target,
+        } => {
             if let Register::Virtual(vreg) = cond {
                 load_register_to_register(vreg, writer, reg_alloc, "t0")?;
                 writeln!(writer, "    bnez t0, .L_{}", true_target)?;

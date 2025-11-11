@@ -1,7 +1,10 @@
 use crate::mir::register::{Register, VirtualReg};
 
 /// Load a virtual register into RAX
-pub fn load_register_to_rax<W: std::io::Write, RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>>(
+pub fn load_register_to_rax<
+    W: std::io::Write,
+    RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>,
+>(
     reg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
@@ -18,7 +21,10 @@ pub fn load_register_to_rax<W: std::io::Write, RA: crate::mir_codegen::regalloc:
 }
 
 /// Store RAX to a virtual register
-pub fn store_rax_to_register<W: std::io::Write, RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>>(
+pub fn store_rax_to_register<
+    W: std::io::Write,
+    RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>,
+>(
     reg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
@@ -35,7 +41,10 @@ pub fn store_rax_to_register<W: std::io::Write, RA: crate::mir_codegen::regalloc
 }
 
 /// Load a register to another register
-pub fn load_register_to_register<W: std::io::Write, RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>>(
+pub fn load_register_to_register<
+    W: std::io::Write,
+    RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>,
+>(
     src: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
@@ -53,7 +62,10 @@ pub fn load_register_to_register<W: std::io::Write, RA: crate::mir_codegen::rega
 }
 
 /// Load an operand into RAX
-pub fn load_operand_to_rax<W: std::io::Write, RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>>(
+pub fn load_operand_to_rax<
+    W: std::io::Write,
+    RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>,
+>(
     operand: &crate::mir::Operand,
     writer: &mut W,
     reg_alloc: &RA,
@@ -67,23 +79,31 @@ pub fn load_operand_to_rax<W: std::io::Write, RA: crate::mir_codegen::regalloc::
                 Ok(())
             }
         },
-        crate::mir::Operand::Immediate(imm) => {
-            match imm {
-                crate::mir::instruction::Immediate::I8(v) => writeln!(writer, "    movq ${}, %rax", *v as i64),
-                crate::mir::instruction::Immediate::I16(v) => writeln!(writer, "    movq ${}, %rax", *v as i64),
-                crate::mir::instruction::Immediate::I32(v) => writeln!(writer, "    movq ${}, %rax", *v as i64),
-                crate::mir::instruction::Immediate::I64(v) => writeln!(writer, "    movq ${}, %rax", v),
-                crate::mir::instruction::Immediate::F32(_) | crate::mir::instruction::Immediate::F64(_) => {
-                    writeln!(writer, "    # TODO: floating point immediates")?;
-                    Ok(())
-                }
+        crate::mir::Operand::Immediate(imm) => match imm {
+            crate::mir::instruction::Immediate::I8(v) => {
+                writeln!(writer, "    movq ${}, %rax", *v as i64)
             }
-        }
+            crate::mir::instruction::Immediate::I16(v) => {
+                writeln!(writer, "    movq ${}, %rax", *v as i64)
+            }
+            crate::mir::instruction::Immediate::I32(v) => {
+                writeln!(writer, "    movq ${}, %rax", *v as i64)
+            }
+            crate::mir::instruction::Immediate::I64(v) => writeln!(writer, "    movq ${}, %rax", v),
+            crate::mir::instruction::Immediate::F32(_)
+            | crate::mir::instruction::Immediate::F64(_) => {
+                writeln!(writer, "    # TODO: floating point immediates")?;
+                Ok(())
+            }
+        },
     }
 }
 
 /// Load an operand into a specific register
-pub fn load_operand_to_register<W: std::io::Write, RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>>(
+pub fn load_operand_to_register<
+    W: std::io::Write,
+    RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>,
+>(
     operand: &crate::mir::Operand,
     writer: &mut W,
     reg_alloc: &RA,
@@ -92,23 +112,32 @@ pub fn load_operand_to_register<W: std::io::Write, RA: crate::mir_codegen::regal
 ) -> Result<(), std::io::Error> {
     match operand {
         crate::mir::Operand::Register(reg) => match reg {
-            Register::Virtual(v) => load_register_to_register(v, writer, reg_alloc, stack_slots, target_reg),
+            Register::Virtual(v) => {
+                load_register_to_register(v, writer, reg_alloc, stack_slots, target_reg)
+            }
             Register::Physical(p) => {
                 writeln!(writer, "    movq %{}, %{}", p.name, target_reg)?;
                 Ok(())
             }
         },
-        crate::mir::Operand::Immediate(imm) => {
-            match imm {
-                crate::mir::instruction::Immediate::I8(v) => writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg),
-                crate::mir::instruction::Immediate::I16(v) => writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg),
-                crate::mir::instruction::Immediate::I32(v) => writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg),
-                crate::mir::instruction::Immediate::I64(v) => writeln!(writer, "    movq ${}, %{}", v, target_reg),
-                crate::mir::instruction::Immediate::F32(_) | crate::mir::instruction::Immediate::F64(_) => {
-                    writeln!(writer, "    # TODO: floating point immediates")?;
-                    Ok(())
-                }
+        crate::mir::Operand::Immediate(imm) => match imm {
+            crate::mir::instruction::Immediate::I8(v) => {
+                writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg)
             }
-        }
+            crate::mir::instruction::Immediate::I16(v) => {
+                writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg)
+            }
+            crate::mir::instruction::Immediate::I32(v) => {
+                writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg)
+            }
+            crate::mir::instruction::Immediate::I64(v) => {
+                writeln!(writer, "    movq ${}, %{}", v, target_reg)
+            }
+            crate::mir::instruction::Immediate::F32(_)
+            | crate::mir::instruction::Immediate::F64(_) => {
+                writeln!(writer, "    # TODO: floating point immediates")?;
+                Ok(())
+            }
+        },
     }
 }

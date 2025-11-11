@@ -1,5 +1,5 @@
-use crate::mir_codegen::regalloc::RegisterAllocator;
 use crate::mir::register::{Register, VirtualReg};
+use crate::mir_codegen::regalloc::RegisterAllocator;
 
 /// Load a virtual register into a destination register
 pub fn load_register_to_register<W: std::io::Write>(
@@ -68,7 +68,8 @@ pub fn load_operand_to_register<W: std::io::Write>(
                         writeln!(writer, "    li {}, {}", dest_reg, v)?;
                     }
                 }
-                crate::mir::instruction::Immediate::F32(_) | crate::mir::instruction::Immediate::F64(_) => {
+                crate::mir::instruction::Immediate::F32(_)
+                | crate::mir::instruction::Immediate::F64(_) => {
                     writeln!(writer, "    # TODO: floating point immediates")?;
                     writeln!(writer, "    mv {}, zero", dest_reg)?;
                 }
@@ -77,7 +78,6 @@ pub fn load_operand_to_register<W: std::io::Write>(
         }
     }
 }
-
 
 /// Emit RISC-V instruction for integer binary operations
 pub fn emit_int_binary_op<W: std::io::Write>(

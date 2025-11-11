@@ -295,9 +295,7 @@ impl LoopInvariantCodeMotion {
         // Physical registers are conservatively treated as non-invariant since they can be modified
         match reg {
             Register::Physical(_) => false, // Physical registers can be modified within loops
-            Register::Virtual(_) => {
-                !defs_in_loop.contains(reg)
-            }
+            Register::Virtual(_) => !defs_in_loop.contains(reg),
         }
     }
 
@@ -376,11 +374,17 @@ impl LoopInvariantCodeMotion {
         // Since we sorted by (block_idx, instr_idx) descending, we can remove them safely
         for &(block_idx, instr_idx) in &sorted_invariant {
             // Adjust for the inserted pre-header block
-            let adjusted_block_idx = if block_idx >= header_idx { block_idx + 1 } else { block_idx };
+            let adjusted_block_idx = if block_idx >= header_idx {
+                block_idx + 1
+            } else {
+                block_idx
+            };
             if adjusted_block_idx < func.blocks.len()
                 && instr_idx < func.blocks[adjusted_block_idx].instructions.len()
             {
-                func.blocks[adjusted_block_idx].instructions.remove(instr_idx);
+                func.blocks[adjusted_block_idx]
+                    .instructions
+                    .remove(instr_idx);
             }
         }
 
@@ -397,7 +401,11 @@ impl LoopInvariantCodeMotion {
                     Instruction::Jmp { target } if *target == loop_info.header => {
                         *target = pre_header_label.clone();
                     }
-                    Instruction::Br { true_target, false_target, .. } => {
+                    Instruction::Br {
+                        true_target,
+                        false_target,
+                        ..
+                    } => {
                         if *true_target == loop_info.header {
                             *true_target = pre_header_label.clone();
                         }
@@ -498,10 +506,22 @@ impl LoopUnrolling {
         for block in &func.blocks {
             if let Some(last_instr) = block.instructions.last() {
                 match last_instr {
-                    Instruction::Br { cond, true_target, false_target, .. } => {
+                    Instruction::Br {
+                        cond,
+                        true_target,
+                        false_target,
+                        ..
+                    } => {
                         // Look for simple counting loops: while (i < N) or similar
-                        if let Some(loop_bound) = self.analyze_loop_bound(func, block, &Operand::Register(cond.clone()), true_target, false_target) {
-                            if loop_bound <= 8 { // Only unroll very small loops for safety
+                        if let Some(loop_bound) = self.analyze_loop_bound(
+                            func,
+                            block,
+                            &Operand::Register(cond.clone()),
+                            true_target,
+                            false_target,
+                        ) {
+                            if loop_bound <= 8 {
+                                // Only unroll very small loops for safety
                                 unrollable.push(UnrollableLoop {
                                     header: block.label.clone(),
                                     body_blocks: vec![true_target.clone()],
@@ -520,7 +540,14 @@ impl LoopUnrolling {
     }
 
     /// Analyze if a loop has a constant bound that can be unrolled
-    fn analyze_loop_bound(&self, _func: &Function, _block: &Block, _cond: &Operand, _true_target: &str, _false_target: &str) -> Option<i64> {
+    fn analyze_loop_bound(
+        &self,
+        _func: &Function,
+        _block: &Block,
+        _cond: &Operand,
+        _true_target: &str,
+        _false_target: &str,
+    ) -> Option<i64> {
         // Very conservative loop bound analysis for safe unrolling
         // Only enable for extremely small, known-safe bounds to prevent code bloat
 
@@ -566,14 +593,21 @@ impl LoopUnrolling {
 
                 // Duplicate the instructions (excluding the branch)
                 for instr in &body_block.instructions {
-                    if !matches!(instr, Instruction::Jmp { .. } | Instruction::Br { .. } | Instruction::Ret { .. }) {
+                    if !matches!(
+                        instr,
+                        Instruction::Jmp { .. } | Instruction::Br { .. } | Instruction::Ret { .. }
+                    ) {
                         new_instructions.push(instr.clone());
                     }
                 }
 
                 // Insert the duplicated instructions before the branch in the original block
                 let header_block = &mut func.blocks[header_idx];
-                if let Some(branch_idx) = header_block.instructions.iter().position(|i| matches!(i, Instruction::Br { .. })) {
+                if let Some(branch_idx) = header_block
+                    .instructions
+                    .iter()
+                    .position(|i| matches!(i, Instruction::Br { .. }))
+                {
                     // Insert duplicated instructions before the branch
                     for (offset, instr) in new_instructions.into_iter().enumerate() {
                         header_block.instructions.insert(branch_idx + offset, instr);

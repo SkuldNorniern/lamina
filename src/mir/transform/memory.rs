@@ -88,7 +88,9 @@ impl MemoryOptimization {
                 // Compute replacement instruction, if any, without holding a mutable borrow
                 let mut replacement: Option<Instruction> = None;
                 match &*inst {
-                    Instruction::Store { src, addr, attrs, .. } => {
+                    Instruction::Store {
+                        src, addr, attrs, ..
+                    } => {
                         // Invalidate on volatile or unknown addressing
                         match addr {
                             AddressMode::BaseOffset { base, offset } if !attrs.volatile => {
@@ -109,7 +111,12 @@ impl MemoryOptimization {
                             }
                         }
                     }
-                    Instruction::Load { ty, dst, addr, attrs } => {
+                    Instruction::Load {
+                        ty,
+                        dst,
+                        addr,
+                        attrs,
+                    } => {
                         // Skip volatile loads
                         if attrs.volatile {
                             last_store.clear();
@@ -124,7 +131,9 @@ impl MemoryOptimization {
                                         ty: *ty,
                                         dst: dst.clone(),
                                         lhs: stored_val.clone(),
-                                        rhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(0)),
+                                        rhs: Operand::Immediate(
+                                            crate::mir::instruction::Immediate::I64(0),
+                                        ),
                                     });
                                     // record latest load destination
                                     last_load.insert(key, dst.clone());
@@ -135,7 +144,9 @@ impl MemoryOptimization {
                                         ty: *ty,
                                         dst: dst.clone(),
                                         lhs: Operand::Register(prev_reg.clone()),
-                                        rhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(0)),
+                                        rhs: Operand::Immediate(
+                                            crate::mir::instruction::Immediate::I64(0),
+                                        ),
                                     });
                                     // record latest load destination
                                     last_load.insert(key, dst.clone());
@@ -202,7 +213,13 @@ impl MemoryOptimization {
                 Instruction::Load { addr, .. } => {
                     if let crate::mir::AddressMode::BaseOffset { base, offset } = addr {
                         load_addresses.push((base.clone(), *offset as i16));
-                    } else if let crate::mir::AddressMode::BaseIndexScale { base, index, scale, offset } = addr {
+                    } else if let crate::mir::AddressMode::BaseIndexScale {
+                        base,
+                        index,
+                        scale,
+                        offset,
+                    } = addr
+                    {
                         // Scaled indexing is common in matrix operations
                         load_addresses.push((base.clone(), *offset as i16));
                     }
@@ -210,7 +227,13 @@ impl MemoryOptimization {
                 Instruction::Store { addr, .. } => {
                     if let crate::mir::AddressMode::BaseOffset { base, offset } = addr {
                         store_addresses.push((base.clone(), *offset as i16));
-                    } else if let crate::mir::AddressMode::BaseIndexScale { base, index, scale, offset } = addr {
+                    } else if let crate::mir::AddressMode::BaseIndexScale {
+                        base,
+                        index,
+                        scale,
+                        offset,
+                    } = addr
+                    {
                         store_addresses.push((base.clone(), *offset as i16));
                     }
                 }
@@ -219,7 +242,9 @@ impl MemoryOptimization {
         }
 
         // Look for strided access patterns (common in matrices)
-        if self.detect_strided_access(&load_addresses) || self.detect_strided_access(&store_addresses) {
+        if self.detect_strided_access(&load_addresses)
+            || self.detect_strided_access(&store_addresses)
+        {
             // This block has strided memory access patterns
             // In a real implementation, we could add prefetch instructions here
             // For now, this serves as pattern recognition for the backend

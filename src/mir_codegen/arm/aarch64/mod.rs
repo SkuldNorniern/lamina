@@ -10,8 +10,8 @@ use std::io::Write;
 use std::result::Result;
 use util::{emit_mov_imm64, imm_to_u64};
 
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 
 fn w_alias(xreg: &str) -> String {
     if let Some(rest) = xreg.strip_prefix('x') {
@@ -36,9 +36,10 @@ pub fn generate_mir_aarch64<W: Write>(
 ) -> Result<(), crate::error::LaminaError> {
     // Check if this module contains complex functions that need conservative handling
     // Complex functions: many basic blocks (>50) or very large blocks (>100 instructions)
-    let has_complex_function = module.functions.values().any(|f| {
-        f.blocks.len() > 50 || f.blocks.iter().any(|b| b.instructions.len() > 100)
-    });
+    let has_complex_function = module
+        .functions
+        .values()
+        .any(|f| f.blocks.len() > 50 || f.blocks.iter().any(|b| b.instructions.len() > 100));
     // Emit a shared format string for print intrinsics, then text section header
     match target_os {
         TargetOs::MacOs => {
@@ -77,7 +78,13 @@ pub fn generate_mir_aarch64<W: Write>(
         let frame = FrameMap::from_function(func);
 
         // For complex functions, ensure we have enough stack space
-        let has_many_vars = func.blocks.iter().flat_map(|b| b.instructions.iter()).filter(|i| matches!(i, MirInst::IntBinary { .. })).count() > 100;
+        let has_many_vars = func
+            .blocks
+            .iter()
+            .flat_map(|b| b.instructions.iter())
+            .filter(|i| matches!(i, MirInst::IntBinary { .. }))
+            .count()
+            > 100;
         let adjusted_frame_size = if has_many_vars {
             (frame.frame_size + 1024) & !15 // Add extra space for complex functions
         } else {
@@ -150,7 +157,6 @@ pub fn generate_mir_aarch64<W: Write>(
                 )?;
             }
         }
-
 
         // Epilogue
         writeln!(writer, "{}:", epilogue_label)?;

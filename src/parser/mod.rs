@@ -551,7 +551,10 @@ mod tests {
             .get("get_matrix_b_element")
             .expect("Missing @get_matrix_b_element function");
         assert_eq!(get_b_func.signature.params.len(), 2);
-        assert_eq!(get_b_func.signature.return_type, Type::Primitive(PrimitiveType::I64));
+        assert_eq!(
+            get_b_func.signature.return_type,
+            Type::Primitive(PrimitiveType::I64)
+        );
         assert!(get_b_func.basic_blocks.contains_key("entry"));
 
         Ok(())
@@ -732,10 +735,12 @@ fn @test_memory_ops() -> i64 {
     #[test]
     fn test_parse_large_function() -> Result<(), LaminaError> {
         // Test that parser can handle functions with many instructions and blocks
-        let mut source = String::from(r#"
+        let mut source = String::from(
+            r#"
 fn @large_function(i64 %input) -> i64 {
   entry:
-"#);
+"#,
+        );
 
         // Add many instructions
         for i in 0..50 {
@@ -817,9 +822,9 @@ fn @test_instructions() -> i64 {
 
     #[test]
     fn test_parse_minimal_programs() -> Result<(), LaminaError> {
+        use crate::ir::IRBuilder;
         use crate::ir::builder::i32 as ir_i32;
         use crate::ir::types::{PrimitiveType, Type};
-        use crate::ir::IRBuilder;
 
         // Test very simple programs that should parse correctly and produce correct IR
 
@@ -875,9 +880,9 @@ fn @empty() -> i64 {
 
     #[test]
     fn test_parse_whitespace_tolerance() -> Result<(), LaminaError> {
+        use crate::ir::IRBuilder;
         use crate::ir::builder::i32 as ir_i32;
         use crate::ir::types::{PrimitiveType, Type};
-        use crate::ir::IRBuilder;
 
         // Expected IR structure for all test cases
         let mut builder = IRBuilder::new();

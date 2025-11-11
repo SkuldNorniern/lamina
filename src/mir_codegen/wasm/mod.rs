@@ -1,14 +1,17 @@
-pub mod regalloc;
 pub mod abi;
+pub mod regalloc;
 pub mod util;
 
 use std::io::Write;
 use std::result::Result;
 
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
 use abi::WasmABI;
-use util::{load_operand_wasm, load_register_wasm, store_to_register_wasm, emit_int_binary_op, emit_int_cmp_op};
+use util::{
+    emit_int_binary_op, emit_int_cmp_op, load_operand_wasm, load_register_wasm,
+    store_to_register_wasm,
+};
 
 /// Trait-backed MIR ⇒ WebAssembly code generator.
 pub struct WasmCodegen<'a> {
@@ -75,7 +78,9 @@ impl<'a> Codegen for WasmCodegen<'a> {
 
     fn compile(&mut self) -> Result<(), CodegenError> {
         if !self.prepared {
-            return Err(CodegenError::InvalidCodegenOptions("Codegen not prepared".to_string()));
+            return Err(CodegenError::InvalidCodegenOptions(
+                "Codegen not prepared".to_string(),
+            ));
         }
         Ok(())
     }
@@ -86,16 +91,21 @@ impl<'a> Codegen for WasmCodegen<'a> {
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
         if let Some(module) = self.module {
-            generate_mir_wasm(module, &mut self.output, self.target_os)
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("WASM emission failed: {}", e)))?;
+            generate_mir_wasm(module, &mut self.output, self.target_os).map_err(|e| {
+                CodegenError::InvalidCodegenOptions(format!("WASM emission failed: {}", e))
+            })?;
         } else {
-            return Err(CodegenError::InvalidCodegenOptions("No module set for emission".to_string()));
+            return Err(CodegenError::InvalidCodegenOptions(
+                "No module set for emission".to_string(),
+            ));
         }
         Ok(())
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
-        Err(CodegenError::UnsupportedFeature("Binary WASM emission not supported".to_string()))
+        Err(CodegenError::UnsupportedFeature(
+            "Binary WASM emission not supported".to_string(),
+        ))
     }
 }
 
@@ -159,7 +169,8 @@ pub fn generate_mir_wasm<W: Write>(
         }
 
         // Map virtual registers to local indices
-        let mut vreg_to_local: std::collections::HashMap<crate::mir::VirtualReg, usize> = std::collections::HashMap::new();
+        let mut vreg_to_local: std::collections::HashMap<crate::mir::VirtualReg, usize> =
+            std::collections::HashMap::new();
         let mut local_idx = 0;
         for vreg in local_vregs {
             vreg_to_local.insert(*vreg, local_idx);
@@ -195,7 +206,13 @@ fn emit_instruction_wasm(
     vreg_to_local: &std::collections::HashMap<crate::mir::VirtualReg, usize>,
 ) -> Result<(), crate::error::LaminaError> {
     match inst {
-        MirInst::IntBinary { op, dst, lhs, rhs, ty: _ } => {
+        MirInst::IntBinary {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty: _,
+        } => {
             load_operand_wasm(lhs, writer, vreg_to_local)?;
             load_operand_wasm(rhs, writer, vreg_to_local)?;
 
@@ -205,7 +222,13 @@ fn emit_instruction_wasm(
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
             }
         }
-        MirInst::IntCmp { op, dst, lhs, rhs, ty: _ } => {
+        MirInst::IntCmp {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty: _,
+        } => {
             load_operand_wasm(lhs, writer, vreg_to_local)?;
             load_operand_wasm(rhs, writer, vreg_to_local)?;
 
@@ -229,7 +252,12 @@ fn emit_instruction_wasm(
                 writeln!(writer, "      ;; TODO: function calls")?;
             }
         }
-        MirInst::Load { dst, addr, ty: _, attrs: _ } => {
+        MirInst::Load {
+            dst,
+            addr,
+            ty: _,
+            attrs: _,
+        } => {
             writeln!(writer, "      ;; TODO: load instruction")?;
             // For now, just push a dummy value
             writeln!(writer, "      i64.const 0")?;
@@ -237,7 +265,12 @@ fn emit_instruction_wasm(
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
             }
         }
-        MirInst::Store { addr: _, src: _, ty: _, attrs: _ } => {
+        MirInst::Store {
+            addr: _,
+            src: _,
+            ty: _,
+            attrs: _,
+        } => {
             writeln!(writer, "      ;; TODO: store instruction")?;
         }
         MirInst::Ret { value } => {
@@ -251,7 +284,11 @@ fn emit_instruction_wasm(
         MirInst::Jmp { target } => {
             writeln!(writer, "      br $block_{}", target)?;
         }
-        MirInst::Br { cond, true_target, false_target } => {
+        MirInst::Br {
+            cond,
+            true_target,
+            false_target,
+        } => {
             if let Register::Virtual(vreg) = cond {
                 load_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
             }

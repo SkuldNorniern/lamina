@@ -2,8 +2,8 @@ pub mod regalloc;
 
 pub mod arm;
 pub mod riscv;
-pub mod x86_64;
 pub mod wasm;
+pub mod x86_64;
 
 use std::collections::HashMap;
 use std::io::Write;

@@ -1,6 +1,6 @@
 use crate::mir::instruction::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
-use crate::mir::types::{MirType, ScalarType};
 use crate::mir::register::Register;
+use crate::mir::types::{MirType, ScalarType};
 use crate::mir::{Block, Function};
 
 use super::{Transform, TransformCategory, TransformLevel};
@@ -89,21 +89,27 @@ impl Peephole {
                 rhs,
             } => self.try_fold_int_binary(op, lhs, rhs),
             // For IntCmp, allow full replacement with a constant-producing move
-            Instruction::IntCmp { op, dst, ty: _cmp_ty, lhs, rhs } => {
+            Instruction::IntCmp {
+                op,
+                dst,
+                ty: _cmp_ty,
+                lhs,
+                rhs,
+            } => {
                 // Be conservative inside loop blocks to avoid changing loop progress/termination subtly
                 if !in_loop_block {
-                if let Some(b) = Self::evaluate_int_cmp(op, lhs, rhs) {
-                    // Replace comparison with a constant move: dst = (b ? 1 : 0)
-                    let new_inst = Instruction::IntBinary {
-                        op: IntBinOp::Add,
-                        ty: MirType::Scalar(ScalarType::I64),
-                        dst: dst.clone(),
-                        lhs: Operand::Immediate(Immediate::I64(if b { 1 } else { 0 })),
-                        rhs: Operand::Immediate(Immediate::I64(0)),
-                    };
-                    *inst = new_inst;
-                    return true;
-                }
+                    if let Some(b) = Self::evaluate_int_cmp(op, lhs, rhs) {
+                        // Replace comparison with a constant move: dst = (b ? 1 : 0)
+                        let new_inst = Instruction::IntBinary {
+                            op: IntBinOp::Add,
+                            ty: MirType::Scalar(ScalarType::I64),
+                            dst: dst.clone(),
+                            lhs: Operand::Immediate(Immediate::I64(if b { 1 } else { 0 })),
+                            rhs: Operand::Immediate(Immediate::I64(0)),
+                        };
+                        *inst = new_inst;
+                        return true;
+                    }
                 }
                 // If not fully reducible (or guarded), do not rewrite
                 false
@@ -121,12 +127,18 @@ impl Peephole {
                 true_val,
                 false_val,
             } => self.try_fold_select(cond, true_val, false_val),
-            Instruction::Load { dst: _, addr, ty: _, attrs: _ } => {
-                self.try_optimize_address_calculation(addr)
-            }
-            Instruction::Store { addr, src: _, ty: _, attrs: _ } => {
-                self.try_optimize_address_calculation(addr)
-            }
+            Instruction::Load {
+                dst: _,
+                addr,
+                ty: _,
+                attrs: _,
+            } => self.try_optimize_address_calculation(addr),
+            Instruction::Store {
+                addr,
+                src: _,
+                ty: _,
+                attrs: _,
+            } => self.try_optimize_address_calculation(addr),
             Instruction::Call { name, args, ret: _ } => {
                 self.try_optimize_intrinsic_call(name, args)
             }
@@ -161,9 +173,7 @@ impl Peephole {
                 }
                 self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, false)
             }
-            IntBinOp::SRem => {
-                self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, true)
-            }
+            IntBinOp::SRem => self.fold_rem(lhs, rhs, lhs_imm, rhs_imm, true),
             IntBinOp::And => self.fold_bitwise_and(lhs, rhs, lhs_imm, rhs_imm),
             IntBinOp::Or => self.fold_bitwise_or(lhs, rhs, lhs_imm, rhs_imm),
             IntBinOp::Xor => self.fold_bitwise_xor(lhs, rhs, lhs_imm, rhs_imm),
@@ -554,8 +564,16 @@ impl Peephole {
         if let (Operand::Register(r1), Operand::Register(r2)) = (lhs, rhs) {
             if r1 == r2 {
                 return Some(match op {
-                    IntCmpOp::Eq | IntCmpOp::SLe | IntCmpOp::ULe | IntCmpOp::SGe | IntCmpOp::UGe => true,
-                    IntCmpOp::Ne | IntCmpOp::SLt | IntCmpOp::ULt | IntCmpOp::SGt | IntCmpOp::UGt => false,
+                    IntCmpOp::Eq
+                    | IntCmpOp::SLe
+                    | IntCmpOp::ULe
+                    | IntCmpOp::SGe
+                    | IntCmpOp::UGe => true,
+                    IntCmpOp::Ne
+                    | IntCmpOp::SLt
+                    | IntCmpOp::ULt
+                    | IntCmpOp::SGt
+                    | IntCmpOp::UGt => false,
                 });
             }
         }
@@ -612,7 +630,12 @@ impl Peephole {
                 // In matrix operations, we might see patterns like base + i*stride + j
                 false
             }
-            crate::mir::AddressMode::BaseIndexScale { base: _, index: _, scale, offset: _ } => {
+            crate::mir::AddressMode::BaseIndexScale {
+                base: _,
+                index: _,
+                scale,
+                offset: _,
+            } => {
                 // Optimize index*scale patterns common in array access
                 // The scale is already a u8, and index is a Register, not Operand
                 // This is more of a backend optimization opportunity
@@ -700,13 +723,28 @@ impl Peephole {
         let mut patterns = Vec::new();
 
         for i in 0..block.instructions.len() {
-            if let Instruction::IntBinary { op: IntBinOp::Add, dst: add_dst, lhs: add_lhs, rhs: add_rhs, ty: _ } = &block.instructions[i] {
+            if let Instruction::IntBinary {
+                op: IntBinOp::Add,
+                dst: add_dst,
+                lhs: add_lhs,
+                rhs: add_rhs,
+                ty: _,
+            } = &block.instructions[i]
+            {
                 // Check if this is an accumulation: dst += something
-                if let (Operand::Register(lhs_reg), Operand::Register(rhs_reg)) = (add_lhs, add_rhs) {
+                if let (Operand::Register(lhs_reg), Operand::Register(rhs_reg)) = (add_lhs, add_rhs)
+                {
                     if self.is_same_register(add_dst, lhs_reg) {
                         // This is dst += rhs_reg, now check if rhs_reg is a multiplication result
-                        if let Some(mul_idx) = self.find_multiplication_result(block, &Operand::Register(rhs_reg.clone()), i) {
-                            if let Instruction::IntBinary { op: IntBinOp::Mul, .. } = &block.instructions[mul_idx] {
+                        if let Some(mul_idx) = self.find_multiplication_result(
+                            block,
+                            &Operand::Register(rhs_reg.clone()),
+                            i,
+                        ) {
+                            if let Instruction::IntBinary {
+                                op: IntBinOp::Mul, ..
+                            } = &block.instructions[mul_idx]
+                            {
                                 // Found multiply-accumulate pattern
                                 patterns.push((i, mul_idx));
                             }
@@ -727,7 +765,12 @@ impl Peephole {
     }
 
     /// Try to fuse multiply-accumulate operations for better ILP
-    fn try_fuse_multiply_accumulate(&self, block: &mut Block, add_idx: usize, mul_idx: usize) -> bool {
+    fn try_fuse_multiply_accumulate(
+        &self,
+        block: &mut Block,
+        add_idx: usize,
+        mul_idx: usize,
+    ) -> bool {
         // If multiplication immediately precedes addition, they might be fusable
         if mul_idx + 1 == add_idx {
             // Instructions are adjacent: mul followed by add
@@ -773,11 +816,21 @@ impl Peephole {
     }
 
     /// Find if an operand is the result of a multiplication
-    fn find_multiplication_result(&self, block: &Block, operand: &Operand, current_idx: usize) -> Option<usize> {
+    fn find_multiplication_result(
+        &self,
+        block: &Block,
+        operand: &Operand,
+        current_idx: usize,
+    ) -> Option<usize> {
         if let Operand::Register(reg) = operand {
             // Look backwards for a multiplication that produces this register
             for i in (0..current_idx).rev() {
-                if let Instruction::IntBinary { op: IntBinOp::Mul, dst: mul_dst, .. } = &block.instructions[i] {
+                if let Instruction::IntBinary {
+                    op: IntBinOp::Mul,
+                    dst: mul_dst,
+                    ..
+                } = &block.instructions[i]
+                {
                     if self.is_same_register(mul_dst, reg) {
                         return Some(i);
                     }
@@ -804,9 +857,15 @@ impl Peephole {
         // This is a simplified version - real vectorization requires much more analysis
         for i in 0..block.instructions.len().saturating_sub(3) {
             if let (
-                Instruction::IntBinary { op: op1, ty: ty1, .. },
-                Instruction::IntBinary { op: op2, ty: ty2, .. },
-                Instruction::IntBinary { op: op3, ty: ty3, .. },
+                Instruction::IntBinary {
+                    op: op1, ty: ty1, ..
+                },
+                Instruction::IntBinary {
+                    op: op2, ty: ty2, ..
+                },
+                Instruction::IntBinary {
+                    op: op3, ty: ty3, ..
+                },
             ) = (
                 &block.instructions[i],
                 &block.instructions[i + 1],
@@ -869,17 +928,17 @@ fn decompose_multiplication(const_val: i64) -> Option<(u32, i64)> {
 
     // Decompose small constants that benefit from strength reduction
     match abs_val {
-        3 => Some((1, 1)),      // 3x = (x << 1) + x
-        5 => Some((2, 1)),      // 5x = (x << 2) + x
-        6 => Some((1, 2)),      // 6x = (x << 1) + (x << 1) = (x << 2) + (x << 1) - x, but simpler as 2*(3x)
-        7 => Some((3, -1)),     // 7x = (x << 3) - x
-        9 => Some((3, 1)),      // 9x = (x << 3) + x
-        10 => Some((1, 4)),     // 10x = (x << 1) + (x << 2) = 2x + 4x, but simpler as 2*(5x)
-        11 => Some((3, 3)),     // 11x = (x << 3) + (x << 1) + x = 8x + 2x + x
-        12 => Some((2, 4)),     // 12x = (x << 2) + (x << 2) = 4x + 4x, but simpler as 4*(3x)
-        13 => Some((3, 5)),     // 13x = (x << 3) + (x << 2) + x = 8x + 4x + x
-        14 => Some((1, 6)),     // 14x = 2x + 6x, but simpler as 2*(7x)
-        15 => Some((4, -1)),    // 15x = (x << 4) - x
+        3 => Some((1, 1)),   // 3x = (x << 1) + x
+        5 => Some((2, 1)),   // 5x = (x << 2) + x
+        6 => Some((1, 2)), // 6x = (x << 1) + (x << 1) = (x << 2) + (x << 1) - x, but simpler as 2*(3x)
+        7 => Some((3, -1)), // 7x = (x << 3) - x
+        9 => Some((3, 1)), // 9x = (x << 3) + x
+        10 => Some((1, 4)), // 10x = (x << 1) + (x << 2) = 2x + 4x, but simpler as 2*(5x)
+        11 => Some((3, 3)), // 11x = (x << 3) + (x << 1) + x = 8x + 2x + x
+        12 => Some((2, 4)), // 12x = (x << 2) + (x << 2) = 4x + 4x, but simpler as 4*(3x)
+        13 => Some((3, 5)), // 13x = (x << 3) + (x << 2) + x = 8x + 4x + x
+        14 => Some((1, 6)), // 14x = 2x + 6x, but simpler as 2*(7x)
+        15 => Some((4, -1)), // 15x = (x << 4) - x
         // For larger constants, strength reduction becomes less beneficial
         _ => None,
     }
@@ -912,7 +971,11 @@ fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<Strin
                         }
                     }
                 }
-                Instruction::Br { true_target, false_target, .. } => {
+                Instruction::Br {
+                    true_target,
+                    false_target,
+                    ..
+                } => {
                     if let Some(&tidx) = label_index.get(true_target.as_str()) {
                         if tidx <= i {
                             headers.insert(true_target.clone());

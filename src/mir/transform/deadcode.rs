@@ -134,7 +134,11 @@ impl DeadCodeElimination {
         // to avoid removing loop-carried values and cross-block live defs.
         let successors: Vec<String> = match block.terminator() {
             Some(Instruction::Jmp { target }) => vec![target.clone()],
-            Some(Instruction::Br { true_target, false_target, .. }) => {
+            Some(Instruction::Br {
+                true_target,
+                false_target,
+                ..
+            }) => {
                 vec![true_target.clone(), false_target.clone()]
             }
             Some(Instruction::Switch { cases, default, .. }) => {
