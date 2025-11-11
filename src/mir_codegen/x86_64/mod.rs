@@ -151,22 +151,19 @@ pub fn generate_mir_x86_64<W: Write>(
         // Assign stack slots to all virtual registers used in the function
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg() {
-                    if let Register::Virtual(vreg) = dst {
-                        if !stack_slots.contains_key(&vreg) {
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(vreg) = dst
+                        && !stack_slots.contains_key(vreg) {
                             stack_slots
                                 .insert(*vreg, X86Frame::calculate_stack_offset(stack_slots.len()));
                         }
-                    }
-                }
                 // Also check for registers used in operands
                 for reg in inst.use_regs() {
-                    if let Register::Virtual(vreg) = reg {
-                        if !stack_slots.contains_key(&vreg) {
+                    if let Register::Virtual(vreg) = reg
+                        && !stack_slots.contains_key(vreg) {
                             stack_slots
                                 .insert(*vreg, X86Frame::calculate_stack_offset(stack_slots.len()));
                         }
-                    }
                 }
             }
         }
@@ -315,12 +312,11 @@ fn emit_instruction_x86_64(
                 writeln!(writer, "    # TODO: function calls")?;
             }
 
-            if let Some(ret_reg) = ret {
-                if let Register::Virtual(vreg) = ret_reg {
+            if let Some(ret_reg) = ret
+                && let Register::Virtual(vreg) = ret_reg {
                     // For now, assume return value is in rax
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
-            }
         }
         MirInst::Load {
             dst,

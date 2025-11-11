@@ -178,21 +178,18 @@ fn convert_function<'a>(
                 .and_then(|bb| bb.terminator().cloned());
 
             let mut handled = false;
-            if let Some(Instruction::Jmp { target }) = term.as_ref() {
-                if target == &succ {
-                    if let Some(pred_bb) = mir_func.get_block_mut(&pred) {
-                        if pred_bb.instructions.len() >= 1 {
+            if let Some(Instruction::Jmp { target }) = term.as_ref()
+                && target == &succ
+                    && let Some(pred_bb) = mir_func.get_block_mut(&pred)
+                        && !pred_bb.instructions.is_empty() {
                             let insert_pos = pred_bb.instructions.len().saturating_sub(1);
                             pred_bb
                                 .instructions
                                 .splice(insert_pos..insert_pos, moves.clone());
                             handled = true;
                         }
-                    }
-                }
-            }
-            if !handled {
-                if let Some(Instruction::Br {
+            if !handled
+                && let Some(Instruction::Br {
                     cond: _,
                     true_target,
                     false_target,
@@ -223,9 +220,9 @@ fn convert_function<'a>(
                         });
                         mir_func.add_block(tramp);
                         // Now update the predecessor's branch target
-                        if let Some(pred_mut) = mir_func.get_block_mut(&pred) {
-                            if let Some(last) = pred_mut.instructions.last_mut() {
-                                if let Instruction::Br {
+                        if let Some(pred_mut) = mir_func.get_block_mut(&pred)
+                            && let Some(last) = pred_mut.instructions.last_mut()
+                                && let Instruction::Br {
                                     cond: _,
                                     true_target: t,
                                     false_target: f,
@@ -238,14 +235,11 @@ fn convert_function<'a>(
                                     }
                                     handled = true;
                                 }
-                            }
-                        }
                     }
                 }
-            }
-            if !handled {
-                if let Some(pred_bb) = mir_func.get_block_mut(&pred) {
-                    if pred_bb.instructions.len() >= 1 {
+            if !handled
+                && let Some(pred_bb) = mir_func.get_block_mut(&pred) {
+                    if !pred_bb.instructions.is_empty() {
                         let insert_pos = pred_bb.instructions.len().saturating_sub(1);
                         pred_bb
                             .instructions
@@ -256,7 +250,6 @@ fn convert_function<'a>(
                         }
                     }
                 }
-            }
         }
     }
 
@@ -269,7 +262,7 @@ fn convert_function<'a>(
 
 fn add_missing_initializations(func: &mut crate::mir::Function) {
     use crate::mir::{
-        AddressMode, Immediate, Instruction as MirInst, MirType, Operand, Register, ScalarType,
+        Immediate, Instruction as MirInst, MirType, Operand, Register, ScalarType,
     };
     use std::collections::HashSet;
 
@@ -287,11 +280,10 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
     for block in &func.blocks {
         for instr in &block.instructions {
             // Collect defined registers
-            if let Some(def_reg) = instr.def_reg() {
-                if let Register::Virtual(vreg) = def_reg {
+            if let Some(def_reg) = instr.def_reg()
+                && let Register::Virtual(vreg) = def_reg {
                     defined_regs.insert(*vreg);
                 }
-            }
 
             // Collect used registers from operands
             collect_regs_from_instruction(instr, &mut used_regs);
@@ -301,8 +293,8 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
     // Find registers that are used but not defined
     let undefined_regs: Vec<_> = used_regs.difference(&defined_regs).cloned().collect();
 
-    if !undefined_regs.is_empty() {
-        if let Some(entry_block) = func.blocks.iter_mut().find(|b| b.label == func.entry) {
+    if !undefined_regs.is_empty()
+        && let Some(entry_block) = func.blocks.iter_mut().find(|b| b.label == func.entry) {
             // Insert initializations at the beginning of the entry block
             let mut init_instrs = Vec::new();
 
@@ -323,7 +315,6 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
                 entry_block.instructions.insert(i, init_instr);
             }
         }
-    }
 }
 
 fn collect_regs_from_instruction(

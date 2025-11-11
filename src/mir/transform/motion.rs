@@ -633,7 +633,7 @@ impl CommonSubexpressionElimination {
                 } else {
                     // First time seeing this expression, record it
                     if let Some(dst) = instr.def_reg() {
-                        let dst_ver = def_version.get(&dst).copied().unwrap_or(0);
+                        let dst_ver = def_version.get(dst).copied().unwrap_or(0);
                         expr_to_reg.insert(expr_key, (dst.clone(), dst_ver));
                     }
                 }
@@ -700,27 +700,24 @@ fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<Strin
         if let Some(term) = b.instructions.last() {
             match term {
                 Instruction::Jmp { target } => {
-                    if let Some(&tidx) = label_index.get(target.as_str()) {
-                        if tidx <= i {
+                    if let Some(&tidx) = label_index.get(target.as_str())
+                        && tidx <= i {
                             headers.insert(target.clone());
                         }
-                    }
                 }
                 Instruction::Br {
                     true_target,
                     false_target,
                     ..
                 } => {
-                    if let Some(&tidx) = label_index.get(true_target.as_str()) {
-                        if tidx <= i {
+                    if let Some(&tidx) = label_index.get(true_target.as_str())
+                        && tidx <= i {
                             headers.insert(true_target.clone());
                         }
-                    }
-                    if let Some(&fidx) = label_index.get(false_target.as_str()) {
-                        if fidx <= i {
+                    if let Some(&fidx) = label_index.get(false_target.as_str())
+                        && fidx <= i {
                             headers.insert(false_target.clone());
                         }
-                    }
                 }
                 _ => {}
             }

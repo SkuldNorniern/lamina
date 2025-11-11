@@ -140,24 +140,21 @@ pub fn generate_mir_riscv<W: Write>(
         // Assign stack slots to all virtual registers used in the function
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg() {
-                    if let Register::Virtual(vreg) = dst {
-                        if !stack_slots.contains_key(&vreg) {
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(vreg) = dst
+                        && !stack_slots.contains_key(vreg) {
                             stack_slots
                                 .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
                             next_slot += 1;
                         }
-                    }
-                }
                 // Also check for registers used in operands
                 for reg in inst.use_regs() {
-                    if let Register::Virtual(vreg) = reg {
-                        if !stack_slots.contains_key(&vreg) {
+                    if let Register::Virtual(vreg) = reg
+                        && !stack_slots.contains_key(vreg) {
                             stack_slots
                                 .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
                             next_slot += 1;
                         }
-                    }
                 }
             }
         }
@@ -236,7 +233,7 @@ fn emit_instruction_riscv<W: Write>(
             load_operand_to_register(rhs, writer, reg_alloc, "a1")?;
 
             // Perform comparison
-            emit_int_cmp_op(&op, writer)?;
+            emit_int_cmp_op(op, writer)?;
 
             // Store result
             if let Register::Virtual(vreg) = dst {
@@ -255,12 +252,11 @@ fn emit_instruction_riscv<W: Write>(
                 writeln!(writer, "    # TODO: function calls")?;
             }
 
-            if let Some(ret_reg) = ret {
-                if let Register::Virtual(vreg) = ret_reg {
+            if let Some(ret_reg) = ret
+                && let Register::Virtual(vreg) = ret_reg {
                     // Assume return value is in a0
                     store_register_to_register("a0", vreg, writer, reg_alloc)?;
                 }
-            }
         }
         MirInst::Load {
             dst,

@@ -123,11 +123,10 @@ pub fn generate_mir_wasm<W: Write>(
     for func in module.functions.values() {
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg() {
-                    if let Register::Virtual(_) = dst {
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(_) = dst {
                         global_count += 1;
                     }
-                }
             }
         }
     }
@@ -155,11 +154,10 @@ pub fn generate_mir_wasm<W: Write>(
         let mut local_vregs = std::collections::HashSet::new();
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg() {
-                    if let Register::Virtual(vreg) = dst {
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(vreg) = dst {
                         local_vregs.insert(vreg);
                     }
-                }
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg {
                         local_vregs.insert(vreg);
@@ -216,7 +214,7 @@ fn emit_instruction_wasm(
             load_operand_wasm(lhs, writer, vreg_to_local)?;
             load_operand_wasm(rhs, writer, vreg_to_local)?;
 
-            emit_int_binary_op(&op, writer)?;
+            emit_int_binary_op(op, writer)?;
 
             if let Register::Virtual(vreg) = dst {
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
@@ -232,7 +230,7 @@ fn emit_instruction_wasm(
             load_operand_wasm(lhs, writer, vreg_to_local)?;
             load_operand_wasm(rhs, writer, vreg_to_local)?;
 
-            emit_int_cmp_op(&op, writer)?;
+            emit_int_cmp_op(op, writer)?;
 
             // Convert i32 result to i64
             writeln!(writer, "      i64.extend_i32_u")?;

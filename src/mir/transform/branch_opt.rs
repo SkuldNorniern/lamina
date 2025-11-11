@@ -1,5 +1,5 @@
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Register};
+use crate::mir::{Function, Instruction};
 
 /// Branch Optimization Transform
 /// Performs simple branch optimizations like eliminating unreachable branches
@@ -63,8 +63,8 @@ impl BranchOptimization {
 
         // BFS to find all reachable blocks
         while let Some(current_label) = worklist.pop_front() {
-            if let Some(block) = func.get_block(&current_label) {
-                if let Some(last_instr) = block.instructions.last() {
+            if let Some(block) = func.get_block(&current_label)
+                && let Some(last_instr) = block.instructions.last() {
                     match last_instr {
                         Instruction::Jmp { target } => {
                             if reachable.insert(target.clone()) {
@@ -92,7 +92,6 @@ impl BranchOptimization {
                         }
                     }
                 }
-            }
         }
 
         reachable
