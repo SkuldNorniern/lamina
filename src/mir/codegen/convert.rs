@@ -34,9 +34,7 @@ fn ir_value_to_mir_operand<'a>(
                 Ok(Operand::Register(r))
             }
         }
-        crate::ir::types::Value::Constant(lit) => {
-            literal_to_immediate(lit).map(Operand::Immediate)
-        }
+        crate::ir::types::Value::Constant(lit) => literal_to_immediate(lit).map(Operand::Immediate),
         crate::ir::types::Value::Global(_) => Err(FromIRError::UnsupportedInstruction),
     }
 }
@@ -270,8 +268,10 @@ fn convert_function<'a>(
 }
 
 fn add_missing_initializations(func: &mut crate::mir::Function) {
+    use crate::mir::{
+        AddressMode, Immediate, Instruction as MirInst, MirType, Operand, Register, ScalarType,
+    };
     use std::collections::HashSet;
-    use crate::mir::{MirType, ScalarType, Instruction as MirInst, Operand, Register, AddressMode, Immediate};
 
     // Collect all defined and used virtual registers
     let mut defined_regs = HashSet::new();
@@ -326,7 +326,10 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
     }
 }
 
-fn collect_regs_from_instruction(instr: &crate::mir::Instruction, used_regs: &mut HashSet<VirtualReg>) {
+fn collect_regs_from_instruction(
+    instr: &crate::mir::Instruction,
+    used_regs: &mut HashSet<VirtualReg>,
+) {
     match instr {
         crate::mir::Instruction::IntBinary { lhs, rhs, .. } => {
             collect_regs_from_operand(lhs, used_regs);

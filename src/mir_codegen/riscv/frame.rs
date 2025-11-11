@@ -3,7 +3,10 @@ pub struct RiscVFrame;
 
 impl RiscVFrame {
     /// Generate function prologue
-    pub fn generate_prologue<W: std::io::Write>(writer: &mut W, stack_size: usize) -> Result<(), std::io::Error> {
+    pub fn generate_prologue<W: std::io::Write>(
+        writer: &mut W,
+        stack_size: usize,
+    ) -> Result<(), std::io::Error> {
         // Save return address and frame pointer
         writeln!(writer, "    addi sp, sp, -16")?;
         writeln!(writer, "    sd ra, 8(sp)")?;
@@ -18,7 +21,10 @@ impl RiscVFrame {
     }
 
     /// Generate function epilogue
-    pub fn generate_epilogue<W: std::io::Write>(writer: &mut W, stack_size: usize) -> Result<(), std::io::Error> {
+    pub fn generate_epilogue<W: std::io::Write>(
+        writer: &mut W,
+        stack_size: usize,
+    ) -> Result<(), std::io::Error> {
         // Deallocate stack space for local variables if needed
         if stack_size > 0 {
             writeln!(writer, "    addi sp, sp, {}", stack_size)?;

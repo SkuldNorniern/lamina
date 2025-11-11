@@ -742,7 +742,11 @@ pub fn generate_instruction<'a, W: Write>(
                     )?;
                     // Remainder is now in remainder register (%rdx or %edx)
                     let remainder_reg = match ty {
-                        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::I16 | PrimitiveType::U16 | PrimitiveType::I32 => "%edx",
+                        PrimitiveType::I8
+                        | PrimitiveType::U8
+                        | PrimitiveType::I16
+                        | PrimitiveType::U16
+                        | PrimitiveType::I32 => "%edx",
                         PrimitiveType::I64 | PrimitiveType::Ptr => "%rdx",
                         _ => unreachable!(),
                     };

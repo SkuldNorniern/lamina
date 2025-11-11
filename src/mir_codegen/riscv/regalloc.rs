@@ -1,6 +1,6 @@
-use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
-use crate::mir_codegen::TargetOs;
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
+use crate::mir_codegen::TargetOs;
+use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 
 /// RISC-V register allocator with platform-aware register selection.
 ///
@@ -37,8 +37,8 @@ impl RiscVRegAlloc {
     // RISC-V general-purpose registers available for allocation
     // We exclude: x0 (zero), x1 (ra), x2 (sp), x3 (gp), x4 (tp), x8 (fp)
     const AVAILABLE_REGISTERS: &'static [&'static str] = &[
-        "x5", "x6", "x7",    // t0-t2
-        "x9", "x10", "x11", "x12", "x13", "x14", "x15",  // s1-s7
+        "x5", "x6", "x7", // t0-t2
+        "x9", "x10", "x11", "x12", "x13", "x14", "x15", // s1-s7
         "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", // a0-a7
         "x24", "x25", "x26", "x27", // t3-t6
         "x28", "x29", "x30", "x31", // t3-t6 (duplicate for simplicity)

@@ -21,7 +21,8 @@ pub struct A64RegAlloc {
 // Use x9-x28 for mapping virtual registers, reserving x16-x18 for intra-procedure calls if needed
 // Pool for mapping virtual registers (can overlap with scratch temps for complex functions)
 const MAP_GPRS: &[&str] = &[
-    "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28",
+    "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x19", "x20", "x21", "x22", "x23", "x24",
+    "x25", "x26", "x27", "x28",
 ];
 
 // Dedicated scratch pool for short-lived temporaries; kept disjoint from MAP_GPRS

@@ -4,13 +4,13 @@ mod cfg;
 mod deadcode;
 mod inline;
 mod loop_opt;
+mod memory;
 mod motion;
 mod peephole;
+pub mod sanity;
+mod scheduling;
 mod strength_reduction;
 mod tail_call;
-mod memory;
-mod scheduling;
-pub mod sanity;
 
 // Re-export transforms for easy access
 pub use addressing::AddressingCanonicalization;
@@ -19,8 +19,8 @@ pub use cfg::{CfgSimplify, JumpThreading};
 pub use deadcode::DeadCodeElimination;
 pub use inline::{FunctionInlining, ModuleInlining};
 pub use loop_opt::{LoopFusion, LoopInvariantCodeMotion, LoopUnrolling};
-pub use motion::{CommonSubexpressionElimination, ConstantFolding, CopyPropagation};
 pub use memory::MemoryOptimization;
+pub use motion::{CommonSubexpressionElimination, ConstantFolding, CopyPropagation};
 pub use peephole::Peephole;
 pub use scheduling::InstructionScheduling;
 pub use strength_reduction::StrengthReduction;
@@ -188,8 +188,11 @@ impl TransformPipeline {
         for transform in &self.transforms {
             // Safety check: prevent infinite loops
             if total_iterations >= self.max_total_iterations {
-                return Err(format!("Transform pipeline exceeded maximum iterations ({}), possible infinite loop in transform '{}'",
-                    self.max_total_iterations, transform.name()));
+                return Err(format!(
+                    "Transform pipeline exceeded maximum iterations ({}), possible infinite loop in transform '{}'",
+                    self.max_total_iterations,
+                    transform.name()
+                ));
             }
 
             stats.transforms_run += 1;

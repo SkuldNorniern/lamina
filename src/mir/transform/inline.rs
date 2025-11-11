@@ -107,7 +107,6 @@ impl ModuleInlining {
                     .any(|instr| matches!(instr, Instruction::Call { .. }))
             });
 
-
             if has_calls && total_instructions > 30 {
                 return false; // Avoid inlining functions that call others unless reasonably small
             }
@@ -299,7 +298,11 @@ impl ModuleInlining {
                     };
                     // Apply parameter substitution and renaming to the operand(s)
                     // Then restore destination to the intended call result register
-                    self.substitute_parameters_and_rename(&mut assign_instr, param_mapping, caller_func)?;
+                    self.substitute_parameters_and_rename(
+                        &mut assign_instr,
+                        param_mapping,
+                        caller_func,
+                    )?;
                     if let Instruction::IntBinary { dst, .. } = &mut assign_instr {
                         *dst = result_reg.clone();
                     }

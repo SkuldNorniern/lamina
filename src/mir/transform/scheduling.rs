@@ -72,9 +72,20 @@ impl InstructionScheduling {
         while i < block.instructions.len().saturating_sub(2) {
             // Look for pattern: mul -> add (accumulate)
             if let (
-                Instruction::IntBinary { op: crate::mir::IntBinOp::Mul, dst: mul_dst, .. },
-                Instruction::IntBinary { op: crate::mir::IntBinOp::Add, dst: add_dst, lhs: add_lhs, rhs: add_rhs, .. }
-            ) = (&block.instructions[i], &block.instructions[i + 1]) {
+                Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Mul,
+                    dst: mul_dst,
+                    ..
+                },
+                Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Add,
+                    dst: add_dst,
+                    lhs: add_lhs,
+                    rhs: add_rhs,
+                    ..
+                },
+            ) = (&block.instructions[i], &block.instructions[i + 1])
+            {
                 // Check if the add uses the result of the mul
                 if let crate::mir::Operand::Register(rhs_reg) = add_rhs {
                     if self.is_same_register(mul_dst, rhs_reg) {
@@ -118,7 +129,8 @@ impl InstructionScheduling {
         // For each load, find its first use and see if we can schedule work between them
         for (load_idx, loaded_reg) in load_positions {
             // Find first use of this register after the load
-            let first_use = self.find_first_use_after(&block.instructions, &loaded_reg, load_idx + 1);
+            let first_use =
+                self.find_first_use_after(&block.instructions, &loaded_reg, load_idx + 1);
 
             if let Some(use_idx) = first_use {
                 if use_idx > load_idx + 1 {
@@ -133,7 +145,12 @@ impl InstructionScheduling {
     }
 
     /// Find the first use of a register after a given position
-    fn find_first_use_after(&self, instructions: &[Instruction], reg: &Register, start_idx: usize) -> Option<usize> {
+    fn find_first_use_after(
+        &self,
+        instructions: &[Instruction],
+        reg: &Register,
+        start_idx: usize,
+    ) -> Option<usize> {
         for (idx, inst) in instructions.iter().enumerate().skip(start_idx) {
             if inst.use_regs().contains(&reg) {
                 return Some(idx);

@@ -63,7 +63,8 @@ impl TailCallOptimization {
 
                     if let Instruction::Call { name, args, ret } = second_last_instr {
                         // Check if this is a tail call (return value matches call result)
-                        if self.is_tail_call(value, ret) && self.is_tail_call_safe(func_name, name) {
+                        if self.is_tail_call(value, ret) && self.is_tail_call_safe(func_name, name)
+                        {
                             // Convert the call to a tail call jump
                             if self.convert_to_tail_call(&mut block.instructions[second_last_idx]) {
                                 changed = true;
@@ -131,9 +132,7 @@ impl TailCallOptimization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::{FunctionBuilder, Immediate, MirType, Operand, ScalarType, VirtualReg};
 
     #[test]
     fn test_tail_call_detection() {
@@ -142,10 +141,7 @@ mod tests {
         // Test direct return of call result
         let ret_reg = VirtualReg::gpr(0).into();
         let call_reg = VirtualReg::gpr(0).into();
-        assert!(tco.is_tail_call(
-            &Some(Operand::Register(ret_reg)),
-            &Some(call_reg)
-        ));
+        assert!(tco.is_tail_call(&Some(Operand::Register(ret_reg)), &Some(call_reg)));
 
         // Test no return value
         assert!(tco.is_tail_call(&None, &None));
@@ -156,10 +152,7 @@ mod tests {
         // Test different registers
         let ret_reg1 = VirtualReg::gpr(0).into();
         let call_reg2 = VirtualReg::gpr(1).into();
-        assert!(!tco.is_tail_call(
-            &Some(Operand::Register(ret_reg1)),
-            &Some(call_reg2)
-        ));
+        assert!(!tco.is_tail_call(&Some(Operand::Register(ret_reg1)), &Some(call_reg2)));
     }
 
     #[test]

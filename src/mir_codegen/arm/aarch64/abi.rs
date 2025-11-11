@@ -12,9 +12,12 @@ pub fn public_symbol(func_name: &str, os: TargetOs) -> (Option<String>, String) 
             },
         ),
         // FEAT: TODO: need to mark each Symbol for each target OS
-        TargetOs::Linux | TargetOs::Windows | TargetOs::BSD | TargetOs::Redox | TargetOs::Artery | TargetOs::Unknown => {
-            (Some(format!(".globl {}", func_name)), func_name.to_string())
-        }
+        TargetOs::Linux
+        | TargetOs::Windows
+        | TargetOs::BSD
+        | TargetOs::Redox
+        | TargetOs::Artery
+        | TargetOs::Unknown => (Some(format!(".globl {}", func_name)), func_name.to_string()),
     }
 }
 

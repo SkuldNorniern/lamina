@@ -1,6 +1,6 @@
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, IntBinOp, MirType, Operand, Register};
 use crate::mir::instruction::Immediate;
+use crate::mir::{Block, Function, Instruction, IntBinOp, MirType, Operand, Register};
 
 /// Strength Reduction Transform
 ///
@@ -141,7 +141,12 @@ impl StrengthReduction {
             // Handle common constants that appear in matrix operations and algorithms
             match const_val {
                 // Simple cases that are clearly beneficial
-                3 | 5 | 6 | 9 | 10 | 12 | 15 | 18 | 20 | 24 | 25 | 27 | 30 | 36 | 40 | 45 | 48 | 50 | 54 | 60 | 72 | 75 | 80 | 81 | 90 | 96 | 100 | 108 | 120 | 125 | 128 | 135 | 144 | 150 | 160 | 162 | 180 | 192 | 200 | 216 | 225 | 240 | 243 | 250 | 256 | 270 | 288 | 300 | 320 | 324 | 360 | 375 | 384 | 400 | 432 | 450 | 480 | 486 | 500 | 512 | 540 | 576 | 600 | 625 | 640 | 648 | 720 | 729 | 750 | 768 | 800 | 810 | 864 | 900 | 960 | 972 | 1000 | 1024 => {
+                3 | 5 | 6 | 9 | 10 | 12 | 15 | 18 | 20 | 24 | 25 | 27 | 30 | 36 | 40 | 45 | 48
+                | 50 | 54 | 60 | 72 | 75 | 80 | 81 | 90 | 96 | 100 | 108 | 120 | 125 | 128
+                | 135 | 144 | 150 | 160 | 162 | 180 | 192 | 200 | 216 | 225 | 240 | 243 | 250
+                | 256 | 270 | 288 | 300 | 320 | 324 | 360 | 375 | 384 | 400 | 432 | 450 | 480
+                | 486 | 500 | 512 | 540 | 576 | 600 | 625 | 640 | 648 | 720 | 729 | 750 | 768
+                | 800 | 810 | 864 | 900 | 960 | 972 | 1000 | 1024 => {
                     // These constants can be decomposed into shifts and adds
                     // For now, we leave them as multiplications since the current IR
                     // doesn't support generating multiple instructions from one.
@@ -325,7 +330,9 @@ mod tests {
 
         let mut func = func;
         let pass = StrengthReduction::default();
-        let changed = pass.apply(&mut func).expect("Strength reduction should succeed");
+        let changed = pass
+            .apply(&mut func)
+            .expect("Strength reduction should succeed");
 
         assert!(changed);
 
@@ -362,7 +369,9 @@ mod tests {
 
         let mut func = func;
         let pass = StrengthReduction::default();
-        let changed = pass.apply(&mut func).expect("Strength reduction should succeed");
+        let changed = pass
+            .apply(&mut func)
+            .expect("Strength reduction should succeed");
 
         assert!(changed);
 
@@ -399,7 +408,9 @@ mod tests {
 
         let mut func = func;
         let pass = StrengthReduction::default();
-        let changed = pass.apply(&mut func).expect("Strength reduction should succeed");
+        let changed = pass
+            .apply(&mut func)
+            .expect("Strength reduction should succeed");
 
         // Signed division should NOT be transformed without range analysis
         assert!(!changed);
@@ -436,7 +447,9 @@ mod tests {
 
         let mut func = func;
         let pass = StrengthReduction::default();
-        let changed = pass.apply(&mut func).expect("Strength reduction should succeed");
+        let changed = pass
+            .apply(&mut func)
+            .expect("Strength reduction should succeed");
 
         assert!(changed);
 
@@ -472,7 +485,9 @@ mod tests {
 
         let mut func = func;
         let pass = StrengthReduction::default();
-        let changed = pass.apply(&mut func).expect("Strength reduction should succeed");
+        let changed = pass
+            .apply(&mut func)
+            .expect("Strength reduction should succeed");
 
         // Should not have changed
         assert!(!changed);
@@ -509,7 +524,9 @@ mod tests {
 
         let mut func = func;
         let pass = StrengthReduction::default();
-        let changed = pass.apply(&mut func).expect("Strength reduction should succeed");
+        let changed = pass
+            .apply(&mut func)
+            .expect("Strength reduction should succeed");
 
         // Should not have changed
         assert!(!changed);

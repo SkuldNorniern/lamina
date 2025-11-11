@@ -280,13 +280,15 @@ use std::io::Write;
 // Re-export core IR structures for easier access
 use codegen::CodegenError;
 pub use codegen::generate_x86_64_assembly;
-pub use mir_codegen::{TargetOs, generate_mir_to_aarch64, generate_mir_to_x86_64, generate_mir_to_wasm};
 pub use error::LaminaError;
 pub use ir::{
     function::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
     instruction::{AllocType, BinaryOp, CmpOp, Instruction},
     module::{GlobalDeclaration, Module, TypeDeclaration},
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
+};
+pub use mir_codegen::{
+    TargetOs, generate_mir_to_aarch64, generate_mir_to_wasm, generate_mir_to_x86_64,
 };
 
 pub const HOST_ARCH_LIST: &[&str] = &[
@@ -420,19 +422,19 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         "aarch64_unknown" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
             mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, "linux")?;
-        },
+        }
         "aarch64_macos" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
             mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, "macos")?;
-        },
+        }
         "aarch64_linux" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
             mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, "linux")?;
-        },
+        }
         "aarch64_windows" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
             mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, "windows")?;
-        },
+        }
         // RISC-V targets
         "riscv32_unknown" => codegen::generate_riscv32_assembly(&module, output_asm)?,
         "riscv64_unknown" => codegen::generate_riscv64_assembly(&module, output_asm)?,
