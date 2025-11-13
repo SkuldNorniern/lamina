@@ -34,3 +34,4 @@ impl WasmABI {
         format!("    (local $l{} i64)", index)
     }
 }
+
