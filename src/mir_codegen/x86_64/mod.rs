@@ -11,11 +11,12 @@ use std::result::Result;
 use util::*;
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
+use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions};
+use crate::target::TargetOperatingSystem;
 
 /// Trait-backed MIR ⇒ x86_64 code generator.
 pub struct X86Codegen<'a> {
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
     module: Option<&'a MirModule>,
     prepared: bool,
     verbose: bool,
@@ -23,7 +24,7 @@ pub struct X86Codegen<'a> {
 }
 
 impl<'a> X86Codegen<'a> {
-    pub fn new(target_os: TargetOs) -> Self {
+    pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
             target_os,
             module: None,
@@ -59,7 +60,7 @@ impl<'a> Codegen for X86Codegen<'a> {
     const CAN_OUTPUT_BIN: bool = false;
     const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions] =
         &[CodegenOptions::Debug, CodegenOptions::Release];
-    const TARGET_OS: TargetOs = TargetOs::Linux;
+    const TARGET_OS: TargetOperatingSystem = TargetOperatingSystem::Linux;
     const MAX_BIT_WIDTH: u8 = 64;
 
     fn prepare(
@@ -112,17 +113,17 @@ impl<'a> Codegen for X86Codegen<'a> {
 pub fn generate_mir_x86_64<W: Write>(
     module: &MirModule,
     writer: &mut W,
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
     let abi = X86ABI::new(target_os);
 
     // Emit format strings for print intrinsics
     match target_os {
-        TargetOs::MacOs => {
+        TargetOperatingSystem::MacOS => {
             writeln!(writer, ".section __TEXT,__cstring,cstring_literals")?;
             writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
         }
-        TargetOs::Linux => {
+        TargetOperatingSystem::Linux => {
             writeln!(writer, ".section .rodata")?;
             writeln!(writer, ".L_mir_fmt_int: .string \"%lld\\n\"")?;
         }
@@ -198,7 +199,7 @@ fn emit_instruction_x86_64(
     reg_alloc: &mut X64RegAlloc,
     stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
     stack_size: usize,
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
     match inst {
         MirInst::IntBinary {
@@ -301,7 +302,7 @@ fn emit_instruction_x86_64(
                     load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
                     writeln!(writer, "    leaq .L_mir_fmt_int(%rip), %rdi")?;
                     writeln!(writer, "    movq %rax, %rsi")?;
-                    if target_os == TargetOs::MacOs {
+                    if target_os == TargetOperatingSystem::MacOS {
                         writeln!(writer, "    call _printf")?;
                     } else {
                         writeln!(writer, "    xorl %eax, %eax")?;

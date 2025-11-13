@@ -1,5 +1,5 @@
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
-use crate::mir_codegen::TargetOs;
+use crate::target::TargetOperatingSystem;
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 
 /// RISC-V register allocator with platform-aware register selection.
@@ -17,7 +17,7 @@ use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 ///
 /// For simplicity, we'll use a subset of these registers.
 pub struct RiscVRegAlloc {
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
     // Available general-purpose registers for allocation
     available_gprs: Vec<&'static str>,
     // Currently allocated registers
@@ -29,7 +29,7 @@ pub struct RiscVRegAlloc {
 
 impl Default for RiscVRegAlloc {
     fn default() -> Self {
-        Self::new(TargetOs::Linux)
+        Self::new(TargetOperatingSystem::Linux)
     }
 }
 
@@ -44,7 +44,7 @@ impl RiscVRegAlloc {
         "x28", "x29", "x30", "x31", // t3-t6 (duplicate for simplicity)
     ];
 
-    pub fn new(target_os: TargetOs) -> Self {
+    pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
             target_os,
             available_gprs: Self::AVAILABLE_REGISTERS.to_vec(),
