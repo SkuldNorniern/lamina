@@ -11,7 +11,8 @@ use std::result::Result;
 use util::{emit_mov_imm64, imm_to_u64};
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
+use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions};
+use crate::target::TargetOperatingSystem;
 
 fn w_alias(xreg: &str) -> String {
     if let Some(rest) = xreg.strip_prefix('x') {
@@ -32,7 +33,7 @@ fn x_alias(reg: &str) -> String {
 pub fn generate_mir_aarch64<W: Write>(
     module: &MirModule,
     writer: &mut W,
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
     // Check if this module contains complex functions that need conservative handling
     // Complex functions: many basic blocks (>50) or very large blocks (>100 instructions)
@@ -42,7 +43,7 @@ pub fn generate_mir_aarch64<W: Write>(
         .any(|f| f.blocks.len() > 50 || f.blocks.iter().any(|b| b.instructions.len() > 100));
     // Emit a shared format string for print intrinsics, then text section header
     match target_os {
-        TargetOs::MacOs => {
+        TargetOperatingSystem::MacOS => {
             writeln!(writer, ".section __TEXT,__cstring,cstring_literals")?;
             writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
         }
@@ -173,7 +174,7 @@ fn emit_block<W: Write>(
     insts: &[MirInst],
     w: &mut W,
     frame: &FrameMap,
-    os: TargetOs,
+    os: TargetOperatingSystem,
     ra: &mut A64RegAlloc,
     epilogue_label: &str,
 ) -> Result<(), crate::error::LaminaError> {
@@ -475,7 +476,7 @@ fn emit_block<W: Write>(
                     // Special-case intrinsic: print(integer) via printf("%lld\n", value)
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                     match os {
-                        TargetOs::MacOs => {
+                        TargetOperatingSystem::MacOS => {
                             // Darwin AArch64 variadic ABI requires arguments to be available in the stack home area
                             // Ensure 16-byte alignment and spill the first vararg to stack
                             writeln!(w, "    sub sp, sp, #32")?; // create home area
@@ -497,7 +498,7 @@ fn emit_block<W: Write>(
                 } else if name == "writebyte" && args.len() == 1 {
                     // Write a single byte to stdout using macOS ARM64 syscall
                     match os {
-                        TargetOs::MacOs => {
+                        TargetOperatingSystem::MacOS => {
                             // Reserve stack space to hold 1 byte buffer (keep 16B alignment)
                             writeln!(w, "    sub sp, sp, #16")?;
                             // Materialize byte value and store to [sp]
@@ -533,7 +534,7 @@ fn emit_block<W: Write>(
                     }
                 } else if name == "readbyte" && args.is_empty() {
                     match os {
-                        TargetOs::MacOs => {
+                        TargetOperatingSystem::MacOS => {
                             // Reserve stack for 1 byte buffer
                             writeln!(w, "    sub sp, sp, #16")?;
                             // Setup read(fd=0, buf=sp, size=1)
@@ -589,7 +590,7 @@ fn emit_block<W: Write>(
                 } else if name == "writeptr" && args.len() == 1 {
                     // Write the byte value at pointer to stdout
                     match os {
-                        TargetOs::MacOs => {
+                        TargetOperatingSystem::MacOS => {
                             // Load pointer into x1 and byte into w9, write 1 byte
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             writeln!(w, "    ldrb {}, [x1]", w_alias("x9"))?;
@@ -622,7 +623,7 @@ fn emit_block<W: Write>(
                     }
                 } else if name == "write" && args.len() == 2 {
                     match os {
-                        TargetOs::MacOs => {
+                        TargetOperatingSystem::MacOS => {
                             // write(fd=1, buf=args[0], size=args[1])
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
@@ -645,7 +646,7 @@ fn emit_block<W: Write>(
                     }
                 } else if name == "read" && args.len() == 2 {
                     match os {
-                        TargetOs::MacOs => {
+                        TargetOperatingSystem::MacOS => {
                             // read(fd=0, buf=args[0], size=args[1])
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
@@ -675,7 +676,7 @@ fn emit_block<W: Write>(
                     let target_sym: String = match call_stub(name, os) {
                         Some(sym) => sym.to_string(),
                         None => match os {
-                            TargetOs::MacOs => format!("_{}", name),
+                            TargetOperatingSystem::MacOS => format!("_{}", name),
                             _ => name.to_string(),
                         },
                     };
@@ -695,7 +696,7 @@ fn emit_block<W: Write>(
                 let target_sym: String = match call_stub(name, os) {
                     Some(sym) => sym.to_string(),
                     None => match os {
-                        TargetOs::MacOs => format!("_{}", name),
+                        TargetOperatingSystem::MacOS => format!("_{}", name),
                         _ => name.to_string(),
                     },
                 };
@@ -945,7 +946,7 @@ fn materialize_address<W: Write>(
 
 /// Trait-backed MIR ⇒ AArch64 code generator.
 pub struct AArch64Codegen<'a> {
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
     module: Option<&'a MirModule>,
     prepared: bool,
     verbose: bool,
@@ -953,7 +954,7 @@ pub struct AArch64Codegen<'a> {
 }
 
 impl<'a> AArch64Codegen<'a> {
-    pub fn new(target_os: TargetOs) -> Self {
+    pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
             target_os,
             module: None,
@@ -989,7 +990,7 @@ impl<'a> Codegen for AArch64Codegen<'a> {
     const CAN_OUTPUT_BIN: bool = false;
     const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions] =
         &[CodegenOptions::Debug, CodegenOptions::Release];
-    const TARGET_OS: TargetOs = TargetOs::Linux;
+    const TARGET_OS: TargetOperatingSystem = TargetOperatingSystem::Linux;
     const MAX_BIT_WIDTH: u8 = 64;
 
     fn prepare(

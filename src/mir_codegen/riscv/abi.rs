@@ -1,19 +1,19 @@
-use crate::mir_codegen::TargetOs;
+use crate::target::TargetOperatingSystem;
 
 /// RISC-V ABI utilities
 pub struct RiscVAbi {
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
 }
 
 impl RiscVAbi {
-    pub fn new(target_os: TargetOs) -> Self {
+    pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self { target_os }
     }
 
     /// Get the appropriate function name with platform-specific prefix
     pub fn mangle_function_name(&self, name: &str) -> String {
         match self.target_os {
-            TargetOs::MacOs => format!("_{}", name),
+            TargetOperatingSystem::MacOS => format!("_{}", name),
             _ => name.to_string(),
         }
     }
@@ -36,7 +36,7 @@ impl RiscVAbi {
     /// Get the format string for printing integers
     pub fn get_print_format(&self) -> &'static str {
         match self.target_os {
-            TargetOs::MacOs => "__mir_fmt_int: .asciz \"%lld\\n\"",
+            TargetOperatingSystem::MacOS => "__mir_fmt_int: .asciz \"%lld\\n\"",
             _ => ".L_mir_fmt_int: .string \"%lld\\n\"",
         }
     }

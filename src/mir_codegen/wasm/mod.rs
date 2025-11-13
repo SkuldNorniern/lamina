@@ -6,7 +6,8 @@ use std::io::Write;
 use std::result::Result;
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
+use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions};
+use crate::target::TargetOperatingSystem;
 use abi::WasmABI;
 use util::{
     emit_int_binary_op, emit_int_cmp_op, load_operand_wasm, load_register_wasm,
@@ -15,7 +16,7 @@ use util::{
 
 /// Trait-backed MIR ⇒ WebAssembly code generator.
 pub struct WasmCodegen<'a> {
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
     module: Option<&'a MirModule>,
     prepared: bool,
     verbose: bool,
@@ -23,7 +24,7 @@ pub struct WasmCodegen<'a> {
 }
 
 impl<'a> WasmCodegen<'a> {
-    pub fn new(target_os: TargetOs) -> Self {
+    pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
             target_os,
             module: None,
@@ -59,7 +60,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
     const CAN_OUTPUT_BIN: bool = false;
     const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions] =
         &[CodegenOptions::Debug, CodegenOptions::Release];
-    const TARGET_OS: TargetOs = TargetOs::Linux;
+    const TARGET_OS: TargetOperatingSystem = TargetOperatingSystem::Linux;
     const MAX_BIT_WIDTH: u8 = 64;
 
     fn prepare(
@@ -112,7 +113,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
 pub fn generate_mir_wasm<W: Write>(
     module: &MirModule,
     writer: &mut W,
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
     // WASM module header
     writeln!(writer, "(module")?;

@@ -17,12 +17,17 @@
 //! ## Quick Start
 //!
 //! ```rust
-//! use lamina::{compile_lamina_ir_to_assembly, detect_host_architecture};
+//! use lamina::{compile_lamina_ir_to_assembly};
+//! use lamina::target::{detect_host, architecture_name};
 //! use std::io::Write;
 //!
 //! // Detect the host architecture
-//! let target = detect_host_architecture();
-//! println!("Target architecture: {}", target);
+//! let target = detect_host();
+//! println!("Host target: {}", target);
+//!
+//! // Or just get the architecture name
+//! let arch = architecture_name();
+//! println!("Architecture: {}", arch);
 //!
 //! // Compile IR to assembly
 //! let ir_code = r#"
@@ -269,6 +274,7 @@
 
 pub mod codegen;
 pub mod mir_codegen;
+pub mod target;
 
 pub mod error;
 pub mod ir;
@@ -288,98 +294,9 @@ pub use ir::{
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
 };
 pub use mir_codegen::{
-    TargetOs, generate_mir_to_aarch64, generate_mir_to_riscv, generate_mir_to_wasm, generate_mir_to_x86_64,
+    generate_mir_to_aarch64, generate_mir_to_riscv, generate_mir_to_wasm, generate_mir_to_x86_64,
 };
 
-pub const HOST_ARCH_LIST: &[&str] = &[
-    "x86_64_unknown",
-    "x86_64_linux",
-    "x86_64_windows",
-    "x86_64_macos",
-    "aarch64_unknown",
-    "aarch64_macos",
-    "aarch64_linux",
-    "aarch64_windows",
-    "wasm32_unknown",
-    "wasm64_unknown",
-    "riscv32_unknown",
-    "riscv64_unknown",
-    "riscv128_unknown",
-];
-
-/// Detect the host system's architecture.
-///
-/// Returns a string representing the detected architecture and host system: "x86_64" or "aarch64".
-///
-/// Target List:
-/// x86_64_unknown
-/// x86_64_linux
-/// x86_64_windows
-/// x86_64_macos - since Intel mac is heading to a end, it's not supported as much as aarch64
-/// aarch64_unknown
-/// aarch64_macos
-///
-/// Falls back to "x86_64" if detection fails.
-pub fn detect_host_architecture() -> &'static str {
-    #[cfg(target_arch = "x86_64")]
-    {
-        #[cfg(target_os = "macos")]
-        {
-            return "x86_64_macos";
-        }
-        #[cfg(target_os = "linux")]
-        {
-            "x86_64_linux"
-        }
-        #[cfg(target_os = "windows")]
-        {
-            return "x86_64_windows";
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            return "x86_64_unknown";
-        }
-    }
-    #[cfg(target_arch = "aarch64")]
-    {
-        #[cfg(target_os = "macos")]
-        {
-            "aarch64_macos"
-        }
-        #[cfg(target_os = "linux")]
-        {
-            return "aarch64_linux";
-        }
-        #[cfg(target_os = "windows")]
-        {
-            return "aarch64_windows";
-        }
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            return "aarch64_unknown";
-        }
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        return "wasm32_unknown";
-    }
-    #[cfg(target_arch = "wasm64")]
-    {
-        return "wasm64_unknown";
-    }
-
-    #[cfg(not(any(
-        target_arch = "x86_64",
-        target_arch = "aarch64",
-        target_arch = "wasm32",
-        target_arch = "wasm64"
-    )))]
-    {
-        // Default to x86_64 for unsupported architectures
-        return "x86_64_unknown";
-    }
-    // FEAT:TODO Add support for other architectures (RISC-V, etc.)
-}
 
 /// Parses Lamina IR text and generates assembly code using the host system's architecture.
 ///
@@ -390,9 +307,9 @@ pub fn compile_lamina_ir_to_assembly<W: Write>(
     input_ir: &str,
     output_asm: &mut W,
 ) -> std::result::Result<(), LaminaError> {
-    // Use the host architecture as the default target
-    let target = detect_host_architecture();
-    compile_lamina_ir_to_target_assembly(input_ir, output_asm, target)
+    // Use the host target as the default target
+    let target = target::Target::detect_host().to_str();
+    compile_lamina_ir_to_target_assembly(input_ir, output_asm, &target)
 }
 
 /// Parses Lamina IR text and generates assembly code for a specific target architecture.
@@ -421,19 +338,19 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         // FEAT:TODO Add per-target generation refinements for macOS/Linux/Windows
         "aarch64_unknown" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, "linux")?;
+            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, target::TargetOperatingSystem::Linux)?;
         }
         "aarch64_macos" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, "macos")?;
+            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, target::TargetOperatingSystem::MacOS)?;
         }
         "aarch64_linux" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, "linux")?;
+            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, target::TargetOperatingSystem::Linux)?;
         }
         "aarch64_windows" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, "windows")?;
+            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, target::TargetOperatingSystem::Windows)?;
         }
         // RISC-V targets
         "riscv32_unknown" => codegen::generate_riscv32_assembly(&module, output_asm)?,
