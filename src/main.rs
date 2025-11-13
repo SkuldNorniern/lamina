@@ -359,13 +359,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "[INFO] MIR AArch64 asm (experimental) written to {}",
                     mir_asm_path.display()
                 );
-            } else if target.starts_with("arm") {
-                lamina::generate_mir_to_aarch64(&mir_mod, &mut out, os)
-                    .map_err(|e| format!("MIR→ARM emission failed: {}", e))?;
-                println!(
-                    "[INFO] MIR ARM asm (experimental) written to {}",
-                    mir_asm_path.display()
-                );
+            } else if target.starts_with("arm32") {
+                //lamina::generate_mir_to_arm32(&mir_mod, &mut out, os)
+                //    .map_err(|e| format!("MIR→ARM emission failed: {}", e))?;
+                //println!(
+                //    "[INFO] MIR ARM asm (experimental) written to {}",
+                //    mir_asm_path.display()
+                //);
             } else if target.starts_with("riscv") {
                 lamina::generate_mir_to_riscv(&mir_mod, &mut out, os)
                     .map_err(|e| format!("MIR→RISC-V emission failed: {}", e))?;
