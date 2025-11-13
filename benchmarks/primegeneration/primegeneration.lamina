@@ -22,12 +22,29 @@ fn @is_prime(i64 %n) -> i64 {
     # Check if even (divisible by 2)
     %mod_2 = rem.i64 %n, 2
     %is_even = eq.i64 %mod_2, 0
-    br %is_even, is_prime_not_prime, is_prime_check_loop
+    br %is_even, is_prime_not_prime, is_prime_start_loop
 
-  is_prime_check_loop:
+  is_prime_start_loop:
     # Check divisibility by odd numbers from 3 up to sqrt(n)
-    %result = call @check_prime_loop(%n, 3)
-    ret.i64 %result
+    %d = add.i64 3, 0
+    jmp is_prime_loop_condition
+
+  is_prime_loop_condition:
+    # If d*d > n, then n is prime
+    %d_squared = mul.i64 %d, %d
+    %d_sq_gt_n = gt.i64 %d_squared, %n
+    br %d_sq_gt_n, is_prime_prime, is_prime_loop_body
+
+  is_prime_loop_body:
+    # Check if n is divisible by current d
+    %remainder = rem.i64 %n, %d
+    %is_divisible = eq.i64 %remainder, 0
+    br %is_divisible, is_prime_not_prime, is_prime_next_d
+
+  is_prime_next_d:
+    # Try next odd divisor
+    %d = add.i64 %d, 2
+    jmp is_prime_loop_condition
 
   is_prime_prime:
     ret.i64 1
@@ -36,78 +53,54 @@ fn @is_prime(i64 %n) -> i64 {
     ret.i64 0
 }
 
-# Helper function to check divisibility by odd numbers using modulo
-@inline
-fn @check_prime_loop(i64 %n, i64 %d) -> i64 {
-  entry:
-    # If d*d > n, then n is prime (we've checked all possible divisors)
-    %d_squared = mul.i64 %d, %d
-    %d_sq_gt_n = gt.i64 %d_squared, %n
-    br %d_sq_gt_n, check_prime_loop_prime, check_prime_loop_check_current
-
-  check_prime_loop_check_current:
-    # Check if n is divisible by current d using modulo
-    %remainder = rem.i64 %n, %d
-    %is_divisible = eq.i64 %remainder, 0
-    br %is_divisible, check_prime_loop_not_prime, check_prime_loop_next
-
-  check_prime_loop_next:
-    # Try next odd divisor
-    %next_d = add.i64 %d, 2
-    %result = call @check_prime_loop(%n, %next_d)
-    ret.i64 %result
-
-  check_prime_loop_prime:
-    ret.i64 1
-
-  check_prime_loop_not_prime:
-    ret.i64 0
-}
-
 # Function to count primes up to a limit
 @inline
-fn @count_primes(i64 %limit, i64 %current, i64 %count) -> i64 {
+fn @count_primes(i64 %limit) -> i64 {
   entry:
-    # Base case: if current > limit, return count
-    %current_gt_limit = gt.i64 %current, %limit
-    br %current_gt_limit, count_primes_return_count, count_primes_check_current
+    # Initialize: current = 2, count = 0
+    %current = add.i64 2, 0
+    %count = add.i64 0, 0
+    jmp count_loop_condition
 
-  count_primes_check_current:
+  count_loop_condition:
+    # If current > limit, return count
+    %current_gt_limit = gt.i64 %current, %limit
+    br %current_gt_limit, count_return, count_loop_body
+
+  count_loop_body:
     # Check if current number is prime
     %is_current_prime = call @is_prime(%current)
-    br %is_current_prime, count_primes_increment_count, count_primes_next_number
+    br %is_current_prime, count_increment, count_next
 
-  count_primes_increment_count:
-    %new_count = add.i64 %count, 1
-    %next_current = add.i64 %current, 1
-    %result = call @count_primes(%limit, %next_current, %new_count)
-    ret.i64 %result
+  count_increment:
+    %count = add.i64 %count, 1
+    jmp count_next
 
-  count_primes_next_number:
-    %next_current = add.i64 %current, 1
-    %result = call @count_primes(%limit, %next_current, %count)
-    ret.i64 %result
+  count_next:
+    %current = add.i64 %current, 1
+    jmp count_loop_condition
 
-  count_primes_return_count:
+  count_return:
     ret.i64 %count
 }
 
+@export
 fn @main() -> i64 {
   entry:
     # Print header marker
     print 123456789
 
     # Count primes up to different limits
-    %count_100 = call @count_primes(100, 2, 0)
+    %count_100 = call @count_primes(100)
     print %count_100
 
-    %count_1000 = call @count_primes(1000, 2, 0)
+    %count_1000 = call @count_primes(1000)
     print %count_1000
 
-    %count_10000 = call @count_primes(10000, 2, 0)
+    %count_10000 = call @count_primes(10000)
     print %count_10000
 
-    %count_50000 = call @count_primes(50000, 2, 0)
+    %count_50000 = call @count_primes(50000)
     print %count_50000
 
     # Print footer marker
