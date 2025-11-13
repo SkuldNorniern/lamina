@@ -310,10 +310,8 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
                 init_instrs.push(init_instr);
             }
 
-            // Insert at the beginning
-            for (i, init_instr) in init_instrs.into_iter().enumerate() {
-                entry_block.instructions.insert(i, init_instr);
-            }
+            // Insert at the beginning - use splice to insert all instructions at once
+            entry_block.instructions.splice(0..0, init_instrs);
         }
 }
 
