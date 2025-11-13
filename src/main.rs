@@ -319,24 +319,73 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if let Some(os) = &options.emit_mir_asm {
-            let mut out_path = input_path.clone();
-            out_path.set_extension("s");
+            let default_target = lamina::detect_host_architecture()
+                .split('_')
+                .next()
+                .unwrap_or("aarch64");
+            let target = options.target_arch.as_deref().unwrap_or(default_target);
+
+            // Determine output extension based on target
+            let asm_extension = if target.starts_with("wasm") {
+                "wat" // WebAssembly text format
+            } else if cfg!(windows) {
+                "asm"
+            } else {
+                "s"
+            };
+            let mut mir_asm_path = output_stem.clone();
+            mir_asm_path.set_extension(asm_extension);
+
             let mut out = Vec::<u8>::new();
-            lamina::generate_mir_to_aarch64(&mir_mod, &mut out, os)
-                .map_err(|e| format!("MIR→AArch64 emission failed: {}", e))?;
-            File::create(&asm_path)
+
+            if target.starts_with("x86_64") {
+                lamina::generate_mir_to_x86_64(&mir_mod, &mut out, os)
+                    .map_err(|e| format!("MIR→x86_64 emission failed: {}", e))?;
+                println!(
+                    "[INFO] MIR x86_64 asm (experimental) written to {}",
+                    mir_asm_path.display()
+                );
+            } else if target.starts_with("wasm") {
+                lamina::generate_mir_to_wasm(&mir_mod, &mut out, os)
+                    .map_err(|e| format!("MIR→WASM emission failed: {}", e))?;
+                println!(
+                    "[INFO] MIR WASM (experimental) written to {}",
+                    mir_asm_path.display()
+                );
+            } else if target.starts_with("aarch64") || target.starts_with("arm64") {
+                lamina::generate_mir_to_aarch64(&mir_mod, &mut out, os)
+                    .map_err(|e| format!("MIR→AArch64 emission failed: {}", e))?;
+                println!(
+                    "[INFO] MIR AArch64 asm (experimental) written to {}",
+                    mir_asm_path.display()
+                );
+            } else if target.starts_with("arm") {
+                lamina::generate_mir_to_aarch64(&mir_mod, &mut out, os)
+                    .map_err(|e| format!("MIR→ARM emission failed: {}", e))?;
+                println!(
+                    "[INFO] MIR ARM asm (experimental) written to {}",
+                    mir_asm_path.display()
+                );
+            } else if target.starts_with("riscv") {
+                lamina::generate_mir_to_riscv(&mir_mod, &mut out, os)
+                    .map_err(|e| format!("MIR→RISC-V emission failed: {}", e))?;
+                println!(
+                    "[INFO] MIR RISC-V asm (experimental) written to {}",
+                    mir_asm_path.display()
+                );
+            } else {
+                return Err(format!("Unsupported target architecture '{}'. Supported targets: x86_64, aarch64, arm64, arm, riscv, wasm", target).into());
+            }
+
+            File::create(&mir_asm_path)
                 .and_then(|mut f| f.write_all(&out))
-                .map_err(|e| format!("Failed to write MIR asm: {}", e))?;
-            println!(
-                "[INFO] MIR AArch64 asm (experimental) written to {}",
-                asm_path.display()
-            );
+                .map_err(|e| format!("Failed to write MIR output: {}", e))?;
         }
 
         // return Ok(());
     }
     // if mir asm is not emmit
-    if !options.emit_mir_asm.is_some() && !options.emit_mir {
+    if options.emit_mir_asm.is_none() && !options.emit_mir {
         // Choose compilation method based on target
         let compilation_result = if let Some(target) = &options.target_arch {
             if options.verbose {
