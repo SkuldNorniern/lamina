@@ -11,11 +11,12 @@ use std::result::Result;
 use util::*;
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, TargetOs};
+use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions};
+use crate::target::TargetOperatingSystem;
 
 /// Trait-backed MIR ⇒ RISC-V code generator.
 pub struct RiscVCodegen<'a> {
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
     module: Option<&'a MirModule>,
     prepared: bool,
     verbose: bool,
@@ -23,7 +24,7 @@ pub struct RiscVCodegen<'a> {
 }
 
 impl<'a> RiscVCodegen<'a> {
-    pub fn new(target_os: TargetOs) -> Self {
+    pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
             target_os,
             module: None,
@@ -59,7 +60,7 @@ impl<'a> Codegen for RiscVCodegen<'a> {
     const CAN_OUTPUT_BIN: bool = false;
     const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions] =
         &[CodegenOptions::Debug, CodegenOptions::Release];
-    const TARGET_OS: TargetOs = TargetOs::Linux;
+    const TARGET_OS: TargetOperatingSystem = TargetOperatingSystem::Linux;
     const MAX_BIT_WIDTH: u8 = 64;
 
     fn prepare(
@@ -112,7 +113,7 @@ impl<'a> Codegen for RiscVCodegen<'a> {
 pub fn generate_mir_riscv<W: Write>(
     module: &MirModule,
     writer: &mut W,
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
     let abi = RiscVAbi::new(target_os);
 

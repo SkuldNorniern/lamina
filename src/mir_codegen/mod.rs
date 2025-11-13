@@ -9,23 +9,15 @@ use std::collections::HashMap;
 use std::io::Write;
 
 use crate::mir::{Global, MirType, Signature};
+use crate::target::TargetOperatingSystem;
 
 /// Generate AArch64 assembly from MIR for the requested host OS.
-/// host_os: "macos" | "linux" | "windows"
 pub fn generate_mir_to_aarch64<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
-    host_os: &str,
+    target_os: TargetOperatingSystem,
 ) -> std::result::Result<(), crate::error::LaminaError> {
     use crate::error::LaminaError;
-
-    let target_os = match host_os {
-        "macos" | "darwin" => TargetOs::MacOs,
-        "linux" => TargetOs::Linux,
-        "windows" | "win" => TargetOs::Windows,
-        "bsd" => TargetOs::BSD,
-        _ => TargetOs::Linux,
-    };
 
     let types: HashMap<String, MirType> = HashMap::new();
     let globals: HashMap<String, Global> = module
@@ -54,21 +46,11 @@ pub fn generate_mir_to_aarch64<W: Write>(
 }
 
 /// Generate x86_64 assembly from MIR for the requested host OS.
-/// host_os: "macos" | "linux" | "windows"
 pub fn generate_mir_to_x86_64<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
-    host_os: &str,
+    target_os: TargetOperatingSystem,
 ) -> std::result::Result<(), crate::error::LaminaError> {
-    
-
-    let target_os = match host_os {
-        "macos" | "darwin" => TargetOs::MacOs,
-        "linux" => TargetOs::Linux,
-        "windows" | "win" => TargetOs::Windows,
-        "bsd" => TargetOs::BSD,
-        _ => TargetOs::Linux,
-    };
 
     let mut codegen = x86_64::X86Codegen::new(target_os);
     codegen.set_module(module);
@@ -78,21 +60,11 @@ pub fn generate_mir_to_x86_64<W: Write>(
 }
 
 /// Generate WASM from MIR for the requested host OS.
-/// host_os: "macos" | "linux" | "windows"
 pub fn generate_mir_to_wasm<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
-    host_os: &str,
+    target_os: TargetOperatingSystem,
 ) -> std::result::Result<(), crate::error::LaminaError> {
-    
-
-    let target_os = match host_os {
-        "macos" | "darwin" => TargetOs::MacOs,
-        "linux" => TargetOs::Linux,
-        "windows" | "win" => TargetOs::Windows,
-        "bsd" => TargetOs::BSD,
-        _ => TargetOs::Linux,
-    };
 
     let mut codegen = wasm::WasmCodegen::new(target_os);
     codegen.set_module(module);
@@ -102,21 +74,11 @@ pub fn generate_mir_to_wasm<W: Write>(
 }
 
 /// Generate RISC-V assembly from MIR for the requested host OS.
-/// host_os: "macos" | "linux" | "windows"
 pub fn generate_mir_to_riscv<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
-    host_os: &str,
+    target_os: TargetOperatingSystem,
 ) -> std::result::Result<(), crate::error::LaminaError> {
-    
-
-    let target_os = match host_os {
-        "macos" | "darwin" => TargetOs::MacOs,
-        "linux" => TargetOs::Linux,
-        "windows" | "win" => TargetOs::Windows,
-        "bsd" => TargetOs::BSD,
-        _ => TargetOs::Linux,
-    };
 
     let mut codegen = riscv::RiscVCodegen::new(target_os);
     codegen.set_module(module);
@@ -160,17 +122,7 @@ fn wrap_codegen_error(err: CodegenError) -> crate::error::LaminaError {
     ))
 }
 
-/// Mark the target operating system
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TargetOs {
-    MacOs,
-    Linux,
-    Windows,
-    BSD,
-    Redox,
-    Artery,
-    Unknown,
-}
+// TargetOperatingSystem is now imported from crate::target
 
 /// The options for the codegen
 pub enum CodegenOptions {
@@ -196,7 +148,7 @@ pub trait Codegen {
     /// The Supported codegen options
     const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions];
     /// The target operating system
-    const TARGET_OS: TargetOs;
+    const TARGET_OS: TargetOperatingSystem;
     /// The max bit width of the target architecture
     const MAX_BIT_WIDTH: u8;
 

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
-use crate::mir_codegen::TargetOs;
+use crate::target::TargetOperatingSystem;
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 
 /// x86_64 register allocator with platform-aware register selection.
@@ -15,7 +15,7 @@ use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 /// - Disjoint scratch pools for short-lived temporaries
 /// - Conservative register reuse when pools are exhausted
 pub struct X64RegAlloc {
-    target_os: TargetOs,
+    target_os: TargetOperatingSystem,
     free_gprs: VecDeque<&'static str>,
     used_gprs: HashSet<&'static str>,
     vreg_to_preg: HashMap<VirtualReg, &'static str>,
@@ -45,18 +45,18 @@ impl Default for X64RegAlloc {
 
 impl X64RegAlloc {
     /// Create a new register allocator for the specified target OS
-    pub fn new(target_os: TargetOs) -> Self {
+    pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self::with_target_os(target_os)
     }
 
     /// Create a new register allocator with default target OS (Linux)
     pub fn new_default() -> Self {
-        Self::with_target_os(TargetOs::Linux)
+        Self::with_target_os(TargetOperatingSystem::Linux)
     }
 
-    fn with_target_os(target_os: TargetOs) -> Self {
+    fn with_target_os(target_os: TargetOperatingSystem) -> Self {
         let (map_gprs, scratch_gprs) = match target_os {
-            TargetOs::Windows => (WIN64_MAP_GPRS, WIN64_SCRATCH_GPRS),
+            TargetOperatingSystem::Windows => (WIN64_MAP_GPRS, WIN64_SCRATCH_GPRS),
             _ => (SYSV_MAP_GPRS, SYSV_SCRATCH_GPRS), // Default to SysV for Linux/macOS/BSD
         };
 
@@ -88,7 +88,7 @@ impl X64RegAlloc {
 
         // Use a subset of available registers based on platform
         match self.target_os {
-            TargetOs::Windows => {
+            TargetOperatingSystem::Windows => {
                 self.free_gprs.push_back("rbx");
                 self.free_gprs.push_back("rsi");
                 self.free_gprs.push_back("r12");
