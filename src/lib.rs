@@ -288,7 +288,7 @@ pub use ir::{
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
 };
 pub use mir_codegen::{
-    TargetOs, generate_mir_to_aarch64, generate_mir_to_wasm, generate_mir_to_x86_64,
+    TargetOs, generate_mir_to_aarch64, generate_mir_to_riscv, generate_mir_to_wasm, generate_mir_to_x86_64,
 };
 
 pub const HOST_ARCH_LIST: &[&str] = &[
