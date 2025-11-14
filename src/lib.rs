@@ -18,11 +18,11 @@
 //!
 //! ```rust
 //! use lamina::{compile_lamina_ir_to_assembly};
-//! use lamina::target::{detect_host, architecture_name};
+//! use lamina::target::{Target, architecture_name};
 //! use std::io::Write;
 //!
 //! // Detect the host architecture
-//! let target = detect_host();
+//! let target = Target::detect_host();
 //! println!("Host target: {}", target);
 //!
 //! // Or just get the architecture name
