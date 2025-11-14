@@ -49,7 +49,8 @@ pub enum TargetArchitecture {
     Riscv32,
     Riscv64,
     Riscv128,
-    Wasm,
+    Wasm32,
+    Wasm64,
     Lisa,
     Unknown,
 }
@@ -63,7 +64,9 @@ impl TargetArchitecture {
             "riscv32" => Self::Riscv32,
             "riscv64" => Self::Riscv64,
             "riscv128" => Self::Riscv128,
-            "wasm32" | "wasm64" | "wasm" => Self::Wasm,
+            "wasm32" => Self::Wasm32,
+            "wasm64" => Self::Wasm64,
+            "wasm" => Self::Wasm32,  // fallback for generic "wasm"
             "lisa" => Self::Lisa,
             _ => Self::Unknown,
         }
@@ -104,7 +107,8 @@ impl fmt::Display for TargetArchitecture {
             Self::Riscv32 => "riscv32",
             Self::Riscv64 => "riscv64",
             Self::Riscv128 => "riscv128",
-            Self::Wasm => "wasm",
+            Self::Wasm32 => "wasm32",
+            Self::Wasm64 => "wasm64",
             Self::Lisa => "lisa",
             Self::Unknown => "unknown",
         };
@@ -180,12 +184,16 @@ pub fn detect_host_os() -> &'static str {
     return "macos";
     #[cfg(target_os = "windows")]
     return "windows";
-    #[cfg(target_os = "bsd")]
-    return "bsd";
+    #[cfg(target_os = "freebsd")]
+    return "freebsd";
+    #[cfg(target_os = "openbsd")]
+    return "openbsd";
+    #[cfg(target_os = "netbsd")]
+    return "netbsd";
+    #[cfg(target_os = "dragonfly")]
+    return "dragonfly";
     #[cfg(target_os = "redox")]
     return "redox";
-    #[cfg(target_os = "artery")]
-    return "artery";
 
     // Default fallback
     #[allow(unreachable_code)]
