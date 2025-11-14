@@ -10,20 +10,22 @@ impl Target {
         Self { architecture, operating_system }
     }
     pub fn from_str(target: &str) -> Self {
-        let parts = target.split('_').collect::<Vec<&str>>();
-        if parts.len() != 2 {
-            return Self {
+        if let Some(last_underscore) = target.rfind('_') {
+            let (arch_part, os_part) = target.split_at(last_underscore);
+            let os_part = &os_part[1..]; // Skip the underscore
+            Self::new(
+                TargetArchitecture::from_str(arch_part),
+                TargetOperatingSystem::from_str(os_part)
+            )
+        } else {
+            Self {
                 architecture: TargetArchitecture::Unknown,
                 operating_system: TargetOperatingSystem::Unknown,
-            };
+            }
         }
-        Self::new(
-            TargetArchitecture::from_str(parts[0]),
-            TargetOperatingSystem::from_str(parts[1])
-        )
     }
     pub fn to_str(&self) -> String {
-        format!("{}_{}", self.architecture, self.operating_system)
+        self.to_string()
     }
     pub fn detect_host() -> Self {
         let arch = architecture_name();
