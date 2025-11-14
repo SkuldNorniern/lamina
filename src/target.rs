@@ -184,14 +184,8 @@ pub fn detect_host_os() -> &'static str {
     return "macos";
     #[cfg(target_os = "windows")]
     return "windows";
-    #[cfg(target_os = "freebsd")]
-    return "freebsd";
-    #[cfg(target_os = "openbsd")]
-    return "openbsd";
-    #[cfg(target_os = "netbsd")]
-    return "netbsd";
-    #[cfg(target_os = "dragonfly")]
-    return "dragonfly";
+    #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
+    return "bsd";
     #[cfg(target_os = "redox")]
     return "redox";
 
@@ -224,9 +218,11 @@ pub fn detect_host_architecture() -> &'static str {
         ("x86_64", "linux") => "x86_64_linux",
         ("x86_64", "macos") => "x86_64_macos",
         ("x86_64", "windows") => "x86_64_windows",
+        ("x86_64", "bsd") => "x86_64_bsd",
         ("aarch64", "linux") => "aarch64_linux",
         ("aarch64", "macos") => "aarch64_macos",
         ("aarch64", "windows") => "aarch64_windows",
+        ("aarch64", "bsd") => "aarch64_bsd",
         ("wasm32", _) => "wasm32_unknown",
         ("wasm64", _) => "wasm64_unknown",
         ("riscv32", _) => "riscv32_unknown",
@@ -284,5 +280,37 @@ mod tests {
         let result = detect_host_architecture();
         assert!(result.contains('_'), "Should contain underscore separating arch and os");
         assert!(!result.is_empty(), "Should not be empty");
+    }
+
+    #[test]
+    #[cfg(target_os = "freebsd")]
+    fn test_freebsd_detection() {
+        let host = Target::detect_host();
+        assert_eq!(host.operating_system, TargetOperatingSystem::BSD,
+            "FreeBSD should be detected as BSD, not Unknown");
+    }
+
+    #[test]
+    #[cfg(target_os = "openbsd")]
+    fn test_openbsd_detection() {
+        let host = Target::detect_host();
+        assert_eq!(host.operating_system, TargetOperatingSystem::BSD,
+            "OpenBSD should be detected as BSD, not Unknown");
+    }
+
+    #[test]
+    #[cfg(target_os = "netbsd")]
+    fn test_netbsd_detection() {
+        let host = Target::detect_host();
+        assert_eq!(host.operating_system, TargetOperatingSystem::BSD,
+            "NetBSD should be detected as BSD, not Unknown");
+    }
+
+    #[test]
+    #[cfg(target_os = "dragonfly")]
+    fn test_dragonfly_detection() {
+        let host = Target::detect_host();
+        assert_eq!(host.operating_system, TargetOperatingSystem::BSD,
+            "DragonFly BSD should be detected as BSD, not Unknown");
     }
 }
