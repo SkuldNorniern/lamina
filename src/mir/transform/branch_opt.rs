@@ -64,37 +64,37 @@ impl BranchOptimization {
         // BFS to find all reachable blocks
         while let Some(current_label) = worklist.pop_front() {
             if let Some(block) = func.get_block(&current_label)
-                && let Some(last_instr) = block.instructions.last() {
-                    match last_instr {
-                        Instruction::Jmp { target } => {
-                            if reachable.insert(target.clone()) {
-                                worklist.push_back(target.clone());
-                            }
-                        }
-                        Instruction::Br {
-                            true_target,
-                            false_target,
-                            ..
-                        } => {
-                            if reachable.insert(true_target.clone()) {
-                                worklist.push_back(true_target.clone());
-                            }
-                            if reachable.insert(false_target.clone()) {
-                                worklist.push_back(false_target.clone());
-                            }
-                        }
-                        Instruction::Ret { .. } => {
-                            // Terminal instruction, no successors
-                        }
-                        _ => {
-                            // For other instructions, assume fallthrough to next block
-                            // (though MIR doesn't have implicit fallthrough)
+                && let Some(last_instr) = block.instructions.last()
+            {
+                match last_instr {
+                    Instruction::Jmp { target } => {
+                        if reachable.insert(target.clone()) {
+                            worklist.push_back(target.clone());
                         }
                     }
+                    Instruction::Br {
+                        true_target,
+                        false_target,
+                        ..
+                    } => {
+                        if reachable.insert(true_target.clone()) {
+                            worklist.push_back(true_target.clone());
+                        }
+                        if reachable.insert(false_target.clone()) {
+                            worklist.push_back(false_target.clone());
+                        }
+                    }
+                    Instruction::Ret { .. } => {
+                        // Terminal instruction, no successors
+                    }
+                    _ => {
+                        // For other instructions, assume fallthrough to next block
+                        // (though MIR doesn't have implicit fallthrough)
+                    }
                 }
+            }
         }
 
         reachable
     }
 }
-

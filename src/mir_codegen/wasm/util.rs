@@ -132,4 +132,3 @@ pub fn emit_int_cmp_op<W: Write>(
     }
     Ok(())
 }
-

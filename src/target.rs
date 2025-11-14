@@ -7,7 +7,10 @@ pub struct Target {
 }
 impl Target {
     pub fn new(architecture: TargetArchitecture, operating_system: TargetOperatingSystem) -> Self {
-        Self { architecture, operating_system }
+        Self {
+            architecture,
+            operating_system,
+        }
     }
     pub fn from_str(target: &str) -> Self {
         if let Some(last_underscore) = target.rfind('_') {
@@ -15,7 +18,7 @@ impl Target {
             let os_part = &os_part[1..]; // Skip the underscore
             Self::new(
                 TargetArchitecture::from_str(arch_part),
-                TargetOperatingSystem::from_str(os_part)
+                TargetOperatingSystem::from_str(os_part),
             )
         } else {
             Self {
@@ -32,7 +35,7 @@ impl Target {
         let os = detect_host_os();
         Self::new(
             TargetArchitecture::from_str(arch),
-            TargetOperatingSystem::from_str(os)
+            TargetOperatingSystem::from_str(os),
         )
     }
 }
@@ -68,7 +71,7 @@ impl TargetArchitecture {
             "riscv128" => Self::Riscv128,
             "wasm32" => Self::Wasm32,
             "wasm64" => Self::Wasm64,
-            "wasm" => Self::Wasm32,  // fallback for generic "wasm"
+            "wasm" => Self::Wasm32, // fallback for generic "wasm"
             "lisa" => Self::Lisa,
             _ => Self::Unknown,
         }
@@ -133,7 +136,6 @@ impl fmt::Display for TargetOperatingSystem {
     }
 }
 
-
 pub const HOST_ARCH_LIST: &[&str] = &[
     "x86_64_unknown",
     "x86_64_linux",
@@ -186,7 +188,12 @@ pub fn detect_host_os() -> &'static str {
     return "macos";
     #[cfg(target_os = "windows")]
     return "windows";
-    #[cfg(any(target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
+    #[cfg(any(
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
+    ))]
     return "bsd";
     #[cfg(target_os = "redox")]
     return "redox";
@@ -251,8 +258,10 @@ mod tests {
         let new_result = Target::detect_host().to_str();
         let old_result = detect_host_architecture();
 
-        assert_eq!(new_result, old_result,
-            "detect_host().to_str() and detect_host_architecture() should return the same result");
+        assert_eq!(
+            new_result, old_result,
+            "detect_host().to_str() and detect_host_architecture() should return the same result"
+        );
     }
 
     #[test]
@@ -261,8 +270,10 @@ mod tests {
         let str_repr = host.to_str();
         let parsed_back = Target::from_str(&str_repr);
 
-        assert_eq!(host, parsed_back,
-            "from_str/to_str should be a roundtrip operation");
+        assert_eq!(
+            host, parsed_back,
+            "from_str/to_str should be a roundtrip operation"
+        );
     }
 
     #[test]
@@ -272,15 +283,24 @@ mod tests {
         let arch_str = architecture_name();
         let os_str = detect_host_os();
 
-        assert_eq!(combined.architecture, TargetArchitecture::from_str(arch_str));
-        assert_eq!(combined.operating_system, TargetOperatingSystem::from_str(os_str));
+        assert_eq!(
+            combined.architecture,
+            TargetArchitecture::from_str(arch_str)
+        );
+        assert_eq!(
+            combined.operating_system,
+            TargetOperatingSystem::from_str(os_str)
+        );
     }
 
     #[test]
     fn test_deprecated_function_format() {
         // Test that the deprecated function returns the expected combined format
         let result = detect_host_architecture();
-        assert!(result.contains('_'), "Should contain underscore separating arch and os");
+        assert!(
+            result.contains('_'),
+            "Should contain underscore separating arch and os"
+        );
         assert!(!result.is_empty(), "Should not be empty");
     }
 
@@ -288,31 +308,43 @@ mod tests {
     #[cfg(target_os = "freebsd")]
     fn test_freebsd_detection() {
         let host = Target::detect_host();
-        assert_eq!(host.operating_system, TargetOperatingSystem::BSD,
-            "FreeBSD should be detected as BSD, not Unknown");
+        assert_eq!(
+            host.operating_system,
+            TargetOperatingSystem::BSD,
+            "FreeBSD should be detected as BSD, not Unknown"
+        );
     }
 
     #[test]
     #[cfg(target_os = "openbsd")]
     fn test_openbsd_detection() {
         let host = Target::detect_host();
-        assert_eq!(host.operating_system, TargetOperatingSystem::BSD,
-            "OpenBSD should be detected as BSD, not Unknown");
+        assert_eq!(
+            host.operating_system,
+            TargetOperatingSystem::BSD,
+            "OpenBSD should be detected as BSD, not Unknown"
+        );
     }
 
     #[test]
     #[cfg(target_os = "netbsd")]
     fn test_netbsd_detection() {
         let host = Target::detect_host();
-        assert_eq!(host.operating_system, TargetOperatingSystem::BSD,
-            "NetBSD should be detected as BSD, not Unknown");
+        assert_eq!(
+            host.operating_system,
+            TargetOperatingSystem::BSD,
+            "NetBSD should be detected as BSD, not Unknown"
+        );
     }
 
     #[test]
     #[cfg(target_os = "dragonfly")]
     fn test_dragonfly_detection() {
         let host = Target::detect_host();
-        assert_eq!(host.operating_system, TargetOperatingSystem::BSD,
-            "DragonFly BSD should be detected as BSD, not Unknown");
+        assert_eq!(
+            host.operating_system,
+            TargetOperatingSystem::BSD,
+            "DragonFly BSD should be detected as BSD, not Unknown"
+        );
     }
 }

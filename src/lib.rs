@@ -297,7 +297,6 @@ pub use mir_codegen::{
     generate_mir_to_aarch64, generate_mir_to_riscv, generate_mir_to_wasm, generate_mir_to_x86_64,
 };
 
-
 /// Parses Lamina IR text and generates assembly code using the host system's architecture.
 ///
 /// # Arguments
@@ -338,19 +337,35 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         // "unknown" targets use generic conventions (may default to Linux/ELF-style for compatibility)
         "aarch64_unknown" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, target::TargetOperatingSystem::Unknown)?;
+            mir_codegen::generate_mir_to_aarch64(
+                &mir_module,
+                output_asm,
+                target::TargetOperatingSystem::Unknown,
+            )?;
         }
         "aarch64_macos" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, target::TargetOperatingSystem::MacOS)?;
+            mir_codegen::generate_mir_to_aarch64(
+                &mir_module,
+                output_asm,
+                target::TargetOperatingSystem::MacOS,
+            )?;
         }
         "aarch64_linux" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, target::TargetOperatingSystem::Linux)?;
+            mir_codegen::generate_mir_to_aarch64(
+                &mir_module,
+                output_asm,
+                target::TargetOperatingSystem::Linux,
+            )?;
         }
         "aarch64_windows" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(&mir_module, output_asm, target::TargetOperatingSystem::Windows)?;
+            mir_codegen::generate_mir_to_aarch64(
+                &mir_module,
+                output_asm,
+                target::TargetOperatingSystem::Windows,
+            )?;
         }
         // RISC-V targets
         "riscv32_unknown" => codegen::generate_riscv32_assembly(&module, output_asm)?,

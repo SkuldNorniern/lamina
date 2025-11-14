@@ -88,19 +88,21 @@ impl InstructionScheduling {
             {
                 // Check if the add uses the result of the mul
                 if let crate::mir::Operand::Register(rhs_reg) = add_rhs
-                    && self.is_same_register(mul_dst, rhs_reg) {
-                        // Check if this is an accumulation: dst += (lhs * rhs)
-                        if let crate::mir::Operand::Register(lhs_reg) = add_lhs
-                            && self.is_same_register(add_dst, lhs_reg) {
-                                // Found multiply-accumulate pattern
-                                // In a real scheduler, we might:
-                                // 1. Move independent instructions between mul and add
-                                // 2. Schedule loads early to hide latency
-                                // 3. Group similar operations together
+                    && self.is_same_register(mul_dst, rhs_reg)
+                {
+                    // Check if this is an accumulation: dst += (lhs * rhs)
+                    if let crate::mir::Operand::Register(lhs_reg) = add_lhs
+                        && self.is_same_register(add_dst, lhs_reg)
+                    {
+                        // Found multiply-accumulate pattern
+                        // In a real scheduler, we might:
+                        // 1. Move independent instructions between mul and add
+                        // 2. Schedule loads early to hide latency
+                        // 3. Group similar operations together
 
-                                // For now, this serves as pattern recognition
-                            }
+                        // For now, this serves as pattern recognition
                     }
+                }
             }
             i += 1;
         }
@@ -131,11 +133,12 @@ impl InstructionScheduling {
                 self.find_first_use_after(&block.instructions, &loaded_reg, load_idx + 1);
 
             if let Some(use_idx) = first_use
-                && use_idx > load_idx + 1 {
-                    // There are instructions between load and use
-                    // Check if any can be moved or reordered for better scheduling
-                    // This is complex and would need sophisticated dependency analysis
-                }
+                && use_idx > load_idx + 1
+            {
+                // There are instructions between load and use
+                // Check if any can be moved or reordered for better scheduling
+                // This is complex and would need sophisticated dependency analysis
+            }
         }
 
         changed

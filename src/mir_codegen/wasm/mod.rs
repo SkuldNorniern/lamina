@@ -125,9 +125,10 @@ pub fn generate_mir_wasm<W: Write>(
         for block in &func.blocks {
             for inst in &block.instructions {
                 if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(_) = dst {
-                        global_count += 1;
-                    }
+                    && let Register::Virtual(_) = dst
+                {
+                    global_count += 1;
+                }
             }
         }
     }
@@ -156,9 +157,10 @@ pub fn generate_mir_wasm<W: Write>(
         for block in &func.blocks {
             for inst in &block.instructions {
                 if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(vreg) = dst {
-                        local_vregs.insert(vreg);
-                    }
+                    && let Register::Virtual(vreg) = dst
+                {
+                    local_vregs.insert(vreg);
+                }
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg {
                         local_vregs.insert(vreg);

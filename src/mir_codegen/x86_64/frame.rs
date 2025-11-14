@@ -33,4 +33,3 @@ impl X86Frame {
         -((slot_index as i32 + 1) * 8)
     }
 }
-

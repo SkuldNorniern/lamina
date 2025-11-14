@@ -8,9 +8,9 @@ pub mod x86_64;
 use std::collections::HashMap;
 use std::io::Write;
 
+use crate::error::LaminaError;
 use crate::mir::{Global, MirType, Signature};
 use crate::target::{TargetArchitecture, TargetOperatingSystem};
-use crate::error::LaminaError;
 
 /// Generate assembly from MIR for the requested target architecture and OS.
 pub fn generate_mir_to_target<W: Write>(
@@ -35,19 +35,29 @@ pub fn generate_mir_to_target<W: Write>(
             codegen.set_module(module);
             codegen.emit_into(module, writer)?;
         }
-        TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 | TargetArchitecture::Riscv128 => {
+        TargetArchitecture::Riscv32
+        | TargetArchitecture::Riscv64
+        | TargetArchitecture::Riscv128 => {
             let mut codegen = riscv::RiscVCodegen::new(target_os);
             codegen.set_module(module);
             codegen.emit_into(module, writer)?;
         }
-        _ => return Err(LaminaError::ValidationError(format!("Unsupported target architecture: {:?}", target_arch))),
+        _ => {
+            return Err(LaminaError::ValidationError(format!(
+                "Unsupported target architecture: {:?}",
+                target_arch
+            )));
+        }
     }
 
     Ok(())
 }
 
 /// Generate AArch64 assembly from MIR for the requested host OS.
-#[deprecated(since = "0.0.9", note = "Use generate_mir_to_target with TargetArchitecture::Aarch64 instead")]
+#[deprecated(
+    since = "0.0.9",
+    note = "Use generate_mir_to_target with TargetArchitecture::Aarch64 instead"
+)]
 pub fn generate_mir_to_aarch64<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
@@ -57,7 +67,10 @@ pub fn generate_mir_to_aarch64<W: Write>(
 }
 
 /// Generate x86_64 assembly from MIR for the requested host OS.
-#[deprecated(since = "0.0.9", note = "Use generate_mir_to_target with TargetArchitecture::X86_64 instead")]
+#[deprecated(
+    since = "0.0.9",
+    note = "Use generate_mir_to_target with TargetArchitecture::X86_64 instead"
+)]
 pub fn generate_mir_to_x86_64<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
@@ -67,7 +80,10 @@ pub fn generate_mir_to_x86_64<W: Write>(
 }
 
 /// Generate WASM from MIR for the requested host OS.
-#[deprecated(since = "0.0.9", note = "Use generate_mir_to_target with TargetArchitecture::Wasm32/Wasm64 instead")]
+#[deprecated(
+    since = "0.0.9",
+    note = "Use generate_mir_to_target with TargetArchitecture::Wasm32/Wasm64 instead"
+)]
 pub fn generate_mir_to_wasm<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
@@ -77,7 +93,10 @@ pub fn generate_mir_to_wasm<W: Write>(
 }
 
 /// Generate RISC-V assembly from MIR for the requested host OS.
-#[deprecated(since = "0.0.9", note = "Use generate_mir_to_target with TargetArchitecture::Riscv32/Riscv64/Riscv128 instead")]
+#[deprecated(
+    since = "0.0.9",
+    note = "Use generate_mir_to_target with TargetArchitecture::Riscv32/Riscv64/Riscv128 instead"
+)]
 pub fn generate_mir_to_riscv<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
