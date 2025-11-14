@@ -100,23 +100,24 @@ impl AddressingCanonicalization {
                         &instructions[*def_pos],
                         def_index,
                         instructions,
-                    ) {
-                        // Keep original offset, scale is guaranteed in {1,2,4,8}
-                        // Only convert if offset fits in i8 range to avoid information loss
-                        if (*offset >= i8::MIN as i16) && (*offset <= i8::MAX as i16) {
-                            let clamped_off = *offset as i8;
-                            *addr = AddressMode::BaseIndexScale {
-                                base: base_reg,
-                                index: index_reg,
-                                scale,
-                                offset: clamped_off,
-                            };
-                        } else {
-                            // Offset too large, don't convert (keep BaseOffset)
-                            return false;
-                        }
-                        return true;
+                    )
+                {
+                    // Keep original offset, scale is guaranteed in {1,2,4,8}
+                    // Only convert if offset fits in i8 range to avoid information loss
+                    if (*offset >= i8::MIN as i16) && (*offset <= i8::MAX as i16) {
+                        let clamped_off = *offset as i8;
+                        *addr = AddressMode::BaseIndexScale {
+                            base: base_reg,
+                            index: index_reg,
+                            scale,
+                            offset: clamped_off,
+                        };
+                    } else {
+                        // Offset too large, don't convert (keep BaseOffset)
+                        return false;
                     }
+                    return true;
+                }
             }
             AddressMode::BaseIndexScale { .. } => {}
         }
@@ -145,11 +146,12 @@ impl AddressingCanonicalization {
                     rhs,
                     ..
                 } = &instructions[pos]
-                    && let Operand::Register(idx) = lhs
-                        && let Operand::Immediate(Immediate::I64(shift)) = rhs
-                            && (0..=3).contains(&{ *shift }) {
-                                return Some((idx.clone(), 1u8 << (*shift as u8)));
-                            }
+                && let Operand::Register(idx) = lhs
+                && let Operand::Immediate(Immediate::I64(shift)) = rhs
+                && (0..=3).contains(&{ *shift })
+            {
+                return Some((idx.clone(), 1u8 << (*shift as u8)));
+            }
             None
         }
 
@@ -166,13 +168,14 @@ impl AddressingCanonicalization {
                     rhs,
                     ..
                 } = &instructions[pos]
-                    && let Operand::Register(idx) = lhs
-                        && let Operand::Immediate(Immediate::I64(scale)) = rhs {
-                            match *scale {
-                                1 | 2 | 4 | 8 => return Some((idx.clone(), *scale as u8)),
-                                _ => {}
-                            }
-                        }
+                && let Operand::Register(idx) = lhs
+                && let Operand::Immediate(Immediate::I64(scale)) = rhs
+            {
+                match *scale {
+                    1 | 2 | 4 | 8 => return Some((idx.clone(), *scale as u8)),
+                    _ => {}
+                }
+            }
             None
         }
 
@@ -185,11 +188,11 @@ impl AddressingCanonicalization {
         ) -> Option<(Register, Register, u8)> {
             if let Operand::Register(base_reg) = base_op
                 && let Operand::Register(r2) = other_op
-                    && let Some((idx, scale)) = scaled_from_shift(r2, def_index, instructions)
-                        .or_else(|| scaled_from_mul(r2, def_index, instructions))
-                    {
-                        return Some((base_reg.clone(), idx, scale));
-                    }
+                && let Some((idx, scale)) = scaled_from_shift(r2, def_index, instructions)
+                    .or_else(|| scaled_from_mul(r2, def_index, instructions))
+            {
+                return Some((base_reg.clone(), idx, scale));
+            }
             None
         }
 

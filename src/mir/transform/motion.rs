@@ -701,9 +701,10 @@ fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<Strin
             match term {
                 Instruction::Jmp { target } => {
                     if let Some(&tidx) = label_index.get(target.as_str())
-                        && tidx <= i {
-                            headers.insert(target.clone());
-                        }
+                        && tidx <= i
+                    {
+                        headers.insert(target.clone());
+                    }
                 }
                 Instruction::Br {
                     true_target,
@@ -711,13 +712,15 @@ fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<Strin
                     ..
                 } => {
                     if let Some(&tidx) = label_index.get(true_target.as_str())
-                        && tidx <= i {
-                            headers.insert(true_target.clone());
-                        }
+                        && tidx <= i
+                    {
+                        headers.insert(true_target.clone());
+                    }
                     if let Some(&fidx) = label_index.get(false_target.as_str())
-                        && fidx <= i {
-                            headers.insert(false_target.clone());
-                        }
+                        && fidx <= i
+                    {
+                        headers.insert(false_target.clone());
+                    }
                 }
                 _ => {}
             }

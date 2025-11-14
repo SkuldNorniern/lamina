@@ -17,7 +17,9 @@ pub fn public_symbol(func_name: &str, os: TargetOperatingSystem) -> (Option<Stri
         | TargetOperatingSystem::BSD
         | TargetOperatingSystem::Redox
         | TargetOperatingSystem::Artery
-        | TargetOperatingSystem::Unknown => (Some(format!(".globl {}", func_name)), func_name.to_string()),
+        | TargetOperatingSystem::Unknown => {
+            (Some(format!(".globl {}", func_name)), func_name.to_string())
+        }
     }
 }
 
