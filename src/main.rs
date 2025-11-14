@@ -17,7 +17,7 @@ fn print_usage() {
     eprintln!("  --target <arch>         Specify target architecture (x86_64, aarch64)");
     eprintln!("  --emit-mir              Only emit MIR (.mlamina) and exit");
     eprintln!(
-        "  --emit-mir-asm <os>     EXPERIMENTAL: emit assembly from MIR (os: macos|linux|windows)"
+        "  --emit-mir-asm          EXPERIMENTAL: emit assembly from MIR (uses --target for OS)"
     );
     eprintln!("  --opt-level <n>         Set optimization level (0-3, default: 1)");
     eprintln!("  --timeout <secs>        Abort after N seconds (best-effort)");
@@ -100,11 +100,8 @@ fn parse_args() -> Result<CompileOptions, String> {
                 i += 1;
             }
             "--emit-mir-asm" => {
-                if i + 1 >= args.len() {
-                    return Err("Missing argument for --emit-mir-asm".to_string());
-                }
-                options.emit_mir_asm = Some(args[i + 1].to_lowercase());
-                i += 2;
+                options.emit_mir_asm = Some("default".to_string());
+                i += 1;
             }
             "--target" => {
                 if i + 1 >= args.len() {
@@ -205,6 +202,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // It's not used, but we keep it for reference and maybe in the future
     let _exe_extension = if cfg!(windows) { ".exe" } else { "" };
 
+    // Determine target for extension logic
+    let target_for_extensions = if let Some(target_str) = &options.target_arch {
+        lamina::target::Target::from_str(target_str)
+    } else {
+        lamina::target::Target::detect_host()
+    };
+
     // Get output name
     let output_stem = if let Some(out_path) = &options.output_file {
         out_path.clone()
@@ -215,8 +219,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             PathBuf::from,
         );
 
-        // If output name doesn't have an extension and we're on Windows, add .exe
-        if cfg!(windows) && stem.extension().is_none() {
+        // If output name doesn't have an extension and target is Windows, add .exe
+        if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows && stem.extension().is_none() {
             let mut stem_with_ext = stem.clone();
             stem_with_ext.set_extension("exe");
             stem_with_ext
@@ -226,13 +230,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create assembly file path using same directory as output
-    let asm_extension = if cfg!(windows) { "asm" } else { "s" };
+    let asm_extension = if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows { "asm" } else { "s" };
     let mut asm_path = output_stem.clone();
     asm_path.set_extension(asm_extension);
 
-    // Ensure output executable has correct extension
+    // Ensure output executable has correct extension based on target
     let mut exec_path = output_stem.clone();
-    if cfg!(windows) && exec_path.extension().is_none() {
+    if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows && exec_path.extension().is_none() {
         exec_path.set_extension("exe");
     }
 
@@ -319,7 +323,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("[INFO] MIR written to {}", mir_path.display());
         }
 
-        if let Some(os_str) = &options.emit_mir_asm {
+        if options.emit_mir_asm.is_some() {
             let default_target = lamina::target::Target::detect_host();
             let default_target_str = default_target.to_str();
             let target_str = options.target_arch.as_deref().unwrap_or(&default_target_str);
@@ -372,7 +376,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
                 _ => {
-                    return Err(format!("Unsupported target architecture '{}'. Supported targets: x86_64, aarch64, riscv, wasm", target_str).into());
+                    return Err(format!("Unsupported target architecture '{}'. Supported targets: x86_64, aarch64, riscv, wasm", target.architecture).into());
                 }
             }
 
