@@ -327,16 +327,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Determine output extension based on target
             let asm_extension = match target.architecture {
-                lamina::target::TargetArchitecture::Wasm => "wat", // WebAssembly text format
-                _ => if cfg!(windows) { "asm" } else { "s" },
+                lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64 => "wat", // WebAssembly text format
+                _ => if target.operating_system == lamina::target::TargetOperatingSystem::Windows { "asm" } else { "s" },
             };
             let mut mir_asm_path = output_stem.clone();
             mir_asm_path.set_extension(asm_extension);
 
             let mut out = Vec::<u8>::new();
 
-            // Parse OS string to TargetOperatingSystem
-            let target_os = lamina::target::TargetOperatingSystem::from_str(os_str);
+            // Use OS from the target
+            let target_os = target.operating_system;
 
             match target.architecture {
                 lamina::target::TargetArchitecture::X86_64 => {
@@ -347,7 +347,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         mir_asm_path.display()
                     );
                 }
-                lamina::target::TargetArchitecture::Wasm => {
+                lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64 => {
                     lamina::generate_mir_to_wasm(&mir_mod, &mut out, target_os)
                         .map_err(|e| format!("MIR→WASM emission failed: {}", e))?;
                     println!(
