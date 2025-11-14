@@ -180,76 +180,76 @@ fn convert_function<'a>(
             let mut handled = false;
             if let Some(Instruction::Jmp { target }) = term.as_ref()
                 && target == &succ
-                    && let Some(pred_bb) = mir_func.get_block_mut(&pred)
-                        && !pred_bb.instructions.is_empty() {
-                            let insert_pos = pred_bb.instructions.len().saturating_sub(1);
-                            pred_bb
-                                .instructions
-                                .splice(insert_pos..insert_pos, moves.clone());
-                            handled = true;
-                        }
+                && let Some(pred_bb) = mir_func.get_block_mut(&pred)
+                && !pred_bb.instructions.is_empty()
+            {
+                let insert_pos = pred_bb.instructions.len().saturating_sub(1);
+                pred_bb
+                    .instructions
+                    .splice(insert_pos..insert_pos, moves.clone());
+                handled = true;
+            }
             if !handled
                 && let Some(Instruction::Br {
                     cond: _,
                     true_target,
                     false_target,
                 }) = term.as_ref()
-                {
-                    let (arm_is_true, matches) = if true_target == &succ {
-                        (true, true)
-                    } else if false_target == &succ {
-                        (false, true)
-                    } else {
-                        (true, false)
-                    };
-                    if matches {
-                        trampoline_counter = trampoline_counter.saturating_add(1);
-                        let tramp_label = format!(
-                            "{}_to_{}_phi{}",
-                            pred.replace('%', "_"),
-                            succ.replace('%', "_"),
-                            trampoline_counter
-                        );
-                        // Create trampoline and add it to the function
-                        let mut tramp = Block::new(tramp_label.clone());
-                        for m in &moves {
-                            tramp.push(m.clone());
+            {
+                let (arm_is_true, matches) = if true_target == &succ {
+                    (true, true)
+                } else if false_target == &succ {
+                    (false, true)
+                } else {
+                    (true, false)
+                };
+                if matches {
+                    trampoline_counter = trampoline_counter.saturating_add(1);
+                    let tramp_label = format!(
+                        "{}_to_{}_phi{}",
+                        pred.replace('%', "_"),
+                        succ.replace('%', "_"),
+                        trampoline_counter
+                    );
+                    // Create trampoline and add it to the function
+                    let mut tramp = Block::new(tramp_label.clone());
+                    for m in &moves {
+                        tramp.push(m.clone());
+                    }
+                    tramp.push(Instruction::Jmp {
+                        target: succ.clone(),
+                    });
+                    mir_func.add_block(tramp);
+                    // Now update the predecessor's branch target
+                    if let Some(pred_mut) = mir_func.get_block_mut(&pred)
+                        && let Some(last) = pred_mut.instructions.last_mut()
+                        && let Instruction::Br {
+                            cond: _,
+                            true_target: t,
+                            false_target: f,
+                        } = last
+                    {
+                        if arm_is_true {
+                            *t = tramp_label.clone();
+                        } else {
+                            *f = tramp_label.clone();
                         }
-                        tramp.push(Instruction::Jmp {
-                            target: succ.clone(),
-                        });
-                        mir_func.add_block(tramp);
-                        // Now update the predecessor's branch target
-                        if let Some(pred_mut) = mir_func.get_block_mut(&pred)
-                            && let Some(last) = pred_mut.instructions.last_mut()
-                                && let Instruction::Br {
-                                    cond: _,
-                                    true_target: t,
-                                    false_target: f,
-                                } = last
-                                {
-                                    if arm_is_true {
-                                        *t = tramp_label.clone();
-                                    } else {
-                                        *f = tramp_label.clone();
-                                    }
-                                    handled = true;
-                                }
+                        handled = true;
                     }
                 }
-            if !handled
-                && let Some(pred_bb) = mir_func.get_block_mut(&pred) {
-                    if !pred_bb.instructions.is_empty() {
-                        let insert_pos = pred_bb.instructions.len().saturating_sub(1);
-                        pred_bb
-                            .instructions
-                            .splice(insert_pos..insert_pos, moves.clone());
-                    } else {
-                        for m in &moves {
-                            pred_bb.push(m.clone());
-                        }
+            }
+            if !handled && let Some(pred_bb) = mir_func.get_block_mut(&pred) {
+                if !pred_bb.instructions.is_empty() {
+                    let insert_pos = pred_bb.instructions.len().saturating_sub(1);
+                    pred_bb
+                        .instructions
+                        .splice(insert_pos..insert_pos, moves.clone());
+                } else {
+                    for m in &moves {
+                        pred_bb.push(m.clone());
                     }
                 }
+            }
         }
     }
 
@@ -261,9 +261,7 @@ fn convert_function<'a>(
 }
 
 fn add_missing_initializations(func: &mut crate::mir::Function) {
-    use crate::mir::{
-        Immediate, Instruction as MirInst, MirType, Operand, Register, ScalarType,
-    };
+    use crate::mir::{Immediate, Instruction as MirInst, MirType, Operand, Register, ScalarType};
     use std::collections::HashSet;
 
     // Collect all defined and used virtual registers
@@ -281,9 +279,10 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
         for instr in &block.instructions {
             // Collect defined registers
             if let Some(def_reg) = instr.def_reg()
-                && let Register::Virtual(vreg) = def_reg {
-                    defined_regs.insert(*vreg);
-                }
+                && let Register::Virtual(vreg) = def_reg
+            {
+                defined_regs.insert(*vreg);
+            }
 
             // Collect used registers from operands
             collect_regs_from_instruction(instr, &mut used_regs);
@@ -294,25 +293,26 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
     let undefined_regs: Vec<_> = used_regs.difference(&defined_regs).cloned().collect();
 
     if !undefined_regs.is_empty()
-        && let Some(entry_block) = func.blocks.iter_mut().find(|b| b.label == func.entry) {
-            // Insert initializations at the beginning of the entry block
-            let mut init_instrs = Vec::new();
+        && let Some(entry_block) = func.blocks.iter_mut().find(|b| b.label == func.entry)
+    {
+        // Insert initializations at the beginning of the entry block
+        let mut init_instrs = Vec::new();
 
-            for vreg in undefined_regs {
-                // Initialize undefined registers to 0
-                let init_instr = MirInst::IntBinary {
-                    op: crate::mir::IntBinOp::Add,
-                    ty: MirType::Scalar(ScalarType::I64),
-                    dst: Register::Virtual(vreg),
-                    lhs: Operand::Immediate(Immediate::I64(0)),
-                    rhs: Operand::Immediate(Immediate::I64(0)),
-                };
-                init_instrs.push(init_instr);
-            }
-
-            // Insert at the beginning - use splice to insert all instructions at once
-            entry_block.instructions.splice(0..0, init_instrs);
+        for vreg in undefined_regs {
+            // Initialize undefined registers to 0
+            let init_instr = MirInst::IntBinary {
+                op: crate::mir::IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: Register::Virtual(vreg),
+                lhs: Operand::Immediate(Immediate::I64(0)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            };
+            init_instrs.push(init_instr);
         }
+
+        // Insert at the beginning - use splice to insert all instructions at once
+        entry_block.instructions.splice(0..0, init_instrs);
+    }
 }
 
 fn collect_regs_from_instruction(

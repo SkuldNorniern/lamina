@@ -55,24 +55,24 @@ impl TailCallOptimization {
 
         // Find the last instruction in the block
         if let Some(last_instr) = block.instructions.last()
-            && let Instruction::Ret { value } = last_instr {
-                // Check if there's a call instruction before the return
-                if block.instructions.len() >= 2 {
-                    let second_last_idx = block.instructions.len() - 2;
-                    let second_last_instr = &block.instructions[second_last_idx];
+            && let Instruction::Ret { value } = last_instr
+        {
+            // Check if there's a call instruction before the return
+            if block.instructions.len() >= 2 {
+                let second_last_idx = block.instructions.len() - 2;
+                let second_last_instr = &block.instructions[second_last_idx];
 
-                    if let Instruction::Call { name, args, ret } = second_last_instr {
-                        // Check if this is a tail call (return value matches call result)
-                        if self.is_tail_call(value, ret) && self.is_tail_call_safe(func_name, name)
-                        {
-                            // Convert the call to a tail call jump
-                            if self.convert_to_tail_call(&mut block.instructions[second_last_idx]) {
-                                changed = true;
-                            }
+                if let Instruction::Call { name, args, ret } = second_last_instr {
+                    // Check if this is a tail call (return value matches call result)
+                    if self.is_tail_call(value, ret) && self.is_tail_call_safe(func_name, name) {
+                        // Convert the call to a tail call jump
+                        if self.convert_to_tail_call(&mut block.instructions[second_last_idx]) {
+                            changed = true;
                         }
                     }
                 }
             }
+        }
 
         changed
     }

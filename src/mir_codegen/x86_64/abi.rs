@@ -29,4 +29,3 @@ impl X86ABI {
         ".globl main"
     }
 }
-

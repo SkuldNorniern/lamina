@@ -15,7 +15,7 @@ fn print_usage() {
     eprintln!("  -f, --flag <flag>       Pass additional flag to compiler");
     eprintln!("  --emit-asm              Only emit assembly file without compiling");
     eprintln!("  --target <arch>         Specify target architecture (x86_64, aarch64)");
-    eprintln!("  --emit-mir              Only emit MIR (.mlamina) and exit");
+    eprintln!("  --emit-mir              Only emit MIR (.lumir) and exit");
     eprintln!(
         "  --emit-mir-asm          EXPERIMENTAL: emit assembly from MIR (uses --target for OS)"
     );
@@ -110,7 +110,9 @@ fn parse_args() -> Result<CompileOptions, String> {
                 let target = args[i + 1].to_lowercase();
 
                 // Validate target by trying to parse it
-                if lamina::target::Target::from_str(&target).architecture == lamina::target::TargetArchitecture::Unknown {
+                if lamina::target::Target::from_str(&target).architecture
+                    == lamina::target::TargetArchitecture::Unknown
+                {
                     return Err(format!(
                         "Unsupported target architecture: {}\nSupported values: \n{}",
                         target,
@@ -220,7 +222,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // If output name doesn't have an extension and target is Windows, add .exe
-        if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows && stem.extension().is_none() {
+        if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows
+            && stem.extension().is_none()
+        {
             let mut stem_with_ext = stem.clone();
             stem_with_ext.set_extension("exe");
             stem_with_ext
@@ -230,13 +234,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create assembly file path using same directory as output
-    let asm_extension = if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows { "asm" } else { "s" };
+    let asm_extension = if target_for_extensions.operating_system
+        == lamina::target::TargetOperatingSystem::Windows
+    {
+        "asm"
+    } else {
+        "s"
+    };
     let mut asm_path = output_stem.clone();
     asm_path.set_extension(asm_extension);
 
     // Ensure output executable has correct extension based on target
     let mut exec_path = output_stem.clone();
-    if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows && exec_path.extension().is_none() {
+    if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows
+        && exec_path.extension().is_none()
+    {
         exec_path.set_extension("exe");
     }
 
@@ -326,13 +338,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if options.emit_mir_asm.is_some() {
             let default_target = lamina::target::Target::detect_host();
             let default_target_str = default_target.to_str();
-            let target_str = options.target_arch.as_deref().unwrap_or(&default_target_str);
+            let target_str = options
+                .target_arch
+                .as_deref()
+                .unwrap_or(&default_target_str);
             let target = lamina::target::Target::from_str(target_str);
 
             // Determine output extension based on target
             let asm_extension = match target.architecture {
-                lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64 => "wat", // WebAssembly text format
-                _ => if target.operating_system == lamina::target::TargetOperatingSystem::Windows { "asm" } else { "s" },
+                lamina::target::TargetArchitecture::Wasm32
+                | lamina::target::TargetArchitecture::Wasm64 => "wat", // WebAssembly text format
+                _ => {
+                    if target.operating_system == lamina::target::TargetOperatingSystem::Windows {
+                        "asm"
+                    } else {
+                        "s"
+                    }
+                }
             };
             let mut mir_asm_path = output_stem.clone();
             mir_asm_path.set_extension(asm_extension);
@@ -342,43 +364,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Use OS from the target
             let target_os = target.operating_system;
 
-            match target.architecture {
-                lamina::target::TargetArchitecture::X86_64 => {
-                    lamina::generate_mir_to_x86_64(&mir_mod, &mut out, target_os)
-                        .map_err(|e| format!("MIR→x86_64 emission failed: {}", e))?;
-                    println!(
-                        "[INFO] MIR x86_64 asm (experimental) written to {}",
-                        mir_asm_path.display()
-                    );
-                }
-                lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64 => {
-                    lamina::generate_mir_to_wasm(&mir_mod, &mut out, target_os)
-                        .map_err(|e| format!("MIR→WASM emission failed: {}", e))?;
-                    println!(
-                        "[INFO] MIR WASM (experimental) written to {}",
-                        mir_asm_path.display()
-                    );
-                }
-                lamina::target::TargetArchitecture::Aarch64 => {
-                    lamina::generate_mir_to_aarch64(&mir_mod, &mut out, target_os)
-                        .map_err(|e| format!("MIR→AArch64 emission failed: {}", e))?;
-                    println!(
-                        "[INFO] MIR AArch64 asm (experimental) written to {}",
-                        mir_asm_path.display()
-                    );
-                }
-                lamina::target::TargetArchitecture::Riscv32 | lamina::target::TargetArchitecture::Riscv64 | lamina::target::TargetArchitecture::Riscv128 => {
-                    lamina::generate_mir_to_riscv(&mir_mod, &mut out, target_os)
-                        .map_err(|e| format!("MIR→RISC-V emission failed: {}", e))?;
-                    println!(
-                        "[INFO] MIR RISC-V asm (experimental) written to {}",
-                        mir_asm_path.display()
-                    );
-                }
-                _ => {
-                    return Err(format!("Unsupported target architecture '{}'. Supported targets: x86_64, aarch64, riscv, wasm", target.architecture).into());
-                }
-            }
+            lamina::mir_codegen::generate_mir_to_target(
+                &mir_mod,
+                &mut out,
+                target.architecture,
+                target_os,
+            )
+            .map_err(|e| format!("MIR→{} emission failed: {}", target.architecture, e))?;
+
+            let arch_name = match target.architecture {
+                lamina::target::TargetArchitecture::X86_64 => "x86_64",
+                lamina::target::TargetArchitecture::Wasm32
+                | lamina::target::TargetArchitecture::Wasm64 => "WASM",
+                lamina::target::TargetArchitecture::Aarch64 => "AArch64",
+                lamina::target::TargetArchitecture::Riscv32
+                | lamina::target::TargetArchitecture::Riscv64
+                | lamina::target::TargetArchitecture::Riscv128 => "RISC-V",
+                _ => "unknown",
+            };
+
+            println!(
+                "[INFO] MIR {} asm (experimental) written to {}",
+                arch_name,
+                mir_asm_path.display()
+            );
 
             File::create(&mir_asm_path)
                 .and_then(|mut f| f.write_all(&out))

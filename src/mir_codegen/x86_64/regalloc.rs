@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
-use crate::target::TargetOperatingSystem;
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
+use crate::target::TargetOperatingSystem;
 
 /// x86_64 register allocator with platform-aware register selection.
 ///
@@ -227,9 +227,10 @@ impl MirRegisterAllocator for X64RegAlloc {
 
     fn occupy(&mut self, phys: Self::PhysReg) {
         if self.used_gprs.insert(phys)
-            && let Some(pos) = self.free_gprs.iter().position(|&p| p == phys) {
-                self.free_gprs.remove(pos);
-            }
+            && let Some(pos) = self.free_gprs.iter().position(|&p| p == phys)
+        {
+            self.free_gprs.remove(pos);
+        }
     }
 
     fn release(&mut self, phys: Self::PhysReg) {

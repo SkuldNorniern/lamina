@@ -77,42 +77,44 @@ impl CfgSimplify {
         let mut preds: HashMap<String, Vec<String>> = HashMap::new();
         for block in &func.blocks {
             if let Some(term) = block.instructions.last()
-                && term.is_terminator() {
-                    match term {
-                        Instruction::Jmp { target } => {
-                            preds
-                                .entry(target.clone())
-                                .or_default()
-                                .push(block.label.clone());
-                        }
-                        Instruction::Br {
-                            true_target,
-                            false_target,
-                            ..
-                        } => {
-                            preds
-                                .entry(true_target.clone())
-                                .or_default()
-                                .push(block.label.clone());
-                            preds
-                                .entry(false_target.clone())
-                                .or_default()
-                                .push(block.label.clone());
-                        }
-                        _ => {} // Ignore switch, ret, etc. for simplicity
+                && term.is_terminator()
+            {
+                match term {
+                    Instruction::Jmp { target } => {
+                        preds
+                            .entry(target.clone())
+                            .or_default()
+                            .push(block.label.clone());
                     }
+                    Instruction::Br {
+                        true_target,
+                        false_target,
+                        ..
+                    } => {
+                        preds
+                            .entry(true_target.clone())
+                            .or_default()
+                            .push(block.label.clone());
+                        preds
+                            .entry(false_target.clone())
+                            .or_default()
+                            .push(block.label.clone());
+                    }
+                    _ => {} // Ignore switch, ret, etc. for simplicity
                 }
+            }
         }
 
         let mut merges = Vec::new();
         for block in &func.blocks {
             if block.instructions.len() == 1
                 && let Some(Instruction::Jmp { target }) = block.instructions.last()
-                    && let Some(preds_list) = preds.get(&block.label)
-                        && preds_list.len() == 1 {
-                            let pred_label = preds_list[0].clone();
-                            merges.push((pred_label, target.clone(), block.label.clone()));
-                        }
+                && let Some(preds_list) = preds.get(&block.label)
+                && preds_list.len() == 1
+            {
+                let pred_label = preds_list[0].clone();
+                merges.push((pred_label, target.clone(), block.label.clone()));
+            }
         }
 
         // Now perform the merges
@@ -120,12 +122,13 @@ impl CfgSimplify {
         for (pred_label, new_target, trivial_label) in merges {
             if let Some(pred_block) = func.blocks.iter_mut().find(|b| b.label == pred_label)
                 && let Some(pred_term) = pred_block.instructions.last_mut()
-                    && let Instruction::Jmp { target } = pred_term
-                        && *target == trivial_label {
-                            *target = new_target;
-                            changed = true;
-                            to_remove.push(trivial_label);
-                        }
+                && let Instruction::Jmp { target } = pred_term
+                && *target == trivial_label
+            {
+                *target = new_target;
+                changed = true;
+                to_remove.push(trivial_label);
+            }
         }
 
         // Remove merged blocks
@@ -173,9 +176,10 @@ impl JumpThreading {
 
         for block in &func.blocks {
             if block.instructions.len() == 1
-                && let Instruction::Jmp { target } = &block.instructions[0] {
-                    simple_jumps.insert(block.label.clone(), target.clone());
-                }
+                && let Instruction::Jmp { target } = &block.instructions[0]
+            {
+                simple_jumps.insert(block.label.clone(), target.clone());
+            }
         }
 
         // Resolve to ultimate targets (follow chains)
@@ -206,10 +210,11 @@ impl JumpThreading {
                 match instr {
                     Instruction::Jmp { target } => {
                         if let Some(new_tgt) = simple_jumps.get(target)
-                            && new_tgt != target {
-                                *target = new_tgt.clone();
-                                changed = true;
-                            }
+                            && new_tgt != target
+                        {
+                            *target = new_tgt.clone();
+                            changed = true;
+                        }
                     }
                     Instruction::Br {
                         cond: _,
@@ -217,15 +222,17 @@ impl JumpThreading {
                         false_target,
                     } => {
                         if let Some(new_tgt) = simple_jumps.get(true_target)
-                            && new_tgt != true_target {
-                                *true_target = new_tgt.clone();
-                                changed = true;
-                            }
+                            && new_tgt != true_target
+                        {
+                            *true_target = new_tgt.clone();
+                            changed = true;
+                        }
                         if let Some(new_tgt) = simple_jumps.get(false_target)
-                            && new_tgt != false_target {
-                                *false_target = new_tgt.clone();
-                                changed = true;
-                            }
+                            && new_tgt != false_target
+                        {
+                            *false_target = new_tgt.clone();
+                            changed = true;
+                        }
                     }
                     Instruction::Switch {
                         value: _, cases, ..
@@ -233,10 +240,11 @@ impl JumpThreading {
                         let mut local_change = false;
                         for (_val, tgt) in cases.iter_mut() {
                             if let Some(new_tgt) = simple_jumps.get(tgt)
-                                && new_tgt != tgt {
-                                    *tgt = new_tgt.clone();
-                                    local_change = true;
-                                }
+                                && new_tgt != tgt
+                            {
+                                *tgt = new_tgt.clone();
+                                local_change = true;
+                            }
                         }
                         if local_change {
                             changed = true;
@@ -250,4 +258,3 @@ impl JumpThreading {
         Ok(changed)
     }
 }
-

@@ -143,19 +143,19 @@ pub fn generate_mir_riscv<W: Write>(
             for inst in &block.instructions {
                 if let Some(dst) = inst.def_reg()
                     && let Register::Virtual(vreg) = dst
-                        && !stack_slots.contains_key(vreg) {
-                            stack_slots
-                                .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
-                            next_slot += 1;
-                        }
+                    && !stack_slots.contains_key(vreg)
+                {
+                    stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
+                    next_slot += 1;
+                }
                 // Also check for registers used in operands
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg
-                        && !stack_slots.contains_key(vreg) {
-                            stack_slots
-                                .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
-                            next_slot += 1;
-                        }
+                        && !stack_slots.contains_key(vreg)
+                    {
+                        stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
+                        next_slot += 1;
+                    }
                 }
             }
         }
@@ -254,10 +254,11 @@ fn emit_instruction_riscv<W: Write>(
             }
 
             if let Some(ret_reg) = ret
-                && let Register::Virtual(vreg) = ret_reg {
-                    // Assume return value is in a0
-                    store_register_to_register("a0", vreg, writer, reg_alloc)?;
-                }
+                && let Register::Virtual(vreg) = ret_reg
+            {
+                // Assume return value is in a0
+                store_register_to_register("a0", vreg, writer, reg_alloc)?;
+            }
         }
         MirInst::Load {
             dst,
