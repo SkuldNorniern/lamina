@@ -14,7 +14,10 @@ pub fn public_symbol(func_name: &str, os: TargetOperatingSystem) -> (Option<Stri
         // FEAT: TODO: need to mark each Symbol for each target OS
         TargetOperatingSystem::Linux
         | TargetOperatingSystem::Windows
-        | TargetOperatingSystem::BSD
+        | TargetOperatingSystem::FreeBSD
+        | TargetOperatingSystem::OpenBSD
+        | TargetOperatingSystem::NetBSD
+        | TargetOperatingSystem::DragonFly
         | TargetOperatingSystem::Redox
         | TargetOperatingSystem::Artery
         | TargetOperatingSystem::Unknown => {
