@@ -31,8 +31,8 @@
 //! # use lamina::ir::function::{FunctionSignature, FunctionParameter};
 //! let signature = FunctionSignature {
 //!     params: vec![
-//!         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32) },
-//!         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32) }
+//!         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
+//!         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] }
 //!     ],
 //!     return_type: Type::Primitive(PrimitiveType::I32)
 //! };
@@ -454,7 +454,7 @@ pub enum VariableAnnotation {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{FunctionParameter, VariableAnnotation, Type, PrimitiveType};
+/// use super::{FunctionParameter, Type, PrimitiveType, VariableAnnotation};
 ///
 /// let param = FunctionParameter {
 ///     name: "data",
