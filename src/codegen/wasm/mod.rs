@@ -1661,6 +1661,33 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         );
                     }
 
+                    #[cfg(feature = "nightly")]
+                    Instruction::AtomicLoad { .. }
+                    | Instruction::AtomicStore { .. }
+                    | Instruction::AtomicBinary { .. }
+                    | Instruction::AtomicCompareExchange { .. }
+                    | Instruction::Fence { .. } => {
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::InvalidInstructionForTarget(InstructionType::Custom(
+                                "atomic".to_string(),
+                            )),
+                        ));
+                    }
+                    #[cfg(feature = "nightly")]
+                    Instruction::SimdBinary { .. }
+                    | Instruction::SimdUnary { .. }
+                    | Instruction::SimdTernary { .. }
+                    | Instruction::SimdShuffle { .. }
+                    | Instruction::SimdExtract { .. }
+                    | Instruction::SimdInsert { .. }
+                    | Instruction::SimdLoad { .. }
+                    | Instruction::SimdStore { .. } => {
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::InvalidInstructionForTarget(InstructionType::Custom(
+                                "simd".to_string(),
+                            )),
+                        ));
+                    }
                     Instruction::Phi {
                         result: _,
                         ty: _,
