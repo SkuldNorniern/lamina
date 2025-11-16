@@ -637,5 +637,9 @@ pub use function::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
 };
 pub use instruction::{AllocType, BinaryOp, CmpOp, Instruction};
-pub use module::{GlobalDeclaration, Module, ModuleAnnotation, TypeDeclaration};
+#[cfg(feature = "nightly")]
+pub use instruction::{AtomicBinOp, MemoryOrdering, SimdOp};
+#[cfg(feature = "nightly")]
+pub use module::ModuleAnnotation;
+pub use module::{GlobalDeclaration, Module, TypeDeclaration};
 pub use types::{Identifier, Literal, PrimitiveType, StructField, Type, Value};
