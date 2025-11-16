@@ -781,6 +781,7 @@ fn parse_param_list<'a>(
         params.push(FunctionParameter {
             name: param_name,
             ty: param_ty,
+            annotations: vec![],
         });
 
         state.skip_whitespace_and_comments();

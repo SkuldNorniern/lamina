@@ -252,6 +252,12 @@ pub enum FunctionAnnotation {
     /// by external code. This is typically used for public APIs.
     Export,
 
+    /// Mark this function as having external linkage (imported from another module).
+    ///
+    /// External functions are declarations without implementation. They represent
+    /// functions defined in other modules or external libraries.
+    Extern,
+
     /// Indicate that this function never returns normally.
     ///
     /// Functions marked with `NoReturn` always terminate the program (e.g., `exit`, `panic`).
@@ -269,31 +275,201 @@ pub enum FunctionAnnotation {
     /// Cold functions are optimized for size rather than speed, and may be
     /// placed in a separate code section to improve instruction cache usage.
     Cold,
-    // Add more as needed
+
+    /// Mark this function as "hot" (frequently executed).
+    ///
+    /// Hot functions are aggressively optimized for performance and may be
+    /// placed in hot code sections for better instruction cache usage.
+    Hot,
+
+    /// Mark this function as pure (has no side effects and depends only on inputs).
+    ///
+    /// Pure functions can be optimized more aggressively and may be subject to
+    /// common subexpression elimination, memoization, or other optimizations.
+    Pure,
+
+    /// Mark this function as const (can be evaluated at compile time).
+    ///
+    /// Const functions have no side effects and can be evaluated during compilation.
+    /// This enables compile-time function evaluation and constant folding.
+    Const,
+
+    /// Mark this function as having internal linkage (private to this module).
+    ///
+    /// Internal functions are not visible outside the current module and cannot
+    /// be called from other modules. This allows more aggressive optimizations.
+    Internal,
+
+    /// Mark this function as having private linkage (ELF-specific).
+    ///
+    /// Private symbols are not exported in the dynamic symbol table and are
+    /// only visible within the same shared object. This is stronger than internal linkage.
+    Private,
+
+    /// Mark this function as having hidden visibility (ELF-specific).
+    ///
+    /// Hidden symbols are not exported but may be accessed from other components
+    /// within the same shared object. This provides better optimization opportunities
+    /// than protected visibility.
+    Hidden,
+
+    /// Mark this function as having protected visibility (ELF-specific).
+    ///
+    /// Protected symbols are exported but can only be preempted by symbols
+    /// from the same shared object. This allows intra-module function calls to
+    /// use direct references while still allowing inter-module calls.
+    Protected,
+
+    /// Mark this function as having weak linkage.
+    ///
+    /// Weak symbols can be overridden by stronger definitions. If multiple
+    /// definitions exist, the strongest one is used.
+    Weak,
+
+    /// Use the C calling convention (system default).
+    ///
+    /// The C calling convention is the most common and portable convention,
+    /// used for interfacing with C libraries and system calls.
+    CCc,
+
+    /// Use the fastcall calling convention (first few arguments in registers).
+    ///
+    /// Fastcall passes the first few arguments in registers rather than on the stack,
+    /// which can improve performance for functions with few arguments.
+    CCfast,
+
+    /// Use the cold calling convention (function is rarely called).
+    ///
+    /// Cold calling convention optimizes for the case where the function is rarely executed,
+    /// potentially using slower but more compact calling sequences.
+    CCcold,
+
+    /// Use the preserve_most calling convention (preserves most registers).
+    ///
+    /// This convention preserves most registers across the call, requiring the caller
+    /// to save fewer registers. Useful for functions that call many other functions.
+    CCpreserveMost,
+
+    /// Use the preserve_all calling convention (preserves all registers).
+    ///
+    /// This convention preserves all registers across the call, minimizing the caller's
+    /// register save/restore overhead. Useful for leaf functions or hot paths.
+    CCpreserveAll,
+
+    /// Use the swift calling convention (for Swift interoperability).
+    ///
+    /// Swift calling convention is used for interfacing with Swift code,
+    /// with special handling for Swift types and error propagation.
+    CCswift,
+
+    /// Use the tail calling convention (enables tail call optimization).
+    ///
+    /// Tail calling convention allows the compiler to optimize tail recursive calls
+    /// and function calls in tail position into jumps instead of calls.
+    CCtail,
+
+    /// Specify a custom calling convention by name.
+    ///
+    /// For calling conventions not covered by the above variants, you can specify
+    /// a custom convention by name (e.g., "vectorcall", "thiscall", etc.).
+    CallingConvention(String),
+
+    /// Specify that this function should be placed in a specific section.
+    ///
+    /// Section placement can affect memory layout, performance, and linking.
+    /// Common sections include ".text", ".text.hot", ".text.cold", etc.
+    Section(String),
+
+    /// Specify the minimum alignment for this function in bytes.
+    ///
+    /// Function alignment can improve performance by ensuring the function
+    /// starts at an address that's optimal for the target architecture.
+    Align(u32),
+
+    /// Mark this function as unsafe (bypasses safety checks).
+    ///
+    /// Unsafe functions may perform operations that violate memory safety
+    /// or other invariants. Use with caution and only when necessary.
+    Unsafe,
+
+    /// Mark this function as deprecated (should not be used).
+    ///
+    /// Deprecated functions may be removed in future versions. The compiler
+    /// may emit warnings when these functions are called.
+    Deprecated(Option<String>),
 }
 
-/// Represents a function parameter with its name and type.
+/// Attributes that can be applied to function parameters and variables.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum VariableAnnotation {
+    /// Mark this parameter as non-null (never accepts null pointers).
+    ///
+    /// This allows the compiler to optimize away null checks and enables
+    /// more aggressive optimizations for pointer operations.
+    NonNull,
+
+    /// Mark this parameter as read-only (not modified by the function).
+    ///
+    /// Read-only parameters can be passed by reference without copying,
+    /// and the compiler can optimize based on the immutability guarantee.
+    ReadOnly,
+
+    /// Mark this parameter as write-only (only written to, never read from).
+    ///
+    /// Write-only parameters are typically used for output parameters.
+    /// The compiler can optimize away reads from these parameters.
+    WriteOnly,
+
+    /// Specify the alignment requirement for this parameter in bytes.
+    ///
+    /// Parameter alignment affects how the parameter is passed and stored.
+    /// This can improve performance on some architectures.
+    Align(u32),
+
+    /// Mark this parameter as sensitive (contains security-critical data).
+    ///
+    /// Sensitive parameters may receive special treatment such as avoiding
+    /// storage in registers or ensuring they are zeroed after use.
+    Sensitive,
+
+    /// Specify that this parameter should be passed in a specific register.
+    ///
+    /// Register assignment can improve performance but reduces flexibility.
+    /// Only use when you know the target ABI well.
+    Register(String),
+
+    /// Mark this parameter as unused (not used by the function).
+    ///
+    /// Unused parameters may be optimized away or may indicate API compatibility.
+    Unused,
+}
+
+/// Represents a function parameter with its name, type, and attributes.
 ///
 /// Function parameters are the inputs to a function and are bound to values
 /// when the function is called. Each parameter has a unique name within the
-/// function scope and a specific type.
+/// function scope, a specific type, and optional attributes that provide
+/// additional information to the compiler.
 ///
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{FunctionParameter, Type, PrimitiveType};
+/// use lamina::ir::{FunctionParameter, VariableAnnotation, Type, PrimitiveType};
 ///
 /// let param = FunctionParameter {
-///     name: "x",
-///     ty: Type::Primitive(PrimitiveType::I32),
+///     name: "data",
+///     ty: Type::Primitive(PrimitiveType::Ptr),
+///     annotations: vec![VariableAnnotation::NonNull, VariableAnnotation::ReadOnly],
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionParameter<'a> {
     /// The parameter name (without the `%` prefix)
-    pub name: Identifier<'a>, // e.g., "%a"
+    pub name: Identifier<'a>,
     /// The parameter's type
     pub ty: Type<'a>,
+    /// Optional attributes that provide additional information about the parameter
+    pub annotations: Vec<VariableAnnotation>,
 }
 
 /// Represents the signature of a function (parameters and return type).
@@ -411,23 +587,66 @@ pub struct Function<'a> {
 
 impl fmt::Display for FunctionAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "@{}",
-            match self {
-                FunctionAnnotation::Inline => "inline",
-                FunctionAnnotation::Export => "export",
-                FunctionAnnotation::NoReturn => "noreturn",
-                FunctionAnnotation::NoInline => "noinline",
-                FunctionAnnotation::Cold => "cold",
-            }
-        )
+        match self {
+            FunctionAnnotation::Inline => write!(f, "@inline"),
+            FunctionAnnotation::Export => write!(f, "@export"),
+            FunctionAnnotation::Extern => write!(f, "@extern"),
+            FunctionAnnotation::NoReturn => write!(f, "@noreturn"),
+            FunctionAnnotation::NoInline => write!(f, "@noinline"),
+            FunctionAnnotation::Cold => write!(f, "@cold"),
+            FunctionAnnotation::Hot => write!(f, "@hot"),
+            FunctionAnnotation::Pure => write!(f, "@pure"),
+            FunctionAnnotation::Const => write!(f, "@const"),
+            FunctionAnnotation::Internal => write!(f, "@internal"),
+            FunctionAnnotation::Private => write!(f, "@private"),
+            FunctionAnnotation::Hidden => write!(f, "@hidden"),
+            FunctionAnnotation::Protected => write!(f, "@protected"),
+            FunctionAnnotation::Weak => write!(f, "@weak"),
+            FunctionAnnotation::CCc => write!(f, "@cc_c"),
+            FunctionAnnotation::CCfast => write!(f, "@cc_fast"),
+            FunctionAnnotation::CCcold => write!(f, "@cc_cold"),
+            FunctionAnnotation::CCpreserveMost => write!(f, "@cc_preserve_most"),
+            FunctionAnnotation::CCpreserveAll => write!(f, "@cc_preserve_all"),
+            FunctionAnnotation::CCswift => write!(f, "@cc_swift"),
+            FunctionAnnotation::CCtail => write!(f, "@cc_tail"),
+            FunctionAnnotation::CallingConvention(cc) => write!(f, "@calling_convention({})", cc),
+            FunctionAnnotation::Section(section) => write!(f, "@section({})", section),
+            FunctionAnnotation::Align(alignment) => write!(f, "@align({})", alignment),
+            FunctionAnnotation::Unsafe => write!(f, "@unsafe"),
+            FunctionAnnotation::Deprecated(None) => write!(f, "@deprecated"),
+            FunctionAnnotation::Deprecated(Some(msg)) => write!(f, "@deprecated({})", msg),
+        }
+    }
+}
+
+impl fmt::Display for VariableAnnotation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VariableAnnotation::NonNull => write!(f, "nonnull"),
+            VariableAnnotation::ReadOnly => write!(f, "readonly"),
+            VariableAnnotation::WriteOnly => write!(f, "writeonly"),
+            VariableAnnotation::Align(alignment) => write!(f, "align({})", alignment),
+            VariableAnnotation::Sensitive => write!(f, "sensitive"),
+            VariableAnnotation::Register(reg) => write!(f, "register({})", reg),
+            VariableAnnotation::Unused => write!(f, "unused"),
+        }
     }
 }
 
 impl fmt::Display for FunctionParameter<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} %{}", self.ty, self.name)
+        if self.annotations.is_empty() {
+            write!(f, "{} %{}", self.ty, self.name)
+        } else {
+            write!(f, "{} ", self.ty)?;
+            for (i, annotation) in self.annotations.iter().enumerate() {
+                if i > 0 {
+                    write!(f, " ")?;
+                }
+                write!(f, "{}", annotation)?;
+            }
+            write!(f, " %{}", self.name)
+        }
     }
 }
 
@@ -499,6 +718,7 @@ mod tests {
         let param = FunctionParameter {
             name: "count",
             ty: Type::Primitive(PrimitiveType::I64),
+            annotations: vec![],
         };
         assert_eq!(format!("{}", param), "i64 %count");
     }
@@ -517,6 +737,7 @@ mod tests {
             params: vec![FunctionParameter {
                 name: "input",
                 ty: Type::Primitive(PrimitiveType::F32),
+                annotations: vec![],
             }],
             return_type: Type::Primitive(PrimitiveType::F32),
         };
@@ -528,10 +749,12 @@ mod tests {
                 FunctionParameter {
                     name: "a",
                     ty: Type::Primitive(PrimitiveType::I32),
+                    annotations: vec![],
                 },
                 FunctionParameter {
                     name: "b",
                     ty: Type::Named("MyType"),
+                    annotations: vec![],
                 },
             ],
             return_type: Type::Named("ResultType"),
@@ -569,6 +792,7 @@ mod tests {
             params: vec![FunctionParameter {
                 name: "x",
                 ty: Type::Primitive(PrimitiveType::I32),
+                annotations: vec![],
             }],
             return_type: Type::Primitive(PrimitiveType::I32),
         };
@@ -613,6 +837,7 @@ mod tests {
             params: vec![FunctionParameter {
                 name: "cond",
                 ty: Type::Primitive(PrimitiveType::Bool),
+                annotations: vec![],
             }],
             return_type: Type::Primitive(PrimitiveType::I32),
         };

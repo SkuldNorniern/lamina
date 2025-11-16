@@ -637,5 +637,5 @@ pub use function::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
 };
 pub use instruction::{AllocType, BinaryOp, CmpOp, Instruction};
-pub use module::{GlobalDeclaration, Module, TypeDeclaration};
+pub use module::{GlobalDeclaration, Module, ModuleAnnotation, TypeDeclaration};
 pub use types::{Identifier, Literal, PrimitiveType, StructField, Type, Value};

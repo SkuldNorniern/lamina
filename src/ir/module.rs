@@ -222,6 +222,77 @@ pub struct GlobalDeclaration<'a> {
 /// // module.type_declarations is empty
 /// // module.global_declarations is empty
 /// ```
+///
+/// ## Module Annotations
+///
+/// Modules can have attributes that affect how the entire compilation unit is treated.
+/// These annotations provide global control over optimization, linking, and code generation.
+///
+/// ### Available Module Annotations
+/// - **`@pic`**: Generate position-independent code
+/// - **`@pie`**: Generate position-independent executable
+/// - **`@optimize_speed`**: Optimize for execution speed
+/// - **`@optimize_size`**: Optimize for code size
+/// - **`@debug`**: Include debug information
+/// - **`@strip`**: Strip debug information and symbols
+/// - **`@target_triple`**: Specify target triple (e.g., "x86_64-linux-gnu")
+#[derive(Debug, Clone, PartialEq)]
+pub enum ModuleAnnotation {
+    /// Generate position-independent code (PIC).
+    ///
+    /// PIC allows the code to be loaded at any address in memory, which is
+    /// required for shared libraries and improves security through ASLR.
+    PositionIndependentCode,
+
+    /// Generate position-independent executable (PIE).
+    ///
+    /// PIE creates executables that can be loaded at random addresses,
+    /// providing additional security benefits.
+    PositionIndependentExecutable,
+
+    /// Optimize this module for execution speed.
+    ///
+    /// This may increase code size but should improve runtime performance.
+    OptimizeForSpeed,
+
+    /// Optimize this module for code size.
+    ///
+    /// This may reduce performance but will create smaller binaries.
+    OptimizeForSize,
+
+    /// Include debug information in the compiled output.
+    ///
+    /// Debug information allows for better debugging and profiling
+    /// but increases the size of the final binary.
+    IncludeDebugInfo,
+
+    /// Strip debug information and symbols from the compiled output.
+    ///
+    /// This reduces binary size and removes potentially sensitive information
+    /// but makes debugging impossible.
+    StripSymbols,
+
+    /// Specify the target triple for this module.
+    ///
+    /// The target triple identifies the architecture, vendor, OS, and ABI
+    /// for which the code should be compiled (e.g., "x86_64-unknown-linux-gnu").
+    TargetTriple(String),
+}
+
+impl fmt::Display for ModuleAnnotation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ModuleAnnotation::PositionIndependentCode => write!(f, "@pic"),
+            ModuleAnnotation::PositionIndependentExecutable => write!(f, "@pie"),
+            ModuleAnnotation::OptimizeForSpeed => write!(f, "@optimize_speed"),
+            ModuleAnnotation::OptimizeForSize => write!(f, "@optimize_size"),
+            ModuleAnnotation::IncludeDebugInfo => write!(f, "@debug"),
+            ModuleAnnotation::StripSymbols => write!(f, "@strip"),
+            ModuleAnnotation::TargetTriple(triple) => write!(f, "@target_triple({})", triple),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module<'a> {
     /// Named type declarations in this module
@@ -239,6 +310,12 @@ pub struct Module<'a> {
     /// Functions contain the actual code of the module. They are organized
     /// by name for efficient lookup during function calls.
     pub functions: HashMap<Identifier<'a>, Function<'a>>,
+
+    /// Module-level annotations that affect compilation.
+    ///
+    /// These annotations control global aspects of how the module is compiled,
+    /// such as optimization level, code generation options, and linking behavior.
+    pub annotations: Vec<ModuleAnnotation>,
 }
 
 impl Module<'_> {
@@ -248,6 +325,7 @@ impl Module<'_> {
             type_declarations: HashMap::new(),
             global_declarations: HashMap::new(),
             functions: HashMap::new(),
+            annotations: Vec::new(),
         }
     }
 }
@@ -389,6 +467,7 @@ mod tests {
             params: vec![FunctionParameter {
                 name: "a",
                 ty: Type::Primitive(PrimitiveType::I32),
+                annotations: vec![],
             }],
             return_type: Type::Primitive(PrimitiveType::I32),
         };
