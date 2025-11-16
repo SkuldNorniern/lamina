@@ -118,6 +118,8 @@ pub use instruction::{
     AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp,
     MemoryAttrs, Operand, VectorOp,
 };
+#[cfg(feature = "nightly")]
+pub use instruction::{AtomicBinOp, MemoryOrdering, SimdOp};
 pub use module::{Global, Module, ModuleBuilder};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
 pub use transform::{
