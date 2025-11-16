@@ -69,7 +69,7 @@ impl TargetArchitecture {
             "riscv128" => Self::Riscv128,
             "wasm32" => Self::Wasm32,
             "wasm64" => Self::Wasm64,
-            "wasm" => Self::Wasm32, // fallback for generic "wasm"
+            "wasm" => Self::Wasm32, // default to 32-bit for backward compatibility
             "lisa" => Self::Lisa,
             _ => Self::Unknown,
         }
@@ -81,7 +81,10 @@ pub enum TargetOperatingSystem {
     Linux,
     MacOS,
     Windows,
-    BSD,
+    FreeBSD,
+    OpenBSD,
+    NetBSD,
+    DragonFly,
     Redox,
     Artery,
     Unknown,
@@ -93,9 +96,14 @@ impl TargetOperatingSystem {
             "linux" => Self::Linux,
             "macos" => Self::MacOS,
             "windows" => Self::Windows,
-            "bsd" => Self::BSD,
+            "freebsd" => Self::FreeBSD,
+            "openbsd" => Self::OpenBSD,
+            "netbsd" => Self::NetBSD,
+            "dragonfly" => Self::DragonFly,
             "redox" => Self::Redox,
             "artery" => Self::Artery,
+            // Keep backward compatibility
+            "bsd" => Self::FreeBSD, // default to FreeBSD for generic "bsd"
             _ => Self::Unknown,
         }
     }
@@ -125,7 +133,10 @@ impl fmt::Display for TargetOperatingSystem {
             Self::Linux => "linux",
             Self::MacOS => "macos",
             Self::Windows => "windows",
-            Self::BSD => "bsd",
+            Self::FreeBSD => "freebsd",
+            Self::OpenBSD => "openbsd",
+            Self::NetBSD => "netbsd",
+            Self::DragonFly => "dragonfly",
             Self::Redox => "redox",
             Self::Artery => "artery",
             Self::Unknown => "unknown",
@@ -150,10 +161,12 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "riscv128_unknown",
 ];
 
-/// Get the host architecture name.
+/// Detect the host system's architecture only.
 ///
-/// Returns the architecture name as a string: "x86_64", "aarch64", etc.
-pub fn architecture_name() -> &'static str {
+/// Returns a string representing the detected architecture: "x86_64", "aarch64", etc.
+///
+/// Falls back to "x86_64" if detection fails.
+pub fn detect_host_architecture_only() -> &'static str {
     #[cfg(target_arch = "x86_64")]
     return "x86_64";
     #[cfg(target_arch = "aarch64")]
@@ -186,15 +199,18 @@ pub fn detect_host_os() -> &'static str {
     return "macos";
     #[cfg(target_os = "windows")]
     return "windows";
-    #[cfg(any(
-        target_os = "freebsd",
-        target_os = "openbsd",
-        target_os = "netbsd",
-        target_os = "dragonfly"
-    ))]
-    return "bsd";
+    #[cfg(target_os = "freebsd")]
+    return "freebsd";
+    #[cfg(target_os = "openbsd")]
+    return "openbsd";
+    #[cfg(target_os = "netbsd")]
+    return "netbsd";
+    #[cfg(target_os = "dragonfly")]
+    return "dragonfly";
     #[cfg(target_os = "redox")]
     return "redox";
+    #[cfg(target_os = "artery")]
+    return "artery";
 
     // Default fallback
     #[allow(unreachable_code)]
@@ -217,7 +233,7 @@ pub fn detect_host_os() -> &'static str {
 /// This function is deprecated. Use `detect_host().to_str()` instead for a more structured approach.
 #[deprecated(since = "0.0.8", note = "Use `detect_host().to_str()` instead")]
 pub fn detect_host_architecture() -> &'static str {
-    let arch = architecture_name();
+    let arch = detect_host_architecture_only();
     let os = detect_host_os();
     // For backward compatibility, return the combined format
     // This will be removed once the deprecation period is over
@@ -225,11 +241,9 @@ pub fn detect_host_architecture() -> &'static str {
         ("x86_64", "linux") => "x86_64_linux",
         ("x86_64", "macos") => "x86_64_macos",
         ("x86_64", "windows") => "x86_64_windows",
-        ("x86_64", "bsd") => "x86_64_bsd",
         ("aarch64", "linux") => "aarch64_linux",
         ("aarch64", "macos") => "aarch64_macos",
         ("aarch64", "windows") => "aarch64_windows",
-        ("aarch64", "bsd") => "aarch64_bsd",
         ("wasm32", _) => "wasm32_unknown",
         ("wasm64", _) => "wasm64_unknown",
         ("riscv32", _) => "riscv32_unknown",
@@ -278,7 +292,7 @@ mod tests {
     fn test_detect_functions_consistency() {
         // Test that detect_host uses the same logic as the separate functions
         let combined = Target::detect_host();
-        let arch_str = architecture_name();
+        let arch_str = detect_host_architecture_only();
         let os_str = detect_host_os();
 
         assert_eq!(
@@ -300,49 +314,5 @@ mod tests {
             "Should contain underscore separating arch and os"
         );
         assert!(!result.is_empty(), "Should not be empty");
-    }
-
-    #[test]
-    #[cfg(target_os = "freebsd")]
-    fn test_freebsd_detection() {
-        let host = Target::detect_host();
-        assert_eq!(
-            host.operating_system,
-            TargetOperatingSystem::BSD,
-            "FreeBSD should be detected as BSD, not Unknown"
-        );
-    }
-
-    #[test]
-    #[cfg(target_os = "openbsd")]
-    fn test_openbsd_detection() {
-        let host = Target::detect_host();
-        assert_eq!(
-            host.operating_system,
-            TargetOperatingSystem::BSD,
-            "OpenBSD should be detected as BSD, not Unknown"
-        );
-    }
-
-    #[test]
-    #[cfg(target_os = "netbsd")]
-    fn test_netbsd_detection() {
-        let host = Target::detect_host();
-        assert_eq!(
-            host.operating_system,
-            TargetOperatingSystem::BSD,
-            "NetBSD should be detected as BSD, not Unknown"
-        );
-    }
-
-    #[test]
-    #[cfg(target_os = "dragonfly")]
-    fn test_dragonfly_detection() {
-        let host = Target::detect_host();
-        assert_eq!(
-            host.operating_system,
-            TargetOperatingSystem::BSD,
-            "DragonFly BSD should be detected as BSD, not Unknown"
-        );
     }
 }
