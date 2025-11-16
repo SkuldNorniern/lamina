@@ -1,10 +1,15 @@
 use std::collections::HashMap;
 
 use super::function::{
-    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, VariableAnnotation,
+    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
+    VariableAnnotation,
 };
 use super::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
-use super::module::{Module, ModuleAnnotation};
+#[cfg(feature = "nightly")]
+use super::instruction::{AtomicBinOp, MemoryOrdering, SimdOp};
+use super::module::Module;
+#[cfg(feature = "nightly")]
+use super::module::ModuleAnnotation;
 use super::types::{Literal, PrimitiveType, Type, Value};
 
 /// # IR Builder
@@ -38,8 +43,8 @@ use super::types::{Literal, PrimitiveType, Type, Value};
 ///     .function_with_params(
 ///         "add",
 ///         vec![
-///             FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32) },
-///             FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32) },
+///             FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
+///             FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
 ///         ],
 ///         Type::Primitive(PrimitiveType::I32)
 ///     )
@@ -278,8 +283,8 @@ impl<'a> IRBuilder<'a> {
     /// builder.function_with_params(
     ///     "add",
     ///     vec![
-    ///         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32) },
-    ///         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32) },
+    ///         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
+    ///         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
     ///     ],
     ///     Type::Primitive(PrimitiveType::I32)
     /// );
@@ -316,7 +321,8 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Example:
     /// ```
-    /// use lamina::ir::{IRBuilder, Type, PrimitiveType, VariableAnnotation};
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType};
+    /// use lamina::ir::function::VariableAnnotation;
     ///
     /// let mut builder = IRBuilder::new();
     /// let param = builder.param("data", Type::Primitive(PrimitiveType::Ptr), vec![VariableAnnotation::NonNull]);
@@ -507,6 +513,7 @@ impl<'a> IRBuilder<'a> {
     ///     .annotate_module(ModuleAnnotation::PositionIndependentCode)
     ///     .annotate_module(ModuleAnnotation::OptimizeForSpeed);
     /// ```
+    #[cfg(feature = "nightly")]
     pub fn annotate_module(&mut self, annotation: ModuleAnnotation) -> &mut Self {
         self.module.annotations.push(annotation);
         self
@@ -516,6 +523,7 @@ impl<'a> IRBuilder<'a> {
     ///
     /// PIC allows the code to be loaded at any address in memory, which is
     /// required for shared libraries and improves security through ASLR.
+    #[cfg(feature = "nightly")]
     pub fn pic(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::PositionIndependentCode)
     }
@@ -524,6 +532,7 @@ impl<'a> IRBuilder<'a> {
     ///
     /// PIE creates executables that can be loaded at random addresses,
     /// providing additional security benefits.
+    #[cfg(feature = "nightly")]
     pub fn pie(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::PositionIndependentExecutable)
     }
@@ -531,6 +540,7 @@ impl<'a> IRBuilder<'a> {
     /// Optimizes this module for execution speed.
     ///
     /// This may increase code size but should improve runtime performance.
+    #[cfg(feature = "nightly")]
     pub fn optimize_for_speed(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::OptimizeForSpeed)
     }
@@ -538,6 +548,7 @@ impl<'a> IRBuilder<'a> {
     /// Optimizes this module for code size.
     ///
     /// This may reduce performance but will create smaller binaries.
+    #[cfg(feature = "nightly")]
     pub fn optimize_for_size(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::OptimizeForSize)
     }
@@ -546,6 +557,7 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Debug information allows for better debugging and profiling
     /// but increases the size of the final binary.
+    #[cfg(feature = "nightly")]
     pub fn include_debug_info(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::IncludeDebugInfo)
     }
@@ -554,6 +566,7 @@ impl<'a> IRBuilder<'a> {
     ///
     /// This reduces binary size and removes potentially sensitive information
     /// but makes debugging impossible.
+    #[cfg(feature = "nightly")]
     pub fn strip_symbols(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::StripSymbols)
     }
@@ -562,6 +575,7 @@ impl<'a> IRBuilder<'a> {
     ///
     /// The target triple identifies the architecture, vendor, OS, and ABI
     /// for which the code should be compiled (e.g., "x86_64-unknown-linux-gnu").
+    #[cfg(feature = "nightly")]
     pub fn target_triple(&mut self, triple: &str) -> &mut Self {
         self.annotate_module(ModuleAnnotation::TargetTriple(triple.to_string()))
     }
@@ -928,7 +942,7 @@ impl<'a> IRBuilder<'a> {
     /// builder
     ///     .function_with_params(
     ///         "conditional_logic",
-    ///         vec![FunctionParameter { name: "x", ty: Type::Primitive(PrimitiveType::I32) }],
+    ///         vec![FunctionParameter { name: "x", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] }],
     ///         Type::Primitive(PrimitiveType::I32)
     ///     )
     ///     .block("entry")
@@ -1778,6 +1792,333 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::Dealloc { ptr })
     }
 
+    /// Performs an atomic load operation with specified memory ordering.
+    ///
+    /// # Parameters
+    /// - `result`: Name for the loaded value
+    /// - `ty`: Type of the value being loaded
+    /// - `ptr`: Pointer to the atomic location
+    /// - `ordering`: Memory ordering constraint
+    ///
+    /// # Example
+    /// ```rust
+    /// use lamina::ir::{IRBuilder, Type, PrimitiveType, MemoryOrdering};
+    /// use lamina::ir::builder::var;
+    ///
+    /// let mut builder = IRBuilder::new();
+    /// builder.atomic_load("value", Type::Primitive(PrimitiveType::I32), var("atomic_ptr"), MemoryOrdering::SeqCst);
+    /// ```
+    #[cfg(feature = "nightly")]
+    pub fn atomic_load(
+        &mut self,
+        result: &'a str,
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        ordering: MemoryOrdering,
+    ) -> &mut Self {
+        self.inst(Instruction::AtomicLoad {
+            result: result.into(),
+            ty,
+            ptr,
+            ordering,
+        })
+    }
+
+    /// Performs an atomic store operation with specified memory ordering.
+    ///
+    /// # Parameters
+    /// - `ty`: Type of the value being stored
+    /// - `ptr`: Pointer to the atomic location
+    /// - `value`: Value to store
+    /// - `ordering`: Memory ordering constraint
+    #[cfg(feature = "nightly")]
+    pub fn atomic_store(
+        &mut self,
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        value: Value<'a>,
+        ordering: MemoryOrdering,
+    ) -> &mut Self {
+        self.inst(Instruction::AtomicStore {
+            ty,
+            ptr,
+            value,
+            ordering,
+        })
+    }
+
+    /// Performs an atomic binary operation (read-modify-write).
+    ///
+    /// # Parameters
+    /// - `op`: Atomic binary operation to perform
+    /// - `result`: Name for the result (previous value)
+    /// - `ty`: Type of the atomic location
+    /// - `ptr`: Pointer to the atomic location
+    /// - `value`: Value for the operation
+    /// - `ordering`: Memory ordering constraint
+    #[cfg(feature = "nightly")]
+    pub fn atomic_binary(
+        &mut self,
+        op: AtomicBinOp,
+        result: &'a str,
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        value: Value<'a>,
+        ordering: MemoryOrdering,
+    ) -> &mut Self {
+        self.inst(Instruction::AtomicBinary {
+            op,
+            result: result.into(),
+            ty,
+            ptr,
+            value,
+            ordering,
+        })
+    }
+
+    /// Performs an atomic compare-exchange operation.
+    ///
+    /// # Parameters
+    /// - `result`: Name for the loaded value
+    /// - `success`: Name for the success flag (boolean)
+    /// - `ty`: Type of the atomic location
+    /// - `ptr`: Pointer to the atomic location
+    /// - `expected`: Expected value for comparison
+    /// - `desired`: Desired value for exchange
+    /// - `success_ordering`: Memory ordering on success
+    /// - `failure_ordering`: Memory ordering on failure
+    #[cfg(feature = "nightly")]
+    pub fn atomic_compare_exchange(
+        &mut self,
+        result: &'a str,
+        success: &'a str,
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        expected: Value<'a>,
+        desired: Value<'a>,
+        success_ordering: MemoryOrdering,
+        failure_ordering: MemoryOrdering,
+    ) -> &mut Self {
+        self.inst(Instruction::AtomicCompareExchange {
+            result: result.into(),
+            success: success.into(),
+            ty,
+            ptr,
+            expected,
+            desired,
+            success_ordering,
+            failure_ordering,
+        })
+    }
+
+    /// Inserts a memory fence/barrier with specified memory ordering.
+    ///
+    /// # Parameters
+    /// - `ordering`: Memory ordering constraint for the fence
+    #[cfg(feature = "nightly")]
+    pub fn fence(&mut self, ordering: MemoryOrdering) -> &mut Self {
+        self.inst(Instruction::Fence { ordering })
+    }
+
+    /// Performs a SIMD binary operation (element-wise).
+    ///
+    /// # Parameters
+    /// - `op`: SIMD operation to perform
+    /// - `result`: Name for the result vector
+    /// - `vector_type`: Type of the SIMD vector (e.g., v4f32)
+    /// - `lhs`: Left-hand side vector operand
+    /// - `rhs`: Right-hand side vector operand
+    #[cfg(feature = "nightly")]
+    pub fn simd_binary(
+        &mut self,
+        op: SimdOp,
+        result: &'a str,
+        vector_type: Type<'a>,
+        lhs: Value<'a>,
+        rhs: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::SimdBinary {
+            op,
+            result: result.into(),
+            vector_type,
+            lhs,
+            rhs,
+        })
+    }
+
+    /// Performs a SIMD unary operation.
+    ///
+    /// # Parameters
+    /// - `op`: SIMD operation to perform
+    /// - `result`: Name for the result vector
+    /// - `vector_type`: Type of the SIMD vector
+    /// - `operand`: Vector operand
+    #[cfg(feature = "nightly")]
+    pub fn simd_unary(
+        &mut self,
+        op: SimdOp,
+        result: &'a str,
+        vector_type: Type<'a>,
+        operand: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::SimdUnary {
+            op,
+            result: result.into(),
+            vector_type,
+            operand,
+        })
+    }
+
+    /// Performs a SIMD ternary operation (e.g., fused multiply-add).
+    ///
+    /// # Parameters
+    /// - `op`: SIMD operation to perform
+    /// - `result`: Name for the result vector
+    /// - `vector_type`: Type of the SIMD vector
+    /// - `lhs`: Left-hand side vector operand
+    /// - `rhs`: Right-hand side vector operand
+    /// - `acc`: Accumulator/third vector operand
+    #[cfg(feature = "nightly")]
+    pub fn simd_ternary(
+        &mut self,
+        op: SimdOp,
+        result: &'a str,
+        vector_type: Type<'a>,
+        lhs: Value<'a>,
+        rhs: Value<'a>,
+        acc: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::SimdTernary {
+            op,
+            result: result.into(),
+            vector_type,
+            lhs,
+            rhs,
+            acc,
+        })
+    }
+
+    /// Performs a SIMD shuffle operation.
+    ///
+    /// # Parameters
+    /// - `result`: Name for the result vector
+    /// - `vector_type`: Type of the SIMD vector
+    /// - `lhs`: Left-hand side vector operand
+    /// - `rhs`: Right-hand side vector operand
+    /// - `mask`: Shuffle mask (indices for rearranging elements)
+    #[cfg(feature = "nightly")]
+    pub fn simd_shuffle(
+        &mut self,
+        result: &'a str,
+        vector_type: Type<'a>,
+        lhs: Value<'a>,
+        rhs: Value<'a>,
+        mask: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::SimdShuffle {
+            result: result.into(),
+            vector_type,
+            lhs,
+            rhs,
+            mask,
+        })
+    }
+
+    /// Extracts a single element from a SIMD vector.
+    ///
+    /// # Parameters
+    /// - `result`: Name for the extracted scalar value
+    /// - `scalar_type`: Type of the extracted element
+    /// - `vector`: Source SIMD vector
+    /// - `lane_index`: Which lane to extract (0-based index)
+    #[cfg(feature = "nightly")]
+    pub fn simd_extract(
+        &mut self,
+        result: &'a str,
+        scalar_type: PrimitiveType,
+        vector: Value<'a>,
+        lane_index: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::SimdExtract {
+            result: result.into(),
+            scalar_type,
+            vector,
+            lane_index,
+        })
+    }
+
+    /// Inserts a single element into a SIMD vector.
+    ///
+    /// # Parameters
+    /// - `result`: Name for the result vector
+    /// - `vector_type`: Type of the SIMD vector
+    /// - `vector`: Source SIMD vector
+    /// - `scalar`: Scalar value to insert
+    /// - `lane_index`: Which lane to insert into (0-based index)
+    #[cfg(feature = "nightly")]
+    pub fn simd_insert(
+        &mut self,
+        result: &'a str,
+        vector_type: Type<'a>,
+        vector: Value<'a>,
+        scalar: Value<'a>,
+        lane_index: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::SimdInsert {
+            result: result.into(),
+            vector_type,
+            vector,
+            scalar,
+            lane_index,
+        })
+    }
+
+    /// Loads a SIMD vector from memory.
+    ///
+    /// # Parameters
+    /// - `result`: Name for the loaded vector
+    /// - `vector_type`: Type of the SIMD vector
+    /// - `ptr`: Pointer to load from
+    /// - `alignment`: Optional alignment hint in bytes
+    #[cfg(feature = "nightly")]
+    pub fn simd_load(
+        &mut self,
+        result: &'a str,
+        vector_type: Type<'a>,
+        ptr: Value<'a>,
+        alignment: Option<u32>,
+    ) -> &mut Self {
+        self.inst(Instruction::SimdLoad {
+            result: result.into(),
+            vector_type,
+            ptr,
+            alignment,
+        })
+    }
+
+    /// Stores a SIMD vector to memory.
+    ///
+    /// # Parameters
+    /// - `vector_type`: Type of the SIMD vector
+    /// - `ptr`: Pointer to store to
+    /// - `value`: SIMD vector value to store
+    /// - `alignment`: Optional alignment hint in bytes
+    #[cfg(feature = "nightly")]
+    pub fn simd_store(
+        &mut self,
+        vector_type: Type<'a>,
+        ptr: Value<'a>,
+        value: Value<'a>,
+        alignment: Option<u32>,
+    ) -> &mut Self {
+        self.inst(Instruction::SimdStore {
+            vector_type,
+            ptr,
+            value,
+            alignment,
+        })
+    }
+
     /// Creates a phi node for SSA form
     ///
     /// Parameters:
@@ -1907,7 +2248,7 @@ impl<'a> IRBuilder<'a> {
     /// // Declare printf from libc
     /// builder.external_function(
     ///     "printf",
-    ///     vec![FunctionParameter { name: "format", ty: Type::Primitive(PrimitiveType::Ptr) }],
+    ///     vec![FunctionParameter { name: "format", ty: Type::Primitive(PrimitiveType::Ptr), annotations: vec![] }],
     ///     Type::Primitive(PrimitiveType::I32)
     /// );
     /// ```
@@ -2181,6 +2522,76 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "nightly")]
+    #[test]
+    fn test_simd_operations() {
+        let mut module = Module::new();
+        let mut func = Function::new("test_simd");
+        let mut builder = IRBuilder::new(&mut func);
+
+        // Create a SIMD vector type (4 floats)
+        let vector_type = Type::Vector {
+            element_type: PrimitiveType::F32,
+            length: 4,
+        };
+
+        // SIMD binary operation
+        builder.simd_binary(
+            SimdOp::Add,
+            "result1",
+            vector_type.clone(),
+            Value::Register("vec1".into()),
+            Value::Register("vec2".into()),
+        );
+
+        // SIMD unary operation
+        builder.simd_unary(
+            SimdOp::Sqrt,
+            "result2",
+            vector_type.clone(),
+            Value::Register("vec3".into()),
+        );
+
+        // SIMD extract
+        builder.simd_extract(
+            "scalar",
+            PrimitiveType::F32,
+            Value::Register("vec4".into()),
+            Value::Literal(Literal::Int(0)),
+        );
+
+        // SIMD insert
+        builder.simd_insert(
+            "result3",
+            vector_type.clone(),
+            Value::Register("vec5".into()),
+            Value::Register("scalar".into()),
+            Value::Literal(Literal::Int(1)),
+        );
+
+        // SIMD load
+        builder.simd_load(
+            "loaded_vec",
+            vector_type.clone(),
+            Value::Register("ptr".into()),
+            Some(16),
+        );
+
+        // SIMD store
+        builder.simd_store(
+            vector_type,
+            Value::Register("ptr".into()),
+            Value::Register("vec_to_store".into()),
+            Some(16),
+        );
+
+        module.add_function(func);
+        assert_eq!(module.functions().len(), 1);
+        let func = &module.functions()[0];
+        assert_eq!(func.basic_blocks[0].instructions.len(), 6);
+    }
+
+    #[cfg(feature = "nightly")]
     #[test]
     fn test_module_annotations() {
         let mut builder = IRBuilder::new();
@@ -2190,7 +2601,9 @@ mod tests {
             .annotate_module(ModuleAnnotation::PositionIndependentCode)
             .annotate_module(ModuleAnnotation::OptimizeForSpeed)
             .annotate_module(ModuleAnnotation::IncludeDebugInfo)
-            .annotate_module(ModuleAnnotation::TargetTriple("x86_64-unknown-linux-gnu".to_string()));
+            .annotate_module(ModuleAnnotation::TargetTriple(
+                "x86_64-unknown-linux-gnu".to_string(),
+            ));
 
         // Also test the convenience methods
         builder
@@ -2206,18 +2619,51 @@ mod tests {
         assert_eq!(module.annotations.len(), 9);
 
         // Check specific annotations
-        assert!(module.annotations.contains(&ModuleAnnotation::PositionIndependentCode));
-        assert!(module.annotations.contains(&ModuleAnnotation::PositionIndependentExecutable));
-        assert!(module.annotations.contains(&ModuleAnnotation::OptimizeForSpeed));
-        assert!(module.annotations.contains(&ModuleAnnotation::OptimizeForSize));
-        assert!(module.annotations.contains(&ModuleAnnotation::IncludeDebugInfo));
+        assert!(
+            module
+                .annotations
+                .contains(&ModuleAnnotation::PositionIndependentCode)
+        );
+        assert!(
+            module
+                .annotations
+                .contains(&ModuleAnnotation::PositionIndependentExecutable)
+        );
+        assert!(
+            module
+                .annotations
+                .contains(&ModuleAnnotation::OptimizeForSpeed)
+        );
+        assert!(
+            module
+                .annotations
+                .contains(&ModuleAnnotation::OptimizeForSize)
+        );
+        assert!(
+            module
+                .annotations
+                .contains(&ModuleAnnotation::IncludeDebugInfo)
+        );
         assert!(module.annotations.contains(&ModuleAnnotation::StripSymbols));
-        assert!(module.annotations.contains(&ModuleAnnotation::TargetTriple("x86_64-unknown-linux-gnu".to_string())));
-        assert!(module.annotations.contains(&ModuleAnnotation::TargetTriple("aarch64-apple-darwin".to_string())));
+        assert!(module.annotations.contains(&ModuleAnnotation::TargetTriple(
+            "x86_64-unknown-linux-gnu".to_string()
+        )));
+        assert!(module.annotations.contains(&ModuleAnnotation::TargetTriple(
+            "aarch64-apple-darwin".to_string()
+        )));
 
         // Test Display implementation
-        assert_eq!(format!("{}", ModuleAnnotation::PositionIndependentCode), "@pic");
-        assert_eq!(format!("{}", ModuleAnnotation::OptimizeForSpeed), "@optimize_speed");
-        assert_eq!(format!("{}", ModuleAnnotation::TargetTriple("test".to_string())), "@target_triple(test)");
+        assert_eq!(
+            format!("{}", ModuleAnnotation::PositionIndependentCode),
+            "@pic"
+        );
+        assert_eq!(
+            format!("{}", ModuleAnnotation::OptimizeForSpeed),
+            "@optimize_speed"
+        );
+        assert_eq!(
+            format!("{}", ModuleAnnotation::TargetTriple("test".to_string())),
+            "@target_triple(test)"
+        );
     }
 }

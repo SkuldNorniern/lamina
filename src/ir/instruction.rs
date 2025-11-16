@@ -52,6 +52,144 @@ use std::fmt;
 
 use super::types::{Identifier, Label, PrimitiveType, Type, Value};
 
+/// Memory ordering constraints for atomic operations.
+///
+/// These specify the ordering guarantees for atomic operations relative to
+/// other memory operations in the same thread and across threads.
+///
+/// # Memory Ordering Levels
+///
+/// - **Relaxed**: No ordering constraints with other operations
+/// - **Acquire**: Subsequent loads cannot move before this operation
+/// - **Release**: Previous stores cannot move after this operation
+/// - **AcqRel**: Both acquire and release semantics
+/// - **SeqCst**: Sequentially consistent (strongest ordering)
+#[cfg(feature = "nightly")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryOrdering {
+    /// Relaxed ordering - no synchronization or ordering constraints
+    Relaxed,
+    /// Acquire ordering - prevents reordering of subsequent loads
+    Acquire,
+    /// Release ordering - prevents reordering of previous stores
+    Release,
+    /// Acquire-release ordering - both acquire and release semantics
+    AcqRel,
+    /// Sequentially consistent - strongest ordering guarantee
+    SeqCst,
+}
+
+#[cfg(feature = "nightly")]
+impl fmt::Display for MemoryOrdering {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MemoryOrdering::Relaxed => write!(f, "relaxed"),
+            MemoryOrdering::Acquire => write!(f, "acquire"),
+            MemoryOrdering::Release => write!(f, "release"),
+            MemoryOrdering::AcqRel => write!(f, "acqrel"),
+            MemoryOrdering::SeqCst => write!(f, "seqcst"),
+        }
+    }
+}
+
+/// SIMD (Single Instruction, Multiple Data) vector operations.
+///
+/// These operations perform parallel computations on multiple data elements
+/// simultaneously, providing significant performance improvements for
+/// data-parallel algorithms.
+#[cfg(feature = "nightly")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SimdOp {
+    /// Vector addition: `result = lhs + rhs` (element-wise)
+    Add,
+    /// Vector subtraction: `result = lhs - rhs` (element-wise)
+    Sub,
+    /// Vector multiplication: `result = lhs * rhs` (element-wise)
+    Mul,
+    /// Vector division: `result = lhs / rhs` (element-wise)
+    Div,
+    /// Vector minimum: `result = min(lhs, rhs)` (element-wise)
+    Min,
+    /// Vector maximum: `result = max(lhs, rhs)` (element-wise)
+    Max,
+    /// Vector absolute value: `result = abs(value)`
+    Abs,
+    /// Vector negation: `result = -value`
+    Neg,
+    /// Vector square root: `result = sqrt(value)`
+    Sqrt,
+    /// Vector fused multiply-add: `result = (lhs * rhs) + acc`
+    Fma,
+    /// Vector shuffle/rearrange elements according to mask
+    Shuffle,
+    /// Vector extract lane: extract single element from vector
+    ExtractLane,
+    /// Vector insert lane: insert single element into vector
+    InsertLane,
+    /// Vector splat: broadcast scalar to all vector lanes
+    Splat,
+}
+
+#[cfg(feature = "nightly")]
+impl fmt::Display for SimdOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SimdOp::Add => write!(f, "simd_add"),
+            SimdOp::Sub => write!(f, "simd_sub"),
+            SimdOp::Mul => write!(f, "simd_mul"),
+            SimdOp::Div => write!(f, "simd_div"),
+            SimdOp::Min => write!(f, "simd_min"),
+            SimdOp::Max => write!(f, "simd_max"),
+            SimdOp::Abs => write!(f, "simd_abs"),
+            SimdOp::Neg => write!(f, "simd_neg"),
+            SimdOp::Sqrt => write!(f, "simd_sqrt"),
+            SimdOp::Fma => write!(f, "simd_fma"),
+            SimdOp::Shuffle => write!(f, "simd_shuffle"),
+            SimdOp::ExtractLane => write!(f, "simd_extract_lane"),
+            SimdOp::InsertLane => write!(f, "simd_insert_lane"),
+            SimdOp::Splat => write!(f, "simd_splat"),
+        }
+    }
+}
+
+/// Atomic binary operations for concurrent programming.
+///
+/// These operations perform read-modify-write sequences atomically,
+/// ensuring thread-safe updates to shared memory locations.
+#[cfg(feature = "nightly")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtomicBinOp {
+    /// Atomic addition: `*ptr += value`
+    Add,
+    /// Atomic subtraction: `*ptr -= value`
+    Sub,
+    /// Atomic bitwise AND: `*ptr &= value`
+    And,
+    /// Atomic bitwise OR: `*ptr |= value`
+    Or,
+    /// Atomic bitwise XOR: `*ptr ^= value`
+    Xor,
+    /// Atomic exchange: `result = *ptr; *ptr = value`
+    Exchange,
+    /// Atomic compare-exchange: `if *ptr == expected { *ptr = value; return true } else { return false }`
+    CompareExchange,
+}
+
+#[cfg(feature = "nightly")]
+impl fmt::Display for AtomicBinOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AtomicBinOp::Add => write!(f, "atomic_add"),
+            AtomicBinOp::Sub => write!(f, "atomic_sub"),
+            AtomicBinOp::And => write!(f, "atomic_and"),
+            AtomicBinOp::Or => write!(f, "atomic_or"),
+            AtomicBinOp::Xor => write!(f, "atomic_xor"),
+            AtomicBinOp::Exchange => write!(f, "atomic_exchange"),
+            AtomicBinOp::CompareExchange => write!(f, "atomic_cmpxchg"),
+        }
+    }
+}
+
 /// Binary arithmetic and logical operations.
 ///
 /// These operations take two operands and produce a single result.
@@ -202,6 +340,120 @@ pub enum Instruction<'a> {
     Dealloc {
         // Optional Heap Deallocation
         ptr: Value<'a>, // Must be a ptr from alloc.heap
+    },
+    // --- Atomic Operations ---
+    #[cfg(feature = "nightly")]
+    AtomicLoad {
+        // Atomic load with memory ordering
+        result: Identifier<'a>,
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        ordering: MemoryOrdering,
+    },
+    #[cfg(feature = "nightly")]
+    AtomicStore {
+        // Atomic store with memory ordering
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        value: Value<'a>,
+        ordering: MemoryOrdering,
+    },
+    #[cfg(feature = "nightly")]
+    AtomicBinary {
+        // Atomic read-modify-write operation
+        op: AtomicBinOp,
+        result: Identifier<'a>,
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        value: Value<'a>,
+        ordering: MemoryOrdering,
+    },
+    #[cfg(feature = "nightly")]
+    AtomicCompareExchange {
+        // Atomic compare-exchange operation
+        result: Identifier<'a>,
+        success: Identifier<'a>, // Boolean indicating if exchange succeeded
+        ty: Type<'a>,
+        ptr: Value<'a>,
+        expected: Value<'a>,
+        desired: Value<'a>,
+        success_ordering: MemoryOrdering,
+        failure_ordering: MemoryOrdering,
+    },
+    #[cfg(feature = "nightly")]
+    Fence {
+        // Memory fence/barrier
+        ordering: MemoryOrdering,
+    },
+    // --- SIMD Operations ---
+    #[cfg(feature = "nightly")]
+    SimdBinary {
+        // SIMD binary operation: element-wise computation
+        op: SimdOp,
+        result: Identifier<'a>,
+        vector_type: Type<'a>, // SIMD vector type (e.g., v4f32, v8i32)
+        lhs: Value<'a>,
+        rhs: Value<'a>,
+    },
+    #[cfg(feature = "nightly")]
+    SimdUnary {
+        // SIMD unary operation: single operand vector computation
+        op: SimdOp,
+        result: Identifier<'a>,
+        vector_type: Type<'a>,
+        operand: Value<'a>,
+    },
+    #[cfg(feature = "nightly")]
+    SimdTernary {
+        // SIMD ternary operation (e.g., fused multiply-add)
+        op: SimdOp,
+        result: Identifier<'a>,
+        vector_type: Type<'a>,
+        lhs: Value<'a>,
+        rhs: Value<'a>,
+        acc: Value<'a>, // accumulator/third operand
+    },
+    #[cfg(feature = "nightly")]
+    SimdShuffle {
+        // SIMD shuffle/rearrange elements
+        result: Identifier<'a>,
+        vector_type: Type<'a>,
+        lhs: Value<'a>,
+        rhs: Value<'a>,
+        mask: Value<'a>, // shuffle mask (constant or runtime)
+    },
+    #[cfg(feature = "nightly")]
+    SimdExtract {
+        // Extract single element from SIMD vector
+        result: Identifier<'a>,
+        scalar_type: PrimitiveType, // Type of extracted element
+        vector: Value<'a>,
+        lane_index: Value<'a>, // Which lane to extract (0-based)
+    },
+    #[cfg(feature = "nightly")]
+    SimdInsert {
+        // Insert single element into SIMD vector
+        result: Identifier<'a>,
+        vector_type: Type<'a>,
+        vector: Value<'a>,
+        scalar: Value<'a>,     // Element to insert
+        lane_index: Value<'a>, // Which lane to insert into (0-based)
+    },
+    #[cfg(feature = "nightly")]
+    SimdLoad {
+        // Load SIMD vector from memory
+        result: Identifier<'a>,
+        vector_type: Type<'a>,
+        ptr: Value<'a>,
+        alignment: Option<u32>, // Optional alignment hint
+    },
+    #[cfg(feature = "nightly")]
+    SimdStore {
+        // Store SIMD vector to memory
+        vector_type: Type<'a>,
+        ptr: Value<'a>,
+        value: Value<'a>,
+        alignment: Option<u32>, // Optional alignment hint
     },
     // --- Composite Type Operations ---
     GetFieldPtr {
@@ -376,6 +628,127 @@ impl fmt::Display for Instruction<'_> {
             Instruction::Load { result, ty, ptr } => write!(f, "%{} = load.{} {}", result, ty, ptr),
             Instruction::Store { ty, ptr, value } => write!(f, "store.{} {}, {}", ty, ptr, value),
             Instruction::Dealloc { ptr } => write!(f, "dealloc.heap {}", ptr),
+            #[cfg(feature = "nightly")]
+            Instruction::AtomicLoad {
+                result,
+                ty,
+                ptr,
+                ordering,
+            } => write!(f, "%{} = atomic_load.{} {}, {}", result, ty, ptr, ordering),
+            #[cfg(feature = "nightly")]
+            Instruction::AtomicStore {
+                ty,
+                ptr,
+                value,
+                ordering,
+            } => write!(f, "atomic_store.{} {}, {}, {}", ty, ptr, value, ordering),
+            #[cfg(feature = "nightly")]
+            Instruction::AtomicBinary {
+                op,
+                result,
+                ty,
+                ptr,
+                value,
+                ordering,
+            } => write!(
+                f,
+                "%{} = {}.{} {}, {}, {}",
+                result, op, ty, ptr, value, ordering
+            ),
+            #[cfg(feature = "nightly")]
+            Instruction::AtomicCompareExchange {
+                result,
+                success,
+                ty,
+                ptr,
+                expected,
+                desired,
+                success_ordering,
+                failure_ordering,
+            } => write!(
+                f,
+                "%{}, %{} = atomic_cmpxchg.{} {}, {}, {}, {}, {}",
+                result, success, ty, ptr, expected, desired, success_ordering, failure_ordering
+            ),
+            #[cfg(feature = "nightly")]
+            Instruction::Fence { ordering } => write!(f, "fence {}", ordering),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdBinary {
+                op,
+                result,
+                vector_type,
+                lhs,
+                rhs,
+            } => write!(f, "%{} = {}.{} {}, {}", result, op, vector_type, lhs, rhs),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdUnary {
+                op,
+                result,
+                vector_type,
+                operand,
+            } => write!(f, "%{} = {}.{} {}", result, op, vector_type, operand),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdTernary {
+                op,
+                result,
+                vector_type,
+                lhs,
+                rhs,
+                acc,
+            } => write!(
+                f,
+                "%{} = {}.{} {}, {}, {}",
+                result, op, vector_type, lhs, rhs, acc
+            ),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdShuffle {
+                result,
+                vector_type,
+                lhs,
+                rhs,
+                mask,
+            } => write!(
+                f,
+                "%{} = {}.shuffle.{} {}, {}, {}",
+                result, vector_type, mask, lhs, rhs
+            ),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdExtract {
+                result,
+                scalar_type,
+                vector,
+                lane_index,
+            } => write!(
+                f,
+                "%{} = extract_lane.{} {}, {}",
+                result, scalar_type, vector, lane_index
+            ),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdInsert {
+                result,
+                vector_type,
+                vector,
+                scalar,
+                lane_index,
+            } => write!(
+                f,
+                "%{} = insert_lane.{} {}, {}, {}",
+                result, vector_type, vector, scalar, lane_index
+            ),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdLoad {
+                result,
+                vector_type,
+                ptr,
+                alignment: _,
+            } => write!(f, "%{} = load_simd.{} {}", result, vector_type, ptr),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdStore {
+                vector_type,
+                ptr,
+                value,
+                alignment: _,
+            } => write!(f, "store_simd.{} {}, {}", vector_type, ptr, value),
             Instruction::GetFieldPtr {
                 result,
                 struct_ptr,

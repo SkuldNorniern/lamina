@@ -236,6 +236,7 @@ pub struct GlobalDeclaration<'a> {
 /// - **`@debug`**: Include debug information
 /// - **`@strip`**: Strip debug information and symbols
 /// - **`@target_triple`**: Specify target triple (e.g., "x86_64-linux-gnu")
+#[cfg(feature = "nightly")]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModuleAnnotation {
     /// Generate position-independent code (PIC).
@@ -279,6 +280,7 @@ pub enum ModuleAnnotation {
     TargetTriple(String),
 }
 
+#[cfg(feature = "nightly")]
 impl fmt::Display for ModuleAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -315,17 +317,22 @@ pub struct Module<'a> {
     ///
     /// These annotations control global aspects of how the module is compiled,
     /// such as optimization level, code generation options, and linking behavior.
+    #[cfg(feature = "nightly")]
     pub annotations: Vec<ModuleAnnotation>,
 }
 
 impl Module<'_> {
     // Basic constructor
     pub fn new() -> Self {
+        #[cfg(feature = "nightly")]
+        let annotations = Vec::new();
+
         Module {
             type_declarations: HashMap::new(),
             global_declarations: HashMap::new(),
             functions: HashMap::new(),
-            annotations: Vec::new(),
+            #[cfg(feature = "nightly")]
+            annotations,
         }
     }
 }
