@@ -1212,10 +1212,12 @@ mod tests {
                     FunctionParameter {
                         name: "a",
                         ty: Type::Primitive(PrimitiveType::I64),
+                        annotations: vec![],
                     },
                     FunctionParameter {
                         name: "b",
                         ty: Type::Primitive(PrimitiveType::I64),
+                        annotations: vec![],
                     },
                 ],
                 Type::Primitive(PrimitiveType::I64),
