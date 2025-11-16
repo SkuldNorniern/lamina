@@ -1159,6 +1159,138 @@ fn convert_instruction<'a>(
                 ret: None,
             }))
         }
+        #[cfg(feature = "nightly")]
+        crate::ir::instruction::Instruction::SimdBinary {
+            op,
+            result,
+            vector_type,
+            lhs,
+            rhs,
+        } => {
+            let dst = if let Some(existing) = var_to_reg.get(result) {
+                existing.clone()
+            } else {
+                let fresh = Register::Virtual(vreg_alloc.allocate_vec());
+                var_to_reg.insert(*result, fresh.clone());
+                fresh
+            };
+            let mir_ty = map_ir_type(vector_type)?;
+            let lhs_op = get_operand_permissive(lhs, vreg_alloc, var_to_reg)?;
+            let rhs_op = get_operand_permissive(rhs, vreg_alloc, var_to_reg)?;
+            let mir_op = match op {
+                crate::ir::instruction::SimdOp::Add => crate::mir::SimdOp::Add,
+                crate::ir::instruction::SimdOp::Sub => crate::mir::SimdOp::Sub,
+                crate::ir::instruction::SimdOp::Mul => crate::mir::SimdOp::Mul,
+                crate::ir::instruction::SimdOp::Div => crate::mir::SimdOp::Div,
+                crate::ir::instruction::SimdOp::Min => crate::mir::SimdOp::Min,
+                crate::ir::instruction::SimdOp::Max => crate::mir::SimdOp::Max,
+                crate::ir::instruction::SimdOp::Abs => crate::mir::SimdOp::Abs,
+                crate::ir::instruction::SimdOp::Neg => crate::mir::SimdOp::Neg,
+                crate::ir::instruction::SimdOp::Sqrt => crate::mir::SimdOp::Sqrt,
+                _ => return Err(FromIRError::UnsupportedInstruction),
+            };
+            Ok(Some(Instruction::SimdBinary {
+                op: mir_op,
+                ty: mir_ty,
+                dst,
+                lhs: lhs_op,
+                rhs: rhs_op,
+            }))
+        }
+        #[cfg(feature = "nightly")]
+        crate::ir::instruction::Instruction::SimdUnary {
+            op,
+            result,
+            vector_type,
+            operand,
+        } => {
+            let dst = if let Some(existing) = var_to_reg.get(result) {
+                existing.clone()
+            } else {
+                let fresh = Register::Virtual(vreg_alloc.allocate_vec());
+                var_to_reg.insert(*result, fresh.clone());
+                fresh
+            };
+            let mir_ty = map_ir_type(vector_type)?;
+            let src_op = get_operand_permissive(operand, vreg_alloc, var_to_reg)?;
+            let mir_op = match op {
+                crate::ir::instruction::SimdOp::Abs => crate::mir::SimdOp::Abs,
+                crate::ir::instruction::SimdOp::Neg => crate::mir::SimdOp::Neg,
+                crate::ir::instruction::SimdOp::Sqrt => crate::mir::SimdOp::Sqrt,
+                _ => return Err(FromIRError::UnsupportedInstruction),
+            };
+            Ok(Some(Instruction::SimdUnary {
+                op: mir_op,
+                ty: mir_ty,
+                dst,
+                src: src_op,
+            }))
+        }
+        #[cfg(feature = "nightly")]
+        crate::ir::instruction::Instruction::AtomicLoad {
+            result,
+            ty,
+            ptr,
+            ordering,
+        } => {
+            let dst = if let Some(existing) = var_to_reg.get(result) {
+                existing.clone()
+            } else {
+                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
+                var_to_reg.insert(*result, fresh.clone());
+                fresh
+            };
+            let mir_ty = map_ir_prim(*ty)?;
+            let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
+            let mir_ordering = match ordering {
+                crate::ir::instruction::MemoryOrdering::Relaxed => crate::mir::MemoryOrdering::Relaxed,
+                crate::ir::instruction::MemoryOrdering::Acquire => crate::mir::MemoryOrdering::Acquire,
+                crate::ir::instruction::MemoryOrdering::Release => crate::mir::MemoryOrdering::Release,
+                crate::ir::instruction::MemoryOrdering::AcqRel => crate::mir::MemoryOrdering::AcqRel,
+                crate::ir::instruction::MemoryOrdering::SeqCst => crate::mir::MemoryOrdering::SeqCst,
+            };
+            Ok(Some(Instruction::AtomicLoad {
+                ty: mir_ty,
+                dst,
+                addr,
+                ordering: mir_ordering,
+            }))
+        }
+        #[cfg(feature = "nightly")]
+        crate::ir::instruction::Instruction::AtomicStore {
+            ty,
+            ptr,
+            value,
+            ordering,
+        } => {
+            let mir_ty = map_ir_prim(*ty)?;
+            let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
+            let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
+            let mir_ordering = match ordering {
+                crate::ir::instruction::MemoryOrdering::Relaxed => crate::mir::MemoryOrdering::Relaxed,
+                crate::ir::instruction::MemoryOrdering::Acquire => crate::mir::MemoryOrdering::Acquire,
+                crate::ir::instruction::MemoryOrdering::Release => crate::mir::MemoryOrdering::Release,
+                crate::ir::instruction::MemoryOrdering::AcqRel => crate::mir::MemoryOrdering::AcqRel,
+                crate::ir::instruction::MemoryOrdering::SeqCst => crate::mir::MemoryOrdering::SeqCst,
+            };
+            Ok(Some(Instruction::AtomicStore {
+                ty: mir_ty,
+                src: val_op,
+                addr,
+                ordering: mir_ordering,
+            }))
+        }
+        #[cfg(feature = "nightly")]
+        crate::ir::instruction::Instruction::Fence { ordering } => {
+            let mir_ordering = match ordering {
+                crate::ir::instruction::MemoryOrdering::Relaxed => crate::mir::MemoryOrdering::Relaxed,
+                crate::ir::instruction::MemoryOrdering::Acquire => crate::mir::MemoryOrdering::Acquire,
+                crate::ir::instruction::MemoryOrdering::Release => crate::mir::MemoryOrdering::Release,
+                crate::ir::instruction::MemoryOrdering::AcqRel => crate::mir::MemoryOrdering::AcqRel,
+                crate::ir::instruction::MemoryOrdering::SeqCst => crate::mir::MemoryOrdering::SeqCst,
+            };
+            Ok(Some(Instruction::Fence { ordering: mir_ordering }))
+        }
         _ => Err(FromIRError::UnsupportedInstruction),
     }
 }
