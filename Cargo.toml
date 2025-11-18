@@ -17,4 +17,7 @@ exclude = [ "benchmarks/", "testcases/"]
 [features]
 default = []
 # Enable the use of the mold linker instead of the default system linker (usually ld via gcc)
-use_mold = []
+#use_mold = []
+# Enable experimental/nightly features (may change without notice)
+nightly = []
+
