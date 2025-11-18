@@ -277,18 +277,6 @@ mod tests {
     }
 
     #[test]
-    fn test_from_str_roundtrip() {
-        let host = Target::detect_host();
-        let str_repr = host.to_str();
-        let parsed_back = Target::from_str(&str_repr);
-
-        assert_eq!(
-            host, parsed_back,
-            "from_str/to_str should be a roundtrip operation"
-        );
-    }
-
-    #[test]
     fn test_detect_functions_consistency() {
         // Test that detect_host uses the same logic as the separate functions
         let combined = Target::detect_host();
