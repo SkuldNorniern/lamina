@@ -254,7 +254,7 @@ impl LoopInvariantCodeMotion {
         // 2. All its operands are either constants or defined outside the loop
         // 3. It's not a side-effecting instruction
 
-        if let Some(def_reg) = instr.def_reg() {
+        if let Some(_def_reg) = instr.def_reg() {
             // Check if all operands are invariant
             let operands_invariant = instr
                 .use_regs()
