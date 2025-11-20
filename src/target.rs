@@ -13,16 +13,18 @@ impl Target {
         }
     }
     pub fn from_str(target: &str) -> Self {
-        let parts = target.split('_').collect::<Vec<&str>>();
+        // Split from the right to handle architectures with underscores (e.g., "x86_64")
+        let parts: Vec<&str> = target.rsplitn(2, '_').collect();
         if parts.len() != 2 {
             return Self {
                 architecture: TargetArchitecture::Unknown,
                 operating_system: TargetOperatingSystem::Unknown,
             };
         }
+        // parts[0] is the OS (rightmost part), parts[1] is the architecture (everything else)
         Self::new(
-            TargetArchitecture::from_str(parts[0]),
-            TargetOperatingSystem::from_str(parts[1]),
+            TargetArchitecture::from_str(parts[1]),
+            TargetOperatingSystem::from_str(parts[0]),
         )
     }
     pub fn to_str(&self) -> String {
@@ -55,6 +57,7 @@ pub enum TargetArchitecture {
     Riscv128,
     Wasm32,
     Wasm64,
+    #[cfg(feature = "nightly")]
     Lisa,
     Unknown,
 }
@@ -71,7 +74,9 @@ impl TargetArchitecture {
             "riscv128" => Self::Riscv128,
             "wasm32" => Self::Wasm32,
             "wasm64" => Self::Wasm64,
-            "wasm" => Self::Wasm32, // default to 32-bit for backward compatibility
+            "wasm" => Self::Wasm32,
+            // default to 32-bit for backward compatibility
+            #[cfg(feature = "nightly")]
             "lisa" => Self::Lisa,
             _ => Self::Unknown,
         }
@@ -125,6 +130,7 @@ impl fmt::Display for TargetArchitecture {
             Self::Riscv128 => "riscv128",
             Self::Wasm32 => "wasm32",
             Self::Wasm64 => "wasm64",
+            #[cfg(feature = "nightly")]
             Self::Lisa => "lisa",
             Self::Unknown => "unknown",
         };
