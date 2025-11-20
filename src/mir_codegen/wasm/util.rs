@@ -107,7 +107,6 @@ pub fn emit_int_binary_op<W: Write>(
         crate::mir::IntBinOp::Shl => writeln!(writer, "      i64.shl")?,
         crate::mir::IntBinOp::AShr => writeln!(writer, "      i64.shr_s")?,
         crate::mir::IntBinOp::LShr => writeln!(writer, "      i64.shr_u")?,
-        _ => writeln!(writer, "      ;; TODO: unimplemented binary op")?,
     }
     Ok(())
 }
@@ -128,7 +127,6 @@ pub fn emit_int_cmp_op<W: Write>(
         crate::mir::IntCmpOp::ULe => writeln!(writer, "      i64.le_u")?,
         crate::mir::IntCmpOp::UGt => writeln!(writer, "      i64.gt_u")?,
         crate::mir::IntCmpOp::UGe => writeln!(writer, "      i64.ge_u")?,
-        _ => writeln!(writer, "      ;; TODO: unimplemented compare op")?,
     }
     Ok(())
 }

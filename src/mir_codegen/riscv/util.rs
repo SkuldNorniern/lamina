@@ -98,7 +98,6 @@ pub fn emit_int_binary_op<W: std::io::Write>(
         crate::mir::IntBinOp::Shl => writeln!(writer, "    sll")?,
         crate::mir::IntBinOp::AShr => writeln!(writer, "    sra")?,
         crate::mir::IntBinOp::LShr => writeln!(writer, "    srl")?,
-        _ => writeln!(writer, "    # TODO: unimplemented binary op")?,
     }
     Ok(())
 }
@@ -137,7 +136,6 @@ pub fn emit_int_cmp_op<W: std::io::Write>(
             writeln!(writer, "    sltu a0, a0, a1")?; // a >= b is !(a < b)
             writeln!(writer, "    xori a0, a0, 1")?; // Invert result
         }
-        _ => writeln!(writer, "    # TODO: unimplemented compare op")?,
     }
     Ok(())
 }

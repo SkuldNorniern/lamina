@@ -130,7 +130,7 @@ fn precompute_function_layout<'a>(
     }
 
     // Place params and locals at negative offsets from s0
-    let saved_area: i64 = match state.width() {
+    let _saved_area: i64 = match state.width() {
         super::IsaWidth::Rv32 => 8,
         _ => 16,
     };
