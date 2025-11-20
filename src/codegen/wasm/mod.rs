@@ -695,7 +695,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
         let mut func_instructions: Vec<generate::Instructions> = Vec::new();
 
         let mut blocks = vec![func.basic_blocks.get(func.entry_block).unwrap()];
-        let mut block_mapping = HashMap::new();
+        let mut block_mapping: HashMap<String, usize> = HashMap::new();
         block_mapping.insert(func.entry_block.to_string(), 0);
 
         for (block_name, block) in &func.basic_blocks {
@@ -843,7 +843,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             result: None,
                             then: vec![
                                 generate::WasmInstruction::Const(NumericConstant::I64(
-                                    *block_mapping.get(true_label).unwrap() as u64,
+                                    *block_mapping.get(&true_label.to_string()).unwrap() as u64,
                                 )),
                                 generate::WasmInstruction::LocalSet(generate::Identifier::Index(
                                     locals.get("pc").unwrap().0,
@@ -853,7 +853,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             r#else: Some(
                                 vec![
                                     generate::WasmInstruction::Const(NumericConstant::I64(
-                                        *block_mapping.get(false_label).unwrap()
+                                        *block_mapping.get(&false_label.to_string()).unwrap()
                                             as u64,
                                     )),
                                     generate::WasmInstruction::LocalSet(
@@ -873,7 +873,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             generate::Identifier::Name(
                                 format!(
                                     "{}",
-                                    block_mapping.get(target_label).unwrap()
+                                    block_mapping.get(&target_label.to_string()).unwrap()
                                 )
                                 .into(),
                             ),
@@ -1243,7 +1243,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 }),
                                 create_load_reg(&state, value, None, &locals, is_wasm64),
                                 match size {
-                                    0..=32 => NumericType::I32,
+                                    ..=32 => NumericType::I32,
                                     ..=64 => NumericType::I64,
                                     _ => todo!(
                                         "Implement tuples with compound types larger than 64 bits"
@@ -1355,7 +1355,13 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             None,
                             ty,
                             elem_size,
-                            matches!(element_type, PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64),
+                            matches!(
+                                element_type,
+                                PrimitiveType::I8
+                                    | PrimitiveType::I16
+                                    | PrimitiveType::I32
+                                    | PrimitiveType::I64
+                            ),
                             None,
                         );
                         generate_result(

@@ -119,11 +119,13 @@
 //!     .function_with_params("add", vec![
 //!         lamina::ir::FunctionParameter {
 //!             name: "a",
-//!             ty: Type::Primitive(PrimitiveType::I32)
+//!             ty: Type::Primitive(PrimitiveType::I32),
+//!             annotations: vec![]
 //!         },
 //!         lamina::ir::FunctionParameter {
 //!             name: "b",
-//!             ty: Type::Primitive(PrimitiveType::I32)
+//!             ty: Type::Primitive(PrimitiveType::I32),
+//!             annotations: vec![]
 //!         }
 //!     ], Type::Primitive(PrimitiveType::I32))
 //!     .binary(BinaryOp::Add, "result", PrimitiveType::I32, var("a"), var("b"))
@@ -201,7 +203,8 @@
 //!     .function_with_params("absolute_value", vec![
 //!         lamina::ir::FunctionParameter {
 //!             name: "x",
-//!             ty: Type::Primitive(PrimitiveType::I32)
+//!             ty: Type::Primitive(PrimitiveType::I32),
+//!             annotations: vec![]
 //!         }
 //!     ], Type::Primitive(PrimitiveType::I32))
 //!     .annotate(lamina::ir::FunctionAnnotation::Inline)
@@ -454,7 +457,9 @@ pub enum VariableAnnotation {
 /// # Examples
 ///
 /// ```rust
-/// use super::{FunctionParameter, Type, PrimitiveType, VariableAnnotation};
+/// use lamina::ir::function::FunctionParameter;
+/// use lamina::ir::{Type, PrimitiveType};
+/// use lamina::ir::function::VariableAnnotation;
 ///
 /// let param = FunctionParameter {
 ///     name: "data",
@@ -485,8 +490,8 @@ pub struct FunctionParameter<'a> {
 ///
 /// let signature = FunctionSignature {
 ///     params: vec![
-///         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32) },
-///         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32) },
+///         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
+///         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
 ///     ],
 ///     return_type: Type::Primitive(PrimitiveType::I32),
 /// };

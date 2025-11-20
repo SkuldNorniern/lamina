@@ -348,10 +348,8 @@ fn collect_regs_from_instruction(
                 collect_regs_from_operand(arg, used_regs);
             }
         }
-        crate::mir::Instruction::Ret { value } => {
-            if let Some(val) = value {
-                collect_regs_from_operand(val, used_regs);
-            }
+        crate::mir::Instruction::Ret { value: Some(val) } => {
+            collect_regs_from_operand(val, used_regs);
         }
         crate::mir::Instruction::Jmp { .. } | crate::mir::Instruction::Br { .. } => {}
         _ => {} // Handle other instruction types we don't care about
