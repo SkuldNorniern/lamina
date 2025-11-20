@@ -143,7 +143,7 @@ pub fn generate_mir_wasm<W: Write>(
         writeln!(writer, "  (func ${}", mangled_name)?;
 
         // Parameters
-        for (i, param) in func.sig.params.iter().enumerate() {
+        for (i, _param) in func.sig.params.iter().enumerate() {
             writeln!(writer, "    (param $p{} i64)", i)?;
         }
 

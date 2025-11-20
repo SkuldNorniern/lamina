@@ -127,7 +127,7 @@ impl MirRegisterAllocator for RiscVRegAlloc {
         }
     }
 
-    fn occupy(&mut self, phys: Self::PhysReg) {
+    fn occupy(&mut self, _phys: Self::PhysReg) {
         // Mark register as occupied (though we don't use this in our simple allocator)
     }
 

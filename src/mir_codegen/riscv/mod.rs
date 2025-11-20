@@ -212,7 +212,6 @@ fn emit_instruction_riscv<W: Write>(
                 crate::mir::IntBinOp::Shl => writeln!(writer, "    sll a0, a0, a1")?,
                 crate::mir::IntBinOp::AShr => writeln!(writer, "    sra a0, a0, a1")?,
                 crate::mir::IntBinOp::LShr => writeln!(writer, "    srl a0, a0, a1")?,
-                _ => writeln!(writer, "    # TODO: unimplemented binary op")?,
             }
 
             // Store result
