@@ -10,7 +10,8 @@ use std::io::Write;
 use std::result::Result;
 use util::*;
 
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::error::LaminaError;
+use crate::mir::{Instruction as MirInst, MirType, Module as MirModule, Register};
 use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions};
 use crate::target::TargetOperatingSystem;
 
@@ -138,6 +139,7 @@ pub fn generate_mir_x86_64<W: Write>(
     writeln!(writer, "{}", abi.get_main_global())?;
 
     for (func_name, func) in &module.functions {
+        ensure_signature_support(&func.sig)?;
         // Function label
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, "{}:", label)?;
@@ -194,6 +196,28 @@ pub fn generate_mir_x86_64<W: Write>(
     Ok(())
 }
 
+fn ensure_signature_support(sig: &crate::mir::Signature) -> Result<(), LaminaError> {
+    for (idx, param) in sig.params.iter().enumerate() {
+        ensure_type_supported(&param.ty, &format!("parameter {} of '{}'", idx, sig.name))?;
+    }
+
+    if let Some(ret_ty) = &sig.ret_ty {
+        ensure_type_supported(ret_ty, &format!("return type of '{}'", sig.name))?;
+    }
+
+    Ok(())
+}
+
+fn ensure_type_supported(ty: &MirType, context: &str) -> Result<(), LaminaError> {
+    if ty.is_float() || ty.is_vector() {
+        return Err(LaminaError::ValidationError(format!(
+            "x86_64 backend does not support {} (type {})",
+            context, ty
+        )));
+    }
+    Ok(())
+}
+
 fn emit_instruction_x86_64(
     inst: &MirInst,
     writer: &mut impl Write,
@@ -244,7 +268,12 @@ fn emit_instruction_x86_64(
                 crate::mir::IntBinOp::Shl => writeln!(writer, "    shlq %{}, %rax", scratch)?,
                 crate::mir::IntBinOp::AShr => writeln!(writer, "    sarq %{}, %rax", scratch)?,
                 crate::mir::IntBinOp::LShr => writeln!(writer, "    shrq %{}, %rax", scratch)?,
-                _ => writeln!(writer, "    # TODO: unimplemented binary op")?,
+                other => {
+                    return Err(LaminaError::ValidationError(format!(
+                        "x86_64 backend does not support integer binary op {:?}",
+                        other
+                    )));
+                }
             }
 
             // Store result
@@ -282,7 +311,12 @@ fn emit_instruction_x86_64(
                 crate::mir::IntCmpOp::ULe => writeln!(writer, "    setbe %al")?,
                 crate::mir::IntCmpOp::UGt => writeln!(writer, "    seta %al")?,
                 crate::mir::IntCmpOp::UGe => writeln!(writer, "    setae %al")?,
-                _ => writeln!(writer, "    # TODO: unimplemented compare op")?,
+                other => {
+                    return Err(LaminaError::ValidationError(format!(
+                        "x86_64 backend does not support integer comparison {:?}",
+                        other
+                    )));
+                }
             }
             writeln!(writer, "    movzbq %al, %rax")?;
 
@@ -311,7 +345,10 @@ fn emit_instruction_x86_64(
                     }
                 }
             } else {
-                writeln!(writer, "    # TODO: function calls")?;
+                return Err(LaminaError::ValidationError(format!(
+                    "x86_64 backend does not support calling '{}'",
+                    name
+                )));
             }
 
             if let Some(ret_reg) = ret
@@ -327,15 +364,24 @@ fn emit_instruction_x86_64(
             ty: _,
             attrs: _,
         } => {
-            // Simple direct load for now - assume addr is BaseOffset with offset 0
             if let crate::mir::AddressMode::BaseOffset { base, offset: 0 } = addr {
-                if let Register::Virtual(vreg) = base {
-                    load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
+                match base {
+                    Register::Virtual(vreg) => {
+                        load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
+                    }
+                    Register::Physical(phys) => {
+                        writeln!(writer, "    movq %{}, %rax", phys.name)?;
+                    }
                 }
                 writeln!(writer, "    movq (%rax), %rax")?;
                 if let Register::Virtual(vreg) = dst {
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
+            } else {
+                return Err(LaminaError::ValidationError(format!(
+                    "x86_64 backend does not support load address mode {:?}",
+                    addr
+                )));
             }
         }
         MirInst::Store {
@@ -348,13 +394,23 @@ fn emit_instruction_x86_64(
             load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
             if let crate::mir::AddressMode::BaseOffset { base, offset: 0 } = addr {
                 let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
-                if let Register::Virtual(vreg) = base {
-                    load_register_to_register(vreg, writer, reg_alloc, stack_slots, scratch)?;
+                match base {
+                    Register::Virtual(vreg) => {
+                        load_register_to_register(vreg, writer, reg_alloc, stack_slots, scratch)?;
+                    }
+                    Register::Physical(phys) => {
+                        writeln!(writer, "    movq %{}, %{}", phys.name, scratch)?;
+                    }
                 }
                 writeln!(writer, "    movq %rax, (%{})", scratch)?;
                 if scratch != "rbx" {
                     reg_alloc.free_scratch(scratch);
                 }
+            } else {
+                return Err(LaminaError::ValidationError(format!(
+                    "x86_64 backend does not support store address mode {:?}",
+                    addr
+                )));
             }
         }
         MirInst::Ret { value } => {
@@ -380,8 +436,11 @@ fn emit_instruction_x86_64(
             writeln!(writer, "    jnz .L_{}", true_target)?;
             writeln!(writer, "    jmp .L_{}", false_target)?;
         }
-        _ => {
-            writeln!(writer, "    # TODO: unimplemented instruction")?;
+        other => {
+            return Err(LaminaError::ValidationError(format!(
+                "x86_64 backend does not support MIR instruction {:?}",
+                other
+            )));
         }
     }
 
