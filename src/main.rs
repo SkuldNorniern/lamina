@@ -366,10 +366,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 lamina::target::TargetArchitecture::Wasm32
                 | lamina::target::TargetArchitecture::Wasm64 => "WASM",
                 lamina::target::TargetArchitecture::Aarch64 => "AArch64",
-                lamina::target::TargetArchitecture::Riscv32
-                | lamina::target::TargetArchitecture::Riscv64 => "RISC-V",
+                lamina::target::TargetArchitecture::Riscv32 => "RISC-V32",
+                lamina::target::TargetArchitecture::Riscv64 => "RISC-V64",
                 #[cfg(feature = "nightly")]
-                lamina::target::TargetArchitecture::Riscv128 => "RISC-V",
+                lamina::target::TargetArchitecture::Riscv128 => "RISC-V128",
                 _ => "unknown",
             };
 
