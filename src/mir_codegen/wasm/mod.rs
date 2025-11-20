@@ -113,7 +113,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
 pub fn generate_mir_wasm<W: Write>(
     module: &MirModule,
     writer: &mut W,
-    target_os: TargetOperatingSystem,
+    _target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
     // WASM module header
     writeln!(writer, "(module")?;
@@ -242,7 +242,7 @@ fn emit_instruction_wasm(
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
             }
         }
-        MirInst::Call { name, args, ret } => {
+        MirInst::Call { name, args, ret: _ } => {
             if name == "print" {
                 // Handle print intrinsic
                 if let Some(arg) = args.first() {
@@ -253,12 +253,12 @@ fn emit_instruction_wasm(
                 writeln!(writer, "      ;; TODO: function calls")?;
             }
         }
-        MirInst::Load {
-            dst,
-            addr,
-            ty: _,
-            attrs: _,
-        } => {
+            MirInst::Load {
+                dst,
+                addr: _,
+                ty: _,
+                attrs: _,
+            } => {
             writeln!(writer, "      ;; TODO: load instruction")?;
             // For now, just push a dummy value
             writeln!(writer, "      i64.const 0")?;

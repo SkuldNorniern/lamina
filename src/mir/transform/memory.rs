@@ -66,7 +66,7 @@ impl MemoryOptimization {
         changed
     }
 
-    fn eliminate_dead_stores_in_block(&self, block: &mut Block) -> bool {
+    fn eliminate_dead_stores_in_block(&self, _block: &mut Block) -> bool {
         // DISABLED: Dead store elimination can be unsafe in the presence of loops
         // and complex control flow. The analysis is too conservative and may remove
         // stores that are needed across loop iterations or complex control flow.
@@ -182,7 +182,9 @@ impl MemoryOptimization {
     /// - Reordering loads/stores for better cache locality
     /// - Adding prefetch hints
     /// - Optimizing strided access patterns
+    ///
     /// Optimize memory access patterns for better cache performance
+    ///
     /// This is particularly important for matrix operations
     fn optimize_memory_access_patterns(&self, func: &mut Function) -> bool {
         let mut changed = false;

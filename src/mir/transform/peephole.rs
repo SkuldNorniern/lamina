@@ -274,7 +274,7 @@ impl Peephole {
         // Strength reduction for multiplication by small constants
         // This is critical for matrix operations where we multiply by strides/sizes
         if let Some(const_val) = rhs_imm
-            && let Some((shift, add)) = decompose_multiplication(const_val)
+            && let Some((_shift, _add)) = decompose_multiplication(const_val)
         {
             // Convert multiplication to shifts and adds for better performance
             // This would typically be handled by the strength reduction pass
