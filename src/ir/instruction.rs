@@ -709,8 +709,8 @@ impl fmt::Display for Instruction<'_> {
                 mask,
             } => write!(
                 f,
-                "%{} = {}.shuffle.{} {}, {}, {}",
-                result, vector_type, mask, lhs, rhs
+                "%{} = shuffle.{} {}, {}, {}",
+                result, vector_type, lhs, rhs, mask
             ),
             #[cfg(feature = "nightly")]
             Instruction::SimdExtract {
