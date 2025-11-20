@@ -35,9 +35,13 @@ pub fn generate_mir_to_target<W: Write>(
             codegen.set_module(module);
             codegen.emit_into(module, writer)?;
         }
-        TargetArchitecture::Riscv32
-        | TargetArchitecture::Riscv64
-        | TargetArchitecture::Riscv128 => {
+        TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
+            let mut codegen = riscv::RiscVCodegen::new(target_os);
+            codegen.set_module(module);
+            codegen.emit_into(module, writer)?;
+        }
+        #[cfg(feature = "nightly")]
+        TargetArchitecture::Riscv128 => {
             let mut codegen = riscv::RiscVCodegen::new(target_os);
             codegen.set_module(module);
             codegen.emit_into(module, writer)?;
