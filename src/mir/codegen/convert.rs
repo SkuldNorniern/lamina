@@ -416,6 +416,27 @@ fn convert_instruction<'a>(
         }
     }
 
+    #[cfg(feature = "nightly")]
+    fn ir_address_mode_to_mir<'b>(
+        ptr: &IRVal<'b>,
+        vreg_alloc: &mut VirtualRegAllocator,
+        var_to_reg: &mut std::collections::HashMap<&'b str, Register>,
+    ) -> Result<AddressMode, FromIRError> {
+        match ptr {
+            IRVal::Variable(id) => {
+                let base = if let Some(r) = var_to_reg.get(id) {
+                    r.clone()
+                } else {
+                    let r = Register::Virtual(vreg_alloc.allocate_gpr());
+                    var_to_reg.insert(*id, r.clone());
+                    r
+                };
+                Ok(AddressMode::BaseOffset { base, offset: 0 })
+            }
+            IRVal::Constant(_) | IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
+        }
+    }
+
     match instr {
         crate::ir::instruction::Instruction::Binary {
             op,
@@ -1240,14 +1261,24 @@ fn convert_instruction<'a>(
                 var_to_reg.insert(*result, fresh.clone());
                 fresh
             };
-            let mir_ty = map_ir_prim(*ty)?;
+            let mir_ty = map_ir_type(ty)?;
             let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
             let mir_ordering = match ordering {
-                crate::ir::instruction::MemoryOrdering::Relaxed => crate::mir::MemoryOrdering::Relaxed,
-                crate::ir::instruction::MemoryOrdering::Acquire => crate::mir::MemoryOrdering::Acquire,
-                crate::ir::instruction::MemoryOrdering::Release => crate::mir::MemoryOrdering::Release,
-                crate::ir::instruction::MemoryOrdering::AcqRel => crate::mir::MemoryOrdering::AcqRel,
-                crate::ir::instruction::MemoryOrdering::SeqCst => crate::mir::MemoryOrdering::SeqCst,
+                crate::ir::instruction::MemoryOrdering::Relaxed => {
+                    crate::mir::MemoryOrdering::Relaxed
+                }
+                crate::ir::instruction::MemoryOrdering::Acquire => {
+                    crate::mir::MemoryOrdering::Acquire
+                }
+                crate::ir::instruction::MemoryOrdering::Release => {
+                    crate::mir::MemoryOrdering::Release
+                }
+                crate::ir::instruction::MemoryOrdering::AcqRel => {
+                    crate::mir::MemoryOrdering::AcqRel
+                }
+                crate::ir::instruction::MemoryOrdering::SeqCst => {
+                    crate::mir::MemoryOrdering::SeqCst
+                }
             };
             Ok(Some(Instruction::AtomicLoad {
                 ty: mir_ty,
@@ -1263,15 +1294,25 @@ fn convert_instruction<'a>(
             value,
             ordering,
         } => {
-            let mir_ty = map_ir_prim(*ty)?;
+            let mir_ty = map_ir_type(ty)?;
             let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
             let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
             let mir_ordering = match ordering {
-                crate::ir::instruction::MemoryOrdering::Relaxed => crate::mir::MemoryOrdering::Relaxed,
-                crate::ir::instruction::MemoryOrdering::Acquire => crate::mir::MemoryOrdering::Acquire,
-                crate::ir::instruction::MemoryOrdering::Release => crate::mir::MemoryOrdering::Release,
-                crate::ir::instruction::MemoryOrdering::AcqRel => crate::mir::MemoryOrdering::AcqRel,
-                crate::ir::instruction::MemoryOrdering::SeqCst => crate::mir::MemoryOrdering::SeqCst,
+                crate::ir::instruction::MemoryOrdering::Relaxed => {
+                    crate::mir::MemoryOrdering::Relaxed
+                }
+                crate::ir::instruction::MemoryOrdering::Acquire => {
+                    crate::mir::MemoryOrdering::Acquire
+                }
+                crate::ir::instruction::MemoryOrdering::Release => {
+                    crate::mir::MemoryOrdering::Release
+                }
+                crate::ir::instruction::MemoryOrdering::AcqRel => {
+                    crate::mir::MemoryOrdering::AcqRel
+                }
+                crate::ir::instruction::MemoryOrdering::SeqCst => {
+                    crate::mir::MemoryOrdering::SeqCst
+                }
             };
             Ok(Some(Instruction::AtomicStore {
                 ty: mir_ty,
@@ -1283,13 +1324,25 @@ fn convert_instruction<'a>(
         #[cfg(feature = "nightly")]
         crate::ir::instruction::Instruction::Fence { ordering } => {
             let mir_ordering = match ordering {
-                crate::ir::instruction::MemoryOrdering::Relaxed => crate::mir::MemoryOrdering::Relaxed,
-                crate::ir::instruction::MemoryOrdering::Acquire => crate::mir::MemoryOrdering::Acquire,
-                crate::ir::instruction::MemoryOrdering::Release => crate::mir::MemoryOrdering::Release,
-                crate::ir::instruction::MemoryOrdering::AcqRel => crate::mir::MemoryOrdering::AcqRel,
-                crate::ir::instruction::MemoryOrdering::SeqCst => crate::mir::MemoryOrdering::SeqCst,
+                crate::ir::instruction::MemoryOrdering::Relaxed => {
+                    crate::mir::MemoryOrdering::Relaxed
+                }
+                crate::ir::instruction::MemoryOrdering::Acquire => {
+                    crate::mir::MemoryOrdering::Acquire
+                }
+                crate::ir::instruction::MemoryOrdering::Release => {
+                    crate::mir::MemoryOrdering::Release
+                }
+                crate::ir::instruction::MemoryOrdering::AcqRel => {
+                    crate::mir::MemoryOrdering::AcqRel
+                }
+                crate::ir::instruction::MemoryOrdering::SeqCst => {
+                    crate::mir::MemoryOrdering::SeqCst
+                }
             };
-            Ok(Some(Instruction::Fence { ordering: mir_ordering }))
+            Ok(Some(Instruction::Fence {
+                ordering: mir_ordering,
+            }))
         }
         _ => Err(FromIRError::UnsupportedInstruction),
     }
