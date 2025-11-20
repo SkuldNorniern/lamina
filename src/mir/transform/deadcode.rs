@@ -234,6 +234,15 @@ impl DeadCodeElimination {
             | Instruction::VectorOp { .. }
             | Instruction::Lea { .. } => true,
 
+            // SIMD register-only ops are also pure (nightly only)
+            #[cfg(feature = "nightly")]
+            Instruction::SimdBinary { .. }
+                | Instruction::SimdUnary { .. }
+                | Instruction::SimdTernary { .. }
+                | Instruction::SimdShuffle { .. }
+                | Instruction::SimdExtract { .. }
+                | Instruction::SimdInsert { .. } => true,
+
             // Instructions with side effects - never remove
             Instruction::Load { .. }
             | Instruction::Store { .. }
@@ -248,6 +257,16 @@ impl DeadCodeElimination {
             | Instruction::StackMap { .. }
             | Instruction::PatchPoint { .. }
             | Instruction::Comment { .. } => false,
+
+            // SIMD memory and atomic operations have side effects (nightly only)
+            #[cfg(feature = "nightly")]
+            Instruction::SimdLoad { .. }
+                | Instruction::SimdStore { .. }
+                | Instruction::AtomicLoad { .. }
+                | Instruction::AtomicStore { .. }
+                | Instruction::AtomicBinary { .. }
+                | Instruction::AtomicCompareExchange { .. }
+                | Instruction::Fence { .. } => false,
         }
     }
 }
