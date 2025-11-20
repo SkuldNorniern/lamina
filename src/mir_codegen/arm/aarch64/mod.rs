@@ -195,16 +195,7 @@ fn emit_block<W: Write>(
                 let dl = if is32 { w_alias(s_d) } else { x_alias(s_d) };
                 let rl = if is32 { w_alias(s_l) } else { x_alias(s_l) };
                 // Track if lhs is a register (for potential slot copying)
-                let lhs_is_reg = matches!(lhs, crate::mir::Operand::Register(_));
-                let lhs_reg = if lhs_is_reg {
-                    if let crate::mir::Operand::Register(r) = lhs {
-                        Some(r.clone())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
+                let _lhs_is_reg = matches!(lhs, crate::mir::Operand::Register(_));
                 // Delay materializing rhs when we can use an immediate form (for shifts)
                 match op {
                     crate::mir::IntBinOp::Add => {
@@ -302,7 +293,6 @@ fn emit_block<W: Write>(
                             writeln!(w, "    asrv {}, {}, {}", dl, rl, rr)?;
                         }
                     },
-                    _ => writeln!(w, "    // TODO: unimplemented binop {}", op)?,
                 }
                 store_result(w, dst, &x_alias(s_d), frame, ra)?;
                 ra.free_scratch(s_l);

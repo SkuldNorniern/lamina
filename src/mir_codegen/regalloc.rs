@@ -57,7 +57,7 @@ pub trait RegisterAllocator {
     /// pool is exhausted so the caller may spill or choose an alternate path.
     fn alloc_scratch(&mut self) -> Option<Self::PhysReg>;
 
-    /// Release a scratch register obtained through [`alloc_scratch`].
+    /// Release a scratch register obtained through [`RegisterAllocator::alloc_scratch`].
     fn free_scratch(&mut self, phys: Self::PhysReg);
 
     /// Look up the physical register currently assigned to the virtual
