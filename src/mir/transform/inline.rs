@@ -75,7 +75,7 @@ impl ModuleInlining {
                     Ok(()) => {
                         inlined_count += 1;
                     }
-                    Err(e) => {
+                    Err(_e) => {
                         // Skip this inlining attempt and continue with others
                         // This allows the compiler to continue even if some functions can't be inlined
                         continue;
@@ -244,7 +244,7 @@ impl ModuleInlining {
         param_mapping: &HashMap<Register, Operand>,
     ) -> Result<(), String> {
         // Get the call instruction details first
-        let (call_result_reg, call_instr) = {
+        let (call_result_reg, _call_instr) = {
             let caller_func = module.functions.get(&call_site.caller).unwrap();
             let call_block = caller_func
                 .blocks

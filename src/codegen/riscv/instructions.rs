@@ -18,7 +18,7 @@ pub fn generate_instruction<'a, W: Write>(
         Instruction::Alloc {
             result,
             alloc_type,
-            allocated_ty,
+            allocated_ty: _,
         } => {
             // For stack allocations of aggregates, store the address of the slot into result
             match alloc_type {

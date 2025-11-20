@@ -384,7 +384,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to write MIR output: {}", e))?;
         }
 
-        return Ok(());
+        //return Ok(());
     }
     // if mir asm is not emitted
     if options.emit_mir_asm.is_none() && !options.emit_mir {

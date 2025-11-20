@@ -101,7 +101,7 @@ impl StrengthReduction {
 
         // Enhanced patterns for matrix operations and array indexing
         if let Some(const_val) = rhs_const {
-            if let Some((shift, add)) = decompose_multiplication(const_val) {
+            if let Some((_shift, _add)) = decompose_multiplication(const_val) {
                 // For constants that can be decomposed into shift + add
                 // This is particularly useful for matrix strides and array indexing
                 // Note: This would require instruction sequence changes, which we can't do here
@@ -155,7 +155,7 @@ impl StrengthReduction {
                 }
                 _ => {
                     // Check for decompositions into sum of powers of 2
-                    if let Some((shift1, shift2)) = decompose_multiplication(const_val) {
+                    if let Some((_shift1, _shift2)) = decompose_multiplication(const_val) {
                         // Could potentially generate: (x << shift1) + (x << shift2)
                         // but current IR structure doesn't support this easily.
                         // Leave for future enhancement when we have instruction combining.
@@ -165,7 +165,7 @@ impl StrengthReduction {
                     // Check for multiplication by negative constants
                     if const_val < 0 {
                         let abs_val = const_val.abs();
-                        if let Some(power_of_2) = is_power_of_2(abs_val) {
+                        if let Some(_power_of_2) = is_power_of_2(abs_val) {
                             // x * (-2^k) → -(x << k)
                             // This would require changing the instruction significantly
                             // Leave for now as it's complex to implement safely
