@@ -395,10 +395,10 @@ fn convert_instruction<'a>(
     use crate::ir::instruction::{BinaryOp as IRBin, CmpOp as IRCmp};
     use crate::ir::types::{PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
 
-    fn get_operand_permissive<'a>(
-        v: &IRVal<'a>,
+    fn get_operand_permissive<'b>(
+        v: &IRVal<'b>,
         vreg_alloc: &mut VirtualRegAllocator,
-        var_to_reg: &mut std::collections::HashMap<&'a str, Register>,
+        var_to_reg: &mut std::collections::HashMap<&'b str, Register>,
     ) -> Result<Operand, FromIRError> {
         match v {
             IRVal::Variable(id) => {
