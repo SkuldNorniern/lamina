@@ -613,7 +613,7 @@ impl Peephole {
             crate::mir::AddressMode::BaseIndexScale {
                 base: _,
                 index: _,
-                scale,
+                scale: _,
                 offset: _,
             } => {
                 // Optimize index*scale patterns common in array access
@@ -649,17 +649,7 @@ impl Peephole {
             "print" => {
                 // For print intrinsics, we can sometimes optimize constant strings
                 // or eliminate no-op prints
-                if let Some(first_arg) = args.first() {
-                    if let Operand::Immediate(Immediate::I64(0)) = first_arg {
-                        // Printing 0 - this might be optimizable in some contexts
-                        // but we need to be careful about side effects
-                        false
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+                matches!(args.first(), Some(Operand::Immediate(Immediate::I64(0))))
             }
             "malloc" | "free" | "memcpy" => {
                 // Memory operation intrinsics - could optimize sizes, alignments, etc.
@@ -744,7 +734,7 @@ impl Peephole {
     /// Try to fuse multiply-accumulate operations for better ILP
     fn try_fuse_multiply_accumulate(
         &self,
-        block: &mut Block,
+        _block: &mut Block,
         add_idx: usize,
         mul_idx: usize,
     ) -> bool {

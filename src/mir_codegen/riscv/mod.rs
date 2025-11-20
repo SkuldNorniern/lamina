@@ -259,12 +259,12 @@ fn emit_instruction_riscv<W: Write>(
                 store_register_to_register("a0", vreg, writer, reg_alloc)?;
             }
         }
-            MirInst::Load {
-                dst,
-                addr: _,
-                ty: _,
-                attrs: _,
-            } => {
+        MirInst::Load {
+            dst,
+            addr: _,
+            ty: _,
+            attrs: _,
+        } => {
             writeln!(writer, "    # TODO: load instruction")?;
             // For now, just push a dummy value
             if let Register::Virtual(vreg) = dst {

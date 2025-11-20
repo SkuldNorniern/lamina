@@ -704,10 +704,11 @@ impl Instruction {
                     regs.push(r);
                 }
             }
-            Instruction::FloatUnary { src, .. } => {
-                if let Operand::Register(r) = src {
-                    regs.push(r);
-                }
+            Instruction::FloatUnary {
+                src: Operand::Register(r),
+                ..
+            } => {
+                regs.push(r);
             }
             Instruction::Select {
                 cond,
@@ -881,11 +882,10 @@ impl Instruction {
                 }
             }
             Instruction::Ret {
-                value: Some(val), ..
+                value: Some(Operand::Register(r)),
+                ..
             } => {
-                if let Operand::Register(r) = val {
-                    regs.push(r);
-                }
+                regs.push(r);
             }
             _ => {}
         }

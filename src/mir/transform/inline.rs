@@ -693,10 +693,8 @@ impl ModuleInlining {
             Instruction::Switch { value, .. } => {
                 *value = self.map_register(value, register_mapping)?;
             }
-            Instruction::Ret { value } => {
-                if let Some(val) = value {
-                    *val = self.map_operand(val, register_mapping, param_mapping)?;
-                }
+            Instruction::Ret { value: Some(val) } => {
+                *val = self.map_operand(val, register_mapping, param_mapping)?;
             }
             _ => {} // Other instructions don't use registers or are handled elsewhere
         }

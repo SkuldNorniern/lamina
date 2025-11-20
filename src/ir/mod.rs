@@ -241,11 +241,13 @@
 //!     .function_with_params("conditional_add", vec![
 //!         lamina::ir::FunctionParameter {
 //!             name: "a",
-//!             ty: Type::Primitive(PrimitiveType::I32)
+//!             ty: Type::Primitive(PrimitiveType::I32),
+//!             annotations: vec![]
 //!         },
 //!         lamina::ir::FunctionParameter {
 //!             name: "b",
-//!             ty: Type::Primitive(PrimitiveType::I32)
+//!             ty: Type::Primitive(PrimitiveType::I32),
+//!             annotations: vec![]
 //!         }
 //!     ], Type::Primitive(PrimitiveType::I32))
 //!
@@ -562,7 +564,8 @@
 //!     .function_with_params("process_data", vec![
 //!         lamina::ir::FunctionParameter {
 //!             name: "size",
-//!             ty: Type::Primitive(PrimitiveType::I32)
+//!             ty: Type::Primitive(PrimitiveType::I32),
+//!             annotations: vec![]
 //!         }
 //!     ], Type::Void)
 //!

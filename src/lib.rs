@@ -141,7 +141,8 @@
 //!     .function_with_params("memory_workflow", vec![
 //!         lamina::ir::FunctionParameter {
 //!             name: "input",
-//!             ty: Type::Primitive(PrimitiveType::I32)
+//!             ty: Type::Primitive(PrimitiveType::I32),
+//!             annotations: vec![]
 //!         }
 //!     ], Type::Primitive(PrimitiveType::I32))
 //!
@@ -183,7 +184,8 @@
 //!     .function_with_params("process_data", vec![
 //!         lamina::ir::FunctionParameter {
 //!             name: "data",
-//!             ty: Type::Primitive(PrimitiveType::I32)
+//!             ty: Type::Primitive(PrimitiveType::I32),
+//!             annotations: vec![]
 //!         }
 //!     ], Type::Void)
 //!
