@@ -250,10 +250,8 @@ impl CopyPropagation {
                     changed = true;
                 }
             }
-            Instruction::Ret { value } => {
-                if let Some(val) = value {
-                    changed |= self.replace_operand(val, value_map);
-                }
+            Instruction::Ret { value: Some(val) } => {
+                changed |= self.replace_operand(val, value_map);
             }
             _ => {}
         }

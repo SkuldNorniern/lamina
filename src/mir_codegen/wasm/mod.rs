@@ -172,11 +172,9 @@ pub fn generate_mir_wasm<W: Write>(
         // Map virtual registers to local indices
         let mut vreg_to_local: std::collections::HashMap<crate::mir::VirtualReg, usize> =
             std::collections::HashMap::new();
-        let mut local_idx = 0;
-        for vreg in local_vregs {
+        for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
             vreg_to_local.insert(*vreg, local_idx);
             writeln!(writer, "{}", WasmABI::generate_local_decl(local_idx))?;
-            local_idx += 1;
         }
 
         // Function body
@@ -253,12 +251,12 @@ fn emit_instruction_wasm(
                 writeln!(writer, "      ;; TODO: function calls")?;
             }
         }
-            MirInst::Load {
-                dst,
-                addr: _,
-                ty: _,
-                attrs: _,
-            } => {
+        MirInst::Load {
+            dst,
+            addr: _,
+            ty: _,
+            attrs: _,
+        } => {
             writeln!(writer, "      ;; TODO: load instruction")?;
             // For now, just push a dummy value
             writeln!(writer, "      i64.const 0")?;
