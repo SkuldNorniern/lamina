@@ -753,8 +753,7 @@ impl Instruction {
                 }
             }
             #[cfg(feature = "nightly")]
-            Instruction::SimdUnary { src, .. }
-            | Instruction::SimdExtract { vector: src, .. } => {
+            Instruction::SimdUnary { src, .. } | Instruction::SimdExtract { vector: src, .. } => {
                 if let Operand::Register(r) = src {
                     regs.push(r);
                 }
@@ -772,7 +771,12 @@ impl Instruction {
                 }
             }
             #[cfg(feature = "nightly")]
-            Instruction::SimdInsert { vector, scalar, lane_index, .. } => {
+            Instruction::SimdInsert {
+                vector,
+                scalar,
+                lane_index,
+                ..
+            } => {
                 if let Operand::Register(r) = vector {
                     regs.push(r);
                 }
@@ -839,7 +843,12 @@ impl Instruction {
                 }
             }
             #[cfg(feature = "nightly")]
-            Instruction::AtomicCompareExchange { expected, desired, addr, .. } => {
+            Instruction::AtomicCompareExchange {
+                expected,
+                desired,
+                addr,
+                ..
+            } => {
                 if let Operand::Register(r) = expected {
                     regs.push(r);
                 }
@@ -1085,7 +1094,11 @@ impl fmt::Display for Instruction {
                 dst,
                 vector,
                 lane_index,
-            } => write!(f, "{} = extract_lane.{} {}, {}", dst, ty, vector, lane_index),
+            } => write!(
+                f,
+                "{} = extract_lane.{} {}, {}",
+                dst, ty, vector, lane_index
+            ),
             #[cfg(feature = "nightly")]
             Instruction::SimdInsert {
                 ty,
@@ -1093,21 +1106,25 @@ impl fmt::Display for Instruction {
                 vector,
                 scalar,
                 lane_index,
-            } => write!(f, "{} = insert_lane.{} {}, {}, {}", dst, ty, vector, scalar, lane_index),
+            } => write!(
+                f,
+                "{} = insert_lane.{} {}, {}, {}",
+                dst, ty, vector, scalar, lane_index
+            ),
             #[cfg(feature = "nightly")]
             Instruction::SimdLoad {
                 ty,
                 dst,
                 addr,
                 attrs,
-            } => write!(f, "{} = load_simd.{} [{}] {}", dst, ty, addr, attrs),
+            } => write!(f, "{} = load_simd.{} {}", dst, ty, addr),
             #[cfg(feature = "nightly")]
             Instruction::SimdStore {
                 ty,
                 src,
                 addr,
                 attrs,
-            } => write!(f, "store_simd.{} {}, [{}] {}", ty, src, addr, attrs),
+            } => write!(f, "store_simd.{} {}, {}", ty, src, addr),
             #[cfg(feature = "nightly")]
             Instruction::AtomicLoad {
                 ty,
@@ -1130,7 +1147,11 @@ impl fmt::Display for Instruction {
                 addr,
                 value,
                 ordering,
-            } => write!(f, "{} = {}.{} [{}] {}, {}", dst, op, ty, addr, value, ordering),
+            } => write!(
+                f,
+                "{} = {}.{} [{}] {}, {}",
+                dst, op, ty, addr, value, ordering
+            ),
             #[cfg(feature = "nightly")]
             Instruction::AtomicCompareExchange {
                 ty,
