@@ -1,6 +1,6 @@
 [package]
 name = "lamina"
-version = "0.0.7-dev"
+version = "0.0.7"
 edition = "2024"
 authors = ["Eira <eira@nornity.com>"]
 description = "High-performance compiler backend for Lamina Intermediate Representation"
@@ -20,4 +20,3 @@ default = []
 #use_mold = []
 # Enable experimental/nightly features (may change without notice)
 nightly = []
-
