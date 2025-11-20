@@ -51,6 +51,7 @@ pub enum TargetArchitecture {
     Arm32,
     Riscv32,
     Riscv64,
+    #[cfg(feature = "nightly")]
     Riscv128,
     Wasm32,
     Wasm64,
@@ -66,6 +67,7 @@ impl TargetArchitecture {
             "arm32" => Self::Arm32,
             "riscv32" => Self::Riscv32,
             "riscv64" => Self::Riscv64,
+            #[cfg(feature = "nightly")]
             "riscv128" => Self::Riscv128,
             "wasm32" => Self::Wasm32,
             "wasm64" => Self::Wasm64,
@@ -86,6 +88,7 @@ pub enum TargetOperatingSystem {
     NetBSD,
     DragonFly,
     Redox,
+    #[cfg(feature = "nightly")]
     Artery,
     Unknown,
 }
@@ -101,6 +104,7 @@ impl TargetOperatingSystem {
             "netbsd" => Self::NetBSD,
             "dragonfly" => Self::DragonFly,
             "redox" => Self::Redox,
+            #[cfg(feature = "nightly")]
             "artery" => Self::Artery,
             // Keep backward compatibility
             "bsd" => Self::FreeBSD, // default to FreeBSD for generic "bsd"
@@ -117,6 +121,7 @@ impl fmt::Display for TargetArchitecture {
             Self::Arm32 => "arm32",
             Self::Riscv32 => "riscv32",
             Self::Riscv64 => "riscv64",
+            #[cfg(feature = "nightly")]
             Self::Riscv128 => "riscv128",
             Self::Wasm32 => "wasm32",
             Self::Wasm64 => "wasm64",
@@ -138,6 +143,7 @@ impl fmt::Display for TargetOperatingSystem {
             Self::NetBSD => "netbsd",
             Self::DragonFly => "dragonfly",
             Self::Redox => "redox",
+            #[cfg(feature = "nightly")]
             Self::Artery => "artery",
             Self::Unknown => "unknown",
         };
@@ -158,6 +164,7 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "wasm64_unknown",
     "riscv32_unknown",
     "riscv64_unknown",
+    #[cfg(feature = "nightly")]
     "riscv128_unknown",
 ];
 
@@ -179,8 +186,6 @@ pub fn detect_host_architecture_only() -> &'static str {
     return "riscv32";
     #[cfg(target_arch = "riscv64")]
     return "riscv64";
-    #[cfg(target_arch = "riscv128")]
-    return "riscv128";
 
     // Default fallback
     #[allow(unreachable_code)]
@@ -209,8 +214,6 @@ pub fn detect_host_os() -> &'static str {
     return "dragonfly";
     #[cfg(target_os = "redox")]
     return "redox";
-    #[cfg(target_os = "artery")]
-    return "artery";
 
     // Default fallback
     #[allow(unreachable_code)]
@@ -225,7 +228,8 @@ pub fn detect_host_os() -> &'static str {
 /// - x86_64_unknown, x86_64_linux, x86_64_windows, x86_64_macos
 /// - aarch64_unknown, aarch64_macos, aarch64_linux, aarch64_windows
 /// - wasm32_unknown, wasm64_unknown
-/// - riscv32_unknown, riscv64_unknown, riscv128_unknown
+/// - riscv32_unknown, riscv64_unknown
+/// - riscv128_unknown (nightly feature only)
 ///
 /// Falls back to "x86_64_unknown" for unsupported combinations.
 ///
@@ -248,6 +252,7 @@ pub fn detect_host_architecture() -> &'static str {
         ("wasm64", _) => "wasm64_unknown",
         ("riscv32", _) => "riscv32_unknown",
         ("riscv64", _) => "riscv64_unknown",
+        #[cfg(feature = "nightly")]
         ("riscv128", _) => "riscv128_unknown",
         _ => {
             // Fallback for unsupported combinations
@@ -273,6 +278,18 @@ mod tests {
         assert_eq!(
             new_result, old_result,
             "detect_host().to_str() and detect_host_architecture() should return the same result"
+        );
+    }
+
+    #[test]
+    fn test_from_str_roundtrip() {
+        let host = Target::detect_host();
+        let str_repr = host.to_str();
+        let parsed_back = Target::from_str(&str_repr);
+
+        assert_eq!(
+            host, parsed_back,
+            "from_str/to_str should be a roundtrip operation"
         );
     }
 

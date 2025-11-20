@@ -19,8 +19,11 @@ pub fn public_symbol(func_name: &str, os: TargetOperatingSystem) -> (Option<Stri
         | TargetOperatingSystem::NetBSD
         | TargetOperatingSystem::DragonFly
         | TargetOperatingSystem::Redox
-        | TargetOperatingSystem::Artery
         | TargetOperatingSystem::Unknown => {
+            (Some(format!(".globl {}", func_name)), func_name.to_string())
+        }
+        #[cfg(feature = "nightly")]
+        TargetOperatingSystem::Artery => {
             (Some(format!(".globl {}", func_name)), func_name.to_string())
         }
     }
