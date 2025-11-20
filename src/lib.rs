@@ -18,16 +18,13 @@
 //!
 //! ```rust
 //! use lamina::{compile_lamina_ir_to_assembly};
-//! use lamina::target::{Target, architecture_name};
+//! use lamina::target::Target;
 //! use std::io::Write;
 //!
 //! // Detect the host architecture
 //! let target = Target::detect_host();
 //! println!("Host target: {}", target);
-//!
-//! // Or just get the architecture name
-//! let arch = architecture_name();
-//! println!("Architecture: {}", arch);
+//! println!("Architecture: {}", target.architecture);
 //!
 //! // Compile IR to assembly
 //! let ir_code = r#"
@@ -264,6 +261,23 @@
 //! - **Suggestions**: Helpful hints for fixing common issues
 //! - **Multiple errors**: Reports all errors found, not just the first one
 //!
+//! ## Nightly Features
+//!
+//! Lamina includes experimental features that are gated behind the `nightly` feature flag:
+//!
+//! - **Atomic Operations**: Thread-safe memory operations with memory ordering constraints
+//! - **Module Annotations**: Module-level attributes for optimization and debugging hints
+//! - **Experimental Targets**: Additional target architectures (e.g., RISC-V 128-bit)
+//!
+//! To enable nightly features, compile with:
+//!
+//! ```toml
+//! [dependencies]
+//! lamina = { version = "0.0.7", features = ["nightly"] }
+//! ```
+//!
+//! **Note**: Nightly features are experimental and may change or be removed in future versions.
+//!
 //! ## Future Roadmap
 //!
 //! - **Additional architectures**: RISC-V, WebAssembly, and more
@@ -370,6 +384,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         // RISC-V targets
         "riscv32_unknown" => codegen::generate_riscv32_assembly(&module, output_asm)?,
         "riscv64_unknown" => codegen::generate_riscv64_assembly(&module, output_asm)?,
+        #[cfg(feature = "nightly")]
         "riscv128_unknown" => codegen::generate_riscv128_assembly(&module, output_asm)?,
         _ => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
