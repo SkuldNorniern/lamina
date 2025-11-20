@@ -14,13 +14,14 @@ fn print_usage() {
     eprintln!("  -c, --compiler <n>      Force specific compiler (gcc, clang, cl)");
     eprintln!("  -f, --flag <flag>       Pass additional flag to compiler");
     eprintln!("  --emit-asm              Only emit assembly file without compiling");
-    eprintln!("  --target <arch>         Specify target architecture (x86_64, aarch64)");
+    eprintln!("  --target <arch_os>      Specify target (e.g., x86_64_linux)");
     eprintln!("  --emit-mir              Only emit MIR (.lumir) and exit");
     eprintln!(
-        "  --emit-mir-asm          EXPERIMENTAL: emit assembly from MIR (uses --target for OS)"
+        "  --emit-mir-asm          EXPERIMENTAL: emit assembly from MIR (uses --target for OS, architecture)"
     );
-    eprintln!("  --opt-level <n>         Set optimization level (0-3, default: 1)");
-    eprintln!("  --timeout <secs>        Abort after N seconds (best-effort)");
+    eprintln!(
+        "  --opt-level <n>         EXPERIMENTAL(mir only): Set optimization level (0-3, default: 1)"
+    );
     eprintln!("  -h, --help              Display this help message");
 }
 
@@ -34,7 +35,6 @@ struct CompileOptions {
     emit_mir: bool,
     emit_mir_asm: Option<String>,
     target_arch: Option<String>,
-    timeout_secs: Option<u64>,
     opt_level: u8,
 }
 
@@ -59,7 +59,6 @@ fn parse_args() -> Result<CompileOptions, String> {
         emit_mir: false,
         emit_mir_asm: None,
         target_arch: None,
-        timeout_secs: None,
         opt_level: 1, // Default optimization level
     };
 
@@ -107,19 +106,19 @@ fn parse_args() -> Result<CompileOptions, String> {
                 if i + 1 >= args.len() {
                     return Err("Missing argument for target architecture".to_string());
                 }
-                let target = args[i + 1].to_lowercase();
-
-                // Validate target by trying to parse it
-                if lamina::target::Target::from_str(&target).architecture
-                    == lamina::target::TargetArchitecture::Unknown
+                let requested_target = args[i + 1].to_lowercase();
+                if !requested_target.contains('_')
+                    || !lamina::target::HOST_ARCH_LIST
+                        .iter()
+                        .any(|&supported| supported == requested_target)
                 {
                     return Err(format!(
-                        "Unsupported target architecture: {}\nSupported values: \n{}",
-                        target,
-                        lamina::target::HOST_ARCH_LIST.join(",\n")
+                        "Unsupported target '{}'. Supported values:\n{}",
+                        requested_target,
+                        lamina::target::HOST_ARCH_LIST.join(", ")
                     ));
                 }
-                options.target_arch = Some(target);
+                options.target_arch = Some(requested_target);
                 i += 2;
             }
             "--opt-level" => {
@@ -133,16 +132,6 @@ fn parse_args() -> Result<CompileOptions, String> {
                     return Err("--opt-level must be between 0 and 3".to_string());
                 }
                 options.opt_level = level;
-                i += 2;
-            }
-            "--timeout" => {
-                if i + 1 >= args.len() {
-                    return Err("Missing argument for --timeout".to_string());
-                }
-                let secs = args[i + 1]
-                    .parse::<u64>()
-                    .map_err(|_| "Invalid --timeout value (must be integer seconds)".to_string())?;
-                options.timeout_secs = Some(secs);
                 i += 2;
             }
             "--version" => {
@@ -378,8 +367,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 | lamina::target::TargetArchitecture::Wasm64 => "WASM",
                 lamina::target::TargetArchitecture::Aarch64 => "AArch64",
                 lamina::target::TargetArchitecture::Riscv32
-                | lamina::target::TargetArchitecture::Riscv64
-                | lamina::target::TargetArchitecture::Riscv128 => "RISC-V",
+                | lamina::target::TargetArchitecture::Riscv64 => "RISC-V",
+                #[cfg(feature = "nightly")]
+                lamina::target::TargetArchitecture::Riscv128 => "RISC-V",
                 _ => "unknown",
             };
 
@@ -394,9 +384,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to write MIR output: {}", e))?;
         }
 
-        // return Ok(());
+        return Ok(());
     }
-    // if mir asm is not emmit
+    // if mir asm is not emitted
     if options.emit_mir_asm.is_none() && !options.emit_mir {
         // Choose compilation method based on target
         let compilation_result = if let Some(target_str) = &options.target_arch {
@@ -482,9 +472,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Build command with appropriate arguments
     let mut cmd = Command::new(compiler_name);
+    let using_msvc = compiler_name.eq_ignore_ascii_case("cl");
 
     // Add any compiler-specific flags first
-    for arg in compiler_args {
+    for arg in &compiler_args {
         cmd.arg(arg);
     }
 
@@ -493,8 +484,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         cmd.arg(flag);
     }
 
-    // Add input and output files
-    cmd.arg(&asm_path).arg("-o").arg(&exec_path);
+    if using_msvc {
+        cmd.arg(&asm_path);
+        cmd.arg(format!("/Fe{}", exec_path.display()));
+    } else {
+        // Add input and output files
+        cmd.arg(&asm_path).arg("-o").arg(&exec_path);
+    }
 
     if options.verbose {
         println!("[VERBOSE] Executing: {:?}", cmd);
