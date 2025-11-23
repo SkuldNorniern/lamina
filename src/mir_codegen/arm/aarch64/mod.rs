@@ -299,6 +299,82 @@ fn emit_block<W: Write>(
                 ra.free_scratch(s_r);
                 ra.free_scratch(s_d);
             }
+            MirInst::FloatBinary {
+                op,
+                lhs,
+                rhs,
+                dst,
+                ty,
+            } => {
+                let s_l = ra.alloc_scratch().unwrap_or("x19");
+                let s_r = ra.alloc_scratch().unwrap_or("x20");
+                let s_d = ra.alloc_scratch().unwrap_or("x21");
+                emit_materialize_operand(w, lhs, s_l, frame, ra)?;
+                emit_materialize_operand(w, rhs, s_r, frame, ra)?;
+                
+                let is32 = ty.size_bytes() == 4;
+                let suffix = if is32 { "s" } else { "d" };
+                
+                if is32 {
+                    writeln!(w, "    fmov s0, {}", w_alias(s_l))?;
+                    writeln!(w, "    fmov s1, {}", w_alias(s_r))?;
+                } else {
+                    writeln!(w, "    fmov d0, {}", x_alias(s_l))?;
+                    writeln!(w, "    fmov d1, {}", x_alias(s_r))?;
+                }
+                
+                match op {
+                    crate::mir::FloatBinOp::FAdd => writeln!(w, "    fadd {}0, {}0, {}1", suffix, suffix, suffix)?,
+                    crate::mir::FloatBinOp::FSub => writeln!(w, "    fsub {}0, {}0, {}1", suffix, suffix, suffix)?,
+                    crate::mir::FloatBinOp::FMul => writeln!(w, "    fmul {}0, {}0, {}1", suffix, suffix, suffix)?,
+                    crate::mir::FloatBinOp::FDiv => writeln!(w, "    fdiv {}0, {}0, {}1", suffix, suffix, suffix)?,
+                }
+                
+                if is32 {
+                    writeln!(w, "    fmov {}, s0", w_alias(s_d))?;
+                } else {
+                    writeln!(w, "    fmov {}, d0", x_alias(s_d))?;
+                }
+                
+                store_result(w, dst, &x_alias(s_d), frame, ra)?;
+                ra.free_scratch(s_l);
+                ra.free_scratch(s_r);
+                ra.free_scratch(s_d);
+            }
+            MirInst::FloatUnary {
+                op,
+                src,
+                dst,
+                ty,
+            } => {
+                let s_s = ra.alloc_scratch().unwrap_or("x19");
+                let s_d = ra.alloc_scratch().unwrap_or("x20");
+                emit_materialize_operand(w, src, s_s, frame, ra)?;
+                
+                let is32 = ty.size_bytes() == 4;
+                let suffix = if is32 { "s" } else { "d" };
+                
+                if is32 {
+                    writeln!(w, "    fmov s0, {}", w_alias(s_s))?;
+                } else {
+                    writeln!(w, "    fmov d0, {}", x_alias(s_s))?;
+                }
+                
+                match op {
+                    crate::mir::FloatUnOp::FNeg => writeln!(w, "    fneg {}0, {}0", suffix, suffix)?,
+                    crate::mir::FloatUnOp::FSqrt => writeln!(w, "    fsqrt {}0, {}0", suffix, suffix)?,
+                }
+                
+                if is32 {
+                    writeln!(w, "    fmov {}, s0", w_alias(s_d))?;
+                } else {
+                    writeln!(w, "    fmov {}, d0", x_alias(s_d))?;
+                }
+                
+                store_result(w, dst, &x_alias(s_d), frame, ra)?;
+                ra.free_scratch(s_s);
+                ra.free_scratch(s_d);
+            }
             MirInst::IntCmp {
                 op,
                 lhs,
@@ -328,6 +404,46 @@ fn emit_block<W: Write>(
                     crate::mir::IntCmpOp::UGt => "hi",
                     crate::mir::IntCmpOp::UGe => "hs",
                 };
+                writeln!(w, "    cset {}, {}", x_alias(s_d), cond)?;
+                store_result(w, dst, &x_alias(s_d), frame, ra)?;
+                ra.free_scratch(s_l);
+                ra.free_scratch(s_r);
+                ra.free_scratch(s_d);
+            }
+            MirInst::FloatCmp {
+                op,
+                lhs,
+                rhs,
+                dst,
+                ty,
+            } => {
+                let s_l = ra.alloc_scratch().unwrap_or("x19");
+                let s_r = ra.alloc_scratch().unwrap_or("x20");
+                let s_d = ra.alloc_scratch().unwrap_or("x21");
+                emit_materialize_operand(w, lhs, s_l, frame, ra)?;
+                emit_materialize_operand(w, rhs, s_r, frame, ra)?;
+                
+                let is32 = ty.size_bytes() == 4;
+                
+                if is32 {
+                    writeln!(w, "    fmov s0, {}", w_alias(s_l))?;
+                    writeln!(w, "    fmov s1, {}", w_alias(s_r))?;
+                    writeln!(w, "    fcmp s0, s1")?;
+                } else {
+                    writeln!(w, "    fmov d0, {}", x_alias(s_l))?;
+                    writeln!(w, "    fmov d1, {}", x_alias(s_r))?;
+                    writeln!(w, "    fcmp d0, d1")?;
+                }
+                
+                let cond = match op {
+                    crate::mir::FloatCmpOp::Eq => "eq",
+                    crate::mir::FloatCmpOp::Ne => "ne",
+                    crate::mir::FloatCmpOp::Lt => "mi",
+                    crate::mir::FloatCmpOp::Le => "ls",
+                    crate::mir::FloatCmpOp::Gt => "gt",
+                    crate::mir::FloatCmpOp::Ge => "ge",
+                };
+                
                 writeln!(w, "    cset {}, {}", x_alias(s_d), cond)?;
                 store_result(w, dst, &x_alias(s_d), frame, ra)?;
                 ra.free_scratch(s_l);
