@@ -192,10 +192,10 @@ fn emit_instruction_riscv<W: Write>(
             ty: _,
         } => {
             // Load lhs to a0
-            load_operand_to_register(lhs, writer, reg_alloc, "a0")?;
+            load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "a0")?;
 
             // Load rhs to a1
-            load_operand_to_register(rhs, writer, reg_alloc, "a1")?;
+            load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "a1")?;
 
             // Perform operation
             match op {
@@ -216,7 +216,7 @@ fn emit_instruction_riscv<W: Write>(
 
             // Store result
             if let Register::Virtual(vreg) = dst {
-                store_register_to_register("a0", vreg, writer, reg_alloc)?;
+                store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
         }
         MirInst::IntCmp {
@@ -227,24 +227,24 @@ fn emit_instruction_riscv<W: Write>(
             ty: _,
         } => {
             // Load lhs to a0
-            load_operand_to_register(lhs, writer, reg_alloc, "a0")?;
+            load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "a0")?;
 
             // Load rhs to a1
-            load_operand_to_register(rhs, writer, reg_alloc, "a1")?;
+            load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "a1")?;
 
             // Perform comparison
             emit_int_cmp_op(op, writer)?;
 
             // Store result
             if let Register::Virtual(vreg) = dst {
-                store_register_to_register("a0", vreg, writer, reg_alloc)?;
+                store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
         }
         MirInst::Call { name, args, ret } => {
             // Handle print intrinsic
             if name == "print" {
                 if let Some(arg) = args.first() {
-                    load_operand_to_register(arg, writer, reg_alloc, "a0")?;
+                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a0")?;
                     // Print integer (simplified - would need proper printf setup)
                     writeln!(writer, "    # print intrinsic - would call printf")?;
                 }
@@ -256,32 +256,62 @@ fn emit_instruction_riscv<W: Write>(
                 && let Register::Virtual(vreg) = ret_reg
             {
                 // Assume return value is in a0
-                store_register_to_register("a0", vreg, writer, reg_alloc)?;
+                store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
         }
         MirInst::Load {
             dst,
-            addr: _,
+            addr,
             ty: _,
             attrs: _,
         } => {
-            writeln!(writer, "    # TODO: load instruction")?;
-            // For now, just push a dummy value
-            if let Register::Virtual(vreg) = dst {
-                store_register_to_register("zero", vreg, writer, reg_alloc)?;
+            match addr {
+                crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
+                    // Load base address into t0
+                    match base {
+                        Register::Virtual(v) => load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?,
+                        Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
+                    }
+                    
+                    // Load value from [t0 + offset] into a0
+                    // TODO: Handle different types (lw vs ld) based on ty
+                    writeln!(writer, "    ld a0, {}(t0)", offset)?;
+                    
+                    // Store a0 into dst
+                    if let Register::Virtual(vreg) = dst {
+                        store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
+                    }
+                }
+                _ => writeln!(writer, "    # TODO: complex addressing modes for Load")?,
             }
         }
         MirInst::Store {
-            addr: _,
-            src: _,
+            addr,
+            src,
             ty: _,
             attrs: _,
         } => {
-            writeln!(writer, "    # TODO: store instruction")?;
+            // Load value to store into a0
+            load_operand_to_register(src, writer, reg_alloc, stack_slots, "a0")?;
+            
+            match addr {
+                crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
+                    // Load base address into t0
+                    match base {
+                        Register::Virtual(v) => load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?,
+                        Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
+                    }
+                    
+                    // Store a0 into [t0 + offset]
+                    // TODO: Handle different types (sw vs sd) based on ty
+                    writeln!(writer, "    sd a0, {}(t0)", offset)?;
+                }
+                _ => writeln!(writer, "    # TODO: complex addressing modes for Store")?,
+            }
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
-                load_operand_to_register(val, writer, reg_alloc, "a0")?;
+                load_operand_to_register(val, writer, reg_alloc, stack_slots, "a0")?;
             }
             // Epilogue
             let stack_size = stack_slots.len() * 8;
@@ -296,7 +326,7 @@ fn emit_instruction_riscv<W: Write>(
             false_target,
         } => {
             if let Register::Virtual(vreg) = cond {
-                load_register_to_register(vreg, writer, reg_alloc, "t0")?;
+                load_register_to_register(vreg, writer, reg_alloc, stack_slots, "t0")?;
                 writeln!(writer, "    bnez t0, .L_{}", true_target)?;
                 writeln!(writer, "    j .L_{}", false_target)?;
             }
