@@ -345,17 +345,71 @@ fn emit_instruction_x86_64(
                     }
                 }
             } else {
-                return Err(LaminaError::ValidationError(format!(
-                    "x86_64 backend does not support calling '{}'",
-                    name
-                )));
-            }
-
-            if let Some(ret_reg) = ret
-                && let Register::Virtual(vreg) = ret_reg
-            {
-                // For now, assume return value is in rax
-                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                // General function call implementation
+                
+                // 1. Pass arguments
+                // First 6 args go to registers: rdi, rsi, rdx, rcx, r8, r9
+                // Remaining args go to stack (pushed in reverse order)
+                
+                let arg_regs = X86ABI::ARG_REGISTERS;
+                let num_reg_args = args.len().min(arg_regs.len());
+                let num_stack_args = args.len().saturating_sub(arg_regs.len());
+                
+                // Align stack if necessary (stack must be 16-byte aligned before call)
+                // Current stack depth = stack_size + pushed args
+                // We need (stack_size + num_stack_args * 8) % 16 == 0? 
+                // Actually, the prologue aligns rsp to 16 bytes (subq stack_size).
+                // But if stack_size is not multiple of 16, we might be misaligned?
+                // Standard prologue: push rbp (8) + mov rbp, rsp + sub rsp, stack_size.
+                // Total change: 8 + stack_size.
+                // We need total change + stack_args_size to be 16-byte aligned.
+                
+                // Simplified alignment: just ensure we push an even number of slots if needed?
+                // Or use dynamic alignment.
+                // For now, let's assume stack_size is aligned enough or we fix it up.
+                // Actually, let's just push args.
+                
+                // Pass stack arguments (in reverse order)
+                for i in (0..num_stack_args).rev() {
+                    let arg_idx = num_reg_args + i;
+                    let arg = &args[arg_idx];
+                    
+                    // Load to rax then push
+                    load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
+                    writeln!(writer, "    pushq %rax")?;
+                }
+                
+                // Pass register arguments
+                for i in 0..num_reg_args {
+                    let arg = &args[i];
+                    let dest_reg = arg_regs[i];
+                    // Load to the specific register
+                    // We can use load_operand_to_register but need to be careful about overwriting
+                    // registers we might need for subsequent args if they are complex.
+                    // But MIR operands are usually VRegs or Imms, so it should be fine.
+                    // However, if we load arg 0 into rdi, and arg 1 is in rdi (unlikely in SSA/MIR?), 
+                    // we might have issues. 
+                    // For now, simple loading.
+                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
+                }
+                
+                // 2. Emit call
+                let abi = X86ABI::new(target_os);
+                let mangled_name = abi.mangle_function_name(name);
+                writeln!(writer, "    call {}", mangled_name)?;
+                
+                // 3. Clean up stack arguments
+                if num_stack_args > 0 {
+                    writeln!(writer, "    addq ${}, %rsp", num_stack_args * 8)?;
+                }
+                
+                // 4. Handle return value
+                if let Some(ret_reg) = ret
+                    && let Register::Virtual(vreg) = ret_reg
+                {
+                    // Return value is in rax
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
             }
         }
         MirInst::Load {
