@@ -6,11 +6,12 @@ pub fn load_register_to_register<W: std::io::Write>(
     src: &VirtualReg,
     writer: &mut W,
     reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
     dest_reg: &str,
 ) -> Result<(), std::io::Error> {
     if let Some(phys) = reg_alloc.get_mapping(src) {
         writeln!(writer, "    mv {}, {}", dest_reg, phys)?;
-    } else if let Some(offset) = reg_alloc.get_stack_slot(src) {
+    } else if let Some(offset) = stack_slots.get(src) {
         writeln!(writer, "    ld {}, {}(fp)", dest_reg, offset)?;
     } else {
         panic!("Virtual register {:?} has no mapping or stack slot", src);
@@ -24,10 +25,11 @@ pub fn store_register_to_register<W: std::io::Write>(
     dst: &VirtualReg,
     writer: &mut W,
     reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
 ) -> Result<(), std::io::Error> {
     if let Some(phys) = reg_alloc.get_mapping(dst) {
         writeln!(writer, "    mv {}, {}", phys, src_reg)?;
-    } else if let Some(offset) = reg_alloc.get_stack_slot(dst) {
+    } else if let Some(offset) = stack_slots.get(dst) {
         writeln!(writer, "    sd {}, {}(fp)", src_reg, offset)?;
     } else {
         panic!("Virtual register {:?} has no mapping or stack slot", dst);
@@ -40,11 +42,12 @@ pub fn load_operand_to_register<W: std::io::Write>(
     operand: &crate::mir::Operand,
     writer: &mut W,
     reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
     dest_reg: &str,
 ) -> Result<(), std::io::Error> {
     match operand {
         crate::mir::Operand::Register(reg) => match reg {
-            Register::Virtual(v) => load_register_to_register(v, writer, reg_alloc, dest_reg),
+            Register::Virtual(v) => load_register_to_register(v, writer, reg_alloc, stack_slots, dest_reg),
             Register::Physical(p) => {
                 writeln!(writer, "    mv {}, {}", dest_reg, p.name)?;
                 Ok(())
