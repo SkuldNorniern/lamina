@@ -21,7 +21,7 @@ fn @create_person(i64 %id, i64 %age) -> ptr {
 # Recursive factorial
 fn @factorial(i64 %n) -> i64 {
   entry:
-    %is_zero = cmp.i64 eq %n, 0
+    %is_zero = eq.i64 %n, 0
     br %is_zero, @base_case, @recursive_case
 
   base_case:
@@ -37,11 +37,11 @@ fn @factorial(i64 %n) -> i64 {
 # Fibonacci sequence
 fn @fibonacci(i64 %n) -> i64 {
   entry:
-    %is_zero = cmp.i64 eq %n, 0
+    %is_zero = eq.i64 %n, 0
     br %is_zero, @fib_base, @check_one
 
   check_one:
-    %is_one = cmp.i64 eq %n, 1
+    %is_one = eq.i64 %n, 1
     br %is_one, @fib_base, @fib_recursive
 
   fib_base:
@@ -66,7 +66,7 @@ fn @sum_array(ptr %arr, i64 %size) -> i64 {
     br @loop_condition
 
   loop_condition:
-    %i_lt_size = cmp.i64 lt %i, %size
+    %i_lt_size = lt.i64 %i, %size
     br %i_lt_size, @loop_body, @loop_end
 
   loop_body:

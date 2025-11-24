@@ -1,0 +1,166 @@
+# Additional Edge Cases Test
+# Covers:
+# 1. Function with many arguments (stack passing)
+# 2. Arithmetic wrapping (overflow/underflow)
+# 3. Nested control flow
+
+# Test 1: Function with 10 arguments (AArch64 passes 8 in regs, 2 on stack)
+fn @test_many_args(i64 %a1, i64 %a2, i64 %a3, i64 %a4, i64 %a5, i64 %a6, i64 %a7, i64 %a8, i64 %a9, i64 %a10) -> i64 {
+  entry:
+    # Sum all arguments
+    %s1 = add.i64 %a1, %a2
+    %s2 = add.i64 %s1, %a3
+    %s3 = add.i64 %s2, %a4
+    %s4 = add.i64 %s3, %a5
+    %s5 = add.i64 %s4, %a6
+    %s6 = add.i64 %s5, %a7
+    %s7 = add.i64 %s6, %a8
+    %s8 = add.i64 %s7, %a9
+    %s9 = add.i64 %s8, %a10
+    ret.i64 %s9
+}
+
+# Test 2: Arithmetic wrapping (using i8 for simplicity)
+fn @test_wrapping() -> i64 {
+  entry:
+    # 127 + 1 = -128 (signed i8 overflow)
+    %max = add.i8 127, 0
+    %overflow = add.i8 %max, 1
+    
+    # -128 - 1 = 127 (signed i8 underflow)
+    %min = add.i8 -128, 0
+    %underflow = sub.i8 %min, 1
+    
+    # Extend to i64 to return sum
+    %o_ext = zext.i8.i64 %overflow
+    %u_ext = zext.i8.i64 %underflow
+    
+    # Note: zext treats i8 as unsigned, so -128 becomes 128, 127 becomes 127
+    # -128 (0x80) -> 128
+    # 127 (0x7F) -> 127
+    %sum = add.i64 %o_ext, %u_ext
+    ret.i64 %sum
+}
+
+# Test 3: Nested control flow
+fn @test_nested_flow(i64 %limit) -> i64 {
+  entry:
+    %sum = alloc.stack i64
+    store.i64 %sum, 0
+    %i = alloc.stack i64
+    store.i64 %i, 0
+    jmp loop_header
+
+  loop_header:
+    %curr_i = load.i64 %i
+    %cond = lt.i64 %curr_i, %limit
+    br %cond, loop_body, loop_exit
+
+  loop_body:
+    # If i is even, add i*2, else add i
+    %rem = rem.i64 %curr_i, 2
+    %is_even = eq.i64 %rem, 0
+    br %is_even, add_even, add_odd
+
+  add_even:
+    %curr_sum_e = load.i64 %sum
+    %term_e = mul.i64 %curr_i, 2
+    %new_sum_e = add.i64 %curr_sum_e, %term_e
+    store.i64 %sum, %new_sum_e
+    jmp loop_inc
+
+  add_odd:
+    %curr_sum_o = load.i64 %sum
+    %new_sum_o = add.i64 %curr_sum_o, %curr_i
+    store.i64 %sum, %new_sum_o
+    jmp loop_inc
+
+  loop_inc:
+    %next_i = add.i64 %curr_i, 1
+    store.i64 %i, %next_i
+    jmp loop_header
+
+  loop_exit:
+    %final_sum = load.i64 %sum
+    ret.i64 %final_sum
+}
+
+fn @main() -> i64 {
+  entry:
+    # Test 1: Many args
+    # 1+2+3+4+5+6+7+8+9+10 = 55
+    %res1 = call @test_many_args(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+    %dummy1 = call @print_number(%res1)
+    %nl1 = writebyte 10
+
+    # Test 2: Wrapping
+    # overflow: 127 + 1 -> -128 (0x80) -> zext -> 128
+    # underflow: -128 - 1 -> 127 (0x7F) -> zext -> 127
+    # sum: 128 + 127 = 255
+    %res2 = call @test_wrapping()
+    %dummy2 = call @print_number(%res2)
+    %nl2 = writebyte 10
+
+    # Test 3: Nested flow
+    # limit = 5
+    # i=0 (even): sum += 0*2 = 0
+    # i=1 (odd):  sum += 1   = 1
+    # i=2 (even): sum += 2*2 = 1 + 4 = 5
+    # i=3 (odd):  sum += 3   = 5 + 3 = 8
+    # i=4 (even): sum += 4*2 = 8 + 8 = 16
+    %res3 = call @test_nested_flow(5)
+    %dummy3 = call @print_number(%res3)
+    %nl3 = writebyte 10
+
+    ret.i64 0
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}

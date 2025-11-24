@@ -8,99 +8,8 @@ import os
 import subprocess
 import sys
 import glob
+import argparse
 from pathlib import Path
-
-# Test cases with their expected outputs
-TEST_CASES = {
-    # Basic functionality
-    'simple_const.lamina': ['42'],
-    'arithmetic.lamina': ['5'],
-    'loops.lamina': ['15'],
-    'conditionals.lamina': ['100'],
-    'functions.lamina': ['80'],
-    'constants.lamina': ['42'],
-    'variables.lamina': ['10', '20', '30', '25', '50'],
-
-    # Advanced functionality
-    'complex_arithmetic.lamina': ['277600'],
-    'nested_calls.lamina': ['256'],
-    'large_constants.lamina': ['42'],
-    'stress_test.lamina': ['210'],
-
-    # Debugging and consistency tests
-    'memory_test.lamina': ['100', '200', '300', '400', '500'],
-    'register_pressure.lamina': ['136'],
-    'stack_operations.lamina': ['650', '1150', '1650'],
-    'function_call_isolation.lamina': ['15', '16', '30', '24', '220'],
-    'edge_cases.lamina': ['0', '0', '-5', '100', '0', '42'],  # Note: -5 is printed as -5
-
-    # Recursion tests (kept only essential ones)
-    'recursive_factorial.lamina': ['1', '1', '2', '6', '24'],  # Factorial recursion
-    'recursive_fibonacci.lamina': ['0', '1', '1', '2', '3', '5'],  # Fibonacci recursion
-    'recursive_sum.lamina': ['0', '1', '3', '6', '10', '15'],  # Sum from 1 to n
-    'recursion_with_calculation.lamina': ['6'],  # Simple factorial calculation
-    'stack_overflow_test.lamina': ['42'],  # Stack overflow protection
-
-    # Memory Management Tests (Note: heap allocation requires runtime support)
-     'heap_memory.lamina': ['50', '600'],  # heap allocation/deallocation tests - requires malloc
-     'stack_allocation.lamina': ['50', '90', '100'],  # complete stack allocation tests
-     'load_store_operations.lamina': ['1'],  # basic load/store test only
-
-    # Advanced Tests (Note: Some require additional implementation)
-     'pointer_operations.lamina': ['42', '100'],  # simple stack alloc and GEP test
-     'gep_variable_indices.lamina': ['30', '42', '30', '3230'],  # GEP operations with variable indices - comprehensive test
-     'pointer_arithmetic_brainfuck.lamina': ['42'],  # Pointer arithmetic with ptrtoint/inttoptr - returns stored value
-     'struct_operations.lamina': ['500'],  # struct operations - basic struct allocation only
-     'tuple_operations.lamina': ['0'],  # tuple operations - basic tuple operations (extraction not fully implemented)
-     'type_conversion.lamina': ['100', '60', '1', '1', '1', '1', '50'],  # zero extension - requires proper type system
-     # 'advanced_control_flow.lamina': ['100', '1000', '100', '10', '1', '0', '2', '10', '1100', '101', '84', '48'],  # phi nodes - requires SSA implementation
-     'external_functions.lamina': ['60', '100', '17', '123', '10'],  # external functions - basic structure
-     'debug_printing.lamina': ['27'],  # basic integer printing test
-
-     # I/O Tests
-     'hello_world.lamina': ['Hello World'],
-     'io_basic.lamina': ['Hello'],  # Basic writebyte operations
-     'io_pointer.lamina': ['42'],   # Pointer dereference I/O
-     'io_comprehensive.lamina': ['Hi!', '12345', 'DONE', '12445'],  # Combined I/O operations
-     'io_writeptr.lamina': ['OK'],  # WritePtr I/O - writes binary address + OK message
-
-     # Comprehensive Type Tests
-     'primitive_types_simple.lamina': ['60', '60', '16', '16', '32', '32', '2000000', '64', '1', '67', '32', '64'],  # All primitive types (simplified)
-     # 'array_operations_simple.lamina': ['300'],  # Simple array operations (disabled due to segfault)
-     'pointer_operations_simple.lamina': ['42', '100', '1000'],  # Simple pointer operations
-     'struct_operations_simple.lamina': ['30'],  # Simple struct operations
-     'tuple_operations_simple.lamina': ['0'],  # Simple tuple operations (not fully implemented)
-     'type_conversions_simple.lamina': ['100'],  # Simple type conversions
-     'primitive_types_fixed.lamina': ['60', '60', '16', '16', '32', '32', '2000000', '64', '1', '67'],  # Fixed primitive types
-     'pointer_operations_fixed.lamina': ['42', '100', '1000', '42'],  # Fixed pointer operations
-     # 'array_operations_comprehensive.lamina': ['60', '250', '2000', '50000', '300000', '600000', '10000000000', '1', '3', '72', '8', '6', '6'],  # Array operations (disabled due to segfault)
-     # 'struct_operations_fixed.lamina': ['30', '124'],  # Fixed struct operations (disabled due to segfault)
-     'tuple_operations_fixed.lamina': ['0'],  # Fixed tuple operations (not fully implemented)
-     'type_conversions_fixed.lamina': ['100', '1000'],  # Fixed type conversions
-     'brainfuck_like.lamina': ['2'],  # Brainfuck-like array operations test
-     'gep_element_size_bug_test.lamina': ['3000002000001000'],  # GEP element size test
-     'struct_field_offset_bug_test.lamina': ['44444003333222011', '3000201'],  # Struct field offset test
-     'division_small_types_bug_test.lamina': ['6', '14', '6', '16', '3'],  # Division small types test
-     'floating_point_bug_test.lamina': ['32', '64', '123', '42'],  # Floating point test
-    'heap_allocation_bug_test.lamina': ['12345', '600', '333', '123457831'],  # Heap allocation test
-    'edge_cases_bug_test.lamina': ['127128128127', '-4093720114651070465', '20', '0', '1000'],  # Edge cases test
-    'dealloc_stack_vs_heap_bug_test.lamina': ['100042'],  # Stack vs heap deallocation bug test
-    'getfieldptr_offset_bug_test.lamina': ['3566'],  # GetFieldPtr offset bug test
-    'gep_element_size_comprehensive_bug_test.lamina': ['42'],  # GEP element size comprehensive bug test
-    'register_size_mismatch_bug_test.lamina': ['1738067755672081826'],  # Register size mismatch bug test
-    'stack_frame_overflow_bug_test.lamina': ['333222111'],  # Stack frame overflow bug test
-    'floating_point_register_bug_test.lamina': ['3'],  # Floating point register bug test
-    'load_store_optimization_bug_test.lamina': ['305422896125369200'],  # Load/store optimization bug test
-    'calling_convention_bug_test.lamina': ['15'],  # Calling convention bug test
-
-    # I/O Tests (Interactive - requires user input)
-    # Note: These tests are now automated with input piping
-    'stdin.lamina': ['65', '10', '66'],  # Stdin read operations - reads A(65), newline(10), B(66)
-    'io_basic.lamina': ['Hello'],  # Basic I/O operations - just writes "Hello"
-    'io_buffer.lamina': ['66', '117', '102'],  # Buffer-based I/O - reads 3 bytes (B,u,f)
-    'io_types.lamina': ['@ATEST'],  # I/O with different data types - '@' from binary data, 'A' and 'TEST' combined
-    'io_comprehensive.lamina': ['Hi!', '12345', 'DONE', '12445'],  # Combined I/O operations - writes various outputs
-}
 
 class Colors:
     GREEN = '\033[92m'
@@ -123,7 +32,7 @@ def run_command(cmd, cwd=None):
             text=True,
             cwd=cwd,
             timeout=60,
-            errors='replace'  # Replace invalid UTF-8 with replacement character
+            errors='replace'
         )
         return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
     except subprocess.TimeoutExpired:
@@ -131,51 +40,70 @@ def run_command(cmd, cwd=None):
     except Exception as e:
         return False, "", str(e)
 
-def compile_and_run_test(test_file):
+def load_expected_output(test_path):
+    """Load expected output from .expected or expected_output.txt file"""
+    test_path = Path(test_path)
+    
+    # Try .expected first (standard for testcases)
+    expected_path = test_path.with_suffix('.expected')
+    
+    # If not found, try expected_output.txt (standard for benchmarks)
+    if not expected_path.exists():
+        expected_path = test_path.parent / "expected_output.txt"
+        
+    if not expected_path.exists():
+        return None
+
+    with open(expected_path, 'r') as f:
+        lines = f.readlines()
+
+    expected_values = []
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith('#'):
+            expected_values.append(line)
+            
+    return expected_values
+
+def compile_and_run_test(test_path, use_mir=False):
     """Compile and run a test case, return the output lines"""
     project_root = Path(__file__).parent
-    testcase_path = project_root / 'testcases' / test_file
-    executable_name = test_file.replace('.lamina', '')
-
+    test_path = Path(test_path)
+    executable_name = test_path.stem
+    
     # Define stdin input for interactive tests
     stdin_inputs = {
-        'stdin.lamina': 'A\nBUFFER_TEST\nB',  # A (65), then "BUFFER_TEST" (11 bytes), then B (66)
-        'io_buffer.lamina': 'Buf',  # B(66), u(117), f(102) - 3 bytes
+        'stdin.lamina': 'A\nBUFFER_TEST\nB',
+        'io_buffer.lamina': 'Buf',
     }
 
     # Compile the test
-    compile_cmd = f"cargo run --release --quiet testcases/{test_file} "
+    cmd_flags = "--emit-mir-asm" if use_mir else ""
+    compile_cmd = f"cargo run --release --quiet {test_path} {cmd_flags}"
     success, stdout, stderr = run_command(compile_cmd, cwd=project_root)
-
 
     if not success:
         return False, f"Compilation failed: {stderr}"
 
-    stdin_input = stdin_inputs.get(test_file)
+    stdin_input = stdin_inputs.get(test_path.name)
 
     if stdin_input:
-        # Use subprocess with stdin input for interactive tests
         try:
             result = subprocess.run(
-                ['./stdin'],  # Use executable directly, not through shell
+                [f'./{executable_name}'],
                 capture_output=True,
                 text=True,
                 cwd=project_root,
                 input=stdin_input,
                 timeout=60,
-                errors='replace'  # Replace invalid UTF-8 with replacement character
+                errors='replace'
             )
-            # For stdin test, success is determined by whether we got expected output,
-            # not by return code (which is the first byte value)
-            success = True  # stdin test can return non-zero (the first byte value)
+            success = True
             stdout = result.stdout.strip()
             stderr = result.stderr.strip()
-        except subprocess.TimeoutExpired:
-            return False, "Command timed out"
         except Exception as e:
             return False, f"Execution failed: {str(e)}"
     else:
-        # Regular execution for non-interactive tests
         run_cmd = f"./{executable_name}"
         success, stdout, stderr = run_command(run_cmd, cwd=project_root)
 
@@ -185,22 +113,15 @@ def compile_and_run_test(test_file):
     # Return output lines (filter out empty lines and debug text)
     output_lines = [line.strip() for line in stdout.split('\n') if line.strip()]
 
-    # For stdin tests, filter to only get the final numeric results after "Results:" line
-    if test_file == 'stdin.lamina' and 'Results:' in output_lines:
+    # Test-specific output filtering
+    if test_path.name == 'stdin.lamina' and 'Results:' in output_lines:
         results_start = output_lines.index('Results:') + 1
         output_lines = output_lines[results_start:]
-
-    # For io_buffer test, filter to only get the numeric results (skip the "Buffer" text)
-    elif test_file == 'io_buffer.lamina' and len(output_lines) >= 3:
-        # Skip the first line which is the "Buffer" text, keep only the 3 read bytes
+    elif test_path.name == 'io_buffer.lamina' and len(output_lines) >= 3:
         output_lines = output_lines[-3:]
-
-    # For io_types test, extract only the text output (skip binary data from writeptr)
-    elif test_file == 'io_types.lamina':
-        # Filter to keep only printable ASCII characters, remove binary data
+    elif test_path.name == 'io_types.lamina':
         filtered_lines = []
         for line in output_lines:
-            # Keep only lines that contain printable characters
             printable_line = ''.join(c for c in line if ord(c) >= 32 and ord(c) <= 126)
             if printable_line.strip():
                 filtered_lines.append(printable_line.strip())
@@ -208,32 +129,44 @@ def compile_and_run_test(test_file):
 
     return True, output_lines
 
-def run_tests():
+def run_tests(use_mir=False):
     """Run all test cases and report results"""
-    print_colored("🧪 Running Lamina Test Suite", Colors.BOLD + Colors.BLUE)
+    mode = "MIR Codegen" if use_mir else "Legacy Codegen"
+    print_colored(f"🧪 Running Lamina Test Suite ({mode})", Colors.BOLD + Colors.BLUE)
     print_colored("=" * 50, Colors.BLUE)
     
     passed = 0
     failed = 0
     
-    for test_file, expected_output in TEST_CASES.items():
-        print(f"\n📝 Testing {test_file}...")
+    # Discover tests
+    test_files = sorted(glob.glob("testcases/*.lamina"))
+    benchmark_files = sorted(glob.glob("benchmarks/*/*.lamina"))
+    all_tests = test_files + benchmark_files
+    
+    for test_path in all_tests:
+        test_name = Path(test_path).name
+        print(f"\n📝 Testing {test_name}...", end="", flush=True)
         
-        success, result = compile_and_run_test(test_file)
+        expected_output = load_expected_output(test_path)
+        if expected_output is None:
+             print_colored(f"\n⚠️  Skipping {test_name} (No expected output found)", Colors.YELLOW)
+             continue
+
+        success, result = compile_and_run_test(test_path, use_mir)
         
         if not success:
-            print_colored(f"❌ FAILED: {result}", Colors.RED)
+            print_colored(f"\n❌ FAILED: {result}", Colors.RED)
             failed += 1
             continue
         
         actual_output = result
         
         if actual_output == expected_output:
-            print_colored(f"✅ PASSED", Colors.GREEN)
-            print(f"   Output: {actual_output}")
+            print_colored(f"\r📝 Testing {test_name}... ✅ PASSED", Colors.GREEN)
+            # print(f"   Output: {actual_output}")
             passed += 1
         else:
-            print_colored(f"❌ FAILED: Output mismatch", Colors.RED)
+            print_colored(f"\n❌ FAILED: Output mismatch", Colors.RED)
             print(f"   Expected: {expected_output}")
             print(f"   Actual:   {actual_output}")
             failed += 1
@@ -251,20 +184,43 @@ def run_tests():
 def list_tests():
     """List available test cases"""
     print_colored("📋 Available Test Cases:", Colors.BOLD + Colors.BLUE)
-    for i, (test_file, expected) in enumerate(TEST_CASES.items(), 1):
-        print(f"{i:2d}. {test_file:<20} → {expected}")
+    
+    test_files = sorted(glob.glob("testcases/*.lamina"))
+    benchmark_files = sorted(glob.glob("benchmarks/*/*.lamina"))
+    
+    print_colored("\nStandard Tests:", Colors.BLUE)
+    for test_path in test_files:
+        print(f"  {Path(test_path).name}")
+        
+    print_colored("\nBenchmarks:", Colors.BLUE)
+    for test_path in benchmark_files:
+        print(f"  {Path(test_path).name} ({test_path})")
 
-def run_single_test(test_name):
+def run_single_test(test_name, use_mir=False):
     """Run a single test case"""
-    if test_name not in TEST_CASES:
-        print_colored(f"❌ Test '{test_name}' not found", Colors.RED)
-        list_tests()
+    # Try to find the test file
+    if os.path.exists(test_name):
+        test_path = test_name
+    elif os.path.exists(f"testcases/{test_name}"):
+        test_path = f"testcases/{test_name}"
+    else:
+        # Search in benchmarks
+        matches = glob.glob(f"benchmarks/*/{test_name}")
+        if matches:
+            test_path = matches[0]
+        else:
+            print_colored(f"❌ Test '{test_name}' not found", Colors.RED)
+            list_tests()
+            return
+    
+    print_colored(f"🧪 Running single test: {test_path}", Colors.BOLD + Colors.BLUE)
+    
+    expected_output = load_expected_output(test_path)
+    if expected_output is None:
+        print_colored(f"⚠️  No expected output found for {test_path}", Colors.YELLOW)
         return
-    
-    print_colored(f"🧪 Running single test: {test_name}", Colors.BOLD + Colors.BLUE)
-    
-    success, result = compile_and_run_test(test_name)
-    expected = TEST_CASES[test_name]
+
+    success, result = compile_and_run_test(test_path, use_mir)
     
     if not success:
         print_colored(f"❌ FAILED: {result}", Colors.RED)
@@ -272,24 +228,25 @@ def run_single_test(test_name):
     
     actual_output = result
     
-    if actual_output == expected:
+    if actual_output == expected_output:
         print_colored(f"✅ PASSED", Colors.GREEN)
         print(f"   Output: {actual_output}")
     else:
         print_colored(f"❌ FAILED: Output mismatch", Colors.RED)
-        print(f"   Expected: {expected}")
+        print(f"   Expected: {expected_output}")
         print(f"   Actual:   {actual_output}")
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--list":
-            list_tests()
-        elif sys.argv[1] == "--help":
-            print("Usage:")
-            print("  python run_tests.py           # Run all tests")
-            print("  python run_tests.py --list    # List available tests")
-            print("  python run_tests.py <test>    # Run single test")
-        else:
-            run_single_test(sys.argv[1])
+    parser = argparse.ArgumentParser(description='Lamina Test Runner')
+    parser.add_argument('test', nargs='?', help='Specific test case to run')
+    parser.add_argument('--list', action='store_true', help='List available tests')
+    parser.add_argument('--mir', action='store_true', help='Use MIR codegen backend')
+    
+    args = parser.parse_args()
+    
+    if args.list:
+        list_tests()
+    elif args.test:
+        run_single_test(args.test, args.mir)
     else:
-        run_tests()
+        run_tests(args.mir)
