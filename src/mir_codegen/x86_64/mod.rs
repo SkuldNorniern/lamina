@@ -339,11 +339,57 @@ fn emit_instruction_x86_64(
                     writeln!(writer, "    movq %rax, %rsi")?;
                     if target_os == TargetOperatingSystem::MacOS {
                         writeln!(writer, "    call _printf")?;
+                        // Flush stdout to ensure output appears immediately when mixing with syscall I/O
+                        writeln!(writer, "    movq $0, %rdi")?; // NULL flushes all streams
+                        writeln!(writer, "    call _fflush")?;
                     } else {
                         writeln!(writer, "    xorl %eax, %eax")?;
                         writeln!(writer, "    call printf")?;
+                        // Flush stdout to ensure output appears immediately when mixing with syscall I/O
+                        writeln!(writer, "    movq $0, %rdi")?; // NULL flushes all streams
+                        writeln!(writer, "    call fflush")?;
                     }
                 }
+            } else if name == "writebyte" && args.len() == 1 {
+                // Write single byte to stdout using write syscall
+                // Allocate space on stack for the byte (keep 16-byte aligned)
+                writeln!(writer, "    subq $16, %rsp")?; // Allocate 16 bytes (aligned)
+                
+                // Load byte value to rax
+                load_operand_to_rax(args.first().unwrap(), writer, reg_alloc, stack_slots)?;
+                
+                // Store byte at [rsp]
+                writeln!(writer, "    movb %al, (%rsp)")?;
+                
+                // Set up syscall arguments
+                match target_os {
+                    TargetOperatingSystem::MacOS => {
+                        // macOS: write syscall number is 0x2000004
+                        writeln!(writer, "    movq $0x2000004, %rax")?; // write syscall
+                        writeln!(writer, "    movq $1, %rdi")?; // stdout
+                        writeln!(writer, "    movq %rsp, %rsi")?; // buffer = stack pointer
+                        writeln!(writer, "    movq $1, %rdx")?; // size = 1 byte
+                        writeln!(writer, "    syscall")?;
+                    }
+                    _ => {
+                        // Linux: write syscall number is 1
+                        writeln!(writer, "    movq $1, %rax")?; // write syscall
+                        writeln!(writer, "    movq $1, %rdi")?; // stdout
+                        writeln!(writer, "    movq %rsp, %rsi")?; // buffer = stack pointer
+                        writeln!(writer, "    movq $1, %rdx")?; // size = 1 byte
+                        writeln!(writer, "    syscall")?;
+                    }
+                }
+                
+                // Handle return value (syscall result is in rax)
+                if let Some(ret_reg) = ret
+                    && let Register::Virtual(vreg) = ret_reg
+                {
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
+                
+                // Restore stack
+                writeln!(writer, "    addq $16, %rsp")?;
             } else {
                 // General function call implementation
                 

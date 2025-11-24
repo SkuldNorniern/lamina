@@ -600,12 +600,18 @@ fn emit_block<W: Write>(
                             writeln!(w, "    add x0, x0, .L_mir_fmt_int@PAGEOFF")?;
                             writeln!(w, "    str x1, [sp]")?; // spill the vararg as required by ABI
                             writeln!(w, "    bl _printf")?;
+                            // Flush stdout to ensure output appears immediately when mixing with syscall I/O
+                            writeln!(w, "    mov x0, #0")?; // NULL flushes all streams
+                            writeln!(w, "    bl _fflush")?;
                             writeln!(w, "    add sp, sp, #32")?; // restore stack
                         }
                         _ => {
                             writeln!(w, "    adrp x0, .L_mir_fmt_int")?;
                             writeln!(w, "    add x0, x0, :lo12:.L_mir_fmt_int")?;
                             writeln!(w, "    bl printf")?;
+                            // Flush stdout to ensure output appears immediately when mixing with syscall I/O
+                            writeln!(w, "    mov x0, #0")?; // NULL flushes all streams
+                            writeln!(w, "    bl fflush")?;
                         }
                     }
                     if let Some(dst) = ret {
@@ -626,6 +632,9 @@ fn emit_block<W: Write>(
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    mov x16, #4")?; // write syscall
                             writeln!(w, "    svc #0")?;
+                            // Memory barrier to ensure syscall completes before subsequent operations
+                            // This prevents reordering of I/O operations
+                            writeln!(w, "    dmb sy")?;
                             // Return result in x0
                             if let Some(dst) = ret {
                                 store_result(w, dst, "x0", frame, ra)?;
@@ -642,6 +651,9 @@ fn emit_block<W: Write>(
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    bl write")?;
+                            // Memory barrier to ensure syscall completes before subsequent operations
+                            // This prevents reordering of I/O operations
+                            writeln!(w, "    dmb sy")?;
                             if let Some(dst) = ret {
                                 store_result(w, dst, "x0", frame, ra)?;
                             }
