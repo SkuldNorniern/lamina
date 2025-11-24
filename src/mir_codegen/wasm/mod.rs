@@ -240,7 +240,7 @@ fn emit_instruction_wasm(
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
             }
         }
-        MirInst::Call { name, args, ret: _ } => {
+        MirInst::Call { name, args, ret } => {
             if name == "print" {
                 // Handle print intrinsic
                 if let Some(arg) = args.first() {
@@ -248,29 +248,210 @@ fn emit_instruction_wasm(
                     writeln!(writer, "      call $log")?;
                 }
             } else {
-                writeln!(writer, "      ;; TODO: function calls")?;
+                // General function call implementation
+                // WebAssembly passes all arguments on the stack in order
+                for arg in args.iter() {
+                    load_operand_wasm(arg, writer, vreg_to_local)?;
+                }
+                
+                // Call the function
+                writeln!(writer, "      call ${}", name)?;
+                
+                // Note: WebAssembly functions return values on the stack
+                // If there's a return value, it's already on the stack
+            }
+            
+            // Handle return value (already on stack if function returns)
+            if let Some(ret_reg) = ret {
+                if let Register::Virtual(vreg) = ret_reg {
+                    store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
+                }
             }
         }
         MirInst::Load {
             dst,
-            addr: _,
-            ty: _,
+            addr,
+            ty,
             attrs: _,
         } => {
-            writeln!(writer, "      ;; TODO: load instruction")?;
-            // For now, just push a dummy value
-            writeln!(writer, "      i64.const 0")?;
+            // Compute address: base + offset
+            match addr {
+                crate::mir::AddressMode::BaseOffset { base, offset } => {
+                    // Load base address onto stack
+                    load_register_wasm(base, writer, vreg_to_local)?;
+                    
+                    // Add offset if non-zero
+                    if *offset != 0 {
+                        writeln!(writer, "      i64.const {}", *offset as i64)?;
+                        writeln!(writer, "      i64.add")?;
+                    }
+                    
+                    // Emit load instruction based on type
+                    match ty {
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
+                            writeln!(writer, "      i64.load8_u")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => {
+                            writeln!(writer, "      i64.load16_u")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
+                            writeln!(writer, "      i64.load32_u")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
+                        | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
+                            writeln!(writer, "      i64.load")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
+                            writeln!(writer, "      f32.load")?;
+                            // Convert to i64 for storage (WebAssembly uses separate stacks)
+                            writeln!(writer, "      i32.reinterpret_f32")?;
+                            writeln!(writer, "      i64.extend_i32_u")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => {
+                            writeln!(writer, "      f64.load")?;
+                            // Convert to i64 for storage
+                            writeln!(writer, "      i64.reinterpret_f64")?;
+                        }
+                        _ => {
+                            // Default to i64 for unknown types
+                            writeln!(writer, "      i64.load")?;
+                        }
+                    }
+                }
+                crate::mir::AddressMode::BaseIndexScale { base, index, scale, offset } => {
+                    // Load base address
+                    load_register_wasm(base, writer, vreg_to_local)?;
+                    
+                    // Load index
+                    load_register_wasm(index, writer, vreg_to_local)?;
+                    
+                    // Scale index
+                    writeln!(writer, "      i64.const {}", *scale as i64)?;
+                    writeln!(writer, "      i64.mul")?;
+                    
+                    // Add base + scaled index
+                    writeln!(writer, "      i64.add")?;
+                    
+                    // Add offset if non-zero
+                    if *offset != 0 {
+                        writeln!(writer, "      i64.const {}", *offset as i64)?;
+                        writeln!(writer, "      i64.add")?;
+                    }
+                    
+                    // Emit load instruction based on type (same as BaseOffset)
+                    match ty {
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
+                            writeln!(writer, "      i64.load8_u")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => {
+                            writeln!(writer, "      i64.load16_u")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
+                            writeln!(writer, "      i64.load32_u")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
+                        | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
+                            writeln!(writer, "      i64.load")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
+                            writeln!(writer, "      f32.load")?;
+                            writeln!(writer, "      i32.reinterpret_f32")?;
+                            writeln!(writer, "      i64.extend_i32_u")?;
+                        }
+                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => {
+                            writeln!(writer, "      f64.load")?;
+                            writeln!(writer, "      i64.reinterpret_f64")?;
+                        }
+                        _ => {
+                            writeln!(writer, "      i64.load")?;
+                        }
+                    }
+                }
+            }
+            
+            // Store loaded value to destination register
             if let Register::Virtual(vreg) = dst {
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
             }
         }
         MirInst::Store {
-            addr: _,
-            src: _,
-            ty: _,
+            addr,
+            src,
+            ty,
             attrs: _,
         } => {
-            writeln!(writer, "      ;; TODO: store instruction")?;
+            // WebAssembly store expects: address on stack, then value on top
+            // So we compute address first, then load value
+            
+            // Compute address: base + offset
+            match addr {
+                crate::mir::AddressMode::BaseOffset { base, offset } => {
+                    // Load base address onto stack
+                    load_register_wasm(base, writer, vreg_to_local)?;
+                    
+                    // Add offset if non-zero
+                    if *offset != 0 {
+                        writeln!(writer, "      i64.const {}", *offset as i64)?;
+                        writeln!(writer, "      i64.add")?;
+                    }
+                }
+                crate::mir::AddressMode::BaseIndexScale { base, index, scale, offset } => {
+                    // Load base address
+                    load_register_wasm(base, writer, vreg_to_local)?;
+                    
+                    // Load index
+                    load_register_wasm(index, writer, vreg_to_local)?;
+                    
+                    // Scale index
+                    writeln!(writer, "      i64.const {}", *scale as i64)?;
+                    writeln!(writer, "      i64.mul")?;
+                    
+                    // Add base + scaled index
+                    writeln!(writer, "      i64.add")?;
+                    
+                    // Add offset if non-zero
+                    if *offset != 0 {
+                        writeln!(writer, "      i64.const {}", *offset as i64)?;
+                        writeln!(writer, "      i64.add")?;
+                    }
+                }
+            }
+            
+            // Now load value to store (goes on top of address)
+            load_operand_wasm(src, writer, vreg_to_local)?;
+            
+            // Emit store instruction based on type
+            // Stack now: address (bottom), value (top)
+            match ty {
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
+                    writeln!(writer, "      i64.store8")?;
+                }
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => {
+                    writeln!(writer, "      i64.store16")?;
+                }
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
+                    writeln!(writer, "      i64.store32")?;
+                }
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
+                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
+                    writeln!(writer, "      i64.store")?;
+                }
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
+                    // Convert i64 to f32
+                    writeln!(writer, "      i32.wrap_i64")?;
+                    writeln!(writer, "      f32.reinterpret_i32")?;
+                    writeln!(writer, "      f32.store")?;
+                }
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => {
+                    // Convert i64 to f64
+                    writeln!(writer, "      f64.reinterpret_i64")?;
+                    writeln!(writer, "      f64.store")?;
+                }
+                _ => {
+                    // Default to i64 for unknown types
+                    writeln!(writer, "      i64.store")?;
+                }
+            }
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
