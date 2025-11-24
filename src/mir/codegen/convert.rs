@@ -90,8 +90,11 @@ fn convert_function<'a>(
 
         for instr in &ir_block.instructions {
             match convert_instruction(instr, &mut vreg_alloc, &mut var_to_reg) {
-                Ok(Some(mir_instr)) => mir_block.push(mir_instr),
-                Ok(None) => {}
+                Ok(mir_instrs) => {
+                    for mir_instr in mir_instrs {
+                        mir_block.push(mir_instr);
+                    }
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -389,7 +392,7 @@ fn convert_instruction<'a>(
     instr: &crate::ir::instruction::Instruction<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut std::collections::HashMap<&'a str, Register>,
-) -> Result<Option<Instruction>, FromIRError> {
+) -> Result<Vec<Instruction>, FromIRError> {
     use crate::ir::instruction::{BinaryOp as IRBin, CmpOp as IRCmp};
     use crate::ir::types::{PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
 
@@ -525,7 +528,7 @@ fn convert_instruction<'a>(
                     rhs: rhs_op,
                 },
             };
-            Ok(Some(mir))
+            Ok(vec![mir])
         }
         // SSA merge: create a binding for the phi result so subsequent uses resolve.
         // Semantics are not materialized here; a later SSA elimination pass should lower this.
@@ -542,7 +545,7 @@ fn convert_instruction<'a>(
                 _ => Register::Virtual(vreg_alloc.allocate_gpr()),
             };
             var_to_reg.insert(*result, dst);
-            Ok(None)
+            Ok(vec![])
         }
         crate::ir::instruction::Instruction::Cmp {
             op,
@@ -701,7 +704,7 @@ fn convert_instruction<'a>(
                     rhs: rhs_op,
                 },
             };
-            Ok(Some(mir))
+            Ok(vec![mir])
         }
         crate::ir::instruction::Instruction::Br {
             condition,
@@ -715,24 +718,24 @@ fn convert_instruction<'a>(
                     .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            Ok(Some(Instruction::Br {
+            Ok(vec![Instruction::Br {
                 cond: cond_reg,
                 true_target: (*true_label).to_string(),
                 false_target: (*false_label).to_string(),
-            }))
+            }])
         }
-        crate::ir::instruction::Instruction::Jmp { target_label } => Ok(Some(Instruction::Jmp {
+        crate::ir::instruction::Instruction::Jmp { target_label } => Ok(vec![Instruction::Jmp {
             target: (*target_label).to_string(),
         })),
         crate::ir::instruction::Instruction::Ret { ty, value } => {
             if matches!(ty, IRType::Void) {
-                return Ok(Some(Instruction::Ret { value: None }));
+                return Ok(vec![Instruction::Ret { value: None }]);
             }
             let op = match value {
                 Some(v) => Some(get_operand_permissive(v, vreg_alloc, var_to_reg)?),
                 None => None,
             };
-            Ok(Some(Instruction::Ret { value: op }))
+            Ok(vec![Instruction::Ret { value: op }])
         }
         crate::ir::instruction::Instruction::Load { result, ty, ptr } => {
             let dst = if let Some(existing) = var_to_reg.get(result) {
@@ -751,7 +754,7 @@ fn convert_instruction<'a>(
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             let addr = AddressMode::BaseOffset { base, offset: 0 };
-            Ok(Some(Instruction::Load {
+            Ok(vec![Instruction::Load {
                 ty: mir_ty,
                 dst,
                 addr,
@@ -759,7 +762,7 @@ fn convert_instruction<'a>(
                     align: mir_ty.alignment() as u8,
                     volatile: false,
                 },
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::Store { ty, ptr, value } => {
             let mir_ty = map_ir_type(ty)?;
@@ -772,7 +775,7 @@ fn convert_instruction<'a>(
             };
             let src = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
             let addr = AddressMode::BaseOffset { base, offset: 0 };
-            Ok(Some(Instruction::Store {
+            Ok(vec![Instruction::Store {
                 ty: mir_ty,
                 src,
                 addr,
@@ -780,7 +783,7 @@ fn convert_instruction<'a>(
                     align: mir_ty.alignment() as u8,
                     volatile: false,
                 },
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::Call {
             result,
@@ -803,11 +806,11 @@ fn convert_instruction<'a>(
             } else {
                 None
             };
-            Ok(Some(Instruction::Call {
+            Ok(vec![Instruction::Call {
                 name: (*func_name).to_string(),
                 args: mir_args,
                 ret,
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::ZeroExtend {
             result,
@@ -840,13 +843,13 @@ fn convert_instruction<'a>(
             };
             let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
             let mask_op = Operand::Immediate(crate::mir::Immediate::I64(mask as i64));
-            Ok(Some(Instruction::IntBinary {
+            Ok(vec![Instruction::IntBinary {
                 op: crate::mir::IntBinOp::And,
                 ty: mir_ty,
                 dst,
                 lhs: val_op,
                 rhs: mask_op,
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::PtrToInt {
             result,
@@ -862,13 +865,13 @@ fn convert_instruction<'a>(
                 fresh
             };
             let val_op = get_operand_permissive(ptr_value, vreg_alloc, var_to_reg)?;
-            Ok(Some(Instruction::IntBinary {
+            Ok(vec![Instruction::IntBinary {
                 op: crate::mir::IntBinOp::Add,
                 ty: crate::mir::types::MirType::Scalar(crate::mir::types::ScalarType::I64),
                 dst,
                 lhs: val_op,
                 rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::IntToPtr {
             result,
@@ -884,13 +887,13 @@ fn convert_instruction<'a>(
                 fresh
             };
             let val_op = get_operand_permissive(int_value, vreg_alloc, var_to_reg)?;
-            Ok(Some(Instruction::IntBinary {
+            Ok(vec![Instruction::IntBinary {
                 op: crate::mir::IntBinOp::Add,
                 ty: crate::mir::types::MirType::Scalar(crate::mir::types::ScalarType::I64),
                 dst,
                 lhs: val_op,
                 rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::GetFieldPtr {
             result,
@@ -913,7 +916,7 @@ fn convert_instruction<'a>(
                 fresh
             };
             let offset = (*field_index as i32) * 8;
-            Ok(Some(Instruction::Lea { dst, base, offset }))
+            Ok(vec![Instruction::Lea { dst, base, offset }])
         }
         crate::ir::instruction::Instruction::GetElemPtr {
             result,
@@ -956,29 +959,50 @@ fn convert_instruction<'a>(
             if let Some(iv) = idx_const {
                 // Constant index: use simple LEA with offset
                 let offset = (iv as i32).saturating_mul(elem_size);
-                Ok(Some(Instruction::Lea { dst, base, offset }))
+                Ok(vec![Instruction::Lea { dst, base, offset }])
             } else {
-                // Variable index: for now, emit as if index is scaled and added
-                // We'll use a two-step approach encoded as shift + add
-                // Step 1: Compute scaled index: scaled = index * elem_size (using shift for power-of-2)
-                // Step 2: Add to base: result = base + scaled
-                // Since we can only return one instr, we'll emit the multiply and rely on a follow-up pass
-                // Or: just use simplified single-instruction form
-
-                // Simpler workaround: emit index * elem_size into a temp, then user must manually add
-                // But this breaks semantics. Better: just not support variable index for now
-                // The tests don't actually call these functions, so let's keep the error
-                Err(FromIRError::UnsupportedInstruction)
+                // Variable index: emit two instructions
+                // 1. temp = index * elem_size
+                // 2. result = base + temp
+                
+                // Get the index operand
+                let index_op = get_operand_permissive(index, vreg_alloc, var_to_reg)?;
+                
+                // Allocate a temp register for the scaled index
+                let temp_scaled = Register::Virtual(vreg_alloc.allocate_gpr());
+                
+                // Create instructions
+                let mut instrs = Vec::new();
+                
+                // Instruction 1: temp_scaled = index * elem_size
+                instrs.push(Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Mul,
+                    ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                    dst: temp_scaled.clone(),
+                    lhs: index_op,
+                    rhs: Operand::Immediate(crate::mir::Immediate::I64(elem_size as i64)),
+                });
+                
+                // Instruction 2: result = base + temp_scaled
+                instrs.push(Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Add,
+                    ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                    dst: dst.clone(),
+                    lhs: Operand::Register(base),
+                    rhs: Operand::Register(temp_scaled),
+                });
+                
+                Ok(instrs)
             }
         }
         // Debug and I/O operations: lower to calls with conventional names
         crate::ir::instruction::Instruction::Print { value } => {
             let arg = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
-            Ok(Some(Instruction::Call {
+            Ok(vec![Instruction::Call {
                 name: "print".to_string(),
                 args: vec![arg],
                 ret: None,
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::Write {
             buffer,
@@ -994,11 +1018,11 @@ fn convert_instruction<'a>(
                 var_to_reg.insert(*result, fresh.clone());
                 fresh
             };
-            Ok(Some(Instruction::Call {
+            Ok(vec![Instruction::Call {
                 name: "write".to_string(),
                 args: vec![buf, sz],
                 ret: Some(dst),
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::WriteByte { value, result } => {
             let v = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
@@ -1009,11 +1033,11 @@ fn convert_instruction<'a>(
                 var_to_reg.insert(*result, fresh.clone());
                 fresh
             };
-            Ok(Some(Instruction::Call {
+            Ok(vec![Instruction::Call {
                 name: "writebyte".to_string(),
                 args: vec![v],
                 ret: Some(dst),
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::ReadByte { result } => {
             let dst = if let Some(existing) = var_to_reg.get(result) {
@@ -1023,11 +1047,11 @@ fn convert_instruction<'a>(
                 var_to_reg.insert(*result, fresh.clone());
                 fresh
             };
-            Ok(Some(Instruction::Call {
+            Ok(vec![Instruction::Call {
                 name: "readbyte".to_string(),
                 args: vec![],
                 ret: Some(dst),
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::WritePtr { ptr, result } => {
             let p = get_operand_permissive(ptr, vreg_alloc, var_to_reg)?;
@@ -1038,11 +1062,11 @@ fn convert_instruction<'a>(
                 var_to_reg.insert(*result, fresh.clone());
                 fresh
             };
-            Ok(Some(Instruction::Call {
+            Ok(vec![Instruction::Call {
                 name: "writeptr".to_string(),
                 args: vec![p],
                 ret: Some(dst),
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::Read {
             buffer,
@@ -1058,11 +1082,11 @@ fn convert_instruction<'a>(
                 var_to_reg.insert(*result, fresh.clone());
                 fresh
             };
-            Ok(Some(Instruction::Call {
+            Ok(vec![Instruction::Call {
                 name: "read".to_string(),
                 args: vec![buf, sz],
                 ret: Some(dst),
-            }))
+            }])
         }
         crate::ir::instruction::Instruction::Alloc {
             result,
@@ -1123,11 +1147,11 @@ fn convert_instruction<'a>(
                         }
                     }
                     // Lea computes address of storage's stack slot into dst
-                    Ok(Some(Instruction::Lea {
+                    Ok(vec![Instruction::Lea {
                         dst: dst.clone(),
                         base: storage,
                         offset: 0,
-                    }))
+                    }])
                 }
                 crate::ir::instruction::AllocType::Heap => {
                     // Compute size in bytes for the allocated type and call malloc(size)
@@ -1158,11 +1182,11 @@ fn convert_instruction<'a>(
                         }
                     }
                     if let Some(sz) = sizeof_ty(allocated_ty) {
-                        Ok(Some(Instruction::Call {
+                        Ok(vec![Instruction::Call {
                             name: "malloc".to_string(),
                             args: vec![Operand::Immediate(crate::mir::Immediate::I64(sz as i64))],
                             ret: Some(dst),
-                        }))
+                        }])
                     } else {
                         Err(FromIRError::UnsupportedType)
                     }
@@ -1172,11 +1196,11 @@ fn convert_instruction<'a>(
         crate::ir::instruction::Instruction::Dealloc { ptr } => {
             // Lower heap dealloc to a conventional call that backends can map
             let p = get_operand_permissive(ptr, vreg_alloc, var_to_reg)?;
-            Ok(Some(Instruction::Call {
+            Ok(vec![Instruction::Call {
                 name: "dealloc".to_string(),
                 args: vec![p],
                 ret: None,
-            }))
+            }])
         }
         #[cfg(feature = "nightly")]
         crate::ir::instruction::Instruction::SimdBinary {
@@ -1208,13 +1232,13 @@ fn convert_instruction<'a>(
                 crate::ir::instruction::SimdOp::Sqrt => crate::mir::SimdOp::Sqrt,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            Ok(Some(Instruction::SimdBinary {
+            Ok(vec![Instruction::SimdBinary {
                 op: mir_op,
                 ty: mir_ty,
                 dst,
                 lhs: lhs_op,
                 rhs: rhs_op,
-            }))
+            }])
         }
         #[cfg(feature = "nightly")]
         crate::ir::instruction::Instruction::SimdUnary {
@@ -1238,12 +1262,12 @@ fn convert_instruction<'a>(
                 crate::ir::instruction::SimdOp::Sqrt => crate::mir::SimdOp::Sqrt,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            Ok(Some(Instruction::SimdUnary {
+            Ok(vec![Instruction::SimdUnary {
                 op: mir_op,
                 ty: mir_ty,
                 dst,
                 src: src_op,
-            }))
+            }])
         }
         #[cfg(feature = "nightly")]
         crate::ir::instruction::Instruction::AtomicLoad {
@@ -1278,12 +1302,12 @@ fn convert_instruction<'a>(
                     crate::mir::MemoryOrdering::SeqCst
                 }
             };
-            Ok(Some(Instruction::AtomicLoad {
+            Ok(vec![Instruction::AtomicLoad {
                 ty: mir_ty,
                 dst,
                 addr,
                 ordering: mir_ordering,
-            }))
+            }])
         }
         #[cfg(feature = "nightly")]
         crate::ir::instruction::Instruction::AtomicStore {
@@ -1312,12 +1336,12 @@ fn convert_instruction<'a>(
                     crate::mir::MemoryOrdering::SeqCst
                 }
             };
-            Ok(Some(Instruction::AtomicStore {
+            Ok(vec![Instruction::AtomicStore {
                 ty: mir_ty,
                 src: val_op,
                 addr,
                 ordering: mir_ordering,
-            }))
+            }])
         }
         #[cfg(feature = "nightly")]
         crate::ir::instruction::Instruction::Fence { ordering } => {
@@ -1338,9 +1362,9 @@ fn convert_instruction<'a>(
                     crate::mir::MemoryOrdering::SeqCst
                 }
             };
-            Ok(Some(Instruction::Fence {
+            Ok(vec![Instruction::Fence {
                 ordering: mir_ordering,
-            }))
+            }])
         }
         _ => Err(FromIRError::UnsupportedInstruction),
     }
@@ -1428,14 +1452,14 @@ mod tests {
                     ty,
                     MirType::Scalar(crate::mir::types::ScalarType::I64)
                 ));
-                assert!(matches!(lhs, Operand::Register(_)));
-                assert!(matches!(rhs, Operand::Register(_)));
+                assert!(matches!(lhs, Operand::Register(_]);
+                assert!(matches!(rhs, Operand::Register(_]);
             }
             other => panic!("Unexpected first instruction: {:?}", other),
         }
         match &entry.instructions[1] {
             Instruction::Ret { value } => {
-                assert!(matches!(value, Some(Operand::Register(_))));
+                assert!(matches!(value, Some(Operand::Register(_]));
             }
             other => panic!("Unexpected second instruction: {:?}", other),
         }
