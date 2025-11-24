@@ -726,7 +726,7 @@ fn convert_instruction<'a>(
         }
         crate::ir::instruction::Instruction::Jmp { target_label } => Ok(vec![Instruction::Jmp {
             target: (*target_label).to_string(),
-        })),
+        }]),
         crate::ir::instruction::Instruction::Ret { ty, value } => {
             if matches!(ty, IRType::Void) {
                 return Ok(vec![Instruction::Ret { value: None }]);
@@ -1452,14 +1452,14 @@ mod tests {
                     ty,
                     MirType::Scalar(crate::mir::types::ScalarType::I64)
                 ));
-                assert!(matches!(lhs, Operand::Register(_]);
-                assert!(matches!(rhs, Operand::Register(_]);
+                assert!(matches!(lhs, Operand::Register(_)));
+                assert!(matches!(rhs, Operand::Register(_)));
             }
             other => panic!("Unexpected first instruction: {:?}", other),
         }
         match &entry.instructions[1] {
             Instruction::Ret { value } => {
-                assert!(matches!(value, Some(Operand::Register(_]));
+                assert!(matches!(value, Some(Operand::Register(_))));
             }
             other => panic!("Unexpected second instruction: {:?}", other),
         }
