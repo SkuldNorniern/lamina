@@ -40,4 +40,20 @@ impl RiscVAbi {
             _ => ".L_mir_fmt_int: .string \"%lld\\n\"",
         }
     }
+
+    /// RISC-V calling convention argument registers (first 8 arguments)
+    pub const ARG_REGISTERS: &'static [&'static str] = &["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"];
+
+    /// Map well-known intrinsic/runtime names to platform symbol stubs
+    pub fn call_stub(&self, name: &str) -> Option<String> {
+        match (name, self.target_os) {
+            ("print", TargetOperatingSystem::MacOS) => Some("_printf".to_string()),
+            ("print", _) => Some("printf".to_string()),
+            ("malloc", TargetOperatingSystem::MacOS) => Some("_malloc".to_string()),
+            ("malloc", _) => Some("malloc".to_string()),
+            ("dealloc", TargetOperatingSystem::MacOS) => Some("_free".to_string()),
+            ("dealloc", _) => Some("free".to_string()),
+            _ => None,
+        }
+    }
 }

@@ -169,7 +169,7 @@ pub fn generate_mir_riscv<W: Write>(
             writeln!(writer, ".L_{}:", block.label)?;
 
             for inst in &block.instructions {
-                emit_instruction_riscv(inst, writer, &mut reg_alloc, &stack_slots)?;
+                emit_instruction_riscv(inst, writer, &mut reg_alloc, &stack_slots, target_os)?;
             }
         }
     }
@@ -182,6 +182,7 @@ fn emit_instruction_riscv<W: Write>(
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
     stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
+    target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
     match inst {
         MirInst::IntBinary {
@@ -241,21 +242,88 @@ fn emit_instruction_riscv<W: Write>(
             }
         }
         MirInst::Call { name, args, ret } => {
+            let abi = RiscVAbi::new(target_os);
+            
             // Handle print intrinsic
             if name == "print" {
                 if let Some(arg) = args.first() {
-                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a0")?;
-                    // Print integer (simplified - would need proper printf setup)
-                    writeln!(writer, "    # print intrinsic - would call printf")?;
+                    // Load format string address to a0
+                    match target_os {
+                        TargetOperatingSystem::MacOS => {
+                            writeln!(writer, "    la a0, __mir_fmt_int")?;
+                        }
+                        _ => {
+                            writeln!(writer, "    la a0, .L_mir_fmt_int")?;
+                        }
+                    }
+                    // Load value to print to a1
+                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
+                    // Call printf
+                    let printf_name = abi.call_stub("print").unwrap_or_else(|| {
+                        match target_os {
+                            TargetOperatingSystem::MacOS => "_printf".to_string(),
+                            _ => "printf".to_string(),
+                        }
+                    });
+                    writeln!(writer, "    call {}", printf_name)?;
                 }
             } else {
-                writeln!(writer, "    # TODO: function calls")?;
+                // General function call implementation
+                // RISC-V calling convention: first 8 args in a0-a7, remaining on stack
+                
+                let arg_regs = RiscVAbi::ARG_REGISTERS;
+                let num_reg_args = args.len().min(arg_regs.len());
+                let num_stack_args = args.len().saturating_sub(arg_regs.len());
+                
+                // Pass register arguments (a0-a7)
+                for i in 0..num_reg_args {
+                    let arg = &args[i];
+                    let dest_reg = arg_regs[i];
+                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
+                }
+                
+                // Pass stack arguments (16-byte aligned)
+                let stack_space = if num_stack_args > 0 {
+                    // Align to 16 bytes
+                    ((num_stack_args * 8) + 15) & !15
+                } else {
+                    0
+                };
+                
+                if stack_space > 0 {
+                    // Allocate stack space
+                    writeln!(writer, "    addi sp, sp, -{}", stack_space)?;
+                    
+                    // Store arguments on stack (in order, starting at sp+0)
+                    for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
+                        let offset = i * 8;
+                        // Load argument to a temporary register (use t0)
+                        load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
+                        // Store to stack
+                        writeln!(writer, "    sd t0, {}(sp)", offset)?;
+                    }
+                }
+                
+                // Resolve function name (check for intrinsic stubs first)
+                let target_sym = if let Some(stub) = abi.call_stub(name) {
+                    stub
+                } else {
+                    abi.mangle_function_name(name)
+                };
+                
+                // Emit call instruction
+                writeln!(writer, "    call {}", target_sym)?;
+                
+                // Clean up stack arguments
+                if stack_space > 0 {
+                    writeln!(writer, "    addi sp, sp, {}", stack_space)?;
+                }
             }
 
+            // Handle return value (always in a0)
             if let Some(ret_reg) = ret
                 && let Register::Virtual(vreg) = ret_reg
             {
-                // Assume return value is in a0
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
         }
