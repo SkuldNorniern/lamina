@@ -96,19 +96,29 @@ pub fn generate_mir_aarch64<W: Write>(
             writeln!(writer, "    sub sp, sp, #{}", adjusted_frame_size)?;
         }
 
-        // Spill incoming arguments (x0..x7) to their slots
+        // Spill incoming arguments to their slots
         for (i, p) in func.sig.params.iter().enumerate() {
-            if i < 8
-                && let Some(off) = frame.slot_of(&p.reg)
-            {
-                // use scratch reg for address calculation
+            if let Some(off) = frame.slot_of(&p.reg) {
+                // Calculate address of local slot
                 let addr = ra_pro.alloc_scratch().unwrap_or("x19");
                 if off >= 0 {
                     writeln!(writer, "    add {}, x29, #{}", addr, off)?;
                 } else {
                     writeln!(writer, "    sub {}, x29, #{}", addr, -off)?;
                 }
-                writeln!(writer, "    str x{}, [{}]", i, addr)?;
+
+                if i < 8 {
+                    // Argument in register x0-x7
+                    writeln!(writer, "    str x{}, [{}]", i, addr)?;
+                } else {
+                    // Argument on stack (caller's frame)
+                    // fp points to saved fp. fp+8 is saved lr. fp+16 is first stack arg.
+                    let caller_offset = 16 + (i - 8) * 8;
+                    let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
+                    writeln!(writer, "    ldr {}, [x29, #{}]", val_reg, caller_offset)?;
+                    writeln!(writer, "    str {}, [{}]", val_reg, addr)?;
+                    ra_pro.free_scratch(val_reg);
+                }
                 ra_pro.free_scratch(addr);
             }
         }
@@ -778,6 +788,22 @@ fn emit_block<W: Write>(
                     for (i, a) in args.iter().enumerate().take(8) {
                         emit_materialize_operand(w, a, &format!("x{}", i), frame, ra)?;
                     }
+
+                    // Pass remaining args on stack
+                    let stack_args = if args.len() > 8 { &args[8..] } else { &[] };
+                    let stack_space = (stack_args.len() * 8 + 15) & !15; // Align to 16 bytes
+
+                    if stack_space > 0 {
+                        writeln!(w, "    sub sp, sp, #{}", stack_space)?;
+                        for (i, a) in stack_args.iter().enumerate() {
+                            let offset = i * 8;
+                            let scratch = ra.alloc_scratch().unwrap_or("x9");
+                            emit_materialize_operand(w, a, scratch, frame, ra)?;
+                            writeln!(w, "    str {}, [sp, #{}]", scratch, offset)?;
+                            ra.free_scratch(scratch);
+                        }
+                    }
+
                     // Resolve symbol: intrinsic stub or platform-mangled function name
                     let target_sym: String = match call_stub(name, os) {
                         Some(sym) => sym.to_string(),
@@ -787,6 +813,11 @@ fn emit_block<W: Write>(
                         },
                     };
                     writeln!(w, "    bl {}", target_sym)?;
+
+                    if stack_space > 0 {
+                        writeln!(w, "    add sp, sp, #{}", stack_space)?;
+                    }
+
                     if let Some(dst) = ret {
                         store_result(w, dst, "x0", frame, ra)?;
                     }
