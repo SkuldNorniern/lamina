@@ -9,9 +9,9 @@ fn @test_i8_array_operations() -> i64 {
     %arr = alloc.stack [10 x i8]
 
     # Store values in array
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
-    %ptr2 = getelementptr %arr, 2
+    %ptr0 = getelem.ptr %arr, 0, i8
+    %ptr1 = getelem.ptr %arr, 1, i8
+    %ptr2 = getelem.ptr %arr, 2, i8
     store.i8 %ptr0, 10
     store.i8 %ptr1, 20
     store.i8 %ptr2, 30
@@ -37,8 +37,8 @@ fn @test_u8_array_operations() -> i64 {
     %arr = alloc.stack [5 x u8]
 
     # Store values in array
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
+    %ptr0 = getelem.ptr %arr, 0, u8
+    %ptr1 = getelem.ptr %arr, 1, u8
     store.u8 %ptr0, 100
     store.u8 %ptr1, 150
 
@@ -48,7 +48,7 @@ fn @test_u8_array_operations() -> i64 {
     %sum = add.u8 %val0, %val1
 
     # Store result back
-    %ptr2 = getelementptr %arr, 2
+    %ptr2 = getelem.ptr %arr, 2, u8
     store.u8 %ptr2, %sum
 
     # Load final result
@@ -66,9 +66,9 @@ fn @test_i16_array_operations() -> i64 {
     %arr = alloc.stack [8 x i16]
 
     # Initialize array with values
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
-    %ptr2 = getelementptr %arr, 2
+    %ptr0 = getelem.ptr %arr, 0, i16
+    %ptr1 = getelem.ptr %arr, 1, i16
+    %ptr2 = getelem.ptr %arr, 2, i16
     store.i16 %ptr0, 1000
     store.i16 %ptr1, 2000
     store.i16 %ptr2, 3000
@@ -94,9 +94,9 @@ fn @test_u16_array_operations() -> i64 {
     %arr = alloc.stack [6 x u16]
 
     # Fill array with sequential values
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
-    %ptr2 = getelementptr %arr, 2
+    %ptr0 = getelem.ptr %arr, 0, u16
+    %ptr1 = getelem.ptr %arr, 1, u16
+    %ptr2 = getelem.ptr %arr, 2, u16
     store.u16 %ptr0, 10000
     store.u16 %ptr1, 20000
     store.u16 %ptr2, 30000
@@ -121,10 +121,10 @@ fn @test_i32_array_operations() -> i64 {
     %arr = alloc.stack [10 x i32]
 
     # Initialize with Fibonacci-like sequence
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
-    %ptr2 = getelementptr %arr, 2
-    %ptr3 = getelementptr %arr, 3
+    %ptr0 = getelem.ptr %arr, 0, i32
+    %ptr1 = getelem.ptr %arr, 1, i32
+    %ptr2 = getelem.ptr %arr, 2, i32
+    %ptr3 = getelem.ptr %arr, 3, i32
     store.i32 %ptr0, 1
     store.i32 %ptr1, 1
     store.i32 %ptr2, 2
@@ -153,9 +153,9 @@ fn @test_u32_array_operations() -> i64 {
     %arr = alloc.stack [4 x u32]
 
     # Initialize with powers of 2
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
-    %ptr2 = getelementptr %arr, 2
+    %ptr0 = getelem.ptr %arr, 0, u32
+    %ptr1 = getelem.ptr %arr, 1, u32
+    %ptr2 = getelem.ptr %arr, 2, u32
     store.u32 %ptr0, 1
     store.u32 %ptr1, 2
     store.u32 %ptr2, 4
@@ -169,7 +169,7 @@ fn @test_u32_array_operations() -> i64 {
     %final = mul.u32 %prod, %val2
 
     # Store result
-    %ptr3 = getelementptr %arr, 3
+    %ptr3 = getelem.ptr %arr, 3, u32
     store.u32 %ptr3, %final
 
     # Convert result to i64
@@ -184,9 +184,9 @@ fn @test_i64_array_operations() -> i64 {
     %arr = alloc.stack [5 x i64]
 
     # Initialize array
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
-    %ptr2 = getelementptr %arr, 2
+    %ptr0 = getelem.ptr %arr, 0, i64
+    %ptr1 = getelem.ptr %arr, 1, i64
+    %ptr2 = getelem.ptr %arr, 2, i64
     store.i64 %ptr0, 1000000
     store.i64 %ptr1, 2000000
     store.i64 %ptr2, 3000000
@@ -210,8 +210,8 @@ fn @test_u64_array_operations() -> i64 {
     %arr = alloc.stack [3 x u64]
 
     # Initialize with large values
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
+    %ptr0 = getelem.ptr %arr, 0, u64
+    %ptr1 = getelem.ptr %arr, 1, u64
     store.u64 %ptr0, 5000000000
     store.u64 %ptr1, 3000000000
 
@@ -221,7 +221,7 @@ fn @test_u64_array_operations() -> i64 {
     %quotient = div.u64 %val0, %val1
 
     # Store result
-    %ptr2 = getelementptr %arr, 2
+    %ptr2 = getelem.ptr %arr, 2, u64
     store.u64 %ptr2, %quotient
 
     # Return a simplified result since u64->i64 conversion is complex
@@ -236,9 +236,9 @@ fn @test_bool_array_operations() -> i64 {
     %arr = alloc.stack [4 x bool]
 
     # Initialize with boolean values
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
-    %ptr2 = getelementptr %arr, 2
+    %ptr0 = getelem.ptr %arr, 0, bool
+    %ptr1 = getelem.ptr %arr, 1, bool
+    %ptr2 = getelem.ptr %arr, 2, bool
     store.bool %ptr0, 1  # true
     store.bool %ptr1, 0  # false
     store.bool %ptr2, 1  # true
@@ -264,11 +264,11 @@ fn @test_char_array_operations() -> i64 {
     %str = alloc.stack [6 x char]
 
     # Store "HELLO" (ASCII values)
-    %ptr0 = getelementptr %str, 0
-    %ptr1 = getelementptr %str, 1
-    %ptr2 = getelementptr %str, 2
-    %ptr3 = getelementptr %str, 3
-    %ptr4 = getelementptr %str, 4
+    %ptr0 = getelem.ptr %str, 0, char
+    %ptr1 = getelem.ptr %str, 1, char
+    %ptr2 = getelem.ptr %str, 2, char
+    %ptr3 = getelem.ptr %str, 3, char
+    %ptr4 = getelem.ptr %str, 4, char
     store.char %ptr0, 72  # 'H'
     store.char %ptr1, 69  # 'E'
     store.char %ptr2, 76  # 'L'
@@ -290,8 +290,8 @@ fn @test_f32_array_operations() -> i64 {
     %arr = alloc.stack [3 x f32]
 
     # Initialize with float values
-    %ptr0 = getelementptr %arr, 0
-    %ptr1 = getelementptr %arr, 1
+    %ptr0 = getelem.ptr %arr, 0, f32
+    %ptr1 = getelem.ptr %arr, 1, f32
     store.f32 %ptr0, 1.5
     store.f32 %ptr1, 2.5
 
@@ -301,7 +301,7 @@ fn @test_f32_array_operations() -> i64 {
     %sum = add.f32 %val0, %val1
 
     # Store result
-    %ptr2 = getelementptr %arr, 2
+    %ptr2 = getelem.ptr %arr, 2, f32
     store.f32 %ptr2, %sum
 
     # Return simplified result
@@ -316,7 +316,7 @@ fn @test_f64_array_operations() -> i64 {
     %arr = alloc.stack [2 x f64]
 
     # Initialize with double values
-    %ptr0 = getelementptr %arr, 0
+    %ptr0 = getelem.ptr %arr, 0, f64
     store.f64 %ptr0, 3.14159
 
     # Load and multiply by 2
@@ -324,7 +324,7 @@ fn @test_f64_array_operations() -> i64 {
     %doubled = mul.f64 %val, 2.0
 
     # Store result
-    %ptr1 = getelementptr %arr, 1
+    %ptr1 = getelem.ptr %arr, 1, f64
     store.f64 %ptr1, %doubled
 
     # Return simplified result
@@ -339,10 +339,10 @@ fn @test_multidimensional_array() -> i64 {
     %matrix = alloc.stack [2 x [3 x i32]]
 
     # Access first row
-    %row0 = getelementptr %matrix, 0
-    %elem00 = getelementptr %row0, 0
-    %elem01 = getelementptr %row0, 1
-    %elem02 = getelementptr %row0, 2
+    %row0 = getelem.ptr %matrix, 0, [3 x i32]
+    %elem00 = getelem.ptr %row0, 0, i32
+    %elem01 = getelem.ptr %row0, 1, i32
+    %elem02 = getelem.ptr %row0, 2, i32
 
     # Store values in first row
     store.i32 %elem00, 1
