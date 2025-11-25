@@ -1286,6 +1286,16 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             result,
                         );
                     }
+                    Instruction::Trunc { .. }
+                    | Instruction::SignExtend { .. }
+                    | Instruction::Bitcast { .. }
+                    | Instruction::Select { .. } => {
+                        return Err(LaminaError::CodegenError(
+                            CodegenError::UnsupportedFeature(FeatureType::Custom(
+                                "conversion/select in legacy IR-based WASM backend".to_string(),
+                            )),
+                        ));
+                    }
                     Instruction::Tuple { result, elements } => {
                         let mut align = 1u64;
                         let size = elements.iter().fold(0u64, |last, v| {
