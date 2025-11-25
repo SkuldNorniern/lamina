@@ -396,6 +396,23 @@ fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> 
             // Inline Struct Type
             parse_composite_type(state) // Delegate to handle structs
         }
+        Some('t') if state.peek_slice(5) == Some("tuple") => {
+            // Tuple type: tuple type1, type2, ...
+            state.consume_keyword("tuple")?;
+            state.skip_whitespace_and_comments();
+            let mut element_types = Vec::new();
+            loop {
+                let elem_type = parse_type(state)?;
+                element_types.push(elem_type);
+                state.skip_whitespace_and_comments();
+                if state.current_char() != Some(',') {
+                    break; // No more elements
+                }
+                state.expect_char(',')?;
+                state.skip_whitespace_and_comments();
+            }
+            Ok(Type::Tuple(element_types))
+        }
         _ => {
             // Try matching primitive types
             let potential_primitive = state.parse_identifier_str()?;
@@ -648,7 +665,38 @@ fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaError
             Ok(Value::Constant(Literal::String(string_value)))
         }
         Some(c) if c.is_ascii_digit() || c == '-' => {
-            // Try parsing as integer first, defaulting to I32 or upgrading to I64 if needed
+            // Check if this looks like a float (has a dot after digits)
+            // Peek ahead to see if there's a dot followed by digits
+            let peek_pos = state.position;
+            let mut temp_pos = peek_pos;
+            let mut has_digits = false;
+            
+            // Skip negative sign if present
+            if !state.is_eof() && state.bytes[temp_pos] == b'-' {
+                temp_pos += 1;
+            }
+            
+            // Check for digits
+            while temp_pos < state.bytes.len() && state.bytes[temp_pos].is_ascii_digit() {
+                has_digits = true;
+                temp_pos += 1;
+            }
+            
+            // Check if there's a dot followed by digits (indicating a float)
+            let looks_like_float = has_digits 
+                && temp_pos < state.bytes.len() 
+                && state.bytes[temp_pos] == b'.'
+                && temp_pos + 1 < state.bytes.len()
+                && state.bytes[temp_pos + 1].is_ascii_digit();
+            
+            // If it looks like a float, parse as float directly
+            if looks_like_float {
+                if let Ok(f_val) = state.parse_float() {
+                    return Ok(Value::Constant(Literal::F32(f_val)));
+                }
+            }
+            
+            // Otherwise, try parsing as integer first
             if let Ok(i_val) = state.parse_integer() {
                 return if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
                     Ok(Value::Constant(Literal::I32(i_val as i32)))
@@ -658,7 +706,7 @@ fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaError
                 };
             }
 
-            // Reset position and try float
+            // Reset position and try float as fallback
             state.position = start_pos;
             if let Ok(f_val) = state.parse_float() {
                 return Ok(Value::Constant(Literal::F32(f_val)));
@@ -855,7 +903,9 @@ fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>,
 
         // Parse based on opcode
         match opcode_str {
-            "add" | "sub" | "mul" | "div" | "rem" => parse_binary_op(state, result, opcode_str),
+            "add" | "sub" | "mul" | "div" | "rem" | "and" | "or" | "xor" | "shl" | "shr" => {
+                parse_binary_op(state, result, opcode_str)
+            }
             "eq" | "ne" | "gt" | "ge" | "lt" | "le" => parse_cmp_op(state, result, opcode_str),
             "zext" => parse_zext(state, result),
             "alloc" => parse_alloc(state, result),
@@ -940,6 +990,11 @@ fn parse_binary_op<'a>(
         "mul" => BinaryOp::Mul,
         "div" => BinaryOp::Div,
         "rem" => BinaryOp::Rem,
+        "and" => BinaryOp::And,
+        "or" => BinaryOp::Or,
+        "xor" => BinaryOp::Xor,
+        "shl" => BinaryOp::Shl,
+        "shr" => BinaryOp::Shr,
         _ => unreachable!(), // Should be checked before calling
     };
     let ty = parse_primitive_type_suffix(state)?;
@@ -1188,9 +1243,22 @@ fn parse_tuple<'a>(
     let mut elements = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
-        // Check if next token could be an operand or if we reached end of line/block
+        // Check if we're at end of input or block
+        if state.is_eof() || state.current_char() == Some('}') {
+            break; // No more elements
+        }
+        // Check if next token could be an operand
         let _current_pos = state.position; // Prefixed with _
         if parse_value(state).is_ok() {
+            // Check if this value is followed by '=' (next instruction) or ',' (tuple element)
+            let after_value_pos = state.position;
+            state.skip_whitespace_and_comments();
+            if state.current_char() == Some('=') {
+                // This is the start of the next instruction, not a tuple element
+                state.position = _current_pos; // Backtrack to before the value
+                break;
+            }
+            // It's a tuple element
             state.position = _current_pos; // Backtrack
             let elem = parse_value(state)?;
             elements.push(elem);
@@ -1204,9 +1272,9 @@ fn parse_tuple<'a>(
             break; // No more operands
         }
     }
-    if elements.is_empty() {
-        return Err(state.error("tuple instruction requires at least one element".to_string()));
-    }
+    // Allow empty tuples (elements can be empty)
+    // Skip any remaining whitespace/comments after tuple elements
+    state.skip_whitespace_and_comments();
     Ok(Instruction::Tuple { result, elements })
 }
 
