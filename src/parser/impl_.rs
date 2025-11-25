@@ -908,6 +908,10 @@ fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>,
             }
             "eq" | "ne" | "gt" | "ge" | "lt" | "le" => parse_cmp_op(state, result, opcode_str),
             "zext" => parse_zext(state, result),
+            "trunc" => parse_trunc(state, result),
+            "sext" => parse_sext(state, result),
+            "bitcast" => parse_bitcast(state, result),
+            "select" => parse_select(state, result),
             "alloc" => parse_alloc(state, result),
             "load" => parse_load(state, result),
             "getfield" => parse_getfield(state, result),
@@ -1581,6 +1585,116 @@ fn parse_zext<'a>(
         target_type,
         value,
     })
+}
+
+fn parse_trunc<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    // Format: trunc.src_tgt %value  e.g. trunc.i64.i32 %x
+    state.expect_char('.')?;
+    let source_type_str = state.parse_identifier_str()?;
+    let source_type = parse_primitive_from_ident(state, source_type_str)?;
+
+    state.expect_char('.')?;
+    let target_type_str = state.parse_identifier_str()?;
+    let target_type = parse_primitive_from_ident(state, target_type_str)?;
+
+    // The IR validator is responsible for enforcing that target_type is narrower.
+    let value = parse_value(state)?;
+    Ok(Instruction::Trunc {
+        result,
+        source_type,
+        target_type,
+        value,
+    })
+}
+
+fn parse_sext<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    // Format: sext.src_tgt %value  e.g. sext.i32.i64 %x
+    state.expect_char('.')?;
+    let source_type_str = state.parse_identifier_str()?;
+    let source_type = parse_primitive_from_ident(state, source_type_str)?;
+
+    state.expect_char('.')?;
+    let target_type_str = state.parse_identifier_str()?;
+    let target_type = parse_primitive_from_ident(state, target_type_str)?;
+
+    let value = parse_value(state)?;
+    Ok(Instruction::SignExtend {
+        result,
+        source_type,
+        target_type,
+        value,
+    })
+}
+
+fn parse_bitcast<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    // Format: bitcast.src_tgt %value  e.g. bitcast.i32.f32 %x
+    state.expect_char('.')?;
+    let source_type_str = state.parse_identifier_str()?;
+    let source_type = parse_primitive_from_ident(state, source_type_str)?;
+
+    state.expect_char('.')?;
+    let target_type_str = state.parse_identifier_str()?;
+    let target_type = parse_primitive_from_ident(state, target_type_str)?;
+
+    let value = parse_value(state)?;
+    Ok(Instruction::Bitcast {
+        result,
+        source_type,
+        target_type,
+        value,
+    })
+}
+
+fn parse_select<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    // Format: select.T cond, true_val, false_val
+    let ty = parse_type_suffix(state)?;
+    let cond = parse_value(state)?;
+    state.expect_char(',')?;
+    let true_val = parse_value(state)?;
+    state.expect_char(',')?;
+    let false_val = parse_value(state)?;
+    Ok(Instruction::Select {
+        result,
+        ty,
+        cond,
+        true_val,
+        false_val,
+    })
+}
+
+fn parse_primitive_from_ident(
+    state: &ParserState<'_>,
+    ident: &str,
+) -> Result<PrimitiveType, LaminaError> {
+    match ident {
+        "i8" => Ok(PrimitiveType::I8),
+        "i16" => Ok(PrimitiveType::I16),
+        "i32" => Ok(PrimitiveType::I32),
+        "i64" => Ok(PrimitiveType::I64),
+        "u8" => Ok(PrimitiveType::U8),
+        "u16" => Ok(PrimitiveType::U16),
+        "u32" => Ok(PrimitiveType::U32),
+        "u64" => Ok(PrimitiveType::U64),
+        "f32" => Ok(PrimitiveType::F32),
+        "f64" => Ok(PrimitiveType::F64),
+        "bool" => Ok(PrimitiveType::Bool),
+        "char" => Ok(PrimitiveType::Char),
+        "ptr" => Ok(PrimitiveType::Ptr),
+        other => Err(state
+            .error(format!("Invalid primitive type in conversion: {}", other))),
+    }
 }
 
 // Helper to check if an instruction is a terminator
