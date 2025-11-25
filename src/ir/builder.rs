@@ -1131,6 +1131,104 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
+    /// Creates an integer truncation instruction
+    ///
+    /// Parameters:
+    /// - `result`: Name for the result variable
+    /// - `source_type`: Original integer primitive type (wider)
+    /// - `target_type`: Target integer primitive type (narrower)
+    /// - `value`: Value to truncate
+    ///
+    /// Truncation keeps the least significant bits of the value and discards
+    /// the higher bits. It is typically used to reduce the bit-width of an
+    /// integer, e.g. from `i64` to `i32`.
+    pub fn trunc(
+        &mut self,
+        result: &'a str,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::Trunc {
+            result,
+            source_type,
+            target_type,
+            value,
+        })
+    }
+
+    /// Creates a sign-extension instruction
+    ///
+    /// Parameters:
+    /// - `result`: Name for the result variable
+    /// - `source_type`: Original signed integer type (narrower)
+    /// - `target_type`: Target signed integer type (wider)
+    /// - `value`: Value to extend
+    ///
+    /// Sign-extension interprets the most significant bit of the source as a
+    /// sign bit and replicates it into the new high bits of the result.
+    pub fn sext(
+        &mut self,
+        result: &'a str,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::SignExtend {
+            result,
+            source_type,
+            target_type,
+            value,
+        })
+    }
+
+    /// Creates a bitcast instruction between equally-sized primitive types.
+    ///
+    /// Parameters:
+    /// - `result`: Name for the result variable
+    /// - `source_type`: Original primitive type
+    /// - `target_type`: Target primitive type (must have same bit-width)
+    /// - `value`: Value to reinterpret
+    pub fn bitcast(
+        &mut self,
+        result: &'a str,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::Bitcast {
+            result,
+            source_type,
+            target_type,
+            value,
+        })
+    }
+
+    /// Creates a select instruction (SSA conditional expression).
+    ///
+    /// Parameters:
+    /// - `result`: Name for the result variable
+    /// - `ty`: Type of both `true_val` and `false_val`
+    /// - `cond`: Boolean condition
+    /// - `true_val`: Value when `cond` is true
+    /// - `false_val`: Value when `cond` is false
+    pub fn select(
+        &mut self,
+        result: &'a str,
+        ty: Type<'a>,
+        cond: Value<'a>,
+        true_val: Value<'a>,
+        false_val: Value<'a>,
+    ) -> &mut Self {
+        self.inst(Instruction::Select {
+            result,
+            ty,
+            cond,
+            true_val,
+            false_val,
+        })
+    }
+
     /// Gets a pointer to an array element (pointer arithmetic)
     ///
     /// # Parameters
