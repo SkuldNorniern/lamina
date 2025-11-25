@@ -1288,6 +1288,11 @@ fn binary_i32<W: Write>(
             writer,
             "        // TODO: Modulo operation not implemented in legacy IR-based AArch64 backend"
         )?,
+        BinaryOp::And => writeln!(writer, "        and w12, w10, w11")?,
+        BinaryOp::Or => writeln!(writer, "        orr w12, w10, w11")?,
+        BinaryOp::Xor => writeln!(writer, "        eor w12, w10, w11")?,
+        BinaryOp::Shl => writeln!(writer, "        lsl w12, w10, w11")?,
+        BinaryOp::Shr => writeln!(writer, "        asr w12, w10, w11")?,
     }
     if dest.starts_with("[x29,") {
         materialize_address_operand(writer, dest, "x9")?;
@@ -1316,9 +1321,14 @@ fn binary_i8_bool<W: Write>(
             // For division, ensure proper sign extension and result handling
             writeln!(writer, "        sdiv w12, w10, w11")?;
         }
-        &BinaryOp::Rem => {
+        BinaryOp::Rem => {
             writeln!(writer, "        // TODO: implement remainder")?;
         }
+        BinaryOp::And => writeln!(writer, "        and w12, w10, w11")?,
+        BinaryOp::Or => writeln!(writer, "        orr w12, w10, w11")?,
+        BinaryOp::Xor => writeln!(writer, "        eor w12, w10, w11")?,
+        BinaryOp::Shl => writeln!(writer, "        lsl w12, w10, w11")?,
+        BinaryOp::Shr => writeln!(writer, "        asr w12, w10, w11")?,
     }
     if dest.starts_with("[x29,") {
         materialize_address_operand(writer, dest, "x9")?;
@@ -1348,6 +1358,11 @@ fn binary_i16<W: Write>(
             writer,
             "        // TODO: Modulo operation not implemented in legacy IR-based AArch64 backend"
         )?,
+        BinaryOp::And => writeln!(writer, "        and w12, w10, w11")?,
+        BinaryOp::Or => writeln!(writer, "        orr w12, w10, w11")?,
+        BinaryOp::Xor => writeln!(writer, "        eor w12, w10, w11")?,
+        BinaryOp::Shl => writeln!(writer, "        lsl w12, w10, w11")?,
+        BinaryOp::Shr => writeln!(writer, "        asr w12, w10, w11")?,
     }
     if dest.starts_with("[x29,") {
         materialize_address_operand(writer, dest, "x9")?;
@@ -1377,6 +1392,11 @@ fn binary_i64<W: Write>(
             writer,
             "        // TODO: Modulo operation not implemented in legacy IR-based AArch64 backend"
         )?,
+        BinaryOp::And => writeln!(writer, "        and x12, x10, x11")?,
+        BinaryOp::Or => writeln!(writer, "        orr x12, x10, x11")?,
+        BinaryOp::Xor => writeln!(writer, "        eor x12, x10, x11")?,
+        BinaryOp::Shl => writeln!(writer, "        lsl x12, x10, x11")?,
+        BinaryOp::Shr => writeln!(writer, "        asr x12, x10, x11")?,
     }
     if dest.starts_with("[x29,") {
         materialize_address_operand(writer, dest, "x9")?;

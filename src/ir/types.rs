@@ -41,7 +41,6 @@
 //! - **Metadata types**: Types for debug and optimization info
 //!
 //! ### Missing Instructions:
-//! - **Bitwise operations**: `and`, `or`, `xor`, `not`, `shl`, `shr`
 //! - **Floating point**: `fadd`, `fsub`, `fmul`, `fdiv`, `fcmp`, `fneg`
 //! - **Memory intrinsics**: `memcpy`, `memset`, `memmove`
 //! - **Atomic operations**: `atomicrmw`, `cmpxchg`, `fence`
