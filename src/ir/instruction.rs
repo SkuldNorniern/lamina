@@ -334,6 +334,48 @@ pub enum Instruction<'a> {
         target_type: PrimitiveType,
         value: Value<'a>,
     },
+    /// Select between two values based on a boolean condition.
+    ///
+    /// This is the SSA form of a conditional expression:
+    /// `result = cond ? true_val : false_val`.
+    /// It avoids introducing extra basic blocks compared to `br` + `phi`.
+    Select {
+        result: Identifier<'a>,
+        ty: Type<'a>,
+        cond: Value<'a>,      // Must be a boolean value
+        true_val: Value<'a>,  // Value when condition is true
+        false_val: Value<'a>, // Value when condition is false
+    },
+    /// Truncate an integer to a smaller integer type by discarding high bits.
+    ///
+    /// The source and target types must be integer-like, and the target must be
+    /// strictly smaller than the source in bit-width.
+    Trunc {
+        result: Identifier<'a>,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    },
+    /// Sign-extend an integer value to a larger integer type.
+    ///
+    /// The source and target types must be signed integers, and the target must be
+    /// strictly larger than the source in bit-width.
+    SignExtend {
+        result: Identifier<'a>,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    },
+    /// Reinterpret the bit pattern of a value as another primitive type of equal size.
+    ///
+    /// This does not change any bits, only the type used for subsequent operations.
+    /// For example, `bitcast.f32.i32` reinterprets a 32-bit float as a 32-bit integer.
+    Bitcast {
+        result: Identifier<'a>,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    },
     // --- Control Flow ---
     Br {
         // Conditional branch
@@ -642,6 +684,47 @@ impl fmt::Display for Instruction<'_> {
             } => write!(
                 f,
                 "%{} = zext.{}.{} {}",
+                result, source_type, target_type, value
+            ),
+            Instruction::Select {
+                result,
+                ty,
+                cond,
+                true_val,
+                false_val,
+            } => write!(
+                f,
+                "%{} = select.{} {}, {}, {}",
+                result, ty, cond, true_val, false_val
+            ),
+            Instruction::Trunc {
+                result,
+                source_type,
+                target_type,
+                value,
+            } => write!(
+                f,
+                "%{} = trunc.{}.{} {}",
+                result, source_type, target_type, value
+            ),
+            Instruction::SignExtend {
+                result,
+                source_type,
+                target_type,
+                value,
+            } => write!(
+                f,
+                "%{} = sext.{}.{} {}",
+                result, source_type, target_type, value
+            ),
+            Instruction::Bitcast {
+                result,
+                source_type,
+                target_type,
+                value,
+            } => write!(
+                f,
+                "%{} = bitcast.{}.{} {}",
                 result, source_type, target_type, value
             ),
             Instruction::Br {
@@ -1069,6 +1152,55 @@ mod tests {
         assert_eq!(
             format!("{}", instr17),
             "%extended_val = zext.i8.i64 %byte_val"
+        );
+
+        // Select
+        let instr_select = Instruction::Select {
+            result: "sel",
+            ty: Type::Primitive(PrimitiveType::I32),
+            cond: Value::Variable("cond"),
+            true_val: Value::Variable("a"),
+            false_val: Value::Variable("b"),
+        };
+        assert_eq!(
+            format!("{}", instr_select),
+            "%sel = select.i32 %cond, %a, %b"
+        );
+
+        // Trunc
+        let instr_trunc = Instruction::Trunc {
+            result: "trunc_val",
+            source_type: PrimitiveType::I64,
+            target_type: PrimitiveType::I32,
+            value: Value::Variable("wide_val"),
+        };
+        assert_eq!(
+            format!("{}", instr_trunc),
+            "%trunc_val = trunc.i64.i32 %wide_val"
+        );
+
+        // SignExtend
+        let instr_sext = Instruction::SignExtend {
+            result: "sext_val",
+            source_type: PrimitiveType::I32,
+            target_type: PrimitiveType::I64,
+            value: Value::Variable("narrow_val"),
+        };
+        assert_eq!(
+            format!("{}", instr_sext),
+            "%sext_val = sext.i32.i64 %narrow_val"
+        );
+
+        // Bitcast
+        let instr_bitcast = Instruction::Bitcast {
+            result: "cast_val",
+            source_type: PrimitiveType::I32,
+            target_type: PrimitiveType::F32,
+            value: Value::Variable("bits"),
+        };
+        assert_eq!(
+            format!("{}", instr_bitcast),
+            "%cast_val = bitcast.i32.f32 %bits"
         );
 
         // Tuple
