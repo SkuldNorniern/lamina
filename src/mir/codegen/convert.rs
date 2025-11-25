@@ -886,6 +886,218 @@ fn convert_instruction<'a>(
                 rhs: mask_op,
             }])
         }
+        crate::ir::instruction::Instruction::Trunc {
+            result,
+            source_type: _,
+            target_type,
+            value,
+        } => {
+            // Lower truncation as an AND with a mask of the target width.
+            let dst = if let Some(existing) = var_to_reg.get(result) {
+                existing.clone()
+            } else {
+                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
+                var_to_reg.insert(*result, fresh.clone());
+                fresh
+            };
+            use crate::ir::types::PrimitiveType as IRPrim;
+            let (mask, mir_ty) = match target_type {
+                IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => {
+                    (0xFFu64, map_ir_prim(*target_type)?)
+                }
+                IRPrim::I16 | IRPrim::U16 => (0xFFFFu64, map_ir_prim(*target_type)?),
+                IRPrim::I32 | IRPrim::U32 => (0xFFFF_FFFFu64, map_ir_prim(*target_type)?),
+                IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr => {
+                    (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?)
+                }
+                _ => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
+            };
+            let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
+            let mask_op = Operand::Immediate(crate::mir::Immediate::I64(mask as i64));
+            Ok(vec![Instruction::IntBinary {
+                op: crate::mir::IntBinOp::And,
+                ty: mir_ty,
+                dst,
+                lhs: val_op,
+                rhs: mask_op,
+            }])
+        }
+        crate::ir::instruction::Instruction::SignExtend {
+            result,
+            source_type,
+            target_type,
+            value,
+        } => {
+            // Lower sext using a mask and shifts to propagate the sign bit.
+            use crate::ir::types::PrimitiveType as IRPrim;
+
+            let dst = if let Some(existing) = var_to_reg.get(result) {
+                existing.clone()
+            } else {
+                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
+                var_to_reg.insert(*result, fresh.clone());
+                fresh
+            };
+
+            // Determine source and target bit-widths
+            fn bits_for(ty: &IRPrim) -> u32 {
+                match ty {
+                    IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
+                    IRPrim::I16 | IRPrim::U16 => 16,
+                    IRPrim::I32 | IRPrim::U32 => 32,
+                    IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr => 64,
+                    IRPrim::F32 | IRPrim::F64 => 0,
+                }
+            }
+
+            let src_bits = bits_for(&source_type);
+            let dst_bits = bits_for(&target_type);
+
+            if src_bits == 0 || dst_bits == 0 || src_bits >= dst_bits {
+                return Err(FromIRError::UnsupportedType);
+            }
+
+            let mir_ty = map_ir_prim(*target_type)?;
+            let shift = (dst_bits - src_bits) as i64;
+
+            let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
+
+            // temp = (val << shift)
+            let temp_reg = Register::Virtual(vreg_alloc.allocate_gpr());
+            let shift_imm = Operand::Immediate(crate::mir::Immediate::I64(shift));
+
+            let mut instrs = Vec::new();
+
+            instrs.push(Instruction::IntBinary {
+                op: crate::mir::IntBinOp::Shl,
+                ty: mir_ty.clone(),
+                dst: temp_reg.clone(),
+                lhs: val_op,
+                rhs: shift_imm,
+            });
+
+            // dst = temp >> shift (arithmetic shift right propagates sign)
+            instrs.push(Instruction::IntBinary {
+                op: crate::mir::IntBinOp::AShr,
+                ty: mir_ty,
+                dst,
+                lhs: Operand::Register(temp_reg),
+                rhs: Operand::Immediate(crate::mir::Immediate::I64(shift)),
+            });
+
+            Ok(instrs)
+        }
+        crate::ir::instruction::Instruction::Bitcast {
+            result,
+            source_type,
+            target_type,
+            value,
+        } => {
+            use crate::ir::types::PrimitiveType as IRPrim;
+
+            // Only support bitcasts between primitive types of equal size.
+            fn bits_for(ty: &IRPrim) -> u32 {
+                match ty {
+                    IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
+                    IRPrim::I16 | IRPrim::U16 => 16,
+                    IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 32,
+                    IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 64,
+                }
+            }
+
+            if bits_for(&source_type) != bits_for(&target_type) {
+                return Err(FromIRError::UnsupportedType);
+            }
+
+            match value {
+                IRVal::Variable(id) => {
+                    // Reuse the same MIR register for the result; MIR is untyped and the
+                    // backend will see the result type through later uses.
+                    let src_reg = if let Some(existing) = var_to_reg.get(id) {
+                        existing.clone()
+                    } else {
+                        let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
+                        var_to_reg.insert(*id, fresh.clone());
+                        fresh
+                    };
+                    var_to_reg.insert(*result, src_reg);
+                    Ok(vec![])
+                }
+                IRVal::Constant(lit) => {
+                    // For now, restrict constant bitcasts to a few common cases.
+                    let mir_ty = map_ir_prim(*target_type)?;
+                    let dst = if let Some(existing) = var_to_reg.get(result) {
+                        existing.clone()
+                    } else {
+                        let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
+                        var_to_reg.insert(*result, fresh.clone());
+                        fresh
+                    };
+
+                    let imm = match (source_type, target_type, lit) {
+                        (IRPrim::F32, IRPrim::I32, crate::ir::types::Literal::F32(v)) => {
+                            crate::mir::Immediate::I32(v.to_bits() as i32)
+                        }
+                        (IRPrim::F64, IRPrim::I64, crate::ir::types::Literal::F64(v)) => {
+                            crate::mir::Immediate::I64(v.to_bits() as i64)
+                        }
+                        (IRPrim::I32, IRPrim::F32, crate::ir::types::Literal::I32(v)) => {
+                            crate::mir::Immediate::I32(*v)
+                        }
+                        (IRPrim::I64, IRPrim::F64, crate::ir::types::Literal::I64(v)) => {
+                            crate::mir::Immediate::I64(*v)
+                        }
+                        _ => return Err(FromIRError::UnsupportedInstruction),
+                    };
+
+                    Ok(vec![Instruction::IntBinary {
+                        op: crate::mir::IntBinOp::Add,
+                        ty: mir_ty,
+                        dst,
+                        lhs: Operand::Immediate(imm),
+                        rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                    }])
+                }
+                IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
+            }
+        }
+        crate::ir::instruction::Instruction::Select {
+            result,
+            ty,
+            cond,
+            true_val,
+            false_val,
+        } => {
+            let dst = if let Some(existing) = var_to_reg.get(result) {
+                existing.clone()
+            } else {
+                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
+                var_to_reg.insert(*result, fresh.clone());
+                fresh
+            };
+
+            let mir_ty = map_ir_type(ty)?;
+
+            // Condition must be a variable bound to a MIR register.
+            let cond_reg = match cond {
+                IRVal::Variable(id) => var_to_reg
+                    .get(id)
+                    .cloned()
+                    .ok_or(FromIRError::UnknownVariable)?,
+                _ => return Err(FromIRError::UnsupportedInstruction),
+            };
+
+            let tv = get_operand_permissive(true_val, vreg_alloc, var_to_reg)?;
+            let fv = get_operand_permissive(false_val, vreg_alloc, var_to_reg)?;
+
+            Ok(vec![Instruction::Select {
+                dst,
+                ty: mir_ty,
+                cond: cond_reg,
+                true_val: tv,
+                false_val: fv,
+            }])
+        }
         crate::ir::instruction::Instruction::PtrToInt {
             result,
             ptr_value,

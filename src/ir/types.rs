@@ -40,15 +40,13 @@
 //! - **Type aliases**: Named type abbreviations
 //! - **Metadata types**: Types for debug and optimization info
 //!
-//! ### Missing Instructions:
-//! - **Floating point**: `fadd`, `fsub`, `fmul`, `fdiv`, `fcmp`, `fneg`
+//! ### Missing / Planned Instructions:
+//! - **Floating point**: additional ops beyond the existing arithmetic and comparisons
 //! - **Memory intrinsics**: `memcpy`, `memset`, `memmove`
-//! - **Atomic operations**: `atomicrmw`, `cmpxchg`, `fence`
+//! - **Atomic operations**: richer `atomicrmw`/`cmpxchg`/`fence` variants
 //! - **Exception handling**: `invoke`, `landingpad`, `resume`
 //! - **Control flow**: `switch`, `indirectbr`
-//! - **Type conversion**: `trunc`, `sext`, `bitcast`
-//! - **Selection**: `select` instruction
-//! - **Vector operations**: SIMD arithmetic and operations
+//! - **Vector operations**: additional SIMD arithmetic and operations (kept behind `nightly`)
 //!
 //! ### Advanced Features:
 //! - **Debug information**: `!dbg`, `!llvm.dbg.value`

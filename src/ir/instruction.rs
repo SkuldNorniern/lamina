@@ -225,17 +225,29 @@ pub enum BinaryOp {
     /// Remainder: `result = lhs % rhs`
     Rem,
     /// Bitwise AND: `result = lhs & rhs`
+    ///
+    /// Only valid for integer-like types (signed/unsigned integers, booleans, and pointers).
     And,
     /// Bitwise OR: `result = lhs | rhs`
+    ///
+    /// Only valid for integer-like types (signed/unsigned integers, booleans, and pointers).
     Or,
     /// Bitwise XOR: `result = lhs ^ rhs`
-    Xor,
-    /// Logical shift left: `result = lhs << rhs`
-    Shl,
-    /// Arithmetic shift right: `result = lhs >> rhs`
     ///
-    /// For signed integers this preserves the sign bit. For unsigned
-    /// integers the semantics match the target's arithmetic right shift.
+    /// Only valid for integer-like types (signed/unsigned integers, booleans, and pointers).
+    Xor,
+    /// Logical left shift: `result = lhs << rhs`
+    ///
+    /// Only valid for integer-like types. The shift amount must be less than the bit-width
+    /// of `lhs` (e.g., 0–7 for `i8`, 0–31 for `i32`, etc.).
+    Shl,
+    /// Arithmetic right shift: `result = lhs >> rhs`
+    ///
+    /// Interprets `lhs` as a two's-complement signed integer and propagates the sign bit.
+    /// Only valid for signed integer types.
+    ///
+    /// For unsigned integers, consider using logical right shift in MIR (`IntBinOp::LShr`)
+    /// or an explicit mask after an arithmetic shift.
     Shr,
 }
 
