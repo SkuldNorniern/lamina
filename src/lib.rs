@@ -346,10 +346,38 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 
     // 2. Generate assembly for the specified target
     match target {
-        "x86_64_unknown" => generate_x86_64_assembly(&module, output_asm)?,
-        "x86_64_macos" => generate_x86_64_assembly(&module, output_asm)?,
-        "x86_64_linux" => generate_x86_64_assembly(&module, output_asm)?,
-        "x86_64_windows" => generate_x86_64_assembly(&module, output_asm)?,
+        "x86_64_unknown" => {
+            let mir_module = mir::codegen::from_ir(&module, "module")?;
+            mir_codegen::generate_mir_to_x86_64(
+                &mir_module,
+                output_asm,
+                target::TargetOperatingSystem::Unknown,
+            )?;
+        }
+        "x86_64_macos" => {
+            let mir_module = mir::codegen::from_ir(&module, "module")?;
+            mir_codegen::generate_mir_to_x86_64(
+                &mir_module,
+                output_asm,
+                target::TargetOperatingSystem::MacOS,
+            )?;
+        }
+        "x86_64_linux" => {
+            let mir_module = mir::codegen::from_ir(&module, "module")?;
+            mir_codegen::generate_mir_to_x86_64(
+                &mir_module,
+                output_asm,
+                target::TargetOperatingSystem::Linux,
+            )?;
+        }
+        "x86_64_windows" => {
+            let mir_module = mir::codegen::from_ir(&module, "module")?;
+            mir_codegen::generate_mir_to_x86_64(
+                &mir_module,
+                output_asm,
+                target::TargetOperatingSystem::Windows,
+            )?;
+        }
         // "unknown" targets use generic conventions (may default to Linux/ELF-style for compatibility)
         "aarch64_unknown" => {
             let mir_module = mir::codegen::from_ir(&module, "module")?;
