@@ -74,7 +74,9 @@
 //! ##### Arithmetic Instructions
 //! - `add`, `sub`, `mul`, `div` - Basic arithmetic operations
 //! - `rem`, `neg` - Remainder and negation
-//! - Type-specific variants: `add.i32`, `mul.i64`, etc.
+//! - `and`, `or`, `xor` - Bitwise logical operations on integers
+//! - `shl`, `shr` - Shift left and arithmetic shift right on integers
+//! - Type-specific variants: `add.i32`, `mul.i64`, `and.i32`, `shl.i64`, etc.
 //!
 //! ##### Comparison Instructions
 //! - `eq`, `ne`, `lt`, `le`, `gt`, `ge` - Ordering comparisons

@@ -363,6 +363,17 @@ pub fn generate_instruction<'a, W: Write>(
             let is_constant_lhs = lhs_op.starts_with('$');
             let is_constant_rhs = rhs_op.starts_with('$');
 
+            // Bitwise operations are only defined for integer-like types.
+            if matches!(
+                op,
+                BinaryOp::And | BinaryOp::Or | BinaryOp::Xor | BinaryOp::Shl | BinaryOp::Shr
+            ) && matches!(ty, PrimitiveType::F32 | PrimitiveType::F64)
+            {
+                return Err(LaminaError::CodegenError(
+                    CodegenError::BinaryOpNotSupportedForType(TypeInfo::Primitive(*ty)),
+                ));
+            }
+
             // Special case for operations on constants
             if is_constant_lhs && is_constant_rhs {
                 // Both operands are constants
@@ -387,10 +398,35 @@ pub fn generate_instruction<'a, W: Write>(
                         let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         if rhs_val == 0 { 0 } else { lhs_val / rhs_val }
                     }
-                    &BinaryOp::Rem => {
+                    BinaryOp::Rem => {
                         let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
                         if rhs_val == 0 { 0 } else { lhs_val % rhs_val }
+                    }
+                    BinaryOp::And => {
+                        let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        lhs_val & rhs_val
+                    }
+                    BinaryOp::Or => {
+                        let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        lhs_val | rhs_val
+                    }
+                    BinaryOp::Xor => {
+                        let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        let rhs_val = rhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        lhs_val ^ rhs_val
+                    }
+                    BinaryOp::Shl => {
+                        let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        let rhs_val = rhs_op.trim_start_matches('$').parse::<u32>().unwrap_or(0);
+                        lhs_val.wrapping_shl(rhs_val)
+                    }
+                    BinaryOp::Shr => {
+                        let lhs_val = lhs_op.trim_start_matches('$').parse::<i64>().unwrap_or(0);
+                        let rhs_val = rhs_op.trim_start_matches('$').parse::<u32>().unwrap_or(0);
+                        lhs_val.wrapping_shr(rhs_val)
                     }
                 };
                 writeln!(
@@ -616,6 +652,43 @@ pub fn generate_instruction<'a, W: Write>(
                         writer,
                         "        {} {}, {} # Binary Op",
                         full_op, rhs_reg, lhs_reg
+                    )?;
+                }
+                BinaryOp::And | BinaryOp::Or | BinaryOp::Xor => {
+                    let full_op = match op {
+                        BinaryOp::And => format!("and{}", op_mnemonic),
+                        BinaryOp::Or => format!("or{}", op_mnemonic),
+                        BinaryOp::Xor => format!("xor{}", op_mnemonic),
+                        _ => unreachable!(),
+                    };
+                    writeln!(
+                        writer,
+                        "        {} {}, {} # Bitwise Op",
+                        full_op, rhs_reg, lhs_reg
+                    )?;
+                }
+                BinaryOp::Shl => {
+                    // Shift amount in CL, value in lhs_reg
+                    writeln!(
+                        writer,
+                        "        movb %r10b, %cl # Move shift amount into CL"
+                    )?;
+                    writeln!(
+                        writer,
+                        "        shl{} %cl, {} # Shift left",
+                        op_mnemonic, lhs_reg
+                    )?;
+                }
+                BinaryOp::Shr => {
+                    // Arithmetic shift right
+                    writeln!(
+                        writer,
+                        "        movb %r10b, %cl # Move shift amount into CL"
+                    )?;
+                    writeln!(
+                        writer,
+                        "        sar{} %cl, {} # Arithmetic shift right",
+                        op_mnemonic, lhs_reg
                     )?;
                 }
                 BinaryOp::Div => {

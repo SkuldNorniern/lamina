@@ -190,10 +190,14 @@ impl fmt::Display for AtomicBinOp {
     }
 }
 
-/// Binary arithmetic and logical operations.
+/// Binary arithmetic and bitwise operations.
 ///
 /// These operations take two operands and produce a single result.
 /// All operands and the result must have the same primitive type.
+///
+/// Arithmetic operations are defined for integer and floating types,
+/// while bitwise operations are defined only for integer-like types
+/// (signed/unsigned integers, booleans, and pointers).
 ///
 /// # Examples
 ///
@@ -205,8 +209,8 @@ impl fmt::Display for AtomicBinOp {
 /// builder
 ///     .function("math", Type::Primitive(PrimitiveType::I32))
 ///     .binary(BinaryOp::Add, "sum", PrimitiveType::I32, i32(10), i32(20))
-///     .binary(BinaryOp::Mul, "product", PrimitiveType::I32, var("sum"), i32(3))
-///     .ret(Type::Primitive(PrimitiveType::I32), var("product"));
+///     .binary(BinaryOp::And, "masked", PrimitiveType::I32, var("sum"), i32(0xff))
+///     .ret(Type::Primitive(PrimitiveType::I32), var("masked"));
 /// ```
 #[derive(Debug, Clone, PartialEq)] // Cannot derive Eq due to f32 in Value::Constant
 pub enum BinaryOp {
@@ -220,6 +224,19 @@ pub enum BinaryOp {
     Div,
     /// Remainder: `result = lhs % rhs`
     Rem,
+    /// Bitwise AND: `result = lhs & rhs`
+    And,
+    /// Bitwise OR: `result = lhs | rhs`
+    Or,
+    /// Bitwise XOR: `result = lhs ^ rhs`
+    Xor,
+    /// Logical shift left: `result = lhs << rhs`
+    Shl,
+    /// Arithmetic shift right: `result = lhs >> rhs`
+    ///
+    /// For signed integers this preserves the sign bit. For unsigned
+    /// integers the semantics match the target's arithmetic right shift.
+    Shr,
 }
 
 /// Comparison operations that produce boolean results.
@@ -548,6 +565,11 @@ impl fmt::Display for BinaryOp {
                 BinaryOp::Mul => "mul",
                 BinaryOp::Div => "div",
                 BinaryOp::Rem => "rem",
+                 BinaryOp::And => "and",
+                 BinaryOp::Or => "or",
+                 BinaryOp::Xor => "xor",
+                 BinaryOp::Shl => "shl",
+                 BinaryOp::Shr => "shr",
             }
         )
     }
@@ -854,6 +876,11 @@ mod tests {
         assert_eq!(format!("{}", BinaryOp::Mul), "mul");
         assert_eq!(format!("{}", BinaryOp::Div), "div");
         assert_eq!(format!("{}", BinaryOp::Rem), "rem");
+        assert_eq!(format!("{}", BinaryOp::And), "and");
+        assert_eq!(format!("{}", BinaryOp::Or), "or");
+        assert_eq!(format!("{}", BinaryOp::Xor), "xor");
+        assert_eq!(format!("{}", BinaryOp::Shl), "shl");
+        assert_eq!(format!("{}", BinaryOp::Shr), "shr");
     }
 
     #[test]
@@ -1057,3 +1084,6 @@ mod tests {
         assert_eq!(format!("{}", instr20), "dealloc.heap %heap_ptr");
     }
 }
+
+
+

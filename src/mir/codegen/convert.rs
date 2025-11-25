@@ -527,6 +527,41 @@ fn convert_instruction<'a>(
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
+                (IRBin::And, _) => Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::And,
+                    ty: mir_ty,
+                    dst: dst.clone(),
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRBin::Or, _) => Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Or,
+                    ty: mir_ty,
+                    dst: dst.clone(),
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRBin::Xor, _) => Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Xor,
+                    ty: mir_ty,
+                    dst: dst.clone(),
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRBin::Shl, _) => Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Shl,
+                    ty: mir_ty,
+                    dst: dst.clone(),
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
+                (IRBin::Shr, _) => Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::AShr,
+                    ty: mir_ty,
+                    dst: dst.clone(),
+                    lhs: lhs_op,
+                    rhs: rhs_op,
+                },
             };
             Ok(vec![mir])
         }

@@ -561,7 +561,12 @@ fn binary_i32<W: Write>(
         BinaryOp::Sub => writeln!(writer, "    subw t2, t0, t1")?,
         BinaryOp::Mul => writeln!(writer, "    mulw t2, t0, t1")?,
         BinaryOp::Div => writeln!(writer, "    divw t2, t0, t1")?,
-        &BinaryOp::Rem => writeln!(writer, "    // TODO: implement remainder")?,
+        BinaryOp::Rem => writeln!(writer, "    // TODO: implement remainder")?,
+        BinaryOp::And => writeln!(writer, "    andw t2, t0, t1")?,
+        BinaryOp::Or => writeln!(writer, "    orw  t2, t0, t1")?,
+        BinaryOp::Xor => writeln!(writer, "    xorw t2, t0, t1")?,
+        BinaryOp::Shl => writeln!(writer, "    sllw t2, t0, t1")?,
+        BinaryOp::Shr => writeln!(writer, "    sraw t2, t0, t1")?,
     }
     store_to_location(writer, "t2", dest, state)
 }
@@ -581,7 +586,12 @@ fn binary_i64<W: Write>(
         BinaryOp::Sub => writeln!(writer, "    sub t2, t0, t1")?,
         BinaryOp::Mul => writeln!(writer, "    mul t2, t0, t1")?,
         BinaryOp::Div => writeln!(writer, "    div t2, t0, t1")?,
-        &BinaryOp::Rem => writeln!(writer, "    // TODO: implement remainder")?,
+        BinaryOp::Rem => writeln!(writer, "    // TODO: implement remainder")?,
+        BinaryOp::And => writeln!(writer, "    and t2, t0, t1")?,
+        BinaryOp::Or => writeln!(writer, "    or  t2, t0, t1")?,
+        BinaryOp::Xor => writeln!(writer, "    xor t2, t0, t1")?,
+        BinaryOp::Shl => writeln!(writer, "    sll t2, t0, t1")?,
+        BinaryOp::Shr => writeln!(writer, "    sra t2, t0, t1")?,
     }
     store_to_location(writer, "t2", dest, state)
 }

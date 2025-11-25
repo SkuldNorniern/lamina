@@ -758,6 +758,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }
                             BinaryOp::Div => instructions.push(match wasm_ty {
                                 NumericType::F32 | NumericType::F64 => {
+                                    // SAFETY: for floating-point primitives `float_ty` is always Some.
                                     generate::WasmInstruction::DivF(float_ty.unwrap())
                                 }
                                 NumericType::I32 | NumericType::I64 => match ty {
@@ -765,12 +766,14 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                     | PrimitiveType::I16
                                     | PrimitiveType::I32
                                     | PrimitiveType::I64 => {
+                                        // SAFETY: for integer primitives `int_ty` is always Some.
                                         generate::WasmInstruction::DivS(int_ty.unwrap())
                                     }
                                     PrimitiveType::U8
                                     | PrimitiveType::U16
                                     | PrimitiveType::U32
                                     | PrimitiveType::U64 => {
+                                        // SAFETY: for integer primitives `int_ty` is always Some.
                                         generate::WasmInstruction::DivU(int_ty.unwrap())
                                     }
                                     _ => unreachable!(),
@@ -782,9 +785,85 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             BinaryOp::Sub => {
                                 instructions.push(generate::WasmInstruction::Sub(wasm_ty))
                             }
+                            BinaryOp::And => {
+                                if let Some(int_ty) = int_ty {
+                                    instructions.push(generate::WasmInstruction::And(int_ty));
+                                } else {
+                                    return Err(LaminaError::CodegenError(
+                                        CodegenError::UnsupportedTypeForOperation(
+                                            crate::codegen::OperationType::BinaryOp,
+                                        ),
+                                    ));
+                                }
+                            }
+                            BinaryOp::Or => {
+                                if let Some(int_ty) = int_ty {
+                                    instructions.push(generate::WasmInstruction::Or(int_ty));
+                                } else {
+                                    return Err(LaminaError::CodegenError(
+                                        CodegenError::UnsupportedTypeForOperation(
+                                            crate::codegen::OperationType::BinaryOp,
+                                        ),
+                                    ));
+                                }
+                            }
+                            BinaryOp::Xor => {
+                                if let Some(int_ty) = int_ty {
+                                    instructions.push(generate::WasmInstruction::Xor(int_ty));
+                                } else {
+                                    return Err(LaminaError::CodegenError(
+                                        CodegenError::UnsupportedTypeForOperation(
+                                            crate::codegen::OperationType::BinaryOp,
+                                        ),
+                                    ));
+                                }
+                            }
+                            BinaryOp::Shl => {
+                                if let Some(int_ty) = int_ty {
+                                    instructions.push(generate::WasmInstruction::Shl(int_ty));
+                                } else {
+                                    return Err(LaminaError::CodegenError(
+                                        CodegenError::UnsupportedTypeForOperation(
+                                            crate::codegen::OperationType::BinaryOp,
+                                        ),
+                                    ));
+                                }
+                            }
+                            BinaryOp::Shr => {
+                                let inst = match (int_ty, ty) {
+                                    (Some(int_ty), PrimitiveType::I8)
+                                    | (Some(int_ty), PrimitiveType::I16)
+                                    | (Some(int_ty), PrimitiveType::I32)
+                                    | (Some(int_ty), PrimitiveType::I64) => {
+                                        generate::WasmInstruction::ShrS(int_ty)
+                                    }
+                                    (Some(int_ty), PrimitiveType::U8)
+                                    | (Some(int_ty), PrimitiveType::U16)
+                                    | (Some(int_ty), PrimitiveType::U32)
+                                    | (Some(int_ty), PrimitiveType::U64) => {
+                                        generate::WasmInstruction::ShrU(int_ty)
+                                    }
+                                    _ => {
+                                        return Err(LaminaError::CodegenError(
+                                            CodegenError::UnsupportedTypeForOperation(
+                                                crate::codegen::OperationType::BinaryOp,
+                                            ),
+                                        ));
+                                    }
+                                };
+                                instructions.push(inst);
+                            }
                             &BinaryOp::Rem => {
-                                // TODO: implement remainder
-                                instructions.push(generate::WasmInstruction::RemS(int_ty.unwrap()))
+                                // TODO: implement unsigned remainder variant where needed.
+                                if let Some(int_ty) = int_ty {
+                                    instructions.push(generate::WasmInstruction::RemS(int_ty));
+                                } else {
+                                    return Err(LaminaError::CodegenError(
+                                        CodegenError::UnsupportedTypeForOperation(
+                                            crate::codegen::OperationType::BinaryOp,
+                                        ),
+                                    ));
+                                }
                             }
                         }
 

@@ -923,6 +923,9 @@ fn generate_optimized_binary<'a, W: Write>(
             BinaryOp::Add => format!("add{}", op_suffix),
             BinaryOp::Sub => format!("sub{}", op_suffix),
             BinaryOp::Mul => format!("imul{}", op_suffix),
+            BinaryOp::And => format!("and{}", op_suffix),
+            BinaryOp::Or => format!("or{}", op_suffix),
+            BinaryOp::Xor => format!("xor{}", op_suffix),
             BinaryOp::Div => {
                 // Division is more complex, fall back to regular implementation
                 return generate_instruction(
@@ -939,8 +942,9 @@ fn generate_optimized_binary<'a, W: Write>(
                     "",
                 );
             }
-            &BinaryOp::Rem => {
-                // Remainder is complex, fall back to regular implementation
+            BinaryOp::Rem | BinaryOp::Shl | BinaryOp::Shr => {
+                // Remainder and shifts are more complex or require special registers;
+                // fall back to the general implementation.
                 return generate_instruction(
                     &Instruction::Binary {
                         op: op.clone(),
@@ -1003,13 +1007,18 @@ fn generate_optimized_binary<'a, W: Write>(
                     0
                 }
             }
-            &BinaryOp::Rem => {
+            BinaryOp::Rem => {
                 if *rhs_val != 0 {
                     lhs_val % rhs_val
                 } else {
                     0
                 }
             }
+            BinaryOp::And => lhs_val & rhs_val,
+            BinaryOp::Or => lhs_val | rhs_val,
+            BinaryOp::Xor => lhs_val ^ rhs_val,
+            BinaryOp::Shl => lhs_val.wrapping_shl((*rhs_val) as u32),
+            BinaryOp::Shr => lhs_val.wrapping_shr((*rhs_val) as u32),
         };
 
         if let Some(result_reg) = result_in_reg {
@@ -1055,6 +1064,9 @@ fn generate_optimized_binary<'a, W: Write>(
                 }
                 format!("imul{}", op_suffix)
             }
+            BinaryOp::And => format!("and{}", op_suffix),
+            BinaryOp::Or => format!("or{}", op_suffix),
+            BinaryOp::Xor => format!("xor{}", op_suffix),
             BinaryOp::Div => {
                 // Fall back to regular division
                 return generate_instruction(
@@ -1071,8 +1083,8 @@ fn generate_optimized_binary<'a, W: Write>(
                     "",
                 );
             }
-            &BinaryOp::Rem => {
-                // Fall back to regular remainder
+            BinaryOp::Rem | BinaryOp::Shl | BinaryOp::Shr => {
+                // Fall back to regular remainder and shifts
                 return generate_instruction(
                     &Instruction::Binary {
                         op: op.clone(),
