@@ -11,14 +11,15 @@ import numpy as np
 from pathlib import Path
 
 # --- Configuration ---
-BENCHMARK_DIR = Path("benchmarks/fibonacci") # Use Path for directory handling
+BENCHMARK_DIR = Path("benchmarks/factorial") # Use Path for directory handling
 LAMINA_EXECUTABLE = "./target/release/lamina"
-LAMINA_SOURCE = "benchmarks/fibonacci/fibonacci.lamina" # Keep lamina source path relative to root
-LAMINA_OUTPUT_BINARY = "fibonacci_lamina" # Consistent naming
-# Pass MIR-ASM flag as separate tokens (option and value)
-LAMINA_FLAG = ["--emit-mir-asm", "--opt-level","3"]
-BATCH_RUNS = 500  # Number of times to run each benchmark (fewer for fibonacci)
-TIME_THRESHOLD = 1.0  # Seconds - fibonacci is faster than matrix multiplication
+LAMINA_SOURCE = "benchmarks/factorial/factorial.lamina" # Keep lamina source path relative to root
+LAMINA_OUTPUT_BINARY = "factorial_lamina" # Consistent naming
+
+# Determine target OS for assembly generation
+LAMINA_FLAG = ["--emit-mir-asm","--opt-level", "3"]
+BATCH_RUNS = 1000  # Number of times to run each benchmark (more for factorial since it's faster)
+TIME_THRESHOLD = 0.5  # Seconds - factorial is faster than fibonacci
 
 # --- Colors (ANSI escape codes) ---
 GREEN = '\033[0;32m'
@@ -61,7 +62,7 @@ def run_command(command, check=True, cwd=None):
         #     print(result.stdout)
         if result.stderr:
             # Filter common verbose compiler messages unless it's an error
-             if "warning:" not in result.stderr.lower() and "note:" not in result.stderr.lower() or result.returncode != 0 :
+             if result.returncode != 0 or ("warning:" not in result.stderr.lower() and "note:" not in result.stderr.lower()):
                  # Print entire stderr if it's likely an error or failure
                  print_color(RED if result.returncode != 0 else YELLOW, f"Stderr: {result.stderr.strip()}")
         if check and result.returncode != 0:
@@ -72,7 +73,7 @@ def run_command(command, check=True, cwd=None):
              sys.exit(result.returncode)
         return result
     except FileNotFoundError:
-        print_color(RED, f"Error: Command not found: {command[0]}")
+        print_color(RED, f"Error: Command not found: {command_str_list[0]}")
         sys.exit(1)
     except subprocess.CalledProcessError as e:
         print_color(RED, f"Command failed: {' '.join(command_str_list)}")
@@ -102,6 +103,23 @@ def ensure_executable(file_path):
         print_color(RED, f"Error setting executable permission for {file_path}: {e}")
         return False
 
+def get_version_info(version_cmd):
+    """Gets version information from a command."""
+    try:
+        result = subprocess.run(version_cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            # Extract first line and clean it up
+            version_line = result.stdout.strip().split('\n')[0]
+            # Clean up common version formats
+            if 'version' in version_line.lower():
+                return version_line.split('version', 1)[-1].strip()
+            else:
+                return version_line.strip()
+        else:
+            return "Unknown"
+    except (subprocess.TimeoutExpired, FileNotFoundError, subprocess.CalledProcessError):
+        return "Unknown"
+
 def run_single_benchmark(label, command_list, cwd=None):
     """Runs and times a benchmark command list with memory usage tracking.
     Performs multiple runs for more accurate measurements unless the benchmark is too slow."""
@@ -110,10 +128,10 @@ def run_single_benchmark(label, command_list, cwd=None):
     # Determine the proper time command based on the OS
     is_mac = platform.system() == 'Darwin'
     time_flag = '-l' if is_mac else '-v'
-    
+
     # Prefix with /usr/bin/time to measure memory usage
     time_command = ['/usr/bin/time', time_flag]
-    
+
     # Full command with time prefix
     full_command = time_command + command_list
 
@@ -123,19 +141,19 @@ def run_single_benchmark(label, command_list, cwd=None):
     result = run_command(full_command, check=False, cwd=cwd)
     end_time = time.perf_counter()
     first_run_time = end_time - start_time
-    
+
     # Check if the benchmark failed
     if result.returncode != 0:
         print_color(RED, f"{label} Benchmark failed with Exit Code: {result.returncode}")
         return None, result.returncode, None, True, [], 0
-    
+
     # Parse memory usage from stderr
     max_memory = parse_memory_usage(result.stderr, is_mac)
-    
+
     # Store results of first run
     times = [first_run_time]
     memories = [max_memory] if max_memory is not None else []
-    
+
     # Check if benchmark is too slow to run multiple times
     single_run_only = first_run_time > TIME_THRESHOLD
     if single_run_only:
@@ -144,7 +162,7 @@ def run_single_benchmark(label, command_list, cwd=None):
         if max_memory is not None:
             print_color(YELLOW, f"{label} Peak Memory Usage: {max_memory:.2f} MB")
         return first_run_time, result.returncode, max_memory, True, times, 0
-    
+
     # Perform additional runs for more accurate measurements
     for run in range(2, BATCH_RUNS + 1):
         print_color(YELLOW, f"Run {run}/{BATCH_RUNS} for {label}...")
@@ -152,25 +170,25 @@ def run_single_benchmark(label, command_list, cwd=None):
         result = run_command(full_command, check=False, cwd=cwd)
         end_time = time.perf_counter()
         run_time = end_time - start_time
-        
+
         # Check if the benchmark failed in subsequent runs
         if result.returncode != 0:
             print_color(RED, f"{label} Benchmark failed on run {run} with Exit Code: {result.returncode}")
             # We still have data from previous successful runs, so don't return None
             break
-        
+
         times.append(run_time)
         mem = parse_memory_usage(result.stderr, is_mac)
         if mem is not None:
             memories.append(mem)
-    
+
     # Calculate statistics
     if len(times) > 0:
         min_time = min(times)
         max_time = max(times)
         avg_time = sum(times) / len(times)
         median_time = statistics.median(times)
-        
+
         # Detect outliers using IQR method if we have enough samples
         outliers = []
         if len(times) >= 10:
@@ -182,7 +200,7 @@ def run_single_benchmark(label, command_list, cwd=None):
             outliers = [t for t in times if t < lower_bound or t > upper_bound]
             if outliers:
                 print_color(YELLOW, f"Detected {len(outliers)} outliers in {label} runs: {[f'{o:.4f}' for o in outliers]}")
-                
+
                 # If there are outliers, also calculate stats without outliers for comparison
                 clean_times = [t for t in times if t not in outliers]
                 clean_min = min(clean_times)
@@ -190,7 +208,7 @@ def run_single_benchmark(label, command_list, cwd=None):
                 clean_avg = sum(clean_times) / len(clean_times)
                 clean_median = statistics.median(clean_times)
                 print_color(YELLOW, f"{label} Clean Times (no outliers): Min: {clean_min:.4f}, Max: {clean_max:.4f}, Avg: {clean_avg:.4f}, Med: {clean_median:.4f}")
-        
+
         # Add percentile calculations
         if len(times) > 5:  # Only calculate percentiles with enough samples
             p90_time = np.percentile(times, 90)
@@ -198,14 +216,14 @@ def run_single_benchmark(label, command_list, cwd=None):
             print_color(YELLOW, f"{label} Times (seconds): Min: {min_time:.4f}, Max: {max_time:.4f}, Avg: {avg_time:.4f}, Med: {median_time:.4f}, P90: {p90_time:.4f}, P95: {p95_time:.4f}")
         else:
             print_color(YELLOW, f"{label} Times (seconds): Min: {min_time:.4f}, Max: {max_time:.4f}, Avg: {avg_time:.4f}, Median: {median_time:.4f}")
-        
+
         if memories:
             avg_memory = sum(memories) / len(memories)
             print_color(YELLOW, f"{label} Avg Peak Memory Usage: {avg_memory:.2f} MB")
         else:
             avg_memory = None
             print_color(YELLOW, f"{label} Peak Memory Usage: Unknown")
-        
+
         # If there were outliers, also report the version without them
         if outliers and len(times) >= 10:
             return clean_avg, result.returncode, avg_memory, single_run_only, clean_times if clean_times else times, len(outliers)
@@ -219,7 +237,7 @@ def parse_memory_usage(stderr, is_mac):
     """Parse memory usage from stderr output of time command."""
     if not stderr:
         return None
-        
+
     max_memory = None
     if is_mac:
         # On macOS, parse memory from the -l output format
@@ -241,19 +259,19 @@ def parse_memory_usage(stderr, is_mac):
                     break
                 except (ValueError, IndexError):
                     pass
-    
+
     return max_memory
 
 def create_csharp_project_file(benchmark_dir):
     """Creates a minimal C# project file for the benchmark."""
-    csproj_path = benchmark_dir / "fibonacci.csproj"
+    csproj_path = benchmark_dir / "factorial.csproj"
     csproj_content = """<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>Fibonacci</AssemblyName>
+    <AssemblyName>Factorial</AssemblyName>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Optimize>true</Optimize>
     <DebugType>None</DebugType>
@@ -278,22 +296,29 @@ def compile_and_run(target, results, cwd):
     output_path_rel = target.get('output') # Output path relative to BENCHMARK_DIR (can be dir or file)
     compile_cmd_template = target.get('compile')
     run_cmd_template = target['run']
+    version_cmd = target.get('version_cmd')
 
-    print_color(YELLOW, f"\nProcessing {label} ({source_file_rel})...")
+    # Get version information
+    version_info = "Unknown"
+    if version_cmd:
+        print_color(YELLOW, f"Getting version info for {label}...")
+        version_info = get_version_info(version_cmd)
+
+    print_color(YELLOW, f"\nProcessing {label} ({source_file_rel}) - Version: {version_info}...")
 
     # Check if source file exists
     if not source_file_abs.exists():
         print_color(RED, f"Source file not found: {source_file_abs}")
-        results[label] = {'time': None, 'exit_code': -1, 'error': 'Source not found', 'memory': None, 
-                         'single_run': True, 'times': []}
+        results[label] = {'time': None, 'exit_code': -1, 'error': 'Source not found', 'memory': None,
+                         'single_run': True, 'times': [], 'version': version_info}
         return
 
     # --- Special handling for C# ---
     if label == "C#":
         # Create a proper project file for dotnet run
         if not create_csharp_project_file(cwd):
-            results[label] = {'time': None, 'exit_code': -1, 'error': 'Failed to create project file', 
-                             'memory': None, 'single_run': True, 'times': []}
+            results[label] = {'time': None, 'exit_code': -1, 'error': 'Failed to create project file',
+                             'memory': None, 'single_run': True, 'times': [], 'version': version_info}
             return
 
     # --- Determine Paths Relative to CWD for commands ---
@@ -304,33 +329,33 @@ def compile_and_run(target, results, cwd):
     # --- Compilation Step ---
     if compile_cmd_template:
         print_color(YELLOW, f"Compiling {label}...")
-        
+
         # Handle special case for C# with multiple commands
         if label == "C#" and isinstance(compile_cmd_template, list) and len(compile_cmd_template) > 1:
             # For C#, we run multiple commands in sequence
-            
+
             # First, create the project (if not already done in special handling)
-            create_cmd = ['dotnet', 'new', 'console', '-n', 'Fibonacci', '--force', '--no-restore']
+            create_cmd = ['dotnet', 'new', 'console', '-n', 'Factorial', '--force', '--no-restore']
             print_color(YELLOW, f"Creating C# project with command: {' '.join(create_cmd)}")
             create_result = run_command(create_cmd, check=False, cwd=cwd)
-            
+
             if create_result.returncode != 0:
                 print_color(RED, f"{label} project creation failed.")
-                results[label] = {'time': None, 'exit_code': create_result.returncode, 
+                results[label] = {'time': None, 'exit_code': create_result.returncode,
                                  'error': 'Project creation failed', 'memory': None,
-                                 'single_run': True, 'times': []}
+                                 'single_run': True, 'times': [], 'version': version_info}
                 return
-                
+
             # Then build the project in Release mode
-            build_cmd = ['dotnet', 'build', '-c', 'Release', 'fibonacci.csproj']
+            build_cmd = ['dotnet', 'build', '-c', 'Release', 'factorial.csproj']
             print_color(YELLOW, f"Building C# project with command: {' '.join(build_cmd)}")
             compile_result = run_command(build_cmd, check=False, cwd=cwd)
-            
+
             if compile_result.returncode != 0:
                 print_color(RED, f"{label} compilation failed.")
-                results[label] = {'time': None, 'exit_code': compile_result.returncode, 
+                results[label] = {'time': None, 'exit_code': compile_result.returncode,
                                  'error': 'Compilation failed', 'memory': None,
-                                 'single_run': True, 'times': []}
+                                 'single_run': True, 'times': [], 'version': version_info}
                 return
         else:
             # Regular single compilation command for other languages
@@ -344,9 +369,9 @@ def compile_and_run(target, results, cwd):
 
             if compile_result.returncode != 0:
                 print_color(RED, f"{label} compilation failed.")
-                results[label] = {'time': None, 'exit_code': compile_result.returncode, 
+                results[label] = {'time': None, 'exit_code': compile_result.returncode,
                                  'error': 'Compilation failed', 'memory': None,
-                                 'single_run': True, 'times': []}
+                                 'single_run': True, 'times': [], 'version': version_info}
                 return
 
         # Verify compilation output if expected
@@ -354,18 +379,18 @@ def compile_and_run(target, results, cwd):
             output_binary_abs = cwd / output_path_rel
             if not output_binary_abs.exists():
                 print_color(RED, f"Error: {label} compilation did not produce expected output: {output_binary_abs}")
-                results[label] = {'time': None, 'exit_code': -1, 'error': 'Output binary missing', 
-                                 'memory': None, 'single_run': True, 'times': []}
+                results[label] = {'time': None, 'exit_code': -1, 'error': 'Output binary missing',
+                                 'memory': None, 'single_run': True, 'times': [], 'version': version_info}
                 return
             ensure_executable(output_binary_abs)
-        
+
         # For C#, check the output explicitly
         if label == "C#" and output_path_rel:
             output_binary_abs = cwd / output_path_rel
             if not output_binary_abs.exists():
                 print_color(RED, f"Error: {label} compilation did not produce expected output: {output_binary_abs}")
-                results[label] = {'time': None, 'exit_code': -1, 'error': 'Output binary missing', 
-                                 'memory': None, 'single_run': True, 'times': []}
+                results[label] = {'time': None, 'exit_code': -1, 'error': 'Output binary missing',
+                                 'memory': None, 'single_run': True, 'times': [], 'version': version_info}
                 return
             ensure_executable(output_binary_abs)
 
@@ -379,35 +404,35 @@ def compile_and_run(target, results, cwd):
 
     # Special case: Java needs to run 'java ClassName' from the directory containing the .class file
     if label == "Java":
-        # run_cmd_template is already correctly defined as ['java', 'Fibonacci']
+        # run_cmd_template is already correctly defined as ['java', 'Factorial']
         run_cmd_actual = run_cmd_template
         exec_cwd = cwd # Run 'java' command from BENCHMARK_DIR
     # Handle C# special case
     elif label == "C#":
         # For C# we need to use the directly built executable
         if output_path_rel:
-            exec_path_rel = f"./{output_path_rel}" # e.g., ./bin/Release/net9.0/Fibonacci
+            exec_path_rel = f"./{output_path_rel}" # e.g., ./bin/Release/net9.0/Factorial
             run_cmd_actual = [exec_path_rel] + run_cmd_template[1:]
             exec_cwd = cwd # Run the executable from within BENCHMARK_DIR
-            
+
             # Make sure the executable exists and has execution permissions
             exec_file_abs = cwd / output_path_rel
             print_color(YELLOW, f"Looking for C# executable at: {exec_file_abs}")
             if not exec_file_abs.exists():
                 print_color(RED, f"Could not find C# executable: {exec_file_abs}")
-                results[label] = {'time': None, 'exit_code': -1, 'error': 'Executable not found', 
-                                 'memory': None, 'single_run': True, 'times': []}
+                results[label] = {'time': None, 'exit_code': -1, 'error': 'Executable not found',
+                                 'memory': None, 'single_run': True, 'times': [], 'version': version_info}
                 return
             ensure_executable(exec_file_abs)
         else:
             print_color(RED, f"No output path specified for C#")
-            results[label] = {'time': None, 'exit_code': -1, 'error': 'No output path', 
-                             'memory': None, 'single_run': True, 'times': []}
+            results[label] = {'time': None, 'exit_code': -1, 'error': 'No output path',
+                             'memory': None, 'single_run': True, 'times': [], 'version': version_info}
             return
     # Handle other compiled languages
     elif output_path_rel:
         # Use relative path for execution command when running within BENCHMARK_DIR
-        exec_path_rel = f"./{output_path_rel}" # e.g., ./fibonacci_c or ./fibonacci
+        exec_path_rel = f"./{output_path_rel}" # e.g., ./factorial_c or ./factorial
         # The first element of run_cmd_template is usually the placeholder for the executable itself
         run_cmd_actual = [exec_path_rel] + run_cmd_template[1:]
         exec_cwd = cwd # Run the executable from within BENCHMARK_DIR
@@ -427,32 +452,33 @@ def compile_and_run(target, results, cwd):
         exec_file_abs = cwd / output_path_rel
         if not ensure_executable(exec_file_abs):
              print_color(RED, f"Could not ensure {exec_file_abs} is executable.")
-             results[label] = {'time': None, 'exit_code': -1, 'error': 'Execution permission error', 
-                              'memory': None, 'single_run': True, 'times': []}
+             results[label] = {'time': None, 'exit_code': -1, 'error': 'Execution permission error',
+                              'memory': None, 'single_run': True, 'times': [], 'version': version_info}
              return
 
     print_color(YELLOW, f"Executing {label} with command: {' '.join(str(c) for c in run_cmd_actual)} {'in '+str(exec_cwd) if exec_cwd else ''}")
     exec_time, exit_code, memory_mb, single_run, times, outliers = run_single_benchmark(label, run_cmd_actual, cwd=exec_cwd)
     results[label] = {
-        'time': exec_time, 
-        'exit_code': exit_code, 
-        'memory': memory_mb, 
+        'time': exec_time,
+        'exit_code': exit_code,
+        'memory': memory_mb,
         'single_run': single_run,
         'times': times,
-        'outliers': outliers
+        'outliers': outliers,
+        'version': version_info
     }
 
 
 def main():
     """Main function to run the benchmark steps."""
-    print("===== Multi-Language Fibonacci Benchmark =====")
-    
+    print("===== Multi-Language Factorial Benchmark =====")
+
     # Check for command-line arguments
     test_single_lang = None
     if len(sys.argv) > 1:
         test_single_lang = sys.argv[1]
         print(f"Testing only: {test_single_lang}")
-        
+
     print("Directory check...")
 
     # Ensure benchmark directory exists
@@ -463,15 +489,15 @@ def main():
     # --- Clean previous build artifacts (optional but recommended) ---
     print_color(YELLOW, "Cleaning previous build artifacts...")
     artifacts_to_clean = [
-        "fibonacci_lamina", # Lamina output at root
-        BENCHMARK_DIR / "fibonacci_c",
-        BENCHMARK_DIR / "fibonacci_cpp",
-        BENCHMARK_DIR / "fibonacci_rs",
-        BENCHMARK_DIR / "fibonacci_go",
-        BENCHMARK_DIR / "fibonacci_zig",
-        BENCHMARK_DIR / "Fibonacci.class",
+        "factorial_lamina", # Lamina output at root
+        BENCHMARK_DIR / "factorial_c",
+        BENCHMARK_DIR / "factorial_cpp",
+        BENCHMARK_DIR / "factorial_rs",
+        BENCHMARK_DIR / "factorial_go",
+        BENCHMARK_DIR / "factorial_zig",
+        BENCHMARK_DIR / "Factorial.class",
         BENCHMARK_DIR / "bin", # C# output directory
-        BENCHMARK_DIR / "fibonacci.csproj", # Temporary C# project file
+        BENCHMARK_DIR / "factorial.csproj", # Temporary C# project file
         BENCHMARK_DIR / "obj", # C# build objects directory
         # Add other potential artifacts if needed
     ]
@@ -505,42 +531,46 @@ def main():
              print_color(RED, f"Lamina source file not found: {lamina_source_abs}")
              sys.exit(1)
 
+        # Get Lamina version info
+        lamina_version = get_version_info([LAMINA_EXECUTABLE, '--version'])
+
         # Update Lamina command to use the new CLI with -o/--output flag
         lamina_compile_cmd = [LAMINA_EXECUTABLE, str(lamina_source_abs), "--output", LAMINA_OUTPUT_BINARY] + LAMINA_FLAG
         compile_result = run_command(lamina_compile_cmd, check=False, cwd=None) # Run lamina compiler from project root
 
         if compile_result.returncode != 0:
              print_color(RED, f"Lamina compilation failed.")
-             results['Lamina'] = {'time': None, 'exit_code': compile_result.returncode, 
+             results['Lamina'] = {'time': None, 'exit_code': compile_result.returncode,
                                  'error': 'Compilation failed', 'memory': None,
-                                 'single_run': True, 'times': []}
+                                 'single_run': True, 'times': [], 'version': lamina_version}
         else:
             lamina_output_path = Path(LAMINA_OUTPUT_BINARY) # Output is at project root
             if not lamina_output_path.exists():
                 print_color(RED, f"Error: Lamina compilation failed or output binary '{lamina_output_path}' not created.")
-                results['Lamina'] = {'time': None, 'exit_code': -1, 'error': 'Output binary missing', 
-                                    'memory': None, 'single_run': True, 'times': []}
+                results['Lamina'] = {'time': None, 'exit_code': -1, 'error': 'Output binary missing',
+                                    'memory': None, 'single_run': True, 'times': [], 'version': lamina_version}
             else:
                 print_color(GREEN, "Lamina compilation successful.")
                 if not ensure_executable(lamina_output_path):
-                     results['Lamina'] = {'time': None, 'exit_code': -1, 'error': 'Execution permission error', 
-                                         'memory': None, 'single_run': True, 'times': []}
+                     results['Lamina'] = {'time': None, 'exit_code': -1, 'error': 'Execution permission error',
+                                         'memory': None, 'single_run': True, 'times': [], 'version': lamina_version}
                 else:
                     # Run Lamina executable from project root
                     lamina_time, lamina_exit_code, lamina_memory, single_run, times, outliers = run_single_benchmark(
                         "Lamina", [f"./{LAMINA_OUTPUT_BINARY}"], cwd=None)
                     results['Lamina'] = {
-                        'time': lamina_time, 
-                        'exit_code': lamina_exit_code, 
+                        'time': lamina_time,
+                        'exit_code': lamina_exit_code,
                         'memory': lamina_memory,
                         'single_run': single_run,
                         'times': times,
-                        'outliers': outliers
+                        'outliers': outliers,
+                        'version': lamina_version
                     }
     else:
         print_color(YELLOW, "Skipping Lamina compilation (not testing)")
-        # Add a placeholder result for Lamina
-        results['Lamina'] = {'time': 1.0, 'exit_code': 0, 'memory': 100.0, 'single_run': True, 'times': [1.0], 'outliers': 0}
+        # Add a skipped result for Lamina to indicate baseline is not available
+        results['Lamina'] = {'skipped': True, 'version': 'Unknown'}
 
 
     # --- Define Other Benchmark Targets ---
@@ -548,32 +578,44 @@ def main():
     # {src} placeholder for source file relative to BENCHMARK_DIR
     # All compile/run commands here assume execution *within* BENCHMARK_DIR unless cwd=None specified elsewhere
     targets = [
-        {'lang': 'C',     'source': 'fibonacci.c', 'output': 'fibonacci_c',
-         'compile': ['gcc', '-O3', '-o', '{out}', '{src}'], 'run': ['./{out}']},
-        {'lang': 'C++',   'source': 'fibonacci.cpp', 'output': 'fibonacci_cpp',
-         'compile': ['g++', '-O3', '-o', '{out}', '{src}'], 'run': ['./{out}']},
-         {'lang': 'Rust',  'source': 'fibonacci.rs', 'output': 'fibonacci_rs',
-          'compile': ['rustc', '-C', 'opt-level=3', '--out-dir', '.', '-o', '{out}', '{src}'], 'run': ['./{out}']}, # Added --out-dir .
-        {'lang': 'Go',    'source': 'fibonacci.go', 'output': 'fibonacci_go',
-         'compile': ['go', 'build', '-o', '{out}', '{src}'], 'run': ['./{out}']},
-        {'lang': 'Zig',   'source': 'fibonacci.zig', 'output': 'fibonacci_zig',
-         'compile': ['zig', 'build-exe', '{src}', '-O', 'ReleaseFast', '--name', '{out}'], 'run': ['./{out}']},
-        {'lang': 'Nim',   'source': 'fibonacci.nim', 'output': 'fibonacci',
-         'compile': ['nim', 'c', '-d:release', '--out:{out}', '{src}'], 'run': ['./{out}']},
-        {'lang': 'Java',  'source': 'Fibonacci.java', 'output': 'Fibonacci.class', # Compile produces .class
+        {'lang': 'C',     'source': 'factorial.c', 'output': 'factorial_c',
+         'compile': ['gcc', '-O3', '-o', '{out}', '{src}'], 'run': ['./{out}'],
+         'version_cmd': ['gcc', '--version']},
+        {'lang': 'C++',   'source': 'factorial.cpp', 'output': 'factorial_cpp',
+         'compile': ['g++', '-O3', '-o', '{out}', '{src}'], 'run': ['./{out}'],
+         'version_cmd': ['g++', '--version']},
+         {'lang': 'Rust',  'source': 'factorial.rs', 'output': 'factorial_rs',
+          'compile': ['rustc', '-C', 'opt-level=3', '--out-dir', '.', '-o', '{out}', '{src}'], 'run': ['./{out}'],
+          'version_cmd': ['rustc', '--version']},
+        {'lang': 'Go',    'source': 'factorial.go', 'output': 'factorial_go',
+         'compile': ['go', 'build', '-o', '{out}', '{src}'], 'run': ['./{out}'],
+         'version_cmd': ['go', 'version']},
+        {'lang': 'Zig',   'source': 'factorial.zig', 'output': 'factorial_zig',
+         'compile': ['zig', 'build-exe', '{src}', '-O', 'ReleaseFast', '--name', '{out}'], 'run': ['./{out}'],
+         'version_cmd': ['zig', 'version']},
+        {'lang': 'Nim',   'source': 'factorial.nim', 'output': 'factorial',
+         'compile': ['nim', 'c', '-d:release', '--out:{out}', '{src}'], 'run': ['./{out}'],
+         'version_cmd': ['nim', '--version']},
+        {'lang': 'Java',  'source': 'Factorial.java', 'output': 'Factorial.class', # Compile produces .class
          'compile': ['javac', '{src}'],
          # Run needs class name (no extension), executed from BENCHMARK_DIR
-         'run': ['java', 'Fibonacci']},
+         'run': ['java', 'Factorial'],
+         'version_cmd': ['java', '--version']},
         # Updated C# configuration to build and then run the executable directly
-        {'lang': 'C#', 'source': 'fibonacci.cs', 'output': 'bin/Release/net9.0/Fibonacci',
+        {'lang': 'C#', 'source': 'factorial.cs', 'output': 'bin/Release/net9.0/Factorial',
          'compile': ['dotnet', 'build'],  # This is a placeholder, actual commands handled in compile_and_run
-         'run': ['./{out}']},
+         'run': ['./{out}'],
+         'version_cmd': ['dotnet', '--version']},
         # Interpreted languages run from project root (cwd=None in run_single_benchmark)
         # {src} will be replaced with full path relative to root for these
-        {'lang': 'Python', 'source': 'fibonacci.py', 'run': ['python3', '{src}']},
-        {'lang': 'JavaScript', 'source': 'fibonacci.js', 'run': ['node', '{src}']},
-        {'lang': 'Ruby', 'source': 'fibonacci.rb', 'run': ['ruby', '{src}']},
-        {'lang': 'PHP', 'source': 'fibonacci.php', 'run': ['php', '{src}']},
+        {'lang': 'Python', 'source': 'factorial.py', 'run': ['python3', '{src}'],
+         'version_cmd': ['python3', '--version']},
+        {'lang': 'JavaScript', 'source': 'factorial.js', 'run': ['node', '{src}'],
+         'version_cmd': ['node', '--version']},
+        {'lang': 'Ruby', 'source': 'factorial.rb', 'run': ['ruby', '{src}'],
+         'version_cmd': ['ruby', '--version']},
+        {'lang': 'PHP', 'source': 'factorial.php', 'run': ['php', '{src}'],
+         'version_cmd': ['php', '--version']},
     ]
 
     # --- Compile and Run Other Benchmarks ---
@@ -583,7 +625,7 @@ def main():
         if test_single_lang and lang.lower() != test_single_lang.lower():
             print_color(YELLOW, f"Skipping {lang} (not testing)")
             continue
-            
+
         # Pass BENCHMARK_DIR as the cwd for compile_and_run context
         compile_and_run(target, results, BENCHMARK_DIR)
 
@@ -605,25 +647,26 @@ def main():
     col_ratio_stats_width = 26
     col_memory_width = 10
     col_mem_ratio_width = 10
-    total_width = col_lang_width + col_time_width + col_time_stats_width + col_ratio_width + col_ratio_stats_width + col_memory_width + col_mem_ratio_width + 14  # Added border characters
+    col_version_width = 15  # New column for version info
+    total_width = col_lang_width + col_time_width + col_time_stats_width + col_ratio_width + col_ratio_stats_width + col_memory_width + col_mem_ratio_width + col_version_width + 15  # Added border characters
 
     # Table headers
     print(f"{C_TL}{L_HORZ*total_width}{C_TR}")
-    print(f"{V}{f'Fibonacci Sequence Computation Benchmark Results (Higher ratio is Better for Lamina) [{BATCH_RUNS} runs]':^{total_width}}{V}")
-    print(f"{L_LEFT}{L_HORZ*col_lang_width}{T_DOWN}{L_HORZ*(col_time_width+2)}{T_DOWN}{L_HORZ*(col_time_stats_width+2)}{T_DOWN}{L_HORZ*(col_ratio_width+2)}{T_DOWN}{L_HORZ*(col_ratio_stats_width+2)}{T_DOWN}{L_HORZ*col_memory_width}{T_DOWN}{L_HORZ*col_mem_ratio_width}{L_RIGHT}")
-    print(f"{V} {'Language':<{col_lang_width-2}} {V} {'Time (s)':<{col_time_width}} {V} {'Time Stats':<{col_time_stats_width}} {V} {'Ratio':<{col_ratio_width}} {V} {'Ratio Stats':<{col_ratio_stats_width}} {V} {'Memory':<{col_memory_width-2}} {V} {'MemRatio':<{col_mem_ratio_width-2}} {V}")
-    print(f"{L_LEFT}{L_HORZ*col_lang_width}{C_CR}{L_HORZ*(col_time_width+2)}{C_CR}{L_HORZ*(col_time_stats_width+2)}{C_CR}{L_HORZ*(col_ratio_width+2)}{C_CR}{L_HORZ*(col_ratio_stats_width+2)}{C_CR}{L_HORZ*col_memory_width}{C_CR}{L_HORZ*col_mem_ratio_width}{L_RIGHT}")
+    print(f"{V}{f'Factorial Computation Benchmark Results (Higher ratio is Better for Lamina) [{BATCH_RUNS} runs]':^{total_width}}{V}")
+    print(f"{L_LEFT}{L_HORZ*col_lang_width}{T_DOWN}{L_HORZ*(col_time_width+2)}{T_DOWN}{L_HORZ*(col_time_stats_width+2)}{T_DOWN}{L_HORZ*(col_ratio_width+2)}{T_DOWN}{L_HORZ*(col_ratio_stats_width+2)}{T_DOWN}{L_HORZ*col_memory_width}{T_DOWN}{L_HORZ*col_mem_ratio_width}{T_DOWN}{L_HORZ*col_version_width}{L_RIGHT}")
+    print(f"{V} {'Language':<{col_lang_width-2}} {V} {'Time (s)':<{col_time_width}} {V} {'Time Stats':<{col_time_stats_width}} {V} {'Ratio':<{col_ratio_width}} {V} {'Ratio Stats':<{col_ratio_stats_width}} {V} {'Memory':<{col_memory_width-2}} {V} {'MemRatio':<{col_mem_ratio_width-2}} {V} {'Version':<{col_version_width-2}} {V}")
+    print(f"{L_LEFT}{L_HORZ*col_lang_width}{C_CR}{L_HORZ*(col_time_width+2)}{C_CR}{L_HORZ*(col_time_stats_width+2)}{C_CR}{L_HORZ*(col_ratio_width+2)}{C_CR}{L_HORZ*(col_ratio_stats_width+2)}{C_CR}{L_HORZ*col_memory_width}{C_CR}{L_HORZ*col_mem_ratio_width}{C_CR}{L_HORZ*col_version_width}{L_RIGHT}")
 
-    if lamina_time is not None:
+    if lamina_time is not None and not lamina_result.get('skipped', False):
         memory_str = f"{lamina_memory:.2f}" if lamina_memory is not None else "N/A"
-        
+
         # Format time value
         time_value = f"{lamina_time:.4f}"
         if lamina_single_run:
             time_value += "*"
         elif lamina_outliers > 0:
             time_value += "†"  # Mark if outliers were removed
-            
+
         # Format time stats
         if lamina_times and len(lamina_times) > 1:
             min_time = min(lamina_times)
@@ -633,17 +676,23 @@ def main():
             time_stats = f"{min_time:.4f}/{median_time:.4f}/{lamina_time:.4f}/{p95_time:.4f}"
         else:
             time_stats = "N/A (single run)"
-            
-        lamina_line = f"{L_VERT} {GREEN}{'Lamina (Base)':<{col_lang_width-2}}{NC} {L_VERT} {time_value:^{col_time_width}} {L_VERT} {time_stats:^{col_time_stats_width}} {L_VERT} {'1.00x':^{col_ratio_width}} {L_VERT} {'N/A':^{col_ratio_stats_width}} {L_VERT} {memory_str:>{col_memory_width-2}} {L_VERT} {'1.00x':>{col_mem_ratio_width-2}} {L_VERT}"
+
+        lamina_version = lamina_result.get('version', 'Unknown')
+        lamina_line = f"{L_VERT} {GREEN}{'Lamina (Base)':<{col_lang_width-2}}{NC} {L_VERT} {time_value:^{col_time_width}} {L_VERT} {time_stats:^{col_time_stats_width}} {L_VERT} {'1.00x':^{col_ratio_width}} {L_VERT} {'N/A':^{col_ratio_stats_width}} {L_VERT} {memory_str:>{col_memory_width-2}} {L_VERT} {'1.00x':>{col_mem_ratio_width-2}} {L_VERT} {lamina_version:<{col_version_width-2}} {L_VERT}"
         print(lamina_line)
+    elif lamina_result.get('skipped', False):
+        lamina_skip_line = f"{L_VERT} {YELLOW}{'Lamina (Base)':<{col_lang_width-2}}{NC} {L_VERT} {'SKIPPED':^{col_time_width}} {L_VERT} {'N/A':^{col_time_stats_width}} {L_VERT} {'N/A':^{col_ratio_width}} {L_VERT} {'N/A':^{col_ratio_stats_width}} {L_VERT} {'N/A':^{col_memory_width-2}} {L_VERT} {'N/A':^{col_mem_ratio_width-2}} {L_VERT} {'Unknown':<{col_version_width-2}} {L_VERT}"
+        print(lamina_skip_line)
+        print_color(YELLOW, "    Lamina baseline not available (skipped).")
+        print_color(YELLOW, "    Cannot calculate ratios without Lamina baseline.")
     else:
         err_msg = lamina_result.get('error', 'Unknown')
-        lamina_fail_line = f"{L_VERT} {RED}{'Lamina (Base)':<{col_lang_width-2}}{NC} {L_VERT} {'FAILED':^{col_time_width}} {L_VERT} {'N/A':^{col_time_stats_width}} {L_VERT} {'N/A':^{col_ratio_width}} {L_VERT} {'N/A':^{col_ratio_stats_width}} {L_VERT} {'N/A':^{col_memory_width-2}} {L_VERT} {'N/A':^{col_mem_ratio_width-2}} {L_VERT}"
+        lamina_fail_line = f"{L_VERT} {RED}{'Lamina (Base)':<{col_lang_width-2}}{NC} {L_VERT} {'FAILED':^{col_time_width}} {L_VERT} {'N/A':^{col_time_stats_width}} {L_VERT} {'N/A':^{col_ratio_width}} {L_VERT} {'N/A':^{col_ratio_stats_width}} {L_VERT} {'N/A':^{col_memory_width-2}} {L_VERT} {'N/A':^{col_mem_ratio_width-2}} {L_VERT} {'Unknown':<{col_version_width-2}} {L_VERT}"
         print(lamina_fail_line)
         print_color(RED, f"    Error: {err_msg}")
         print_color(RED, "    Cannot calculate ratios without successful Lamina baseline.")
 
-    print(f"{L_LEFT}{L_HORZ*col_lang_width}{T_CROSS}{L_HORZ*(col_time_width+2)}{T_CROSS}{L_HORZ*(col_time_stats_width+2)}{T_CROSS}{L_HORZ*(col_ratio_width+2)}{T_CROSS}{L_HORZ*(col_ratio_stats_width+2)}{T_CROSS}{L_HORZ*col_memory_width}{T_CROSS}{L_HORZ*col_mem_ratio_width}{L_RIGHT}") # Separator after baseline
+    print(f"{L_LEFT}{L_HORZ*col_lang_width}{T_CROSS}{L_HORZ*(col_time_width+2)}{T_CROSS}{L_HORZ*(col_time_stats_width+2)}{T_CROSS}{L_HORZ*(col_ratio_width+2)}{T_CROSS}{L_HORZ*(col_ratio_stats_width+2)}{T_CROSS}{L_HORZ*col_memory_width}{T_CROSS}{L_HORZ*col_mem_ratio_width}{T_CROSS}{L_HORZ*col_version_width}{L_RIGHT}") # Separator after baseline
 
     successful_results = {}
     failed_results = {}
@@ -663,34 +712,34 @@ def main():
     time_ratios = {}
     ratio_stats = {}  # To store min/avg/med/max ratio stats
     memory_ratios = {}
-    if lamina_time is not None and lamina_time > 0 and lamina_times:
+    if lamina_time is not None and lamina_time > 0 and lamina_times and not lamina_result.get('skipped', False):
         lamina_avg_time = lamina_time  # This is already the average time
-        
+
         for lang, result in successful_results.items():
             lang_time = result['time']
             lang_times = result.get('times', [])
-            
-            if lang_time is not None and lang_time > 0 and lang_times: 
+
+            if lang_time is not None and lang_time > 0 and lang_times:
                 # Calculate individual ratios for each run
                 individual_ratios = []
                 for run_time in lang_times:
                     if run_time > 0:  # Avoid division by zero
                         ratio = run_time / lamina_avg_time
                         individual_ratios.append(ratio)
-                
+
                 if individual_ratios:
                     # Calculate ratio statistics
                     min_ratio = min(individual_ratios)
                     max_ratio = max(individual_ratios)
                     avg_ratio = sum(individual_ratios) / len(individual_ratios)
                     med_ratio = statistics.median(individual_ratios)
-                    
+
                     # Add percentile calculations if enough samples
                     p90_ratio = p95_ratio = None
                     if len(individual_ratios) > 5:
                         p90_ratio = np.percentile(individual_ratios, 90)
                         p95_ratio = np.percentile(individual_ratios, 95)
-                    
+
                     # Store the average ratio for sorting
                     time_ratios[lang] = avg_ratio
                     # Store all ratio stats
@@ -739,7 +788,7 @@ def main():
                 time_value += "*"
             elif result.get('outliers', 0) > 0:
                 time_value += "†"  # Mark if outliers were removed
-                
+
             # Format time stats
             if lang_times and len(lang_times) > 1 and not lang_single_run:
                 min_time = min(lang_times)
@@ -753,32 +802,32 @@ def main():
             ratio_value = "N/A"
             ratio_stats_str = "N/A"
             ratio_color = NC
-            
+
             if ratio_stat is not None:
                 # Main ratio value (avg)
                 ratio_value = f"{time_ratio:.2f}x"
-                
+
                 # Color based on average ratio
                 if time_ratio > 5.0:
                     ratio_color = GREEN     # Other language is much slower (great for Lamina)
                 elif time_ratio > 1.05:
                     ratio_color = YELLOW    # Other language is somewhat slower (good for Lamina)
-                else:                           
+                else:
                     ratio_color = RED       # Other language is similar or faster (bad for Lamina)
-                
+
                 # Format ratio stats
                 if len(lang_times) > 1 and not lang_single_run:
                     p95_ratio = ratio_stat['p95'] if ratio_stat['p95'] is not None else ratio_stat['max']
                     ratio_stats_str = f"{ratio_stat['min']:.2f}/{ratio_stat['med']:.2f}/{ratio_stat['avg']:.2f}/{p95_ratio:.2f}x"
-            
+
             # Format memory stats
             memory_str = "N/A"
             memory_ratio_str = "N/A"
             memory_ratio_color = NC
-            
+
             if lang_memory is not None:
                 memory_str = f"{lang_memory:.2f}"
-                
+
                 if memory_ratio is not None:
                     memory_ratio_str = f"{memory_ratio:.2f}x"
                     # Memory color logic (higher is better for Lamina)
@@ -788,20 +837,21 @@ def main():
                         memory_ratio_color = YELLOW   # Other language uses somewhat more memory
                     else:
                         memory_ratio_color = RED      # Other language uses similar or less memory
-                
-            print(f"{L_VERT} {lang:<{col_lang_width-2}} {L_VERT} {time_value:^{col_time_width}} {L_VERT} {time_stats:^{col_time_stats_width}} {L_VERT} {ratio_color}{ratio_value:^{col_ratio_width}}{NC} {L_VERT} {ratio_color}{ratio_stats_str:^{col_ratio_stats_width}}{NC} {L_VERT} {memory_str:>{col_memory_width-2}} {L_VERT} {memory_ratio_color}{memory_ratio_str:>{col_mem_ratio_width-2}}{NC} {L_VERT}")
+
+            version_str = result.get('version', 'Unknown')
+            print(f"{L_VERT} {lang:<{col_lang_width-2}} {L_VERT} {time_value:^{col_time_width}} {L_VERT} {time_stats:^{col_time_stats_width}} {L_VERT} {ratio_color}{ratio_value:^{col_ratio_width}}{NC} {L_VERT} {ratio_color}{ratio_stats_str:^{col_ratio_stats_width}}{NC} {L_VERT} {memory_str:>{col_memory_width-2}} {L_VERT} {memory_ratio_color}{memory_ratio_str:>{col_mem_ratio_width-2}}{NC} {L_VERT} {version_str:<{col_version_width-2}} {L_VERT}")
 
     # Footer
-    print(f"{C_BL}{L_HORZ*col_lang_width}{T_UP}{L_HORZ*(col_time_width+2)}{T_UP}{L_HORZ*(col_time_stats_width+2)}{T_UP}{L_HORZ*(col_ratio_width+2)}{T_UP}{L_HORZ*(col_ratio_stats_width+2)}{T_UP}{L_HORZ*col_memory_width}{T_UP}{L_HORZ*col_mem_ratio_width}{C_BR}")
+    print(f"{C_BL}{L_HORZ*col_lang_width}{T_UP}{L_HORZ*(col_time_width+2)}{T_UP}{L_HORZ*(col_time_stats_width+2)}{T_UP}{L_HORZ*(col_ratio_width+2)}{T_UP}{L_HORZ*(col_ratio_stats_width+2)}{T_UP}{L_HORZ*col_memory_width}{T_UP}{L_HORZ*col_mem_ratio_width}{T_UP}{L_HORZ*col_version_width}{C_BR}")
     print(f"Stats format: min/median/avg/p95  (* benchmark only ran once due to exceeding the {TIME_THRESHOLD}s threshold)")
     print(f"† Statistical outliers were detected and removed using IQR method")
-    
+
     # Print outlier summary if any exist
     outlier_langs = [(lang, result.get('outliers', 0)) for lang, result in results.items() if result.get('outliers', 0) > 0]
     if outlier_langs:
         outlier_summary = ", ".join([f"{lang}: {count}" for lang, count in outlier_langs])
         print(f"Outliers removed: {outlier_summary}")
-        
+
     # Print failed benchmarks separately
     if failed_results:
         print_color(RED, "--- Failed Benchmarks ---")
@@ -815,3 +865,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
