@@ -7,10 +7,10 @@ pub mod state;
 
 
 use crate::{LaminaError, Module};
-use super::state::ParserState;
-use super::types::parse_type_declaration;
-use super::globals::parse_global_declaration;
-use super::functions::parse_function_def;
+use self::state::ParserState;
+use self::types::parse_type_declaration;
+use self::globals::parse_global_declaration;
+use self::functions::parse_function_def;
 
 /// Parses a string containing Lamina IR text into a Module.
 /// The lifetime 'a is tied to the input string slice.
