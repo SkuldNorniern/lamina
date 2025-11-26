@@ -1,7 +1,51 @@
-pub mod impl_;
+mod types;
+mod globals;
+mod values;
+mod functions;
+mod instructions;
+pub mod state;
 
-// Re-export the main entry point from parser.rs
-pub use impl_::parse_module;
+
+use crate::{LaminaError, Module};
+use super::state::ParserState;
+use super::types::parse_type_declaration;
+use super::globals::parse_global_declaration;
+use super::functions::parse_function_def;
+
+/// Parses a string containing Lamina IR text into a Module.
+/// The lifetime 'a is tied to the input string slice.
+pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
+    let mut state = ParserState::new(input);
+    let mut module = Module::new();
+
+    loop {
+        state.skip_whitespace_and_comments();
+        if state.is_eof() {
+            break;
+        }
+
+        let keyword_slice = state.peek_slice(6).unwrap_or(""); // Peek enough for keywords
+
+        if keyword_slice.starts_with("type") {
+            let decl = parse_type_declaration(&mut state)?;
+            module.type_declarations.insert(decl.name, decl);
+        } else if keyword_slice.starts_with("global") {
+            let decl = parse_global_declaration(&mut state)?;
+            module.global_declarations.insert(decl.name, decl);
+        } else if keyword_slice.starts_with("fn") || keyword_slice.starts_with('@') {
+            let func = parse_function_def(&mut state)?;
+            module.functions.insert(func.name, func);
+        } else {
+            return Err(state.error(format!(
+                "Unexpected token at top level: {:?}",
+                state.peek_slice(10)
+            )));
+        }
+    }
+
+    Ok(module)
+}
+
 
 #[cfg(test)]
 mod tests {
