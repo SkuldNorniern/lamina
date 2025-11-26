@@ -253,20 +253,19 @@ fn emit_instruction_wasm(
                 for arg in args.iter() {
                     load_operand_wasm(arg, writer, vreg_to_local)?;
                 }
-                
+
                 // Call the function
                 writeln!(writer, "      call ${}", name)?;
-                
+
                 // Note: WebAssembly functions return values on the stack
                 // If there's a return value, it's already on the stack
             }
-            
+
             // Handle return value (already on stack if function returns)
-            if let Some(ret_reg) = ret {
-                if let Register::Virtual(vreg) = ret_reg {
+            if let Some(ret_reg) = ret
+                && let Register::Virtual(vreg) = ret_reg {
                     store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
                 }
-            }
         }
         MirInst::Load {
             dst,
@@ -279,13 +278,13 @@ fn emit_instruction_wasm(
                 crate::mir::AddressMode::BaseOffset { base, offset } => {
                     // Load base address onto stack
                     load_register_wasm(base, writer, vreg_to_local)?;
-                    
+
                     // Add offset if non-zero
                     if *offset != 0 {
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
-                    
+
                     // Emit load instruction based on type
                     match ty {
                         crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
@@ -318,26 +317,31 @@ fn emit_instruction_wasm(
                         }
                     }
                 }
-                crate::mir::AddressMode::BaseIndexScale { base, index, scale, offset } => {
+                crate::mir::AddressMode::BaseIndexScale {
+                    base,
+                    index,
+                    scale,
+                    offset,
+                } => {
                     // Load base address
                     load_register_wasm(base, writer, vreg_to_local)?;
-                    
+
                     // Load index
                     load_register_wasm(index, writer, vreg_to_local)?;
-                    
+
                     // Scale index
                     writeln!(writer, "      i64.const {}", *scale as i64)?;
                     writeln!(writer, "      i64.mul")?;
-                    
+
                     // Add base + scaled index
                     writeln!(writer, "      i64.add")?;
-                    
+
                     // Add offset if non-zero
                     if *offset != 0 {
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
-                    
+
                     // Emit load instruction based on type (same as BaseOffset)
                     match ty {
                         crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
@@ -368,7 +372,7 @@ fn emit_instruction_wasm(
                     }
                 }
             }
-            
+
             // Store loaded value to destination register
             if let Register::Virtual(vreg) = dst {
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
@@ -382,33 +386,38 @@ fn emit_instruction_wasm(
         } => {
             // WebAssembly store expects: address on stack, then value on top
             // So we compute address first, then load value
-            
+
             // Compute address: base + offset
             match addr {
                 crate::mir::AddressMode::BaseOffset { base, offset } => {
                     // Load base address onto stack
                     load_register_wasm(base, writer, vreg_to_local)?;
-                    
+
                     // Add offset if non-zero
                     if *offset != 0 {
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
                 }
-                crate::mir::AddressMode::BaseIndexScale { base, index, scale, offset } => {
+                crate::mir::AddressMode::BaseIndexScale {
+                    base,
+                    index,
+                    scale,
+                    offset,
+                } => {
                     // Load base address
                     load_register_wasm(base, writer, vreg_to_local)?;
-                    
+
                     // Load index
                     load_register_wasm(index, writer, vreg_to_local)?;
-                    
+
                     // Scale index
                     writeln!(writer, "      i64.const {}", *scale as i64)?;
                     writeln!(writer, "      i64.mul")?;
-                    
+
                     // Add base + scaled index
                     writeln!(writer, "      i64.add")?;
-                    
+
                     // Add offset if non-zero
                     if *offset != 0 {
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
@@ -416,10 +425,10 @@ fn emit_instruction_wasm(
                     }
                 }
             }
-            
+
             // Now load value to store (goes on top of address)
             load_operand_wasm(src, writer, vreg_to_local)?;
-            
+
             // Emit store instruction based on type
             // Stack now: address (bottom), value (top)
             match ty {
