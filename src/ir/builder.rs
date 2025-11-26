@@ -1047,6 +1047,32 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
+    /// Creates a switch instruction for multi-way branching on an integer value.
+    ///
+    /// Parameters:
+    /// - `ty`: Primitive type of the switched value (typically an integer or bool)
+    /// - `value`: Value to inspect
+    /// - `default`: Label to jump to if no case matches
+    /// - `cases`: Slice of `(Literal, Label)` pairs for each case
+    pub fn switch(
+        &mut self,
+        ty: PrimitiveType,
+        value: Value<'a>,
+        default: &'a str,
+        cases: &[(Literal<'a>, &'a str)],
+    ) -> &mut Self {
+        let mapped_cases = cases
+            .iter()
+            .map(|(lit, lbl)| (lit.clone(), *lbl))
+            .collect();
+        self.inst(Instruction::Switch {
+            ty,
+            value,
+            default,
+            cases: mapped_cases,
+        })
+    }
+
     /// Creates a return instruction with a value
     ///
     /// Parameters:
