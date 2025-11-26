@@ -15,7 +15,7 @@ BENCHMARK_DIR = Path("benchmarks/2Dmatmul") # Use Path for directory handling
 LAMINA_EXECUTABLE = "./target/release/lamina"
 LAMINA_SOURCE = "benchmarks/2Dmatmul/2Dmatmul.lamina" # Keep lamina source path relative to root
 LAMINA_OUTPUT_BINARY = "2Dmatmul_lamina" # Consistent naming
-LAMINA_FLAG = ["--emit-mir-asm", "macos"]
+LAMINA_FLAG = ["--emit-mir-asm", "--opt-level", "3"]
 BATCH_RUNS = 500  # Number of times to run each benchmark
 TIME_THRESHOLD = 0.5  # Seconds - if a run takes longer than this, only run once
 
