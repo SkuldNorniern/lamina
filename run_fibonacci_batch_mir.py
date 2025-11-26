@@ -16,7 +16,7 @@ LAMINA_EXECUTABLE = "./target/release/lamina"
 LAMINA_SOURCE = "benchmarks/fibonacci/fibonacci.lamina" # Keep lamina source path relative to root
 LAMINA_OUTPUT_BINARY = "fibonacci_lamina" # Consistent naming
 # Pass MIR-ASM flag as separate tokens (option and value)
-LAMINA_FLAG = ["--emit-mir-asm", "macos"]
+LAMINA_FLAG = ["--emit-mir-asm", "--opt-level","3"]
 BATCH_RUNS = 500  # Number of times to run each benchmark (fewer for fibonacci)
 TIME_THRESHOLD = 1.0  # Seconds - fibonacci is faster than matrix multiplication
 
