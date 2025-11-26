@@ -1,0 +1,160 @@
+use crate::{
+    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, Label,
+    LaminaError,
+};
+use std::collections::HashMap;
+use super::state::ParserState;
+use super::types::parse_type;
+use super::instructions::parse_instruction;
+
+pub fn parse_annotations(state: &mut ParserState<'_>) -> Result<Vec<FunctionAnnotation>, LaminaError> {
+    let mut annotations = Vec::new();
+    loop {
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some('@') {
+            state.advance();
+            let name = state.parse_identifier_str()?;
+            let annotation = match name {
+                "inline" => FunctionAnnotation::Inline,
+                "export" => FunctionAnnotation::Export,
+                "noreturn" => FunctionAnnotation::NoReturn,
+                "noinline" => FunctionAnnotation::NoInline,
+                "cold" => FunctionAnnotation::Cold,
+                _ => return Err(state.error(format!("Unknown function annotation: @{}", name))),
+            };
+            annotations.push(annotation);
+        } else {
+            break; // No more annotations
+        }
+    }
+    Ok(annotations)
+}
+
+pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a>, LaminaError> {
+    let annotations = parse_annotations(state)?;
+    state.consume_keyword("fn")?;
+    let name = state.parse_type_identifier()?; // Functions also start with @ in decl
+    let signature = parse_fn_signature(state)?;
+    state.expect_char('{')?;
+
+    let mut basic_blocks = HashMap::new();
+    let mut entry_block_label: Option<Label<'a>> = None;
+
+    loop {
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some('}') {
+            state.advance(); // Consume closing brace
+            break;
+        }
+
+        // Parse Label: instruction instructions...
+        let (label, block) = parse_basic_block(state)?;
+
+        if entry_block_label.is_none() {
+            entry_block_label = Some(label);
+        }
+
+        if basic_blocks.insert(label, block).is_some() {
+            return Err(state.error(format!("Redefinition of basic block label: {}", label)));
+        }
+    }
+
+    let entry_block = entry_block_label
+        .ok_or_else(|| state.error("Function must have at least one basic block".to_string()))?;
+
+    Ok(Function {
+        name,
+        signature,
+        annotations,
+        basic_blocks,
+        entry_block,
+    })
+}
+
+pub fn parse_fn_signature<'a>(
+    state: &mut ParserState<'a>,
+) -> Result<FunctionSignature<'a>, LaminaError> {
+    state.expect_char('(')?;
+    let params = parse_param_list(state)?;
+    state.expect_char(')')?;
+    state.consume_keyword("->")?;
+    let return_type = parse_type(state)?;
+    Ok(FunctionSignature {
+        params,
+        return_type,
+    })
+}
+
+pub fn parse_param_list<'a>(
+    state: &mut ParserState<'a>,
+) -> Result<Vec<FunctionParameter<'a>>, LaminaError> {
+    let mut params = Vec::new();
+    loop {
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some(')') {
+            break; // End of parameters
+        }
+
+        let param_ty = parse_type(state)?;
+        let param_name = state.parse_value_identifier()?; // Params start with %
+        params.push(FunctionParameter {
+            name: param_name,
+            ty: param_ty,
+            annotations: vec![],
+        });
+
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some(')') {
+            break;
+        }
+        state.expect_char(',')?; // Expect comma or closing paren
+    }
+    Ok(params)
+}
+
+pub fn parse_basic_block<'a>(
+    state: &mut ParserState<'a>,
+) -> Result<(Label<'a>, BasicBlock<'a>), LaminaError> {
+    // Example: entry: instruction
+    let label = state.parse_label_identifier()?;
+    state.expect_char(':')?;
+
+    let mut instructions = Vec::new();
+    loop {
+        state.skip_whitespace_and_comments();
+        // Check if we are at the start of the next block label or end of function
+        let _current_pos = state.position();
+        if state.parse_label_identifier().is_ok() {
+            // Check if followed by a colon
+            if state.current_char() == Some(':') {
+                state.set_position(_current_pos); // Backtrack, it's the next label
+                break;
+            }
+        }
+        state.set_position(_current_pos); // Backtrack if it wasn't label:
+
+        // Check for end of function
+        if state.current_char() == Some('}') {
+            break;
+        }
+
+        // If not label or end, parse an instruction
+        let instruction = parse_instruction(state)?;
+        let is_terminator = instruction.is_terminator();
+        instructions.push(instruction);
+
+        if is_terminator {
+            break; // Block finished
+        }
+    }
+
+    if instructions.is_empty() || !instructions.last().unwrap().is_terminator() {
+        return Err(state.error(format!(
+            "Basic block '{}' must end with a terminator instruction (ret, jmp, br)",
+            label
+        )));
+    }
+
+    Ok((label, BasicBlock { instructions }))
+}
+
