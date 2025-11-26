@@ -1289,10 +1289,15 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     Instruction::Trunc { .. }
                     | Instruction::SignExtend { .. }
                     | Instruction::Bitcast { .. }
-                    | Instruction::Select { .. } => {
+                    | Instruction::Select { .. }
+                    | Instruction::Switch { .. }
+                    | Instruction::MemCpy { .. }
+                    | Instruction::MemMove { .. }
+                    | Instruction::MemSet { .. } => {
                         return Err(LaminaError::CodegenError(
                             CodegenError::UnsupportedFeature(FeatureType::Custom(
-                                "conversion/select in legacy IR-based WASM backend".to_string(),
+                                "conversion/select/switch/mem* in legacy IR-based WASM backend"
+                                    .to_string(),
                             )),
                         ));
                     }
