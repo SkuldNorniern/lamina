@@ -20,16 +20,41 @@ impl X86ABI {
                     format!("_{}", name)
                 }
             }
+            TargetOperatingSystem::Windows => {
+                // Windows x64: no underscore prefix, but main is special
+                if name == "main" {
+                    "main".to_string()
+                } else {
+                    name.to_string()
+                }
+            }
             _ => name.to_string(),
         }
     }
 
     /// Get the appropriate global declaration for main
     pub fn get_main_global(&self) -> &'static str {
-        ".globl main"
+        match self.target_os {
+            TargetOperatingSystem::Windows => ".globl main",
+            _ => ".globl main",
+        }
     }
 
-    /// System V AMD64 ABI Argument Registers
+    /// Get argument registers based on the target OS ABI
+    pub fn arg_registers(&self) -> &'static [&'static str] {
+        match self.target_os {
+            TargetOperatingSystem::Windows => {
+                // Microsoft x64 ABI: rcx, rdx, r8, r9 (first 4 args)
+                &["rcx", "rdx", "r8", "r9"]
+            }
+            _ => {
+                // System V AMD64 ABI: rdi, rsi, rdx, rcx, r8, r9 (first 6 args)
+                &["rdi", "rsi", "rdx", "rcx", "r8", "r9"]
+            }
+        }
+    }
+
+    /// System V AMD64 ABI Argument Registers (deprecated, use arg_registers() instead)
     pub const ARG_REGISTERS: &'static [&'static str] = &["rdi", "rsi", "rdx", "rcx", "r8", "r9"];
 
     /// Caller-saved registers that must be preserved across calls if live

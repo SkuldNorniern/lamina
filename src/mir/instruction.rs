@@ -704,6 +704,10 @@ impl Instruction {
                     regs.push(r);
                 }
             }
+            Instruction::Lea { base, .. } => {
+                // LEA uses its base register as an input
+                regs.push(base);
+            }
             Instruction::FloatUnary {
                 src: Operand::Register(r),
                 ..
