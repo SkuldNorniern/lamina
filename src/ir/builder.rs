@@ -1061,10 +1061,7 @@ impl<'a> IRBuilder<'a> {
         default: &'a str,
         cases: &[(Literal<'a>, &'a str)],
     ) -> &mut Self {
-        let mapped_cases = cases
-            .iter()
-            .map(|(lit, lbl)| (lit.clone(), *lbl))
-            .collect();
+        let mapped_cases = cases.iter().map(|(lit, lbl)| (lit.clone(), *lbl)).collect();
         self.inst(Instruction::Switch {
             ty,
             value,

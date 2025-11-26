@@ -1,13 +1,15 @@
+use super::instructions::parse_instruction;
+use super::state::ParserState;
+use super::types::parse_type;
 use crate::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, Label,
     LaminaError,
 };
 use std::collections::HashMap;
-use super::state::ParserState;
-use super::types::parse_type;
-use super::instructions::parse_instruction;
 
-pub fn parse_annotations(state: &mut ParserState<'_>) -> Result<Vec<FunctionAnnotation>, LaminaError> {
+pub fn parse_annotations(
+    state: &mut ParserState<'_>,
+) -> Result<Vec<FunctionAnnotation>, LaminaError> {
     let mut annotations = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
@@ -157,4 +159,3 @@ pub fn parse_basic_block<'a>(
 
     Ok((label, BasicBlock { instructions }))
 }
-

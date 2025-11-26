@@ -798,7 +798,7 @@ fn convert_instruction<'a>(
                     }
                     IRLit::Char(c) => *c as i64,
                     IRLit::F32(_) | IRLit::F64(_) | IRLit::String(_) => {
-                        return Err(FromIRError::UnsupportedType)
+                        return Err(FromIRError::UnsupportedType);
                     }
                 };
                 mir_cases.push((key, (*label).to_string()));
@@ -1001,8 +1001,8 @@ fn convert_instruction<'a>(
                 }
             }
 
-            let src_bits = bits_for(&source_type);
-            let dst_bits = bits_for(&target_type);
+            let src_bits = bits_for(source_type);
+            let dst_bits = bits_for(target_type);
 
             if src_bits == 0 || dst_bits == 0 || src_bits >= dst_bits {
                 return Err(FromIRError::UnsupportedType);
@@ -1021,7 +1021,7 @@ fn convert_instruction<'a>(
 
             instrs.push(Instruction::IntBinary {
                 op: crate::mir::IntBinOp::Shl,
-                ty: mir_ty.clone(),
+                ty: mir_ty,
                 dst: temp_reg.clone(),
                 lhs: val_op,
                 rhs: shift_imm,
@@ -1056,7 +1056,7 @@ fn convert_instruction<'a>(
                 }
             }
 
-            if bits_for(&source_type) != bits_for(&target_type) {
+            if bits_for(source_type) != bits_for(target_type) {
                 return Err(FromIRError::UnsupportedType);
             }
 
@@ -1295,16 +1295,16 @@ fn convert_instruction<'a>(
                 // Variable index: emit two instructions
                 // 1. temp = index * elem_size
                 // 2. result = base + temp
-                
+
                 // Get the index operand
                 let index_op = get_operand_permissive(index, vreg_alloc, var_to_reg)?;
-                
+
                 // Allocate a temp register for the scaled index
                 let temp_scaled = Register::Virtual(vreg_alloc.allocate_gpr());
-                
+
                 // Create instructions
                 let mut instrs = Vec::new();
-                
+
                 // Instruction 1: temp_scaled = index * elem_size
                 instrs.push(Instruction::IntBinary {
                     op: crate::mir::IntBinOp::Mul,
@@ -1313,7 +1313,7 @@ fn convert_instruction<'a>(
                     lhs: index_op,
                     rhs: Operand::Immediate(crate::mir::Immediate::I64(elem_size as i64)),
                 });
-                
+
                 // Instruction 2: result = base + temp_scaled
                 instrs.push(Instruction::IntBinary {
                     op: crate::mir::IntBinOp::Add,
@@ -1322,7 +1322,7 @@ fn convert_instruction<'a>(
                     lhs: Operand::Register(base),
                     rhs: Operand::Register(temp_scaled),
                 });
-                
+
                 Ok(instrs)
             }
         }

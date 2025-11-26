@@ -42,7 +42,8 @@ impl RiscVAbi {
     }
 
     /// RISC-V calling convention argument registers (first 8 arguments)
-    pub const ARG_REGISTERS: &'static [&'static str] = &["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"];
+    pub const ARG_REGISTERS: &'static [&'static str] =
+        &["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"];
 
     /// Map well-known intrinsic/runtime names to platform symbol stubs
     pub fn call_stub(&self, name: &str) -> Option<String> {

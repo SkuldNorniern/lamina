@@ -1,5 +1,5 @@
-use crate::{LaminaError, Literal, Value};
 use super::state::ParserState;
+use crate::{LaminaError, Literal, Value};
 
 // Parses a value: literal or %variable or @global
 // This version tries I32 for integer literals first, but will use I64 for larger values.
@@ -31,32 +31,31 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
             let mut temp_pos = peek_pos;
             let mut has_digits = false;
             let bytes = state.bytes();
-            
+
             // Skip negative sign if present
             if !state.is_eof() && bytes.get(temp_pos) == Some(&b'-') {
                 temp_pos += 1;
             }
-            
+
             // Check for digits
             while temp_pos < bytes.len() && bytes[temp_pos].is_ascii_digit() {
                 has_digits = true;
                 temp_pos += 1;
             }
-            
+
             // Check if there's a dot followed by digits (indicating a float)
-            let looks_like_float = has_digits 
-                && temp_pos < bytes.len() 
+            let looks_like_float = has_digits
+                && temp_pos < bytes.len()
                 && bytes[temp_pos] == b'.'
                 && temp_pos + 1 < bytes.len()
                 && bytes[temp_pos + 1].is_ascii_digit();
-            
+
             // If it looks like a float, parse as float directly
-            if looks_like_float {
-                if let Ok(f_val) = state.parse_float() {
+            if looks_like_float
+                && let Ok(f_val) = state.parse_float() {
                     return Ok(Value::Constant(Literal::F32(f_val)));
                 }
-            }
-            
+
             // Otherwise, try parsing as integer first
             if let Ok(i_val) = state.parse_integer() {
                 return if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
@@ -94,4 +93,3 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
         _ => Err(state.error("Expected value (%, @, literal)".to_string())),
     }
 }
-
