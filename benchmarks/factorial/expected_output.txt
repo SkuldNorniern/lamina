@@ -1,0 +1,12 @@
+# Expected Output for Factorial Benchmark
+# Format: header_marker, fact10, fact12, fact15, fact18, footer_marker
+
+123456789
+3628800
+479001600
+1307674368000
+6402373705728000
+987654321
+
+
+

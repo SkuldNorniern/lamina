@@ -1,0 +1,69 @@
+# Factorial Benchmark
+# Computes factorial of 10, 12, 15, and 18 using iterative approach
+
+# Iterative factorial function
+fn @factorial_iterative(i64 %n) -> i64 {
+  entry:
+    # Handle base cases: 0! = 1, 1! = 1
+    %is_zero = eq.i64 %n, 0
+    br %is_zero, base_case, check_one
+
+  check_one:
+    %is_one = eq.i64 %n, 1
+    br %is_one, base_case, compute_loop
+
+  base_case:
+    ret.i64 1
+
+  compute_loop:
+    # Initialize result and counter
+    %result = add.i64 1, 0
+    %i = add.i64 2, 0
+    jmp loop_start
+
+  loop_start:
+    # Check if we've reached n
+    %done = gt.i64 %i, %n
+    br %done, loop_end, loop_body
+
+  loop_body:
+    # result = result * i
+    %result = mul.i64 %result, %i
+    # i = i + 1
+    %i = add.i64 %i, 1
+    jmp loop_start
+
+  loop_end:
+    ret.i64 %result
+}
+
+# Main function - exported as the program entry point
+@export
+fn @main() -> i64 {
+  entry:
+    # Print header marker
+    %header = add.i64 123456789, 0
+    print %header
+
+    # Compute and print factorial(10)
+    %fact10 = call @factorial_iterative(10)
+    print %fact10
+
+    # Compute and print factorial(12)
+    %fact12 = call @factorial_iterative(12)
+    print %fact12
+
+    # Compute and print factorial(15)
+    %fact15 = call @factorial_iterative(15)
+    print %fact15
+
+    # Compute and print factorial(18)
+    %fact18 = call @factorial_iterative(18)
+    print %fact18
+
+    # Print footer marker
+    %footer = add.i64 987654321, 0
+    print %footer
+
+    ret.i64 0
+}
