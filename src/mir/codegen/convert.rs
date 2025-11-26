@@ -759,6 +759,57 @@ fn convert_instruction<'a>(
                 false_target: (*false_label).to_string(),
             }])
         }
+        crate::ir::instruction::Instruction::Switch {
+            ty: _,
+            value,
+            default,
+            cases,
+        } => {
+            // Lower IR switch to MIR switch using a dedicated MIR instruction.
+            // The MIR lowering and backends treat the value as an integer in a register
+            // and cases as i64 immediates.
+            let value_reg = match value {
+                IRVal::Variable(id) => var_to_reg
+                    .get(id)
+                    .cloned()
+                    .ok_or(FromIRError::UnknownVariable)?,
+                _ => return Err(FromIRError::UnsupportedInstruction),
+            };
+
+            use crate::ir::types::Literal as IRLit;
+            let mut mir_cases = Vec::with_capacity(cases.len());
+
+            for (lit, label) in cases {
+                let key: i64 = match lit {
+                    IRLit::I8(v) => *v as i64,
+                    IRLit::I16(v) => *v as i64,
+                    IRLit::I32(v) => *v as i64,
+                    IRLit::I64(v) => *v,
+                    IRLit::U8(v) => *v as i64,
+                    IRLit::U16(v) => *v as i64,
+                    IRLit::U32(v) => *v as i64,
+                    IRLit::U64(v) => *v as i64,
+                    IRLit::Bool(b) => {
+                        if *b {
+                            1
+                        } else {
+                            0
+                        }
+                    }
+                    IRLit::Char(c) => *c as i64,
+                    IRLit::F32(_) | IRLit::F64(_) | IRLit::String(_) => {
+                        return Err(FromIRError::UnsupportedType)
+                    }
+                };
+                mir_cases.push((key, (*label).to_string()));
+            }
+
+            Ok(vec![Instruction::Switch {
+                value: value_reg,
+                cases: mir_cases,
+                default: (*default).to_string(),
+            }])
+        }
         crate::ir::instruction::Instruction::Jmp { target_label } => Ok(vec![Instruction::Jmp {
             target: (*target_label).to_string(),
         }]),
@@ -1140,6 +1191,39 @@ fn convert_instruction<'a>(
                 dst,
                 lhs: val_op,
                 rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+            }])
+        }
+        crate::ir::instruction::Instruction::MemCpy { dst, src, size } => {
+            let mut args = Vec::new();
+            args.push(get_operand_permissive(dst, vreg_alloc, var_to_reg)?);
+            args.push(get_operand_permissive(src, vreg_alloc, var_to_reg)?);
+            args.push(get_operand_permissive(size, vreg_alloc, var_to_reg)?);
+            Ok(vec![Instruction::Call {
+                name: "memcpy".to_string(),
+                args,
+                ret: None,
+            }])
+        }
+        crate::ir::instruction::Instruction::MemMove { dst, src, size } => {
+            let mut args = Vec::new();
+            args.push(get_operand_permissive(dst, vreg_alloc, var_to_reg)?);
+            args.push(get_operand_permissive(src, vreg_alloc, var_to_reg)?);
+            args.push(get_operand_permissive(size, vreg_alloc, var_to_reg)?);
+            Ok(vec![Instruction::Call {
+                name: "memmove".to_string(),
+                args,
+                ret: None,
+            }])
+        }
+        crate::ir::instruction::Instruction::MemSet { dst, value, size } => {
+            let mut args = Vec::new();
+            args.push(get_operand_permissive(dst, vreg_alloc, var_to_reg)?);
+            args.push(get_operand_permissive(value, vreg_alloc, var_to_reg)?);
+            args.push(get_operand_permissive(size, vreg_alloc, var_to_reg)?);
+            Ok(vec![Instruction::Call {
+                name: "memset".to_string(),
+                args,
+                ret: None,
             }])
         }
         crate::ir::instruction::Instruction::GetFieldPtr {
