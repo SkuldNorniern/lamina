@@ -377,6 +377,19 @@ pub enum Instruction<'a> {
         value: Value<'a>,
     },
     // --- Control Flow ---
+    /// Multi-way branch based on an integer or boolean value.
+    ///
+    /// This is the structured SSA form of a jump table. The `value` is compared
+    /// against each case literal; on the first match, control transfers to the
+    /// corresponding label. If no case matches, control transfers to `default`.
+    Switch {
+        ty: PrimitiveType,
+        value: Value<'a>,
+        /// Default target label when no case matches.
+        default: Label<'a>,
+        /// Case list as pairs of (literal, target_label).
+        cases: Vec<(crate::ir::types::Literal<'a>, Label<'a>)>,
+    },
     Br {
         // Conditional branch
         condition: Value<'a>, // Must be bool type
@@ -407,6 +420,30 @@ pub enum Instruction<'a> {
         ty: Type<'a>,   // Type being stored
         ptr: Value<'a>, // Must be a ptr type
         value: Value<'a>,
+    },
+    /// Copy `size` bytes from `src` to `dst` (memory may not overlap).
+    ///
+    /// This is lowered to a call to the `memcpy` intrinsic in MIR/codegen.
+    MemCpy {
+        dst: Value<'a>,  // Destination pointer
+        src: Value<'a>,  // Source pointer
+        size: Value<'a>, // Number of bytes to copy
+    },
+    /// Copy `size` bytes from `src` to `dst` allowing overlapping regions.
+    ///
+    /// This is lowered to a call to the `memmove` intrinsic in MIR/codegen.
+    MemMove {
+        dst: Value<'a>,  // Destination pointer
+        src: Value<'a>,  // Source pointer
+        size: Value<'a>, // Number of bytes to move
+    },
+    /// Set `size` bytes at `dst` to the byte `value`.
+    ///
+    /// This is lowered to a call to the `memset` intrinsic in MIR/codegen.
+    MemSet {
+        dst: Value<'a>,   // Destination pointer
+        value: Value<'a>, // Byte value (typically i8/u8)
+        size: Value<'a>,  // Number of bytes to set
     },
     Dealloc {
         // Optional Heap Deallocation
@@ -727,6 +764,23 @@ impl fmt::Display for Instruction<'_> {
                 "%{} = bitcast.{}.{} {}",
                 result, source_type, target_type, value
             ),
+            Instruction::Switch {
+                ty,
+                value,
+                default,
+                cases,
+            } => {
+                write!(f, "switch.{} {}, {}", ty, value, default)?;
+                for (i, (lit, label)) in cases.iter().enumerate() {
+                    if i == 0 {
+                        write!(f, ", ")?;
+                    } else {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "[{}, {}]", lit, label)?;
+                }
+                Ok(())
+            }
             Instruction::Br {
                 condition,
                 true_label,
@@ -744,6 +798,15 @@ impl fmt::Display for Instruction<'_> {
             } => write!(f, "%{} = alloc.ptr.{} {}", result, alloc_type, allocated_ty),
             Instruction::Load { result, ty, ptr } => write!(f, "%{} = load.{} {}", result, ty, ptr),
             Instruction::Store { ty, ptr, value } => write!(f, "store.{} {}, {}", ty, ptr, value),
+            Instruction::MemCpy { dst, src, size } => {
+                write!(f, "memcpy {}, {}, {}", dst, src, size)
+            }
+            Instruction::MemMove { dst, src, size } => {
+                write!(f, "memmove {}, {}, {}", dst, src, size)
+            }
+            Instruction::MemSet { dst, value, size } => {
+                write!(f, "memset {}, {}, {}", dst, value, size)
+            }
             Instruction::Dealloc { ptr } => write!(f, "dealloc.heap {}", ptr),
             #[cfg(feature = "nightly")]
             Instruction::AtomicLoad {
@@ -1203,6 +1266,21 @@ mod tests {
             "%cast_val = bitcast.i32.f32 %bits"
         );
 
+        // Switch
+        let instr_switch = Instruction::Switch {
+            ty: PrimitiveType::I32,
+            value: Value::Variable("x"),
+            default: "default".into(),
+            cases: vec![
+                (Literal::I32(0), "zero".into()),
+                (Literal::I32(1), "one".into()),
+            ],
+        };
+        assert_eq!(
+            format!("{}", instr_switch),
+            "switch.i32 %x, default, [0, zero], [1, one]"
+        );
+
         // Tuple
         let instr18 = Instruction::Tuple {
             result: "my_tuple",
@@ -1226,6 +1304,39 @@ mod tests {
             ptr: Value::Variable("heap_ptr"),
         };
         assert_eq!(format!("{}", instr20), "dealloc.heap %heap_ptr");
+
+        // Memcpy
+        let instr_memcpy = Instruction::MemCpy {
+            dst: Value::Variable("dst"),
+            src: Value::Variable("src"),
+            size: Value::Constant(Literal::I32(16)),
+        };
+        assert_eq!(
+            format!("{}", instr_memcpy),
+            "memcpy %dst, %src, 16"
+        );
+
+        // Memmove
+        let instr_memmove = Instruction::MemMove {
+            dst: Value::Variable("dst"),
+            src: Value::Variable("src"),
+            size: Value::Constant(Literal::I32(8)),
+        };
+        assert_eq!(
+            format!("{}", instr_memmove),
+            "memmove %dst, %src, 8"
+        );
+
+        // Memset
+        let instr_memset = Instruction::MemSet {
+            dst: Value::Variable("dst"),
+            value: Value::Constant(Literal::I8(0)),
+            size: Value::Constant(Literal::I32(32)),
+        };
+        assert_eq!(
+            format!("{}", instr_memset),
+            "memset %dst, 0, 32"
+        );
     }
 }
 
