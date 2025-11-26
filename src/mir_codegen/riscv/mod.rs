@@ -243,7 +243,7 @@ fn emit_instruction_riscv<W: Write>(
         }
         MirInst::Call { name, args, ret } => {
             let abi = RiscVAbi::new(target_os);
-            
+
             // Handle print intrinsic
             if name == "print" {
                 if let Some(arg) = args.first() {
@@ -259,29 +259,27 @@ fn emit_instruction_riscv<W: Write>(
                     // Load value to print to a1
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
                     // Call printf
-                    let printf_name = abi.call_stub("print").unwrap_or_else(|| {
-                        match target_os {
-                            TargetOperatingSystem::MacOS => "_printf".to_string(),
-                            _ => "printf".to_string(),
-                        }
+                    let printf_name = abi.call_stub("print").unwrap_or_else(|| match target_os {
+                        TargetOperatingSystem::MacOS => "_printf".to_string(),
+                        _ => "printf".to_string(),
                     });
                     writeln!(writer, "    call {}", printf_name)?;
                 }
             } else {
                 // General function call implementation
                 // RISC-V calling convention: first 8 args in a0-a7, remaining on stack
-                
+
                 let arg_regs = RiscVAbi::ARG_REGISTERS;
                 let num_reg_args = args.len().min(arg_regs.len());
                 let num_stack_args = args.len().saturating_sub(arg_regs.len());
-                
+
                 // Pass register arguments (a0-a7)
                 for i in 0..num_reg_args {
                     let arg = &args[i];
                     let dest_reg = arg_regs[i];
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
                 }
-                
+
                 // Pass stack arguments (16-byte aligned)
                 let stack_space = if num_stack_args > 0 {
                     // Align to 16 bytes
@@ -289,11 +287,11 @@ fn emit_instruction_riscv<W: Write>(
                 } else {
                     0
                 };
-                
+
                 if stack_space > 0 {
                     // Allocate stack space
                     writeln!(writer, "    addi sp, sp, -{}", stack_space)?;
-                    
+
                     // Store arguments on stack (in order, starting at sp+0)
                     for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
                         let offset = i * 8;
@@ -303,17 +301,17 @@ fn emit_instruction_riscv<W: Write>(
                         writeln!(writer, "    sd t0, {}(sp)", offset)?;
                     }
                 }
-                
+
                 // Resolve function name (check for intrinsic stubs first)
                 let target_sym = if let Some(stub) = abi.call_stub(name) {
                     stub
                 } else {
                     abi.mangle_function_name(name)
                 };
-                
+
                 // Emit call instruction
                 writeln!(writer, "    call {}", target_sym)?;
-                
+
                 // Clean up stack arguments
                 if stack_space > 0 {
                     writeln!(writer, "    addi sp, sp, {}", stack_space)?;
@@ -337,14 +335,16 @@ fn emit_instruction_riscv<W: Write>(
                 crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
                     // Load base address into t0
                     match base {
-                        Register::Virtual(v) => load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?,
+                        Register::Virtual(v) => {
+                            load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?
+                        }
                         Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
                     }
-                    
+
                     // Load value from [t0 + offset] into a0
                     // TODO: Handle different types (lw vs ld) based on ty
                     writeln!(writer, "    ld a0, {}(t0)", offset)?;
-                    
+
                     // Store a0 into dst
                     if let Register::Virtual(vreg) = dst {
                         store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
@@ -361,15 +361,17 @@ fn emit_instruction_riscv<W: Write>(
         } => {
             // Load value to store into a0
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "a0")?;
-            
+
             match addr {
                 crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
                     // Load base address into t0
                     match base {
-                        Register::Virtual(v) => load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?,
+                        Register::Virtual(v) => {
+                            load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?
+                        }
                         Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
                     }
-                    
+
                     // Store a0 into [t0 + offset]
                     // TODO: Handle different types (sw vs sd) based on ty
                     writeln!(writer, "    sd a0, {}(t0)", offset)?;

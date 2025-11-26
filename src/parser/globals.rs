@@ -1,6 +1,6 @@
-use crate::{GlobalDeclaration, LaminaError, Literal, PrimitiveType, Type, Value};
 use super::state::ParserState;
 use super::types::parse_type;
+use crate::{GlobalDeclaration, LaminaError, Literal, PrimitiveType, Type, Value};
 
 pub fn parse_global_declaration<'a>(
     state: &mut ParserState<'a>,
@@ -200,4 +200,3 @@ pub fn parse_value_with_type_hint<'a>(
         _ => Err(state.error("Expected value (%, @, literal)".to_string())),
     }
 }
-

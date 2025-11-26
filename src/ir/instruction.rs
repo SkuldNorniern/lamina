@@ -656,11 +656,11 @@ impl fmt::Display for BinaryOp {
                 BinaryOp::Mul => "mul",
                 BinaryOp::Div => "div",
                 BinaryOp::Rem => "rem",
-                 BinaryOp::And => "and",
-                 BinaryOp::Or => "or",
-                 BinaryOp::Xor => "xor",
-                 BinaryOp::Shl => "shl",
-                 BinaryOp::Shr => "shr",
+                BinaryOp::And => "and",
+                BinaryOp::Or => "or",
+                BinaryOp::Xor => "xor",
+                BinaryOp::Shl => "shl",
+                BinaryOp::Shr => "shr",
             }
         )
     }
@@ -1311,10 +1311,7 @@ mod tests {
             src: Value::Variable("src"),
             size: Value::Constant(Literal::I32(16)),
         };
-        assert_eq!(
-            format!("{}", instr_memcpy),
-            "memcpy %dst, %src, 16"
-        );
+        assert_eq!(format!("{}", instr_memcpy), "memcpy %dst, %src, 16");
 
         // Memmove
         let instr_memmove = Instruction::MemMove {
@@ -1322,10 +1319,7 @@ mod tests {
             src: Value::Variable("src"),
             size: Value::Constant(Literal::I32(8)),
         };
-        assert_eq!(
-            format!("{}", instr_memmove),
-            "memmove %dst, %src, 8"
-        );
+        assert_eq!(format!("{}", instr_memmove), "memmove %dst, %src, 8");
 
         // Memset
         let instr_memset = Instruction::MemSet {
@@ -1333,12 +1327,6 @@ mod tests {
             value: Value::Constant(Literal::I8(0)),
             size: Value::Constant(Literal::I32(32)),
         };
-        assert_eq!(
-            format!("{}", instr_memset),
-            "memset %dst, 0, 32"
-        );
+        assert_eq!(format!("{}", instr_memset), "memset %dst, 0, 32");
     }
 }
-
-
-

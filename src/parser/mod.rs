@@ -1,16 +1,15 @@
-mod types;
-mod globals;
-mod values;
 mod functions;
+mod globals;
 mod instructions;
 pub mod state;
+mod types;
+mod values;
 
-
-use crate::{LaminaError, Module};
+use self::functions::parse_function_def;
+use self::globals::parse_global_declaration;
 use self::state::ParserState;
 use self::types::parse_type_declaration;
-use self::globals::parse_global_declaration;
-use self::functions::parse_function_def;
+use crate::{LaminaError, Module};
 
 /// Parses a string containing Lamina IR text into a Module.
 /// The lifetime 'a is tied to the input string slice.
@@ -45,7 +44,6 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
 
     Ok(module)
 }
-
 
 #[cfg(test)]
 mod tests {

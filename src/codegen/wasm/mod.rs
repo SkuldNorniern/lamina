@@ -1294,12 +1294,12 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     | Instruction::MemCpy { .. }
                     | Instruction::MemMove { .. }
                     | Instruction::MemSet { .. } => {
-                        return Err(LaminaError::CodegenError(
-                            CodegenError::UnsupportedFeature(FeatureType::Custom(
+                        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                            FeatureType::Custom(
                                 "conversion/select/switch/mem* in legacy IR-based WASM backend"
                                     .to_string(),
-                            )),
-                        ));
+                            ),
+                        )));
                     }
                     Instruction::Tuple { result, elements } => {
                         let mut align = 1u64;

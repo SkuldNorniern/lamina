@@ -1,5 +1,5 @@
-use crate::{LaminaError, PrimitiveType, StructField, Type, TypeDeclaration};
 use super::state::ParserState;
+use crate::{LaminaError, PrimitiveType, StructField, Type, TypeDeclaration};
 
 pub fn parse_type_declaration<'a>(
     state: &mut ParserState<'a>,
@@ -115,4 +115,3 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
         }
     }
 }
-

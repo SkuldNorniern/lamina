@@ -1,9 +1,9 @@
-use crate::{
-    AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType, Type, Value,
-};
 use super::state::ParserState;
 use super::types::parse_type;
 use super::values::parse_value;
+use crate::{
+    AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType, Type, Value,
+};
 
 pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
@@ -830,7 +830,7 @@ fn parse_switch<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lami
             _ => {
                 return Err(state.error(
                     "switch case expects a literal constant, found non-constant value".to_string(),
-                ))
+                ));
             }
         };
         state.expect_char(',')?;
@@ -885,8 +885,7 @@ fn parse_primitive_from_ident(
         "bool" => Ok(PrimitiveType::Bool),
         "char" => Ok(PrimitiveType::Char),
         "ptr" => Ok(PrimitiveType::Ptr),
-        other => Err(state
-            .error(format!("Invalid primitive type in conversion: {}", other))),
+        other => Err(state.error(format!("Invalid primitive type in conversion: {}", other))),
     }
 }
 

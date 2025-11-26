@@ -47,7 +47,9 @@ pub fn load_operand_to_register<W: std::io::Write>(
 ) -> Result<(), std::io::Error> {
     match operand {
         crate::mir::Operand::Register(reg) => match reg {
-            Register::Virtual(v) => load_register_to_register(v, writer, reg_alloc, stack_slots, dest_reg),
+            Register::Virtual(v) => {
+                load_register_to_register(v, writer, reg_alloc, stack_slots, dest_reg)
+            }
             Register::Physical(p) => {
                 writeln!(writer, "    mv {}, {}", dest_reg, p.name)?;
                 Ok(())
