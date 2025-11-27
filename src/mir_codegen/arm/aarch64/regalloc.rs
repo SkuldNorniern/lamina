@@ -2,13 +2,14 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 
-use crate::mir::register::{Register, RegisterClass, VirtualReg};
+//! AArch64 register allocator for MIR virtual registers.
 
-/// Very simple AArch64 register allocator for MIR virtual registers.
+
+/// AArch64 register allocator for MIR virtual registers.
 ///
-/// - Tracks a fixed pool of available caller-saved GPRs that are safe for temporaries
-/// - Provides a stable mapping VirtualReg -> physical register for the lifetime of a function
-/// - If no register is available, the caller should spill to a stack slot (allocator returns None)
+/// Tracks a fixed pool of available caller-saved GPRs and provides
+/// stable mappings from virtual registers to physical registers.
+/// Returns None when no register is available (caller should spill to stack).
 pub struct A64RegAlloc {
     free_gprs: VecDeque<&'static str>,
     used_gprs: HashSet<&'static str>,
@@ -17,16 +18,11 @@ pub struct A64RegAlloc {
     scratch_used: HashSet<&'static str>,
 }
 
-// Avoid x0..x7 (args/ret), x29/x30 (fp/lr)
-// Use x9-x28 for mapping virtual registers, reserving x16-x18 for intra-procedure calls if needed
-// Pool for mapping virtual registers (can overlap with scratch temps for complex functions)
 const MAP_GPRS: &[&str] = &[
     "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x19", "x20", "x21", "x22", "x23", "x24",
     "x25", "x26", "x27", "x28",
 ];
 
-// Dedicated scratch pool for short-lived temporaries; kept disjoint from MAP_GPRS
-// Provide a larger pool to avoid fallback to non-scratch registers during nested materializations
 const SCRATCH_GPRS: &[&str] = &["x9", "x10", "x11", "x12", "x13", "x14", "x15"];
 
 impl Default for A64RegAlloc {
@@ -36,6 +32,7 @@ impl Default for A64RegAlloc {
 }
 
 impl A64RegAlloc {
+    /// Creates a new register allocator with default register pools.
     pub fn new() -> Self {
         let mut free_gprs = VecDeque::new();
         for &r in MAP_GPRS {
@@ -56,10 +53,8 @@ impl A64RegAlloc {
         }
     }
 
-    /// Set conservative mode for very complex functions - use moderate number of registers
-    /// This provides a balance between register pressure and spilling for complex control flow
+    /// Sets conservative mode for complex functions, using fewer registers to reduce pressure.
     pub fn set_conservative_mode(&mut self) {
-        // Keep a moderate number of registers available for complex functions
         self.free_gprs.clear();
         self.free_gprs.push_back("x13");
         self.free_gprs.push_back("x14");
@@ -69,18 +64,9 @@ impl A64RegAlloc {
         self.free_gprs.push_back("x21");
         self.free_gprs.push_back("x22");
         self.free_gprs.push_back("x23");
-        // Clear used registers that are no longer in the free pool
         self.used_gprs.retain(|r| self.free_gprs.contains(r));
-        // Also clear vreg mappings that use registers no longer available
         let free_set: HashSet<&str> = self.free_gprs.iter().copied().collect();
-        self.vreg_to_preg.retain(|_, preg| {
-            if free_set.contains(preg) {
-                true
-            } else {
-                // Register is no longer available, remove mapping
-                false
-            }
-        });
+        self.vreg_to_preg.retain(|_, preg| free_set.contains(preg));
     }
 
     #[inline]
@@ -165,18 +151,12 @@ impl MirRegisterAllocator for A64RegAlloc {
             self.vreg_to_preg.insert(vreg, phys);
             Some(phys)
         } else {
-            // No free registers available. For complex functions, reuse an existing register.
-            // This is not proper spilling but allows code generation to continue.
-            // Find an existing mapping to reuse (prefer less recently used)
             if let Some((vreg_to_replace, &phys)) = self.vreg_to_preg.iter().next() {
                 let vreg_to_replace = *vreg_to_replace;
-                // Remove the old mapping
                 self.vreg_to_preg.remove(&vreg_to_replace);
-                // Create new mapping
                 self.vreg_to_preg.insert(vreg, phys);
                 Some(phys)
             } else {
-                // No existing mappings to reuse
                 None
             }
         }
