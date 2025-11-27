@@ -1,13 +1,18 @@
+//! Stack frame layout for AArch64 code generation.
+//!
+//! This module provides frame mapping for virtual registers to stack slots.
+
 use crate::mir::{Function, Register};
 use std::collections::{HashMap, HashSet};
 
-/// Simple frame map that assigns each virtual register a stack slot.
+/// Maps virtual registers to stack slot offsets.
 pub struct FrameMap {
     pub slots: HashMap<Register, i32>,
     pub frame_size: i32,
 }
 
 impl FrameMap {
+    /// Creates a frame map from a function, assigning stack slots to all virtual registers.
     pub fn from_function(f: &Function) -> Self {
         let mut regs: HashSet<Register> = HashSet::new();
         for p in &f.sig.params {
@@ -24,7 +29,6 @@ impl FrameMap {
             }
         }
 
-        // Convert to Vec and sort for deterministic ordering
         let mut reg_vec: Vec<Register> = regs.into_iter().collect();
         reg_vec.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
 
@@ -44,6 +48,7 @@ impl FrameMap {
         Self { slots, frame_size }
     }
 
+    /// Returns the stack slot offset for a register, if it has one.
     pub fn slot_of(&self, r: &Register) -> Option<i32> {
         self.slots.get(r).copied()
     }
