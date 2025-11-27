@@ -1,3 +1,8 @@
+//! AArch64 code generation for MIR (Mid-level IR).
+//!
+//! This module provides code generation from MIR to AArch64 assembly,
+//! following the AAPCS64 calling convention.
+
 mod abi;
 mod frame;
 mod regalloc;
@@ -14,6 +19,7 @@ use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions};
 use crate::target::TargetOperatingSystem;
 
+/// Convert an x-register name to its w-register alias (lower 32 bits).
 fn w_alias(xreg: &str) -> String {
     if let Some(rest) = xreg.strip_prefix('x') {
         format!("w{}", rest)
@@ -22,6 +28,7 @@ fn w_alias(xreg: &str) -> String {
     }
 }
 
+/// Convert a w-register name to its x-register alias (full 64 bits).
 fn x_alias(reg: &str) -> String {
     if let Some(rest) = reg.strip_prefix('w') {
         format!("x{}", rest)
@@ -30,13 +37,12 @@ fn x_alias(reg: &str) -> String {
     }
 }
 
+/// Generate AArch64 assembly from a MIR module.
 pub fn generate_mir_aarch64<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
-    // Check if this module contains complex functions that need conservative handling
-    // Complex functions: many basic blocks (>50) or very large blocks (>100 instructions)
     let has_complex_function = module
         .functions
         .values()
@@ -62,23 +68,18 @@ pub fn generate_mir_aarch64<W: Write>(
         }
         writeln!(writer, "{}:", label)?;
 
-        // Prologue: save FP/LR and create a simple stack frame for virtual registers
-        // Prologue: save fp/lr using scratch regs from RA to avoid hardcoding temps
         let mut ra_pro = A64RegAlloc::new();
         let s0 = ra_pro.alloc_scratch().unwrap_or("x19");
         let s1 = ra_pro.alloc_scratch().unwrap_or("x20");
         if s0 != "x29" || s1 != "x30" {
-            // fallback to canonical pair; stp requires valid pair, keep canonical for correctness
             writeln!(writer, "    stp x29, x30, [sp, #-16]!")?;
         } else {
             writeln!(writer, "    stp {}, {}, [sp, #-16]!", s0, s1)?;
         }
         writeln!(writer, "    mov x29, sp")?;
 
-        // Compute stack slots for all virtual registers in the function
         let frame = FrameMap::from_function(func);
 
-        // For complex functions, ensure we have enough stack space
         let has_many_vars = func
             .blocks
             .iter()
@@ -87,7 +88,7 @@ pub fn generate_mir_aarch64<W: Write>(
             .count()
             > 100;
         let adjusted_frame_size = if has_many_vars {
-            (frame.frame_size + 1024) & !15 // Add extra space for complex functions
+            (frame.frame_size + 1024) & !15
         } else {
             frame.frame_size
         };
@@ -96,10 +97,8 @@ pub fn generate_mir_aarch64<W: Write>(
             writeln!(writer, "    sub sp, sp, #{}", adjusted_frame_size)?;
         }
 
-        // Spill incoming arguments to their slots
         for (i, p) in func.sig.params.iter().enumerate() {
             if let Some(off) = frame.slot_of(&p.reg) {
-                // Calculate address of local slot
                 let addr = ra_pro.alloc_scratch().unwrap_or("x19");
                 if off >= 0 {
                     writeln!(writer, "    add {}, x29, #{}", addr, off)?;
@@ -108,11 +107,8 @@ pub fn generate_mir_aarch64<W: Write>(
                 }
 
                 if i < 8 {
-                    // Argument in register x0-x7
                     writeln!(writer, "    str x{}, [{}]", i, addr)?;
                 } else {
-                    // Argument on stack (caller's frame)
-                    // fp points to saved fp. fp+8 is saved lr. fp+16 is first stack arg.
                     let caller_offset = 16 + (i - 8) * 8;
                     let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
                     writeln!(writer, "    ldr {}, [x29, #{}]", val_reg, caller_offset)?;
@@ -123,19 +119,13 @@ pub fn generate_mir_aarch64<W: Write>(
             }
         }
 
-        // Prepare epilogue label so `ret` can branch to it safely
         let epilogue_label = format!(".Lret_{}", label.trim_start_matches('_'));
 
-        // Create ONE register allocator per function to maintain variable mappings across blocks
-        // This is critical for complex functions with many blocks and variable reassignments
         let mut ra = A64RegAlloc::new();
-        // For complex functions, use more conservative register allocation
         if has_complex_function {
             ra.set_conservative_mode();
         }
 
-        // Emit blocks - process entry block first, then other blocks
-        // Create a new register allocator for each block to avoid cross-block issues
         if let Some(entry) = func.get_block(&func.entry) {
             let mut ra_entry = A64RegAlloc::new();
             if has_complex_function {
@@ -169,7 +159,6 @@ pub fn generate_mir_aarch64<W: Write>(
             }
         }
 
-        // Epilogue
         writeln!(writer, "{}:", epilogue_label)?;
         if adjusted_frame_size > 0 {
             writeln!(writer, "    add sp, sp, #{}", adjusted_frame_size)?;
@@ -180,6 +169,7 @@ pub fn generate_mir_aarch64<W: Write>(
     Ok(())
 }
 
+/// Emit assembly for a sequence of MIR instructions.
 fn emit_block<W: Write>(
     insts: &[MirInst],
     w: &mut W,
@@ -204,9 +194,7 @@ fn emit_block<W: Write>(
                 let is32 = ty.size_bytes() == 4;
                 let dl = if is32 { w_alias(s_d) } else { x_alias(s_d) };
                 let rl = if is32 { w_alias(s_l) } else { x_alias(s_l) };
-                // Track if lhs is a register (for potential slot copying)
                 let _lhs_is_reg = matches!(lhs, crate::mir::Operand::Register(_));
-                // Delay materializing rhs when we can use an immediate form (for shifts)
                 match op {
                     crate::mir::IntBinOp::Add => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
@@ -224,29 +212,22 @@ fn emit_block<W: Write>(
                         writeln!(w, "    mul {}, {}, {}", dl, rl, rr)?;
                     }
                     crate::mir::IntBinOp::UDiv => {
-                        // Unsigned division: udiv dst, lhs, rhs
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    udiv {}, {}, {}", dl, rl, rr)?;
                     }
                     crate::mir::IntBinOp::SDiv => {
-                        // Signed division: sdiv dst, lhs, rhs
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sdiv {}, {}, {}", dl, rl, rr)?;
                     }
                     crate::mir::IntBinOp::URem => {
-                        // Unsigned remainder: r = lhs - (lhs / rhs) * rhs
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        // Compute quotient in dl
                         writeln!(w, "    udiv {}, {}, {}", dl, rl, rr)?;
-                        // dl = lhs - (dl * rhs)
-                        // msub d, d, rr, rl  => d = rl - d*rr
                         writeln!(w, "    msub {}, {}, {}, {}", dl, dl, rr, rl)?;
                     }
                     crate::mir::IntBinOp::SRem => {
-                        // Signed remainder: r = lhs - (lhs / rhs) * rhs
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sdiv {}, {}, {}", dl, rl, rr)?;
@@ -468,7 +449,6 @@ fn emit_block<W: Write>(
                 ra.free_scratch(s_d);
             }
             MirInst::Load { ty, dst, addr, .. } => {
-                // Materialize address to a scratch then load
                 let a = ra.alloc_scratch().unwrap_or("x19");
                 let t = ra.alloc_scratch().unwrap_or("x20");
                 materialize_address(w, addr, a, frame, ra)?;
@@ -490,14 +470,12 @@ fn emit_block<W: Write>(
                 true_val,
                 false_val,
             } => {
-                // dst = cond ? true_val : false_val
                 let r_cond = ra.alloc_scratch().unwrap_or("x19");
                 let r_t = ra.alloc_scratch().unwrap_or("x20");
                 let r_f = ra.alloc_scratch().unwrap_or("x21");
                 load_reg_to(w, cond, r_cond, frame, ra)?;
                 emit_materialize_operand(w, true_val, r_t, frame, ra)?;
                 emit_materialize_operand(w, false_val, r_f, frame, ra)?;
-                // Compare cond against zero, then csel based on NE
                 if ty.size_bytes() == 4 {
                     writeln!(w, "    cmp {}, #0", w_alias(r_cond))?;
                     writeln!(
@@ -507,7 +485,6 @@ fn emit_block<W: Write>(
                         w_alias(r_t),
                         w_alias(r_f)
                     )?;
-                    // Store result from r_t (holds selected)
                     store_result(w, dst, &x_alias(r_t), frame, ra)?;
                 } else {
                     writeln!(w, "    cmp {}, #0", x_alias(r_cond))?;
@@ -658,8 +635,6 @@ fn emit_block<W: Write>(
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    bl write")?;
-                            // Memory barrier to ensure syscall completes before subsequent operations
-                            // This prevents reordering of I/O operations
                             writeln!(w, "    dmb sy")?;
                             if let Some(dst) = ret {
                                 store_result(w, dst, "x0", frame, ra)?;
@@ -670,21 +645,16 @@ fn emit_block<W: Write>(
                 } else if name == "readbyte" && args.is_empty() {
                     match os {
                         TargetOperatingSystem::MacOS => {
-                            // Reserve stack for 1 byte buffer
                             writeln!(w, "    sub sp, sp, #16")?;
-                            // Setup read(fd=0, buf=sp, size=1)
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
-                            writeln!(w, "    mov x16, #3")?; // read syscall
+                            writeln!(w, "    mov x16, #3")?;
                             writeln!(w, "    svc #0")?;
-                            // Load byte and select return value: byte if 1 read, else error code in x0
                             writeln!(w, "    ldrb {}, [sp]", w_alias("x9"))?;
                             if let Some(dst) = ret {
                                 let dst_reg = ra.alloc_scratch().unwrap_or("x10");
-                                // Compare and select in 64-bit, then zero-extend if needed
                                 writeln!(w, "    cmp x0, #1")?;
-                                // Place read byte into x form register first
                                 writeln!(w, "    uxtb {}, {}", x_alias("x9"), w_alias("x9"))?;
                                 writeln!(
                                     w,
@@ -695,7 +665,6 @@ fn emit_block<W: Write>(
                                 store_result(w, dst, &x_alias(dst_reg), frame, ra)?;
                                 ra.free_scratch(dst_reg);
                             }
-                            // Restore stack
                             writeln!(w, "    add sp, sp, #16")?;
                         }
                         _ => {
@@ -803,14 +772,12 @@ fn emit_block<W: Write>(
                         }
                     }
                 } else {
-                    // Generic call: pass up to 8 args in x0..x7
                     for (i, a) in args.iter().enumerate().take(8) {
                         emit_materialize_operand(w, a, &format!("x{}", i), frame, ra)?;
                     }
 
-                    // Pass remaining args on stack
                     let stack_args = if args.len() > 8 { &args[8..] } else { &[] };
-                    let stack_space = (stack_args.len() * 8 + 15) & !15; // Align to 16 bytes
+                    let stack_space = (stack_args.len() * 8 + 15) & !15;
 
                     if stack_space > 0 {
                         writeln!(w, "    sub sp, sp, #{}", stack_space)?;
@@ -823,7 +790,6 @@ fn emit_block<W: Write>(
                         }
                     }
 
-                    // Resolve symbol: intrinsic stub or platform-mangled function name
                     let target_sym: String = match call_stub(name, os) {
                         Some(sym) => sym.to_string(),
                         None => match os {
@@ -843,12 +809,9 @@ fn emit_block<W: Write>(
                 }
             }
             MirInst::TailCall { name, args } => {
-                // Tail call: pass arguments and jump (don't return)
-                // Pass up to 8 args in x0..x7
                 for (i, a) in args.iter().enumerate().take(8) {
                     emit_materialize_operand(w, a, &format!("x{}", i), frame, ra)?;
                 }
-                // Resolve symbol: intrinsic stub or platform-mangled function name
                 let target_sym: String = match call_stub(name, os) {
                     Some(sym) => sym.to_string(),
                     None => match os {
@@ -856,15 +819,11 @@ fn emit_block<W: Write>(
                         _ => name.to_string(),
                     },
                 };
-                // Restore stack frame before tail call
                 if frame.frame_size > 0 {
                     writeln!(w, "    add sp, sp, #{}", frame.frame_size)?;
                 }
-                // Restore caller's frame pointer and link register
                 writeln!(w, "    ldp x29, x30, [sp], #16")?;
-                // For tail call, use branch instead of branch-and-link
                 writeln!(w, "    b {}", target_sym)?;
-                // Note: No return value handling since tail calls don't return
             }
             MirInst::Ret { value } => {
                 if let Some(v) = value {
@@ -882,7 +841,6 @@ fn emit_block<W: Write>(
             } => {
                 let t = ra.alloc_scratch().unwrap_or("x19");
                 load_reg_to(w, cond, t, frame, ra)?;
-                // Compare condition against zero explicitly for robustness
                 writeln!(w, "    cmp {}, #0", x_alias(t))?;
                 writeln!(w, "    b.ne {}", true_target)?;
                 writeln!(w, "    b {}", false_target)?;
@@ -896,6 +854,7 @@ fn emit_block<W: Write>(
     Ok(())
 }
 
+/// Materialize an operand into a register.
 fn emit_materialize_operand<W: Write>(
     w: &mut W,
     op: &crate::mir::Operand,
@@ -910,6 +869,7 @@ fn emit_materialize_operand<W: Write>(
     Ok(())
 }
 
+/// Load a register value into a destination register.
 fn load_reg_to<W: Write>(
     w: &mut W,
     r: &Register,
@@ -956,6 +916,7 @@ fn load_reg_to<W: Write>(
     Ok(())
 }
 
+/// Store a value from a source register to a destination register or stack slot.
 fn store_result<W: Write>(
     w: &mut W,
     dst: &Register,
@@ -965,9 +926,7 @@ fn store_result<W: Write>(
 ) -> Result<(), crate::error::LaminaError> {
     match dst {
         Register::Virtual(_v) => {
-            // Always store to stack slot for correctness across blocks
             if let Some(off) = frame.slot_of(dst) {
-                // Use stur with signed 9-bit offset when possible, otherwise compute address
                 if (-256..=255).contains(&off) {
                     writeln!(w, "    stur {}, [x29, #{}]", src_reg, off)?;
                 } else {
@@ -1002,6 +961,7 @@ fn store_result<W: Write>(
     Ok(())
 }
 
+/// Materialize an address operand into a register.
 fn materialize_address<W: Write>(
     w: &mut W,
     addr: &crate::mir::AddressMode,

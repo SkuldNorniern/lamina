@@ -1,6 +1,8 @@
+//! AArch64 ABI utilities for symbol naming and calling conventions.
+
 use crate::target::TargetOperatingSystem;
 
-/// Return optional global directive and public label name for a function on the given OS.
+/// Returns the global directive and public label name for a function on the given OS.
 pub fn public_symbol(func_name: &str, os: TargetOperatingSystem) -> (Option<String>, String) {
     match os {
         TargetOperatingSystem::MacOS => (
@@ -11,7 +13,6 @@ pub fn public_symbol(func_name: &str, os: TargetOperatingSystem) -> (Option<Stri
                 format!("_{}", func_name)
             },
         ),
-        // FEAT: TODO: need to mark each Symbol for each target OS
         TargetOperatingSystem::Linux
         | TargetOperatingSystem::Windows
         | TargetOperatingSystem::FreeBSD
@@ -29,7 +30,7 @@ pub fn public_symbol(func_name: &str, os: TargetOperatingSystem) -> (Option<Stri
     }
 }
 
-/// Map well-known intrinsic/runtime names to platform symbol stubs.
+/// Maps well-known intrinsic/runtime names to platform symbol stubs.
 pub fn call_stub(name: &str, os: TargetOperatingSystem) -> Option<&'static str> {
     match (name, os) {
         ("print", TargetOperatingSystem::MacOS) => Some("_printf"),

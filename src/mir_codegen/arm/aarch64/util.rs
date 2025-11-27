@@ -1,8 +1,12 @@
+//! AArch64 utility functions for code generation.
+
 use std::io::Write;
 
 use crate::error::LaminaError;
 
-/// Materialize a 64-bit immediate into a destination register using movz/movk sequence.
+/// Emits instructions to materialize a 64-bit immediate into a destination register.
+///
+/// Uses movz/movk sequence for values that don't fit in a single mov instruction.
 pub fn emit_mov_imm64<W: Write>(
     w: &mut W,
     dest: &str,
@@ -27,6 +31,7 @@ pub fn emit_mov_imm64<W: Write>(
     Ok(())
 }
 
+/// Converts a MIR immediate value to u64 representation.
 pub fn imm_to_u64(i: &crate::mir::Immediate) -> u64 {
     match i {
         crate::mir::Immediate::I8(v) => *v as i64 as u64,
