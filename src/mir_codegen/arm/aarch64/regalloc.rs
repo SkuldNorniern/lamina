@@ -5,7 +5,6 @@ use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 
 // AArch64 register allocator for MIR virtual registers.
 
-
 /// AArch64 register allocator for MIR virtual registers.
 ///
 /// Tracks a fixed pool of available caller-saved GPRs and provides

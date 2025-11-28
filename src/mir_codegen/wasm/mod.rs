@@ -263,9 +263,10 @@ fn emit_instruction_wasm(
 
             // Handle return value (already on stack if function returns)
             if let Some(ret_reg) = ret
-                && let Register::Virtual(vreg) = ret_reg {
-                    store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
-                }
+                && let Register::Virtual(vreg) = ret_reg
+            {
+                store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
+            }
         }
         MirInst::Load {
             dst,

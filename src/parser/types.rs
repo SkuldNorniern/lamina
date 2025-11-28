@@ -63,15 +63,9 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
 pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
     match state.current_char() {
-        Some('@') => {
-            Ok(Type::Named(state.parse_type_identifier()?))
-        }
-        Some('[') => {
-            parse_composite_type(state)
-        }
-        Some('s') if state.peek_slice(6) == Some("struct") => {
-            parse_composite_type(state)
-        }
+        Some('@') => Ok(Type::Named(state.parse_type_identifier()?)),
+        Some('[') => parse_composite_type(state),
+        Some('s') if state.peek_slice(6) == Some("struct") => parse_composite_type(state),
         Some('t') if state.peek_slice(5) == Some("tuple") => {
             state.consume_keyword("tuple")?;
             state.skip_whitespace_and_comments();

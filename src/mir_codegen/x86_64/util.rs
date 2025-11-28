@@ -103,7 +103,10 @@ pub fn load_operand_to_rax<
             crate::mir::instruction::Immediate::I64(v) => writeln!(writer, "    movq ${}, %rax", v),
             crate::mir::instruction::Immediate::F32(_)
             | crate::mir::instruction::Immediate::F64(_) => {
-                writeln!(writer, "    # Floating point immediates not yet implemented")?;
+                writeln!(
+                    writer,
+                    "    # Floating point immediates not yet implemented"
+                )?;
                 Ok(())
             }
         },
@@ -146,7 +149,10 @@ pub fn load_operand_to_register<
             }
             crate::mir::instruction::Immediate::F32(_)
             | crate::mir::instruction::Immediate::F64(_) => {
-                writeln!(writer, "    # Floating point immediates not yet implemented")?;
+                writeln!(
+                    writer,
+                    "    # Floating point immediates not yet implemented"
+                )?;
                 Ok(())
             }
         },
