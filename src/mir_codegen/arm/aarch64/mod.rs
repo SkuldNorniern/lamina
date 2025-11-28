@@ -605,29 +605,21 @@ fn emit_block<W: Write>(
                     // Write a single byte to stdout using macOS ARM64 syscall
                     match os {
                         TargetOperatingSystem::MacOS => {
-                            // Reserve stack space to hold 1 byte buffer (keep 16B alignment)
                             writeln!(w, "    sub sp, sp, #16")?;
-                            // Materialize byte value and store to [sp]
                             emit_materialize_operand(w, &args[0], "x9", frame, ra)?;
                             writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
-                            // Setup write(fd=1, buf=sp, size=1)
                             writeln!(w, "    mov x0, #1")?;
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
-                            writeln!(w, "    mov x16, #4")?; // write syscall
+                            writeln!(w, "    mov x16, #4")?;
                             writeln!(w, "    svc #0")?;
-                            // Memory barrier to ensure syscall completes before subsequent operations
-                            // This prevents reordering of I/O operations
                             writeln!(w, "    dmb sy")?;
-                            // Return result in x0
                             if let Some(dst) = ret {
                                 store_result(w, dst, "x0", frame, ra)?;
                             }
-                            // Restore stack
                             writeln!(w, "    add sp, sp, #16")?;
                         }
                         _ => {
-                            // Fallback: call C library write(int,void*,size_t)
                             emit_materialize_operand(w, &args[0], "x9", frame, ra)?;
                             writeln!(w, "    sub sp, sp, #16")?;
                             writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
@@ -695,7 +687,6 @@ fn emit_block<W: Write>(
                     // Write the byte value at pointer to stdout
                     match os {
                         TargetOperatingSystem::MacOS => {
-                            // Load pointer into x1 and byte into w9, write 1 byte
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             writeln!(w, "    ldrb {}, [x1]", w_alias("x9"))?;
                             writeln!(w, "    sub sp, sp, #16")?;

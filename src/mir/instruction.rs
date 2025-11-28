@@ -897,7 +897,7 @@ impl Instruction {
         regs
     }
 
-    /// Check if this is a terminator instruction
+    /// Returns true if this is a terminator instruction.
     pub fn is_terminator(&self) -> bool {
         matches!(
             self,

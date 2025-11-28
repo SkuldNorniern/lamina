@@ -113,8 +113,7 @@ use super::types::{Literal, PrimitiveType, Type, Value};
 ///     .alloc_stack("arr", Type::Array { element_type: Box::new(Type::Primitive(PrimitiveType::I32)), size: 10 })
 ///     // Get pointer to element at index 5
 ///     .getelementptr("elem_ptr", var("arr"), i32(5), PrimitiveType::I32)
-///     // Store value at that location
-///     .store(Type::Primitive(PrimitiveType::I32), var("elem_ptr"), i32(100))
+    ///     .store(Type::Primitive(PrimitiveType::I32), var("elem_ptr"), i32(100))
 ///     .ret_void();
 /// ```
 ///
@@ -249,11 +248,6 @@ impl<'a> IRBuilder<'a> {
     /// - `name`: The function name (without @ prefix)
     /// - `return_type`: The function's return type
     ///
-    /// This method:
-    /// 1. Creates a new function with the given name and return type
-    /// 2. Sets this function as the current function context
-    /// 3. Creates a default "entry" block
-    ///
     /// Example:
     /// ```
     /// use lamina::ir::{IRBuilder, Type};
@@ -271,9 +265,6 @@ impl<'a> IRBuilder<'a> {
     /// - `name`: The function name (without @ prefix)
     /// - `params`: Vector of function parameters
     /// - `return_type`: The function's return type
-    ///
-    /// This is the full version of the function creation method, allowing
-    /// specification of parameters. Uses the builder pattern to chain method calls.
     ///
     /// Example:
     /// ```
@@ -547,7 +538,7 @@ impl<'a> IRBuilder<'a> {
 
     /// Optimizes this module for code size.
     ///
-    /// This may reduce performance but will create smaller binaries.
+    /// Reduces performance but creates smaller binaries.
     #[cfg(feature = "nightly")]
     pub fn optimize_for_size(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::OptimizeForSize)
@@ -563,9 +554,6 @@ impl<'a> IRBuilder<'a> {
     }
 
     /// Strips debug information and symbols from the compiled output.
-    ///
-    /// This reduces binary size and removes potentially sensitive information
-    /// but makes debugging impossible.
     #[cfg(feature = "nightly")]
     pub fn strip_symbols(&mut self) -> &mut Self {
         self.annotate_module(ModuleAnnotation::StripSymbols)
@@ -917,7 +905,6 @@ impl<'a> IRBuilder<'a> {
     /// - `true_label`: Block label to jump to if condition is true
     /// - `false_label`: Block label to jump to if condition is false
     ///
-    /// This instruction must be the last one in a block.
     ///
     /// # Control Flow Patterns
     ///
@@ -961,7 +948,7 @@ impl<'a> IRBuilder<'a> {
     ///         .jump("end")
     ///
     ///     .block("end")
-    ///         .ret(Type::Primitive(PrimitiveType::I32), var("squared")); // Note: need phi node for proper SSA
+    ///         .ret(Type::Primitive(PrimitiveType::I32), var("squared"));
     /// ```
     pub fn branch(
         &mut self,
@@ -981,7 +968,6 @@ impl<'a> IRBuilder<'a> {
     /// Parameters:
     /// - `target`: Block label to jump to
     ///
-    /// This instruction must be the last one in a block.
     ///
     /// # Jump Patterns
     ///
@@ -1076,7 +1062,6 @@ impl<'a> IRBuilder<'a> {
     /// - `ty`: Type of the returned value
     /// - `value`: Value to return
     ///
-    /// This instruction must be the last one in a block.
     ///
     /// Example:
     /// ```
@@ -1097,7 +1082,6 @@ impl<'a> IRBuilder<'a> {
     /// Creates a void return instruction (returns nothing)
     ///
     /// Use this for functions that don't return a value.
-    /// This instruction must be the last one in a block.
     ///
     /// Example:
     /// ```
