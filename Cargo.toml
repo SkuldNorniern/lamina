@@ -1,6 +1,6 @@
 [package]
 name = "lamina"
-version = "0.0.7"
+version = "0.0.8-dev"
 edition = "2024"
 authors = ["Eira <eira@nornity.com>"]
 description = "High-performance compiler backend for Lamina Intermediate Representation"
