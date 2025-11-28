@@ -1,3 +1,5 @@
+//! Utility functions for x86_64 code generation.
+
 use crate::mir::register::{Register, VirtualReg};
 
 /// Load a virtual register into RAX
@@ -15,7 +17,10 @@ pub fn load_register_to_rax<
     } else if let Some(offset) = stack_slots.get(reg) {
         writeln!(writer, "    movq {}(%rbp), %rax", offset)?;
     } else {
-        panic!("Virtual register {:?} has no mapping or stack slot", reg);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Virtual register {:?} has no mapping or stack slot", reg),
+        ));
     }
     Ok(())
 }
@@ -35,7 +40,10 @@ pub fn store_rax_to_register<
     } else if let Some(offset) = stack_slots.get(reg) {
         writeln!(writer, "    movq %rax, {}(%rbp)", offset)?;
     } else {
-        panic!("Virtual register {:?} has no mapping or stack slot", reg);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Virtual register {:?} has no mapping or stack slot", reg),
+        ));
     }
     Ok(())
 }
@@ -56,7 +64,10 @@ pub fn load_register_to_register<
     } else if let Some(offset) = stack_slots.get(src) {
         writeln!(writer, "    movq {}(%rbp), %{}", offset, target_reg)?;
     } else {
-        panic!("Virtual register {:?} has no mapping or stack slot", src);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Virtual register {:?} has no mapping or stack slot", src),
+        ));
     }
     Ok(())
 }
@@ -92,7 +103,7 @@ pub fn load_operand_to_rax<
             crate::mir::instruction::Immediate::I64(v) => writeln!(writer, "    movq ${}, %rax", v),
             crate::mir::instruction::Immediate::F32(_)
             | crate::mir::instruction::Immediate::F64(_) => {
-                writeln!(writer, "    # TODO: floating point immediates")?;
+                writeln!(writer, "    # Floating point immediates not yet implemented")?;
                 Ok(())
             }
         },
@@ -135,7 +146,7 @@ pub fn load_operand_to_register<
             }
             crate::mir::instruction::Immediate::F32(_)
             | crate::mir::instruction::Immediate::F64(_) => {
-                writeln!(writer, "    # TODO: floating point immediates")?;
+                writeln!(writer, "    # Floating point immediates not yet implemented")?;
                 Ok(())
             }
         },
