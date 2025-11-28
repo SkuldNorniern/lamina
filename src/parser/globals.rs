@@ -52,18 +52,15 @@ pub fn parse_value_with_type_hint<'a>(
             let string_value = state.parse_string_literal()?;
 
             match type_hint {
-                Type::Array { element_type, .. } => {
-                    match element_type.as_ref() {
-                        Type::Primitive(PrimitiveType::I8)
-                        | Type::Primitive(PrimitiveType::Bool) => {
-                            Ok(Value::Constant(Literal::String(string_value)))
-                        }
-                        _ => Err(state.error(format!(
-                            "String literal is not compatible with type hint: {:?}",
-                            type_hint
-                        ))),
+                Type::Array { element_type, .. } => match element_type.as_ref() {
+                    Type::Primitive(PrimitiveType::I8) | Type::Primitive(PrimitiveType::Bool) => {
+                        Ok(Value::Constant(Literal::String(string_value)))
                     }
-                }
+                    _ => Err(state.error(format!(
+                        "String literal is not compatible with type hint: {:?}",
+                        type_hint
+                    ))),
+                },
                 _ => Err(state.error(format!(
                     "String literal is not compatible with type hint: {:?}",
                     type_hint

@@ -113,7 +113,7 @@ use super::types::{Literal, PrimitiveType, Type, Value};
 ///     .alloc_stack("arr", Type::Array { element_type: Box::new(Type::Primitive(PrimitiveType::I32)), size: 10 })
 ///     // Get pointer to element at index 5
 ///     .getelementptr("elem_ptr", var("arr"), i32(5), PrimitiveType::I32)
-    ///     .store(Type::Primitive(PrimitiveType::I32), var("elem_ptr"), i32(100))
+///     .store(Type::Primitive(PrimitiveType::I32), var("elem_ptr"), i32(100))
 ///     .ret_void();
 /// ```
 ///

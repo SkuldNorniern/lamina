@@ -44,10 +44,9 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
                 && temp_pos + 1 < bytes.len()
                 && bytes[temp_pos + 1].is_ascii_digit();
 
-            if looks_like_float
-                && let Ok(f_val) = state.parse_float() {
-                    return Ok(Value::Constant(Literal::F32(f_val)));
-                }
+            if looks_like_float && let Ok(f_val) = state.parse_float() {
+                return Ok(Value::Constant(Literal::F32(f_val)));
+            }
 
             if let Ok(i_val) = state.parse_integer() {
                 return if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {

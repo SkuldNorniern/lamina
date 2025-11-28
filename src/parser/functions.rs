@@ -1,3 +1,5 @@
+//! Function parsing for Lamina IR.
+
 use super::instructions::parse_instruction;
 use super::state::ParserState;
 use super::types::parse_type;
@@ -7,6 +9,7 @@ use crate::{
 };
 use std::collections::HashMap;
 
+/// Parses function annotations.
 pub fn parse_annotations(
     state: &mut ParserState<'_>,
 ) -> Result<Vec<FunctionAnnotation>, LaminaError> {
@@ -26,16 +29,17 @@ pub fn parse_annotations(
             };
             annotations.push(annotation);
         } else {
-            break; // No more annotations
+            break;
         }
     }
     Ok(annotations)
 }
 
+/// Parses a function definition.
 pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a>, LaminaError> {
     let annotations = parse_annotations(state)?;
     state.consume_keyword("fn")?;
-    let name = state.parse_type_identifier()?; // Functions also start with @ in decl
+    let name = state.parse_type_identifier()?;
     let signature = parse_fn_signature(state)?;
     state.expect_char('{')?;
 
@@ -45,11 +49,10 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
     loop {
         state.skip_whitespace_and_comments();
         if state.current_char() == Some('}') {
-            state.advance(); // Consume closing brace
+            state.advance();
             break;
         }
 
-        // Parse Label: instruction instructions...
         let (label, block) = parse_basic_block(state)?;
 
         if entry_block_label.is_none() {
@@ -73,6 +76,7 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
     })
 }
 
+/// Parses a function signature.
 pub fn parse_fn_signature<'a>(
     state: &mut ParserState<'a>,
 ) -> Result<FunctionSignature<'a>, LaminaError> {
@@ -87,6 +91,7 @@ pub fn parse_fn_signature<'a>(
     })
 }
 
+/// Parses a parameter list.
 pub fn parse_param_list<'a>(
     state: &mut ParserState<'a>,
 ) -> Result<Vec<FunctionParameter<'a>>, LaminaError> {
@@ -94,11 +99,11 @@ pub fn parse_param_list<'a>(
     loop {
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
-            break; // End of parameters
+            break;
         }
 
         let param_ty = parse_type(state)?;
-        let param_name = state.parse_value_identifier()?; // Params start with %
+        let param_name = state.parse_value_identifier()?;
         params.push(FunctionParameter {
             name: param_name,
             ty: param_ty,
@@ -109,44 +114,40 @@ pub fn parse_param_list<'a>(
         if state.current_char() == Some(')') {
             break;
         }
-        state.expect_char(',')?; // Expect comma or closing paren
+        state.expect_char(',')?;
     }
     Ok(params)
 }
 
+/// Parses a basic block.
 pub fn parse_basic_block<'a>(
     state: &mut ParserState<'a>,
 ) -> Result<(Label<'a>, BasicBlock<'a>), LaminaError> {
-    // Example: entry: instruction
     let label = state.parse_label_identifier()?;
     state.expect_char(':')?;
 
     let mut instructions = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
-        // Check if we are at the start of the next block label or end of function
         let _current_pos = state.position();
         if state.parse_label_identifier().is_ok() {
-            // Check if followed by a colon
             if state.current_char() == Some(':') {
-                state.set_position(_current_pos); // Backtrack, it's the next label
+                state.set_position(_current_pos);
                 break;
             }
         }
-        state.set_position(_current_pos); // Backtrack if it wasn't label:
+        state.set_position(_current_pos);
 
-        // Check for end of function
         if state.current_char() == Some('}') {
             break;
         }
 
-        // If not label or end, parse an instruction
         let instruction = parse_instruction(state)?;
         let is_terminator = instruction.is_terminator();
         instructions.push(instruction);
 
         if is_terminator {
-            break; // Block finished
+            break;
         }
     }
 
