@@ -131,8 +131,6 @@ fn convert_function<'a>(
         mir_func.add_block(mir_block);
     }
 
-    // Lower SSA phi nodes by inserting edge-specific copy moves.
-    // For conditional branches, split the edge with a trampoline block to preserve semantics.
     {
         let mut edge_moves: std::collections::HashMap<(String, String), Vec<Instruction>> =
             std::collections::HashMap::new();
@@ -223,7 +221,6 @@ fn convert_function<'a>(
                         target: succ.clone(),
                     });
                     mir_func.add_block(tramp);
-                    // Now update the predecessor's branch target
                     if let Some(pred_mut) = mir_func.get_block_mut(&pred)
                         && let Some(last) = pred_mut.instructions.last_mut()
                         && let Instruction::Br {
@@ -256,8 +253,6 @@ fn convert_function<'a>(
         }
     }
 
-    // Workaround for parser bug: add initializations for variables that are used but not defined
-    // This happens when the Lamina parser fails to parse assignment instructions in complex functions
     add_missing_initializations(&mut mir_func);
 
     Ok(mir_func)
@@ -355,7 +350,7 @@ fn collect_regs_from_instruction(
             collect_regs_from_operand(val, used_regs);
         }
         crate::mir::Instruction::Jmp { .. } | crate::mir::Instruction::Br { .. } => {}
-        _ => {} // Handle other instruction types we don't care about
+        _ => {}
     }
 }
 
@@ -904,8 +899,6 @@ fn convert_instruction<'a>(
             target_type,
             value,
         } => {
-            // Lower zext as an AND with a mask of the source width.
-            // This preserves semantics across sizes and maps cleanly to MIR.
             let dst = if let Some(existing) = var_to_reg.get(result) {
                 existing.clone()
             } else {
@@ -1046,7 +1039,6 @@ fn convert_instruction<'a>(
         } => {
             use crate::ir::types::PrimitiveType as IRPrim;
 
-            // Only support bitcasts between primitive types of equal size.
             fn bits_for(ty: &IRPrim) -> u32 {
                 match ty {
                     IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
@@ -1075,7 +1067,6 @@ fn convert_instruction<'a>(
                     Ok(vec![])
                 }
                 IRVal::Constant(lit) => {
-                    // For now, restrict constant bitcasts to a few common cases.
                     let mir_ty = map_ir_prim(*target_type)?;
                     let dst = if let Some(existing) = var_to_reg.get(result) {
                         existing.clone()
@@ -1436,8 +1427,6 @@ fn convert_instruction<'a>(
 
             match alloc_type {
                 crate::ir::instruction::AllocType::Stack => {
-                    // For stack allocation: create storage vreg(s) based on type size
-                    // For arrays/structs, we need multiple vregs to reserve enough stack space
                     fn sizeof_ty(ty: &crate::ir::types::Type<'_>) -> Option<u64> {
                         use crate::ir::types::Type as IRType;
                         match ty {
@@ -1465,14 +1454,9 @@ fn convert_instruction<'a>(
                         }
                     }
                     // Allocate storage vreg; for larger types, we still use one vreg
-                    // The frame allocator will give it enough stack space
                     let storage = Register::Virtual(vreg_alloc.allocate_gpr());
-                    // Compute size to ensure frame map accounts for it (store as metadata if needed)
-                    // For now, each vreg gets 8 bytes; arrays/structs need contiguous slots
-                    // Simple approach: allocate (size/8) vregs to reserve space
                     if let Some(sz) = sizeof_ty(allocated_ty) {
                         let slots_needed = sz.div_ceil(8) as usize;
-                        // Allocate additional dummy vregs to reserve stack space
                         for _ in 1..slots_needed {
                             vreg_alloc.allocate_gpr();
                         }

@@ -1,3 +1,5 @@
+//! MIR-based code generation for multiple target architectures.
+
 pub mod regalloc;
 
 pub mod arm;
@@ -12,7 +14,7 @@ use crate::error::LaminaError;
 use crate::mir::{Global, MirType, Signature};
 use crate::target::{TargetArchitecture, TargetOperatingSystem};
 
-/// Generate assembly from MIR for the requested target architecture and OS.
+/// Generates assembly from MIR for the requested target architecture and OS.
 pub fn generate_mir_to_target<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
@@ -57,7 +59,7 @@ pub fn generate_mir_to_target<W: Write>(
     Ok(())
 }
 
-/// Generate AArch64 assembly from MIR for the requested host OS.
+/// Generates AArch64 assembly from MIR for the requested host OS.
 #[deprecated(
     since = "0.0.9",
     note = "Use generate_mir_to_target with TargetArchitecture::Aarch64 instead"
@@ -70,7 +72,7 @@ pub fn generate_mir_to_aarch64<W: Write>(
     generate_mir_to_target(module, writer, TargetArchitecture::Aarch64, target_os)
 }
 
-/// Generate x86_64 assembly from MIR for the requested host OS.
+/// Generates x86_64 assembly from MIR for the requested host OS.
 #[deprecated(
     since = "0.0.9",
     note = "Use generate_mir_to_target with TargetArchitecture::X86_64 instead"
@@ -83,7 +85,7 @@ pub fn generate_mir_to_x86_64<W: Write>(
     generate_mir_to_target(module, writer, TargetArchitecture::X86_64, target_os)
 }
 
-/// Generate WASM from MIR for the requested host OS.
+/// Generates WASM from MIR for the requested host OS.
 #[deprecated(
     since = "0.0.9",
     note = "Use generate_mir_to_target with TargetArchitecture::Wasm32/Wasm64 instead"
@@ -96,7 +98,7 @@ pub fn generate_mir_to_wasm<W: Write>(
     generate_mir_to_target(module, writer, TargetArchitecture::Wasm32, target_os)
 }
 
-/// Generate RISC-V assembly from MIR for the requested host OS.
+/// Generates RISC-V assembly from MIR for the requested host OS.
 #[deprecated(
     since = "0.0.9",
     note = "Use generate_mir_to_target with TargetArchitecture::Riscv32/Riscv64/Riscv128 instead"
@@ -109,6 +111,7 @@ pub fn generate_mir_to_riscv<W: Write>(
     generate_mir_to_target(module, writer, TargetArchitecture::Riscv64, target_os)
 }
 
+/// Wraps a codegen error into a LaminaError.
 fn wrap_codegen_error(err: CodegenError) -> crate::error::LaminaError {
     use crate::codegen::{CodegenError as CoreCodegenError, FeatureType};
 
@@ -144,21 +147,17 @@ fn wrap_codegen_error(err: CodegenError) -> crate::error::LaminaError {
     ))
 }
 
-// TargetOperatingSystem is now imported from crate::target
-
-/// The options for the codegen
+/// Code generation options.
 pub enum CodegenOptions {
-    /// Debug mode is the default mode, it will output with the full debug information (example)
+    /// Debug mode outputs full debug information.
     Debug,
-    /// Release mode is the optimized mode, it will output without debug information (example)
+    /// Release mode outputs optimized code without debug information.
     Release,
-    /// FEAT: TODO: Add more options for codegen
+    /// Custom codegen options.
     Custom((String, String)),
 }
 
-// FEAT: TODO: Support multithreaded codegen
-
-/// The trait for the codegen
+/// Trait for code generation backends.
 pub trait Codegen {
     /// The binary extension of the target architecture
     const BIN_EXT: &'static str;
@@ -190,7 +189,7 @@ pub trait Codegen {
     fn emit_bin(&mut self) -> Result<(), CodegenError>;
 }
 
-// The Strings are the placeholder for the types
+/// Code generation errors.
 pub enum CodegenError {
     UnsupportedFeature(String),
     InvalidCodegenOptions(String),

@@ -13,6 +13,7 @@ pub fn public_symbol(func_name: &str, os: TargetOperatingSystem) -> (Option<Stri
                 format!("_{}", func_name)
             },
         ),
+        // FEAT: TODO: need to mark each Symbol for each target OS
         TargetOperatingSystem::Linux
         | TargetOperatingSystem::Windows
         | TargetOperatingSystem::FreeBSD

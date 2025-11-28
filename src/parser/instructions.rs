@@ -1,3 +1,5 @@
+//! Instruction parsing for Lamina IR.
+
 use super::state::ParserState;
 use super::types::parse_type;
 use super::values::parse_value;
@@ -5,19 +7,17 @@ use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType, Type, Value,
 };
 
+/// Parses a single instruction from the input.
 pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
-    let _start_pos = state.position(); // Prefixed with _
+    let _start_pos = state.position();
 
-    // Peek to see if it starts with % (result assignment) or an identifier (opcode)
     if state.current_char() == Some('%') {
-        // --- Assignment form: %result = opcode ... ---
         let result = state.parse_value_identifier()?;
         state.expect_char('=')?;
         state.skip_whitespace_and_comments();
         let opcode_str = state.parse_identifier_str()?;
 
-        // Parse based on opcode
         match opcode_str {
             "add" | "sub" | "mul" | "div" | "rem" | "and" | "or" | "xor" | "shl" | "shr" => {
                 parse_binary_op(state, result, opcode_str)
@@ -31,14 +31,14 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "alloc" => parse_alloc(state, result),
             "load" => parse_load(state, result),
             "getfield" => parse_getfield(state, result),
-            "getfieldptr" => parse_getfield(state, result), // Alias for test compatibility
+            "getfieldptr" => parse_getfield(state, result),
             "getelem" => parse_getelem(state, result),
-            "getelementptr" => parse_getelem(state, result), // Alias for test compatibility
+            "getelementptr" => parse_getelem(state, result),
             "ptrtoint" => parse_ptrtoint(state, result),
             "inttoptr" => parse_inttoptr(state, result),
             "tuple" => parse_tuple(state, result),
             "extract" => parse_extract_tuple(state, result),
-            "call" => parse_call(state, Some(result)), // Call with result
+            "call" => parse_call(state, Some(result)),
             "phi" => parse_phi(state, result),
             "write" => parse_write_assignment(state, result),
             "read" => parse_read_assignment(state, result),
@@ -48,7 +48,6 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             _ => Err(state.error(format!("Unknown opcode after assignment: {}", opcode_str))),
         }
     } else {
-        // --- Non-assignment form: opcode ... ---
         let opcode_str = state.parse_identifier_str()?;
         match opcode_str {
             "store" => parse_store(state),
@@ -57,8 +56,8 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "jmp" => parse_jmp(state),
             "ret" => parse_ret(state),
             "dealloc" => parse_dealloc(state),
-            "call" => parse_call(state, None), // Call without result (void)
-            "print" => parse_print(state),     // Add print case
+            "call" => parse_call(state, None),
+            "print" => parse_print(state),
             "write" => parse_write(state),
             "read" => parse_read(state),
             "writebyte" => parse_writebyte(state),
@@ -72,8 +71,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
     }
 }
 
-// --- Specific Instruction Parsers ---
-
+/// Parses a primitive type suffix (e.g., `.i32`).
 fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveType, LaminaError> {
     state.expect_char('.')?;
     let type_str = state.parse_identifier_str()?;
@@ -98,6 +96,7 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
     }
 }
 
+/// Parses a type suffix (e.g., `.i32`, `.struct`).
 fn parse_type_suffix<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.expect_char('.')?;
     parse_type(state) // Can be any type after the dot
@@ -119,7 +118,7 @@ fn parse_binary_op<'a>(
         "xor" => BinaryOp::Xor,
         "shl" => BinaryOp::Shl,
         "shr" => BinaryOp::Shr,
-        _ => unreachable!(), // Should be checked before calling
+        _ => unreachable!(),
     };
     let ty = parse_primitive_type_suffix(state)?;
     let lhs = parse_value(state)?;
@@ -161,15 +160,13 @@ fn parse_cmp_op<'a>(
     })
 }
 
+/// Parses an allocation instruction.
 fn parse_alloc<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: alloc.ptr.stack T or alloc.ptr.heap T
-    // Also support: alloc.stack T or alloc.heap T directly
     state.expect_char('.')?;
 
-    // Try to match allocation type directly
     let peek_str = state.peek_slice(5).unwrap_or("");
     if peek_str.starts_with("stack") {
         state.consume_keyword("stack")?;
@@ -189,7 +186,6 @@ fn parse_alloc<'a>(
         });
     }
 
-    // Original format: alloc.ptr.{stack|heap}
     state.consume_keyword("ptr")?;
     state.expect_char('.')?;
     let alloc_type_str = state.parse_identifier_str()?;
@@ -199,7 +195,7 @@ fn parse_alloc<'a>(
         _ => return Err(state.error(format!("Invalid allocation type: {}", alloc_type_str))),
     };
     let allocated_ty = parse_type(state)?;
-    state.skip_whitespace_and_comments(); // Consume trailing whitespace/newline
+    state.skip_whitespace_and_comments();
     Ok(Instruction::Alloc {
         result,
         alloc_type,
@@ -207,18 +203,18 @@ fn parse_alloc<'a>(
     })
 }
 
+/// Parses a load instruction.
 fn parse_load<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // load.T ptr
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
     Ok(Instruction::Load { result, ty, ptr })
 }
 
+/// Parses a store instruction.
 fn parse_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // store.T ptr, val
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
@@ -226,17 +222,12 @@ fn parse_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lamin
     Ok(Instruction::Store { ty, ptr, value })
 }
 
+/// Parses a getfieldptr instruction.
 fn parse_getfield<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format should be: getfield.ptr struct_ptr, index
-    // Support both formats:
-    // 1. getfield.ptr struct_ptr, index
-    // 2. getfieldptr struct_ptr, index (without the dot)
-
-    // Check if we have a dot
-    let _current_pos = state.position(); // Prefixed with _
+    let _current_pos = state.position();
     let has_dot = state.current_char() == Some('.');
 
     if has_dot {
@@ -254,17 +245,12 @@ fn parse_getfield<'a>(
     })
 }
 
+/// Parses a getelementptr instruction.
 fn parse_getelem<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format should be: getelem.ptr array_ptr, index, element_type
-    // Support both formats:
-    // 1. getelem.ptr array_ptr, index, element_type
-    // 2. getelementptr array_ptr, index, element_type (without the dot)
-
-    // Check if we have a dot
-    let _current_pos = state.position(); // Prefixed with _
+    let _current_pos = state.position();
     let has_dot = state.current_char() == Some('.');
 
     if has_dot {
@@ -274,9 +260,8 @@ fn parse_getelem<'a>(
 
     let array_ptr = parse_value(state)?;
     state.expect_char(',')?;
-    let index = parse_value(state)?; // Index can be variable or constant
+    let index = parse_value(state)?;
     state.expect_char(',')?;
-    // Parse element type - try with dot first, then without
     let element_type = if state.current_char() == Some('.') {
         parse_primitive_type_suffix(state)?
     } else {
@@ -307,16 +292,15 @@ fn parse_getelem<'a>(
     })
 }
 
+/// Parses a ptrtoint instruction.
 fn parse_ptrtoint<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: ptrtoint ptr_value, target_type
     let ptr_value = parse_value(state)?;
     state.expect_char(',')?;
     let target_type = parse_type_suffix(state)?;
 
-    // Extract the primitive type from the parsed type
     let target_primitive_type = match target_type {
         Type::Primitive(pt) => pt,
         _ => {
@@ -333,16 +317,15 @@ fn parse_ptrtoint<'a>(
     })
 }
 
+/// Parses an inttoptr instruction.
 fn parse_inttoptr<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: inttoptr int_value, target_type
     let int_value = parse_value(state)?;
     state.expect_char(',')?;
     let target_type = parse_type_suffix(state)?;
 
-    // Extract the primitive type from the parsed type
     let target_primitive_type = match target_type {
         Type::Primitive(pt) => pt,
         _ => {
@@ -402,11 +385,11 @@ fn parse_tuple<'a>(
     Ok(Instruction::Tuple { result, elements })
 }
 
+/// Parses an extract tuple instruction.
 fn parse_extract_tuple<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // extract.tuple tuple_val, index
     state.expect_char('.')?;
     state.consume_keyword("tuple")?;
     let tuple_val = parse_value(state)?;
@@ -419,11 +402,11 @@ fn parse_extract_tuple<'a>(
     })
 }
 
+/// Parses a call instruction.
 fn parse_call<'a>(
     state: &mut ParserState<'a>,
     result: Option<Identifier<'a>>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // call @func(arg1, arg2, ...)
     let func_name = state.parse_type_identifier()?; // @func
     state.expect_char('(')?;
     let mut args = Vec::new();
@@ -532,19 +515,17 @@ fn parse_dealloc<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lam
     Ok(Instruction::Dealloc { ptr })
 }
 
-// Add parser function for print
+/// Parses a print instruction.
 fn parse_print<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Expects: print <value>
     let value = parse_value(state)?;
     Ok(Instruction::Print { value })
 }
 
-// I/O instruction parsers - Assignment form (%result = opcode ...)
+/// Parses a write instruction (assignment form).
 fn parse_write_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: %result = write %buffer, %size
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
     let size = parse_value(state)?;
@@ -555,11 +536,11 @@ fn parse_write_assignment<'a>(
     })
 }
 
+/// Parses a read instruction (assignment form).
 fn parse_read_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: %result = read %buffer, %size
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
     let size = parse_value(state)?;

@@ -1,3 +1,8 @@
+//! Lamina IR parser.
+//!
+//! This module provides parsing functionality for Lamina IR text into structured
+//! Module representations.
+
 mod functions;
 mod globals;
 mod instructions;
@@ -12,7 +17,6 @@ use self::types::parse_type_declaration;
 use crate::{LaminaError, Module};
 
 /// Parses a string containing Lamina IR text into a Module.
-/// The lifetime 'a is tied to the input string slice.
 pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
     let mut module = Module::new();
@@ -23,7 +27,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             break;
         }
 
-        let keyword_slice = state.peek_slice(6).unwrap_or(""); // Peek enough for keywords
+        let keyword_slice = state.peek_slice(6).unwrap_or("");
 
         if keyword_slice.starts_with("type") {
             let decl = parse_type_declaration(&mut state)?;
@@ -52,7 +56,7 @@ mod tests {
         AllocType, BinaryOp, CmpOp, Instruction, LaminaError, Literal, Module, PrimitiveType, Type,
         Value,
     };
-    use std::fs; // Needed to read the file
+    use std::fs;
 
     #[test]
     fn test_parse_simple_add_function() {
