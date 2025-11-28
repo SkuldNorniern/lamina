@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use crate::mir::{Register, RegisterClass, VirtualReg};
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 
-//! AArch64 register allocator for MIR virtual registers.
+// AArch64 register allocator for MIR virtual registers.
 
 
 /// AArch64 register allocator for MIR virtual registers.
