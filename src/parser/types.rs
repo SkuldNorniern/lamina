@@ -1,6 +1,9 @@
+//! Type parsing for Lamina IR.
+
 use super::state::ParserState;
 use crate::{LaminaError, PrimitiveType, StructField, Type, TypeDeclaration};
 
+/// Parses a type declaration.
 pub fn parse_type_declaration<'a>(
     state: &mut ParserState<'a>,
 ) -> Result<TypeDeclaration<'a>, LaminaError> {
@@ -11,11 +14,11 @@ pub fn parse_type_declaration<'a>(
     Ok(TypeDeclaration { name, ty })
 }
 
+/// Parses a composite type (struct or array).
 pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
-    let keyword_slice = state.peek_slice(6).unwrap_or(""); // Peek "struct"
+    let keyword_slice = state.peek_slice(6).unwrap_or("");
     if keyword_slice.starts_with("struct") {
-        // Struct: struct { name: type, ... }
         state.consume_keyword("struct")?;
         state.expect_char('{')?;
         let mut fields = Vec::new();
@@ -38,11 +41,10 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
                 state.advance();
                 break;
             }
-            state.expect_char(',')?; // Expect comma or closing brace
+            state.expect_char(',')?;
         }
         Ok(Type::Struct(fields))
     } else if state.current_char() == Some('[') {
-        // Array: [ size x type ]
         state.expect_char('[')?;
         let size = state.parse_integer()? as u64;
         state.consume_keyword("x")?;
@@ -57,23 +59,20 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
     }
 }
 
+/// Parses a type (primitive, composite, named, or tuple).
 pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
     match state.current_char() {
         Some('@') => {
-            // Named type: @Name
             Ok(Type::Named(state.parse_type_identifier()?))
         }
         Some('[') => {
-            // Inline Array Type
-            parse_composite_type(state) // Delegate to handle arrays
+            parse_composite_type(state)
         }
         Some('s') if state.peek_slice(6) == Some("struct") => {
-            // Inline Struct Type
-            parse_composite_type(state) // Delegate to handle structs
+            parse_composite_type(state)
         }
         Some('t') if state.peek_slice(5) == Some("tuple") => {
-            // Tuple type: tuple type1, type2, ...
             state.consume_keyword("tuple")?;
             state.skip_whitespace_and_comments();
             let mut element_types = Vec::new();
@@ -82,7 +81,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                 element_types.push(elem_type);
                 state.skip_whitespace_and_comments();
                 if state.current_char() != Some(',') {
-                    break; // No more elements
+                    break;
                 }
                 state.expect_char(',')?;
                 state.skip_whitespace_and_comments();
@@ -90,7 +89,6 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
             Ok(Type::Tuple(element_types))
         }
         _ => {
-            // Try matching primitive types
             let potential_primitive = state.parse_identifier_str()?;
             match potential_primitive {
                 "i8" => Ok(Type::Primitive(PrimitiveType::I8)),
