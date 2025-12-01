@@ -1,8 +1,9 @@
+//! Instruction scheduling transform for MIR.
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Register};
 
-/// Instruction Scheduling Transform
-/// Reorders instructions to improve instruction-level parallelism and reduce latency
+/// Instruction scheduling that reorders instructions for better ILP.
 #[derive(Default)]
 pub struct InstructionScheduling;
 
@@ -30,6 +31,29 @@ impl Transform for InstructionScheduling {
 
 impl InstructionScheduling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+        // Safety check: limit function size
+        const MAX_BLOCKS: usize = 500;
+        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
+        
+        if func.blocks.len() > MAX_BLOCKS {
+            return Err(format!(
+                "Function too large for instruction scheduling ({} blocks, max {})",
+                func.blocks.len(),
+                MAX_BLOCKS
+            ));
+        }
+
+        for block in &func.blocks {
+            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
+                return Err(format!(
+                    "Block '{}' too large for instruction scheduling ({} instructions, max {})",
+                    block.label,
+                    block.instructions.len(),
+                    MAX_INSTRUCTIONS_PER_BLOCK
+                ));
+            }
+        }
+
         let mut changed = false;
 
         for block in &mut func.blocks {

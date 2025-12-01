@@ -1,10 +1,12 @@
+//! Function inlining transforms for MIR.
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Module, Operand, Register};
 use std::collections::HashMap;
 
-/// Function Inlining Transform for the pipeline system
-/// Note: This is a placeholder for function-level inlining.
-/// Real inlining requires module-level analysis and is handled by ModuleInlining.
+/// Function-level inlining transform placeholder.
+///
+/// Real inlining requires module-level analysis and is handled by `ModuleInlining`.
 #[derive(Default)]
 pub struct FunctionInlining;
 
@@ -26,13 +28,11 @@ impl Transform for FunctionInlining {
     }
 
     fn apply(&self, _func: &mut crate::mir::Function) -> Result<bool, String> {
-        // Function inlining requires module-level analysis to see other functions
-        // This transform is handled separately at the module level by ModuleInlining
         Ok(false)
     }
 }
 
-/// Module-level function inlining that can analyze the entire program
+/// Module-level function inlining that analyzes the entire program.
 pub struct ModuleInlining;
 
 impl Default for ModuleInlining {
@@ -49,6 +49,19 @@ impl ModuleInlining {
     /// Analyze the entire module and perform function inlining
     pub fn inline_functions(&self, module: &mut Module) -> Result<usize, String> {
         let mut inlined_count = 0;
+        const MAX_INLINE_ITERATIONS: usize = 20;
+        const MAX_TOTAL_INSTRUCTIONS: usize = 50_000;
+
+        // Safety check: prevent inlining if module is too large
+        let total_instructions: usize = module.functions.values()
+            .map(|f| f.blocks.iter().map(|b| b.instructions.len()).sum::<usize>())
+            .sum();
+        if total_instructions > MAX_TOTAL_INSTRUCTIONS {
+            return Err(format!(
+                "Module too large for inlining ({} instructions, max {})",
+                total_instructions, MAX_TOTAL_INSTRUCTIONS
+            ));
+        }
 
         // Collect all function call sites
         let mut call_sites = Vec::new();
@@ -68,35 +81,66 @@ impl ModuleInlining {
             }
         }
 
-        // Process call sites for inlining
-        for call_site in call_sites {
-            if self.should_inline(&call_site, module) {
-                match self.perform_inline(&call_site, module) {
-                    Ok(()) => {
-                        inlined_count += 1;
-                    }
-                    Err(_e) => {
-                        // Skip this inlining attempt and continue with others
-                        // This allows the compiler to continue even if some functions can't be inlined
-                        continue;
+        // Process call sites for inlining with iteration limit
+        let mut iterations = 0;
+        while iterations < MAX_INLINE_ITERATIONS {
+            let mut made_progress = false;
+            let mut new_call_sites = Vec::new();
+
+            // Re-collect call sites after each iteration (new calls may have been introduced)
+            for (func_name, func) in &module.functions {
+                for block in &func.blocks {
+                    for (instr_idx, instr) in block.instructions.iter().enumerate() {
+                        if let Instruction::Call { name, .. } = instr {
+                            new_call_sites.push(CallSite {
+                                caller: func_name.clone(),
+                                callee: name.clone(),
+                                block_label: block.label.clone(),
+                                instr_idx,
+                            });
+                        }
                     }
                 }
             }
+
+            for call_site in new_call_sites {
+                if self.should_inline(&call_site, module) {
+                    match self.perform_inline(&call_site, module) {
+                        Ok(()) => {
+                            inlined_count += 1;
+                            made_progress = true;
+                        }
+                        Err(_e) => {
+                            // Skip this inlining attempt and continue with others
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            if !made_progress {
+                break; // No more inlining possible
+            }
+
+            iterations += 1;
+        }
+
+        if iterations >= MAX_INLINE_ITERATIONS {
+            return Err(format!(
+                "Inlining did not converge after {} iterations",
+                MAX_INLINE_ITERATIONS
+            ));
         }
 
         Ok(inlined_count)
     }
 
-    /// Decide whether a function call should be inlined
+    /// Decides whether a function call should be inlined.
     fn should_inline(&self, call_site: &CallSite, module: &Module) -> bool {
-        // Get the callee function
         if let Some(callee_func) = module.functions.get(&call_site.callee) {
-            // Conservative heuristics for inlining decisions:
-
-            // 1. Function is reasonably small (increased threshold for better inlining)
             let total_instructions = callee_func.instruction_count();
             if total_instructions > 50 {
-                return false; // Too large to inline
+                return false;
             }
 
             // 2. Function has no calls to other functions (leaf function)

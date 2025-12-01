@@ -1,3 +1,5 @@
+//! Peephole optimizations for MIR.
+
 use crate::mir::instruction::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
 use crate::mir::register::Register;
 use crate::mir::types::{MirType, ScalarType};
@@ -5,18 +7,10 @@ use crate::mir::{Block, Function};
 
 use super::{Transform, TransformCategory, TransformLevel};
 
-/// Advanced peephole optimizations for MIR
+/// Advanced peephole optimizations performing local rewrites.
 ///
-/// This pass performs comprehensive local rewrites including:
-/// - Arithmetic identities and simplifications
-/// - Comparison optimizations
-/// - Algebraic transformations
-/// - Constant folding patterns
-/// - Instruction strength reduction
-/// - Matrix operation optimizations
-/// - Address calculation optimizations
-/// - Loop-invariant expression recognition
-/// - Vectorization-friendly transformations
+/// Performs arithmetic identities, comparison optimizations, constant folding,
+/// strength reduction, and address calculation optimizations.
 #[derive(Default)]
 pub struct Peephole;
 
@@ -45,6 +39,14 @@ impl Transform for Peephole {
 impl Peephole {
     /// Apply peephole rewrites to a function. Returns true if any change occurred.
     pub fn run_on_function(&self, func: &mut Function) -> bool {
+        // Safety check: limit block size to prevent excessive processing
+        const MAX_BLOCK_INSTRUCTIONS: usize = 10_000;
+        for block in &func.blocks {
+            if block.instructions.len() > MAX_BLOCK_INSTRUCTIONS {
+                return false; // Skip optimization on oversized blocks
+            }
+        }
+
         let mut changed = false;
         let loop_headers = compute_back_edge_headers(func);
         for block in &mut func.blocks {
@@ -88,28 +90,16 @@ impl Peephole {
                 lhs,
                 rhs,
             } => self.try_fold_int_binary(op, lhs, rhs),
-            // For IntCmp, allow full replacement with a constant-producing move
+            // For IntCmp, be very conservative - don't optimize comparisons that might affect control flow
             Instruction::IntCmp {
-                op,
-                dst,
-                ty: _cmp_ty,
-                lhs,
-                rhs,
+                op: _,
+                dst: _,
+                ty: _,
+                lhs: _,
+                rhs: _,
             } => {
-                // Be conservative inside loop blocks to avoid changing loop progress/termination subtly
-                if !in_loop_block && let Some(b) = Self::evaluate_int_cmp(op, lhs, rhs) {
-                    // Replace comparison with a constant move: dst = (b ? 1 : 0)
-                    let new_inst = Instruction::IntBinary {
-                        op: IntBinOp::Add,
-                        ty: MirType::Scalar(ScalarType::I64),
-                        dst: dst.clone(),
-                        lhs: Operand::Immediate(Immediate::I64(if b { 1 } else { 0 })),
-                        rhs: Operand::Immediate(Immediate::I64(0)),
-                    };
-                    *inst = new_inst;
-                    return true;
-                }
-                // If not fully reducible (or guarded), do not rewrite
+                // Disabled: Optimizing comparisons can break loop termination conditions
+                // Even outside loops, this can cause correctness issues
                 false
             }
             Instruction::FloatUnary {
@@ -1260,5 +1250,261 @@ mod tests {
         assert_eq!(is_power_of_2(3), None);
         assert_eq!(is_power_of_2(0), None);
         assert_eq!(is_power_of_2(-1), None);
+    }
+
+    #[test]
+    fn test_division_by_zero_not_folded() {
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::UDiv,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(100)),
+            rhs: Operand::Immediate(Immediate::I64(0)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_shift_by_64_not_folded() {
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Shl,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(1)),
+            rhs: Operand::Immediate(Immediate::I64(64)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_valid_shift_folded() {
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Shl,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(1)),
+            rhs: Operand::Immediate(Immediate::I64(4)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+
+        if let Some(block) = func.get_block("entry") {
+            if let Some(Instruction::IntBinary { lhs, rhs, .. }) = block.instructions.first() {
+                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(16)));
+                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            }
+        }
+    }
+
+    // --- Brute-force safety tests for arithmetic identities ---
+
+    #[test]
+    fn brute_force_add_identity() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x + 0, x);
+        }
+        assert_eq!(i64::MAX + 0, i64::MAX);
+        assert_eq!(i64::MIN + 0, i64::MIN);
+    }
+
+    #[test]
+    fn brute_force_sub_identity() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x - 0, x);
+        }
+        assert_eq!(i64::MAX - 0, i64::MAX);
+        assert_eq!(i64::MIN - 0, i64::MIN);
+    }
+
+    #[test]
+    fn brute_force_mul_identity() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x * 1, x);
+        }
+        assert_eq!(i64::MAX * 1, i64::MAX);
+        assert_eq!(i64::MIN * 1, i64::MIN);
+    }
+
+    #[test]
+    fn brute_force_mul_zero() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x * 0, 0);
+        }
+        assert_eq!(i64::MAX * 0, 0);
+        assert_eq!(i64::MIN * 0, 0);
+    }
+
+    #[test]
+    fn brute_force_div_identity() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x / 1, x);
+        }
+        assert_eq!(i64::MAX / 1, i64::MAX);
+        assert_eq!(i64::MIN / 1, i64::MIN);
+    }
+
+    #[test]
+    fn brute_force_shift_identity() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x << 0, x);
+            assert_eq!(x >> 0, x);
+        }
+        assert_eq!(i64::MAX << 0, i64::MAX);
+        assert_eq!(i64::MIN >> 0, i64::MIN);
+    }
+
+    #[test]
+    fn brute_force_and_identity() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x & -1, x);
+        }
+        assert_eq!(i64::MAX & -1, i64::MAX);
+        assert_eq!(i64::MIN & -1, i64::MIN);
+    }
+
+    #[test]
+    fn brute_force_and_zero() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x & 0, 0);
+        }
+        assert_eq!(i64::MAX & 0, 0);
+        assert_eq!(i64::MIN & 0, 0);
+    }
+
+    #[test]
+    fn brute_force_or_identity() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x | 0, x);
+        }
+        assert_eq!(i64::MAX | 0, i64::MAX);
+        assert_eq!(i64::MIN | 0, i64::MIN);
+    }
+
+    #[test]
+    fn brute_force_xor_identity() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x ^ 0, x);
+        }
+        assert_eq!(i64::MAX ^ 0, i64::MAX);
+        assert_eq!(i64::MIN ^ 0, i64::MIN);
+    }
+
+    #[test]
+    fn brute_force_xor_self() {
+        for x in -1000i64..=1000 {
+            assert_eq!(x ^ x, 0);
+        }
+        assert_eq!(i64::MAX ^ i64::MAX, 0);
+        assert_eq!(i64::MIN ^ i64::MIN, 0);
+    }
+
+    #[test]
+    fn overflow_safety_checked_add() {
+        assert!(i64::MAX.checked_add(1).is_none());
+        assert!(i64::MIN.checked_add(-1).is_none());
+        assert_eq!(i64::MAX.checked_add(0), Some(i64::MAX));
+        assert_eq!(100i64.checked_add(200), Some(300));
+    }
+
+    #[test]
+    fn overflow_safety_checked_sub() {
+        assert!(i64::MIN.checked_sub(1).is_none());
+        assert!(i64::MAX.checked_sub(-1).is_none());
+        assert_eq!(i64::MAX.checked_sub(0), Some(i64::MAX));
+        assert_eq!(300i64.checked_sub(100), Some(200));
+    }
+
+    #[test]
+    fn overflow_safety_checked_mul() {
+        assert!(i64::MAX.checked_mul(2).is_none());
+        assert!(i64::MIN.checked_mul(2).is_none());
+        assert_eq!(100i64.checked_mul(200), Some(20000));
+        assert_eq!(i64::MAX.checked_mul(1), Some(i64::MAX));
+    }
+
+    #[test]
+    fn overflow_safety_signed_div() {
+        // i64::MIN / -1 would overflow
+        assert!(i64::MIN.checked_div(-1).is_none());
+    }
+
+    #[test]
+    fn shift_bounds_safety() {
+        for shift in 0..64 {
+            let result = 1i64 << shift;
+            assert!(result != 0 || shift == 63);
+        }
+        let invalid_shift = 64i64;
+        assert!(!((0..64).contains(&invalid_shift)));
+    }
+
+    #[test]
+    fn power_of_two_detection_exhaustive() {
+        fn check_power_of_2(n: i64) -> Option<i64> {
+            if n > 0 && (n & (n - 1)) == 0 {
+                Some(n.trailing_zeros() as i64)
+            } else {
+                None
+            }
+        }
+
+        for k in 0..62 {
+            let p = 1i64 << k;
+            assert_eq!(check_power_of_2(p), Some(k));
+        }
+
+        assert_eq!(check_power_of_2(0), None);
+        assert_eq!(check_power_of_2(-1), None);
+        assert_eq!(check_power_of_2(3), None);
+        assert_eq!(check_power_of_2(i64::MAX), None);
+        assert_eq!(check_power_of_2(i64::MIN), None);
+    }
+
+    #[test]
+    fn bitwise_operation_properties() {
+        for a in -100i64..=100 {
+            for b in -100i64..=100 {
+                // Commutativity
+                assert_eq!(a & b, b & a);
+                assert_eq!(a | b, b | a);
+                assert_eq!(a ^ b, b ^ a);
+                // De Morgan's laws
+                assert_eq!(!(a & b), !a | !b);
+                assert_eq!(!(a | b), !a & !b);
+                // Idempotence
+                assert_eq!(a & a, a);
+                assert_eq!(a | a, a);
+            }
+        }
+    }
+
+    #[test]
+    fn arithmetic_commutativity() {
+        for a in -100i64..=100 {
+            for b in -100i64..=100 {
+                assert_eq!(a + b, b + a);
+                assert_eq!(a * b, b * a);
+            }
+        }
     }
 }

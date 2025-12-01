@@ -1,15 +1,12 @@
+//! Tail call optimization transform for MIR.
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Operand, Register};
 
-/// Tail Call Optimization Transform
+/// Tail call optimization that converts tail calls into jumps.
 ///
-/// Converts tail calls into jumps to avoid stack overflow and improve performance.
 /// A tail call is a function call that is the last operation before returning.
-///
-/// This optimization:
-/// - Identifies calls in tail position (last instruction before return)
-/// - Converts them to jumps with proper argument passing
-/// - Requires the caller and callee to have compatible calling conventions
+/// This optimization converts them to jumps to avoid stack overflow and improve performance.
 #[derive(Default)]
 pub struct TailCallOptimization;
 
@@ -37,6 +34,19 @@ impl Transform for TailCallOptimization {
 
 impl TailCallOptimization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+        // Safety check: limit block size
+        const MAX_BLOCK_INSTRUCTIONS: usize = 1_000;
+        for block in &func.blocks {
+            if block.instructions.len() > MAX_BLOCK_INSTRUCTIONS {
+                return Err(format!(
+                    "Block '{}' too large for tail call optimization ({} instructions, max {})",
+                    block.label,
+                    block.instructions.len(),
+                    MAX_BLOCK_INSTRUCTIONS
+                ));
+            }
+        }
+
         let mut changed = false;
         let func_name = func.sig.name.clone();
 

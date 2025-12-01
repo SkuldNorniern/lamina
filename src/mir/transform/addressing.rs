@@ -1,9 +1,9 @@
+//! Address mode canonicalization transform for MIR.
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{AddressMode, Function, Instruction, Operand, Register};
 
-/// AddressingCanonicalization
-/// - Rewrites address formation patterns like base + (idx << scale) into BaseIndexScale addressing
-/// - Helps k-accumulation loops in matmul by avoiding separate mul/add for address calc
+/// Canonicalizes address formation patterns into BaseIndexScale addressing.
 #[derive(Default)]
 pub struct AddressingCanonicalization;
 
@@ -31,6 +31,29 @@ impl Transform for AddressingCanonicalization {
 
 impl AddressingCanonicalization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+        // Safety check: limit function size
+        const MAX_BLOCKS: usize = 500;
+        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
+        
+        if func.blocks.len() > MAX_BLOCKS {
+            return Err(format!(
+                "Function too large for addressing canonicalization ({} blocks, max {})",
+                func.blocks.len(),
+                MAX_BLOCKS
+            ));
+        }
+
+        for block in &func.blocks {
+            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
+                return Err(format!(
+                    "Block '{}' too large for addressing canonicalization ({} instructions, max {})",
+                    block.label,
+                    block.instructions.len(),
+                    MAX_INSTRUCTIONS_PER_BLOCK
+                ));
+            }
+        }
+
         let mut changed = false;
 
         for block in &mut func.blocks {
@@ -44,7 +67,15 @@ impl AddressingCanonicalization {
             }
 
             let len = block.instructions.len();
+            // Safety: limit number of rewrites per block to prevent excessive changes
+            const MAX_REWRITES_PER_BLOCK: usize = 50;
+            let mut rewrites_this_block = 0;
+            
             for i in 0..len {
+                if rewrites_this_block >= MAX_REWRITES_PER_BLOCK {
+                    break; // Stop if we've made too many changes
+                }
+                
                 // Phase 1: analyze immutably to compute potential new addressing mode
                 let new_addr_mode: Option<AddressMode> = match &block.instructions[i] {
                     Instruction::Load { addr, .. } => {
@@ -72,10 +103,12 @@ impl AddressingCanonicalization {
                         Instruction::Load { addr, .. } => {
                             *addr = new_mode;
                             changed = true;
+                            rewrites_this_block += 1;
                         }
                         Instruction::Store { addr, .. } => {
                             *addr = new_mode;
                             changed = true;
+                            rewrites_this_block += 1;
                         }
                         _ => {}
                     }
@@ -94,32 +127,43 @@ impl AddressingCanonicalization {
     ) -> bool {
         match addr {
             AddressMode::BaseOffset { base, offset } => {
-                // base is a temp; see if it's defined by an add with scaled index
-                if let Some(def_pos) = def_index.get(base)
-                    && let Some((base_reg, index_reg, scale)) = self.match_add_scaled_index(
+                // Safety: only rewrite if we can find the definition
+                // and it's a simple pattern we can verify
+                if let Some(def_pos) = def_index.get(base) {
+                    // Safety: ensure def_pos is valid
+                    if *def_pos >= instructions.len() {
+                        return false;
+                    }
+                    
+                    if let Some((base_reg, index_reg, scale)) = self.match_add_scaled_index(
                         &instructions[*def_pos],
                         def_index,
                         instructions,
-                    )
-                {
-                    // Keep original offset, scale is guaranteed in {1,2,4,8}
-                    // Only convert if offset fits in i8 range to avoid information loss
-                    if (*offset >= i8::MIN as i16) && (*offset <= i8::MAX as i16) {
-                        let clamped_off = *offset as i8;
-                        *addr = AddressMode::BaseIndexScale {
-                            base: base_reg,
-                            index: index_reg,
-                            scale,
-                            offset: clamped_off,
-                        };
-                    } else {
-                        // Offset too large, don't convert (keep BaseOffset)
-                        return false;
+                    ) {
+                        // Keep original offset, scale is guaranteed in {1,2,4,8}
+                        // Only convert if offset fits in i8 range to avoid information loss
+                        if (*offset >= i8::MIN as i16) && (*offset <= i8::MAX as i16) {
+                            // Safety: verify base_reg and index_reg are actually defined
+                            // and not the same register (which could cause issues)
+                            if base_reg == index_reg {
+                                return false; // Don't rewrite if base == index
+                            }
+                            
+                            let clamped_off = *offset as i8;
+                            *addr = AddressMode::BaseIndexScale {
+                                base: base_reg,
+                                index: index_reg,
+                                scale,
+                                offset: clamped_off,
+                            };
+                            return true;
+                        }
                     }
-                    return true;
                 }
             }
-            AddressMode::BaseIndexScale { .. } => {}
+            AddressMode::BaseIndexScale { .. } => {
+                // Already canonicalized, don't change
+            }
         }
         false
     }
