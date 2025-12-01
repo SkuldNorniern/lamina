@@ -59,22 +59,20 @@ impl MemoryOptimization {
                 match &*inst {
                     Instruction::Store {
                         src, addr, attrs, ..
-                    } => {
-                        match addr {
-                            AddressMode::BaseOffset { base, offset } if !attrs.volatile => {
-                                last_store.insert((base.clone(), *offset), src.clone());
-                                last_load.clear();
-                            }
-                            AddressMode::BaseIndexScale { .. } => {
-                                last_store.clear();
-                                last_load.clear();
-                            }
-                            _ => {
-                                last_store.clear();
-                                last_load.clear();
-                            }
+                    } => match addr {
+                        AddressMode::BaseOffset { base, offset } if !attrs.volatile => {
+                            last_store.insert((base.clone(), *offset), src.clone());
+                            last_load.clear();
                         }
-                    }
+                        AddressMode::BaseIndexScale { .. } => {
+                            last_store.clear();
+                            last_load.clear();
+                        }
+                        _ => {
+                            last_store.clear();
+                            last_load.clear();
+                        }
+                    },
                     Instruction::Load {
                         ty,
                         dst,

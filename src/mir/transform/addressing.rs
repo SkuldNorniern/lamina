@@ -34,7 +34,7 @@ impl AddressingCanonicalization {
         // Safety check: limit function size
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
-        
+
         if func.blocks.len() > MAX_BLOCKS {
             return Err(format!(
                 "Function too large for addressing canonicalization ({} blocks, max {})",
@@ -70,12 +70,12 @@ impl AddressingCanonicalization {
             // Safety: limit number of rewrites per block to prevent excessive changes
             const MAX_REWRITES_PER_BLOCK: usize = 50;
             let mut rewrites_this_block = 0;
-            
+
             for i in 0..len {
                 if rewrites_this_block >= MAX_REWRITES_PER_BLOCK {
                     break; // Stop if we've made too many changes
                 }
-                
+
                 // Phase 1: analyze immutably to compute potential new addressing mode
                 let new_addr_mode: Option<AddressMode> = match &block.instructions[i] {
                     Instruction::Load { addr, .. } => {
@@ -134,7 +134,7 @@ impl AddressingCanonicalization {
                     if *def_pos >= instructions.len() {
                         return false;
                     }
-                    
+
                     if let Some((base_reg, index_reg, scale)) = self.match_add_scaled_index(
                         &instructions[*def_pos],
                         def_index,
@@ -148,7 +148,7 @@ impl AddressingCanonicalization {
                             if base_reg == index_reg {
                                 return false; // Don't rewrite if base == index
                             }
-                            
+
                             let clamped_off = *offset as i8;
                             *addr = AddressMode::BaseIndexScale {
                                 base: base_reg,

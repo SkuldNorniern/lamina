@@ -35,7 +35,7 @@ impl CopyPropagation {
         // Safety check: limit function size
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
-        
+
         if func.blocks.len() > MAX_BLOCKS {
             return Err(format!(
                 "Function too large for copy propagation ({} blocks, max {})",
@@ -71,10 +71,10 @@ impl CopyPropagation {
         let mut changed = false;
         let mut value_map = HashMap::new();
 
-            let mut propagations_this_block = 0;
-            let max_propagations_per_block = 50;
+        let mut propagations_this_block = 0;
+        let max_propagations_per_block = 50;
 
-            let mut new_instructions = Vec::new();
+        let mut new_instructions = Vec::new();
 
         for instr in &block.instructions {
             let mut new_instr = instr.clone();
@@ -473,7 +473,7 @@ impl CommonSubexpressionElimination {
         // Safety check: limit function size
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 500;
-        
+
         if func.blocks.len() > MAX_BLOCKS {
             return Err(format!(
                 "Function too large for CSE ({} blocks, max {})",
