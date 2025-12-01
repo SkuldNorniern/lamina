@@ -51,28 +51,29 @@ impl BranchOptimization {
         // For now, just remove obviously unreachable blocks
         // More sophisticated branch optimizations could be added later
         let reachable_blocks = self.compute_reachable_blocks(func);
-        
+
         // Ensure entry block is always in reachable set
         let entry_label = func.blocks.first().map(|b| b.label.clone());
         let mut reachable_blocks = reachable_blocks;
         if let Some(ref entry) = entry_label {
             reachable_blocks.insert(entry.clone());
         }
-        
+
         let original_count = func.blocks.len();
-        
-        func.blocks
-            .retain(|block| {
-                // Always keep entry block
-                if Some(&block.label) == entry_label.as_ref() {
-                    return true;
-                }
-                reachable_blocks.contains(&block.label)
-            });
+
+        func.blocks.retain(|block| {
+            // Always keep entry block
+            if Some(&block.label) == entry_label.as_ref() {
+                return true;
+            }
+            reachable_blocks.contains(&block.label)
+        });
 
         // Safety: Ensure we never remove all blocks
         if func.blocks.is_empty() {
-            return Err("Branch optimization would remove all blocks - aborting for safety".to_string());
+            return Err(
+                "Branch optimization would remove all blocks - aborting for safety".to_string(),
+            );
         }
 
         if func.blocks.len() != original_count {
