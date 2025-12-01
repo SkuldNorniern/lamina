@@ -460,7 +460,7 @@ impl LoopUnrolling {
         // Safety check: limit function size
         const MAX_BLOCKS: usize = 200;
         const MAX_LOOPS_TO_UNROLL: usize = 10;
-        
+
         if func.blocks.len() > MAX_BLOCKS {
             return Err(format!(
                 "Function too large for loop unrolling ({} blocks, max {})",

@@ -53,7 +53,9 @@ impl ModuleInlining {
         const MAX_TOTAL_INSTRUCTIONS: usize = 50_000;
 
         // Safety check: prevent inlining if module is too large
-        let total_instructions: usize = module.functions.values()
+        let total_instructions: usize = module
+            .functions
+            .values()
             .map(|f| f.blocks.iter().map(|b| b.instructions.len()).sum::<usize>())
             .sum();
         if total_instructions > MAX_TOTAL_INSTRUCTIONS {

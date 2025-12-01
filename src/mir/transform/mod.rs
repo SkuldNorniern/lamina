@@ -178,7 +178,7 @@ impl TransformPipeline {
 
         let mut stats = TransformStats::default();
         let mut total_iterations = 0;
-        
+
         // Single-pass only - no fixed-point iteration to prevent infinite loops
         // Individual transforms can do their own fixed-point iteration if needed
         for transform in &self.transforms {
@@ -235,7 +235,8 @@ impl TransformPipeline {
         if !failed_functions.is_empty() && total_stats.transforms_run == 0 {
             return Err(format!(
                 "All functions failed transforms: {}",
-                failed_functions.iter()
+                failed_functions
+                    .iter()
                     .map(|(name, err)| format!("{}: {}", name, err))
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -244,7 +245,10 @@ impl TransformPipeline {
 
         // Log warnings for failed functions but don't fail the entire pipeline
         if !failed_functions.is_empty() {
-            eprintln!("Warning: {} function(s) failed transforms:", failed_functions.len());
+            eprintln!(
+                "Warning: {} function(s) failed transforms:",
+                failed_functions.len()
+            );
             for (name, err) in &failed_functions {
                 eprintln!("  {}: {}", name, err);
             }

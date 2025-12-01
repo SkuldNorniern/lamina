@@ -34,7 +34,7 @@ impl InstructionScheduling {
         // Safety check: limit function size
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
-        
+
         if func.blocks.len() > MAX_BLOCKS {
             return Err(format!(
                 "Function too large for instruction scheduling ({} blocks, max {})",

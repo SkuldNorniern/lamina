@@ -66,7 +66,7 @@ impl DeadCodeElimination {
     ///
     /// Uses backward dataflow analysis to determine register liveness.
     /// A register is live if its value may be used before being redefined.
-    /// 
+    ///
     /// Uses single-pass conservative analysis to avoid infinite loops.
     fn compute_live_registers(&self, func: &Function) -> Result<HashSet<Register>, String> {
         let mut live_regs = HashSet::new();
@@ -108,16 +108,16 @@ impl DeadCodeElimination {
     /// This performs extremely conservative backward liveness analysis.
     /// Only removes instructions that are clearly dead within the block AND
     /// have no chance of being used in other blocks.
-    /// 
+    ///
     /// Safety: Very conservative to avoid removing code needed for correctness.
     fn remove_dead_instructions_in_block(&self, block: &mut Block) -> usize {
         // Safety: Disable intra-block dead code elimination entirely
         // Intra-block analysis is fundamentally unsafe without proper inter-block
         // liveness analysis, as it can remove values needed by other blocks.
-        // 
+        //
         // TODO: Implement proper inter-block liveness analysis before re-enabling
         return 0;
-        
+
         /* Original code disabled for safety:
         let mut removed_count = 0;
         let mut live_regs = HashSet::new();
@@ -128,14 +128,14 @@ impl DeadCodeElimination {
                 live_regs.insert(reg.clone());
             }
         }
-        
+
         // Safety: If block has successors, be extremely conservative
         // Don't remove ANY instructions that might be used in other blocks
         let has_successors = matches!(
             block.terminator(),
             Some(Instruction::Jmp { .. } | Instruction::Br { .. } | Instruction::Switch { .. })
         );
-        
+
         if has_successors {
             // Don't remove anything - too risky without inter-block analysis
             return 0;
@@ -148,10 +148,10 @@ impl DeadCodeElimination {
             let mut keep_instruction = true;
 
             if let Some(def_reg) = instr.def_reg() {
-                let is_safe_to_remove = !live_regs.contains(def_reg) 
+                let is_safe_to_remove = !live_regs.contains(def_reg)
                     && self.has_no_side_effects(instr)
                     && !matches!(instr, Instruction::IntCmp { .. } | Instruction::FloatCmp { .. });
-                
+
                 if is_safe_to_remove {
                     keep_instruction = false;
                     removed_count += 1;
@@ -389,7 +389,10 @@ mod tests {
 
         // Verify the terminator is still there (should be last)
         let last_idx = entry.instructions.len() - 1;
-        assert!(matches!(&entry.instructions[last_idx], Instruction::Ret { .. }));
+        assert!(matches!(
+            &entry.instructions[last_idx],
+            Instruction::Ret { .. }
+        ));
     }
 
     #[test]
