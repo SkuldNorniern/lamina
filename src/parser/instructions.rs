@@ -452,7 +452,7 @@ fn parse_phi<'a>(
 
         state.skip_whitespace_and_comments();
         if state.current_char() != Some(',') {
-            break; // No more pairs
+            break;
         }
         state.expect_char(',')?;
     }

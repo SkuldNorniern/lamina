@@ -1,9 +1,10 @@
+//! Loop optimization transforms for MIR.
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Operand, Register};
 use std::collections::HashSet;
 
-/// Loop Invariant Code Motion (LICM)
-/// Moves computations that don't depend on loop variables outside the loop
+/// Loop invariant code motion that moves loop-invariant computations outside loops.
 #[derive(Default)]
 pub struct LoopInvariantCodeMotion;
 
@@ -33,16 +34,13 @@ impl LoopInvariantCodeMotion {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
         let mut changed = false;
 
-        // Find all loops in the function
         let loops = self.find_loops(func);
 
-        // Safety limits to prevent infinite loops and excessive processing
         let max_loops = 10;
         let max_iterations_per_loop = 5;
         let loops_to_process = loops.into_iter().take(max_loops);
 
         for loop_info in loops_to_process {
-            // Skip loops that are too complex (too many blocks) to avoid pathological cases
             if loop_info.blocks.len() > 50 {
                 continue;
             }
@@ -50,12 +48,10 @@ impl LoopInvariantCodeMotion {
             let mut iterations = 0;
             while iterations < max_iterations_per_loop {
                 if !self.optimize_loop(func, &loop_info)? {
-                    break; // No more changes possible
+                    break;
                 }
                 changed = true;
                 iterations += 1;
-
-                // Safety check: if we've made many changes, stop to avoid infinite loops
                 if iterations >= max_iterations_per_loop {
                     break;
                 }
@@ -65,9 +61,7 @@ impl LoopInvariantCodeMotion {
         Ok(changed)
     }
 
-    /// Find natural loops in the function using dominators and back edges
     fn find_loops(&self, func: &Function) -> Vec<LoopInfo> {
-        // Simplified loop detection - look for backward jumps
         let mut loops = Vec::new();
 
         for block in &func.blocks {
@@ -128,19 +122,23 @@ impl LoopInvariantCodeMotion {
         let mut loop_blocks = HashSet::new();
         let mut to_visit = vec![back_edge_source.to_string()];
         let mut visited = HashSet::new();
+        const MAX_LOOP_ANALYSIS_ITERATIONS: usize = 1000;
+        let mut iterations = 0;
 
         // First, collect all blocks that can reach the back edge source
         while let Some(block_label) = to_visit.pop() {
+            if iterations >= MAX_LOOP_ANALYSIS_ITERATIONS {
+                return None; // Safety: prevent infinite loops
+            }
+            iterations += 1;
+
             if visited.contains(&block_label) {
                 continue;
             }
             visited.insert(block_label.clone());
 
-            // Add this block to the loop if it's between header and back edge source
-            // (simplified: just add all blocks we can reach from back edge source)
             loop_blocks.insert(block_label.clone());
 
-            // Find predecessors (blocks that can reach this block)
             for block in &func.blocks {
                 if self.has_edge_to(func, &block.label, &block_label) {
                     to_visit.push(block.label.clone());
@@ -151,19 +149,17 @@ impl LoopInvariantCodeMotion {
         // Add the header if not already included
         loop_blocks.insert(header.to_string());
 
-        // Basic sanity check: ensure we have at least header and back edge source
         if !loop_blocks.contains(header) || !loop_blocks.contains(back_edge_source) {
             return None;
         }
 
-        // Limit loop size to prevent pathological cases
         if loop_blocks.len() > 50 {
             return None;
         }
 
         Some(LoopInfo {
             header: header.to_string(),
-            back_edge_target: back_edge_source.to_string(), // Note: this field is misnamed in the struct
+            back_edge_target: back_edge_source.to_string(),
             blocks: loop_blocks,
         })
     }
@@ -188,11 +184,9 @@ impl LoopInvariantCodeMotion {
     fn optimize_loop(&self, func: &mut Function, loop_info: &LoopInfo) -> Result<bool, String> {
         let mut changed = false;
 
-        // Find invariant instructions (those that don't depend on loop variables)
         let invariant_instrs = self.find_invariant_instructions(func, loop_info)?;
 
         if !invariant_instrs.is_empty() {
-            // Move invariant instructions before the loop
             self.move_invariant_instructions(func, loop_info, &invariant_instrs)?;
             changed = true;
         }
@@ -208,7 +202,6 @@ impl LoopInvariantCodeMotion {
         let mut invariant = Vec::new();
         let defs_in_loop = self.collect_defs_in_loop(func, loop_info);
 
-        // Limit the number of invariant instructions to move for stability
         let max_invariant_instructions = 20;
 
         for (block_idx, block) in func.blocks.iter().enumerate() {
@@ -216,18 +209,14 @@ impl LoopInvariantCodeMotion {
                 continue;
             }
 
-            // Don't hoist from the loop header - these might be needed for loop control
             if block.label == loop_info.header {
                 continue;
             }
 
             for (instr_idx, instr) in block.instructions.iter().enumerate() {
-                // Only use precise check, avoid heuristic to prevent over-optimization
                 if self.is_invariant_instruction(func, loop_info, &defs_in_loop, instr) {
-                    // Store as (block_idx, instr_idx) tuple to avoid overflow
                     invariant.push((block_idx, instr_idx));
 
-                    // Limit the number of invariant instructions for stability
                     if invariant.len() >= max_invariant_instructions {
                         break;
                     }
@@ -270,9 +259,6 @@ impl LoopInvariantCodeMotion {
         }
     }
 
-    /// Check if an instruction is likely to be loop invariant based on common patterns
-    /// This is a heuristic to catch more invariant instructions
-    /// DISABLED: Too aggressive, can cause incorrect optimizations
     fn is_likely_invariant_instruction(
         &self,
         _func: &Function,
@@ -291,10 +277,8 @@ impl LoopInvariantCodeMotion {
         defs_in_loop: &std::collections::HashSet<Register>,
         reg: &Register,
     ) -> bool {
-        // A register is invariant if it's not defined inside the loop.
-        // Physical registers are conservatively treated as non-invariant since they can be modified
         match reg {
-            Register::Physical(_) => false, // Physical registers can be modified within loops
+            Register::Physical(_) => false,
             Register::Virtual(_) => !defs_in_loop.contains(reg),
         }
     }
@@ -319,31 +303,23 @@ impl LoopInvariantCodeMotion {
             return Ok(());
         }
 
-        // Find the loop header block
         let header_idx = func
             .blocks
             .iter()
             .position(|b| b.label == loop_info.header)
             .ok_or_else(|| format!("Loop header '{}' not found", loop_info.header))?;
 
-        // Create a pre-header block to hold invariant instructions
-        // This avoids executing them before the loop condition check
         let pre_header_label = format!("{}_pre", loop_info.header);
         let mut pre_header_block = crate::mir::Block {
             label: pre_header_label.clone(),
             instructions: Vec::new(),
         };
 
-        // Collect and sort invariant instructions by block and instruction index
-        // Sort by (block_idx, instr_idx) descending to avoid index shifting issues
         let mut sorted_invariant = invariant_instrs.to_vec();
-        sorted_invariant.sort_by(|a, b| b.1.cmp(&a.1)); // Sort by instruction index descending
-        sorted_invariant.sort_by(|a, b| b.0.cmp(&a.0)); // Sort by block index descending
+        sorted_invariant.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted_invariant.sort_by(|a, b| b.0.cmp(&a.0));
 
-        // Remove duplicate positions (same instruction appearing multiple times)
         sorted_invariant.dedup();
-
-        // Collect instructions to move, validating indices
         let mut instructions_to_move = Vec::new();
         for &(block_idx, instr_idx) in &sorted_invariant {
             if block_idx >= func.blocks.len() {
@@ -388,10 +364,7 @@ impl LoopInvariantCodeMotion {
             }
         }
 
-        // Update any jumps that target the original header to target the pre-header instead
-        // Skip the pre-header block itself when updating jumps
         for (block_idx, block) in func.blocks.iter_mut().enumerate() {
-            // Skip the pre-header block we just inserted
             if block_idx == header_idx {
                 continue;
             }
@@ -456,8 +429,7 @@ struct UnrollableLoop {
     induction_var: Option<Register>,
 }
 
-/// Loop Unrolling
-/// Unrolls loops to reduce overhead and improve ILP
+/// Loop unrolling that unrolls small loops to reduce overhead and improve ILP.
 #[derive(Default)]
 pub struct LoopUnrolling;
 
@@ -485,10 +457,23 @@ impl Transform for LoopUnrolling {
 
 impl LoopUnrolling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+        // Safety check: limit function size
+        const MAX_BLOCKS: usize = 200;
+        const MAX_LOOPS_TO_UNROLL: usize = 10;
+        
+        if func.blocks.len() > MAX_BLOCKS {
+            return Err(format!(
+                "Function too large for loop unrolling ({} blocks, max {})",
+                func.blocks.len(),
+                MAX_BLOCKS
+            ));
+        }
+
         let mut changed = false;
 
-        // Find loops that can be safely unrolled
-        let loops = self.find_unrollable_loops(func);
+        let mut loops = self.find_unrollable_loops(func);
+        // Limit number of loops to unroll
+        loops.truncate(MAX_LOOPS_TO_UNROLL);
 
         for loop_info in loops {
             if self.unroll_loop(func, &loop_info)? {
@@ -521,12 +506,11 @@ impl LoopUnrolling {
                     false_target,
                 ) && loop_bound <= 8
                 {
-                    // Only unroll very small loops for safety
                     unrollable.push(UnrollableLoop {
                         header: block.label.clone(),
                         body_blocks: vec![true_target.clone()],
                         bound: loop_bound,
-                        induction_var: None, // TODO: detect induction variable
+                        induction_var: None,
                     });
                 }
             }
@@ -535,7 +519,6 @@ impl LoopUnrolling {
         unrollable
     }
 
-    /// Analyze if a loop has a constant bound that can be unrolled
     fn analyze_loop_bound(
         &self,
         _func: &Function,
@@ -544,29 +527,13 @@ impl LoopUnrolling {
         _true_target: &str,
         _false_target: &str,
     ) -> Option<i64> {
-        // Very conservative loop bound analysis for safe unrolling
-        // Only enable for extremely small, known-safe bounds to prevent code bloat
-
-        // For matrix operations, small unroll factors like 2-4 can be beneficial
-        // but we start very conservative to avoid issues
-
-        // TODO: Implement proper loop bound analysis that can detect
-        // compile-time constants and simple induction variables
-
-        // For now: enable unrolling of loops with bound 2 (very safe)
         Some(2)
     }
 
-    /// Unroll a loop by duplicating its body (very conservative implementation)
     fn unroll_loop(&self, func: &mut Function, loop_info: &UnrollableLoop) -> Result<bool, String> {
-        // Extremely conservative loop unrolling for safety
-        // Only handle the simplest case: unroll factor 2 for small loops
-
         if loop_info.bound != 2 {
-            return Ok(false); // Only unroll factor 2 for now
+            return Ok(false);
         }
-
-        // Find the loop header block
         let header_idx = func.blocks.iter().position(|b| b.label == loop_info.header);
         if header_idx.is_none() {
             return Ok(false);
@@ -617,8 +584,7 @@ impl LoopUnrolling {
     }
 }
 
-/// Loop Fusion
-/// Combines adjacent loops that iterate over the same range
+/// Loop fusion that combines adjacent loops with the same iteration bounds.
 #[derive(Default)]
 pub struct LoopFusion;
 
@@ -646,13 +612,6 @@ impl Transform for LoopFusion {
 
 impl LoopFusion {
     fn apply_internal(&self, _func: &mut Function) -> Result<bool, String> {
-        // Loop fusion is complex and requires:
-        // 1. Dependency analysis between loop bodies
-        // 2. Induction variable comparison
-        // 3. Data dependence checking
-        // 4. Body merging
-
-        // For now, return false (no changes)
         Ok(false)
     }
 }

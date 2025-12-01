@@ -183,13 +183,23 @@ impl JumpThreading {
         }
 
         // Resolve to ultimate targets (follow chains)
+        // Safety: limit chain length to prevent excessive resolution
         fn resolve_target(map: &HashMap<String, String>, mut tgt: String) -> String {
             let mut seen = std::collections::HashSet::new();
+            const MAX_CHAIN_LENGTH: usize = 100; // Safety limit
+            let mut iterations = 0;
+            
             while let Some(next) = map.get(&tgt) {
+                if iterations >= MAX_CHAIN_LENGTH {
+                    // Chain too long, return current target to avoid infinite loops
+                    break;
+                }
                 if !seen.insert(tgt.clone()) {
+                    // Cycle detected, return current target
                     break;
                 }
                 tgt = next.clone();
+                iterations += 1;
             }
             tgt
         }

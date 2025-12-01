@@ -1,9 +1,10 @@
+//! Memory optimization transforms for MIR.
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Operand, Register};
 use std::collections::HashMap;
 
-/// Memory Optimization Transform
-/// Performs various memory-related optimizations including dead store elimination
+/// Memory optimization transform performing redundant load elimination and access pattern optimization.
 #[derive(Default)]
 pub struct MemoryOptimization;
 
@@ -33,17 +34,10 @@ impl MemoryOptimization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
         let mut changed = false;
 
-        // Apply dead store elimination - DISABLED (too aggressive)
-        // if self.eliminate_dead_stores(func) {
-        //     changed = true;
-        // }
-
-        // Apply simple redundant load/store forwarding
         if self.forward_redundant_loads(func) {
             changed = true;
         }
 
-        // Apply memory access pattern optimizations for matrix operations
         if self.optimize_memory_access_patterns(func) {
             changed = true;
         }
@@ -51,61 +45,31 @@ impl MemoryOptimization {
         Ok(changed)
     }
 
-    /// Dead Store Elimination
-    /// Removes stores to variables that are never read before being overwritten or going out of scope
-    fn eliminate_dead_stores(&self, func: &mut Function) -> bool {
-        let mut changed = false;
-
-        // For each block, perform dead store elimination
-        for block in &mut func.blocks {
-            if self.eliminate_dead_stores_in_block(block) {
-                changed = true;
-            }
-        }
-
-        changed
-    }
-
-    fn eliminate_dead_stores_in_block(&self, _block: &mut Block) -> bool {
-        // DISABLED: Dead store elimination can be unsafe in the presence of loops
-        // and complex control flow. The analysis is too conservative and may remove
-        // stores that are needed across loop iterations or complex control flow.
-        false
-    }
-
-    /// Redundant Load Elimination / Store-to-Load Forwarding (intra-block, conservative)
+    /// Redundant load elimination and store-to-load forwarding within basic blocks.
     fn forward_redundant_loads(&self, func: &mut Function) -> bool {
         use crate::mir::AddressMode;
         let mut changed = false;
 
         for block in &mut func.blocks {
-            // Maps (base, offset) -> last stored Operand in this block
             let mut last_store: HashMap<(Register, i16), Operand> = HashMap::new();
-            // Maps (base, offset) -> register holding last loaded value in this block
             let mut last_load: HashMap<(Register, i16), Register> = HashMap::new();
 
             for inst in &mut block.instructions {
-                // Compute replacement instruction, if any, without holding a mutable borrow
                 let mut replacement: Option<Instruction> = None;
                 match &*inst {
                     Instruction::Store {
                         src, addr, attrs, ..
                     } => {
-                        // Invalidate on volatile or unknown addressing
                         match addr {
                             AddressMode::BaseOffset { base, offset } if !attrs.volatile => {
-                                // Record last store and invalidate prior load info conservatively
                                 last_store.insert((base.clone(), *offset), src.clone());
-                                // Any store can alias future loads; clear all recorded loads
                                 last_load.clear();
                             }
                             AddressMode::BaseIndexScale { .. } => {
-                                // Scaled addressing aliasing unclear; clear all
                                 last_store.clear();
                                 last_load.clear();
                             }
                             _ => {
-                                // Be conservative on unknown addressing
                                 last_store.clear();
                                 last_load.clear();
                             }

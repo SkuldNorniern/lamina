@@ -1,14 +1,15 @@
+//! Strength reduction transform for MIR.
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::instruction::Immediate;
 use crate::mir::{Function, Instruction, IntBinOp, MirType, Operand};
 
-/// Strength Reduction Transform
+/// Strength reduction that replaces expensive operations with cheaper equivalents.
 ///
-/// Replaces expensive operations with cheaper equivalents:
+/// Replaces:
 /// - Multiplication by powers of 2 → left shifts
 /// - Division by powers of 2 → right shifts (unsigned)
 /// - Modulo by powers of 2 → bitwise AND
-/// - Multiplication by constants → optimized sequences
 #[derive(Default)]
 pub struct StrengthReduction;
 
@@ -530,5 +531,187 @@ mod tests {
 
         // Should not have changed
         assert!(!changed);
+    }
+
+    #[test]
+    fn test_large_powers_of_2() {
+        let large_powers: [i64; 5] = [1 << 10, 1 << 20, 1 << 30, 1 << 40, 1 << 50];
+
+        for &c in &large_powers {
+            let expected_shift = (c as u64).trailing_zeros() as i64;
+
+            let mut func = FunctionBuilder::new("test")
+                .returns(MirType::Scalar(ScalarType::I64))
+                .block("entry")
+                .instr(Instruction::IntBinary {
+                    op: IntBinOp::Mul,
+                    ty: MirType::Scalar(ScalarType::I64),
+                    dst: VirtualReg::gpr(0).into(),
+                    lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                    rhs: Operand::Immediate(Immediate::I64(c)),
+                })
+                .instr(Instruction::Ret {
+                    value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+                })
+                .build();
+
+            let pass = StrengthReduction::default();
+            let changed = pass.apply(&mut func).expect("transform should succeed");
+            assert!(changed, "expected change for mul by 2^{}", expected_shift);
+
+            let entry = func.get_block("entry").expect("entry block exists");
+            match &entry.instructions[0] {
+                Instruction::IntBinary { op, rhs, .. } => {
+                    assert_eq!(*op, IntBinOp::Shl);
+                    assert_eq!(rhs, &Operand::Immediate(Immediate::I64(expected_shift)));
+                }
+                _ => panic!("expected IntBinary instruction"),
+            }
+        }
+    }
+
+    // --- Brute-force safety tests ---
+
+    /// Verify x * 2^k == x << k for all tested values.
+    #[test]
+    fn brute_force_mul_power_of_two_equals_shift() {
+        let powers: [i64; 6] = [1, 2, 4, 8, 16, 32];
+
+        for &c in &powers {
+            let k = (c as u64).trailing_zeros() as i64;
+            let max_abs = i64::MAX / c;
+            let step = (max_abs.saturating_mul(2) / 1000).max(1);
+
+            let mut x = -max_abs;
+            while x <= max_abs {
+                let mul = x.wrapping_mul(c);
+                let shift = x << k;
+                assert_eq!(mul, shift, "x * {} != x << {} for x = {}", c, k, x);
+                x = x.saturating_add(step);
+                if x == i64::MAX {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Verify unsigned x / 2^k == x >> k for all tested values.
+    #[test]
+    fn brute_force_udiv_power_of_two_equals_shift() {
+        let powers: [u64; 6] = [2, 4, 8, 16, 32, 64];
+
+        for &c in &powers {
+            let k = c.trailing_zeros();
+            for x in 0_u64..=2048 {
+                let div = x / c;
+                let shr = x >> k;
+                assert_eq!(div, shr, "x / {} != x >> {} for x = {}", c, k, x);
+            }
+            for x in [u64::MAX, u64::MAX - 1, u64::MAX / 2, 1 << 32, 1 << 48] {
+                let div = x / c;
+                let shr = x >> k;
+                assert_eq!(div, shr, "x / {} != x >> {} for x = {}", c, k, x);
+            }
+        }
+    }
+
+    /// Verify unsigned x % 2^k == x & (2^k - 1) for all tested values.
+    #[test]
+    fn brute_force_urem_power_of_two_equals_and() {
+        let powers: [u64; 7] = [2, 4, 8, 16, 32, 64, 128];
+
+        for &c in &powers {
+            let mask = c - 1;
+            for x in 0_u64..=2048 {
+                let rem = x % c;
+                let and = x & mask;
+                assert_eq!(rem, and, "x % {} != x & {} for x = {}", c, mask, x);
+            }
+            for x in [u64::MAX, u64::MAX - 1, u64::MAX / 2, 1 << 32, 1 << 48] {
+                let rem = x % c;
+                let and = x & mask;
+                assert_eq!(rem, and, "x % {} != x & {} for x = {}", c, mask, x);
+            }
+        }
+    }
+
+    /// Demonstrates why SDiv cannot be optimized to AShr without range analysis.
+    #[test]
+    fn signed_division_differs_from_shift() {
+        // -3 / 2 = -1 (rounds toward zero)
+        // -3 >> 1 = -2 (arithmetic shift rounds toward -inf)
+        let x: i64 = -3;
+        assert_eq!(x / 2, -1);
+        assert_eq!(x >> 1, -2);
+        assert_ne!(x / 2, x >> 1);
+    }
+
+    /// Demonstrates why SRem cannot use masking without range analysis.
+    #[test]
+    fn signed_remainder_differs_from_mask() {
+        // -7 % 4 = -3 (preserves sign)
+        // -7 & 3 = 1 (wrong for signed)
+        let x: i64 = -7;
+        assert_eq!(x % 4, -3);
+        assert_eq!(x & 3, 1);
+        assert_ne!(x % 4, x & 3);
+    }
+
+    /// Stress test multiplication strength reduction with random values.
+    #[test]
+    fn stress_mul_strength_reduction() {
+        let mut rng_state: u64 = 0xDEADBEEF;
+        fn next_rand(state: &mut u64) -> i64 {
+            *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            (*state >> 32) as i64
+        }
+
+        for k in 0..20 {
+            let c = 1i64 << k;
+            for _ in 0..1000 {
+                let x = next_rand(&mut rng_state);
+                if let Some(mul_result) = x.checked_mul(c) {
+                    let shift_result = x << k;
+                    assert_eq!(mul_result, shift_result);
+                }
+            }
+        }
+    }
+
+    /// Stress test division strength reduction with random values.
+    #[test]
+    fn stress_udiv_strength_reduction() {
+        let mut rng_state: u64 = 0xCAFEBABE;
+        fn next_rand(state: &mut u64) -> u64 {
+            *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            *state >> 16
+        }
+
+        for k in 1..20 {
+            let c = 1u64 << k;
+            for _ in 0..1000 {
+                let x = next_rand(&mut rng_state);
+                assert_eq!(x / c, x >> k);
+            }
+        }
+    }
+
+    /// Stress test remainder strength reduction with random values.
+    #[test]
+    fn stress_urem_strength_reduction() {
+        let mut rng_state: u64 = 0xFEEDFACE;
+        fn next_rand(state: &mut u64) -> u64 {
+            *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            *state >> 16
+        }
+
+        for k in 1..20 {
+            let c = 1u64 << k;
+            let mask = c - 1;
+            for _ in 0..1000 {
+                let x = next_rand(&mut rng_state);
+                assert_eq!(x % c, x & mask);
+            }
+        }
     }
 }
