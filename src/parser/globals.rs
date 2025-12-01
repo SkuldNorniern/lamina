@@ -29,12 +29,12 @@ pub fn parse_global_declaration<'a>(
     })
 }
 
-// Parse a value potentially using type hints for integer literals
+/// Parses a value using type hints for integer literals.
 pub fn parse_value_with_type_hint<'a>(
     state: &mut ParserState<'a>,
     type_hint: &Type<'a>,
 ) -> Result<Value<'a>, LaminaError> {
-    let start_pos = state.position(); // Remember position for backtracking
+    let start_pos = state.position();
     state.skip_whitespace_and_comments();
 
     match state.current_char() {

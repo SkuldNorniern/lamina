@@ -1,9 +1,10 @@
+//! Code motion and propagation transforms for MIR.
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Immediate, Instruction, MirType, Operand, Register, ScalarType};
 use std::collections::HashMap;
 
-/// Copy Propagation Transform
-/// Replaces variable uses with their source values when safe to do so
+/// Copy propagation transform that replaces variable uses with their source values.
 #[derive(Default)]
 pub struct CopyPropagation;
 
@@ -31,6 +32,29 @@ impl Transform for CopyPropagation {
 
 impl CopyPropagation {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+        // Safety check: limit function size
+        const MAX_BLOCKS: usize = 500;
+        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
+        
+        if func.blocks.len() > MAX_BLOCKS {
+            return Err(format!(
+                "Function too large for copy propagation ({} blocks, max {})",
+                func.blocks.len(),
+                MAX_BLOCKS
+            ));
+        }
+
+        for block in &func.blocks {
+            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
+                return Err(format!(
+                    "Block '{}' too large for copy propagation ({} instructions, max {})",
+                    block.label,
+                    block.instructions.len(),
+                    MAX_INSTRUCTIONS_PER_BLOCK
+                ));
+            }
+        }
+
         let mut changed = false;
 
         // Apply copy propagation within each basic block (safe: no control flow issues)
@@ -47,17 +71,14 @@ impl CopyPropagation {
         let mut changed = false;
         let mut value_map = HashMap::new();
 
-        // Limit the number of copy propagations per block for stability
-        let mut propagations_this_block = 0;
-        let max_propagations_per_block = 50;
+            let mut propagations_this_block = 0;
+            let max_propagations_per_block = 50;
 
-        // Process instructions in the block, building and using the value map
-        let mut new_instructions = Vec::new();
+            let mut new_instructions = Vec::new();
 
         for instr in &block.instructions {
             let mut new_instr = instr.clone();
 
-            // First, propagate any known copies into this instruction
             if propagations_this_block < max_propagations_per_block
                 && self.propagate_copies(&mut new_instr, &value_map)
             {
@@ -65,13 +86,9 @@ impl CopyPropagation {
                 propagations_this_block += 1;
             }
 
-            // Then, handle register definitions: invalidate mappings for redefined registers
             if let Some(def_reg) = new_instr.def_reg() {
-                // Remove any existing mapping for this register since it's being redefined
                 value_map.remove(def_reg);
             }
-
-            // Finally, check if this instruction defines a copy that we should track
             if let Instruction::IntBinary {
                 op: crate::mir::IntBinOp::Add,
                 dst,
@@ -80,16 +97,12 @@ impl CopyPropagation {
                 ..
             } = &new_instr
             {
-                // Check for x = y + 0 (copy pattern)
                 if let Operand::Immediate(Immediate::I64(0)) = rhs
                     && let Operand::Register(src_reg) = lhs
                 {
-                    // Record this copy for future propagation within this block
                     value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
                 }
             }
-
-            // Also check for other common copy patterns
             match &new_instr {
                 Instruction::IntBinary {
                     op: crate::mir::IntBinOp::Sub,
@@ -292,8 +305,7 @@ impl CopyPropagation {
     }
 }
 
-/// Constant Folding Transform
-/// Evaluates constant expressions at compile time
+/// Constant folding that evaluates constant expressions at compile time.
 #[derive(Default)]
 pub struct ConstantFolding;
 
@@ -458,6 +470,29 @@ impl CommonSubexpressionElimination {
     }
 
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+        // Safety check: limit function size
+        const MAX_BLOCKS: usize = 500;
+        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 500;
+        
+        if func.blocks.len() > MAX_BLOCKS {
+            return Err(format!(
+                "Function too large for CSE ({} blocks, max {})",
+                func.blocks.len(),
+                MAX_BLOCKS
+            ));
+        }
+
+        for block in &func.blocks {
+            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
+                return Err(format!(
+                    "Block '{}' too large for CSE ({} instructions, max {})",
+                    block.label,
+                    block.instructions.len(),
+                    MAX_INSTRUCTIONS_PER_BLOCK
+                ));
+            }
+        }
+
         let mut changed = false;
         let loop_headers = compute_back_edge_headers(func);
 
