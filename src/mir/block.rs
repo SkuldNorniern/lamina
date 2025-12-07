@@ -68,6 +68,19 @@ impl Block {
     pub fn is_empty(&self) -> bool {
         self.instructions.is_empty()
     }
+
+    /// Get successor block labels
+    pub fn successors(&self) -> Vec<String> {
+        match self.terminator() {
+            Some(Instruction::Jmp { target }) => vec![target.clone()],
+            Some(Instruction::Br {
+                true_target,
+                false_target,
+                ..
+            }) => vec![true_target.clone(), false_target.clone()],
+            _ => vec![],
+        }
+    }
 }
 
 #[cfg(test)]
