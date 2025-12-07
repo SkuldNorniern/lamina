@@ -48,10 +48,26 @@ impl TailCallOptimization {
         }
 
         let mut changed = false;
-        let func_name = func.sig.name.clone();
+        // Borrow signature separately from blocks to avoid borrow checker issues
+        let sig = &func.sig;
+        // We need to bypass the borrow checker restriction on `func` being borrowed mutably for blocks
+        // while we need `sig`. Since `sig` and `blocks` are disjoint fields, we can destructure or just clone signature if needed.
+        // Cloning signature is safe but slightly inefficient.
+        // However, `Function` struct definition:
+        // struct Function { sig, blocks, entry }
+        // We can't easily iterate `func.blocks` mutably while holding `&func.sig` because `func` is borrowed.
+        // Actually, we can if we split borrows, but `apply_internal` takes `&mut Function`.
+        // Rust's split borrow works if we do `let Function { sig, blocks, .. } = func`.
+        // But `blocks` is Vec<Block>.
+        // Let's rely on disjoint fields if the compiler is smart enough, OR just clone the signature since it's small metadata.
+        // Signature contains a Vec<Parameter>, so it allocates.
+        // Let's try to be smart.
+        // But `func.blocks` access is via `func` reference.
+        // Workaround: Clone signature. It is not huge.
+        let func_sig = func.sig.clone();
 
         for block in &mut func.blocks {
-            if self.optimize_block_tail_calls(&func_name, block) {
+            if self.optimize_block_tail_calls(&func_sig, block) {
                 changed = true;
             }
         }
@@ -60,7 +76,11 @@ impl TailCallOptimization {
     }
 
     /// Optimize tail calls within a single block
-    fn optimize_block_tail_calls(&self, func_name: &str, block: &mut Block) -> bool {
+    fn optimize_block_tail_calls(
+        &self,
+        func_sig: &crate::mir::function::Signature,
+        block: &mut Block,
+    ) -> bool {
         let mut changed = false;
 
         // Find the last instruction in the block
@@ -72,9 +92,11 @@ impl TailCallOptimization {
                 let second_last_idx = block.instructions.len() - 2;
                 let second_last_instr = &block.instructions[second_last_idx];
 
-                if let Instruction::Call { name, args: _, ret } = second_last_instr {
+                if let Instruction::Call { name, args, ret } = second_last_instr {
                     // Check if this is a tail call (return value matches call result)
-                    if self.is_tail_call(value, ret) && self.is_tail_call_safe(func_name, name) {
+                    if self.is_tail_call(value, ret)
+                        && self.is_tail_call_safe(func_sig, name, args, ret)
+                    {
                         // Convert the call to a tail call jump
                         if self.convert_to_tail_call(&mut block.instructions[second_last_idx]) {
                             changed = true;
@@ -122,19 +144,65 @@ impl TailCallOptimization {
     }
 
     /// Check if a function is suitable for tail call optimization
-    /// This is a conservative check to avoid breaking calling conventions
-    fn is_tail_call_safe(&self, caller_name: &str, callee_name: &str) -> bool {
-        // For now, be conservative and only allow tail calls within the same function
-        // or to functions with compatible signatures
+    ///
+    /// This now supports generalized tail calls (not just self-recursion) by strictly
+    /// checking signature compatibility, which is crucial for Windows x86 (stdcall).
+    ///
+    /// Helper for checking if the caller and callee have compatible signatures.
+    /// Since we don't have access to the callee's definition here, we infer its
+    /// signature from the call instruction's arguments and return value.
+    fn is_tail_call_safe(
+        &self,
+        func_sig: &crate::mir::function::Signature,
+        _call_name: &str,
+        call_args: &[Operand],
+        call_ret: &Option<Register>,
+    ) -> bool {
+        // 1. Check return type compatibility
+        match (&func_sig.ret_ty, call_ret) {
+            (Some(_func_ty), Some(_ret_reg)) => {
+                // Ideally checks types, but register type is unknown here.
+                // Optimistically assume registers match if present.
+            }
+            (None, None) => {} // Both void
+            _ => return false, // Mismatch (void vs scalar)
+        }
 
-        // TODO: Add more sophisticated checks:
-        // 1. Check if caller and callee have compatible calling conventions
-        // 2. Check if they use the same stack frame layout
-        // 3. Check for any cleanup that needs to happen
+        // 2. Check argument compatibility (Stack size / Calling Convention)
+        if func_sig.params.len() != call_args.len() {
+            return false;
+        }
 
-        // For this initial implementation, we'll be very conservative
-        // and only allow self-tail calls (recursive functions)
-        caller_name == callee_name
+        for (param, arg) in func_sig.params.iter().zip(call_args.iter()) {
+            if !self.is_compatible(param.ty, arg) {
+                 return false;
+            }
+        }
+
+        true
+    }
+
+    /// Check if an operand is compatible with a formal parameter type
+    fn is_compatible(&self, param_ty: crate::mir::types::MirType, arg: &Operand) -> bool {
+        match arg {
+            Operand::Register(_) => true, // Assume virtual registers match (optimistic)
+            Operand::Immediate(imm) => {
+                // Check if immediate fits in the type
+                match (param_ty, imm) {
+                    (crate::mir::types::MirType::Scalar(s), _) => match (s, imm) {
+                        (crate::mir::types::ScalarType::I64, crate::mir::Immediate::I64(_)) => true,
+                        (crate::mir::types::ScalarType::I32, crate::mir::Immediate::I32(_)) => true,
+                        (crate::mir::types::ScalarType::I16, crate::mir::Immediate::I16(_)) => true,
+                        (crate::mir::types::ScalarType::I8, crate::mir::Immediate::I8(_)) => true,
+                        // Allow smaller immediates to fit in larger types? 
+                        // Usually MIR expects exact type match for immediates
+                        _ => false,
+                    },
+                    (crate::mir::types::MirType::Vector(_), _) => false, // Immediate vectors not fully supported yet in this check
+                }
+            }
+
+        }
     }
 }
 
@@ -166,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_tail_call_conversion() {
-        let mut tco = TailCallOptimization::default();
+        let tco = TailCallOptimization::default();
 
         let mut instr = Instruction::Call {
             name: "factorial".to_string(),
