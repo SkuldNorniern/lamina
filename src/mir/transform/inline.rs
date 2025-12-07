@@ -2,6 +2,7 @@
 
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Module, Operand, Register};
+use std::cell::Cell;
 use std::collections::HashMap;
 
 /// Function-level inlining transform placeholder.
@@ -33,7 +34,10 @@ impl Transform for FunctionInlining {
 }
 
 /// Module-level function inlining that analyzes the entire program.
-pub struct ModuleInlining;
+pub struct ModuleInlining {
+    /// Counter to ensure unique inline block labels
+    inline_counter: Cell<usize>,
+}
 
 impl Default for ModuleInlining {
     fn default() -> Self {
@@ -43,7 +47,16 @@ impl Default for ModuleInlining {
 
 impl ModuleInlining {
     pub fn new() -> Self {
-        Self
+        Self {
+            inline_counter: Cell::new(0),
+        }
+    }
+    
+    /// Get next unique inline ID
+    fn next_inline_id(&self) -> usize {
+        let id = self.inline_counter.get();
+        self.inline_counter.set(id + 1);
+        id
     }
 
     /// Analyze the entire module and perform function inlining
@@ -157,7 +170,7 @@ impl ModuleInlining {
                 return false; // Avoid inlining functions that call others unless reasonably small
             }
 
-            // 3. Function doesn't have complex control flow
+            // 3. Function doesn't have complex control flow (Switch)
             let has_complex_cf = callee_func.blocks.iter().any(|block| {
                 block
                     .instructions
@@ -165,41 +178,25 @@ impl ModuleInlining {
                     .any(|instr| matches!(instr, Instruction::Switch { .. }))
             });
 
-            if has_complex_cf && total_instructions > 15 {
-                return false; // Avoid inlining complex control flow
+            if has_complex_cf {
+                return false; // Avoid inlining Switch for now
             }
 
-            // 4. Function is single-block or small multi-block (allow for prime functions)
-            if callee_func.blocks.len() != 1 && total_instructions > 20 {
-                return false; // Can't handle large multi-block functions yet
+            // 4. Function is reasonably small (multi-block ok)
+            if callee_func.blocks.len() > 20 || total_instructions > 100 {
+                return false; 
             }
 
-            // 5. Function has no branches or jumps (strict control flow check)
-            let has_control_flow = callee_func.blocks.iter().any(|block| {
-                block.instructions.iter().any(|instr| {
-                    matches!(
-                        instr,
-                        Instruction::Jmp { .. }
-                            | Instruction::Br { .. }
-                            | Instruction::Switch { .. }
-                    )
-                })
-            });
-
-            if has_control_flow && total_instructions > 25 {
-                return false; // Can't handle complex control flow yet
-            }
-
-            // 6. Function is called from a small caller function
+            // 6. Function is called from a small caller function? 
+            // Aggressive inlining: inline small functions regardless of caller size
+            
+            // ... existing logic ...
             if let Some(caller_func) = module.functions.get(&call_site.caller) {
-                let caller_size = caller_func.instruction_count();
-                if caller_size < 50 || total_instructions < caller_size / 10 {
-                    return true; // Good candidate for inlining
-                }
+                // If caller is huge, dont inline huge things?
             }
 
-            // Default: inline very small functions
-            total_instructions <= 5
+            // Default: inline small functions
+            total_instructions <= 30
         } else {
             false // Can't inline if we can't find the function
         }
@@ -244,42 +241,17 @@ impl ModuleInlining {
         // Create a mapping from callee parameters to caller arguments
         let param_mapping = self.create_param_mapping(&callee_func, &call_args)?;
 
-        // For now, only inline single-block functions without control flow
+        // Only use single-block optimized path if strictly 1 block
         if callee_func.blocks.len() == 1 {
             self.inline_single_block_function(call_site, module, &callee_func, &param_mapping)?;
         } else {
-            return Err("Multi-block function inlining not yet implemented".to_string());
+            self.inline_multi_block_function(call_site, module, &callee_func, &param_mapping)?;
         }
 
         Ok(())
     }
 
-    /// Validate that a function is suitable for inlining
-    fn validate_for_inlining(&self, func: &Function) -> Result<(), String> {
-        // Check for complex control flow that we can't handle yet
-        for block in &func.blocks {
-            for instr in &block.instructions {
-                match instr {
-                    Instruction::Jmp { .. }
-                    | Instruction::Br { .. }
-                    | Instruction::Switch { .. } => {
-                        return Err(
-                            "Function contains control flow - not suitable for simple inlining"
-                                .to_string(),
-                        );
-                    }
-                    Instruction::Call { .. } => {
-                        return Err(
-                            "Function contains nested calls - not suitable for simple inlining"
-                                .to_string(),
-                        );
-                    }
-                    _ => {} // Other instructions are OK
-                }
-            }
-        }
-        Ok(())
-    }
+
 
     /// Inline a single-block function
     fn inline_single_block_function(
@@ -554,9 +526,14 @@ impl ModuleInlining {
         &self,
         blocks: &[Block],
         param_mapping: &HashMap<Register, Operand>,
+        suffix: &str,
+        inline_id: usize,
     ) -> Result<Vec<Block>, String> {
         let mut renamed_blocks = Vec::new();
         let mut register_mapping = HashMap::new();
+        
+        // Base register offset unique to this inline instance (avoid conflicts)
+        let base_reg_offset = (inline_id + 1) * 10000;
 
         // First pass: collect all registers that need renaming
         for block in blocks {
@@ -565,9 +542,8 @@ impl ModuleInlining {
                     && !register_mapping.contains_key(dst)
                 {
                     // Generate a new virtual register for this destination
-                    // In a real implementation, we'd get this from a register allocator
                     let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(
-                        register_mapping.len() as u32 + 1000, // Offset to avoid conflicts
+                        (base_reg_offset + register_mapping.len()) as u32,
                     ));
                     register_mapping.insert(dst.clone(), new_reg);
                 }
@@ -577,7 +553,7 @@ impl ModuleInlining {
                         && !param_mapping.contains_key(use_reg)
                     {
                         let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(
-                            register_mapping.len() as u32 + 1000,
+                            (base_reg_offset + register_mapping.len()) as u32,
                         ));
                         register_mapping.insert(use_reg.clone(), new_reg);
                     }
@@ -587,7 +563,7 @@ impl ModuleInlining {
 
         // Second pass: clone and rename instructions
         for block in blocks {
-            let mut new_block = Block::new(format!("{}_inline", block.label));
+            let mut new_block = Block::new(format!("{}{}", block.label, suffix));
 
             for instr in &block.instructions {
                 let mut new_instr = instr.clone();
@@ -602,6 +578,22 @@ impl ModuleInlining {
                 // Rename used registers
                 self.rename_instruction_uses(&mut new_instr, &register_mapping, param_mapping)?;
 
+                // Rename jump targets to match the new block names
+                match &mut new_instr {
+                    Instruction::Jmp { target } => {
+                        *target = format!("{}{}", target, suffix);
+                    }
+                    Instruction::Br {
+                        true_target,
+                        false_target,
+                        ..
+                    } => {
+                        *true_target = format!("{}{}", true_target, suffix);
+                        *false_target = format!("{}{}", false_target, suffix);
+                    }
+                    _ => {}
+                }
+
                 new_block.push(new_instr);
             }
 
@@ -611,56 +603,98 @@ impl ModuleInlining {
         Ok(renamed_blocks)
     }
 
-    /// Replace the call instruction with inlined code
-    fn replace_call_with_inline(
-        &self,
-        call_block: &mut Block,
-        call_idx: usize,
-        inlined_blocks: &[Block],
-        call_instr: &Instruction,
-    ) -> Result<(), String> {
-        let mut new_instructions = Vec::new();
 
-        // Add instructions before the call
-        for instr in &call_block.instructions[..call_idx] {
-            new_instructions.push(instr.clone());
+
+    /// Inline a multi-block function
+    fn inline_multi_block_function(
+        &self,
+        call_site: &CallSite,
+        module: &mut Module,
+        callee_func: &Function,
+        param_mapping: &HashMap<Register, Operand>,
+    ) -> Result<(), String> {
+        let inline_id = self.next_inline_id();
+        let suffix = format!("_inline_{}_{}", call_site.callee, inline_id);
+        let mut inlined_blocks = self.clone_and_rename_blocks(&callee_func.blocks, param_mapping, &suffix, inline_id)?;
+
+        if inlined_blocks.is_empty() {
+             return Err("Callee has no blocks".to_string());
         }
 
-        // Replace call with inlined blocks
-        // For simplicity, inline all blocks sequentially
-        // A real implementation would need proper control flow handling
-        for block in inlined_blocks {
-            for instr in &block.instructions {
-                // Skip return instructions for now (simplified)
-                if !matches!(instr, Instruction::Ret { .. }) {
-                    new_instructions.push(instr.clone());
-                } else if let Instruction::Ret { value } = instr {
-                    // Replace return with assignment to call destination
-                    if let Instruction::Call {
-                        ret: Some(ret_reg), ..
-                    } = call_instr
-                        && let Some(return_val) = value
-                    {
-                        // Create assignment: ret_reg = return_val
-                        let assign_instr = Instruction::IntBinary {
-                            op: crate::mir::IntBinOp::Add,
-                            ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
-                            dst: ret_reg.clone(),
-                            lhs: return_val.clone(),
-                            rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
-                        };
-                        new_instructions.push(assign_instr);
-                    }
+        // Get call details and split block
+        let caller_func = module.functions.get_mut(&call_site.caller).unwrap();
+        let call_block_idx = caller_func.blocks.iter().position(|b| b.label == call_site.block_label)
+            .ok_or_else(|| "Call block not found".to_string())?;
+        
+        let call_block = &mut caller_func.blocks[call_block_idx];
+        
+        // Extract return register (before removing instruction)
+        let ret_reg = if let Instruction::Call { ret, .. } = &call_block.instructions[call_site.instr_idx] {
+            ret.clone()
+        } else {
+            return Err("Expected Call instruction".to_string());
+        };
+
+        // Split instructions
+        let mut post_call_instrs = call_block.instructions.split_off(call_site.instr_idx + 1);
+        call_block.instructions.pop(); // Remove the Call instruction
+
+        // Create split block (continuation) - use inline_id for uniqueness
+        let split_label = format!("{}_split_{}", call_site.block_label, inline_id);
+        let mut split_block = Block::new(split_label.clone());
+        split_block.instructions.append(&mut post_call_instrs);
+
+        // 1. Wire Caller -> Callee Entry
+        // Find the actual entry block by looking for "entry" (the standard entry block name in lamina)
+        let expected_entry = format!("entry{}", suffix);
+        let callee_entry_target = inlined_blocks.iter()
+            .find(|b| b.label == expected_entry)
+            .map(|b| b.label.clone())
+            .unwrap_or_else(|| inlined_blocks[0].label.clone()); // Fallback to first block
+        call_block.instructions.push(Instruction::Jmp { target: callee_entry_target });
+
+        // 2. Wire Callee Returns -> Split Block
+        for block in &mut inlined_blocks {
+            if let Some(mut last_instr) = block.instructions.pop() {
+                if let Instruction::Ret { value } = last_instr {
+                     if let Some(val) = value {
+                         if let Some(dst) = &ret_reg {
+                             // Assign return value to call result register
+                             block.instructions.push(Instruction::IntBinary {
+                                 op: crate::mir::IntBinOp::Add,
+                                 ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                                 dst: dst.clone(),
+                                 lhs: val,
+                                 rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                             });
+                         }
+                     }
+                     // Jump to split block
+                     block.instructions.push(Instruction::Jmp { target: split_label.clone() });
+                } else {
+                    // Not a return? Put it back.
+                    block.instructions.push(last_instr);
+                    
+                    // If it was a terminator like Br/Jmp, it stays. 
+                    // But if it was Ret, we replaced it.
+                    // If it ends with something else (impossible in valid MIR? Block must terminate),
+                    // we assume valid MIR.
                 }
             }
         }
 
-        // Add instructions after the call
-        for instr in &call_block.instructions[call_idx + 1..] {
-            new_instructions.push(instr.clone());
+        // Insert new blocks into caller
+        // Order: [Caller Part 1] -> [Inlined Blocks...] -> [Caller Part 2 (Split)]
+        // We insert split_block first at idx+1
+        caller_func.blocks.insert(call_block_idx + 1, split_block);
+        
+        // Insert inlined blocks
+        let mut insert_pos = call_block_idx + 1;
+        for block in inlined_blocks {
+            caller_func.blocks.insert(insert_pos, block);
+            insert_pos += 1;
         }
 
-        call_block.instructions = new_instructions;
         Ok(())
     }
 
@@ -806,10 +840,82 @@ impl ModuleInlining {
     }
 }
 
+
+
 #[derive(Debug)]
 struct CallSite {
     caller: String,
     callee: String,
     block_label: String,
     instr_idx: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg};
+
+    #[test]
+    fn test_inline_multi_block() {
+        let mut module = Module::new("test_module");
+
+        // Callee: 2 blocks
+        // entry:
+        //   v0 = add p0, 1
+        //   jmp exit
+        // exit:
+        //   ret v0
+        let mut callee = FunctionBuilder::new("callee")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()), // p0 is v0 (param 0)
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::Jmp { target: "exit".to_string() })
+            .block("exit")
+            .instr(Instruction::Ret { value: Some(Operand::Register(VirtualReg::gpr(0).into())) })
+            .build();
+        // Fix param reg
+        callee.sig.params[0].reg = VirtualReg::gpr(0).into();
+        
+        module.add_function(callee);
+
+        // Caller:
+        // entry:
+        //   v1 = call callee(10)
+        //   ret v1
+        let mut caller = FunctionBuilder::new("caller")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Call {
+                name: "callee".to_string(),
+                args: vec![Operand::Immediate(Immediate::I64(10))],
+                ret: Some(VirtualReg::gpr(1).into()),
+            })
+            .instr(Instruction::Ret { value: Some(Operand::Register(VirtualReg::gpr(1).into())) })
+            .build();
+        
+        module.add_function(caller);
+
+        let inline_pass = ModuleInlining::new();
+        let count = inline_pass.inline_functions(&mut module).expect("Inlining failed");
+
+        assert!(count > 0, "Should have inlined 1 function");
+
+        let caller = module.functions.get("caller").unwrap();
+        // Should have at least 3 blocks: entry, entry_inline..., exit_inline..., entry_split
+        // Actually Multi-Block inlining splits entry -> Entry, Split. And inserts CalleeEntry, CalleeExit.
+        // Total 4 blocks.
+        println!("Caller blocks: {:?}", caller.blocks.iter().map(|b| &b.label).collect::<Vec<_>>());
+        assert!(caller.blocks.len() >= 3);
+
+        // Verify Call is gone
+        let has_call = caller.blocks.iter().any(|b| b.instructions.iter().any(|i| matches!(i, Instruction::Call { .. })));
+        assert!(!has_call, "Call instruction should be removed");
+    }
 }

@@ -286,23 +286,7 @@ impl CopyPropagation {
         false
     }
 
-    /// Extract the type from an instruction for use in replacement instructions
-    fn extract_instruction_type(&self, instr: &Instruction) -> MirType {
-        match instr {
-            Instruction::IntBinary { ty, .. }
-            | Instruction::FloatBinary { ty, .. }
-            | Instruction::FloatUnary { ty, .. }
-            | Instruction::IntCmp { ty, .. }
-            | Instruction::FloatCmp { ty, .. }
-            | Instruction::Select { ty, .. }
-            | Instruction::Load { ty, .. }
-            | Instruction::Store { ty, .. }
-            | Instruction::VectorOp { ty, .. } => *ty,
-            // For other instructions that don't have explicit types, default to I64
-            // This should be rare and these instructions probably shouldn't be CSE'd
-            _ => MirType::Scalar(ScalarType::I64),
-        }
-    }
+
 }
 
 /// Constant folding that evaluates constant expressions at compile time.
@@ -564,9 +548,7 @@ impl CommonSubexpressionElimination {
         false
     }
 
-    fn eliminate_in_block(&self, block: &mut Block) -> bool {
-        self.eliminate_in_block_conservative(block, false)
-    }
+
 
     fn is_simple_cse_candidate(&self, instr: &Instruction) -> bool {
         // Only allow simple arithmetic operations for CSE in loop bodies
