@@ -88,93 +88,16 @@ impl StrengthReduction {
     fn reduce_multiplication(
         &self,
         op: &mut IntBinOp,
-        lhs: &mut Operand,
+        _lhs: &mut Operand,
         rhs: &mut Operand,
         rhs_const: Option<i64>,
-        ty: &MirType,
+        _ty: &MirType,
     ) -> bool {
         if let Some(power_of_2) = rhs_const.and_then(is_power_of_2) {
             // x * 2^k → x << k
             *op = IntBinOp::Shl;
             *rhs = Operand::Immediate(Immediate::I64(power_of_2));
             return true;
-        }
-
-        // Enhanced patterns for matrix operations and array indexing
-        if let Some(const_val) = rhs_const {
-            if let Some((_shift, _add)) = decompose_multiplication(const_val) {
-                // For constants that can be decomposed into shift + add
-                // This is particularly useful for matrix strides and array indexing
-                // Note: This would require instruction sequence changes, which we can't do here
-                // But we can optimize the simpler cases
-            }
-
-            // Common matrix/array indexing patterns: multiply by small constants
-            match const_val {
-                3 | 5 | 6 | 7 | 9 | 10 | 11 | 12 | 13 | 14 | 15 => {
-                    // These can be optimized to shift-and-add sequences
-                    // For now, we recognize them but don't transform (would need multiple instructions)
-                    // This serves as a hint for backend optimization
-                    return false;
-                }
-                16 | 32 | 64 | 128 | 256 => {
-                    // Powers of 2 that we already handle above
-                    return false;
-                }
-                17 | 18 | 19 | 20 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 => {
-                    // These are close to powers of 2 and could benefit from lea-like instructions
-                    // on x86 (base + index*scale + offset)
-                    return false;
-                }
-                _ => {
-                    // For larger constants, check if they're products of small factors
-                    if const_val > 0 && const_val < 1000 {
-                        // Check for patterns like (x << a) + (x << b) + x*c
-                        // This is common in matrix operations
-                        return false;
-                    }
-                }
-            }
-        }
-
-        // Check for multiplication by constants that can be strength reduced
-        if let Some(const_val) = rhs_const {
-            // Handle common constants that appear in matrix operations and algorithms
-            match const_val {
-                // Simple cases that are clearly beneficial
-                3 | 5 | 6 | 9 | 10 | 12 | 15 | 18 | 20 | 24 | 25 | 27 | 30 | 36 | 40 | 45 | 48
-                | 50 | 54 | 60 | 72 | 75 | 80 | 81 | 90 | 96 | 100 | 108 | 120 | 125 | 128
-                | 135 | 144 | 150 | 160 | 162 | 180 | 192 | 200 | 216 | 225 | 240 | 243 | 250
-                | 256 | 270 | 288 | 300 | 320 | 324 | 360 | 375 | 384 | 400 | 432 | 450 | 480
-                | 486 | 500 | 512 | 540 | 576 | 600 | 625 | 640 | 648 | 720 | 729 | 750 | 768
-                | 800 | 810 | 864 | 900 | 960 | 972 | 1000 | 1024 => {
-                    // These constants can be decomposed into shifts and adds
-                    // For now, we leave them as multiplications since the current IR
-                    // doesn't support generating multiple instructions from one.
-                    // However, this serves as documentation of what could be optimized.
-                    return false;
-                }
-                _ => {
-                    // Check for decompositions into sum of powers of 2
-                    if let Some((_shift1, _shift2)) = decompose_multiplication(const_val) {
-                        // Could potentially generate: (x << shift1) + (x << shift2)
-                        // but current IR structure doesn't support this easily.
-                        // Leave for future enhancement when we have instruction combining.
-                        return false;
-                    }
-
-                    // Check for multiplication by negative constants
-                    if const_val < 0 {
-                        let abs_val = const_val.abs();
-                        if let Some(_power_of_2) = is_power_of_2(abs_val) {
-                            // x * (-2^k) → -(x << k)
-                            // This would require changing the instruction significantly
-                            // Leave for now as it's complex to implement safely
-                            return false;
-                        }
-                    }
-                }
-            }
         }
 
         false
@@ -254,30 +177,7 @@ fn is_power_of_2(n: i64) -> Option<i64> {
     }
 }
 
-/// Decompose a multiplication constant into shift operations
-/// Returns (shift1, shift2) for expressions like (x << shift1) + (x << shift2)
-/// This is useful for constants like 3 = (1 << 0) + (1 << 1), 5 = (1 << 0) + (1 << 2), etc.
-fn decompose_multiplication(n: i64) -> Option<(i64, i64)> {
-    if n <= 1 {
-        return None;
-    }
 
-    // Find two powers of 2 that sum to n
-    for i in 0..64 {
-        let pow_i = 1i64 << i;
-        if pow_i >= n {
-            break;
-        }
-        for j in (i + 1)..64 {
-            let pow_j = 1i64 << j;
-            if pow_i + pow_j == n {
-                return Some((i, j));
-            }
-        }
-    }
-
-    None
-}
 
 /// Extract integer constant from operand
 fn extract_constant(operand: &Operand) -> Option<i64> {
@@ -297,19 +197,7 @@ mod tests {
         FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
     };
 
-    #[test]
-    fn test_power_of_2_detection() {
-        assert_eq!(is_power_of_2(1), Some(0)); // 2^0 = 1
-        assert_eq!(is_power_of_2(2), Some(1)); // 2^1 = 2
-        assert_eq!(is_power_of_2(4), Some(2)); // 2^2 = 4
-        assert_eq!(is_power_of_2(8), Some(3)); // 2^3 = 8
-        assert_eq!(is_power_of_2(16), Some(4)); // 2^4 = 16
 
-        assert_eq!(is_power_of_2(0), None); // 0 is not positive
-        assert_eq!(is_power_of_2(3), None); // 3 is not a power of 2
-        assert_eq!(is_power_of_2(6), None); // 6 is not a power of 2
-        assert_eq!(is_power_of_2(-1), None); // Negative numbers
-    }
 
     #[test]
     fn test_multiplication_by_power_of_2() {
