@@ -1,10 +1,3 @@
-//! Ignored integration test that compiles and runs the 2Dmatmul benchmark
-//! with various optimization levels and validates its output.
-//!
-//! Enable with:
-//!   cargo test --test bench_2dmatmul -- --ignored --nocapture
-//! Requires: clang toolchain on PATH
-
 use std::process::Command;
 use std::str;
 
