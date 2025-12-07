@@ -23,7 +23,7 @@ pub use branch_opt::BranchOptimization;
 pub use cfg::{CfgSimplify, JumpThreading};
 pub use deadcode::DeadCodeElimination;
 pub use inline::{FunctionInlining, ModuleInlining};
-pub use loop_opt::{LoopFusion, LoopInvariantCodeMotion, LoopUnrolling};
+pub use loop_opt::{LoopInvariantCodeMotion, LoopUnrolling};
 pub use memory::MemoryOptimization;
 pub use motion::{CommonSubexpressionElimination, ConstantFolding, CopyPropagation};
 pub use peephole::Peephole;
@@ -126,36 +126,39 @@ impl TransformPipeline {
         }
 
         if opt_level >= 2 {
-            // O2 transforms disabled - investigating infinite loops in generated code
-            // ConstantFolding disabled - may be incorrectly folding loop conditions
+            // O2 transforms
             pipeline = pipeline.add_transform(ConstantFolding);
             // AddressingCanonicalization disabled - x86_64 backend doesn't support BaseIndexScale
             // pipeline = pipeline.add_transform(AddressingCanonicalization);
-            // MemoryOptimization disabled - investigating hangs
-            // pipeline = pipeline.add_transform(MemoryOptimization);
-            // DeadCodeElimination disabled - intra-block analysis can incorrectly remove needed code
-            // pipeline = pipeline.add_transform(DeadCodeElimination);
-            // TailCallOptimization disabled - can create infinite loops if misapplied
+            
+            // MemoryOptimization
+            pipeline = pipeline.add_transform(MemoryOptimization);
+            
+            // DeadCodeElimination enabled with proper Liveness Analysis
+            pipeline = pipeline.add_transform(DeadCodeElimination);
+            
             pipeline = pipeline.add_transform(TailCallOptimization);
-            // Peephole disabled - comparison optimizations can break loop termination
             pipeline = pipeline.add_transform(Peephole);
             // CopyPropagation disabled - can cause cycles with other transforms
-            pipeline = pipeline.add_transform(CopyPropagation);
+            // pipeline = pipeline.add_transform(CopyPropagation);
         }
 
         if opt_level >= 3 {
             pipeline = pipeline.add_transform(StrengthReduction);
-            pipeline = pipeline.add_transform(FunctionInlining);
-            // DeadCodeElimination disabled - intra-block analysis is unsafe without inter-block liveness
-            // pipeline = pipeline.add_transform(DeadCodeElimination);
-            // CSE re-enabled with conservative settings
+            // FunctionInlining disabled - causes duplicate label conflicts
+            // pipeline = pipeline.add_transform(FunctionInlining);
+            
+            // Run DCE again after strength reduction
+            pipeline = pipeline.add_transform(DeadCodeElimination);
+            
+            // CSE
             pipeline = pipeline.add_transform(CommonSubexpressionElimination);
-            // InstructionScheduling re-enabled (currently no-op but safe)
-            pipeline = pipeline.add_transform(InstructionScheduling);
-            // LoopUnrolling disabled - causing correctness issues
+            // Loop optimizations
+            // pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
             // pipeline = pipeline.add_transform(LoopUnrolling);
-            // LoopFusion still disabled due to complexity
-            // pipeline = pipeline.add_transform(LoopFusion);
+            
+            // InstructionScheduling
+            pipeline = pipeline.add_transform(InstructionScheduling);
         }
 
         pipeline
@@ -277,7 +280,7 @@ impl Default for TransformPipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{Function, FunctionBuilder, MirType, ScalarType, VirtualReg};
+    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
     #[test]
     fn test_transform_pipeline_empty() {
