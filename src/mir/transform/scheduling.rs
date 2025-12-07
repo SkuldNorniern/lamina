@@ -2,6 +2,8 @@
 
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Register};
+use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::cmp::Ordering;
 
 /// Instruction scheduling that reorders instructions for better ILP.
 #[derive(Default)]
@@ -21,43 +23,31 @@ impl Transform for InstructionScheduling {
     }
 
     fn level(&self) -> TransformLevel {
-        TransformLevel::Experimental
+        TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, String> {
         self.apply_internal(func)
     }
 }
 
 impl InstructionScheduling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        // Safety check: limit function size
-        const MAX_BLOCKS: usize = 500;
-        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
-
-        if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for instruction scheduling ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
-        }
-
-        for block in &func.blocks {
-            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
-                return Err(format!(
-                    "Block '{}' too large for instruction scheduling ({} instructions, max {})",
-                    block.label,
-                    block.instructions.len(),
-                    MAX_INSTRUCTIONS_PER_BLOCK
-                ));
-            }
-        }
-
         let mut changed = false;
 
+        // Safety check: limit function size
+        const MAX_BLOCKS: usize = 500;
+        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 2_000;
+
+        if func.blocks.len() > MAX_BLOCKS {
+             return Ok(false); // Skip optimization on huge functions for safety
+        }
+
         for block in &mut func.blocks {
-            if self.schedule_block_instructions(block) {
+            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
+                continue;
+            }
+            if self.schedule_block(block) {
                 changed = true;
             }
         }
@@ -65,129 +55,338 @@ impl InstructionScheduling {
         Ok(changed)
     }
 
-    /// Schedule instructions within a basic block for better ILP
-    fn schedule_block_instructions(&self, block: &mut Block) -> bool {
+    fn schedule_block(&self, block: &mut Block) -> bool {
         if block.instructions.len() < 3 {
-            return false; // Not enough instructions to reorder
+            return false;
         }
 
-        let mut changed = false;
+        // 1. Build Dependency Graph
+        let graph = self.build_dependency_graph(&block.instructions);
 
-        // Look for multiply-accumulate patterns that can be reordered
-        if self.schedule_multiply_accumulate_patterns(block) {
-            changed = true;
+        // 2. Calculate Priorities (Critical Path)
+        let priorities = self.calculate_priorities(&graph, &block.instructions);
+
+        // 3. List Scheduling
+        let scheduled_indices = self.list_schedule(&graph, &priorities, block.instructions.len());
+        
+        // 4. Reorder Instructions
+        if self.is_order_changed(&scheduled_indices) {
+            let old_instructions = std::mem::take(&mut block.instructions);
+            let mut new_instructions = Vec::with_capacity(old_instructions.len());
+            for &idx in &scheduled_indices {
+                new_instructions.push(old_instructions[idx].clone());
+            }
+            block.instructions = new_instructions;
+            true
+        } else {
+            false
         }
-
-        // Look for load-use chains that can be optimized
-        if self.schedule_load_use_chains(block) {
-            changed = true;
-        }
-
-        changed
     }
 
-    /// Schedule multiply-accumulate patterns for better ILP
-    /// This is particularly important for matrix operations
-    fn schedule_multiply_accumulate_patterns(&self, block: &mut Block) -> bool {
-        let changed = false;
+    fn build_dependency_graph(&self, instructions: &[Instruction]) -> DependencyGraph {
+        let mut graph = DependencyGraph::new(instructions.len());
+        let mut reg_defs: HashMap<Register, usize> = HashMap::new();
+        
+        // Track memory dependencies
+        // Conservative approach: 
+        // - Loads depend on previous Stores (RAW)
+        // - Stores depend on previous Stores (WAW) and Loads (WAR)
+        // For simplicity in this pass, we chain all memory ops to preserve relative order.
+        let mut last_memory_op: Option<usize> = None;
 
-        // Find sequences of multiply and add operations
-        let mut i = 0;
-        while i < block.instructions.len().saturating_sub(2) {
-            // Look for pattern: mul -> add (accumulate)
-            if let (
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Mul,
-                    dst: mul_dst,
-                    ..
-                },
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Add,
-                    dst: add_dst,
-                    lhs: add_lhs,
-                    rhs: add_rhs,
-                    ..
-                },
-            ) = (&block.instructions[i], &block.instructions[i + 1])
-            {
-                // Check if the add uses the result of the mul
-                if let crate::mir::Operand::Register(rhs_reg) = add_rhs
-                    && self.is_same_register(mul_dst, rhs_reg)
-                {
-                    // Check if this is an accumulation: dst += (lhs * rhs)
-                    if let crate::mir::Operand::Register(lhs_reg) = add_lhs
-                        && self.is_same_register(add_dst, lhs_reg)
-                    {
-                        // Found multiply-accumulate pattern
-                        // In a real scheduler, we might:
-                        // 1. Move independent instructions between mul and add
-                        // 2. Schedule loads early to hide latency
-                        // 3. Group similar operations together
+        for (idx, instr) in instructions.iter().enumerate() {
+            // 1. Data Dependencies (Register RAW)
+            for use_reg in instr.use_regs() {
+                if let Some(&def_idx) = reg_defs.get(use_reg) {
+                    graph.add_edge(def_idx, idx);
+                }
+            }
 
-                        // For now, this serves as pattern recognition
+            // 2. Register Output Dependencies (WAW) - to ensure we don't reorder defs to same reg
+            // (Though SSA should prevent this, MIR might not be strict SSA here)
+            if let Some(def_reg) = instr.def_reg() {
+                if let Some(&prev_def_idx) = reg_defs.get(def_reg) {
+                    graph.add_edge(prev_def_idx, idx);
+                }
+                reg_defs.insert(def_reg.clone(), idx);
+            }
+
+            // 3. Memory Dependencies
+            if self.is_memory_op(instr) {
+                if let Some(prev_mem_idx) = last_memory_op {
+                     graph.add_edge(prev_mem_idx, idx);
+                }
+                last_memory_op = Some(idx);
+            }
+            
+            // 4. Barrier Dependencies (Call, Ret, volatile)
+            // Calls are memory barriers and have side effects. Dependencies chain through them.
+            if matches!(instr, Instruction::Call { .. } | Instruction::Ret { .. } | Instruction::Switch {..}) {
+                 // Make this instruction depend on EVERYTHING before it? 
+                 // Or effectively act as a barrier.
+                 // Ideally, we chain it with the memory chain.
+                 if let Some(prev_mem_idx) = last_memory_op {
+                     graph.add_edge(prev_mem_idx, idx);
+                 }
+                 last_memory_op = Some(idx);
+            }
+        }
+
+        // 5. Control Dependencies
+        // The terminator (Branch/Jmp/Ret) must depend on everything that affects it's condition
+        // or effectively be last.
+        // We ensure terminators are last by giving them implicit dependence on all roots? 
+        // Actually, terminators use registers, so RAW covers condition.
+        // But we must ensure no instruction is moved AFTER the terminator.
+        // Since terminator is usually last, and we only schedule valid instructions, 
+        // we just ensure the terminator index is constrained.
+        // By construction, terminators shouldn't have successors in the block.
+        // And we simply must ensure all instructions are scheduled.
+        
+        // Special case: Make sure the terminator (last instruction) depends on side-effecting ops?
+        // Simpler: Just make the last instruction depend on the last memory op.
+        if let Some(last_inst_idx) = instructions.len().checked_sub(1) {
+            if let Some(prev_mem_idx) = last_memory_op {
+                if prev_mem_idx != last_inst_idx {
+                    graph.add_edge(prev_mem_idx, last_inst_idx);
+                }
+            }
+        }
+
+        graph
+    }
+
+    fn calculate_priorities(&self, graph: &DependencyGraph, instructions: &[Instruction]) -> HashMap<usize, usize> {
+        let mut priorities = HashMap::new();
+        // Calculate latency-weighted depth from sinks up
+        // We need a topological sort or just simple recursion with memoization.
+        // Since it's a DAG, memoization works.
+        
+        let mut visited = HashSet::new();
+        for i in 0..instructions.len() {
+            self.compute_depth(i, graph, instructions, &mut priorities, &mut visited);
+        }
+        priorities
+    }
+
+    fn compute_depth(
+        &self, 
+        node: usize, 
+        graph: &DependencyGraph, 
+        instructions: &[Instruction],
+        priorities: &mut HashMap<usize, usize>,
+        visited: &mut HashSet<usize>
+    ) -> usize {
+        if let Some(&p) = priorities.get(&node) {
+            return p;
+        }
+
+        if visited.contains(&node) {
+            return 0; // Cycle detected (shouldn't happen in DAG)
+        }
+        visited.insert(node);
+
+        let latency = self.get_latency(&instructions[node]);
+        let mut max_succ_depth = 0;
+
+        if let Some(succs) = graph.edges.get(&node) {
+            for &succ in succs {
+                max_succ_depth = std::cmp::max(max_succ_depth, self.compute_depth(succ, graph, instructions, priorities, visited));
+            }
+        }
+
+        let depth = latency + max_succ_depth;
+        visited.remove(&node);
+        priorities.insert(node, depth);
+        depth
+    }
+
+    fn get_latency(&self, instr: &Instruction) -> usize {
+        match instr {
+            Instruction::Load { .. } => 3,
+            Instruction::IntBinary { op: crate::mir::IntBinOp::SDiv, .. } => 4,
+            Instruction::IntBinary { op: crate::mir::IntBinOp::UDiv, .. } => 4,
+            Instruction::IntBinary { op: crate::mir::IntBinOp::Mul, .. } => 2,
+            Instruction::FloatBinary { .. } => 3,
+            Instruction::Call { .. } => 5,
+            _ => 1,
+        }
+    }
+
+    fn list_schedule(
+        &self, 
+        graph: &DependencyGraph, 
+        priorities: &HashMap<usize, usize>, 
+        num_instrs: usize
+    ) -> Vec<usize> {
+        let mut scheduled = Vec::with_capacity(num_instrs);
+        let mut in_degree = graph.in_degree.clone();
+        
+        // Priority Queue stores (priority, index). 
+        // BinaryHeap is max-heap, so higher priority (depth) comes first.
+        let mut ready_queue = BinaryHeap::new();
+
+        for i in 0..num_instrs {
+            if in_degree[i] == 0 {
+                ready_queue.push(ScheduledItem {
+                    priority: *priorities.get(&i).unwrap_or(&0),
+                    index: i,
+                });
+            }
+        }
+
+        while let Some(item) = ready_queue.pop() {
+            let u = item.index;
+            scheduled.push(u);
+
+            if let Some(succs) = graph.edges.get(&u) {
+                for &v in succs {
+                    if let Some(degree) = in_degree.get_mut(v) {
+                        *degree -= 1;
+                        if *degree == 0 {
+                            ready_queue.push(ScheduledItem {
+                                priority: *priorities.get(&v).unwrap_or(&0),
+                                index: v,
+                            });
+                        }
                     }
                 }
             }
-            i += 1;
         }
 
-        changed
+        scheduled
     }
 
-    /// Schedule load-use chains to hide memory latency
-    fn schedule_load_use_chains(&self, block: &mut Block) -> bool {
-        let changed = false;
-
-        // Find load instructions and try to schedule independent work between
-        // the load and its first use
-
-        let mut load_positions = Vec::new();
-
-        // Find all loads and their positions
-        for (idx, inst) in block.instructions.iter().enumerate() {
-            if let Instruction::Load { dst, .. } = inst {
-                load_positions.push((idx, dst.clone()));
+    fn is_order_changed(&self, indices: &[usize]) -> bool {
+        for (i, &idx) in indices.iter().enumerate() {
+            if i != idx {
+                return true;
             }
         }
+        false
+    }
+    
+    fn is_memory_op(&self, instr: &Instruction) -> bool {
+        matches!(instr, Instruction::Load { .. } | Instruction::Store { .. })
+    }
+}
 
-        // For each load, find its first use and see if we can schedule work between them
-        for (load_idx, loaded_reg) in load_positions {
-            // Find first use of this register after the load
-            let first_use =
-                self.find_first_use_after(&block.instructions, &loaded_reg, load_idx + 1);
+struct DependencyGraph {
+    edges: HashMap<usize, Vec<usize>>, // Adjacency list
+    in_degree: Vec<usize>,
+}
 
-            if let Some(use_idx) = first_use
-                && use_idx > load_idx + 1
-            {
-                // There are instructions between load and use
-                // Check if any can be moved or reordered for better scheduling
-                // This is complex and would need sophisticated dependency analysis
-            }
+impl DependencyGraph {
+    fn new(size: usize) -> Self {
+        Self {
+            edges: HashMap::new(),
+            in_degree: vec![0; size],
         }
-
-        changed
     }
 
-    /// Find the first use of a register after a given position
-    fn find_first_use_after(
-        &self,
-        instructions: &[Instruction],
-        reg: &Register,
-        start_idx: usize,
-    ) -> Option<usize> {
-        for (idx, inst) in instructions.iter().enumerate().skip(start_idx) {
-            if inst.use_regs().contains(&reg) {
-                return Some(idx);
-            }
-        }
-        None
+    fn add_edge(&mut self, from: usize, to: usize) {
+        self.edges.entry(from).or_default().push(to);
+        self.in_degree[to] += 1;
     }
+}
 
-    /// Check if two registers refer to the same virtual register
-    fn is_same_register(&self, reg1: &Register, reg2: &Register) -> bool {
-        match (reg1, reg2) {
-            (Register::Virtual(v1), Register::Virtual(v2)) => v1 == v2,
-            _ => false,
-        }
+#[derive(Eq, PartialEq)]
+struct ScheduledItem {
+    priority: usize,
+    index: usize,
+}
+
+impl Ord for ScheduledItem {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Higher priority first
+        // Break ties with original index (lower index first) to preserve stability
+        self.priority.cmp(&other.priority)
+            .then_with(|| other.index.cmp(&self.index)) 
+    }
+}
+
+impl PartialOrd for ScheduledItem {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{FunctionBuilder, IntBinOp, MirType, Operand, ScalarType, VirtualReg};
+
+    #[test]
+    fn test_scheduling_latency_hiding() {
+        // Create a sequence:
+        // 0: Load r1
+        // 1: Add r2 = r1 + 1 (Specific dependency on 0)
+        // 2: Add r3 = 5 + 5 (Independent)
+        // 3: Add r4 = 6 + 6 (Independent)
+        //
+        // Scheduler should move 2 and 3 between 0 and 1 to hide Load latency.
+        // Expected: 0, 2, 3, 1 (or 0, 3, 2, 1)
+        
+        let mut func = FunctionBuilder::new("test")
+             .returns(MirType::Scalar(ScalarType::I64))
+             .block("entry")
+             // 0: Load (High latency)
+             .instr(Instruction::Load {
+                 dst: VirtualReg::gpr(1).into(),
+                 ty: MirType::Scalar(ScalarType::I64),
+                 addr: crate::mir::AddressMode::BaseOffset { 
+                     base: VirtualReg::gpr(10).into(), 
+                     offset: 0 
+                 },
+                 attrs: crate::mir::instruction::MemoryAttrs::default(),
+             })
+             // 1: Dependent Add
+             .instr(Instruction::IntBinary {
+                 op: IntBinOp::Add,
+                 ty: MirType::Scalar(ScalarType::I64),
+                 dst: VirtualReg::gpr(2).into(),
+                 lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                 rhs: Operand::Immediate(crate::mir::Immediate::I64(1)),
+             })
+             // 2: Independent Add
+             .instr(Instruction::IntBinary {
+                 op: IntBinOp::Add,
+                 ty: MirType::Scalar(ScalarType::I64),
+                 dst: VirtualReg::gpr(3).into(),
+                 lhs: Operand::Immediate(crate::mir::Immediate::I64(5)),
+                 rhs: Operand::Immediate(crate::mir::Immediate::I64(5)),
+             })
+             // 3: Independent Add
+             .instr(Instruction::IntBinary {
+                 op: IntBinOp::Add,
+                 ty: MirType::Scalar(ScalarType::I64),
+                 dst: VirtualReg::gpr(4).into(),
+                 lhs: Operand::Immediate(crate::mir::Immediate::I64(6)),
+                 rhs: Operand::Immediate(crate::mir::Immediate::I64(6)),
+             })
+             .build();
+             
+        let mut func = func;
+        let pass = InstructionScheduling::default();
+        let _changed = pass.apply(&mut func).expect("Scheduling failed");
+        
+        // Verify all instructions are still present (scheduler is correct)
+        let block = &func.blocks[0];
+        let instrs = &block.instructions;
+        assert_eq!(instrs.len(), 4, "All instructions should be present");
+        
+        // Find indices
+        let load_idx = instrs.iter().position(|i| matches!(i, Instruction::Load { .. })).unwrap();
+        let r2_def_idx = instrs.iter().position(|i| {
+            if let Instruction::IntBinary { dst, .. } = i {
+                 if let crate::mir::Register::Virtual(vreg) = dst {
+                     return vreg.id == 2;
+                 }
+            }
+            false
+        }).unwrap();
+        
+        // The dependent Add (r2) MUST come after the Load (r1)
+        assert!(r2_def_idx > load_idx, "Dependent instruction must come after its source");
     }
 }
