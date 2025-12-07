@@ -602,6 +602,71 @@ fn emit_instruction_x86_64(
                 )));
             }
         }
+        MirInst::TailCall { name, args } => {
+            let abi = X86ABI::new(target_os);
+            let arg_regs = abi.arg_registers();
+            let num_reg_args = args.len().min(arg_regs.len());
+            let num_stack_args = args.len().saturating_sub(arg_regs.len());
+
+            // 1. Handle Register Arguments
+            for i in 0..num_reg_args {
+                let arg = &args[i];
+                let dest_reg = arg_regs[i];
+                load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
+            }
+
+            // 2. Handle Stack Arguments (Overwrite incoming args)
+            // Note: TailCallOptimization ensures args.len() == current_func.args.len()
+            // So we can strictly overwrite our own incoming stack slots.
+            if num_stack_args > 0 {
+                let shadow_space = if target_os == TargetOperatingSystem::Windows {
+                    windows::SHADOW_SPACE_SIZE as usize
+                } else {
+                    0
+                };
+                
+                for i in 0..num_stack_args {
+                    let arg_idx = num_reg_args + i;
+                    let arg = &args[arg_idx];
+                    
+                    // Incoming args are at RBP + 16 + shadow + i*8
+                    // (Return address is 8, saved RBP pushed, so RBP points to saved RBP)
+                    // Wait:
+                    // Standard Prologue: push rbp; mov rbp, rsp
+                    // Stack:
+                    //   [RBP + 16 + shadow + 8*i] -> Arg N (Stack Arg i)
+                    //   [RBP + 8]  -> Return Address
+                    //   [RBP + 0]  -> Saved RBP
+                    //
+                    // So first stack arg is at RBP + 16 (on Linux/Mac) or RBP + 16 + 32 (Windows? No shadow is allocated by caller?)
+                    // Windows: Shadow space is 32 bytes allocated *by caller* right before return address?
+                    // No, shadow space is allocated by caller *above* return address?
+                    // Microsoft x64: "The caller allocates space for 4 register parameters..."
+                    // Stack: [RetAddr] [Home P1] [Home P2] [Home P3] [Home P4] [Stack Arg 5] ...
+                    // Wait, Home space is "Shadow Space". It's strictly for the first 4 args (which are in regs).
+                    // Stack args start *after* shadow space.
+                    // So RBP + 16 + 32 + i*8.
+                    
+                    let offset = 16 + shadow_space + (i * stack::SLOT_SIZE);
+                    
+                    // Load to RAX (scratch) first
+                    load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
+                    
+                    // Store to incoming slot
+                    writeln!(writer, "    movq %rax, {}(%rbp)", offset)?;
+                }
+            }
+
+            // 3. Teardown Frame (Epilogue without ret)
+            // Restore Stack Pointer
+            writeln!(writer, "    movq %rbp, %rsp")?;
+            // Restore Base Pointer
+            writeln!(writer, "    popq %rbp")?;
+
+            // 4. Jump to target
+            let mangled_name = abi.mangle_function_name(name);
+            writeln!(writer, "    jmp {}", mangled_name)?;
+        }
         MirInst::Lea { dst, base, offset } => {
             match base {
                 Register::Virtual(vreg) => {
