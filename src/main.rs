@@ -295,13 +295,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("MIR optimization failed: {}", e))?;
 
             // Apply function inlining at higher optimization levels
-            let mut inlined_count = 0;
-            if options.opt_level >= 3 {
-                let inliner = lamina::mir::ModuleInlining::new();
-                inlined_count = inliner
-                    .inline_functions(&mut mir_mod)
-                    .map_err(|e| format!("Function inlining failed: {}", e))?;
-            }
+            // ModuleInlining disabled - complex recursive functions cause control flow issues
+            let inlined_count = 0;
+            // if options.opt_level >= 3 {
+            //     let inliner = lamina::mir::ModuleInlining::new();
+            //     inlined_count = inliner
+            //         .inline_functions(&mut mir_mod)
+            //         .map_err(|e| format!("Function inlining failed: {}", e))?;
+            // }
 
             if options.verbose {
                 println!(
