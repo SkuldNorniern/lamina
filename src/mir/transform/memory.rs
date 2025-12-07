@@ -1,10 +1,10 @@
 //! Memory optimization transforms for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Operand, Register};
+use crate::mir::{Function, Instruction, Operand, Register};
 use std::collections::HashMap;
 
-/// Memory optimization transform performing redundant load elimination and access pattern optimization.
+/// Memory optimization transform performing redundant load elimination.
 #[derive(Default)]
 pub struct MemoryOptimization;
 
@@ -14,7 +14,7 @@ impl Transform for MemoryOptimization {
     }
 
     fn description(&self) -> &'static str {
-        "Optimizes memory operations including dead store elimination"
+        "Optimizes memory operations including redundant load elimination"
     }
 
     fn category(&self) -> TransformCategory {
@@ -35,10 +35,6 @@ impl MemoryOptimization {
         let mut changed = false;
 
         if self.forward_redundant_loads(func) {
-            changed = true;
-        }
-
-        if self.optimize_memory_access_patterns(func) {
             changed = true;
         }
 
@@ -137,108 +133,5 @@ impl MemoryOptimization {
         }
 
         changed
-    }
-
-    /// Optimize memory access patterns for matrix operations
-    /// This is a placeholder for future enhancements like:
-    /// - Reordering loads/stores for better cache locality
-    /// - Adding prefetch hints
-    /// - Optimizing strided access patterns
-    ///
-    /// Optimize memory access patterns for better cache performance
-    ///
-    /// This is particularly important for matrix operations
-    fn optimize_memory_access_patterns(&self, func: &mut Function) -> bool {
-        let mut changed = false;
-
-        // Analyze memory access patterns in loops
-        for block in &mut func.blocks {
-            if self.optimize_block_memory_patterns(block) {
-                changed = true;
-            }
-        }
-
-        changed
-    }
-
-    /// Optimize memory access patterns within a basic block
-    fn optimize_block_memory_patterns(&self, block: &mut Block) -> bool {
-        let changed = false;
-
-        // Look for patterns that suggest matrix operations
-        let mut load_addresses = Vec::new();
-        let mut store_addresses = Vec::new();
-
-        // Collect all memory operations in this block
-        for inst in &block.instructions {
-            match inst {
-                Instruction::Load { addr, .. } => {
-                    if let crate::mir::AddressMode::BaseOffset { base, offset } = addr {
-                        load_addresses.push((base.clone(), (*offset)));
-                    } else if let crate::mir::AddressMode::BaseIndexScale {
-                        base,
-                        index,
-                        scale,
-                        offset,
-                    } = addr
-                    {
-                        // Scaled indexing is common in matrix operations
-                        load_addresses.push((base.clone(), *offset as i16));
-                    }
-                }
-                Instruction::Store { addr, .. } => {
-                    if let crate::mir::AddressMode::BaseOffset { base, offset } = addr {
-                        store_addresses.push((base.clone(), (*offset)));
-                    } else if let crate::mir::AddressMode::BaseIndexScale {
-                        base,
-                        index,
-                        scale,
-                        offset,
-                    } = addr
-                    {
-                        store_addresses.push((base.clone(), *offset as i16));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        // Look for strided access patterns (common in matrices)
-        if self.detect_strided_access(&load_addresses)
-            || self.detect_strided_access(&store_addresses)
-        {
-            // This block has strided memory access patterns
-            // In a real implementation, we could add prefetch instructions here
-            // For now, this serves as pattern recognition for the backend
-        }
-
-        changed
-    }
-
-    /// Detect if memory accesses follow a strided pattern (common in matrices)
-    fn detect_strided_access(&self, addresses: &[(Register, i16)]) -> bool {
-        if addresses.len() < 3 {
-            return false; // Need at least 3 accesses to detect a pattern
-        }
-
-        // Check if addresses are accessing consecutive elements
-        // This is a simple heuristic for matrix row/column access
-        let mut sorted_offsets: Vec<i16> = addresses.iter().map(|(_, offset)| *offset).collect();
-        sorted_offsets.sort();
-        sorted_offsets.dedup();
-
-        // Look for arithmetic progressions (constant stride)
-        if sorted_offsets.len() >= 3 {
-            let stride = sorted_offsets[1] - sorted_offsets[0];
-            let expected_stride = sorted_offsets[2] - sorted_offsets[1];
-
-            if stride == expected_stride && stride != 0 {
-                // Found strided access pattern
-                // Common strides in matrix ops: 4 (i32), 8 (i64), etc.
-                return stride.abs() == 4 || stride.abs() == 8 || stride.abs() == 16;
-            }
-        }
-
-        false
     }
 }
