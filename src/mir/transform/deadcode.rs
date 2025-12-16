@@ -52,7 +52,7 @@ impl DeadCodeElimination {
         for block in &mut func.blocks {
             // Start with registers live at the end of the block
             let mut live_regs = live_out_map.get(&block.label).cloned().unwrap_or_default();
-            
+
             let removed = self.remove_dead_instructions_in_block(block, &mut live_regs);
             stats.instructions_removed += removed;
         }
@@ -61,10 +61,13 @@ impl DeadCodeElimination {
     }
 
     /// Compute liveness analysis (live-out sets for each block)
-    fn compute_liveness(&self, func: &Function) -> Result<HashMap<String, HashSet<Register>>, String> {
+    fn compute_liveness(
+        &self,
+        func: &Function,
+    ) -> Result<HashMap<String, HashSet<Register>>, String> {
         let mut live_in: HashMap<String, HashSet<Register>> = HashMap::new();
         let mut live_out: HashMap<String, HashSet<Register>> = HashMap::new();
-        
+
         // Initialize sets
         for block in &func.blocks {
             live_in.insert(block.label.clone(), HashSet::new());
@@ -85,7 +88,7 @@ impl DeadCodeElimination {
             // Process blocks in reverse order (heuristic for faster convergence)
             for block in func.blocks.iter().rev() {
                 let label = &block.label;
-                
+
                 // 1. Calculate LiveOut = Union(LiveIn(successors))
                 let mut current_live_out = HashSet::new();
                 if let Some(terminator) = block.instructions.last() {
@@ -95,7 +98,11 @@ impl DeadCodeElimination {
                                 current_live_out.extend(succ_live_in.iter().cloned());
                             }
                         }
-                        Instruction::Br { true_target, false_target, .. } => {
+                        Instruction::Br {
+                            true_target,
+                            false_target,
+                            ..
+                        } => {
                             if let Some(succ_live_in) = live_in.get(true_target) {
                                 current_live_out.extend(succ_live_in.iter().cloned());
                             }
@@ -151,7 +158,7 @@ impl DeadCodeElimination {
                 // Don't add to keep list
             } else {
                 instructions_to_keep.push(instr.clone());
-                
+
                 // Update liveness for the kept instruction
                 if let Some(def_reg) = instr.def_reg() {
                     live_regs.remove(def_reg);

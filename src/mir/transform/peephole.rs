@@ -1,7 +1,6 @@
 //! Peephole optimizations for MIR.
 
 use crate::mir::instruction::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
-use crate::mir::register::Register;
 use crate::mir::{Block, Function};
 
 use super::{Transform, TransformCategory, TransformLevel};
@@ -73,27 +72,16 @@ impl Peephole {
     /// Try to optimize a single instruction through various peephole patterns
     fn try_optimize_instruction(&self, inst: &mut Instruction, in_loop_block: bool) -> bool {
         match inst {
-            Instruction::IntBinary {
-                op,
-                lhs,
-                rhs,
-                ..
-            } => self.try_fold_int_binary(op, lhs, rhs),
+            Instruction::IntBinary { op, lhs, rhs, .. } => self.try_fold_int_binary(op, lhs, rhs),
             Instruction::IntCmp { .. } => self.try_fold_int_cmp(inst),
-            Instruction::FloatUnary {
-                op,
-                src,
-                ..
-            } => self.try_fold_float_unary(op, src),
+            Instruction::FloatUnary { op, src, .. } => self.try_fold_float_unary(op, src),
             Instruction::Select {
                 cond,
                 true_val,
                 false_val,
                 ..
             } => self.try_fold_select(cond, true_val, false_val),
-            Instruction::Call { name, args, .. } => {
-                self.try_optimize_intrinsic_call(name, args)
-            }
+            Instruction::Call { name, args, .. } => self.try_optimize_intrinsic_call(name, args),
             _ => false,
         }
     }
@@ -211,11 +199,12 @@ impl Peephole {
             // But if it's a pure power of 2, we can convert to shift.
             // decompose_multiplication handles "complex" decompositions which require adding instructions.
             // For simple power of 2:
-             if add_val == 0 { // Just shift
-                 *op = IntBinOp::Shl;
-                 *rhs = Operand::Immediate(Immediate::I64(shift as i64));
-                 return true;
-             }
+            if add_val == 0 {
+                // Just shift
+                *op = IntBinOp::Shl;
+                *rhs = Operand::Immediate(Immediate::I64(shift as i64));
+                return true;
+            }
         }
 
         // Power of 2 check directly
@@ -452,12 +441,12 @@ impl Peephole {
                     IntCmpOp::UGt => (c1 as u64) > (c2 as u64),
                     IntCmpOp::UGe => (c1 as u64) >= (c2 as u64),
                 };
-                
+
                 // Replace with IntBinary Add 0 (Move)
                 let result_val = if result { 1 } else { 0 };
                 *inst = Instruction::IntBinary {
                     op: IntBinOp::Add,
-                    ty: ty.clone(),
+                    ty: *ty,
                     dst: dst.clone(),
                     lhs: Operand::Immediate(Immediate::I64(result_val)),
                     rhs: Operand::Immediate(Immediate::I64(0)),
@@ -555,9 +544,9 @@ fn decompose_multiplication(const_val: i64) -> Option<(u32, i64)> {
     if abs_val > 0 && (abs_val & (abs_val - 1)) == 0 {
         return Some((abs_val.trailing_zeros(), 0));
     }
-    // We can support simple shifts + add/sub. 
+    // We can support simple shifts + add/sub.
     // This is primarily useful if we can replace the MUL instruction with a sequence,
-    // which Peephole isn't well equipped for (1->N expansion). 
+    // which Peephole isn't well equipped for (1->N expansion).
     // So we return None for now unless it's a pure shift (handled above).
     None
 }
@@ -625,7 +614,7 @@ mod tests {
 
         let pass = Peephole::default();
         let changed = pass.run_on_function(&mut func);
-        assert!(!changed); 
+        assert!(!changed);
     }
 
     #[test]
