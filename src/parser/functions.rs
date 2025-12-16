@@ -130,11 +130,9 @@ pub fn parse_basic_block<'a>(
     loop {
         state.skip_whitespace_and_comments();
         let _current_pos = state.position();
-        if state.parse_label_identifier().is_ok() {
-            if state.current_char() == Some(':') {
-                state.set_position(_current_pos);
-                break;
-            }
+        if state.parse_label_identifier().is_ok() && state.current_char() == Some(':') {
+            state.set_position(_current_pos);
+            break;
         }
         state.set_position(_current_pos);
 

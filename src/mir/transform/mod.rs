@@ -130,13 +130,13 @@ impl TransformPipeline {
             pipeline = pipeline.add_transform(ConstantFolding);
             // AddressingCanonicalization disabled - x86_64 backend doesn't support BaseIndexScale
             // pipeline = pipeline.add_transform(AddressingCanonicalization);
-            
+
             // MemoryOptimization
             pipeline = pipeline.add_transform(MemoryOptimization);
-            
+
             // DeadCodeElimination enabled with proper Liveness Analysis
             pipeline = pipeline.add_transform(DeadCodeElimination);
-            
+
             pipeline = pipeline.add_transform(TailCallOptimization);
             pipeline = pipeline.add_transform(Peephole);
             // CopyPropagation disabled - can cause cycles with other transforms
@@ -147,16 +147,16 @@ impl TransformPipeline {
             pipeline = pipeline.add_transform(StrengthReduction);
             // FunctionInlining disabled - causes duplicate label conflicts
             // pipeline = pipeline.add_transform(FunctionInlining);
-            
+
             // Run DCE again after strength reduction
             pipeline = pipeline.add_transform(DeadCodeElimination);
-            
+
             // CSE
             pipeline = pipeline.add_transform(CommonSubexpressionElimination);
             // Loop optimizations
             // pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
             // pipeline = pipeline.add_transform(LoopUnrolling);
-            
+
             // InstructionScheduling
             pipeline = pipeline.add_transform(InstructionScheduling);
         }

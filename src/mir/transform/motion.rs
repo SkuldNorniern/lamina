@@ -96,12 +96,10 @@ impl CopyPropagation {
                 rhs,
                 ..
             } = &new_instr
+                && let Operand::Immediate(Immediate::I64(0)) = rhs
+                && let Operand::Register(src_reg) = lhs
             {
-                if let Operand::Immediate(Immediate::I64(0)) = rhs
-                    && let Operand::Register(src_reg) = lhs
-                {
-                    value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                }
+                value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
             }
             match &new_instr {
                 Instruction::IntBinary {
@@ -285,8 +283,6 @@ impl CopyPropagation {
         }
         false
     }
-
-
 }
 
 /// Constant folding that evaluates constant expressions at compile time.
@@ -547,8 +543,6 @@ impl CommonSubexpressionElimination {
         }
         false
     }
-
-
 
     fn is_simple_cse_candidate(&self, instr: &Instruction) -> bool {
         // Only allow simple arithmetic operations for CSE in loop bodies
