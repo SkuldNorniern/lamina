@@ -175,15 +175,13 @@ impl MirRegisterAllocator for X64RegAlloc {
             self.used_gprs.insert(phys);
             self.vreg_to_preg.insert(vreg, phys);
             Some(phys)
+        } else if let Some((vreg_to_replace, &phys)) = self.vreg_to_preg.iter().next() {
+            let vreg_to_replace = *vreg_to_replace;
+            self.vreg_to_preg.remove(&vreg_to_replace);
+            self.vreg_to_preg.insert(vreg, phys);
+            Some(phys)
         } else {
-            if let Some((vreg_to_replace, &phys)) = self.vreg_to_preg.iter().next() {
-                let vreg_to_replace = *vreg_to_replace;
-                self.vreg_to_preg.remove(&vreg_to_replace);
-                self.vreg_to_preg.insert(vreg, phys);
-                Some(phys)
-            } else {
-                None
-            }
+            None
         }
     }
 

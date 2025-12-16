@@ -163,10 +163,10 @@ pub fn generate_mir_x86_64<W: Write>(
 
         for block in &func.blocks {
             for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg() {
-                    if let Register::Virtual(vreg) = dst {
-                        def_regs.insert(*vreg);
-                    }
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(vreg) = dst
+                {
+                    def_regs.insert(*vreg);
                 }
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg {
@@ -197,17 +197,17 @@ pub fn generate_mir_x86_64<W: Write>(
             let arg_regs = abi_for_func.arg_registers();
 
             for (index, param) in func.sig.params.iter().enumerate() {
-                if let Register::Virtual(vreg) = &param.reg {
-                    if let Some(slot_off) = stack_slots.get(vreg) {
-                        if index < arg_regs.len() {
-                            let phys_arg = arg_regs[index];
-                            writeln!(writer, "    movq %{}, {}(%rbp)", phys_arg, slot_off)?;
-                        } else {
-                            let stack_index = index - arg_regs.len();
-                            let caller_off = 16 + (stack_index as i32) * 8;
-                            writeln!(writer, "    movq {}(%rbp), %rax", caller_off)?;
-                            writeln!(writer, "    movq %rax, {}(%rbp)", slot_off)?;
-                        }
+                if let Register::Virtual(vreg) = &param.reg
+                    && let Some(slot_off) = stack_slots.get(vreg)
+                {
+                    if index < arg_regs.len() {
+                        let phys_arg = arg_regs[index];
+                        writeln!(writer, "    movq %{}, {}(%rbp)", phys_arg, slot_off)?;
+                    } else {
+                        let stack_index = index - arg_regs.len();
+                        let caller_off = 16 + (stack_index as i32) * 8;
+                        writeln!(writer, "    movq {}(%rbp), %rax", caller_off)?;
+                        writeln!(writer, "    movq %rax, {}(%rbp)", slot_off)?;
                     }
                 }
             }
@@ -530,14 +530,12 @@ fn emit_instruction_x86_64(
                     if total_stack > 0 {
                         writeln!(writer, "    addq ${}, %rsp", total_stack)?;
                     }
-                } else {
-                    if num_stack_args > 0 {
-                        writeln!(
-                            writer,
-                            "    addq ${}, %rsp",
-                            num_stack_args * stack::SLOT_SIZE
-                        )?;
-                    }
+                } else if num_stack_args > 0 {
+                    writeln!(
+                        writer,
+                        "    addq ${}, %rsp",
+                        num_stack_args * stack::SLOT_SIZE
+                    )?;
                 }
 
                 if let Some(ret_reg) = ret
@@ -624,11 +622,11 @@ fn emit_instruction_x86_64(
                 } else {
                     0
                 };
-                
+
                 for i in 0..num_stack_args {
                     let arg_idx = num_reg_args + i;
                     let arg = &args[arg_idx];
-                    
+
                     // Incoming args are at RBP + 16 + shadow + i*8
                     // (Return address is 8, saved RBP pushed, so RBP points to saved RBP)
                     // Wait:
@@ -646,12 +644,12 @@ fn emit_instruction_x86_64(
                     // Wait, Home space is "Shadow Space". It's strictly for the first 4 args (which are in regs).
                     // Stack args start *after* shadow space.
                     // So RBP + 16 + 32 + i*8.
-                    
+
                     let offset = 16 + shadow_space + (i * stack::SLOT_SIZE);
-                    
+
                     // Load to RAX (scratch) first
                     load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
-                    
+
                     // Store to incoming slot
                     writeln!(writer, "    movq %rax, {}(%rbp)", offset)?;
                 }
@@ -686,30 +684,28 @@ fn emit_instruction_x86_64(
                                 vreg
                             )));
                         }
-                    } else {
-                        if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
-                            if *offset == 0 {
-                                writeln!(writer, "    movq %{}, %rax", phys)?;
-                            } else {
-                                writeln!(writer, "    leaq {}(%{}), %rax", offset, phys)?;
-                            }
-                        } else if let Some(slot_offset) = stack_slots.get(vreg) {
-                            let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
-                            writeln!(writer, "    movq {}(%rbp), %{}", slot_offset, scratch)?;
-                            if *offset == 0 {
-                                writeln!(writer, "    movq %{}, %rax", scratch)?;
-                            } else {
-                                writeln!(writer, "    leaq {}(%{}), %rax", offset, scratch)?;
-                            }
-                            if scratch != "rbx" {
-                                reg_alloc.free_scratch(scratch);
-                            }
+                    } else if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
+                        if *offset == 0 {
+                            writeln!(writer, "    movq %{}, %rax", phys)?;
                         } else {
-                            return Err(LaminaError::ValidationError(format!(
-                                "x86_64 backend cannot lower LEA for base vreg {:?} (no mapping/slot)",
-                                vreg
-                            )));
+                            writeln!(writer, "    leaq {}(%{}), %rax", offset, phys)?;
                         }
+                    } else if let Some(slot_offset) = stack_slots.get(vreg) {
+                        let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+                        writeln!(writer, "    movq {}(%rbp), %{}", slot_offset, scratch)?;
+                        if *offset == 0 {
+                            writeln!(writer, "    movq %{}, %rax", scratch)?;
+                        } else {
+                            writeln!(writer, "    leaq {}(%{}), %rax", offset, scratch)?;
+                        }
+                        if scratch != "rbx" {
+                            reg_alloc.free_scratch(scratch);
+                        }
+                    } else {
+                        return Err(LaminaError::ValidationError(format!(
+                            "x86_64 backend cannot lower LEA for base vreg {:?} (no mapping/slot)",
+                            vreg
+                        )));
                     }
                 }
                 Register::Physical(phys) => {

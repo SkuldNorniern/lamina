@@ -175,7 +175,7 @@ impl TailCallOptimization {
 
         for (param, arg) in func_sig.params.iter().zip(call_args.iter()) {
             if !self.is_compatible(param.ty, arg) {
-                 return false;
+                return false;
             }
         }
 
@@ -194,14 +194,13 @@ impl TailCallOptimization {
                         (crate::mir::types::ScalarType::I32, crate::mir::Immediate::I32(_)) => true,
                         (crate::mir::types::ScalarType::I16, crate::mir::Immediate::I16(_)) => true,
                         (crate::mir::types::ScalarType::I8, crate::mir::Immediate::I8(_)) => true,
-                        // Allow smaller immediates to fit in larger types? 
+                        // Allow smaller immediates to fit in larger types?
                         // Usually MIR expects exact type match for immediates
                         _ => false,
                     },
                     (crate::mir::types::MirType::Vector(_), _) => false, // Immediate vectors not fully supported yet in this check
                 }
             }
-
         }
     }
 }

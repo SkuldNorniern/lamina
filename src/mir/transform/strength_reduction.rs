@@ -177,8 +177,6 @@ fn is_power_of_2(n: i64) -> Option<i64> {
     }
 }
 
-
-
 /// Extract integer constant from operand
 fn extract_constant(operand: &Operand) -> Option<i64> {
     match operand {
@@ -196,8 +194,6 @@ mod tests {
     use crate::mir::{
         FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
     };
-
-
 
     #[test]
     fn test_multiplication_by_power_of_2() {
