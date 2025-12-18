@@ -15,10 +15,10 @@ use std::process::Command;
 /// Linker backend type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkerBackend {
-    /// GCC's linker (via gcc)
-    Gcc,
-    /// Clang's linker (via clang)
-    Clang,
+    /// GNU ld (binutils)
+    Ld,
+    /// LLVM's lld linker
+    Lld,
     /// Mold linker (fast alternative)
     Mold,
     /// MSVC linker (Windows)
@@ -47,43 +47,84 @@ pub fn link(
     let backend = backend.unwrap_or_else(|| detect_linker_backend());
 
     let (cmd, args) = match backend {
-        LinkerBackend::Gcc => {
+        LinkerBackend::Ld => {
             let mut args = vec![];
+            // Set architecture-specific emulation
+            match target_arch {
+                TargetArchitecture::X86_64 => {
+                    args.push("-m".to_string());
+                    args.push("elf_x86_64".to_string());
+                }
+                TargetArchitecture::Aarch64 => {
+                    args.push("-m".to_string());
+                    args.push("aarch64linux".to_string());
+                }
+                TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
+                    args.push("-m".to_string());
+                    args.push(format!("elf{}lriscv", if matches!(target_arch, TargetArchitecture::Riscv64) { "64" } else { "32" }));
+                }
+                _ => {}
+            }
             args.extend(additional_flags.iter().cloned());
             args.push(input_path.to_string_lossy().to_string());
             args.push("-o".to_string());
             args.push(output_path.to_string_lossy().to_string());
-            ("gcc", args)
+            ("ld", args)
         }
-        LinkerBackend::Clang => {
+        LinkerBackend::Lld => {
             let mut args = vec![];
+            // Set architecture-specific emulation for lld
+            match target_arch {
+                TargetArchitecture::X86_64 => {
+                    args.push("-m".to_string());
+                    args.push("elf_x86_64".to_string());
+                }
+                TargetArchitecture::Aarch64 => {
+                    args.push("-m".to_string());
+                    args.push("aarch64linux".to_string());
+                }
+                TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
+                    args.push("-m".to_string());
+                    args.push(format!("elf{}lriscv", if matches!(target_arch, TargetArchitecture::Riscv64) { "64" } else { "32" }));
+                }
+                _ => {}
+            }
             args.extend(additional_flags.iter().cloned());
             args.push(input_path.to_string_lossy().to_string());
             args.push("-o".to_string());
             args.push(output_path.to_string_lossy().to_string());
-            ("clang", args)
+            ("lld", args)
         }
         LinkerBackend::Mold => {
             let mut args = vec![];
-            args.push("-fuse-ld=mold".to_string());
+            // Set architecture-specific emulation
+            match target_arch {
+                TargetArchitecture::X86_64 => {
+                    args.push("-m".to_string());
+                    args.push("elf_x86_64".to_string());
+                }
+                TargetArchitecture::Aarch64 => {
+                    args.push("-m".to_string());
+                    args.push("aarch64linux".to_string());
+                }
+                TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
+                    args.push("-m".to_string());
+                    args.push(format!("elf{}lriscv", if matches!(target_arch, TargetArchitecture::Riscv64) { "64" } else { "32" }));
+                }
+                _ => {}
+            }
             args.extend(additional_flags.iter().cloned());
             args.push(input_path.to_string_lossy().to_string());
             args.push("-o".to_string());
             args.push(output_path.to_string_lossy().to_string());
-            // Use gcc/clang with mold
-            let cmd = if Command::new("clang").arg("--version").output().is_ok() {
-                "clang"
-            } else {
-                "gcc"
-            };
-            (cmd, args)
+            ("mold", args)
         }
         LinkerBackend::Msvc => {
             let mut args = vec!["/nologo".to_string()];
             args.extend(additional_flags.iter().cloned());
             args.push(input_path.to_string_lossy().to_string());
             args.push(format!("/Fe{}", output_path.display()));
-            ("cl", args)
+            ("link", args) // MSVC uses 'link.exe', not 'cl' for linking
         }
         LinkerBackend::Custom(name) => {
             let mut args = vec![];
@@ -124,32 +165,32 @@ pub fn link(
 /// Detect available linker backend
 pub fn detect_linker_backend() -> LinkerBackend {
     if cfg!(windows) {
-        // On Windows, try MSVC first
-        if Command::new("cl").arg("/?").output().is_ok() {
+        // On Windows, try MSVC linker first
+        if Command::new("link").arg("/?").output().is_ok() {
             return LinkerBackend::Msvc;
         }
     }
 
-    // Try mold (if available and enabled)
-    #[cfg(feature = "use_mold")]
+    // Try mold (if available)
+    if Command::new("mold").arg("--version").output().is_ok() {
+        return LinkerBackend::Mold;
+    }
+
+    // Try lld (LLVM linker) - check multiple ways
+    if Command::new("lld").arg("-v").output().is_ok()
+        || Command::new("ld.lld").arg("-v").output().is_ok()
     {
-        if Command::new("mold").arg("--version").output().is_ok() {
-            return LinkerBackend::Mold;
-        }
+        return LinkerBackend::Lld;
     }
 
-    // Try clang (common on macOS and modern systems)
-    if Command::new("clang").arg("--version").output().is_ok() {
-        return LinkerBackend::Clang;
+    // Fallback to GNU ld - try to detect if available
+    // ld doesn't have --version, but we can try to run it
+    if Command::new("ld").output().is_ok() {
+        return LinkerBackend::Ld;
     }
 
-    // Fallback to gcc
-    if Command::new("gcc").arg("--version").output().is_ok() {
-        return LinkerBackend::Gcc;
-    }
-
-    // Default to gcc (will fail later if not available)
-    LinkerBackend::Gcc
+    // Default to ld (will fail later if not available)
+    LinkerBackend::Ld
 }
 
 /// Get the appropriate file extension for final output

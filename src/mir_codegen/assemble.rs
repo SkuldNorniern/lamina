@@ -12,10 +12,10 @@ use std::process::Command;
 /// Assembler backend type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssemblerBackend {
-    /// GNU Assembler (gas) - default for GCC
+    /// GNU Assembler (gas/as)
     Gas,
-    /// Clang's integrated assembler
-    ClangAs,
+    /// LLVM's lld linker (can also assemble)
+    Lld,
     /// wat2wasm for WebAssembly
     Wat2Wasm,
     /// Custom assembler (specified by name)
@@ -108,7 +108,7 @@ fn assemble_native(
     let (cmd, args) = match backend {
         AssemblerBackend::Gas => {
             let mut args = vec![];
-            // Set architecture-specific flags
+            // Set architecture-specific flags for gas/as
             match target_arch {
                 TargetArchitecture::X86_64 => {
                     args.push("--64".to_string());
@@ -126,9 +126,11 @@ fn assemble_native(
             args.push(output_path.to_string_lossy().to_string());
             ("as", args)
         }
-        AssemblerBackend::ClangAs => {
-            let mut args = vec![];
-            // Clang's integrated assembler
+        AssemblerBackend::Lld => {
+            // lld can assemble via clang's integrated assembler
+            // Use clang -c to assemble, but with lld as the linker
+            let mut args = vec!["-c".to_string()];
+            // Set architecture-specific target
             match target_arch {
                 TargetArchitecture::X86_64 => {
                     args.push("-target".to_string());
@@ -144,7 +146,7 @@ fn assemble_native(
                 }
                 _ => {}
             }
-            args.push("-c".to_string());
+            args.push("-fuse-ld=lld".to_string());
             args.push(input_path.to_string_lossy().to_string());
             args.push("-o".to_string());
             args.push(output_path.to_string_lossy().to_string());
@@ -197,14 +199,16 @@ fn assemble_native(
 
 /// Detect available assembler backend
 fn detect_assembler_backend() -> AssemblerBackend {
-    // Try clang first (it's more common on macOS and modern systems)
-    if Command::new("clang").arg("--version").output().is_ok() {
-        return AssemblerBackend::ClangAs;
-    }
-
-    // Fallback to gas
+    // Try gas/as first (most common)
     if Command::new("as").arg("--version").output().is_ok() {
         return AssemblerBackend::Gas;
+    }
+
+    // Try lld (if available) - lld can work with clang's integrated assembler
+    if Command::new("lld").arg("-v").output().is_ok()
+        || Command::new("ld.lld").arg("-v").output().is_ok()
+    {
+        return AssemblerBackend::Lld;
     }
 
     // Default to gas (will fail later if not available)
