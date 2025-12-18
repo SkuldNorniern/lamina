@@ -1,5 +1,7 @@
 //! MIR-based code generation for multiple target architectures.
 
+pub mod assemble;
+pub mod link;
 pub mod regalloc;
 
 pub mod arm;
@@ -148,6 +150,7 @@ fn wrap_codegen_error(err: CodegenError) -> crate::error::LaminaError {
 }
 
 /// Code generation options.
+#[derive(Debug)]
 pub enum CodegenOptions {
     /// Debug mode outputs full debug information.
     Debug,
@@ -190,6 +193,7 @@ pub trait Codegen {
 }
 
 /// Code generation errors.
+#[derive(Debug)]
 pub enum CodegenError {
     UnsupportedFeature(String),
     InvalidCodegenOptions(String),
