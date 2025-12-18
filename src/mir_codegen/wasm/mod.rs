@@ -57,7 +57,7 @@ impl<'a> WasmCodegen<'a> {
 impl<'a> Codegen for WasmCodegen<'a> {
     const BIN_EXT: &'static str = "wasm";
     const CAN_OUTPUT_ASM: bool = true;
-    const CAN_OUTPUT_BIN: bool = false;
+    const CAN_OUTPUT_BIN: bool = true;
     const SUPPORTED_CODEGEN_OPTS: &'static [CodegenOptions] =
         &[CodegenOptions::Debug, CodegenOptions::Release];
     const TARGET_OS: TargetOperatingSystem = TargetOperatingSystem::Linux;
@@ -104,9 +104,10 @@ impl<'a> Codegen for WasmCodegen<'a> {
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
-        Err(CodegenError::UnsupportedFeature(
-            "Binary WASM emission not supported".to_string(),
-        ))
+        // WASM codegen matches other targets: emit_asm generates WAT,
+        // then assemble module handles wat2wasm conversion
+        // This keeps the pipeline consistent: emit_asm -> assemble -> link
+        self.emit_asm()
     }
 }
 
@@ -177,12 +178,29 @@ pub fn generate_mir_wasm<W: Write>(
             writeln!(writer, "{}", WasmABI::generate_local_decl(local_idx))?;
         }
 
-        // Function body
-        for block in &func.blocks {
-            writeln!(writer, "    ;; block {}", block.label)?;
+        // Function body - structure blocks with labels for branching
+        // Build a map of block labels to their positions for depth calculation
+        let mut block_labels: std::collections::HashMap<&str, usize> =
+            std::collections::HashMap::new();
+        for (idx, block) in func.blocks.iter().enumerate() {
+            block_labels.insert(&block.label, idx);
+        }
 
-            for inst in &block.instructions {
-                emit_instruction_wasm(inst, writer, &vreg_to_local)?;
+        // Emit blocks sequentially, wrapping non-entry blocks in labeled blocks
+        for (block_idx, block) in func.blocks.iter().enumerate() {
+            // Entry block starts the function body
+            if block_idx == 0 {
+                // Entry block - emit instructions directly
+                for inst in &block.instructions {
+                    emit_instruction_wasm(inst, writer, &vreg_to_local, &block_labels)?;
+                }
+            } else {
+                // Non-entry blocks wrapped in labeled blocks for branching
+                writeln!(writer, "    (block $block_{}", block.label)?;
+                for inst in &block.instructions {
+                    emit_instruction_wasm(inst, writer, &vreg_to_local, &block_labels)?;
+                }
+                writeln!(writer, "    )")?;
             }
         }
 
@@ -203,6 +221,7 @@ fn emit_instruction_wasm(
     inst: &MirInst,
     writer: &mut impl Write,
     vreg_to_local: &std::collections::HashMap<crate::mir::VirtualReg, usize>,
+    block_labels: &std::collections::HashMap<&str, usize>,
 ) -> Result<(), crate::error::LaminaError> {
     match inst {
         MirInst::IntBinary {
@@ -472,22 +491,44 @@ fn emit_instruction_wasm(
             writeln!(writer, "      return")?;
         }
         MirInst::Jmp { target } => {
-            writeln!(writer, "      br $block_{}", target)?;
+            // WASM br uses relative depth: how many blocks to exit
+            // For forward jumps, we need to structure blocks properly
+            // For now, use block labels which wat2wasm can handle
+            if block_labels.contains_key(target.as_str()) {
+                writeln!(writer, "      br $block_{}", target)?;
+            } else {
+                return Err(crate::error::LaminaError::ValidationError(format!(
+                    "Unknown block label: {}",
+                    target
+                )));
+            }
         }
         MirInst::Br {
             cond,
             true_target,
             false_target,
         } => {
-            if let Register::Virtual(vreg) = cond {
-                load_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
-            }
+            load_register_wasm(cond, writer, vreg_to_local)?;
             writeln!(writer, "      (if")?;
             writeln!(writer, "        (then")?;
-            writeln!(writer, "          br $block_{}", true_target)?;
+            if block_labels.contains_key(true_target.as_str()) {
+                writeln!(writer, "          br $block_{}", true_target)?;
+            } else {
+                return Err(crate::error::LaminaError::ValidationError(format!(
+                    "Unknown block label: {}",
+                    true_target
+                )));
+            }
             writeln!(writer, "        )")?;
             writeln!(writer, "        (else")?;
-            writeln!(writer, "          br $block_{}", false_target)?;
+            if block_labels.contains_key(false_target.as_str()) {
+                writeln!(writer, "          br $block_{}", false_target)?;
+            } else {
+                return Err(crate::error::LaminaError::ValidationError(format!(
+                    "Unknown block label: {}",
+                    false_target
+                )));
+            }
             writeln!(writer, "        )")?;
             writeln!(writer, "      )")?;
         }
