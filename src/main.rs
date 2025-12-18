@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 // Import the library crate
+use lamina::mir_codegen::Codegen;
 
 fn print_usage() {
     eprintln!("Usage: lamina <input.lamina> [options]");
@@ -222,31 +223,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // Create assembly file path using same directory as output
-    let asm_extension = if target_for_extensions.operating_system
-        == lamina::target::TargetOperatingSystem::Windows
-    {
-        "asm"
-    } else {
-        "s"
-    };
-    let mut asm_path = output_stem.clone();
-    asm_path.set_extension(asm_extension);
-
-    // Ensure output executable has correct extension based on target
-    let mut exec_path = output_stem.clone();
-    if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows
-        && exec_path.extension().is_none()
-    {
-        exec_path.set_extension("exe");
-    }
-
-    println!(
-        "[INFO] Compiling {} -> {} -> {}",
-        input_path.display(),
-        asm_path.display(),
-        exec_path.display()
-    );
+    // Output message will be printed after we determine the actual target
+    // (handled in the compilation section below)
 
     if options.verbose {
         println!("[VERBOSE] Compiler options:");
@@ -275,8 +253,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    // 2. Compile IR to Assembly
-    let mut asm_buffer = Vec::<u8>::new();
+    // 2. Compile IR to Assembly/Binary (handled below)
 
     // 2-1 Optionally lower the IR to MIR and emit (.lumir) or experimental MIR->AArch64 asm
     if options.emit_mir || options.emit_mir_asm.is_some() {
@@ -389,184 +366,173 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     // if mir asm is not emitted
     if options.emit_mir_asm.is_none() && !options.emit_mir {
-        // Choose compilation method based on target
-        let compilation_result = if let Some(target_str) = &options.target_arch {
+        // Determine target
+        let target = if let Some(target_str) = &options.target_arch {
             if options.verbose {
                 println!("[VERBOSE] Using explicit target: {}", target_str);
             }
-            lamina::compile_lamina_ir_to_target_assembly(&ir_source, &mut asm_buffer, target_str)
+            lamina::target::Target::from_str(target_str)
         } else {
-            // Get the target that will be used by default
             let default_target = lamina::target::Target::detect_host();
             if options.verbose {
                 println!("[VERBOSE] Using host target: {}", default_target);
             }
-            lamina::compile_lamina_ir_to_assembly(&ir_source, &mut asm_buffer)
+            default_target
         };
 
-        match compilation_result {
-            Ok(_) => {
+        // Parse IR and lower to MIR
+        let ir_mod = lamina::parser::parse_module(&ir_source)
+            .map_err(|e| format!("IR parse failed: {}", e))?;
+        let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
+            .map_err(|e| format!("MIR lowering failed: {}", e))?;
+
+        // Apply MIR optimizations
+        if options.opt_level > 0 {
+            let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
+            let transform_stats = pipeline
+                .apply_to_module(&mut mir_mod)
+                .map_err(|e| format!("MIR optimization failed: {}", e))?;
+
+            if options.verbose {
                 println!(
-                    "[INFO] Assembly generated successfully ({} bytes).",
-                    asm_buffer.len()
+                    "[VERBOSE] MIR optimizations: {} transforms run, {} made changes",
+                    transform_stats.transforms_run,
+                    transform_stats.transforms_changed
                 );
-            }
-            Err(e) => {
-                eprintln!("\n[ERROR] Compilation failed: {}", e);
-                eprintln!(
-                    "[HINT] If you see dependency errors, make sure all required crates are in Cargo.toml"
-                );
-                std::process::exit(1);
             }
         }
-        // 3. Write Assembly to file
-        match File::create(&asm_path) {
-            Ok(mut file) => {
-                if let Err(e) = file.write_all(&asm_buffer) {
-                    eprintln!("[ERROR] Failed to write assembly file: {}", e);
-                    std::process::exit(1);
-                }
-            }
-            Err(e) => {
-                eprintln!("[ERROR] Failed to create assembly file: {}", e);
-                std::process::exit(1);
-            }
+
+        // Generate intermediate format (assembly or WAT)
+        let mut intermediate_buffer = Vec::<u8>::new();
+        lamina::mir_codegen::generate_mir_to_target(
+            &mir_mod,
+            &mut intermediate_buffer,
+            target.architecture,
+            target.operating_system,
+        )
+        .map_err(|e| format!("Code generation failed: {}", e))?;
+
+        // Determine intermediate file path and extension
+        let intermediate_ext = lamina::mir_codegen::assemble::get_intermediate_extension(target.architecture);
+        let mut intermediate_path = output_stem.clone();
+        intermediate_path.set_extension(intermediate_ext);
+
+        // Determine final output path for display
+        let final_ext = lamina::mir_codegen::link::get_output_extension(target.architecture, target.operating_system);
+        let mut final_output_display = output_stem.clone();
+        if !final_ext.is_empty() {
+            final_output_display.set_extension(final_ext);
+        }
+
+        // Print compilation message
+        let intermediate_name = if matches!(target.architecture, lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64) {
+            println!(
+                "[INFO] Compiling {} -> {}",
+                input_path.display(),
+                final_output_display.display()
+            );
+            "WAT"
+        } else {
+            println!(
+                "[INFO] Compiling {} -> {} -> {}",
+                input_path.display(),
+                intermediate_path.display(),
+                final_output_display.display()
+            );
+            "Assembly"
         };
 
-        println!("[INFO] Assembly written to {}", asm_path.display());
-    }
-    // Skip compilation step if --emit-asm flag is present
-    if options.emit_asm_only {
-        println!("[INFO] Skipping compilation as requested (--emit-asm flag)");
-        return Ok(());
-    }
+        // Write intermediate format to file
+        File::create(&intermediate_path)
+            .and_then(|mut f| f.write_all(&intermediate_buffer))
+            .map_err(|e| format!("Failed to write intermediate file: {}", e))?;
 
-    // 4. Determine which compiler to use
-    let (compiler_name, compiler_args) = match &options.forced_compiler {
-        Some(forced) => {
-            // Check if forced compiler exists
-            if Command::new(forced).arg("--version").output().is_err() {
-                eprintln!("[ERROR] Forced compiler '{}' not found", forced);
-                std::process::exit(1);
-            }
-            // Get appropriate flags for forced compiler
-            match forced.as_str() {
-                "cl" => (forced.as_str(), vec!["/nologo".to_string()]),
-                _ => (forced.as_str(), Vec::<String>::new()),
-            }
-        }
-        None => match detect_compiler() {
-            Ok((name, args)) => {
-                // Convert &'static str to String instead of trying to collect to Vec<&str>
-                let string_args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-                (name, string_args)
-            }
-            Err(e) => {
-                eprintln!("[ERROR] {}", e);
-                std::process::exit(1);
-            }
-        },
-    };
-
-    // 5. Assemble and Link
-    println!("[INFO] Assembling and linking with {}...", compiler_name);
-
-    // Build command with appropriate arguments
-    let mut cmd = Command::new(compiler_name);
-    let using_msvc = compiler_name.eq_ignore_ascii_case("cl");
-
-    // Add any compiler-specific flags first
-    for arg in &compiler_args {
-        cmd.arg(arg);
-    }
-
-    // Add user-specified flags
-    for flag in &options.compiler_flags {
-        cmd.arg(flag);
-    }
-
-    if using_msvc {
-        cmd.arg(&asm_path);
-        cmd.arg(format!("/Fe{}", exec_path.display()));
-    } else {
-        // Add input and output files
-        cmd.arg(&asm_path).arg("-o").arg(&exec_path);
-    }
-
-    if options.verbose {
-        println!("[VERBOSE] Executing: {:?}", cmd);
-    }
-
-    // Execute the compiler command
-    let compiler_output = match cmd.output() {
-        Ok(output) => output,
-        Err(e) => {
-            eprintln!("[ERROR] Failed to execute compiler: {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    if compiler_output.status.success() {
         println!(
-            "[INFO] Executable '{}' created successfully.",
-            exec_path.display()
+            "[INFO] {} generated successfully ({} bytes).",
+            intermediate_name,
+            intermediate_buffer.len()
         );
-    } else {
-        eprintln!("[ERROR] Compiler failed:");
-        eprintln!("--- stdout ---");
-        eprintln!("{}", String::from_utf8_lossy(&compiler_output.stdout));
-        eprintln!("--- stderr ---");
-        eprintln!("{}", String::from_utf8_lossy(&compiler_output.stderr));
-        std::process::exit(1);
+        println!("[INFO] {} written to {}", intermediate_name, intermediate_path.display());
+
+        // Skip assembly/linking if --emit-asm flag is present
+        if options.emit_asm_only {
+            println!("[INFO] Skipping assembly and linking as requested (--emit-asm flag)");
+            return Ok(());
+        }
+
+        // Assemble intermediate format to binary/object file
+        let assembly_output_ext = lamina::mir_codegen::assemble::get_assembly_output_extension(target.architecture);
+        let mut assembly_output_path = output_stem.clone();
+        assembly_output_path.set_extension(assembly_output_ext);
+
+        let assemble_result = lamina::mir_codegen::assemble::assemble(
+            &intermediate_path,
+            &assembly_output_path,
+            target.architecture,
+            target.operating_system,
+            None, // Auto-detect assembler
+            options.verbose,
+        )
+        .map_err(|e| format!("Assembly failed: {}", e))?;
+
+        println!(
+            "[INFO] {} assembled successfully.",
+            if matches!(target.architecture, lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64) {
+                "WASM binary"
+            } else {
+                "Object file"
+            }
+        );
+
+        // Link if needed (native targets only)
+        if assemble_result.needs_linking {
+            let final_output_ext = lamina::mir_codegen::link::get_output_extension(target.architecture, target.operating_system);
+            let mut final_output_path = output_stem.clone();
+            if !final_output_ext.is_empty() {
+                final_output_path.set_extension(final_output_ext);
+            }
+
+            // Determine linker backend from forced compiler if specified
+            let linker_backend = if let Some(ref compiler) = options.forced_compiler {
+                match compiler.as_str() {
+                    "ld" => Some(lamina::mir_codegen::link::LinkerBackend::Ld),
+                    "lld" => Some(lamina::mir_codegen::link::LinkerBackend::Lld),
+                    "mold" => Some(lamina::mir_codegen::link::LinkerBackend::Mold),
+                    "link" | "cl" => Some(lamina::mir_codegen::link::LinkerBackend::Msvc),
+                    _ => None,
+                }
+            } else {
+                None
+            };
+
+            lamina::mir_codegen::link::link(
+                &assemble_result.output_path,
+                &final_output_path,
+                target.architecture,
+                target.operating_system,
+                linker_backend,
+                &options.compiler_flags,
+                options.verbose,
+            )
+            .map_err(|e| format!("Linking failed: {}", e))?;
+
+            println!(
+                "[INFO] Executable '{}' created successfully.",
+                final_output_path.display()
+            );
+        } else {
+            // WASM doesn't need linking
+            println!(
+                "[INFO] {} '{}' created successfully.",
+                if matches!(target.architecture, lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64) {
+                    "WASM binary"
+                } else {
+                    "Binary"
+                },
+                assembly_output_path.display()
+            );
+        }
     }
 
     Ok(())
-}
-
-/// Detect available compiler and return its name and any needed flags
-fn detect_compiler() -> Result<(&'static str, Vec<&'static str>), Box<dyn std::error::Error>> {
-    // Check for available compilers based on platform
-    if cfg!(windows) {
-        // First try MSVC compiler
-        if Command::new("cl").arg("/?").output().is_ok() {
-            return Ok(("cl", vec!["/nologo"]));
-        }
-
-        // Then try GCC in MinGW
-        if Command::new("gcc").arg("--version").output().is_ok() {
-            return Ok(("gcc", vec![]));
-        }
-
-        // Then try Clang
-        if Command::new("clang").arg("--version").output().is_ok() {
-            return Ok(("clang", vec![]));
-        }
-
-        eprintln!("No suitable compiler found on Windows. Please install GCC, Clang, or MSVC.");
-    } else if cfg!(target_os = "macos") {
-        // On macOS, prefer Clang
-        if Command::new("clang").arg("--version").output().is_ok() {
-            return Ok(("clang", vec![]));
-        }
-
-        // Then try GCC
-        if Command::new("gcc").arg("--version").output().is_ok() {
-            return Ok(("gcc", vec![]));
-        }
-
-        eprintln!("No suitable compiler found on macOS. Please install Clang.");
-    } else {
-        // On Unix-like systems, prefer GCC, fallback to Clang
-        if Command::new("gcc").arg("--version").output().is_ok() {
-            return Ok(("gcc", vec![]));
-        }
-
-        if Command::new("clang").arg("--version").output().is_ok() {
-            return Ok(("clang", vec![]));
-        }
-
-        eprintln!("No suitable compiler found. Please install GCC or Clang.");
-    }
-
-    Err("No suitable compiler found. Please install GCC, Clang, or MSVC (on Windows).".into())
 }
