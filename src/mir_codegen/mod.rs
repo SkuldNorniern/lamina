@@ -1,6 +1,7 @@
 //! MIR-based code generation for multiple target architectures.
 
 pub mod assemble;
+pub mod capability;
 pub mod link;
 pub mod regalloc;
 
@@ -8,6 +9,8 @@ pub mod arm;
 pub mod riscv;
 pub mod wasm;
 pub mod x86_64;
+
+pub use capability::{CapabilitySet, CodegenCapability};
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -175,6 +178,23 @@ pub trait Codegen {
     const TARGET_OS: TargetOperatingSystem;
     /// The max bit width of the target architecture
     const MAX_BIT_WIDTH: u8;
+
+    /// Returns the capabilities supported by this backend
+    fn capabilities() -> CapabilitySet
+    where
+        Self: Sized,
+    {
+        // Default: core capabilities only
+        CapabilitySet::core()
+    }
+
+    /// Check if a specific capability is supported
+    fn supports(cap: &CodegenCapability) -> bool
+    where
+        Self: Sized,
+    {
+        Self::capabilities().supports(cap)
+    }
 
     fn prepare(
         &mut self,
