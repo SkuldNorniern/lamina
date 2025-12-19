@@ -6,7 +6,10 @@ use std::io::Write;
 use std::result::Result;
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions};
+use crate::mir_codegen::{
+    capability::{CapabilitySet, CodegenCapability},
+    Codegen, CodegenError, CodegenOptions,
+};
 use crate::target::TargetOperatingSystem;
 use abi::WasmABI;
 use util::{
@@ -62,6 +65,27 @@ impl<'a> Codegen for WasmCodegen<'a> {
         &[CodegenOptions::Debug, CodegenOptions::Release];
     const TARGET_OS: TargetOperatingSystem = TargetOperatingSystem::Linux;
     const MAX_BIT_WIDTH: u8 = 64;
+
+    fn capabilities() -> CapabilitySet {
+        [
+            CodegenCapability::IntegerArithmetic,
+            CodegenCapability::ControlFlow,
+            CodegenCapability::FunctionCalls,
+            CodegenCapability::Recursion,
+            // Print requires runtime support (console.log import)
+            CodegenCapability::Print,
+            // Memory operations are supported but limited
+            CodegenCapability::MemoryOperations,
+            // Note: The following are NOT supported:
+            // - HeapAllocation (requires WASM memory management)
+            // - SystemCalls (WASM is sandboxed)
+            // - InlineAssembly (not applicable to WASM)
+            // - Threading (requires WASM threads proposal)
+            // - AtomicOperations (requires WASM threads proposal)
+        ]
+        .into_iter()
+        .collect()
+    }
 
     fn prepare(
         &mut self,
@@ -178,30 +202,63 @@ pub fn generate_mir_wasm<W: Write>(
             writeln!(writer, "{}", WasmABI::generate_local_decl(local_idx))?;
         }
 
-        // Function body - structure blocks with labels for branching
-        // Build a map of block labels to their positions for depth calculation
+        // Use dispatch loop pattern for control flow (like the old WASM backend)
+        // WASM's br/br_table use block depth indices, so we use a PC variable
+        
+        // Build a map of block labels to their indices
         let mut block_labels: std::collections::HashMap<&str, usize> =
             std::collections::HashMap::new();
         for (idx, block) in func.blocks.iter().enumerate() {
             block_labels.insert(&block.label, idx);
         }
-
-        // Emit blocks sequentially, wrapping non-entry blocks in labeled blocks
+        
+        // Add PC (program counter) local
+        writeln!(writer, "    (local $pc i64)")?;
+        
+        // Initialize PC to 0 (entry block)
+        writeln!(writer, "    i64.const 0")?;
+        writeln!(writer, "    local.set $pc")?;
+        
+        // Main dispatch loop
+        writeln!(writer, "    (loop $dispatch_loop")?;
+        
+        // Generate dispatch table using nested blocks and br_table
+        // Each block index N will br to depth N to jump to the right code
+        let num_blocks = func.blocks.len();
+        
+        // Create nested blocks for dispatch - innermost first
+        for i in (0..num_blocks).rev() {
+            writeln!(writer, "      (block $block_{}", i)?;
+        }
+        
+        // br_table dispatch based on PC value
+        writeln!(writer, "        local.get $pc")?;
+        writeln!(writer, "        i32.wrap_i64")?;
+        write!(writer, "        br_table")?;
+        for i in 0..num_blocks {
+            write!(writer, " {}", i)?;
+        }
+        writeln!(writer, " 0")?; // default to block 0
+        
+        // Close innermost block and emit code for each block
         for (block_idx, block) in func.blocks.iter().enumerate() {
-            // Entry block starts the function body
-            if block_idx == 0 {
-                // Entry block - emit instructions directly
-                for inst in &block.instructions {
-                    emit_instruction_wasm(inst, writer, &vreg_to_local, &block_labels)?;
-                }
-            } else {
-                // Non-entry blocks wrapped in labeled blocks for branching
-                writeln!(writer, "    (block $block_{}", block.label)?;
-                for inst in &block.instructions {
-                    emit_instruction_wasm(inst, writer, &vreg_to_local, &block_labels)?;
-                }
-                writeln!(writer, "    )")?;
+            writeln!(writer, "      )")?; // close block_N
+            
+            // Emit block code
+            writeln!(writer, "      ;; Block: {}", block.label)?;
+            for inst in &block.instructions {
+                emit_instruction_wasm(inst, writer, &vreg_to_local, &block_labels)?;
             }
+            
+            // After block code, continue dispatch loop (unless return/br already exited)
+            writeln!(writer, "      br $dispatch_loop")?;
+        }
+        
+        writeln!(writer, "    )")?; // close dispatch_loop
+        
+        // Implicit return value for functions with return type
+        if func.sig.ret_ty.is_some() {
+            writeln!(writer, "    i64.const 0")?;
         }
 
         writeln!(writer, "  )")?;
@@ -484,18 +541,21 @@ fn emit_instruction_wasm(
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
+                // Load the return value
                 load_operand_wasm(val, writer, vreg_to_local)?;
             } else {
-                writeln!(writer, "      i64.const 0")?;
+                // No return value - use 0
+                writeln!(writer, "        i64.const 0")?;
             }
-            writeln!(writer, "      return")?;
+            // Return exits the function
+            writeln!(writer, "        return")?;
         }
         MirInst::Jmp { target } => {
-            // WASM br uses relative depth: how many blocks to exit
-            // For forward jumps, we need to structure blocks properly
-            // For now, use block labels which wat2wasm can handle
-            if block_labels.contains_key(target.as_str()) {
-                writeln!(writer, "      br $block_{}", target)?;
+            // Set PC to target block index and continue dispatch loop
+            if let Some(&target_idx) = block_labels.get(target.as_str()) {
+                writeln!(writer, "        i64.const {}", target_idx)?;
+                writeln!(writer, "        local.set $pc")?;
+                writeln!(writer, "        br $dispatch_loop")?;
             } else {
                 return Err(crate::error::LaminaError::ValidationError(format!(
                     "Unknown block label: {}",
@@ -509,28 +569,34 @@ fn emit_instruction_wasm(
             false_target,
         } => {
             load_register_wasm(cond, writer, vreg_to_local)?;
-            writeln!(writer, "      (if")?;
-            writeln!(writer, "        (then")?;
-            if block_labels.contains_key(true_target.as_str()) {
-                writeln!(writer, "          br $block_{}", true_target)?;
+            // Convert i64 condition to i32 for WASM if statement
+            writeln!(writer, "        i32.wrap_i64")?;
+            writeln!(writer, "        (if")?;
+            writeln!(writer, "          (then")?;
+            if let Some(&true_idx) = block_labels.get(true_target.as_str()) {
+                writeln!(writer, "            i64.const {}", true_idx)?;
+                writeln!(writer, "            local.set $pc")?;
             } else {
                 return Err(crate::error::LaminaError::ValidationError(format!(
                     "Unknown block label: {}",
                     true_target
                 )));
             }
-            writeln!(writer, "        )")?;
-            writeln!(writer, "        (else")?;
-            if block_labels.contains_key(false_target.as_str()) {
-                writeln!(writer, "          br $block_{}", false_target)?;
+            writeln!(writer, "          )")?;
+            writeln!(writer, "          (else")?;
+            if let Some(&false_idx) = block_labels.get(false_target.as_str()) {
+                writeln!(writer, "            i64.const {}", false_idx)?;
+                writeln!(writer, "            local.set $pc")?;
             } else {
                 return Err(crate::error::LaminaError::ValidationError(format!(
                     "Unknown block label: {}",
                     false_target
                 )));
             }
+            writeln!(writer, "          )")?;
             writeln!(writer, "        )")?;
-            writeln!(writer, "      )")?;
+            // Continue dispatch loop
+            writeln!(writer, "        br $dispatch_loop")?;
         }
         _ => {
             writeln!(writer, "      ;; TODO: unimplemented instruction")?;
