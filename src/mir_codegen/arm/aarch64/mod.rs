@@ -16,7 +16,10 @@ use std::result::Result;
 use util::{emit_mov_imm64, imm_to_u64};
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions};
+use crate::mir_codegen::{
+    capability::{CapabilitySet, CodegenCapability},
+    Codegen, CodegenError, CodegenOptions,
+};
 use crate::target::TargetOperatingSystem;
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
@@ -1099,6 +1102,25 @@ impl<'a> Codegen for AArch64Codegen<'a> {
         &[CodegenOptions::Debug, CodegenOptions::Release];
     const TARGET_OS: TargetOperatingSystem = TargetOperatingSystem::Linux;
     const MAX_BIT_WIDTH: u8 = 64;
+
+    fn capabilities() -> CapabilitySet {
+        [
+            CodegenCapability::IntegerArithmetic,
+            CodegenCapability::FloatingPointArithmetic,
+            CodegenCapability::ControlFlow,
+            CodegenCapability::FunctionCalls,
+            CodegenCapability::Recursion,
+            CodegenCapability::Print,
+            CodegenCapability::StackAllocation,
+            CodegenCapability::MemoryOperations,
+            CodegenCapability::SystemCalls,
+            CodegenCapability::InlineAssembly,
+            CodegenCapability::SimdOperations,
+            CodegenCapability::ForeignFunctionInterface,
+        ]
+        .into_iter()
+        .collect()
+    }
 
     fn prepare(
         &mut self,

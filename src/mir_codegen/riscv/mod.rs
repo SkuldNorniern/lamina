@@ -11,7 +11,10 @@ use std::result::Result;
 use util::*;
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions};
+use crate::mir_codegen::{
+    capability::{CapabilitySet, CodegenCapability},
+    Codegen, CodegenError, CodegenOptions,
+};
 use crate::target::TargetOperatingSystem;
 
 /// Trait-backed MIR ⇒ RISC-V code generator.
@@ -62,6 +65,24 @@ impl<'a> Codegen for RiscVCodegen<'a> {
         &[CodegenOptions::Debug, CodegenOptions::Release];
     const TARGET_OS: TargetOperatingSystem = TargetOperatingSystem::Linux;
     const MAX_BIT_WIDTH: u8 = 64;
+
+    fn capabilities() -> CapabilitySet {
+        [
+            CodegenCapability::IntegerArithmetic,
+            CodegenCapability::FloatingPointArithmetic,
+            CodegenCapability::ControlFlow,
+            CodegenCapability::FunctionCalls,
+            CodegenCapability::Recursion,
+            CodegenCapability::Print,
+            CodegenCapability::StackAllocation,
+            CodegenCapability::MemoryOperations,
+            CodegenCapability::SystemCalls,
+            CodegenCapability::InlineAssembly,
+            CodegenCapability::ForeignFunctionInterface,
+        ]
+        .into_iter()
+        .collect()
+    }
 
     fn prepare(
         &mut self,
