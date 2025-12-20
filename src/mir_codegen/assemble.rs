@@ -111,10 +111,18 @@ fn assemble_native(
             // Set architecture-specific flags for gas/as
             match target_arch {
                 TargetArchitecture::X86_64 => {
-                    args.push("--64".to_string());
+                    if target_os != TargetOperatingSystem::MacOS {
+                        args.push("--64".to_string());
+                    }
                 }
                 TargetArchitecture::Aarch64 => {
-                    args.push("-march=aarch64".to_string());
+                    // macOS as doesn't support -march, it auto-detects from -arch
+                    if target_os == TargetOperatingSystem::MacOS {
+                        args.push("-arch".to_string());
+                        args.push("arm64".to_string());
+                    } else {
+                        args.push("-march=aarch64".to_string());
+                    }
                 }
                 TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
                     args.push(format!("-march=rv{}", if matches!(target_arch, TargetArchitecture::Riscv64) { "64" } else { "32" }));
