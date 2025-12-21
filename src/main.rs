@@ -362,10 +362,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to write MIR output: {}", e))?;
         }
 
-        //return Ok(());
     }
-    // if mir asm is not emitted
-    if options.emit_mir_asm.is_none() && !options.emit_mir {
+    // Always compile to binary unless only MIR is requested
+    if !options.emit_mir {
         // Determine target
         let target = if let Some(target_str) = &options.target_arch {
             if options.verbose {
