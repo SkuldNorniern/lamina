@@ -9,7 +9,7 @@
 
 use crate::error::LaminaError;
 use crate::target::{TargetArchitecture, TargetOperatingSystem};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 fn get_crt_files(target_os: TargetOperatingSystem) -> Vec<String> {
@@ -131,6 +131,23 @@ fn build_entry_point_arg(target_os: TargetOperatingSystem) -> Vec<String> {
     }
 }
 
+fn build_dynamic_linker_arg(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> Vec<String> {
+    match target_os {
+        TargetOperatingSystem::MacOS => Vec::new(),
+        _ => {
+            let interpreter = match target_arch {
+                TargetArchitecture::X86_64 => "/lib64/ld-linux-x86-64.so.2",
+                TargetArchitecture::Aarch64 => "/lib/ld-linux-aarch64.so.1",
+                _ => return Vec::new(),
+            };
+            vec!["--dynamic-linker".to_string(), interpreter.to_string()]
+        }
+    }
+}
+
 fn build_library_args(target_os: TargetOperatingSystem) -> Vec<String> {
     let mut args = Vec::new();
     
@@ -149,7 +166,6 @@ fn build_library_args(target_os: TargetOperatingSystem) -> Vec<String> {
         }
         _ => {
             args.push("-lc".to_string());
-            args.push("-lgcc".to_string());
         }
     }
     
@@ -166,6 +182,7 @@ fn build_unix_linker_args(
     let mut args = Vec::new();
     
     args.extend(build_arch_emulation_flags(target_arch, target_os));
+    args.extend(build_dynamic_linker_arg(target_arch, target_os));
     args.extend(build_crt_args(target_os, true));
     args.push(input_path.to_string_lossy().to_string());
     args.extend(build_crt_args(target_os, false));
