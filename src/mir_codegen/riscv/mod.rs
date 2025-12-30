@@ -100,16 +100,10 @@ impl<'a> Codegen for RiscVCodegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        if let Some(module) = self.base.module {
-            generate_mir_riscv(module, &mut self.base.output, self.base.target_os).map_err(
-                |e| CodegenError::InvalidCodegenOptions(format!("RISC-V emission failed: {}", e)),
-            )?;
-        } else {
-            return Err(CodegenError::InvalidCodegenOptions(
-                "No module set for emission".to_string(),
-            ));
-        }
-        Ok(())
+        self.base.emit_asm_base(
+            |module, output, target_os| generate_mir_riscv(module, output, target_os),
+            "RISC-V",
+        )
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {

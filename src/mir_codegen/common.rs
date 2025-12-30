@@ -59,7 +59,36 @@ impl<'a> CodegenBase<'a> {
     }
 
     pub fn finalize_base(&mut self) -> Result<(), CodegenError> {
+        self.module = None;
+        self.prepared = false;
         Ok(())
+    }
+
+    pub fn emit_asm_base<F>(
+        &mut self,
+        emit_fn: F,
+        backend_name: &str,
+    ) -> Result<(), CodegenError>
+    where
+        F: FnOnce(&MirModule, &mut Vec<u8>, TargetOperatingSystem) -> Result<(), crate::error::LaminaError>,
+    {
+        if !self.prepared {
+            return Err(CodegenError::InvalidCodegenOptions(
+                format!("emit_asm called before prepare for {}", backend_name),
+            ));
+        }
+        let module = self.module.ok_or_else(|| {
+            CodegenError::InvalidCodegenOptions(format!(
+                "No module set for emission in {} backend",
+                backend_name
+            ))
+        })?;
+        self.output.clear();
+        emit_fn(module, &mut self.output, self.target_os)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!(
+                "{} emission failed: {}",
+                backend_name, e
+            )))
     }
 }
 
@@ -89,16 +118,16 @@ pub fn emit_print_format_section<W: Write>(
     Ok(())
 }
 
-/// Convert LaminaError to CodegenError.
+/// Convert LaminaError to CodegenError with consistent error type.
 pub fn lamina_to_codegen_error(err: crate::error::LaminaError) -> CodegenError {
     match err {
         crate::error::LaminaError::CodegenError(inner) => {
-            CodegenError::UnsupportedFeature(inner.to_string())
+            CodegenError::InvalidCodegenOptions(inner.to_string())
         }
         crate::error::LaminaError::ParsingError(msg)
         | crate::error::LaminaError::ValidationError(msg)
         | crate::error::LaminaError::MirError(msg)
         | crate::error::LaminaError::IoError(msg)
-        | crate::error::LaminaError::Utf8Error(msg) => CodegenError::UnsupportedFeature(msg),
+        | crate::error::LaminaError::Utf8Error(msg) => CodegenError::InvalidCodegenOptions(msg),
     }
 }
