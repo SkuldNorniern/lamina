@@ -191,7 +191,7 @@ impl ModuleInlining {
             // Aggressive inlining: inline small functions regardless of caller size
 
             // ... existing logic ...
-            if let Some(caller_func) = module.functions.get(&call_site.caller) {
+            if let Some(_caller_func) = module.functions.get(&call_site.caller) {
                 // If caller is huge, dont inline huge things?
             }
 

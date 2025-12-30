@@ -107,10 +107,10 @@ impl StrengthReduction {
     fn reduce_unsigned_division(
         &self,
         op: &mut IntBinOp,
-        lhs: &mut Operand,
+        _lhs: &mut Operand,
         rhs: &mut Operand,
         rhs_const: Option<i64>,
-        ty: &MirType,
+        _ty: &MirType,
     ) -> bool {
         if let Some(power_of_2) = rhs_const.and_then(is_power_of_2) {
             // x / 2^k → x >>> k (logical shift right)
@@ -139,10 +139,10 @@ impl StrengthReduction {
     fn reduce_unsigned_remainder(
         &self,
         op: &mut IntBinOp,
-        lhs: &mut Operand,
+        _lhs: &mut Operand,
         rhs: &mut Operand,
         rhs_const: Option<i64>,
-        ty: &MirType,
+        _ty: &MirType,
     ) -> bool {
         if let Some(power_of_2) = rhs_const.and_then(is_power_of_2) {
             // x % 2^k → x & (2^k - 1)

@@ -530,6 +530,7 @@ impl CommonSubexpressionElimination {
                         return true;
                     }
                 }
+                #[allow(unreachable_patterns)]
                 Instruction::Br {
                     false_target: target,
                     ..

@@ -868,6 +868,7 @@ impl Instruction {
                     }
                 }
             }
+            #[allow(unreachable_patterns)]
             Instruction::Lea { base, .. } => regs.push(base),
             Instruction::VectorOp { operands, .. } => {
                 for op in operands {
