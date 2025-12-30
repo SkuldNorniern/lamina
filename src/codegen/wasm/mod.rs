@@ -70,26 +70,34 @@ pub fn get_size_primitive(ty: PrimitiveType, is_wasm64: bool) -> u8 {
     }
 }
 
-pub fn get_size<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> u64 {
+pub fn get_size<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> Result<u64, LaminaError> {
     match ty {
-        Type::Primitive(ty) => get_size_primitive(*ty, is_wasm64) as u64,
+        Type::Primitive(ty) => Ok(get_size_primitive(*ty, is_wasm64) as u64),
         Type::Array { element_type, size } => {
-            get_size(element_type.as_ref(), is_wasm64, module) * *size
+            Ok(get_size(element_type.as_ref(), is_wasm64, module)? * *size)
         }
         Type::Named(id) => {
             let named_ty = module.type_declarations.get(id)
-                .expect(&format!("Type '{}' not found in type declarations - this indicates an invalid module", id));
+                .ok_or_else(|| LaminaError::ValidationError(format!(
+                    "Type '{}' not found in type declarations - this indicates an invalid module", id
+                )))?;
             get_size(&named_ty.ty, is_wasm64, module)
         },
-        Type::Struct(fields) => fields
-            .iter()
-            .map(|v| get_size(&v.ty, is_wasm64, module))
-            .sum::<u64>(),
-        Type::Tuple(fields) => fields
-            .iter()
-            .map(|v| get_size(v, is_wasm64, module))
-            .sum::<u64>(),
-        Type::Void => 0,
+        Type::Struct(fields) => {
+            let mut total = 0u64;
+            for field in fields {
+                total += get_size(&field.ty, is_wasm64, module)?;
+            }
+            Ok(total)
+        },
+        Type::Tuple(fields) => {
+            let mut total = 0u64;
+            for field in fields {
+                total += get_size(field, is_wasm64, module)?;
+            }
+            Ok(total)
+        },
+        Type::Void => Ok(0),
     }
 }
 
@@ -116,24 +124,32 @@ pub fn get_wasm_size_primitive(ty: PrimitiveType, is_wasm64: bool) -> u8 {
     }
 }
 
-pub fn get_wasm_size<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> u64 {
+pub fn get_wasm_size<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> Result<u64, LaminaError> {
     match ty {
-        Type::Primitive(prim) => get_wasm_size_primitive(*prim, is_wasm64) as u64,
-        Type::Array { element_type, size } => get_wasm_size(element_type, is_wasm64, module) * size,
-        Type::Struct(fields) => fields
-            .iter()
-            .map(|v| get_wasm_size(&v.ty, is_wasm64, module))
-            .sum(),
-        Type::Tuple(types) => types
-            .iter()
-            .map(|v| get_wasm_size(v, is_wasm64, module))
-            .sum(),
-        Type::Named(name) => get_wasm_size(
-            &module.type_declarations.get(name).unwrap().ty,
-            is_wasm64,
-            module,
-        ),
-        Type::Void => 0,
+        Type::Primitive(prim) => Ok(get_wasm_size_primitive(*prim, is_wasm64) as u64),
+        Type::Array { element_type, size } => Ok(get_wasm_size(element_type, is_wasm64, module)? * size),
+        Type::Struct(fields) => {
+            let mut total = 0u64;
+            for field in fields {
+                total += get_wasm_size(&field.ty, is_wasm64, module)?;
+            }
+            Ok(total)
+        },
+        Type::Tuple(types) => {
+            let mut total = 0u64;
+            for ty in types {
+                total += get_wasm_size(ty, is_wasm64, module)?;
+            }
+            Ok(total)
+        },
+        Type::Named(name) => {
+            let named_ty = module.type_declarations.get(name)
+                .ok_or_else(|| LaminaError::ValidationError(format!(
+                    "Type '{}' not found in type declarations", name
+                )))?;
+            get_wasm_size(&named_ty.ty, is_wasm64, module)
+        },
+        Type::Void => Ok(0),
     }
 }
 
@@ -155,29 +171,41 @@ pub fn get_align_primitive(ty: PrimitiveType, is_wasm64: bool) -> u64 {
     }
 }
 
-pub fn get_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> u64 {
+pub fn get_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> Result<u64, LaminaError> {
     match ty {
-        Type::Primitive(prim) => get_align_primitive(*prim, is_wasm64),
+        Type::Primitive(prim) => Ok(get_align_primitive(*prim, is_wasm64)),
         Type::Array {
             element_type,
             size: _,
         } => get_align(element_type, is_wasm64, module),
-        Type::Struct(fields) => fields
-            .iter()
-            .map(|v| get_align(&v.ty, is_wasm64, module))
-            .max()
-            .unwrap(),
-        Type::Tuple(types) => types
-            .iter()
-            .map(|v| get_align(v, is_wasm64, module))
-            .max()
-            .unwrap(),
-        Type::Named(name) => get_align(
-            &module.type_declarations.get(name).unwrap().ty,
-            is_wasm64,
-            module,
-        ),
-        Type::Void => 1,
+        Type::Struct(fields) => {
+            let max_align = fields
+                .iter()
+                .map(|v| get_align(&v.ty, is_wasm64, module))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .max()
+                .unwrap_or(1); // Default to 1-byte alignment if empty struct
+            Ok(max_align)
+        },
+        Type::Tuple(types) => {
+            let max_align = types
+                .iter()
+                .map(|v| get_align(v, is_wasm64, module))
+                .collect::<Result<Vec<_>, _>>()?
+                .into_iter()
+                .max()
+                .unwrap_or(1); // Default to 1-byte alignment if empty tuple
+            Ok(max_align)
+        },
+        Type::Named(name) => {
+            let named_ty = module.type_declarations.get(name)
+                .ok_or_else(|| LaminaError::ValidationError(format!(
+                    "Type '{}' not found in type declarations", name
+                )))?;
+            get_align(&named_ty.ty, is_wasm64, module)
+        },
+        Type::Void => Ok(1),
     }
 }
 
@@ -218,11 +246,14 @@ pub fn get_wasm_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>
             .iter()
             .map(|v| get_wasm_align(v, is_wasm64, module))
             .sum(),
-        Type::Named(name) => get_wasm_align(
-            &module.type_declarations.get(name).unwrap().ty,
-            is_wasm64,
-            module,
-        ),
+        Type::Named(name) => {
+            if let Some(named_ty) = module.type_declarations.get(name) {
+                get_wasm_align(&named_ty.ty, is_wasm64, module)
+            } else {
+                // Default alignment if type not found
+                8
+            }
+        },
         Type::Void => 0,
     }
 }
@@ -252,19 +283,21 @@ pub fn get_wasm_size_value<'a>(
             Literal::F32(_) => 4,
             Literal::F64(_) => 8,
         },
-        Value::Global(id) => get_wasm_size_value(
-            state.get_global_value(id).as_ref().unwrap(),
-            is_wasm64,
-            state,
-            locals,
-        ),
+        Value::Global(id) => {
+            if let Some(global_val) = state.get_global_value(id).as_ref() {
+                get_wasm_size_value(global_val, is_wasm64, state, locals)
+            } else {
+                // Default size if global not found
+                8
+            }
+        },
         Value::Variable(id) => locals
             .get(id)
             .map(|v| match v.1 {
                 NumericType::F32 | NumericType::I32 => 4,
                 NumericType::F64 | NumericType::I64 => 8,
             })
-            .unwrap(),
+            .unwrap_or(8), // Default to 8 bytes if variable not found
     }
 }
 
@@ -299,13 +332,17 @@ pub fn get_wasm_type_value<'a>(
             Literal::F32(_) => NumericType::F32,
             Literal::F64(_) => NumericType::F64,
         },
-        Value::Global(id) => get_wasm_type_value(
-            state.get_global_value(id).as_ref().unwrap(),
-            is_wasm64,
-            state,
-            locals,
-        ),
-        Value::Variable(id) => locals.get(id).unwrap().1,
+        Value::Global(id) => {
+            if let Some(global_val) = state.get_global_value(id).as_ref() {
+                get_wasm_type_value(global_val, is_wasm64, state, locals)
+            } else {
+                // Default to I64 if global not found
+                NumericType::I64
+            }
+        },
+        Value::Variable(id) => locals.get(id)
+            .map(|v| v.1)
+            .unwrap_or(NumericType::I64), // Default to I64 if variable not found
     }
 }
 
@@ -663,7 +700,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
             state.add_wasm_global(decl.name, NumericType::F64, decl.initializer.clone());
             continue;
         }
-        let size = get_wasm_size(&decl.ty, is_wasm64, module);
+        let size = get_wasm_size(&decl.ty, is_wasm64, module)?;
 
         // force compound types to be in memory for individual field access
         if size <= 32 && matches!(decl.ty, Type::Primitive(_)) {
@@ -929,7 +966,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             result: None,
                             then: vec![
                                 generate::WasmInstruction::Const(NumericConstant::I64(
-                                    *block_mapping.get(&true_label.to_string()).unwrap() as u64,
+                                    *block_mapping.get(true_label as &str).unwrap() as u64,
                                 )),
                                 generate::WasmInstruction::LocalSet(generate::Identifier::Index(
                                     locals.get("pc").unwrap().0,
@@ -939,7 +976,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             r#else: Some(
                                 vec![
                                     generate::WasmInstruction::Const(NumericConstant::I64(
-                                        *block_mapping.get(&false_label.to_string()).unwrap()
+                                        *block_mapping.get(false_label as &str).unwrap()
                                             as u64,
                                     )),
                                     generate::WasmInstruction::LocalSet(
@@ -959,7 +996,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             generate::Identifier::Name(
                                 format!(
                                     "{}",
-                                    block_mapping.get(&target_label.to_string()).unwrap()
+                                    block_mapping.get(target_label as &str).unwrap()
                                 )
                                 .into(),
                             ),
@@ -987,8 +1024,12 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             )));
                         }
 
+                        let func_id = func_mapping.get(func_name)
+                            .ok_or_else(|| LaminaError::ValidationError(format!(
+                                "Function '{}' not found in function mapping", func_name
+                            )))?;
                         instructions.push(generate::WasmInstruction::Call(
-                            generate::Identifier::Name(func_mapping.get(func_name).unwrap().into()),
+                            generate::Identifier::Name(func_id.clone().into()),
                         ));
 
                         if let Some(result) = result {
@@ -1011,8 +1052,8 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                     result,
                                 );
                             } else {
-                                let size = get_size(ret, is_wasm64, module);
-                                let align = get_align(ret, is_wasm64, module);
+                                let size = get_size(ret, is_wasm64, module)?;
+                                let align = get_align(ret, is_wasm64, module)?;
 
                                 let dest = state.get_next_address(size, align);
 
@@ -1700,7 +1741,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             &mut instructions,
                             Some(create_load_reg(&state, ptr, None, &locals, is_wasm64)),
                             get_wasm_type(ty, is_wasm64).0,
-                            get_wasm_size(ty, is_wasm64, module) as u8,
+                            get_wasm_size(ty, is_wasm64, module)? as u8,
                             matches!(
                                 ty,
                                 Type::Primitive(
@@ -1722,7 +1763,10 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     }
 
                     Instruction::Store { ty, ptr, value } => {
-                        let addr = get_pointer(ptr, &state).unwrap();
+                        let addr = get_pointer(ptr, &state)
+                            .ok_or_else(|| LaminaError::ValidationError(format!(
+                                "Cannot get pointer for store operation - invalid pointer value"
+                            )))?;
 
                         if let Some(from) = get_pointer(value, &state) {
                             instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
@@ -1737,10 +1781,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 NumericConstant::I32(from as u32)
                             }));
 
+                            let size_val = get_size(ty, is_wasm64, module)?;
                             instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
-                                NumericConstant::I64(get_size(ty, is_wasm64, module))
+                                NumericConstant::I64(size_val)
                             } else {
-                                NumericConstant::I32(get_size(ty, is_wasm64, module) as u32)
+                                NumericConstant::I32(size_val as u32)
                             }));
 
                             instructions.push(generate::WasmInstruction::MemoryCopy);
@@ -1757,7 +1802,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }),
                             create_load_reg(&state, value, None, &locals, is_wasm64),
                             get_wasm_type(ty, is_wasm64).0,
-                            get_size(ty, is_wasm64, module) as u8,
+                            get_size(ty, is_wasm64, module)? as u8,
                             None,
                         )?;
                     }

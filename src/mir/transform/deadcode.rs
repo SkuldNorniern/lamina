@@ -114,7 +114,11 @@ impl DeadCodeElimination {
                     }
                 }
 
-                if current_live_out != *live_out.get(label).unwrap() {
+                // Safe: live_out is initialized for all blocks at function start
+                // If this fails, it indicates a bug in the initialization logic
+                let prev_live_out = live_out.get(label)
+                    .ok_or_else(|| format!("Block '{}' not found in live_out map - internal error in liveness analysis", label))?;
+                if current_live_out != *prev_live_out {
                     live_out.insert(label.clone(), current_live_out.clone());
                     changed = true;
                 }
@@ -131,7 +135,11 @@ impl DeadCodeElimination {
                     }
                 }
 
-                if current_live_in != *live_in.get(label).unwrap() {
+                // Safe: live_in is initialized for all blocks at function start
+                // If this fails, it indicates a bug in the initialization logic
+                let prev_live_in = live_in.get(label)
+                    .ok_or_else(|| format!("Block '{}' not found in live_in map - internal error in liveness analysis", label))?;
+                if current_live_in != *prev_live_in {
                     live_in.insert(label.clone(), current_live_in);
                     changed = true;
                 }
