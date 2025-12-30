@@ -1,3 +1,4 @@
+use crate::mir_codegen::abi::{common_call_stub, mangle_macos_name, Abi};
 use crate::target::TargetOperatingSystem;
 
 /// RISC-V ABI utilities
@@ -13,7 +14,7 @@ impl RiscVAbi {
     /// Get the appropriate function name with platform-specific prefix
     pub fn mangle_function_name(&self, name: &str) -> String {
         match self.target_os {
-            TargetOperatingSystem::MacOS => format!("_{}", name),
+            TargetOperatingSystem::MacOS => mangle_macos_name(name),
             _ => name.to_string(),
         }
     }
@@ -47,14 +48,20 @@ impl RiscVAbi {
 
     /// Map well-known intrinsic/runtime names to platform symbol stubs
     pub fn call_stub(&self, name: &str) -> Option<String> {
-        match (name, self.target_os) {
-            ("print", TargetOperatingSystem::MacOS) => Some("_printf".to_string()),
-            ("print", _) => Some("printf".to_string()),
-            ("malloc", TargetOperatingSystem::MacOS) => Some("_malloc".to_string()),
-            ("malloc", _) => Some("malloc".to_string()),
-            ("dealloc", TargetOperatingSystem::MacOS) => Some("_free".to_string()),
-            ("dealloc", _) => Some("free".to_string()),
-            _ => None,
-        }
+        common_call_stub(name, self.target_os)
+    }
+}
+
+impl Abi for RiscVAbi {
+    fn target_os(&self) -> TargetOperatingSystem {
+        self.target_os
+    }
+
+    fn mangle_function_name(&self, name: &str) -> String {
+        RiscVAbi::mangle_function_name(self, name)
+    }
+
+    fn call_stub(&self, name: &str) -> Option<String> {
+        RiscVAbi::call_stub(self, name)
     }
 }

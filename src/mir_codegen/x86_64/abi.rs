@@ -1,5 +1,6 @@
 //! x86_64 ABI utilities for different platforms.
 
+use crate::mir_codegen::abi::{common_call_stub, mangle_macos_name, Abi};
 use crate::target::TargetOperatingSystem;
 
 /// Platform-specific ABI utilities for x86_64 code generation.
@@ -16,13 +17,7 @@ impl X86ABI {
     /// Returns the mangled function name with platform-specific prefix.
     pub fn mangle_function_name(&self, name: &str) -> String {
         match self.target_os {
-            TargetOperatingSystem::MacOS => {
-                if name == "main" {
-                    "_main".to_string()
-                } else {
-                    format!("_{}", name)
-                }
-            }
+            TargetOperatingSystem::MacOS => mangle_macos_name(name),
             TargetOperatingSystem::Windows => {
                 if name == "main" {
                     "main".to_string()
@@ -65,4 +60,18 @@ impl X86ABI {
     /// Callee-saved registers that are preserved by called functions.
     pub const CALLEE_SAVED_REGISTERS: &'static [&'static str] =
         &["rbx", "rbp", "r12", "r13", "r14", "r15"];
+}
+
+impl Abi for X86ABI {
+    fn target_os(&self) -> TargetOperatingSystem {
+        self.target_os
+    }
+
+    fn mangle_function_name(&self, name: &str) -> String {
+        X86ABI::mangle_function_name(self, name)
+    }
+
+    fn call_stub(&self, name: &str) -> Option<String> {
+        common_call_stub(name, self.target_os)
+    }
 }
