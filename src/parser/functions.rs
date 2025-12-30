@@ -149,7 +149,7 @@ pub fn parse_basic_block<'a>(
         }
     }
 
-    if instructions.is_empty() || !instructions.last().unwrap().is_terminator() {
+    if instructions.is_empty() || instructions.last().map_or(true, |last| !last.is_terminator()) {
         return Err(state.error(format!(
             "Basic block '{}' must end with a terminator instruction (ret, jmp, br)",
             label
