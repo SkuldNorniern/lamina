@@ -7,8 +7,8 @@ use std::result::Result;
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
-    capability::{CapabilitySet, CodegenCapability},
     Codegen, CodegenError, CodegenOptions,
+    capability::{CapabilitySet, CodegenCapability},
 };
 use crate::target::TargetOperatingSystem;
 use abi::WasmABI;
@@ -17,34 +17,28 @@ use util::{
     store_to_register_wasm,
 };
 
+use crate::mir_codegen::common::CodegenBase;
+
 /// Trait-backed MIR ⇒ WebAssembly code generator.
 pub struct WasmCodegen<'a> {
-    target_os: TargetOperatingSystem,
-    module: Option<&'a MirModule>,
-    prepared: bool,
-    verbose: bool,
-    output: Vec<u8>,
+    base: CodegenBase<'a>,
 }
 
 impl<'a> WasmCodegen<'a> {
     pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
-            target_os,
-            module: None,
-            prepared: false,
-            verbose: false,
-            output: Vec::new(),
+            base: CodegenBase::new(target_os),
         }
     }
 
     /// Attach the MIR module that should be emitted in the next codegen pass.
     pub fn set_module(&mut self, module: &'a MirModule) {
-        self.module = Some(module);
+        self.base.set_module(module);
     }
 
     /// Drain the internal WASM buffer produced by `emit_asm`.
     pub fn drain_output(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.output)
+        self.base.drain_output()
     }
 
     /// Emit WASM for the provided module directly into the supplied writer.
@@ -53,7 +47,7 @@ impl<'a> WasmCodegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_wasm(module, writer, self.target_os)
+        generate_mir_wasm(module, writer, self.base.target_os)
     }
 }
 
@@ -89,34 +83,28 @@ impl<'a> Codegen for WasmCodegen<'a> {
 
     fn prepare(
         &mut self,
-        _types: &std::collections::HashMap<String, crate::mir::MirType>,
-        _globals: &std::collections::HashMap<String, crate::mir::Global>,
-        _funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        types: &std::collections::HashMap<String, crate::mir::MirType>,
+        globals: &std::collections::HashMap<String, crate::mir::Global>,
+        funcs: &std::collections::HashMap<String, crate::mir::Signature>,
         verbose: bool,
-        _options: &[CodegenOptions],
-        _input_name: &str,
+        options: &[CodegenOptions],
+        input_name: &str,
     ) -> Result<(), CodegenError> {
-        self.verbose = verbose;
-        self.prepared = true;
-        Ok(())
+        self.base
+            .prepare_base(types, globals, funcs, verbose, options, input_name)
     }
 
     fn compile(&mut self) -> Result<(), CodegenError> {
-        if !self.prepared {
-            return Err(CodegenError::InvalidCodegenOptions(
-                "Codegen not prepared".to_string(),
-            ));
-        }
-        Ok(())
+        self.base.compile_base()
     }
 
     fn finalize(&mut self) -> Result<(), CodegenError> {
-        Ok(())
+        self.base.finalize_base()
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        if let Some(module) = self.module {
-            generate_mir_wasm(module, &mut self.output, self.target_os).map_err(|e| {
+        if let Some(module) = self.base.module {
+            generate_mir_wasm(module, &mut self.base.output, self.base.target_os).map_err(|e| {
                 CodegenError::InvalidCodegenOptions(format!("WASM emission failed: {}", e))
             })?;
         } else {
@@ -204,33 +192,33 @@ pub fn generate_mir_wasm<W: Write>(
 
         // Use dispatch loop pattern for control flow (like the old WASM backend)
         // WASM's br/br_table use block depth indices, so we use a PC variable
-        
+
         // Build a map of block labels to their indices
         let mut block_labels: std::collections::HashMap<&str, usize> =
             std::collections::HashMap::new();
         for (idx, block) in func.blocks.iter().enumerate() {
             block_labels.insert(&block.label, idx);
         }
-        
+
         // Add PC (program counter) local
         writeln!(writer, "    (local $pc i64)")?;
-        
+
         // Initialize PC to 0 (entry block)
         writeln!(writer, "    i64.const 0")?;
         writeln!(writer, "    local.set $pc")?;
-        
+
         // Main dispatch loop
         writeln!(writer, "    (loop $dispatch_loop")?;
-        
+
         // Generate dispatch table using nested blocks and br_table
         // Each block index N will br to depth N to jump to the right code
         let num_blocks = func.blocks.len();
-        
+
         // Create nested blocks for dispatch - innermost first
         for i in (0..num_blocks).rev() {
             writeln!(writer, "      (block $block_{}", i)?;
         }
-        
+
         // br_table dispatch based on PC value
         writeln!(writer, "        local.get $pc")?;
         writeln!(writer, "        i32.wrap_i64")?;
@@ -239,23 +227,23 @@ pub fn generate_mir_wasm<W: Write>(
             write!(writer, " {}", i)?;
         }
         writeln!(writer, " 0")?; // default to block 0
-        
+
         // Close innermost block and emit code for each block
-        for (block_idx, block) in func.blocks.iter().enumerate() {
+        for (_block_idx, block) in func.blocks.iter().enumerate() {
             writeln!(writer, "      )")?; // close block_N
-            
+
             // Emit block code
             writeln!(writer, "      ;; Block: {}", block.label)?;
             for inst in &block.instructions {
                 emit_instruction_wasm(inst, writer, &vreg_to_local, &block_labels)?;
             }
-            
+
             // After block code, continue dispatch loop (unless return/br already exited)
             writeln!(writer, "      br $dispatch_loop")?;
         }
-        
+
         writeln!(writer, "    )")?; // close dispatch_loop
-        
+
         // Implicit return value for functions with return type
         if func.sig.ret_ty.is_some() {
             writeln!(writer, "    i64.const 0")?;

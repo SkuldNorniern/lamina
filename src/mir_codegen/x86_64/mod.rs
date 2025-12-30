@@ -20,39 +20,33 @@ use util::*;
 use crate::error::LaminaError;
 use crate::mir::{Instruction as MirInst, MirType, Module as MirModule, Register};
 use crate::mir_codegen::{
-    capability::{CapabilitySet, CodegenCapability},
     Codegen, CodegenError, CodegenOptions,
+    capability::{CapabilitySet, CodegenCapability},
 };
 use crate::target::TargetOperatingSystem;
 
+use crate::mir_codegen::common::CodegenBase;
+
 /// MIR to x86_64 code generator implementing the `Codegen` trait.
 pub struct X86Codegen<'a> {
-    target_os: TargetOperatingSystem,
-    module: Option<&'a MirModule>,
-    prepared: bool,
-    verbose: bool,
-    output: Vec<u8>,
+    base: CodegenBase<'a>,
 }
 
 impl<'a> X86Codegen<'a> {
     pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
-            target_os,
-            module: None,
-            prepared: false,
-            verbose: false,
-            output: Vec::new(),
+            base: CodegenBase::new(target_os),
         }
     }
 
     /// Attach the MIR module that should be emitted in the next codegen pass.
     pub fn set_module(&mut self, module: &'a MirModule) {
-        self.module = Some(module);
+        self.base.set_module(module);
     }
 
     /// Drain the internal assembly buffer produced by `emit_asm`.
     pub fn drain_output(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.output)
+        self.base.drain_output()
     }
 
     /// Emit assembly for the provided module directly into the supplied writer.
@@ -61,7 +55,7 @@ impl<'a> X86Codegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_x86_64(module, writer, self.target_os)
+        generate_mir_x86_64(module, writer, self.base.target_os)
     }
 }
 
@@ -94,36 +88,30 @@ impl<'a> Codegen for X86Codegen<'a> {
 
     fn prepare(
         &mut self,
-        _types: &std::collections::HashMap<String, crate::mir::MirType>,
-        _globals: &std::collections::HashMap<String, crate::mir::Global>,
-        _funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        types: &std::collections::HashMap<String, crate::mir::MirType>,
+        globals: &std::collections::HashMap<String, crate::mir::Global>,
+        funcs: &std::collections::HashMap<String, crate::mir::Signature>,
         verbose: bool,
-        _options: &[CodegenOptions],
-        _input_name: &str,
+        options: &[CodegenOptions],
+        input_name: &str,
     ) -> Result<(), CodegenError> {
-        self.verbose = verbose;
-        self.prepared = true;
-        Ok(())
+        self.base
+            .prepare_base(types, globals, funcs, verbose, options, input_name)
     }
 
     fn compile(&mut self) -> Result<(), CodegenError> {
-        if !self.prepared {
-            return Err(CodegenError::InvalidCodegenOptions(
-                "Codegen not prepared".to_string(),
-            ));
-        }
-        Ok(())
+        self.base.compile_base()
     }
 
     fn finalize(&mut self) -> Result<(), CodegenError> {
-        Ok(())
+        self.base.finalize_base()
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        if let Some(module) = self.module {
-            generate_mir_x86_64(module, &mut self.output, self.target_os).map_err(|e| {
-                CodegenError::InvalidCodegenOptions(format!("Assembly emission failed: {}", e))
-            })?;
+        if let Some(module) = self.base.module {
+            generate_mir_x86_64(module, &mut self.base.output, self.base.target_os).map_err(
+                |e| CodegenError::InvalidCodegenOptions(format!("Assembly emission failed: {}", e)),
+            )?;
         } else {
             return Err(CodegenError::InvalidCodegenOptions(
                 "No module set for emission".to_string(),
@@ -139,6 +127,8 @@ impl<'a> Codegen for X86Codegen<'a> {
     }
 }
 
+use crate::mir_codegen::common::emit_print_format_section;
+
 pub fn generate_mir_x86_64<W: Write>(
     module: &MirModule,
     writer: &mut W,
@@ -146,24 +136,7 @@ pub fn generate_mir_x86_64<W: Write>(
 ) -> Result<(), crate::error::LaminaError> {
     let abi = X86ABI::new(target_os);
 
-    match target_os {
-        TargetOperatingSystem::MacOS => {
-            writeln!(writer, ".section __TEXT,__cstring,cstring_literals")?;
-            writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
-        }
-        TargetOperatingSystem::Windows => {
-            writeln!(writer, ".section .rdata,\"dr\"")?;
-            writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
-        }
-        TargetOperatingSystem::Linux => {
-            writeln!(writer, ".section .rodata")?;
-            writeln!(writer, ".L_mir_fmt_int: .string \"%lld\\n\"")?;
-        }
-        _ => {
-            writeln!(writer, ".section .rodata")?;
-            writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
-        }
-    }
+    emit_print_format_section(writer, target_os)?;
 
     writeln!(writer, ".text")?;
     writeln!(writer, "{}", abi.get_main_global())?;
@@ -418,6 +391,7 @@ fn emit_instruction_x86_64(
                 crate::mir::IntCmpOp::ULe => writeln!(writer, "    setbe %al")?,
                 crate::mir::IntCmpOp::UGt => writeln!(writer, "    seta %al")?,
                 crate::mir::IntCmpOp::UGe => writeln!(writer, "    setae %al")?,
+                #[allow(unreachable_patterns)]
                 other => {
                     return Err(LaminaError::ValidationError(format!(
                         "x86_64 backend does not support integer comparison {:?}",

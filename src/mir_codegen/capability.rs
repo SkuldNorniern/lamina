@@ -150,14 +150,8 @@ impl CapabilitySet {
     }
 
     /// Get all unsupported capabilities from a list
-    pub fn unsupported<'a>(
-        &self,
-        required: &'a [CodegenCapability],
-    ) -> Vec<&'a CodegenCapability> {
-        required
-            .iter()
-            .filter(|cap| !self.supports(cap))
-            .collect()
+    pub fn unsupported<'a>(&self, required: &'a [CodegenCapability]) -> Vec<&'a CodegenCapability> {
+        required.iter().filter(|cap| !self.supports(cap)).collect()
     }
 }
 
@@ -192,4 +186,3 @@ mod tests {
         assert!(caps.supports(&CodegenCapability::FunctionCalls));
     }
 }
-

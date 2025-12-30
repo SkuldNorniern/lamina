@@ -2,6 +2,7 @@
 
 pub mod assemble;
 pub mod capability;
+pub mod common;
 pub mod link;
 pub mod regalloc;
 
@@ -114,42 +115,6 @@ pub fn generate_mir_to_riscv<W: Write>(
     target_os: TargetOperatingSystem,
 ) -> std::result::Result<(), LaminaError> {
     generate_mir_to_target(module, writer, TargetArchitecture::Riscv64, target_os)
-}
-
-/// Wraps a codegen error into a LaminaError.
-fn wrap_codegen_error(err: CodegenError) -> crate::error::LaminaError {
-    use crate::codegen::{CodegenError as CoreCodegenError, FeatureType};
-
-    let message = match err {
-        CodegenError::UnsupportedFeature(msg) => msg,
-        CodegenError::InvalidCodegenOptions(msg) => {
-            format!("Invalid codegen options: {}", msg)
-        }
-        CodegenError::InvalidTargetOs(msg) => format!("Invalid target OS: {}", msg),
-        CodegenError::InvalidMaxBitWidth(bits) => {
-            format!("Invalid max bit width: {}", bits)
-        }
-        CodegenError::InvalidInputName(name) => format!("Invalid input name: {}", name),
-        CodegenError::InvalidVerbose(flag) => {
-            format!("Invalid verbose flag supplied: {}", flag)
-        }
-        CodegenError::InvalidOptions(opts) => {
-            format!("Invalid options provided ({} entries)", opts.len())
-        }
-        CodegenError::InvalidTypes(types) => {
-            format!("Invalid types referenced: {}", types.join(", "))
-        }
-        CodegenError::InvalidGlobals(globals) => {
-            format!("Invalid globals referenced: {}", globals.join(", "))
-        }
-        CodegenError::InvalidFuncs(funcs) => {
-            format!("Invalid functions referenced: {}", funcs.join(", "))
-        }
-    };
-
-    crate::error::LaminaError::CodegenError(CoreCodegenError::UnsupportedFeature(
-        FeatureType::Custom(message),
-    ))
 }
 
 /// Code generation options.
