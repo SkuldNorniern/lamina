@@ -14,7 +14,7 @@ use std::process::Command;
 pub enum AssemblerBackend {
     /// GNU Assembler (gas/as)
     Gas,
-    /// LLVM's lld linker (can also assemble)
+    /// Clang's integrated assembler
     Lld,
     /// wat2wasm for WebAssembly
     Wat2Wasm,
@@ -37,13 +37,29 @@ pub fn assemble(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
     backend: Option<AssemblerBackend>,
+    additional_flags: &[String],
     verbose: bool,
 ) -> Result<AssembleResult, LaminaError> {
+    if !input_path.exists() {
+        return Err(LaminaError::ValidationError(format!(
+            "Input file does not exist: {}",
+            input_path.display()
+        )));
+    }
+
     match target_arch {
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
-            assemble_wasm(input_path, output_path, backend, verbose)
+            assemble_wasm(input_path, output_path, backend, additional_flags, verbose)
         }
-        _ => assemble_native(input_path, output_path, target_arch, target_os, backend, verbose),
+        _ => assemble_native(
+            input_path,
+            output_path,
+            target_arch,
+            target_os,
+            backend,
+            additional_flags,
+            verbose,
+        ),
     }
 }
 
@@ -52,23 +68,24 @@ fn assemble_wasm(
     input_path: &Path,
     output_path: &Path,
     backend: Option<AssemblerBackend>,
+    additional_flags: &[String],
     verbose: bool,
 ) -> Result<AssembleResult, LaminaError> {
     let backend = backend.unwrap_or(AssemblerBackend::Wat2Wasm);
 
     match backend {
         AssemblerBackend::Wat2Wasm => {
-            let output = Command::new("wat2wasm")
-                .arg(input_path)
-                .arg("-o")
-                .arg(output_path)
-                .output()
-                .map_err(|e| {
-                    LaminaError::ValidationError(format!(
-                        "Failed to spawn wat2wasm: {}. Make sure wat2wasm is installed and in PATH.",
-                        e
-                    ))
-                })?;
+            let mut cmd = Command::new("wat2wasm");
+            cmd.arg(input_path);
+            cmd.arg("-o");
+            cmd.arg(output_path);
+            cmd.args(additional_flags);
+            let output = cmd.output().map_err(|e| {
+                LaminaError::ValidationError(format!(
+                    "Failed to spawn wat2wasm: {}. Make sure wat2wasm is installed and in PATH.",
+                    e
+                ))
+            })?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
@@ -79,7 +96,11 @@ fn assemble_wasm(
             }
 
             if verbose {
-                println!("[VERBOSE] wat2wasm: {} -> {}", input_path.display(), output_path.display());
+                println!(
+                    "[VERBOSE] wat2wasm: {} -> {}",
+                    input_path.display(),
+                    output_path.display()
+                );
             }
 
             Ok(AssembleResult {
@@ -101,6 +122,7 @@ fn assemble_native(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
     backend: Option<AssemblerBackend>,
+    additional_flags: &[String],
     verbose: bool,
 ) -> Result<AssembleResult, LaminaError> {
     let backend = backend.unwrap_or_else(|| detect_assembler_backend());
@@ -125,36 +147,57 @@ fn assemble_native(
                     }
                 }
                 TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
-                    args.push(format!("-march=rv{}", if matches!(target_arch, TargetArchitecture::Riscv64) { "64" } else { "32" }));
+                    args.push(format!(
+                        "-march=rv{}",
+                        if matches!(target_arch, TargetArchitecture::Riscv64) {
+                            "64"
+                        } else {
+                            "32"
+                        }
+                    ));
                 }
                 _ => {}
             }
             args.push(input_path.to_string_lossy().to_string());
             args.push("-o".to_string());
             args.push(output_path.to_string_lossy().to_string());
+            args.extend(additional_flags.iter().cloned());
             ("as", args)
         }
         AssemblerBackend::Lld => {
-            // lld can assemble via clang's integrated assembler
-            // Use clang -c to assemble, but with lld as the linker
             let mut args = vec!["-c".to_string()];
-            // Set architecture-specific target
-            match target_arch {
-                TargetArchitecture::X86_64 => {
-                    args.push("-target".to_string());
-                    args.push("x86_64-unknown-linux-gnu".to_string());
+
+            let target_triple = match (target_arch, target_os) {
+                (TargetArchitecture::X86_64, TargetOperatingSystem::Linux) => {
+                    "x86_64-unknown-linux-gnu"
                 }
-                TargetArchitecture::Aarch64 => {
-                    args.push("-target".to_string());
-                    args.push("aarch64-unknown-linux-gnu".to_string());
+                (TargetArchitecture::X86_64, TargetOperatingSystem::MacOS) => "x86_64-apple-darwin",
+                (TargetArchitecture::X86_64, TargetOperatingSystem::Windows) => {
+                    "x86_64-pc-windows-msvc"
                 }
-                TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
-                    args.push("-target".to_string());
-                    args.push(format!("riscv{}-unknown-linux-gnu", if matches!(target_arch, TargetArchitecture::Riscv64) { "64" } else { "32" }));
+                (TargetArchitecture::Aarch64, TargetOperatingSystem::Linux) => {
+                    "aarch64-unknown-linux-gnu"
                 }
-                _ => {}
-            }
-            args.push("-fuse-ld=lld".to_string());
+                (TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS) => {
+                    "aarch64-apple-darwin"
+                }
+                (TargetArchitecture::Riscv32, TargetOperatingSystem::Linux) => {
+                    "riscv32-unknown-linux-gnu"
+                }
+                (TargetArchitecture::Riscv64, TargetOperatingSystem::Linux) => {
+                    "riscv64-unknown-linux-gnu"
+                }
+                _ => {
+                    return Err(LaminaError::ValidationError(format!(
+                        "Unsupported target combination for clang assembler: {:?} {:?}",
+                        target_arch, target_os
+                    )));
+                }
+            };
+
+            args.push("-target".to_string());
+            args.push(target_triple.to_string());
+            args.extend(additional_flags.iter().cloned());
             args.push(input_path.to_string_lossy().to_string());
             args.push("-o".to_string());
             args.push(output_path.to_string_lossy().to_string());
@@ -180,15 +223,9 @@ fn assemble_native(
         println!("[VERBOSE] Assembling with {}: {:?}", cmd, args);
     }
 
-    let output = Command::new(cmd)
-        .args(&args)
-        .output()
-        .map_err(|e| {
-            LaminaError::ValidationError(format!(
-                "Failed to spawn assembler '{}': {}",
-                cmd, e
-            ))
-        })?;
+    let output = Command::new(cmd).args(&args).output().map_err(|e| {
+        LaminaError::ValidationError(format!("Failed to spawn assembler '{}': {}", cmd, e))
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -207,19 +244,14 @@ fn assemble_native(
 
 /// Detect available assembler backend
 fn detect_assembler_backend() -> AssemblerBackend {
-    // Try gas/as first (most common)
     if Command::new("as").arg("--version").output().is_ok() {
         return AssemblerBackend::Gas;
     }
 
-    // Try lld (if available) - lld can work with clang's integrated assembler
-    if Command::new("lld").arg("-v").output().is_ok()
-        || Command::new("ld.lld").arg("-v").output().is_ok()
-    {
+    if Command::new("clang").arg("--version").output().is_ok() {
         return AssemblerBackend::Lld;
     }
 
-    // Default to gas (will fail later if not available)
     AssemblerBackend::Gas
 }
 
@@ -237,12 +269,7 @@ pub fn get_intermediate_extension(target_arch: TargetArchitecture) -> &'static s
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "wat",
         _ => {
             // Assembly file extension
-            if cfg!(windows) {
-                "asm"
-            } else {
-                "s"
-            }
+            if cfg!(windows) { "asm" } else { "s" }
         }
     }
 }
-

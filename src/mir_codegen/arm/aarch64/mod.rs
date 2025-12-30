@@ -17,8 +17,8 @@ use util::{emit_mov_imm64, imm_to_u64};
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
-    capability::{CapabilitySet, CodegenCapability},
     Codegen, CodegenError, CodegenOptions,
+    capability::{CapabilitySet, CodegenCapability},
 };
 use crate::target::TargetOperatingSystem;
 
@@ -50,17 +50,7 @@ pub fn generate_mir_aarch64<W: Write>(
         .functions
         .values()
         .any(|f| f.blocks.len() > 50 || f.blocks.iter().any(|b| b.instructions.len() > 100));
-    // Emit a shared format string for print intrinsics, then text section header
-    match target_os {
-        TargetOperatingSystem::MacOS => {
-            writeln!(writer, ".section __TEXT,__cstring,cstring_literals")?;
-            writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
-        }
-        _ => {
-            writeln!(writer, ".section .rodata")?;
-            writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
-        }
-    }
+    emit_print_format_section(writer, target_os)?;
     // Header
     writeln!(writer, ".text")?;
 
@@ -1054,34 +1044,28 @@ fn materialize_address<W: Write>(
     Ok(())
 }
 
+use crate::mir_codegen::common::{CodegenBase, emit_print_format_section, lamina_to_codegen_error};
+
 /// Trait-backed MIR ⇒ AArch64 code generator.
 pub struct AArch64Codegen<'a> {
-    target_os: TargetOperatingSystem,
-    module: Option<&'a MirModule>,
-    prepared: bool,
-    verbose: bool,
-    output: Vec<u8>,
+    base: CodegenBase<'a>,
 }
 
 impl<'a> AArch64Codegen<'a> {
     pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
-            target_os,
-            module: None,
-            prepared: false,
-            verbose: false,
-            output: Vec::new(),
+            base: CodegenBase::new(target_os),
         }
     }
 
     /// Attach the MIR module that should be emitted in the next codegen pass.
     pub fn set_module(&mut self, module: &'a MirModule) {
-        self.module = Some(module);
+        self.base.set_module(module);
     }
 
     /// Drain the internal assembly buffer produced by `emit_asm`.
     pub fn drain_output(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.output)
+        self.base.drain_output()
     }
 
     /// Emit assembly for the provided module directly into the supplied writer.
@@ -1090,7 +1074,7 @@ impl<'a> AArch64Codegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_aarch64(module, writer, self.target_os)
+        generate_mir_aarch64(module, writer, self.base.target_os)
     }
 }
 
@@ -1128,41 +1112,34 @@ impl<'a> Codegen for AArch64Codegen<'a> {
         globals: &std::collections::HashMap<String, crate::mir::Global>,
         funcs: &std::collections::HashMap<String, crate::mir::Signature>,
         verbose: bool,
-        _options: &[CodegenOptions],
-        _input_name: &str,
+        options: &[CodegenOptions],
+        input_name: &str,
     ) -> Result<(), CodegenError> {
-        let _ = (types.len(), globals.len(), funcs.len());
-        self.prepared = true;
-        self.verbose = verbose;
-        Ok(())
+        self.base
+            .prepare_base(types, globals, funcs, verbose, options, input_name)
     }
 
     fn compile(&mut self) -> Result<(), CodegenError> {
-        if !self.prepared {
-            return Err(CodegenError::UnsupportedFeature(
-                "AArch64 backend compile called before prepare".into(),
-            ));
-        }
-        Ok(())
+        self.base.compile_base()
     }
 
     fn finalize(&mut self) -> Result<(), CodegenError> {
-        self.module = None;
-        self.prepared = false;
+        self.base.module = None;
+        self.base.prepared = false;
         Ok(())
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        if !self.prepared {
+        if !self.base.prepared {
             return Err(CodegenError::UnsupportedFeature(
                 "emit_asm called before prepare".into(),
             ));
         }
-        let module = self.module.ok_or_else(|| {
+        let module = self.base.module.ok_or_else(|| {
             CodegenError::UnsupportedFeature("No module attached to AArch64 backend".into())
         })?;
-        self.output.clear();
-        generate_mir_aarch64(module, &mut self.output, self.target_os)
+        self.base.output.clear();
+        generate_mir_aarch64(module, &mut self.base.output, self.base.target_os)
             .map_err(lamina_to_codegen_error)?;
         Ok(())
     }
@@ -1171,18 +1148,5 @@ impl<'a> Codegen for AArch64Codegen<'a> {
         Err(CodegenError::UnsupportedFeature(
             "Binary emission not implemented for AArch64 MIR backend".into(),
         ))
-    }
-}
-
-fn lamina_to_codegen_error(err: crate::error::LaminaError) -> CodegenError {
-    match err {
-        crate::error::LaminaError::CodegenError(inner) => {
-            CodegenError::UnsupportedFeature(inner.to_string())
-        }
-        crate::error::LaminaError::ParsingError(msg)
-        | crate::error::LaminaError::ValidationError(msg)
-        | crate::error::LaminaError::MirError(msg)
-        | crate::error::LaminaError::IoError(msg)
-        | crate::error::LaminaError::Utf8Error(msg) => CodegenError::UnsupportedFeature(msg),
     }
 }

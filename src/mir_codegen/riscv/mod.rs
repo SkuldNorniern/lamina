@@ -12,39 +12,33 @@ use util::*;
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
-    capability::{CapabilitySet, CodegenCapability},
     Codegen, CodegenError, CodegenOptions,
+    capability::{CapabilitySet, CodegenCapability},
 };
 use crate::target::TargetOperatingSystem;
 
+use crate::mir_codegen::common::CodegenBase;
+
 /// Trait-backed MIR ⇒ RISC-V code generator.
 pub struct RiscVCodegen<'a> {
-    target_os: TargetOperatingSystem,
-    module: Option<&'a MirModule>,
-    prepared: bool,
-    verbose: bool,
-    output: Vec<u8>,
+    base: CodegenBase<'a>,
 }
 
 impl<'a> RiscVCodegen<'a> {
     pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
-            target_os,
-            module: None,
-            prepared: false,
-            verbose: false,
-            output: Vec::new(),
+            base: CodegenBase::new(target_os),
         }
     }
 
     /// Attach the MIR module that should be emitted in the next codegen pass.
     pub fn set_module(&mut self, module: &'a MirModule) {
-        self.module = Some(module);
+        self.base.set_module(module);
     }
 
     /// Drain the internal assembly buffer produced by `emit_asm`.
     pub fn drain_output(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.output)
+        self.base.drain_output()
     }
 
     /// Emit assembly for the provided module directly into the supplied writer.
@@ -53,7 +47,7 @@ impl<'a> RiscVCodegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_riscv(module, writer, self.target_os)
+        generate_mir_riscv(module, writer, self.base.target_os)
     }
 }
 
@@ -86,36 +80,30 @@ impl<'a> Codegen for RiscVCodegen<'a> {
 
     fn prepare(
         &mut self,
-        _types: &std::collections::HashMap<String, crate::mir::MirType>,
-        _globals: &std::collections::HashMap<String, crate::mir::Global>,
-        _funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        types: &std::collections::HashMap<String, crate::mir::MirType>,
+        globals: &std::collections::HashMap<String, crate::mir::Global>,
+        funcs: &std::collections::HashMap<String, crate::mir::Signature>,
         verbose: bool,
-        _options: &[CodegenOptions],
-        _input_name: &str,
+        options: &[CodegenOptions],
+        input_name: &str,
     ) -> Result<(), CodegenError> {
-        self.verbose = verbose;
-        self.prepared = true;
-        Ok(())
+        self.base
+            .prepare_base(types, globals, funcs, verbose, options, input_name)
     }
 
     fn compile(&mut self) -> Result<(), CodegenError> {
-        if !self.prepared {
-            return Err(CodegenError::InvalidCodegenOptions(
-                "Codegen not prepared".to_string(),
-            ));
-        }
-        Ok(())
+        self.base.compile_base()
     }
 
     fn finalize(&mut self) -> Result<(), CodegenError> {
-        Ok(())
+        self.base.finalize_base()
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        if let Some(module) = self.module {
-            generate_mir_riscv(module, &mut self.output, self.target_os).map_err(|e| {
-                CodegenError::InvalidCodegenOptions(format!("RISC-V emission failed: {}", e))
-            })?;
+        if let Some(module) = self.base.module {
+            generate_mir_riscv(module, &mut self.base.output, self.base.target_os).map_err(
+                |e| CodegenError::InvalidCodegenOptions(format!("RISC-V emission failed: {}", e)),
+            )?;
         } else {
             return Err(CodegenError::InvalidCodegenOptions(
                 "No module set for emission".to_string(),
