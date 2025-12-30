@@ -70,7 +70,7 @@ impl Peephole {
     }
 
     /// Try to optimize a single instruction through various peephole patterns
-    fn try_optimize_instruction(&self, inst: &mut Instruction, in_loop_block: bool) -> bool {
+    fn try_optimize_instruction(&self, inst: &mut Instruction, _in_loop_block: bool) -> bool {
         match inst {
             Instruction::IntBinary { op, lhs, rhs, .. } => self.try_fold_int_binary(op, lhs, rhs),
             Instruction::IntCmp { .. } => self.try_fold_int_cmp(inst),
