@@ -309,9 +309,7 @@ pub use ir::{
     module::{GlobalDeclaration, Module, TypeDeclaration},
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
 };
-pub use mir_codegen::{
-    generate_mir_to_aarch64, generate_mir_to_riscv, generate_mir_to_wasm, generate_mir_to_x86_64,
-};
+pub use mir_codegen::generate_mir_to_target;
 
 /// Parses Lamina IR text and generates assembly code using the host system's architecture.
 ///
@@ -345,77 +343,32 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     let module = parser::parse_module(input_ir)?;
 
     // 2. Generate assembly for the specified target
-    match target {
-        "x86_64_unknown" => {
-            let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_x86_64(
+    let target_obj = target::Target::from_str(target);
+    let mir_module = mir::codegen::from_ir(&module, "module")?;
+
+    match target_obj.architecture {
+        target::TargetArchitecture::X86_64
+        | target::TargetArchitecture::Aarch64
+        | target::TargetArchitecture::Wasm32
+        | target::TargetArchitecture::Wasm64
+        | target::TargetArchitecture::Riscv32
+        | target::TargetArchitecture::Riscv64 => {
+            mir_codegen::generate_mir_to_target(
                 &mir_module,
                 output_asm,
-                target::TargetOperatingSystem::Unknown,
+                target_obj.architecture,
+                target_obj.operating_system,
             )?;
         }
-        "x86_64_macos" => {
-            let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_x86_64(
-                &mir_module,
-                output_asm,
-                target::TargetOperatingSystem::MacOS,
-            )?;
-        }
-        "x86_64_linux" => {
-            let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_x86_64(
-                &mir_module,
-                output_asm,
-                target::TargetOperatingSystem::Linux,
-            )?;
-        }
-        "x86_64_windows" => {
-            let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_x86_64(
-                &mir_module,
-                output_asm,
-                target::TargetOperatingSystem::Windows,
-            )?;
-        }
-        // "unknown" targets use generic conventions (may default to Linux/ELF-style for compatibility)
-        "aarch64_unknown" => {
-            let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(
-                &mir_module,
-                output_asm,
-                target::TargetOperatingSystem::Unknown,
-            )?;
-        }
-        "aarch64_macos" => {
-            let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(
-                &mir_module,
-                output_asm,
-                target::TargetOperatingSystem::MacOS,
-            )?;
-        }
-        "aarch64_linux" => {
-            let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(
-                &mir_module,
-                output_asm,
-                target::TargetOperatingSystem::Linux,
-            )?;
-        }
-        "aarch64_windows" => {
-            let mir_module = mir::codegen::from_ir(&module, "module")?;
-            mir_codegen::generate_mir_to_aarch64(
-                &mir_module,
-                output_asm,
-                target::TargetOperatingSystem::Windows,
-            )?;
-        }
-        // RISC-V targets
-        "riscv32_unknown" => codegen::generate_riscv32_assembly(&module, output_asm)?,
-        "riscv64_unknown" => codegen::generate_riscv64_assembly(&module, output_asm)?,
         #[cfg(feature = "nightly")]
-        "riscv128_unknown" => codegen::generate_riscv128_assembly(&module, output_asm)?,
+        target::TargetArchitecture::Riscv128 => {
+            mir_codegen::generate_mir_to_target(
+                &mir_module,
+                output_asm,
+                target_obj.architecture,
+                target_obj.operating_system,
+            )?;
+        }
         _ => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 codegen::FeatureType::Custom(format!(

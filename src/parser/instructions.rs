@@ -358,7 +358,7 @@ fn parse_tuple<'a>(
         let _current_pos = state.position(); // Prefixed with _
         if parse_value(state).is_ok() {
             // Check if this value is followed by '=' (next instruction) or ',' (tuple element)
-            let after_value_pos = state.position();
+            let _after_value_pos = state.position();
             state.skip_whitespace_and_comments();
             if state.current_char() == Some('=') {
                 // This is the start of the next instruction, not a tuple element
