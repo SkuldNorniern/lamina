@@ -76,11 +76,11 @@ pub fn get_size<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> u
         Type::Array { element_type, size } => {
             get_size(element_type.as_ref(), is_wasm64, module) * *size
         }
-        Type::Named(id) => get_size(
-            &module.type_declarations.get(id).unwrap().ty,
-            is_wasm64,
-            module,
-        ),
+        Type::Named(id) => {
+            let named_ty = module.type_declarations.get(id)
+                .expect(&format!("Type '{}' not found in type declarations - this indicates an invalid module", id));
+            get_size(&named_ty.ty, is_wasm64, module)
+        },
         Type::Struct(fields) => fields
             .iter()
             .map(|v| get_size(&v.ty, is_wasm64, module))
@@ -372,7 +372,11 @@ fn is_const(value: &Value, ty: Option<&PrimitiveType>, is_wasm64: bool) -> Optio
                             NumericConstant::I32(0)
                         }
                     }
-                    _ => panic!("ICE: Attempted to assign non-bool to bool!"),
+                    _ => {
+                        return Err(LaminaError::CodegenError(CodegenError::UnsupportedTypeForOperation(
+                            OperationType::Store,
+                        )));
+                    }
                 },
 
                 PrimitiveType::Char
@@ -596,7 +600,11 @@ fn generate_memory_write<'a>(
             generate::WasmInstruction::Store16(ty.try_into().unwrap(), mem),
         ),
         (NumericType::I64, 32) => instructions.push(generate::WasmInstruction::I64_Store32(mem)),
-        _ => panic!("ICE: Invalid type, size pair passed to generate_memory_write! Please report!"),
+        _ => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedTypeForOperation(
+                OperationType::Store,
+            )));
+        }
     }
 }
 
