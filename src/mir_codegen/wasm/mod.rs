@@ -103,10 +103,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        self.base.emit_asm_base(
-            |module, output, target_os| generate_mir_wasm(module, output, target_os),
-            "WASM",
-        )
+        self.base.emit_asm_base(generate_mir_wasm, "WASM")
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
@@ -223,7 +220,7 @@ pub fn generate_mir_wasm<W: Write>(
         writeln!(writer, " 0")?; // default to block 0
 
         // Close innermost block and emit code for each block
-        for (_block_idx, block) in func.blocks.iter().enumerate() {
+        for block in func.blocks.iter() {
             writeln!(writer, "      )")?; // close block_N
 
             // Emit block code

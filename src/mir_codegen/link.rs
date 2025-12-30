@@ -143,13 +143,13 @@ fn build_library_args(target_os: TargetOperatingSystem) -> Vec<String> {
 
     match target_os {
         TargetOperatingSystem::MacOS => {
-            if let Ok(output) = Command::new("xcrun").args(&["--show-sdk-path"]).output() {
-                if let Ok(sdk_path) = String::from_utf8(output.stdout) {
-                    let sdk_path = sdk_path.trim();
-                    if !sdk_path.is_empty() {
-                        args.push("-syslibroot".to_string());
-                        args.push(sdk_path.to_string());
-                    }
+            if let Ok(output) = Command::new("xcrun").args(["--show-sdk-path"]).output()
+                && let Ok(sdk_path) = String::from_utf8(output.stdout)
+            {
+                let sdk_path = sdk_path.trim();
+                if !sdk_path.is_empty() {
+                    args.push("-syslibroot".to_string());
+                    args.push(sdk_path.to_string());
                 }
             }
             args.push("-lSystem".to_string());
@@ -226,7 +226,7 @@ pub fn link(
         )));
     }
 
-    let backend = backend.unwrap_or_else(|| detect_linker_backend());
+    let backend = backend.unwrap_or_else(detect_linker_backend);
 
     let (cmd, args) = match backend {
         LinkerBackend::Ld => {
@@ -302,10 +302,8 @@ pub fn link(
 
 /// Detect available linker backend
 pub fn detect_linker_backend() -> LinkerBackend {
-    if cfg!(windows) {
-        if Command::new("link").arg("/?").output().is_ok() {
-            return LinkerBackend::Msvc;
-        }
+    if cfg!(windows) && Command::new("link").arg("/?").output().is_ok() {
+        return LinkerBackend::Msvc;
     }
 
     if Command::new("mold").arg("--version").output().is_ok() {

@@ -1128,10 +1128,7 @@ impl<'a> Codegen for AArch64Codegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        self.base.emit_asm_base(
-            |module, output, target_os| generate_mir_aarch64(module, output, target_os),
-            "AArch64",
-        )
+        self.base.emit_asm_base(generate_mir_aarch64, "AArch64")
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {

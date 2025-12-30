@@ -108,10 +108,7 @@ impl<'a> Codegen for X86Codegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        self.base.emit_asm_base(
-            |module, output, target_os| generate_mir_x86_64(module, output, target_os),
-            "x86_64",
-        )
+        self.base.emit_asm_base(generate_mir_x86_64, "x86_64")
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {

@@ -125,7 +125,7 @@ fn assemble_native(
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<AssembleResult, LaminaError> {
-    let backend = backend.unwrap_or_else(|| detect_assembler_backend());
+    let backend = backend.unwrap_or_else(detect_assembler_backend);
 
     let (cmd, args) = match backend {
         AssemblerBackend::Gas => {
