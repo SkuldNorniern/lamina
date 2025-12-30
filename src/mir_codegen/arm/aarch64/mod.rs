@@ -8,7 +8,7 @@ mod frame;
 mod regalloc;
 mod util;
 
-use abi::{call_stub, public_symbol};
+use abi::AArch64ABI;
 use frame::FrameMap;
 use regalloc::A64RegAlloc;
 use std::io::Write;
@@ -54,11 +54,13 @@ pub fn generate_mir_aarch64<W: Write>(
     // Header
     writeln!(writer, ".text")?;
 
+    let abi = AArch64ABI::new(target_os);
+
     for (func_name, func) in &module.functions {
-        let (globl, label) = public_symbol(func_name, target_os);
-        if let Some(g) = globl {
-            writeln!(writer, "{}", g)?;
+        if let Some(globl) = abi.get_global_directive(func_name) {
+            writeln!(writer, "{}", globl)?;
         }
+        let label = abi.mangle_function_name(func_name);
         writeln!(writer, "{}:", label)?;
 
         let mut ra_pro = A64RegAlloc::new();
@@ -128,7 +130,7 @@ pub fn generate_mir_aarch64<W: Write>(
                 entry.instructions.as_slice(),
                 writer,
                 &frame,
-                target_os,
+                &abi,
                 &mut ra_entry,
                 &epilogue_label,
             )?;
@@ -145,7 +147,7 @@ pub fn generate_mir_aarch64<W: Write>(
                     b.instructions.as_slice(),
                     writer,
                     &frame,
-                    target_os,
+                    &abi,
                     &mut ra_block,
                     &epilogue_label,
                 )?;
@@ -167,7 +169,7 @@ fn emit_block<W: Write>(
     insts: &[MirInst],
     w: &mut W,
     frame: &FrameMap,
-    os: TargetOperatingSystem,
+    abi: &AArch64ABI,
     ra: &mut A64RegAlloc,
     epilogue_label: &str,
 ) -> Result<(), crate::error::LaminaError> {
@@ -568,7 +570,7 @@ fn emit_block<W: Write>(
                 if name == "print" && args.len() == 1 {
                     // Special-case intrinsic: print(integer) via printf("%lld\n", value)
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
-                    match os {
+                    match abi.target_os() {
                         TargetOperatingSystem::MacOS => {
                             // Darwin AArch64 variadic ABI requires arguments to be available in the stack home area
                             // Ensure 16-byte alignment and spill the first vararg to stack
@@ -596,7 +598,7 @@ fn emit_block<W: Write>(
                     }
                 } else if name == "writebyte" && args.len() == 1 {
                     // Write a single byte to stdout using macOS ARM64 syscall
-                    match os {
+                    match abi.target_os() {
                         TargetOperatingSystem::MacOS => {
                             writeln!(w, "    sub sp, sp, #16")?;
                             emit_materialize_operand(w, &args[0], "x9", frame, ra)?;
@@ -628,7 +630,7 @@ fn emit_block<W: Write>(
                         }
                     }
                 } else if name == "readbyte" && args.is_empty() {
-                    match os {
+                    match abi.target_os() {
                         TargetOperatingSystem::MacOS => {
                             writeln!(w, "    sub sp, sp, #16")?;
                             writeln!(w, "    mov x0, #0")?;
@@ -678,7 +680,7 @@ fn emit_block<W: Write>(
                     }
                 } else if name == "writeptr" && args.len() == 1 {
                     // Write the byte value at pointer to stdout
-                    match os {
+                    match abi.target_os() {
                         TargetOperatingSystem::MacOS => {
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             writeln!(w, "    ldrb {}, [x1]", w_alias("x9"))?;
@@ -710,7 +712,7 @@ fn emit_block<W: Write>(
                         }
                     }
                 } else if name == "write" && args.len() == 2 {
-                    match os {
+                    match abi.target_os() {
                         TargetOperatingSystem::MacOS => {
                             // write(fd=1, buf=args[0], size=args[1])
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
@@ -733,7 +735,7 @@ fn emit_block<W: Write>(
                         }
                     }
                 } else if name == "read" && args.len() == 2 {
-                    match os {
+                    match abi.target_os() {
                         TargetOperatingSystem::MacOS => {
                             // read(fd=0, buf=args[0], size=args[1])
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
@@ -774,13 +776,9 @@ fn emit_block<W: Write>(
                         }
                     }
 
-                    let target_sym: String = match call_stub(name, os) {
-                        Some(sym) => sym.to_string(),
-                        None => match os {
-                            TargetOperatingSystem::MacOS => format!("_{}", name),
-                            _ => name.to_string(),
-                        },
-                    };
+                    let target_sym: String = abi.call_stub(name).unwrap_or_else(|| {
+                        abi.mangle_function_name(name)
+                    });
                     writeln!(w, "    bl {}", target_sym)?;
 
                     if stack_space > 0 {
@@ -796,13 +794,9 @@ fn emit_block<W: Write>(
                 for (i, a) in args.iter().enumerate().take(8) {
                     emit_materialize_operand(w, a, &format!("x{}", i), frame, ra)?;
                 }
-                let target_sym: String = match call_stub(name, os) {
-                    Some(sym) => sym.to_string(),
-                    None => match os {
-                        TargetOperatingSystem::MacOS => format!("_{}", name),
-                        _ => name.to_string(),
-                    },
-                };
+                let target_sym: String = abi.call_stub(name).unwrap_or_else(|| {
+                    abi.mangle_function_name(name)
+                });
                 if frame.frame_size > 0 {
                     writeln!(w, "    add sp, sp, #{}", frame.frame_size)?;
                 }
