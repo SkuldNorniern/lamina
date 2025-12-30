@@ -100,10 +100,7 @@ impl<'a> Codegen for RiscVCodegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        self.base.emit_asm_base(
-            |module, output, target_os| generate_mir_riscv(module, output, target_os),
-            "RISC-V",
-        )
+        self.base.emit_asm_base(generate_mir_riscv, "RISC-V")
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
