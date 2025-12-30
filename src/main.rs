@@ -2,10 +2,6 @@ use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::process::Command;
-
-// Import the library crate
-use lamina::mir_codegen::Codegen;
 
 fn print_usage() {
     eprintln!("Usage: lamina <input.lamina> [options]");
@@ -13,7 +9,8 @@ fn print_usage() {
     eprintln!("  -o, --output <file>     Specify output executable name");
     eprintln!("  -v, --verbose           Enable verbose output");
     eprintln!("  -c, --compiler <n>      Force specific compiler (gcc, clang, cl)");
-    eprintln!("  -f, --flag <flag>       Pass additional flag to compiler");
+    eprintln!("  -Wl,<flag>              Pass flag(s) to linker (GCC/Clang compatible)");
+    eprintln!("  -Wa,<flag>              Pass flag(s) to assembler (GCC/Clang compatible)");
     eprintln!("  --emit-asm              Only emit assembly file without compiling");
     eprintln!("  --target <arch_os>      Specify target (e.g., x86_64_linux)");
     eprintln!("  --emit-mir              Only emit MIR (.lumir) and exit");
@@ -31,7 +28,8 @@ struct CompileOptions {
     output_file: Option<PathBuf>,
     verbose: bool,
     forced_compiler: Option<String>,
-    compiler_flags: Vec<String>,
+    assembler_flags: Vec<String>,
+    linker_flags: Vec<String>,
     emit_asm_only: bool,
     emit_mir: bool,
     emit_mir_asm: Option<String>,
@@ -55,12 +53,13 @@ fn parse_args() -> Result<CompileOptions, String> {
         output_file: None,
         verbose: false,
         forced_compiler: None,
-        compiler_flags: Vec::new(),
+        assembler_flags: Vec::new(),
+        linker_flags: Vec::new(),
         emit_asm_only: false,
         emit_mir: false,
         emit_mir_asm: None,
         target_arch: None,
-        opt_level: 1, // Default optimization level
+        opt_level: 1,
     };
 
     let mut i = 1;
@@ -82,13 +81,6 @@ fn parse_args() -> Result<CompileOptions, String> {
                     return Err("Missing argument for compiler".to_string());
                 }
                 options.forced_compiler = Some(args[i + 1].clone());
-                i += 2;
-            }
-            "-f" | "--flag" => {
-                if i + 1 >= args.len() {
-                    return Err("Missing argument for compiler flag".to_string());
-                }
-                options.compiler_flags.push(args[i + 1].clone());
                 i += 2;
             }
             "--emit-asm" => {
@@ -140,7 +132,29 @@ fn parse_args() -> Result<CompileOptions, String> {
                 std::process::exit(0);
             }
             _ => {
-                if options.input_file.as_os_str().is_empty() {
+                if args[i].starts_with("-Wl,") {
+                    let flags = args[i][4..].split(',');
+                    options.linker_flags.extend(flags.map(|s| s.to_string()));
+                    i += 1;
+                } else if args[i].starts_with("-Wa,") {
+                    let flags = args[i][4..].split(',');
+                    options.assembler_flags.extend(flags.map(|s| s.to_string()));
+                    i += 1;
+                } else if args[i] == "-Wl" {
+                    if i + 1 >= args.len() {
+                        return Err("Missing argument for -Wl".to_string());
+                    }
+                    let flags = args[i + 1].split(',');
+                    options.linker_flags.extend(flags.map(|s| s.to_string()));
+                    i += 2;
+                } else if args[i] == "-Wa" {
+                    if i + 1 >= args.len() {
+                        return Err("Missing argument for -Wa".to_string());
+                    }
+                    let flags = args[i + 1].split(',');
+                    options.assembler_flags.extend(flags.map(|s| s.to_string()));
+                    i += 2;
+                } else if options.input_file.as_os_str().is_empty() {
                     options.input_file = PathBuf::from(&args[i]);
                     i += 1;
                 } else {
@@ -233,8 +247,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(compiler) = &options.forced_compiler {
             println!("  Forced compiler: {}", compiler);
         }
-        if !options.compiler_flags.is_empty() {
-            println!("  Additional compiler flags: {:?}", options.compiler_flags);
+        if !options.assembler_flags.is_empty() {
+            println!(
+                "  Additional assembler flags: {:?}",
+                options.assembler_flags
+            );
+        }
+        if !options.linker_flags.is_empty() {
+            println!("  Additional linker flags: {:?}", options.linker_flags);
         }
     }
 
@@ -361,7 +381,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|mut f| f.write_all(&out))
                 .map_err(|e| format!("Failed to write MIR output: {}", e))?;
         }
-
     }
     // Always compile to binary unless only MIR is requested
     if !options.emit_mir {
@@ -382,8 +401,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Parse IR and lower to MIR
         let ir_mod = lamina::parser::parse_module(&ir_source)
             .map_err(|e| format!("IR parse failed: {}", e))?;
-        let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-            .map_err(|e| format!("MIR lowering failed: {}", e))?;
+        let mut mir_mod =
+            lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
+                .map_err(|e| format!("MIR lowering failed: {}", e))?;
 
         // Apply MIR optimizations
         if options.opt_level > 0 {
@@ -395,8 +415,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if options.verbose {
                 println!(
                     "[VERBOSE] MIR optimizations: {} transforms run, {} made changes",
-                    transform_stats.transforms_run,
-                    transform_stats.transforms_changed
+                    transform_stats.transforms_run, transform_stats.transforms_changed
                 );
             }
         }
@@ -412,19 +431,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Code generation failed: {}", e))?;
 
         // Determine intermediate file path and extension
-        let intermediate_ext = lamina::mir_codegen::assemble::get_intermediate_extension(target.architecture);
+        let intermediate_ext =
+            lamina::mir_codegen::assemble::get_intermediate_extension(target.architecture);
         let mut intermediate_path = output_stem.clone();
         intermediate_path.set_extension(intermediate_ext);
 
         // Determine final output path for display
-        let final_ext = lamina::mir_codegen::link::get_output_extension(target.architecture, target.operating_system);
+        let final_ext = lamina::mir_codegen::link::get_output_extension(
+            target.architecture,
+            target.operating_system,
+        );
         let mut final_output_display = output_stem.clone();
         if !final_ext.is_empty() {
             final_output_display.set_extension(final_ext);
         }
 
         // Print compilation message
-        let intermediate_name = if matches!(target.architecture, lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64) {
+        let intermediate_name = if matches!(
+            target.architecture,
+            lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64
+        ) {
             println!(
                 "[INFO] Compiling {} -> {}",
                 input_path.display(),
@@ -451,7 +477,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             intermediate_name,
             intermediate_buffer.len()
         );
-        println!("[INFO] {} written to {}", intermediate_name, intermediate_path.display());
+        println!(
+            "[INFO] {} written to {}",
+            intermediate_name,
+            intermediate_path.display()
+        );
 
         // Skip assembly/linking if --emit-asm flag is present
         if options.emit_asm_only {
@@ -460,7 +490,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Assemble intermediate format to binary/object file
-        let assembly_output_ext = lamina::mir_codegen::assemble::get_assembly_output_extension(target.architecture);
+        let assembly_output_ext =
+            lamina::mir_codegen::assemble::get_assembly_output_extension(target.architecture);
         let mut assembly_output_path = output_stem.clone();
         assembly_output_path.set_extension(assembly_output_ext);
 
@@ -469,14 +500,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &assembly_output_path,
             target.architecture,
             target.operating_system,
-            None, // Auto-detect assembler
+            None,
+            &options.assembler_flags,
             options.verbose,
         )
         .map_err(|e| format!("Assembly failed: {}", e))?;
 
         println!(
             "[INFO] {} assembled successfully.",
-            if matches!(target.architecture, lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64) {
+            if matches!(
+                target.architecture,
+                lamina::target::TargetArchitecture::Wasm32
+                    | lamina::target::TargetArchitecture::Wasm64
+            ) {
                 "WASM binary"
             } else {
                 "Object file"
@@ -485,7 +521,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // Link if needed (native targets only)
         if assemble_result.needs_linking {
-            let final_output_ext = lamina::mir_codegen::link::get_output_extension(target.architecture, target.operating_system);
+            let final_output_ext = lamina::mir_codegen::link::get_output_extension(
+                target.architecture,
+                target.operating_system,
+            );
             let mut final_output_path = output_stem.clone();
             if !final_output_ext.is_empty() {
                 final_output_path.set_extension(final_output_ext);
@@ -510,7 +549,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 target.architecture,
                 target.operating_system,
                 linker_backend,
-                &options.compiler_flags,
+                &options.linker_flags,
                 options.verbose,
             )
             .map_err(|e| format!("Linking failed: {}", e))?;
@@ -523,7 +562,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // WASM doesn't need linking
             println!(
                 "[INFO] {} '{}' created successfully.",
-                if matches!(target.architecture, lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64) {
+                if matches!(
+                    target.architecture,
+                    lamina::target::TargetArchitecture::Wasm32
+                        | lamina::target::TargetArchitecture::Wasm64
+                ) {
                     "WASM binary"
                 } else {
                     "Binary"
