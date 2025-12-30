@@ -32,9 +32,11 @@ pub fn load_operand_wasm<W: Write>(
                 writeln!(writer, "      i64.const 0")?;
             }
         },
+        #[allow(unreachable_patterns)]
         _ => {
-            writeln!(writer, "      ;; TODO: other operand types")?;
-            writeln!(writer, "      i64.const 0")?;
+            return Err(LaminaError::ValidationError(
+                "Unsupported operand type for WASM".to_string(),
+            ));
         }
     }
     Ok(())
