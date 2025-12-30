@@ -1010,24 +1010,23 @@ fn convert_instruction<'a>(
             let temp_reg = Register::Virtual(vreg_alloc.allocate_gpr());
             let shift_imm = Operand::Immediate(crate::mir::Immediate::I64(shift));
 
-            let mut instrs = Vec::new();
-
-            instrs.push(Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Shl,
-                ty: mir_ty,
-                dst: temp_reg.clone(),
-                lhs: val_op,
-                rhs: shift_imm,
-            });
-
-            // dst = temp >> shift (arithmetic shift right propagates sign)
-            instrs.push(Instruction::IntBinary {
-                op: crate::mir::IntBinOp::AShr,
-                ty: mir_ty,
-                dst,
-                lhs: Operand::Register(temp_reg),
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(shift)),
-            });
+            let instrs = vec![
+                Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::Shl,
+                    ty: mir_ty,
+                    dst: temp_reg.clone(),
+                    lhs: val_op,
+                    rhs: shift_imm,
+                },
+                // dst = temp >> shift (arithmetic shift right propagates sign)
+                Instruction::IntBinary {
+                    op: crate::mir::IntBinOp::AShr,
+                    ty: mir_ty,
+                    dst,
+                    lhs: Operand::Register(temp_reg),
+                    rhs: Operand::Immediate(crate::mir::Immediate::I64(shift)),
+                },
+            ];
 
             Ok(instrs)
         }
@@ -1185,10 +1184,11 @@ fn convert_instruction<'a>(
             }])
         }
         crate::ir::instruction::Instruction::MemCpy { dst, src, size } => {
-            let mut args = Vec::new();
-            args.push(get_operand_permissive(dst, vreg_alloc, var_to_reg)?);
-            args.push(get_operand_permissive(src, vreg_alloc, var_to_reg)?);
-            args.push(get_operand_permissive(size, vreg_alloc, var_to_reg)?);
+            let args = vec![
+                get_operand_permissive(dst, vreg_alloc, var_to_reg)?,
+                get_operand_permissive(src, vreg_alloc, var_to_reg)?,
+                get_operand_permissive(size, vreg_alloc, var_to_reg)?,
+            ];
             Ok(vec![Instruction::Call {
                 name: "memcpy".to_string(),
                 args,
@@ -1196,10 +1196,11 @@ fn convert_instruction<'a>(
             }])
         }
         crate::ir::instruction::Instruction::MemMove { dst, src, size } => {
-            let mut args = Vec::new();
-            args.push(get_operand_permissive(dst, vreg_alloc, var_to_reg)?);
-            args.push(get_operand_permissive(src, vreg_alloc, var_to_reg)?);
-            args.push(get_operand_permissive(size, vreg_alloc, var_to_reg)?);
+            let args = vec![
+                get_operand_permissive(dst, vreg_alloc, var_to_reg)?,
+                get_operand_permissive(src, vreg_alloc, var_to_reg)?,
+                get_operand_permissive(size, vreg_alloc, var_to_reg)?,
+            ];
             Ok(vec![Instruction::Call {
                 name: "memmove".to_string(),
                 args,
@@ -1207,10 +1208,11 @@ fn convert_instruction<'a>(
             }])
         }
         crate::ir::instruction::Instruction::MemSet { dst, value, size } => {
-            let mut args = Vec::new();
-            args.push(get_operand_permissive(dst, vreg_alloc, var_to_reg)?);
-            args.push(get_operand_permissive(value, vreg_alloc, var_to_reg)?);
-            args.push(get_operand_permissive(size, vreg_alloc, var_to_reg)?);
+            let args = vec![
+                get_operand_permissive(dst, vreg_alloc, var_to_reg)?,
+                get_operand_permissive(value, vreg_alloc, var_to_reg)?,
+                get_operand_permissive(size, vreg_alloc, var_to_reg)?,
+            ];
             Ok(vec![Instruction::Call {
                 name: "memset".to_string(),
                 args,
@@ -1294,25 +1296,24 @@ fn convert_instruction<'a>(
                 let temp_scaled = Register::Virtual(vreg_alloc.allocate_gpr());
 
                 // Create instructions
-                let mut instrs = Vec::new();
-
-                // Instruction 1: temp_scaled = index * elem_size
-                instrs.push(Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Mul,
-                    ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
-                    dst: temp_scaled.clone(),
-                    lhs: index_op,
-                    rhs: Operand::Immediate(crate::mir::Immediate::I64(elem_size as i64)),
-                });
-
-                // Instruction 2: result = base + temp_scaled
-                instrs.push(Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Add,
-                    ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
-                    dst: dst.clone(),
-                    lhs: Operand::Register(base),
-                    rhs: Operand::Register(temp_scaled),
-                });
+                let instrs = vec![
+                    // Instruction 1: temp_scaled = index * elem_size
+                    Instruction::IntBinary {
+                        op: crate::mir::IntBinOp::Mul,
+                        ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                        dst: temp_scaled.clone(),
+                        lhs: index_op,
+                        rhs: Operand::Immediate(crate::mir::Immediate::I64(elem_size as i64)),
+                    },
+                    // Instruction 2: result = base + temp_scaled
+                    Instruction::IntBinary {
+                        op: crate::mir::IntBinOp::Add,
+                        ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                        dst: dst.clone(),
+                        lhs: Operand::Register(base),
+                        rhs: Operand::Register(temp_scaled),
+                    },
+                ];
 
                 Ok(instrs)
             }

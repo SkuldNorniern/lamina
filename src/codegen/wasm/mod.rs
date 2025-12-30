@@ -1386,7 +1386,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 create_load_reg(&state, value, None, &locals, is_wasm64),
                                 match size {
                                     ..=32 => NumericType::I32,
-                                    ..=64 => NumericType::I64,
+                                    33..=64 => NumericType::I64,
                                     _ => todo!(
                                         "Implement tuples with compound types larger than 64 bits"
                                     ),
@@ -1764,9 +1764,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
 
                     Instruction::Store { ty, ptr, value } => {
                         let addr = get_pointer(ptr, &state)
-                            .ok_or_else(|| LaminaError::ValidationError(format!(
-                                "Cannot get pointer for store operation - invalid pointer value"
-                            )))?;
+                            .ok_or_else(|| LaminaError::ValidationError(
+                                "Cannot get pointer for store operation - invalid pointer value".to_string()
+                            ))?;
 
                         if let Some(from) = get_pointer(value, &state) {
                             instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
