@@ -373,9 +373,7 @@ fn is_const(value: &Value, ty: Option<&PrimitiveType>, is_wasm64: bool) -> Optio
                         }
                     }
                     _ => {
-                        return Err(LaminaError::CodegenError(CodegenError::UnsupportedTypeForOperation(
-                            OperationType::Store,
-                        )));
+                        return None;
                     }
                 },
 
@@ -586,7 +584,7 @@ fn generate_memory_write<'a>(
     ty: NumericType,
     size: u8,
     mem: Option<generate::Identifier<'a>>,
-) {
+) -> Result<(), LaminaError> {
     instructions.push(address);
     instructions.push(value);
     match (ty, size) {
@@ -606,6 +604,7 @@ fn generate_memory_write<'a>(
             )));
         }
     }
+    Ok(())
 }
 
 fn generate_memory_read<'a>(
@@ -1353,7 +1352,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 },
                                 size,
                                 None,
-                            );
+                            )?;
                             address += (size / 8) as u64;
                         }
                     }
@@ -1760,7 +1759,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             get_wasm_type(ty, is_wasm64).0,
                             get_size(ty, is_wasm64, module) as u8,
                             None,
-                        );
+                        )?;
                     }
 
                     #[cfg(feature = "nightly")]
