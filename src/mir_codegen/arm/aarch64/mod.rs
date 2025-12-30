@@ -1044,7 +1044,7 @@ fn materialize_address<W: Write>(
     Ok(())
 }
 
-use crate::mir_codegen::common::{CodegenBase, emit_print_format_section, lamina_to_codegen_error};
+use crate::mir_codegen::common::{CodegenBase, emit_print_format_section};
 
 /// Trait-backed MIR ⇒ AArch64 code generator.
 pub struct AArch64Codegen<'a> {
@@ -1124,24 +1124,14 @@ impl<'a> Codegen for AArch64Codegen<'a> {
     }
 
     fn finalize(&mut self) -> Result<(), CodegenError> {
-        self.base.module = None;
-        self.base.prepared = false;
-        Ok(())
+        self.base.finalize_base()
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        if !self.base.prepared {
-            return Err(CodegenError::UnsupportedFeature(
-                "emit_asm called before prepare".into(),
-            ));
-        }
-        let module = self.base.module.ok_or_else(|| {
-            CodegenError::UnsupportedFeature("No module attached to AArch64 backend".into())
-        })?;
-        self.base.output.clear();
-        generate_mir_aarch64(module, &mut self.base.output, self.base.target_os)
-            .map_err(lamina_to_codegen_error)?;
-        Ok(())
+        self.base.emit_asm_base(
+            |module, output, target_os| generate_mir_aarch64(module, output, target_os),
+            "AArch64",
+        )
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {

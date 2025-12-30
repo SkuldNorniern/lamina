@@ -108,16 +108,10 @@ impl<'a> Codegen for X86Codegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        if let Some(module) = self.base.module {
-            generate_mir_x86_64(module, &mut self.base.output, self.base.target_os).map_err(
-                |e| CodegenError::InvalidCodegenOptions(format!("Assembly emission failed: {}", e)),
-            )?;
-        } else {
-            return Err(CodegenError::InvalidCodegenOptions(
-                "No module set for emission".to_string(),
-            ));
-        }
-        Ok(())
+        self.base.emit_asm_base(
+            |module, output, target_os| generate_mir_x86_64(module, output, target_os),
+            "x86_64",
+        )
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
