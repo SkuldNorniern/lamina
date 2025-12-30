@@ -4,13 +4,15 @@ pub mod util;
 
 use std::io::Write;
 use std::result::Result;
+use std::fs;
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions,
     capability::{CapabilitySet, CodegenCapability},
+    assemble,
 };
-use crate::target::TargetOperatingSystem;
+use crate::target::{TargetArchitecture, TargetOperatingSystem};
 use abi::WasmABI;
 use util::{
     emit_int_binary_op, emit_int_cmp_op, load_operand_wasm, load_register_wasm,
@@ -110,18 +112,58 @@ impl<'a> Codegen for WasmCodegen<'a> {
         // WASM codegen matches other targets: emit_asm generates WAT,
         // then assemble module handles wat2wasm conversion
         // This keeps the pipeline consistent: emit_asm -> assemble -> link
-        self.emit_asm()
+        
+        // First generate WAT text format
+        self.emit_asm()?;
+        
+        // Get the WAT content
+        let wat_content = self.base.drain_output();
+        
+        // Write WAT to temporary file
+        let temp_wat = std::env::temp_dir().join(format!("lamina_wasm_{}.wat", std::process::id()));
+        fs::write(&temp_wat, &wat_content).map_err(|e| {
+            CodegenError::InvalidCodegenOptions(format!("Failed to write temporary WAT file: {}", e))
+        })?;
+        
+        // Convert WAT to binary WASM using wat2wasm
+        let temp_wasm = std::env::temp_dir().join(format!("lamina_wasm_{}.wasm", std::process::id()));
+        let _assemble_result = assemble::assemble(
+            &temp_wat,
+            &temp_wasm,
+            TargetArchitecture::Wasm32,
+            self.base.target_os,
+            Some(assemble::AssemblerBackend::Wat2Wasm),
+            &[],
+            self.base.verbose,
+        ).map_err(|e| {
+            CodegenError::InvalidCodegenOptions(format!("Failed to assemble WASM: {}", e))
+        })?;
+        
+        // Read binary WASM back into output buffer
+        let wasm_binary = fs::read(&temp_wasm).map_err(|e| {
+            CodegenError::InvalidCodegenOptions(format!("Failed to read WASM binary: {}", e))
+        })?;
+        
+        self.base.output = wasm_binary;
+        
+        // Clean up temporary files
+        let _ = fs::remove_file(&temp_wat);
+        let _ = fs::remove_file(&temp_wasm);
+        
+        Ok(())
     }
 }
 
 pub fn generate_mir_wasm<W: Write>(
     module: &MirModule,
     writer: &mut W,
-    _target_os: TargetOperatingSystem,
+    target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
+    let abi = WasmABI::new(target_os);
+
     // WASM module header
     writeln!(writer, "(module")?;
-    writeln!(writer, "  {}", WasmABI::get_print_import())?;
+    writeln!(writer, "  {}", abi.get_print_import())?;
 
     // Global variables for virtual registers
     let mut global_count = 0;
@@ -138,12 +180,12 @@ pub fn generate_mir_wasm<W: Write>(
     }
 
     for i in 0..global_count {
-        writeln!(writer, "{}", WasmABI::generate_global_decl(i))?;
+        writeln!(writer, "{}", abi.generate_global_decl(i))?;
     }
 
     // Functions
     for (func_name, func) in &module.functions {
-        let mangled_name = WasmABI::mangle_function_name(func_name);
+        let mangled_name = abi.mangle_function_name(func_name);
         writeln!(writer, "  (func ${}", mangled_name)?;
 
         // Parameters
@@ -178,7 +220,7 @@ pub fn generate_mir_wasm<W: Write>(
             std::collections::HashMap::new();
         for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
             vreg_to_local.insert(*vreg, local_idx);
-            writeln!(writer, "{}", WasmABI::generate_local_decl(local_idx))?;
+            writeln!(writer, "{}", abi.generate_local_decl(local_idx))?;
         }
 
         // Use dispatch loop pattern for control flow (like the old WASM backend)
@@ -231,7 +273,7 @@ pub fn generate_mir_wasm<W: Write>(
 
             // After block code, continue dispatch loop (unless return/br already exited)
             writeln!(writer, "      br $dispatch_loop")?;
-        }
+            }
 
         writeln!(writer, "    )")?; // close dispatch_loop
 

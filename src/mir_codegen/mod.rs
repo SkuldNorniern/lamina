@@ -1,5 +1,6 @@
 //! MIR-based code generation for multiple target architectures.
 
+pub mod abi;
 pub mod assemble;
 pub mod capability;
 pub mod common;
@@ -11,6 +12,7 @@ pub mod riscv;
 pub mod wasm;
 pub mod x86_64;
 
+pub use abi::Abi;
 pub use capability::{CapabilitySet, CodegenCapability};
 
 use std::collections::HashMap;
