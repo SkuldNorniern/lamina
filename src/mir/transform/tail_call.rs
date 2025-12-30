@@ -49,7 +49,7 @@ impl TailCallOptimization {
 
         let mut changed = false;
         // Borrow signature separately from blocks to avoid borrow checker issues
-        let sig = &func.sig;
+        let _sig = &func.sig;
         // We need to bypass the borrow checker restriction on `func` being borrowed mutably for blocks
         // while we need `sig`. Since `sig` and `blocks` are disjoint fields, we can destructure or just clone signature if needed.
         // Cloning signature is safe but slightly inefficient.

@@ -306,7 +306,7 @@ impl LoopInvariantCodeMotion {
         func: &Function,
         header: &str,
         back_edge_source: &str,
-        dominators: &HashMap<String, HashSet<String>>,
+        _dominators: &HashMap<String, HashSet<String>>,
     ) -> Option<LoopInfo> {
         // Natural loop identification:
         // A natural loop consists of the header, the back edge source,
@@ -830,7 +830,7 @@ impl LoopUnrolling {
         header_label: &str,
     ) -> Option<(i64, String)> {
         // If true_target goes to loop (header or body) and false_target exits, or vice versa
-        let (loop_target, exit_target, branch_on_true) = if true_target == header_label {
+        let (_loop_target, exit_target, _branch_on_true) = if true_target == header_label {
             (true_target, false_target, true)
         } else if false_target == header_label {
             (false_target, true_target, false)
@@ -851,7 +851,7 @@ impl LoopUnrolling {
                 (Operand::Register(r), Operand::Immediate(crate::mir::Immediate::I64(c))) => {
                     (r, *c)
                 }
-                (Operand::Immediate(crate::mir::Immediate::I64(c)), Operand::Register(r)) => {
+                (Operand::Immediate(crate::mir::Immediate::I64(_c)), Operand::Register(_r)) => {
                     // Reverse op if needed?
                     return None; // Simplify
                 }
