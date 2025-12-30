@@ -14,7 +14,10 @@ pub fn load_register_to_register<W: std::io::Write>(
     } else if let Some(offset) = stack_slots.get(src) {
         writeln!(writer, "    ld {}, {}(fp)", dest_reg, offset)?;
     } else {
-        panic!("Virtual register {:?} has no mapping or stack slot", src);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Virtual register {:?} has no mapping or stack slot", src),
+        ));
     }
     Ok(())
 }
@@ -32,7 +35,10 @@ pub fn store_register_to_register<W: std::io::Write>(
     } else if let Some(offset) = stack_slots.get(dst) {
         writeln!(writer, "    sd {}, {}(fp)", src_reg, offset)?;
     } else {
-        panic!("Virtual register {:?} has no mapping or stack slot", dst);
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Virtual register {:?} has no mapping or stack slot", dst),
+        ));
     }
     Ok(())
 }
