@@ -740,6 +740,7 @@ fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<Strin
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use crate::mir::{
