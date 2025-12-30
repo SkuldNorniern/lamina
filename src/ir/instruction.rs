@@ -771,13 +771,8 @@ impl fmt::Display for Instruction<'_> {
                 cases,
             } => {
                 write!(f, "switch.{} {}, {}", ty, value, default)?;
-                for (i, (lit, label)) in cases.iter().enumerate() {
-                    if i == 0 {
-                        write!(f, ", ")?;
-                    } else {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "[{}, {}]", lit, label)?;
+                for (lit, label) in cases.iter() {
+                    write!(f, ", [{}, {}]", lit, label)?;
                 }
                 Ok(())
             }
