@@ -31,6 +31,7 @@ impl Transform for LoopInvariantCodeMotion {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests_licm {
     use super::*;
     use crate::mir::{
