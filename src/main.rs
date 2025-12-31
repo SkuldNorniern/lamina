@@ -211,6 +211,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Determine target for extension logic
     let target_for_extensions = if let Some(target_str) = &options.target_arch {
         lamina::target::Target::from_str(target_str)
+            .unwrap_or_else(|_| lamina::target::Target::detect_host())
     } else {
         lamina::target::Target::detect_host()
     };
@@ -329,7 +330,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .target_arch
                 .as_deref()
                 .unwrap_or(&default_target_str);
-            let target = lamina::target::Target::from_str(target_str);
+            let target = lamina::target::Target::from_str(target_str)
+                .unwrap_or_else(|_| lamina::target::Target::detect_host());
 
             // Determine output extension based on target
             let asm_extension = match target.architecture {
@@ -390,6 +392,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("[VERBOSE] Using explicit target: {}", target_str);
             }
             lamina::target::Target::from_str(target_str)
+                .unwrap_or_else(|e| {
+                    eprintln!("Warning: Invalid target '{}': {}. Using host target.", target_str, e);
+                    lamina::target::Target::detect_host()
+                })
         } else {
             let default_target = lamina::target::Target::detect_host();
             if options.verbose {

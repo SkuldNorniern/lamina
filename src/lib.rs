@@ -343,7 +343,9 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     let module = parser::parse_module(input_ir)?;
 
     // 2. Generate assembly for the specified target
-    let target_obj = target::Target::from_str(target);
+    use std::str::FromStr;
+    let target_obj = target::Target::from_str(target)
+        .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{}': {}", target, e)))?;
     let mir_module = mir::codegen::from_ir(&module, "module")?;
 
     match target_obj.architecture {
