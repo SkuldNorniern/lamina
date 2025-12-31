@@ -5,7 +5,7 @@ use crate::{GlobalDeclaration, LaminaError, Literal, Module, Value};
 use std::io::Write;
 use std::result::Result;
 
-// Helper to generate the .data and .bss sections based on globals
+/// Generates the `.data` and `.bss` sections for global variables.
 pub fn generate_global_data_section<'a, W: Write>(
     module: &'a Module<'a>,
     writer: &mut W,

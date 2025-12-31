@@ -2,6 +2,50 @@
 //!
 //! This module defines the error types used throughout the compiler pipeline,
 //! from parsing through code generation.
+//!
+//! ## Error Categories
+//!
+//! - **ParsingError**: Errors encountered while parsing IR text into structured data.
+//!   These include syntax errors, unexpected tokens, and malformed constructs.
+//!
+//! - **ValidationError**: Errors that occur when validating the IR structure.
+//!   These include undefined types, missing declarations, and type mismatches.
+//!
+//! - **CodegenError**: Errors during code generation, such as unsupported operations
+//!   or target-specific limitations.
+//!
+//! - **MirError**: Errors during MIR (Machine Intermediate Representation) conversion
+//!   or MIR-based code generation.
+//!
+//! - **IoError**: File I/O errors when reading or writing files.
+//!
+//! - **Utf8Error**: UTF-8 encoding errors when processing text.
+//!
+//! - **InternalError**: Internal compiler errors that indicate bugs in the compiler itself.
+//!
+//! ## Error Message Guidelines
+//!
+//! Error messages should be:
+//! - **Clear**: Explain what went wrong in plain language
+//! - **Actionable**: Suggest how to fix the issue when possible
+//! - **Contextual**: Include relevant information like type names, line numbers, etc.
+//! - **User-friendly**: Avoid technical jargon when possible
+//!
+//! ## Example
+//!
+//! ```rust
+//! use lamina::LaminaError;
+//!
+//! // Good error message
+//! let err = LaminaError::ValidationError(
+//!     "Type 'MyType' is not defined. Please declare it with 'type MyType = ...' before use".to_string()
+//! );
+//!
+//! // Bad error message (too technical, no guidance)
+//! let err = LaminaError::ValidationError(
+//!     "Type 'MyType' not found in type declarations - this indicates an invalid module".to_string()
+//! );
+//! ```
 
 use crate::codegen::CodegenError;
 use crate::mir::codegen::FromIRError;
