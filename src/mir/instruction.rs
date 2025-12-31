@@ -1,5 +1,8 @@
-///
-/// Low-level, machine-friendly instructions that map closely to actual assembly.
+//! Instruction representation for LUMIR.
+//!
+//! LUMIR instructions are low-level, machine-friendly operations that map
+//! closely to actual assembly instructions. This design enables efficient
+//! code generation and optimization.
 use super::register::Register;
 use super::types::MirType;
 use std::fmt;

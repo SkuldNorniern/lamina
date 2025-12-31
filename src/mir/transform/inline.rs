@@ -5,9 +5,10 @@ use crate::mir::{Block, Function, Instruction, Module, Operand, Register};
 use std::cell::Cell;
 use std::collections::HashMap;
 
-/// Function-level inlining transform placeholder.
+/// Function-level inlining transform.
 ///
-/// Real inlining requires module-level analysis and is handled by `ModuleInlining`.
+/// This transform handles function-level inlining within a single function context.
+/// For module-level inlining that requires cross-function analysis, see `ModuleInlining`.
 #[derive(Default)]
 pub struct FunctionInlining;
 

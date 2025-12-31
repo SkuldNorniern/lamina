@@ -53,7 +53,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                     "Valid opcodes include: add, sub, mul, div, load, store, call, alloc, and many others".to_string()
                 };
                 Err(state.error(format!(
-                    "Unknown opcode after assignment: '{}'\n  Hint: {}",
+                    "Unknown instruction opcode '{}' after assignment\n  Hint: {}",
                     opcode_str, suggestion
                 )))
             },
@@ -85,7 +85,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                     "Valid instruction opcodes include: ret, jmp, br, call, print, store, and many others".to_string()
                 };
                 Err(state.error(format!(
-                    "Unknown instruction opcode: '{}'\n  Hint: {}",
+                    "Unknown instruction opcode '{}'\n  Hint: {}",
                     opcode_str, suggestion
                 )))
             },
@@ -895,8 +895,11 @@ fn parse_primitive_from_ident(
     }
 }
 
-// Helper to check if an instruction is a terminator
 impl Instruction<'_> {
+    /// Checks if this instruction is a terminator instruction.
+    ///
+    /// Terminator instructions end a basic block and transfer control flow.
+    /// Valid terminators are: `ret`, `jmp`, and `br`.
     pub fn is_terminator(&self) -> bool {
         matches!(
             self,

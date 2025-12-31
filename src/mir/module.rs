@@ -1,6 +1,7 @@
-/// Module representation in LUMIR
-///
-/// A module is a collection of functions and global data.
+//! Module representation in LUMIR.
+//!
+//! A module is a collection of functions and global data. Modules are the
+//! top-level unit of organization in LUMIR and can be compiled independently.
 use super::function::Function;
 use super::types::MirType;
 use std::collections::HashMap;

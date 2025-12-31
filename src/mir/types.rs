@@ -1,6 +1,16 @@
-/// Type system for LUMIR
-///
-/// LUMIR types are lower-level than IR types, focused on machine representation.
+//! Type system for LUMIR.
+//!
+//! LUMIR types are lower-level than IR types, focused on machine representation
+//! and efficient code generation. The type system supports:
+//!
+//! - **Scalar types**: Integer and floating-point types of various sizes
+//! - **Vector types**: SIMD vector types for parallel operations
+//! - **Pointer types**: Memory addresses
+//!
+//! ## Type Sizes
+//!
+//! All type sizes are fixed and known at compile time, enabling efficient
+//! memory layout and register allocation decisions.
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
