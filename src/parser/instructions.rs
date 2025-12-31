@@ -46,7 +46,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "readbyte" => parse_readbyte_assignment(state, result),
             "writeptr" => parse_writeptr_assignment(state, result),
             _ => {
-                let common_ops = vec!["add", "sub", "mul", "div", "load", "store", "call", "alloc"];
+                let common_ops = ["add", "sub", "mul", "div", "load", "store", "call", "alloc"];
                 let suggestion = if common_ops.iter().any(|&op| opcode_str.starts_with(op)) {
                     format!("Did you mean one of: {}? (check spelling)", common_ops.join(", "))
                 } else {
@@ -78,7 +78,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "memmove" => parse_memmove(state),
             "memset" => parse_memset(state),
             _ => {
-                let common_ops = vec!["ret", "jmp", "br", "call", "print", "store"];
+                let common_ops = ["ret", "jmp", "br", "call", "print", "store"];
                 let suggestion = if common_ops.iter().any(|&op| opcode_str.starts_with(op)) {
                     format!("Did you mean one of: {}? (check spelling)", common_ops.join(", "))
                 } else {

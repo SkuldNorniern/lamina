@@ -75,13 +75,20 @@ impl<'a> CodegenState<'a> {
         self.global_values.insert(name, val);
         self.global_next += 1;
     }
-    pub fn get_global(&self, name: &'a str) -> GlobalRef {
-        *self.globals.get(&name).unwrap()
+    pub fn get_global(&self, name: &'a str) -> Result<GlobalRef, crate::LaminaError> {
+        self.globals.get(&name)
+            .copied()
+            .ok_or_else(|| crate::LaminaError::ValidationError(format!(
+                "Global '{}' not found in WASM codegen state", name
+            )))
     }
-    pub fn get_global_value(&self, name: &'a str) -> &Option<Value<'a>> {
-        self.global_values.get(&name).unwrap()
+    pub fn get_global_value(&self, name: &'a str) -> Result<&Option<Value<'a>>, crate::LaminaError> {
+        self.global_values.get(&name)
+            .ok_or_else(|| crate::LaminaError::ValidationError(format!(
+                "Global value '{}' not found in WASM codegen state", name
+            )))
     }
-    fn set_memory_contents_for_value(&mut self, address: usize, val: Value<'a>) {
+    fn set_memory_contents_for_value(&mut self, address: usize, val: Value<'a>) -> Result<(), crate::LaminaError> {
         let ptr_addr = address;
         match val {
             Value::Constant(lit) => match lit {
@@ -114,7 +121,10 @@ impl<'a> CodegenState<'a> {
                     .clone_from_slice(v.to_le_bytes().as_slice()),
             },
             Value::Global(id) => {
-                let from = self.mem_registers.iter().find(|v| v.name == id).unwrap();
+                let from = self.mem_registers.iter().find(|v| v.name == id)
+                    .ok_or_else(|| crate::LaminaError::ValidationError(format!(
+                        "Memory register '{}' not found in WASM codegen state", id
+                    )))?;
 
                 let from_bytes = self.output_memory
                     [(from.address as usize)..(from.address + from.size) as usize]
@@ -123,8 +133,13 @@ impl<'a> CodegenState<'a> {
                 self.output_memory[ptr_addr..ptr_addr + from.size as usize]
                     .clone_from_slice(from_bytes.as_slice());
             }
-            Value::Variable(_) => unreachable!(),
+            Value::Variable(_) => {
+                return Err(crate::LaminaError::ValidationError(
+                    "Variable values cannot be stored in memory directly".to_string()
+                ));
+            }
         }
+        Ok(())
     }
     pub fn add_memory_register(
         &mut self,
