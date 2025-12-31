@@ -195,6 +195,10 @@ impl<'a> IRBuilder<'a> {
         self.function_blocks.insert(name, HashMap::new());
         self.function_annotations
             .insert(name, vec![FunctionAnnotation::Extern]);
+        // External functions don't need an entry block, but build() requires it
+        // Create an empty entry block
+        self.function_entry_blocks.insert(name, "entry");
+        self.block_instructions.insert("entry", vec![]);
         self.current_function = Some(name);
 
         self
