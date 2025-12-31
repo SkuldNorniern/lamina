@@ -113,7 +113,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                         "Unknown or unexpected type identifier: '{}'\n  Hint: {}",
                         potential_primitive, hint
                     )))
-                },
+                }
             }
         }
     }

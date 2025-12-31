@@ -262,13 +262,20 @@ impl ModuleInlining {
     ) -> Result<(), String> {
         // Get the call instruction details first
         let (call_result_reg, _call_instr) = {
-            let caller_func = module.functions.get(&call_site.caller)
+            let caller_func = module
+                .functions
+                .get(&call_site.caller)
                 .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
             let call_block = caller_func
                 .blocks
                 .iter()
                 .find(|b| b.label == call_site.block_label)
-                .ok_or_else(|| format!("Block '{}' not found in caller function '{}'", call_site.block_label, call_site.caller))?;
+                .ok_or_else(|| {
+                    format!(
+                        "Block '{}' not found in caller function '{}'",
+                        call_site.block_label, call_site.caller
+                    )
+                })?;
 
             let call_instr = call_block.instructions[call_site.instr_idx].clone();
             let call_result_reg = if let Instruction::Call { ret, .. } = &call_instr {
@@ -290,7 +297,9 @@ impl ModuleInlining {
         let mut inlined_instructions = Vec::new();
 
         // Get caller function for register ID calculation
-        let caller_func = module.functions.get(&call_site.caller)
+        let caller_func = module
+            .functions
+            .get(&call_site.caller)
             .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
 
         // Process each instruction in the callee, substituting parameters and renaming registers
@@ -338,13 +347,20 @@ impl ModuleInlining {
         }
 
         // Now modify the caller function
-        let caller_func = module.functions.get_mut(&call_site.caller)
+        let caller_func = module
+            .functions
+            .get_mut(&call_site.caller)
             .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
         let call_block = caller_func
             .blocks
             .iter_mut()
             .find(|b| b.label == call_site.block_label)
-            .ok_or_else(|| format!("Block '{}' not found in caller function '{}'", call_site.block_label, call_site.caller))?;
+            .ok_or_else(|| {
+                format!(
+                    "Block '{}' not found in caller function '{}'",
+                    call_site.block_label, call_site.caller
+                )
+            })?;
 
         // Replace the call instruction with the inlined instructions
         call_block.instructions.splice(
@@ -623,7 +639,9 @@ impl ModuleInlining {
         }
 
         // Get call details and split block
-        let caller_func = module.functions.get_mut(&call_site.caller)
+        let caller_func = module
+            .functions
+            .get_mut(&call_site.caller)
             .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
         let call_block_idx = caller_func
             .blocks

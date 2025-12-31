@@ -392,11 +392,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if options.verbose {
                 println!("[VERBOSE] Using explicit target: {}", target_str);
             }
-            lamina::target::Target::from_str(target_str)
-                .unwrap_or_else(|e| {
-                    eprintln!("Warning: Invalid target '{}': {}. Using host target.", target_str, e);
-                    lamina::target::Target::detect_host()
-                })
+            lamina::target::Target::from_str(target_str).unwrap_or_else(|e| {
+                eprintln!(
+                    "Warning: Invalid target '{}': {}. Using host target.",
+                    target_str, e
+                );
+                lamina::target::Target::detect_host()
+            })
         } else {
             let default_target = lamina::target::Target::detect_host();
             if options.verbose {

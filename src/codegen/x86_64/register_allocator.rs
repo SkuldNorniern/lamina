@@ -150,9 +150,7 @@ impl GraphColoringAllocator {
                 if var1 != var2 && self.intervals_interfere(interval1, interval2) {
                     // Legacy codegen - unwrap is acceptable here
                     #[allow(clippy::unwrap_used)]
-                    let list = interference_lists
-                        .get_mut(&var1_key)
-                        .unwrap();
+                    let list = interference_lists.get_mut(&var1_key).unwrap();
                     list.insert((*var2).to_string());
                 }
             }

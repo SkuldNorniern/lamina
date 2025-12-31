@@ -45,4 +45,3 @@ pub fn string<'a>(val: &'a str) -> Value<'a> {
 pub fn global(name: &str) -> Value<'_> {
     Value::Global(name)
 }
-
