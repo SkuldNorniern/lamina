@@ -31,7 +31,7 @@ pub fn parse_annotations(
                         "Unknown function annotation: @{}\n  Hint: Valid annotations are: {}",
                         name, valid_annotations
                     )));
-                },
+                }
             };
             annotations.push(annotation);
         } else {

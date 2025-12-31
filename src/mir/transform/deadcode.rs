@@ -137,8 +137,12 @@ impl DeadCodeElimination {
 
                 // Safe: live_in is initialized for all blocks at function start
                 // If this fails, it indicates a bug in the initialization logic
-                let prev_live_in = live_in.get(label)
-                    .ok_or_else(|| format!("Block '{}' not found in live_in map - internal error in liveness analysis", label))?;
+                let prev_live_in = live_in.get(label).ok_or_else(|| {
+                    format!(
+                        "Block '{}' not found in live_in map - internal error in liveness analysis",
+                        label
+                    )
+                })?;
                 if current_live_in != *prev_live_in {
                     live_in.insert(label.clone(), current_live_in);
                     changed = true;

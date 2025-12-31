@@ -119,13 +119,13 @@ pub fn parse_value_with_type_hint<'a>(
                 Type::Primitive(PrimitiveType::I8) => {
                     let peek_string = state.peek_slice(20).unwrap_or("");
                     if peek_string.contains('.') {
-                return Err(state
+                        return Err(state
                     .error("Float literal cannot be used with I8 type hint\n  Hint: Use an integer literal (e.g., 42) instead of a float (e.g., 42.0) for integer types".to_string()));
                     }
 
                     let i_val = state.parse_integer()?;
                     if i_val < i8::MIN as i64 || i_val > i8::MAX as i64 {
-                    return Err(
+                        return Err(
                         state.error(format!(
                             "Integer literal {} out of range for i8\n  Hint: i8 values must be between {} and {}",
                             i_val, i8::MIN, i8::MAX

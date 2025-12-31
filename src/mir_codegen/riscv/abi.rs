@@ -1,4 +1,4 @@
-use crate::mir_codegen::abi::{common_call_stub, mangle_macos_name, Abi};
+use crate::mir_codegen::abi::{Abi, common_call_stub, mangle_macos_name};
 use crate::target::TargetOperatingSystem;
 
 /// RISC-V ABI utilities
