@@ -1,4 +1,5 @@
 use std::fmt;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Target {
@@ -12,31 +13,37 @@ impl Target {
             operating_system,
         }
     }
-    pub fn from_str(target: &str) -> Self {
-        // Split from the right to handle architectures with underscores (e.g., "x86_64")
-        let parts: Vec<&str> = target.rsplitn(2, '_').collect();
-        if parts.len() != 2 {
-            return Self {
-                architecture: TargetArchitecture::Unknown,
-                operating_system: TargetOperatingSystem::Unknown,
-            };
-        }
-        // parts[0] is the OS (rightmost part), parts[1] is the architecture (everything else)
-        Self::new(
-            TargetArchitecture::from_str(parts[1]),
-            TargetOperatingSystem::from_str(parts[0]),
-        )
-    }
+
     pub fn to_str(&self) -> String {
         format!("{}_{}", self.architecture, self.operating_system)
     }
+
     pub fn detect_host() -> Self {
         let arch = detect_host_architecture_only();
         let os = detect_host_os();
         Self::new(
-            TargetArchitecture::from_str(arch),
-            TargetOperatingSystem::from_str(os),
+            TargetArchitecture::from_str(arch).unwrap_or(TargetArchitecture::Unknown),
+            TargetOperatingSystem::from_str(os).unwrap_or(TargetOperatingSystem::Unknown),
         )
+    }
+}
+
+impl FromStr for Target {
+    type Err = &'static str;
+
+    fn from_str(target: &str) -> Result<Self, Self::Err> {
+        // Split from the right to handle architectures with underscores (e.g., "x86_64")
+        let parts: Vec<&str> = target.rsplitn(2, '_').collect();
+        if parts.len() != 2 {
+            return Err("Invalid target format: expected 'architecture_os'");
+        }
+        // parts[0] is the OS (rightmost part), parts[1] is the architecture (everything else)
+        Ok(Self::new(
+            TargetArchitecture::from_str(parts[1])
+                .map_err(|_| "Invalid architecture")?,
+            TargetOperatingSystem::from_str(parts[0])
+                .map_err(|_| "Invalid operating system")?,
+        ))
     }
 }
 
@@ -62,23 +69,25 @@ pub enum TargetArchitecture {
     Unknown,
 }
 
-impl TargetArchitecture {
-    pub fn from_str(s: &str) -> Self {
+impl FromStr for TargetArchitecture {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "x86_64" => Self::X86_64,
-            "aarch64" => Self::Aarch64,
-            "arm32" => Self::Arm32,
-            "riscv32" => Self::Riscv32,
-            "riscv64" => Self::Riscv64,
+            "x86_64" => Ok(Self::X86_64),
+            "aarch64" => Ok(Self::Aarch64),
+            "arm32" => Ok(Self::Arm32),
+            "riscv32" => Ok(Self::Riscv32),
+            "riscv64" => Ok(Self::Riscv64),
             #[cfg(feature = "nightly")]
-            "riscv128" => Self::Riscv128,
-            "wasm32" => Self::Wasm32,
-            "wasm64" => Self::Wasm64,
-            "wasm" => Self::Wasm32,
+            "riscv128" => Ok(Self::Riscv128),
+            "wasm32" => Ok(Self::Wasm32),
+            "wasm64" => Ok(Self::Wasm64),
+            "wasm" => Ok(Self::Wasm32),
             // default to 32-bit for backward compatibility
             #[cfg(feature = "nightly")]
-            "lisa" => Self::Lisa,
-            _ => Self::Unknown,
+            "lisa" => Ok(Self::Lisa),
+            _ => Err("Unknown architecture"),
         }
     }
 }
@@ -98,22 +107,24 @@ pub enum TargetOperatingSystem {
     Unknown,
 }
 
-impl TargetOperatingSystem {
-    pub fn from_str(s: &str) -> Self {
+impl FromStr for TargetOperatingSystem {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "linux" => Self::Linux,
-            "macos" => Self::MacOS,
-            "windows" => Self::Windows,
-            "freebsd" => Self::FreeBSD,
-            "openbsd" => Self::OpenBSD,
-            "netbsd" => Self::NetBSD,
-            "dragonfly" => Self::DragonFly,
-            "redox" => Self::Redox,
+            "linux" => Ok(Self::Linux),
+            "macos" => Ok(Self::MacOS),
+            "windows" => Ok(Self::Windows),
+            "freebsd" => Ok(Self::FreeBSD),
+            "openbsd" => Ok(Self::OpenBSD),
+            "netbsd" => Ok(Self::NetBSD),
+            "dragonfly" => Ok(Self::DragonFly),
+            "redox" => Ok(Self::Redox),
             #[cfg(feature = "nightly")]
-            "artery" => Self::Artery,
+            "artery" => Ok(Self::Artery),
             // Keep backward compatibility
-            "bsd" => Self::FreeBSD, // default to FreeBSD for generic "bsd"
-            _ => Self::Unknown,
+            "bsd" => Ok(Self::FreeBSD), // default to FreeBSD for generic "bsd"
+            _ => Err("Unknown operating system"),
         }
     }
 }
@@ -291,7 +302,7 @@ mod tests {
     fn test_from_str_roundtrip() {
         let host = Target::detect_host();
         let str_repr = host.to_str();
-        let parsed_back = Target::from_str(&str_repr);
+        let parsed_back = Target::from_str(&str_repr).expect("Valid target should parse");
 
         assert_eq!(
             host, parsed_back,
@@ -308,11 +319,11 @@ mod tests {
 
         assert_eq!(
             combined.architecture,
-            TargetArchitecture::from_str(arch_str)
+            TargetArchitecture::from_str(arch_str).unwrap_or(TargetArchitecture::Unknown)
         );
         assert_eq!(
             combined.operating_system,
-            TargetOperatingSystem::from_str(os_str)
+            TargetOperatingSystem::from_str(os_str).unwrap_or(TargetOperatingSystem::Unknown)
         );
     }
 
