@@ -37,8 +37,31 @@ pub use x86_64::generate_x86_64_assembly;
 use crate::PrimitiveType;
 
 /// Codegen-specific error types for detailed error handling.
+///
+/// These errors provide detailed information about code generation failures,
+/// including unsupported types, missing implementations, and target-specific limitations.
+///
+/// ## Error Message Format
+///
+/// CodegenError messages follow these principles:
+/// - Describe what operation failed and why
+/// - Suggest alternatives when possible
+/// - Include relevant type or operation information
+///
+/// ## Example
+///
+/// ```rust
+/// use lamina::codegen::CodegenError;
+///
+/// // Good: Clear and actionable
+/// let err = CodegenError::UnsupportedTypeForOperation(OperationType::Store);
+/// // Displays: "Unsupported type for Store operation"
+///
+/// // Provides context about what's missing
+/// let err = CodegenError::BlockLabelNotFound("loop_start".to_string());
+/// // Displays: "Label 'loop_start' not found in function context"
+/// ```
 
-/// Error types specific to codegen
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodegenError {
     // Type System Errors
