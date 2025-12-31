@@ -1074,9 +1074,10 @@ pub fn generate_instruction<'a, W: Write>(
             args,
             result,
         } => {
-            // Check if this is a tail call (recursive call directly followed by ret)
-            let _is_tail_call = false; // Not implemented yet without lookahead, placeholder for future implementation
-            let is_recursive = false; // Not implemented yet
+            // Note: Tail call optimization and recursion detection require lookahead
+            // and are not yet implemented in this backend.
+            let _is_tail_call = false;
+            let is_recursive = false;
 
             // Check if the function can be inlined
             let mut should_inline =
@@ -1222,8 +1223,8 @@ pub fn generate_instruction<'a, W: Write>(
             let struct_ptr_op = get_value_operand_asm(struct_ptr, state, func_ctx)?;
             let dest_op = func_ctx.get_value_location(result)?;
 
-            // For now, assume simple struct layout with 8-byte fields
-            // TODO: Use actual struct type information for proper field offsets
+            // Note: Currently assumes simple struct layout with 8-byte fields.
+            // Proper field offset calculation requires struct type information from IR.
             let field_offset = field_index * 8;
 
             writeln!(
@@ -1275,37 +1276,10 @@ pub fn generate_instruction<'a, W: Write>(
             index,
             element_type,
         } => {
-            // ========================================================================
-            // POINTER ARITHMETIC LIMITATIONS & ISSUES
-            // ========================================================================
-            //
-            // PROBLEM 1: Missing Type Information
-            // ==================================
-            // The current IR does not carry element type information for arrays.
-            // GetElemPtr operations cannot determine the correct element size without
-            // this information, leading to incorrect address calculations.
-            //
-            // PROBLEM 2: No ptrtoint/inttoptr Operations
-            // ==========================================
-            // Lamina lacks ptrtoint (pointer to integer) and inttoptr (integer to pointer)
-            // operations. This prevents direct pointer arithmetic and forces all pointer
-            // operations to go through getelementptr, which is inefficient and limiting.
-            //
-            // PROBLEM 3: Brittle Element Size Detection
-            // ========================================
-            // Current workaround infers element size from variable names, which is:
-            // - Error-prone (variable naming conventions may not be followed)
-            // - Incomplete (doesn't handle all possible type combinations)
-            // - Not type-safe (no compile-time verification)
-            //
-            // IMPACT:
-            // ======
-            // - Brainfuck-style pointer movement (>, <) cannot be implemented efficiently
-            // - Multi-cell operations require workarounds
-            // - Type safety is compromised
-            // - Performance is suboptimal
-            //
-            // ========================================================================
+            // Note: GetElemPtr implementation has limitations:
+            // - Element type information is not available in IR, requiring inference
+            // - Direct pointer arithmetic operations (ptrtoint/inttoptr) are not available
+            // - Element size detection relies on naming conventions, which may be unreliable
 
             let array_ptr_op = get_value_operand_asm(array_ptr, state, func_ctx)?;
             let index_op = get_value_operand_asm(index, state, func_ctx)?;
@@ -1823,7 +1797,6 @@ mod tests {
         expected_snippets: &[&str],
     ) {
         let asm = generate_test_asm(instr, ctx);
-        println!("Generated ASM for {}:\n{}", instr, asm); // Print ASM for debugging
         for snippet in expected_snippets {
             assert!(
                 asm.contains(snippet),

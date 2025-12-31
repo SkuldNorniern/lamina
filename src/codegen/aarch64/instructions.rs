@@ -19,7 +19,7 @@ pub fn generate_instruction<'a, W: Write>(
 
     match instr {
         Instruction::Ret { ty: _, value } => {
-            // POTENTIAL BUG: No validation that return type matches function signature
+            // Note: Return type validation against function signature is not yet implemented
             if let Some(val) = value {
                 let src = get_value_operand_asm(val, state, func_ctx)?;
                 match src.as_str() {
@@ -33,12 +33,12 @@ pub fn generate_instruction<'a, W: Write>(
                     _ => materialize_to_reg(writer, &src, RETURN_REGISTER)?,
                 }
             }
-            // POTENTIAL BUG: No check that epilogue_label is valid
+            // Note: Epilogue label validation is assumed to be done during function setup
             writeln!(writer, "        b {}", func_ctx.epilogue_label)?;
         }
 
         Instruction::Store { ty, ptr, value } => {
-            // POTENTIAL BUG: No bounds checking for pointer access
+            // Note: Pointer bounds checking is not performed at codegen time
             let val = get_value_operand_asm(value, state, func_ctx)?;
             let ptr_op = get_value_operand_asm(ptr, state, func_ctx)?;
 

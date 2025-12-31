@@ -136,15 +136,12 @@ impl LoopInvariantCodeMotion {
         let mut changed = false;
 
         let loops = self.find_loops(func);
-        // println!("LICM: Found {} loops in function {}", loops.len(), func.sig.name);
 
         let max_loops = 10;
         let max_iterations_per_loop = 5;
         let loops_to_process = loops.into_iter().take(max_loops);
 
         for loop_info in loops_to_process {
-            // println!("LICM: Processing loop header: {}", loop_info.header);
-            // println!("LICM: Loop blocks: {:?}", loop_info.blocks);
 
             if loop_info.blocks.len() > 50 {
                 continue;
