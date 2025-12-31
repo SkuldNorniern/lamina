@@ -49,7 +49,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             } else {
                 "Expected one of: 'type', 'global', 'fn', or '@' (for function)"
             };
-            
+
             return Err(state.error(format!(
                 "Unexpected token at top level: {:?}\n  Hint: {}",
                 token, suggestions

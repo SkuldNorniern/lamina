@@ -39,10 +39,8 @@ impl FromStr for Target {
         }
         // parts[0] is the OS (rightmost part), parts[1] is the architecture (everything else)
         Ok(Self::new(
-            TargetArchitecture::from_str(parts[1])
-                .map_err(|_| "Invalid architecture")?,
-            TargetOperatingSystem::from_str(parts[0])
-                .map_err(|_| "Invalid operating system")?,
+            TargetArchitecture::from_str(parts[1]).map_err(|_| "Invalid architecture")?,
+            TargetOperatingSystem::from_str(parts[0]).map_err(|_| "Invalid operating system")?,
         ))
     }
 }

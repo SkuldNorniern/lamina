@@ -2,15 +2,14 @@ pub mod abi;
 pub mod regalloc;
 pub mod util;
 
+use std::fs;
 use std::io::Write;
 use std::result::Result;
-use std::fs;
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions,
+    Codegen, CodegenError, CodegenOptions, assemble,
     capability::{CapabilitySet, CodegenCapability},
-    assemble,
 };
 use crate::target::{TargetArchitecture, TargetOperatingSystem};
 use abi::WasmABI;
@@ -112,21 +111,25 @@ impl<'a> Codegen for WasmCodegen<'a> {
         // WASM codegen matches other targets: emit_asm generates WAT,
         // then assemble module handles wat2wasm conversion
         // This keeps the pipeline consistent: emit_asm -> assemble -> link
-        
+
         // First generate WAT text format
         self.emit_asm()?;
-        
+
         // Get the WAT content
         let wat_content = self.base.drain_output();
-        
+
         // Write WAT to temporary file
         let temp_wat = std::env::temp_dir().join(format!("lamina_wasm_{}.wat", std::process::id()));
         fs::write(&temp_wat, &wat_content).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("Failed to write temporary WAT file: {}", e))
+            CodegenError::InvalidCodegenOptions(format!(
+                "Failed to write temporary WAT file: {}",
+                e
+            ))
         })?;
-        
+
         // Convert WAT to binary WASM using wat2wasm
-        let temp_wasm = std::env::temp_dir().join(format!("lamina_wasm_{}.wasm", std::process::id()));
+        let temp_wasm =
+            std::env::temp_dir().join(format!("lamina_wasm_{}.wasm", std::process::id()));
         let _assemble_result = assemble::assemble(
             &temp_wat,
             &temp_wasm,
@@ -135,21 +138,22 @@ impl<'a> Codegen for WasmCodegen<'a> {
             Some(assemble::AssemblerBackend::Wat2Wasm),
             &[],
             self.base.verbose,
-        ).map_err(|e| {
+        )
+        .map_err(|e| {
             CodegenError::InvalidCodegenOptions(format!("Failed to assemble WASM: {}", e))
         })?;
-        
+
         // Read binary WASM back into output buffer
         let wasm_binary = fs::read(&temp_wasm).map_err(|e| {
             CodegenError::InvalidCodegenOptions(format!("Failed to read WASM binary: {}", e))
         })?;
-        
+
         self.base.output = wasm_binary;
-        
+
         // Clean up temporary files
         let _ = fs::remove_file(&temp_wat);
         let _ = fs::remove_file(&temp_wasm);
-        
+
         Ok(())
     }
 }
@@ -273,7 +277,7 @@ pub fn generate_mir_wasm<W: Write>(
 
             // After block code, continue dispatch loop (unless return/br already exited)
             writeln!(writer, "      br $dispatch_loop")?;
-            }
+        }
 
         writeln!(writer, "    )")?; // close dispatch_loop
 

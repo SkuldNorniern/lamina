@@ -76,19 +76,29 @@ impl<'a> CodegenState<'a> {
         self.global_next += 1;
     }
     pub fn get_global(&self, name: &'a str) -> Result<GlobalRef, crate::LaminaError> {
-        self.globals.get(&name)
-            .copied()
-            .ok_or_else(|| crate::LaminaError::ValidationError(format!(
-                "Global '{}' not found in WASM codegen state", name
-            )))
+        self.globals.get(&name).copied().ok_or_else(|| {
+            crate::LaminaError::ValidationError(format!(
+                "Global '{}' not found in WASM codegen state",
+                name
+            ))
+        })
     }
-    pub fn get_global_value(&self, name: &'a str) -> Result<&Option<Value<'a>>, crate::LaminaError> {
-        self.global_values.get(&name)
-            .ok_or_else(|| crate::LaminaError::ValidationError(format!(
-                "Global value '{}' not found in WASM codegen state", name
-            )))
+    pub fn get_global_value(
+        &self,
+        name: &'a str,
+    ) -> Result<&Option<Value<'a>>, crate::LaminaError> {
+        self.global_values.get(&name).ok_or_else(|| {
+            crate::LaminaError::ValidationError(format!(
+                "Global value '{}' not found in WASM codegen state",
+                name
+            ))
+        })
     }
-    fn set_memory_contents_for_value(&mut self, address: usize, val: Value<'a>) -> Result<(), crate::LaminaError> {
+    fn set_memory_contents_for_value(
+        &mut self,
+        address: usize,
+        val: Value<'a>,
+    ) -> Result<(), crate::LaminaError> {
         let ptr_addr = address;
         match val {
             Value::Constant(lit) => match lit {
@@ -121,10 +131,16 @@ impl<'a> CodegenState<'a> {
                     .clone_from_slice(v.to_le_bytes().as_slice()),
             },
             Value::Global(id) => {
-                let from = self.mem_registers.iter().find(|v| v.name == id)
-                    .ok_or_else(|| crate::LaminaError::ValidationError(format!(
-                        "Memory register '{}' not found in WASM codegen state", id
-                    )))?;
+                let from = self
+                    .mem_registers
+                    .iter()
+                    .find(|v| v.name == id)
+                    .ok_or_else(|| {
+                        crate::LaminaError::ValidationError(format!(
+                            "Memory register '{}' not found in WASM codegen state",
+                            id
+                        ))
+                    })?;
 
                 let from_bytes = self.output_memory
                     [(from.address as usize)..(from.address + from.size) as usize]
@@ -135,7 +151,7 @@ impl<'a> CodegenState<'a> {
             }
             Value::Variable(_) => {
                 return Err(crate::LaminaError::ValidationError(
-                    "Variable values cannot be stored in memory directly".to_string()
+                    "Variable values cannot be stored in memory directly".to_string(),
                 ));
             }
         }

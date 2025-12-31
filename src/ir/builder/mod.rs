@@ -2,20 +2,20 @@
 //!
 //! A fluent API for programmatically constructing Lamina IR modules.
 
-mod functions;
 mod annotations;
-mod blocks;
-mod memory;
 mod arithmetic;
-mod control_flow;
-mod conversions;
-mod pointers;
-mod io;
-mod tuples;
 #[cfg(feature = "nightly")]
 mod atomics;
+mod blocks;
+mod control_flow;
+mod conversions;
+mod functions;
+mod io;
+mod memory;
+mod pointers;
 #[cfg(feature = "nightly")]
 mod simd;
+mod tuples;
 mod values;
 
 #[cfg(test)]
@@ -23,7 +23,9 @@ mod tests;
 
 use std::collections::HashMap;
 
-use super::function::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature};
+use super::function::{
+    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
+};
 use super::instruction::Instruction;
 use super::module::Module;
 use super::types::Type;
@@ -204,4 +206,3 @@ impl<'a> IRBuilder<'a> {
         self
     }
 }
-

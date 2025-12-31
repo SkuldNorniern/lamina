@@ -48,7 +48,10 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             _ => {
                 let common_ops = ["add", "sub", "mul", "div", "load", "store", "call", "alloc"];
                 let suggestion = if common_ops.iter().any(|&op| opcode_str.starts_with(op)) {
-                    format!("Did you mean one of: {}? (check spelling)", common_ops.join(", "))
+                    format!(
+                        "Did you mean one of: {}? (check spelling)",
+                        common_ops.join(", ")
+                    )
                 } else {
                     "Valid opcodes include: add, sub, mul, div, load, store, call, alloc, and many others".to_string()
                 };
@@ -56,7 +59,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                     "Unknown instruction opcode '{}' after assignment\n  Hint: {}",
                     opcode_str, suggestion
                 )))
-            },
+            }
         }
     } else {
         let opcode_str = state.parse_identifier_str()?;
@@ -80,7 +83,10 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             _ => {
                 let common_ops = ["ret", "jmp", "br", "call", "print", "store"];
                 let suggestion = if common_ops.iter().any(|&op| opcode_str.starts_with(op)) {
-                    format!("Did you mean one of: {}? (check spelling)", common_ops.join(", "))
+                    format!(
+                        "Did you mean one of: {}? (check spelling)",
+                        common_ops.join(", ")
+                    )
                 } else {
                     "Valid instruction opcodes include: ret, jmp, br, call, print, store, and many others".to_string()
                 };
@@ -88,7 +94,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                     "Unknown instruction opcode '{}'\n  Hint: {}",
                     opcode_str, suggestion
                 )))
-            },
+            }
         }
     }
 }
@@ -117,7 +123,7 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
                 "Expected primitive type suffix, found '.{}'\n  Hint: Valid type suffixes are: {}",
                 type_str, valid_types
             )))
-        },
+        }
     }
 }
 

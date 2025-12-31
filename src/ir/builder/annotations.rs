@@ -183,4 +183,3 @@ impl<'a> IRBuilder<'a> {
         self.annotate_module(ModuleAnnotation::TargetTriple(triple.to_string()))
     }
 }
-

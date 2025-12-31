@@ -48,7 +48,7 @@ pub fn get_wasm_type<'a>(
         | Type::Struct(_)
         | Type::Tuple(_)
         | Type::Named(_) => get_wasm_type_primitive(PrimitiveType::Ptr, is_wasm64),
-        Type::Void => (NumericType::I32, None, Some(IntegerType::I32)), // Need to re-visit later on 
+        Type::Void => (NumericType::I32, None, Some(IntegerType::I32)), // Need to re-visit later on
     }
 }
 
@@ -70,33 +70,39 @@ pub fn get_size_primitive(ty: PrimitiveType, is_wasm64: bool) -> u8 {
     }
 }
 
-pub fn get_size<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> Result<u64, LaminaError> {
+pub fn get_size<'a>(
+    ty: &Type<'a>,
+    is_wasm64: bool,
+    module: &'a Module<'a>,
+) -> Result<u64, LaminaError> {
     match ty {
         Type::Primitive(ty) => Ok(get_size_primitive(*ty, is_wasm64) as u64),
         Type::Array { element_type, size } => {
             Ok(get_size(element_type.as_ref(), is_wasm64, module)? * *size)
         }
         Type::Named(id) => {
-            let named_ty = module.type_declarations.get(id)
-                .ok_or_else(|| LaminaError::ValidationError(format!(
-                    "Type '{}' is not defined. Please declare it with 'type {} = ...' before use", id, id
-                )))?;
+            let named_ty = module.type_declarations.get(id).ok_or_else(|| {
+                LaminaError::ValidationError(format!(
+                    "Type '{}' is not defined. Please declare it with 'type {} = ...' before use",
+                    id, id
+                ))
+            })?;
             get_size(&named_ty.ty, is_wasm64, module)
-        },
+        }
         Type::Struct(fields) => {
             let mut total = 0u64;
             for field in fields {
                 total += get_size(&field.ty, is_wasm64, module)?;
             }
             Ok(total)
-        },
+        }
         Type::Tuple(fields) => {
             let mut total = 0u64;
             for field in fields {
                 total += get_size(field, is_wasm64, module)?;
             }
             Ok(total)
-        },
+        }
         Type::Void => Ok(0),
     }
 }
@@ -124,31 +130,39 @@ pub fn get_wasm_size_primitive(ty: PrimitiveType, is_wasm64: bool) -> u8 {
     }
 }
 
-pub fn get_wasm_size<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> Result<u64, LaminaError> {
+pub fn get_wasm_size<'a>(
+    ty: &Type<'a>,
+    is_wasm64: bool,
+    module: &'a Module<'a>,
+) -> Result<u64, LaminaError> {
     match ty {
         Type::Primitive(prim) => Ok(get_wasm_size_primitive(*prim, is_wasm64) as u64),
-        Type::Array { element_type, size } => Ok(get_wasm_size(element_type, is_wasm64, module)? * size),
+        Type::Array { element_type, size } => {
+            Ok(get_wasm_size(element_type, is_wasm64, module)? * size)
+        }
         Type::Struct(fields) => {
             let mut total = 0u64;
             for field in fields {
                 total += get_wasm_size(&field.ty, is_wasm64, module)?;
             }
             Ok(total)
-        },
+        }
         Type::Tuple(types) => {
             let mut total = 0u64;
             for ty in types {
                 total += get_wasm_size(ty, is_wasm64, module)?;
             }
             Ok(total)
-        },
+        }
         Type::Named(name) => {
-            let named_ty = module.type_declarations.get(name)
-                .ok_or_else(|| LaminaError::ValidationError(format!(
-                    "Type '{}' not found in type declarations", name
-                )))?;
+            let named_ty = module.type_declarations.get(name).ok_or_else(|| {
+                LaminaError::ValidationError(format!(
+                    "Type '{}' not found in type declarations",
+                    name
+                ))
+            })?;
             get_wasm_size(&named_ty.ty, is_wasm64, module)
-        },
+        }
         Type::Void => Ok(0),
     }
 }
@@ -171,7 +185,11 @@ pub fn get_align_primitive(ty: PrimitiveType, is_wasm64: bool) -> u64 {
     }
 }
 
-pub fn get_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> Result<u64, LaminaError> {
+pub fn get_align<'a>(
+    ty: &Type<'a>,
+    is_wasm64: bool,
+    module: &'a Module<'a>,
+) -> Result<u64, LaminaError> {
     match ty {
         Type::Primitive(prim) => Ok(get_align_primitive(*prim, is_wasm64)),
         Type::Array {
@@ -187,7 +205,7 @@ pub fn get_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> 
                 .max()
                 .unwrap_or(1); // Default to 1-byte alignment if empty struct
             Ok(max_align)
-        },
+        }
         Type::Tuple(types) => {
             let max_align = types
                 .iter()
@@ -197,14 +215,16 @@ pub fn get_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>) -> 
                 .max()
                 .unwrap_or(1); // Default to 1-byte alignment if empty tuple
             Ok(max_align)
-        },
+        }
         Type::Named(name) => {
-            let named_ty = module.type_declarations.get(name)
-                .ok_or_else(|| LaminaError::ValidationError(format!(
-                    "Type '{}' not found in type declarations", name
-                )))?;
+            let named_ty = module.type_declarations.get(name).ok_or_else(|| {
+                LaminaError::ValidationError(format!(
+                    "Type '{}' not found in type declarations",
+                    name
+                ))
+            })?;
             get_align(&named_ty.ty, is_wasm64, module)
-        },
+        }
         Type::Void => Ok(1),
     }
 }
@@ -253,7 +273,7 @@ pub fn get_wasm_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>
                 // Default alignment if type not found
                 8
             }
-        },
+        }
         Type::Void => 0,
     }
 }
@@ -290,7 +310,7 @@ pub fn get_wasm_size_value<'a>(
                 // Default size if global not found
                 8
             }
-        },
+        }
         Value::Variable(id) => locals
             .get(id)
             .map(|v| match v.1 {
@@ -339,10 +359,8 @@ pub fn get_wasm_type_value<'a>(
                 // Default to I64 if global not found
                 Ok(NumericType::I64)
             }
-        },
-        Value::Variable(id) => Ok(locals.get(id)
-            .map(|v| v.1)
-            .unwrap_or(NumericType::I64)), // Default to I64 if variable not found
+        }
+        Value::Variable(id) => Ok(locals.get(id).map(|v| v.1).unwrap_or(NumericType::I64)), // Default to I64 if variable not found
     }
 }
 
@@ -394,7 +412,7 @@ fn get_wasm_type_for_return<'a>(
             } else {
                 None // Type not found - return None to indicate error
             }
-        },
+        }
         Type::Void => None,
     }
 }
@@ -646,21 +664,33 @@ fn generate_memory_write<'a>(
         (NumericType::I32 | NumericType::F32, 32) | (NumericType::I64 | NumericType::F64, 64) => {
             instructions.push(generate::WasmInstruction::Store(ty, mem))
         }
-        (NumericType::I32 | NumericType::I64, 8) => instructions.push(
-            generate::WasmInstruction::Store8(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Type {:?} cannot be used for 8-bit store operation: {}", ty, e))
-            })?, mem),
-        ),
-        (NumericType::I32 | NumericType::I64, 16) => instructions.push(
-            generate::WasmInstruction::Store16(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Type {:?} cannot be used for 16-bit store operation: {}", ty, e))
-            })?, mem),
-        ),
+        (NumericType::I32 | NumericType::I64, 8) => {
+            instructions.push(generate::WasmInstruction::Store8(
+                ty.try_into().map_err(|e| {
+                    LaminaError::ValidationError(format!(
+                        "Type {:?} cannot be used for 8-bit store operation: {}",
+                        ty, e
+                    ))
+                })?,
+                mem,
+            ))
+        }
+        (NumericType::I32 | NumericType::I64, 16) => {
+            instructions.push(generate::WasmInstruction::Store16(
+                ty.try_into().map_err(|e| {
+                    LaminaError::ValidationError(format!(
+                        "Type {:?} cannot be used for 16-bit store operation: {}",
+                        ty, e
+                    ))
+                })?,
+                mem,
+            ))
+        }
         (NumericType::I64, 32) => instructions.push(generate::WasmInstruction::I64_Store32(mem)),
         _ => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedTypeForOperation(
-                OperationType::Store,
-            )));
+            return Err(LaminaError::CodegenError(
+                CodegenError::UnsupportedTypeForOperation(OperationType::Store),
+            ));
         }
     }
     Ok(())
@@ -682,26 +712,50 @@ fn generate_memory_read<'a>(
         | (NumericType::I64 | NumericType::F64, 64, _) => {
             instructions.push(generate::WasmInstruction::Load(ty, mem))
         }
-        (NumericType::I32 | NumericType::I64, 8, false) => instructions.push(
-            generate::WasmInstruction::Load8U(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Type {:?} cannot be used for unsigned 8-bit load operation: {}", ty, e))
-            })?, mem),
-        ),
-        (NumericType::I32 | NumericType::I64, 8, true) => instructions.push(
-            generate::WasmInstruction::Load8S(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Type {:?} cannot be used for signed 8-bit load operation: {}", ty, e))
-            })?, mem),
-        ),
-        (NumericType::I32 | NumericType::I64, 16, false) => instructions.push(
-            generate::WasmInstruction::Load16U(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Type {:?} cannot be used for unsigned 16-bit load operation: {}", ty, e))
-            })?, mem),
-        ),
-        (NumericType::I32 | NumericType::I64, 16, true) => instructions.push(
-            generate::WasmInstruction::Load16S(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Type {:?} cannot be used for signed 16-bit load operation: {}", ty, e))
-            })?, mem),
-        ),
+        (NumericType::I32 | NumericType::I64, 8, false) => {
+            instructions.push(generate::WasmInstruction::Load8U(
+                ty.try_into().map_err(|e| {
+                    LaminaError::ValidationError(format!(
+                        "Type {:?} cannot be used for unsigned 8-bit load operation: {}",
+                        ty, e
+                    ))
+                })?,
+                mem,
+            ))
+        }
+        (NumericType::I32 | NumericType::I64, 8, true) => {
+            instructions.push(generate::WasmInstruction::Load8S(
+                ty.try_into().map_err(|e| {
+                    LaminaError::ValidationError(format!(
+                        "Type {:?} cannot be used for signed 8-bit load operation: {}",
+                        ty, e
+                    ))
+                })?,
+                mem,
+            ))
+        }
+        (NumericType::I32 | NumericType::I64, 16, false) => {
+            instructions.push(generate::WasmInstruction::Load16U(
+                ty.try_into().map_err(|e| {
+                    LaminaError::ValidationError(format!(
+                        "Type {:?} cannot be used for unsigned 16-bit load operation: {}",
+                        ty, e
+                    ))
+                })?,
+                mem,
+            ))
+        }
+        (NumericType::I32 | NumericType::I64, 16, true) => {
+            instructions.push(generate::WasmInstruction::Load16S(
+                ty.try_into().map_err(|e| {
+                    LaminaError::ValidationError(format!(
+                        "Type {:?} cannot be used for signed 16-bit load operation: {}",
+                        ty, e
+                    ))
+                })?,
+                mem,
+            ))
+        }
         (NumericType::I64, 32, false) => {
             instructions.push(generate::WasmInstruction::I64_Load32U(mem))
         }
@@ -772,10 +826,12 @@ pub fn generate_wasm_assembly<'a, W: Write>(
     for (name, func) in &module.functions {
         let mut func_instructions: Vec<generate::Instructions> = Vec::new();
 
-        let entry_block = func.basic_blocks.get(func.entry_block)
-            .ok_or_else(|| LaminaError::ValidationError(format!(
-                "Entry block '{}' not found in function '{}'", func.entry_block, name
-            )))?;
+        let entry_block = func.basic_blocks.get(func.entry_block).ok_or_else(|| {
+            LaminaError::ValidationError(format!(
+                "Entry block '{}' not found in function '{}'",
+                func.entry_block, name
+            ))
+        })?;
         let mut blocks = vec![entry_block];
         let mut block_mapping: HashMap<String, usize> = HashMap::new();
         block_mapping.insert(func.entry_block.to_string(), 0);
@@ -1012,20 +1068,24 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }
                         };
 
-                        let true_block_idx = *block_mapping
-                            .get(true_label as &str)
-                            .ok_or_else(|| LaminaError::CodegenError(CodegenError::BlockLabelNotFound(
-                                true_label.to_string()
-                            )))?;
-                        let false_block_idx = *block_mapping
-                            .get(false_label as &str)
-                            .ok_or_else(|| LaminaError::CodegenError(CodegenError::BlockLabelNotFound(
-                                false_label.to_string()
-                            )))?;
-                        let pc_local = locals.get("pc")
-                            .ok_or_else(|| LaminaError::InternalError(
-                                "Program counter variable missing during code generation".to_string()
-                            ))?;
+                        let true_block_idx =
+                            *block_mapping.get(true_label as &str).ok_or_else(|| {
+                                LaminaError::CodegenError(CodegenError::BlockLabelNotFound(
+                                    true_label.to_string(),
+                                ))
+                            })?;
+                        let false_block_idx =
+                            *block_mapping.get(false_label as &str).ok_or_else(|| {
+                                LaminaError::CodegenError(CodegenError::BlockLabelNotFound(
+                                    false_label.to_string(),
+                                ))
+                            })?;
+                        let pc_local = locals.get("pc").ok_or_else(|| {
+                            LaminaError::InternalError(
+                                "Program counter variable missing during code generation"
+                                    .to_string(),
+                            )
+                        })?;
 
                         instructions.push(generate::WasmInstruction::If {
                             identifier: None,
@@ -1057,15 +1117,14 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         ));
                     }
                     Instruction::Jmp { target_label } => {
-                        let target_block_idx = block_mapping
-                            .get(target_label as &str)
-                            .ok_or_else(|| LaminaError::CodegenError(CodegenError::BlockLabelNotFound(
-                                target_label.to_string()
-                            )))?;
+                        let target_block_idx =
+                            block_mapping.get(target_label as &str).ok_or_else(|| {
+                                LaminaError::CodegenError(CodegenError::BlockLabelNotFound(
+                                    target_label.to_string(),
+                                ))
+                            })?;
                         instructions.push(generate::WasmInstruction::Br(
-                            generate::Identifier::Name(
-                                format!("{}", target_block_idx).into(),
-                            ),
+                            generate::Identifier::Name(format!("{}", target_block_idx).into()),
                         ));
                     }
                     Instruction::Call {
@@ -1090,10 +1149,12 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             )));
                         }
 
-                        let func_id = func_mapping.get(func_name)
-                            .ok_or_else(|| LaminaError::ValidationError(format!(
-                                "Function '{}' not found in function mapping", func_name
-                            )))?;
+                        let func_id = func_mapping.get(func_name).ok_or_else(|| {
+                            LaminaError::ValidationError(format!(
+                                "Function '{}' not found in function mapping",
+                                func_name
+                            ))
+                        })?;
                         instructions.push(generate::WasmInstruction::Call(
                             generate::Identifier::Name(func_id.clone().into()),
                         ));
@@ -1102,17 +1163,24 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             let ret = &module
                                 .functions
                                 .get(func_name)
-                                .ok_or_else(|| LaminaError::ValidationError(format!(
-                                    "Function '{}' not found in module", func_name
-                                )))?
+                                .ok_or_else(|| {
+                                    LaminaError::ValidationError(format!(
+                                        "Function '{}' not found in module",
+                                        func_name
+                                    ))
+                                })?
                                 .signature
                                 .return_type;
 
-                            let (wasm_ty, is_ptr) =
-                                get_wasm_type_for_return(ret, is_wasm64, module)
-                                    .ok_or_else(|| LaminaError::ValidationError(format!(
-                                        "Cannot determine return type for function '{}'", func_name
-                                    )))?;
+                            let (wasm_ty, is_ptr) = get_wasm_type_for_return(
+                                ret, is_wasm64, module,
+                            )
+                            .ok_or_else(|| {
+                                LaminaError::ValidationError(format!(
+                                    "Cannot determine return type for function '{}'",
+                                    func_name
+                                ))
+                            })?;
 
                             if !is_ptr {
                                 generate_result(
@@ -1477,7 +1545,8 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     }
                     Instruction::Tuple { result, elements } => {
                         let mut align = 1u64;
-                        let sizes: Result<Vec<u64>, _> = elements.iter()
+                        let sizes: Result<Vec<u64>, _> = elements
+                            .iter()
                             .map(|v| get_wasm_size_value(v, is_wasm64, &state, &locals))
                             .collect();
                         let sizes = sizes?;
@@ -1516,11 +1585,12 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 match size {
                                     ..=32 => NumericType::I32,
                                     33..=64 => NumericType::I64,
-                                _ => {
-                                    return Err(LaminaError::ValidationError(
-                                        format!("Tuple size {} bits exceeds the maximum supported size of 64 bits. Consider splitting the tuple into smaller components", size * 8)
-                                    ));
-                                }
+                                    _ => {
+                                        return Err(LaminaError::ValidationError(format!(
+                                            "Tuple size {} bits exceeds the maximum supported size of 64 bits. Consider splitting the tuple into smaller components",
+                                            size * 8
+                                        )));
+                                    }
                                 },
                                 size,
                                 None,
@@ -1733,7 +1803,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             )),
                             _ => {
                                 return Err(LaminaError::ValidationError(
-                                    "Unsupported numeric type for I/O operation".to_string()
+                                    "Unsupported numeric type for I/O operation".to_string(),
                                 ));
                             }
                         }
@@ -1792,19 +1862,30 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             if is_ptr {
                                 instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
                                     NumericConstant::I64(
-                                        get_pointer(value.as_ref().ok_or_else(|| {
-                                            LaminaError::ValidationError(
-                                                "Expected Some value for pointer conversion".to_string()
-                                            )
-                                        })?, &state)?.unwrap_or(0),
+                                        get_pointer(
+                                            value.as_ref().ok_or_else(|| {
+                                                LaminaError::ValidationError(
+                                                    "Expected Some value for pointer conversion"
+                                                        .to_string(),
+                                                )
+                                            })?,
+                                            &state,
+                                        )?
+                                        .unwrap_or(0),
                                     )
                                 } else {
                                     NumericConstant::I32(
-                                        get_pointer(value.as_ref().ok_or_else(|| {
-                                            LaminaError::ValidationError(
-                                                "Expected Some value for pointer conversion".to_string()
-                                            )
-                                        })?, &state)?.unwrap_or(0) as u32,
+                                        get_pointer(
+                                            value.as_ref().ok_or_else(|| {
+                                                LaminaError::ValidationError(
+                                                    "Expected Some value for pointer conversion"
+                                                        .to_string(),
+                                                )
+                                            })?,
+                                            &state,
+                                        )?
+                                        .unwrap_or(0)
+                                            as u32,
                                     )
                                 }));
                             } else {
@@ -1813,7 +1894,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                     &state,
                                     value.as_ref().ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Expected Some value for load operation".to_string()
+                                            "Expected Some value for load operation".to_string(),
                                         )
                                     })?,
                                     match ty {
@@ -1903,9 +1984,9 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 ty,
                                 Type::Primitive(
                                     PrimitiveType::I8
-                                    | PrimitiveType::I16
-                                    | PrimitiveType::I32
-                                    | PrimitiveType::I64
+                                        | PrimitiveType::I16
+                                        | PrimitiveType::I32
+                                        | PrimitiveType::I64
                                 )
                             ),
                             None,
@@ -1920,10 +2001,12 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     }
 
                     Instruction::Store { ty, ptr, value } => {
-                        let addr = get_pointer(ptr, &state)?
-                            .ok_or_else(|| LaminaError::ValidationError(
-                                "Cannot get pointer for store operation - invalid pointer value".to_string()
-                            ))?;
+                        let addr = get_pointer(ptr, &state)?.ok_or_else(|| {
+                            LaminaError::ValidationError(
+                                "Cannot get pointer for store operation - invalid pointer value"
+                                    .to_string(),
+                            )
+                        })?;
 
                         if let Some(from) = get_pointer(value, &state)? {
                             instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
@@ -2019,15 +2102,14 @@ pub fn generate_wasm_assembly<'a, W: Write>(
             locals_vec.remove(0);
         }
 
-        let pc_local = locals.get("pc")
-            .ok_or_else(|| LaminaError::ValidationError(
-                "PC local variable not found - this indicates a codegen bug".to_string()
-            ))?;
+        let pc_local = locals.get("pc").ok_or_else(|| {
+            LaminaError::ValidationError(
+                "PC local variable not found - this indicates a codegen bug".to_string(),
+            )
+        })?;
         let mut paths = [
             generate::WasmInstruction::Nop,
-            generate::WasmInstruction::LocalGet(generate::Identifier::Index(
-                pc_local.0,
-            )),
+            generate::WasmInstruction::LocalGet(generate::Identifier::Index(pc_local.0)),
             generate::WasmInstruction::Eqz(IntegerType::I64),
             generate::WasmInstruction::Comment("Test for entry block".to_string()),
             generate::WasmInstruction::If {
@@ -2048,19 +2130,19 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     result: _,
                     then: _,
                     ref mut r#else,
-                } => r#else.as_mut().ok_or_else(|| LaminaError::ValidationError(
-                    "Expected If instruction with else branch".to_string()
-                ))?,
+                } => r#else.as_mut().ok_or_else(|| {
+                    LaminaError::ValidationError(
+                        "Expected If instruction with else branch".to_string(),
+                    )
+                })?,
                 _ => {
                     return Err(LaminaError::ValidationError(
-                        "Expected If instruction in path construction".to_string()
+                        "Expected If instruction in path construction".to_string(),
                     ));
                 }
             };
             *path = vec![
-                generate::WasmInstruction::LocalGet(generate::Identifier::Index(
-                    pc_local.0,
-                )),
+                generate::WasmInstruction::LocalGet(generate::Identifier::Index(pc_local.0)),
                 generate::WasmInstruction::Const(NumericConstant::I64(i as u64 + 1)),
                 generate::WasmInstruction::Eq(NumericType::I64),
                 generate::WasmInstruction::Comment(format!("Test for block {i}")),
@@ -2082,14 +2164,16 @@ pub fn generate_wasm_assembly<'a, W: Write>(
             } => *r#else = None,
             _ => {
                 return Err(LaminaError::ValidationError(
-                    "Expected If instruction in path finalization".to_string()
+                    "Expected If instruction in path finalization".to_string(),
                 ));
             }
         };
-        let func_mapped_name = func_mapping.get(name)
-            .ok_or_else(|| LaminaError::ValidationError(format!(
-                "Function '{}' not found in function mapping", name
-            )))?;
+        let func_mapped_name = func_mapping.get(name).ok_or_else(|| {
+            LaminaError::ValidationError(format!(
+                "Function '{}' not found in function mapping",
+                name
+            ))
+        })?;
         let new_mod = ModuleExpression::Function {
             name: Some(func_mapped_name),
             export: Some(name),
@@ -2112,9 +2196,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     blocks.len()
                 )),
                 generate::WasmInstruction::Const(NumericConstant::I64(0)),
-                generate::WasmInstruction::LocalSet(generate::Identifier::Index(
-                    pc_local.0,
-                )),
+                generate::WasmInstruction::LocalSet(generate::Identifier::Index(pc_local.0)),
                 generate::WasmInstruction::Comment("PC setup".to_string()),
                 generate::WasmInstruction::Loop {
                     identifier: Some("l"),
