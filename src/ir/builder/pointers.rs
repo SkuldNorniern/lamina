@@ -1,3 +1,8 @@
+//! Pointer operations for IR builder.
+//!
+//! This module provides methods for pointer arithmetic, structure field access,
+//! and pointer-integer conversions.
+
 use super::IRBuilder;
 use crate::ir::instruction::Instruction;
 use crate::ir::types::{PrimitiveType, Value};

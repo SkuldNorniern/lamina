@@ -1,3 +1,9 @@
+//! Atomic operations for IR builder (nightly feature).
+//!
+//! This module provides methods for atomic memory operations including
+//! atomic loads, stores, binary operations, and compare-and-swap.
+//! These operations are only available when the `nightly` feature is enabled.
+
 #[cfg(feature = "nightly")]
 use super::IRBuilder;
 #[cfg(feature = "nightly")]

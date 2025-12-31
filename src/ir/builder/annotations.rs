@@ -1,3 +1,8 @@
+//! Function and module annotations for IR builder.
+//!
+//! This module provides methods for adding annotations to functions and modules.
+//! Annotations provide metadata that affects optimization, linking, and code generation.
+
 use super::IRBuilder;
 use crate::ir::function::FunctionAnnotation;
 #[cfg(feature = "nightly")]

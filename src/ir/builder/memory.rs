@@ -1,3 +1,8 @@
+//! Memory operations for IR builder.
+//!
+//! This module provides methods for memory allocation, access, and deallocation
+//! operations in the IR builder API.
+
 use super::IRBuilder;
 use crate::ir::instruction::{AllocType, Instruction};
 use crate::ir::types::{Type, Value};
