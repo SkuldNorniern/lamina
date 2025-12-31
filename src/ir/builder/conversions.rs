@@ -1,3 +1,8 @@
+//! Type conversion operations for IR builder.
+//!
+//! This module provides methods for type conversions including zero-extension,
+//! sign-extension, truncation, bitcasting, and conditional selection.
+
 use super::IRBuilder;
 use crate::ir::instruction::Instruction;
 use crate::ir::types::{PrimitiveType, Type, Value};

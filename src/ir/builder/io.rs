@@ -1,3 +1,8 @@
+//! I/O operations for IR builder.
+//!
+//! This module provides methods for input/output operations including reading
+//! from stdin, writing to stdout, and printing values for debugging.
+
 use super::IRBuilder;
 use crate::ir::instruction::Instruction;
 use crate::ir::types::Value;

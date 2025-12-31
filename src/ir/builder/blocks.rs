@@ -1,3 +1,9 @@
+//! Basic block management for IR builder.
+//!
+//! This module provides methods for creating and managing basic blocks
+//! within functions. Basic blocks are sequences of instructions with
+//! a single entry and exit point.
+
 use super::IRBuilder;
 
 impl<'a> IRBuilder<'a> {

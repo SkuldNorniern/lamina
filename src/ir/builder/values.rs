@@ -1,3 +1,9 @@
+//! Value factory functions for IR builder.
+//!
+//! This module provides convenience functions for creating `Value` instances
+//! for use with the IR builder API. These functions make IR construction
+//! more readable and type-safe.
+
 use crate::ir::types::{Literal, Value};
 
 /// Creates a variable reference
