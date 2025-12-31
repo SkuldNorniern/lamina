@@ -113,7 +113,7 @@ impl<'a> CodegenState<'a> {
     }
 
     pub fn new_label(&mut self, prefix: &str) -> String {
-        // POTENTIAL BUG: No validation that generated labels don't conflict with assembler reserved names
+        // Note: Label validation against assembler reserved names is not performed
         let id = self.next_label_id;
         self.next_label_id += 1;
         format!(".L_{}_{}", prefix, id)

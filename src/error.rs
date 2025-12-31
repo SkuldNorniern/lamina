@@ -1,17 +1,34 @@
+//! Error types for the Lamina compiler.
+//!
+//! This module defines the error types used throughout the compiler pipeline,
+//! from parsing through code generation.
+
 use crate::codegen::CodegenError;
 use crate::mir::codegen::FromIRError;
-use std::error::Error; // Import the Error trait
+use std::error::Error;
 use std::fmt;
 use std::string::FromUtf8Error;
 
+/// Main error type for the Lamina compiler.
+///
+/// This enum represents all possible errors that can occur during compilation,
+/// including parsing, validation, code generation, and I/O errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaminaError {
-    ParsingError(String),       // Placeholder for parsing errors
-    CodegenError(CodegenError), // Codegen errors (will be migrated to typed errors)
-    MirError(String),           // MIR conversion/codegen errors
-    ValidationError(String),    // Placeholder for validation errors
-    IoError(String),            // Placeholder for IO errors
-    Utf8Error(String),          // Added variant for UTF8 errors
+    /// Errors encountered during IR parsing.
+    ParsingError(String),
+    /// Errors during code generation.
+    CodegenError(CodegenError),
+    /// Errors during MIR conversion or MIR-based code generation.
+    MirError(String),
+    /// Validation errors for IR or intermediate representations.
+    ValidationError(String),
+    /// I/O errors when reading or writing files.
+    IoError(String),
+    /// UTF-8 encoding errors.
+    Utf8Error(String),
+    /// Internal compiler errors indicating bugs.
+    InternalError(String),
 }
 
 impl fmt::Display for LaminaError {
@@ -23,11 +40,11 @@ impl fmt::Display for LaminaError {
             LaminaError::ValidationError(msg) => write!(f, "Validation Error: {}", msg),
             LaminaError::IoError(msg) => write!(f, "IO Error: {}", msg),
             LaminaError::Utf8Error(msg) => write!(f, "UTF8 Error: {}", msg),
+            LaminaError::InternalError(msg) => write!(f, "Internal Error: {}", msg),
         }
     }
 }
 
-// Implement the standard Error trait
 impl Error for LaminaError {}
 
 impl From<std::io::Error> for LaminaError {
