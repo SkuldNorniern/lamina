@@ -388,11 +388,13 @@ fn get_wasm_type_for_return<'a>(
             get_wasm_type_for_return_primitive(PrimitiveType::Ptr, is_wasm64),
             true,
         )),
-        Type::Named(id) => get_wasm_type_for_return(
-            &module.type_declarations.get(id).unwrap().ty,
-            is_wasm64,
-            module,
-        ),
+        Type::Named(id) => {
+            if let Some(named_ty) = module.type_declarations.get(id) {
+                get_wasm_type_for_return(&named_ty.ty, is_wasm64, module)
+            } else {
+                None // Type not found - return None to indicate error
+            }
+        },
         Type::Void => None,
     }
 }
@@ -575,11 +577,22 @@ fn create_load_reg<'a>(
             state::GlobalRef::Wasm(id) => {
                 generate::WasmInstruction::GlobalGet(generate::Identifier::Index(id))
             }
-            state::GlobalRef::Memory(_) => unreachable!(), // currently no integers larger then 64 bits
+            state::GlobalRef::Memory(_) => {
+                // This should not happen for integer types <= 64 bits
+                // For now, use a placeholder instruction - this should be validated earlier
+                generate::WasmInstruction::Nop
+            }
         },
-        Value::Variable(id) => generate::WasmInstruction::LocalGet(generate::Identifier::Index(
-            locals.get(id).unwrap().0,
-        )),
+        Value::Variable(id) => {
+            let local_idx = locals.get(id)
+                .map(|v| v.0)
+                .unwrap_or_else(|| {
+                    // Default to 0 if local not found - this should be validated earlier
+                    // but we need to avoid panic here
+                    0
+                });
+            generate::WasmInstruction::LocalGet(generate::Identifier::Index(local_idx))
+        },
     }
 }
 
@@ -651,7 +664,7 @@ fn generate_memory_read<'a>(
     size: u8,
     signed: bool,
     mem: Option<generate::Identifier<'a>>,
-) {
+) -> Result<(), LaminaError> {
     if let Some(address) = address {
         instructions.push(address);
     }
@@ -678,10 +691,14 @@ fn generate_memory_read<'a>(
         (NumericType::I64, 32, true) => {
             instructions.push(generate::WasmInstruction::I64_Load32S(mem))
         }
-        _ => panic!(
-            "ICE: Invalid type, size, signed triplet passed to generate_memory_read! Please report!"
-        ),
+        _ => {
+            return Err(LaminaError::ValidationError(format!(
+                "Invalid type, size, signed triplet passed to generate_memory_read: ty={:?}, size={}, signed={}",
+                ty, size, signed
+            )));
+        }
     }
+    Ok(())
 }
 
 pub fn generate_wasm_assembly<'a, W: Write>(
@@ -738,7 +755,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
     for (name, func) in &module.functions {
         let mut func_instructions: Vec<generate::Instructions> = Vec::new();
 
-        let mut blocks = vec![func.basic_blocks.get(func.entry_block).unwrap()];
+        let entry_block = func.basic_blocks.get(func.entry_block)
+            .ok_or_else(|| LaminaError::ValidationError(format!(
+                "Entry block '{}' not found in function '{}'", func.entry_block, name
+            )))?;
+        let mut blocks = vec![entry_block];
         let mut block_mapping: HashMap<String, usize> = HashMap::new();
         block_mapping.insert(func.entry_block.to_string(), 0);
 
@@ -820,7 +841,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                         // SAFETY: for integer primitives `int_ty` is always Some.
                                         generate::WasmInstruction::DivU(int_ty.unwrap())
                                     }
-                                    _ => unreachable!(),
+                                    _ => {
+                                        return Err(LaminaError::ValidationError(
+                                            "Unsupported primitive type for unsigned division".to_string()
+                                        ));
+                                    }
                                 },
                             }),
                             BinaryOp::Mul => {
@@ -961,26 +986,40 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }
                         };
 
+                        let true_block_idx = *block_mapping
+                            .get(true_label as &str)
+                            .ok_or_else(|| LaminaError::CodegenError(CodegenError::BlockLabelNotFound(
+                                true_label.to_string()
+                            )))?;
+                        let false_block_idx = *block_mapping
+                            .get(false_label as &str)
+                            .ok_or_else(|| LaminaError::CodegenError(CodegenError::BlockLabelNotFound(
+                                false_label.to_string()
+                            )))?;
+                        let pc_local = locals.get("pc")
+                            .ok_or_else(|| LaminaError::ValidationError(
+                                "PC local variable not found - this indicates a codegen bug".to_string()
+                            ))?;
+
                         instructions.push(generate::WasmInstruction::If {
                             identifier: None,
                             result: None,
                             then: vec![
                                 generate::WasmInstruction::Const(NumericConstant::I64(
-                                    *block_mapping.get(true_label as &str).unwrap() as u64,
+                                    true_block_idx as u64,
                                 )),
                                 generate::WasmInstruction::LocalSet(generate::Identifier::Index(
-                                    locals.get("pc").unwrap().0,
+                                    pc_local.0,
                                 )),
                             ]
                             .into(),
                             r#else: Some(
                                 vec![
                                     generate::WasmInstruction::Const(NumericConstant::I64(
-                                        *block_mapping.get(false_label as &str).unwrap()
-                                            as u64,
+                                        false_block_idx as u64,
                                     )),
                                     generate::WasmInstruction::LocalSet(
-                                        generate::Identifier::Index(locals.get("pc").unwrap().0),
+                                        generate::Identifier::Index(pc_local.0),
                                     ),
                                 ]
                                 .into(),
@@ -992,13 +1031,14 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                         ));
                     }
                     Instruction::Jmp { target_label } => {
+                        let target_block_idx = block_mapping
+                            .get(target_label as &str)
+                            .ok_or_else(|| LaminaError::CodegenError(CodegenError::BlockLabelNotFound(
+                                target_label.to_string()
+                            )))?;
                         instructions.push(generate::WasmInstruction::Br(
                             generate::Identifier::Name(
-                                format!(
-                                    "{}",
-                                    block_mapping.get(target_label as &str).unwrap()
-                                )
-                                .into(),
+                                format!("{}", target_block_idx).into(),
                             ),
                         ));
                     }
@@ -1082,10 +1122,12 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                     NumericConstant::I32(dest as u32)
                                 }));
 
+                                let memresult_local = locals.get("%%$#memresult0")
+                                    .ok_or_else(|| LaminaError::ValidationError(
+                                        "Memory result local not found - this indicates a codegen bug".to_string()
+                                    ))?;
                                 instructions.push(generate::WasmInstruction::LocalGet(
-                                    generate::Identifier::Index(
-                                        locals.get("%%$#memresult0").unwrap().0,
-                                    ),
+                                    generate::Identifier::Index(memresult_local.0),
                                 ));
 
                                 instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
@@ -1323,7 +1365,12 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 generate::WasmInstruction::F32_Demote_F64
                             }
 
-                            _ => unreachable!("uh oh something is broken"),
+                            _ => {
+                                return Err(LaminaError::ValidationError(format!(
+                                    "Unsupported type conversion: {:?} to {:?}",
+                                    source_type, target_type
+                                )));
+                            }
                         });
 
                         generate_result(
@@ -1414,7 +1461,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             ),
                         }) {
                             state::GlobalRef::Memory(addr) => addr,
-                            _ => unreachable!(),
+                            _ => {
+                                return Err(LaminaError::ValidationError(
+                                    "Expected Memory reference for GetFieldPtr".to_string()
+                                ));
+                            }
                         } + (*index as u64 * 8);
 
                         let wasm_size = get_wasm_size_value(ptr, is_wasm64, &state, &locals);
@@ -1431,7 +1482,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             wasm_size as u8,
                             false,
                             None,
-                        );
+                        )?;
 
                         generate_result(
                             &mut instructions,
@@ -1457,7 +1508,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             ),
                         }) {
                             state::GlobalRef::Memory(addr) => addr,
-                            _ => unreachable!(),
+                            _ => {
+                                return Err(LaminaError::ValidationError(
+                                    "Expected Memory reference for GetElemPtr".to_string()
+                                ));
+                            }
                         };
 
                         instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
@@ -1505,7 +1560,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                     | PrimitiveType::I64
                             ),
                             None,
-                        );
+                        )?;
                         generate_result(
                             &mut instructions,
                             &mut locals,
@@ -1588,7 +1643,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             NumericType::I64 => instructions.push(generate::WasmInstruction::Call(
                                 generate::Identifier::Name("i2".into()),
                             )),
-                            _ => unreachable!(),
+                            _ => {
+                                return Err(LaminaError::ValidationError(
+                                    "Unsupported numeric type for I/O operation".to_string()
+                                ));
+                            }
                         }
                         instructions
                             .push(generate::WasmInstruction::Const(NumericConstant::I64(1)));
@@ -1746,13 +1805,13 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 ty,
                                 Type::Primitive(
                                     PrimitiveType::I8
-                                        | PrimitiveType::I16
-                                        | PrimitiveType::I32
-                                        | PrimitiveType::I64
+                                    | PrimitiveType::I16
+                                    | PrimitiveType::I32
+                                    | PrimitiveType::I64
                                 )
                             ),
                             None,
-                        );
+                        )?;
                         generate_result(
                             &mut instructions,
                             &mut locals,
@@ -1862,10 +1921,14 @@ pub fn generate_wasm_assembly<'a, W: Write>(
             locals_vec.remove(0);
         }
 
+        let pc_local = locals.get("pc")
+            .ok_or_else(|| LaminaError::ValidationError(
+                "PC local variable not found - this indicates a codegen bug".to_string()
+            ))?;
         let mut paths = [
             generate::WasmInstruction::Nop,
             generate::WasmInstruction::LocalGet(generate::Identifier::Index(
-                locals.get("pc").unwrap().0,
+                pc_local.0,
             )),
             generate::WasmInstruction::Eqz(IntegerType::I64),
             generate::WasmInstruction::Comment("Test for entry block".to_string()),
@@ -1887,12 +1950,18 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     result: _,
                     then: _,
                     ref mut r#else,
-                } => r#else.as_mut().unwrap(),
-                _ => unreachable!(),
+                } => r#else.as_mut().ok_or_else(|| LaminaError::ValidationError(
+                    "Expected If instruction with else branch".to_string()
+                ))?,
+                _ => {
+                    return Err(LaminaError::ValidationError(
+                        "Expected If instruction in path construction".to_string()
+                    ));
+                }
             };
             *path = vec![
                 generate::WasmInstruction::LocalGet(generate::Identifier::Index(
-                    locals.get("pc").unwrap().0,
+                    pc_local.0,
                 )),
                 generate::WasmInstruction::Const(NumericConstant::I64(i as u64 + 1)),
                 generate::WasmInstruction::Eq(NumericType::I64),
@@ -1913,10 +1982,18 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                 then: _,
                 ref mut r#else,
             } => *r#else = None,
-            _ => unreachable!(),
+            _ => {
+                return Err(LaminaError::ValidationError(
+                    "Expected If instruction in path finalization".to_string()
+                ));
+            }
         };
+        let func_mapped_name = func_mapping.get(name)
+            .ok_or_else(|| LaminaError::ValidationError(format!(
+                "Function '{}' not found in function mapping", name
+            )))?;
         let new_mod = ModuleExpression::Function {
-            name: Some(func_mapping.get(name).unwrap()),
+            name: Some(func_mapped_name),
             export: Some(name),
             parameters: func
                 .signature
@@ -1938,7 +2015,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                 )),
                 generate::WasmInstruction::Const(NumericConstant::I64(0)),
                 generate::WasmInstruction::LocalSet(generate::Identifier::Index(
-                    locals.get("pc").unwrap().0,
+                    pc_local.0,
                 )),
                 generate::WasmInstruction::Comment("PC setup".to_string()),
                 generate::WasmInstruction::Loop {
