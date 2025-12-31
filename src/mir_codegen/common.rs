@@ -120,6 +120,9 @@ pub fn emit_print_format_section<W: Write>(
 /// Convert LaminaError to CodegenError with consistent error type.
 pub fn lamina_to_codegen_error(err: crate::error::LaminaError) -> CodegenError {
     match err {
+        crate::error::LaminaError::InternalError(msg) => {
+            CodegenError::InvalidCodegenOptions(format!("Internal error: {}", msg))
+        }
         crate::error::LaminaError::CodegenError(inner) => {
             CodegenError::InvalidCodegenOptions(inner.to_string())
         }

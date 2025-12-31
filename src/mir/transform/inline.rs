@@ -927,14 +927,13 @@ mod tests {
         assert!(count > 0, "Should have inlined 1 function");
 
         let caller = module.functions.get("caller").unwrap();
-        // Should have at least 3 blocks: entry, entry_inline..., exit_inline..., entry_split
-        // Actually Multi-Block inlining splits entry -> Entry, Split. And inserts CalleeEntry, CalleeExit.
-        // Total 4 blocks.
-        println!(
-            "Caller blocks: {:?}",
-            caller.blocks.iter().map(|b| &b.label).collect::<Vec<_>>()
+        // Multi-Block inlining splits entry -> Entry, Split. And inserts CalleeEntry, CalleeExit.
+        // Total 4 blocks expected.
+        assert!(
+            caller.blocks.len() >= 3,
+            "Expected at least 3 blocks after inlining, got {}",
+            caller.blocks.len()
         );
-        assert!(caller.blocks.len() >= 3);
 
         // Verify Call is gone
         let has_call = caller.blocks.iter().any(|b| {

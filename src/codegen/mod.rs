@@ -1,3 +1,28 @@
+//! Code generation module for multiple target architectures.
+//!
+//! This module provides code generation backends for various target architectures,
+//! converting Lamina IR into native assembly code.
+//!
+//! ## Supported Targets
+//!
+//! - **x86_64**: Intel/AMD 64-bit architecture
+//! - **AArch64**: ARM 64-bit architecture
+//! - **RISC-V**: RISC-V 32/64/128-bit architectures
+//! - **WebAssembly**: WASM32 and WASM64 targets
+//!
+//! ## Architecture
+//!
+//! Each backend follows a similar structure:
+//! - Instruction generation from IR operations
+//! - Register allocation and management
+//! - Calling convention handling
+//! - Memory layout and addressing
+//!
+//! ## Error Handling
+//!
+//! All codegen functions return `Result<T, LaminaError>` to provide detailed
+//! error information when code generation fails.
+
 pub mod aarch64;
 pub mod common;
 pub mod riscv;
@@ -11,7 +36,7 @@ pub use x86_64::generate_x86_64_assembly;
 
 use crate::PrimitiveType;
 
-// Codegen Errors for Detailed Error Handling
+/// Codegen-specific error types for detailed error handling.
 
 /// Error types specific to codegen
 #[derive(Debug, Clone, PartialEq, Eq)]
