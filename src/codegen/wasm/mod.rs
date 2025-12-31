@@ -648,12 +648,12 @@ fn generate_memory_write<'a>(
         }
         (NumericType::I32 | NumericType::I64, 8) => instructions.push(
             generate::WasmInstruction::Store8(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Invalid type for Store8: {}", e))
+                LaminaError::ValidationError(format!("Type {:?} cannot be used for 8-bit store operation: {}", ty, e))
             })?, mem),
         ),
         (NumericType::I32 | NumericType::I64, 16) => instructions.push(
             generate::WasmInstruction::Store16(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Invalid type for Store16: {}", e))
+                LaminaError::ValidationError(format!("Type {:?} cannot be used for 16-bit store operation: {}", ty, e))
             })?, mem),
         ),
         (NumericType::I64, 32) => instructions.push(generate::WasmInstruction::I64_Store32(mem)),
@@ -684,22 +684,22 @@ fn generate_memory_read<'a>(
         }
         (NumericType::I32 | NumericType::I64, 8, false) => instructions.push(
             generate::WasmInstruction::Load8U(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Invalid type for Load8U: {}", e))
+                LaminaError::ValidationError(format!("Type {:?} cannot be used for unsigned 8-bit load operation: {}", ty, e))
             })?, mem),
         ),
         (NumericType::I32 | NumericType::I64, 8, true) => instructions.push(
             generate::WasmInstruction::Load8S(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Invalid type for Load8S: {}", e))
+                LaminaError::ValidationError(format!("Type {:?} cannot be used for signed 8-bit load operation: {}", ty, e))
             })?, mem),
         ),
         (NumericType::I32 | NumericType::I64, 16, false) => instructions.push(
             generate::WasmInstruction::Load16U(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Invalid type for Load16U: {}", e))
+                LaminaError::ValidationError(format!("Type {:?} cannot be used for unsigned 16-bit load operation: {}", ty, e))
             })?, mem),
         ),
         (NumericType::I32 | NumericType::I64, 16, true) => instructions.push(
             generate::WasmInstruction::Load16S(ty.try_into().map_err(|e| {
-                LaminaError::ValidationError(format!("Invalid type for Load16S: {}", e))
+                LaminaError::ValidationError(format!("Type {:?} cannot be used for signed 16-bit load operation: {}", ty, e))
             })?, mem),
         ),
         (NumericType::I64, 32, false) => {
@@ -1269,7 +1269,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 PrimitiveType::F32 | PrimitiveType::F64 => {
                                     generate::WasmInstruction::GtF(float_ty.ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Float type expected for floating-point comparison".to_string()
+                                            "Comparison requires a floating-point type (f32 or f64), but found an integer type".to_string()
                                         )
                                     })?)
                                 }
@@ -1279,7 +1279,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::I64 => {
                                     generate::WasmInstruction::GtS(int_ty.ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Integer type expected for signed comparison".to_string()
+                                            "Signed comparison requires an integer type (i8, i16, i32, or i64)".to_string()
                                         )
                                     })?)
                                 }
@@ -1292,7 +1292,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::U64 => {
                                     generate::WasmInstruction::GtU(int_ty.ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Integer type expected for unsigned comparison".to_string()
+                                            "Unsigned comparison requires an unsigned integer type (u8, u16, u32, or u64)".to_string()
                                         )
                                     })?)
                                 }
@@ -1301,7 +1301,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 PrimitiveType::F32 | PrimitiveType::F64 => {
                                     generate::WasmInstruction::LeF(float_ty.ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Float type expected for floating-point comparison".to_string()
+                                            "Comparison requires a floating-point type (f32 or f64), but found an integer type".to_string()
                                         )
                                     })?)
                                 }
@@ -1311,7 +1311,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::I64 => {
                                     generate::WasmInstruction::LeS(int_ty.ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Integer type expected for signed comparison".to_string()
+                                            "Signed comparison requires an integer type (i8, i16, i32, or i64)".to_string()
                                         )
                                     })?)
                                 }
@@ -1324,7 +1324,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::U64 => {
                                     generate::WasmInstruction::LeU(int_ty.ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Integer type expected for unsigned comparison".to_string()
+                                            "Unsigned comparison requires an unsigned integer type (u8, u16, u32, or u64)".to_string()
                                         )
                                     })?)
                                 }
@@ -1333,7 +1333,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 PrimitiveType::F32 | PrimitiveType::F64 => {
                                     generate::WasmInstruction::LtF(float_ty.ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Float type expected for floating-point comparison".to_string()
+                                            "Comparison requires a floating-point type (f32 or f64), but found an integer type".to_string()
                                         )
                                     })?)
                                 }
@@ -1343,7 +1343,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::I64 => {
                                     generate::WasmInstruction::LtS(int_ty.ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Integer type expected for signed comparison".to_string()
+                                            "Signed comparison requires an integer type (i8, i16, i32, or i64)".to_string()
                                         )
                                     })?)
                                 }
@@ -1356,7 +1356,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::U64 => {
                                     generate::WasmInstruction::LtU(int_ty.ok_or_else(|| {
                                         LaminaError::ValidationError(
-                                            "Integer type expected for unsigned comparison".to_string()
+                                            "Unsigned comparison requires an unsigned integer type (u8, u16, u32, or u64)".to_string()
                                         )
                                     })?)
                                 }
@@ -1518,7 +1518,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                     33..=64 => NumericType::I64,
                                 _ => {
                                     return Err(LaminaError::ValidationError(
-                                        "Tuples with compound types larger than 64 bits are not yet supported".to_string()
+                                        format!("Tuple size {} bits exceeds the maximum supported size of 64 bits. Consider splitting the tuple into smaller components", size * 8)
                                     ));
                                 }
                                 },
@@ -1542,14 +1542,14 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             Value::Global(id) | Value::Variable(id) => id,
                             _ => {
                                 return Err(LaminaError::ValidationError(
-                                    "Extracting values from tuple constants is not yet supported".to_string()
+                                    "Cannot extract field from a tuple constant. Use a tuple variable or global instead".to_string()
                                 ));
                             }
                         })? {
                             state::GlobalRef::Memory(addr) => addr,
                             _ => {
                                 return Err(LaminaError::ValidationError(
-                                    "Expected Memory reference for GetFieldPtr".to_string()
+                                    "GetFieldPtr requires a memory-backed global variable, but found a different reference type".to_string()
                                 ));
                             }
                         } + (*index as u64 * 8);
@@ -1591,7 +1591,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             Value::Global(id) | Value::Variable(id) => id,
                             _ => {
                                 return Err(LaminaError::ValidationError(
-                                    "Extracting values from array constants is not yet supported".to_string()
+                                    "Cannot access array element from a constant. Use an array variable or global instead".to_string()
                                 ));
                             }
                         })? {
