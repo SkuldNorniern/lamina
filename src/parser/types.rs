@@ -55,7 +55,11 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
             size,
         })
     } else {
-        Err(state.error("Expected 'struct' or '[' for composite type".to_string()))
+        let found = state.peek_slice(20).unwrap_or("");
+        Err(state.error(format!(
+            "Expected 'struct' or '[' for composite type, but found '{}'\n  Hint: Composite types are either structs (struct {{ ... }}) or arrays ([size x type])",
+            found
+        )))
     }
 }
 
@@ -99,10 +103,17 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                 "char" => Ok(Type::Primitive(PrimitiveType::Char)),
                 "ptr" => Ok(Type::Primitive(PrimitiveType::Ptr)),
                 "void" => Ok(Type::Void),
-                _ => Err(state.error(format!(
-                    "Unknown or unexpected type identifier: {}",
-                    potential_primitive
-                ))),
+                _ => {
+                    let hint = if potential_primitive.len() <= 3 {
+                        format!("Did you mean one of: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr, void?")
+                    } else {
+                        "Valid type identifiers include: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr, void, or named types starting with @".to_string()
+                    };
+                    Err(state.error(format!(
+                        "Unknown or unexpected type identifier: '{}'\n  Hint: {}",
+                        potential_primitive, hint
+                    )))
+                },
             }
         }
     }

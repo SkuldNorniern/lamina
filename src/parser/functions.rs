@@ -25,7 +25,13 @@ pub fn parse_annotations(
                 "noreturn" => FunctionAnnotation::NoReturn,
                 "noinline" => FunctionAnnotation::NoInline,
                 "cold" => FunctionAnnotation::Cold,
-                _ => return Err(state.error(format!("Unknown function annotation: @{}", name))),
+                _ => {
+                    let valid_annotations = "inline, export, noreturn, noinline, cold";
+                    return Err(state.error(format!(
+                        "Unknown function annotation: @{}\n  Hint: Valid annotations are: {}",
+                        name, valid_annotations
+                    )));
+                },
             };
             annotations.push(annotation);
         } else {
@@ -60,12 +66,15 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
         }
 
         if basic_blocks.insert(label, block).is_some() {
-            return Err(state.error(format!("Redefinition of basic block label: {}", label)));
+            return Err(state.error(format!(
+                "Redefinition of basic block label: '{}'\n  Hint: Each basic block label must be unique within a function",
+                label
+            )));
         }
     }
 
     let entry_block = entry_block_label
-        .ok_or_else(|| state.error("Function must have at least one basic block".to_string()))?;
+        .ok_or_else(|| state.error("Function must have at least one basic block\n  Hint: Functions require at least one basic block (e.g., 'entry:')".to_string()))?;
 
     Ok(Function {
         name,

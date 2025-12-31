@@ -39,9 +39,20 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let func = parse_function_def(&mut state)?;
             module.functions.insert(func.name, func);
         } else {
+            let token = state.peek_slice(20).unwrap_or("");
+            let suggestions = if token.starts_with("type") {
+                "Did you mean 'type'? (Note: keywords are case-sensitive)"
+            } else if token.starts_with("global") {
+                "Did you mean 'global'?"
+            } else if token.starts_with("fn") || token.starts_with('@') {
+                "Did you mean 'fn' or '@' for a function?"
+            } else {
+                "Expected one of: 'type', 'global', 'fn', or '@' (for function)"
+            };
+            
             return Err(state.error(format!(
-                "Unexpected token at top level: {:?}",
-                state.peek_slice(10)
+                "Unexpected token at top level: {:?}\n  Hint: {}",
+                token, suggestions
             )));
         }
     }

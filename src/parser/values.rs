@@ -61,22 +61,30 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
                 return Ok(Value::Constant(Literal::F32(f_val)));
             }
 
-            Err(state.error("Expected numeric literal".to_string()))
+            Err(state.error("Expected a numeric literal\n  Hint: Numeric literals can be integers (42, -10) or floats (3.14, -0.5)".to_string()))
         }
         Some('t') => {
             if state.peek_slice(4) == Some("true") {
                 state.advance_by(4);
                 return Ok(Value::Constant(Literal::Bool(true)));
             }
-            Err(state.error("Expected value".to_string()))
+            Err(state.error("Expected 'true' boolean literal\n  Hint: Boolean literals are 'true' or 'false'".to_string()))
         }
         Some('f') => {
             if state.peek_slice(5) == Some("false") {
                 state.advance_by(5);
                 return Ok(Value::Constant(Literal::Bool(false)));
             }
-            Err(state.error("Expected value".to_string()))
+            Err(state.error("Expected 'false' boolean literal\n  Hint: Boolean literals are 'true' or 'false'".to_string()))
         }
-        _ => Err(state.error("Expected value (%, @, literal)".to_string())),
+        _ => {
+            let found = state.current_char()
+                .map(|c| format!("'{}'", c))
+                .unwrap_or_else(|| "end of input".to_string());
+            Err(state.error(format!(
+                "Expected a value, but found {}\n  Hint: Values can be:\n    - Variables: %name\n    - Globals: @name\n    - Literals: numbers (42, -10), strings (\"hello\"), booleans (true, false)",
+                found
+            )))
+        },
     }
 }
