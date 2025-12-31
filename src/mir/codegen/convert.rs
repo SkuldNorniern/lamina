@@ -1,3 +1,14 @@
+//! IR-to-MIR conversion implementation.
+//!
+//! This module contains the main conversion logic that transforms high-level
+//! Lamina IR into low-level LUMIR. The conversion process includes:
+//!
+//! - Function signature conversion
+//! - Instruction lowering
+//! - Variable binding and register assignment
+//! - Control flow graph construction
+//! - Type mapping and validation
+
 use super::error::FromIRError;
 use super::mapping::{map_ir_prim, map_ir_type};
 use crate::mir::{
@@ -17,8 +28,11 @@ pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRE
     Ok(mir_module)
 }
 
-// Helper to convert an IR value into a MIR operand using the current bindings.
-// If a variable binding is missing, allocate a conservative GPR to keep lowering progressing.
+/// Converts an IR value into a MIR operand using the current variable bindings.
+///
+/// If a variable binding is missing, allocates a conservative general-purpose register
+/// to allow code generation to continue. This is a fallback mechanism for incomplete
+/// IR that may occur during development or transformation passes.
 fn ir_value_to_mir_operand<'a>(
     v: &crate::ir::types::Value<'a>,
     vreg_alloc: &mut VirtualRegAllocator,

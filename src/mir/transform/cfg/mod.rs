@@ -1,3 +1,10 @@
+//! Control flow graph (CFG) simplification transforms.
+//!
+//! This module provides transforms that simplify the control flow graph:
+//!
+//! - **CfgSimplify**: Simplifies trivial branches and selects
+//! - **JumpThreading**: Bypasses trivial jump-only blocks
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Function, Instruction, Operand};
 use std::collections::HashMap;

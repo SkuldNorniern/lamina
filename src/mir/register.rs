@@ -1,7 +1,19 @@
-/// Register management for LUMIR
-///
-/// Virtual registers are unlimited and assigned sequentially.
-/// Physical registers are assigned during register allocation.
+//! Register management for LUMIR.
+//!
+//! This module defines the register representation used in LUMIR, including
+//! virtual registers (pre-allocation) and physical registers (post-allocation).
+//!
+//! ## Register Classes
+//!
+//! - **GPR**: General Purpose Registers for integers and pointers
+//! - **FPR**: Floating Point Registers for scalar floating-point operations
+//! - **Vec**: Vector Registers for SIMD operations
+//!
+//! ## Register Allocation
+//!
+//! Virtual registers are assigned sequentially during IR-to-MIR conversion.
+//! Physical registers are assigned during the register allocation phase,
+//! which maps virtual registers to target-specific physical registers.
 use std::fmt;
 
 /// Register class determines which physical registers can be used
