@@ -142,7 +142,6 @@ impl LoopInvariantCodeMotion {
         let loops_to_process = loops.into_iter().take(max_loops);
 
         for loop_info in loops_to_process {
-
             if loop_info.blocks.len() > 50 {
                 continue;
             }

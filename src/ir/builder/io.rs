@@ -46,4 +46,3 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::Print { value })
     }
 }
-

@@ -44,4 +44,3 @@ impl<'a> IRBuilder<'a> {
         })
     }
 }
-
