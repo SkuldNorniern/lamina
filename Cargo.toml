@@ -20,3 +20,7 @@ default = []
 #use_mold = []
 # Enable experimental/nightly features (may change without notice)
 nightly = []
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
