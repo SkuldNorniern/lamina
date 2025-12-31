@@ -1,8 +1,8 @@
 fn @main() -> i64 {
   entry:
     %ptr = alloc.heap i64
-    store i64 %ptr, 42
-    %val = load i64 %ptr
+    store.i64 %ptr, 42
+    %val = load.i64 %ptr
     print %val
     # dealloc %ptr
     ret.i64 0
