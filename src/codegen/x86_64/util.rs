@@ -101,6 +101,7 @@ mod tests {
     use crate::ir::types::*;
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_get_type_size_directive_and_bytes_primitives() {
         assert_eq!(
             get_type_size_directive_and_bytes(&Type::Primitive(PrimitiveType::I8)).unwrap(),
@@ -177,6 +178,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_get_type_size_directive_and_bytes_invalid() {
         // Empty struct is now valid (size 0)
         assert_eq!(
@@ -216,6 +218,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_get_value_operand_asm_constants() {
         let (state, func_ctx) = setup_test_state_context();
         assert_eq!(
@@ -280,6 +283,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_get_value_operand_asm_variable() {
         let (state, func_ctx) = setup_test_state_context();
         // Variable on stack
@@ -297,6 +301,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_get_value_operand_asm_global() {
         let (state, func_ctx) = setup_test_state_context();
         assert_eq!(

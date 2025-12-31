@@ -124,6 +124,7 @@ mod tests {
     use crate::ir::types::*;
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_get_type_size_bytes() {
         assert_eq!(
             get_type_size_bytes(&Type::Primitive(PrimitiveType::I8)).unwrap(),
@@ -186,6 +187,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_get_type_alignment() {
         assert_eq!(
             get_type_alignment(&Type::Primitive(PrimitiveType::I8)).unwrap(),

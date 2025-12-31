@@ -895,7 +895,7 @@ impl Display for ModuleExpression<'_> {
                 bytes
                     .iter()
                     .flat_map(|v| std::ascii::escape_default(*v))
-                    .map(|v| char::from_u32(v as u32).unwrap())
+                    .map(|v| char::from_u32(v as u32).unwrap_or('\u{FFFD}'))
                     .collect::<String>()
             ),
             Self::Elem {
