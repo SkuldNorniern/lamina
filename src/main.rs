@@ -2,6 +2,7 @@ use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::str::FromStr;
 
 fn print_usage() {
     eprintln!("Usage: lamina <input.lamina> [options]");
