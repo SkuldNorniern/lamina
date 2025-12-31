@@ -105,7 +105,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                 "void" => Ok(Type::Void),
                 _ => {
                     let hint = if potential_primitive.len() <= 3 {
-                        format!("Did you mean one of: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr, void?")
+                        "Did you mean one of: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr, void?".to_string()
                     } else {
                         "Valid type identifiers include: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr, void, or named types starting with @".to_string()
                     };

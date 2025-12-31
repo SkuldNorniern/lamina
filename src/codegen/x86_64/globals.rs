@@ -168,6 +168,7 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_escape_asm_string() {
         assert_eq!(escape_asm_string("simple"), "simple");
         assert_eq!(escape_asm_string("with\"quote"), "with\\\"quote");
@@ -183,6 +184,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_generate_global_initializer() {
         let mut buf = Cursor::new(Vec::new());
 
@@ -298,6 +300,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_generate_globals_rodata() {
         let mut state = CodegenState::<'static>::new();
         state
@@ -330,6 +333,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::unwrap_used)]
     fn test_generate_globals_no_rodata() {
         let state = CodegenState::<'static>::new(); // Empty state
         let mut buf = Cursor::new(Vec::new());

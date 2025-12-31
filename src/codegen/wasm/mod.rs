@@ -263,8 +263,8 @@ pub fn get_wasm_size_value<'a>(
     is_wasm64: bool,
     state: &'a state::CodegenState,
     locals: &HashMap<&'a str, (u64, NumericType)>,
-) -> u64 {
-    match val {
+) -> Result<u64, LaminaError> {
+    Ok(match val {
         Value::Constant(c) => match c {
             Literal::Bool(_) => 1,
             Literal::Char(_) => 4,
@@ -284,8 +284,8 @@ pub fn get_wasm_size_value<'a>(
             Literal::F64(_) => 8,
         },
         Value::Global(id) => {
-            if let Some(global_val) = state.get_global_value(id).as_ref() {
-                get_wasm_size_value(global_val, is_wasm64, state, locals)
+            if let Some(global_val) = state.get_global_value(id)?.as_ref() {
+                get_wasm_size_value(global_val, is_wasm64, state, locals)?
             } else {
                 // Default size if global not found
                 8
@@ -298,7 +298,7 @@ pub fn get_wasm_size_value<'a>(
                 NumericType::F64 | NumericType::I64 => 8,
             })
             .unwrap_or(8), // Default to 8 bytes if variable not found
-    }
+    })
 }
 
 pub fn get_wasm_type_value<'a>(
@@ -306,9 +306,9 @@ pub fn get_wasm_type_value<'a>(
     is_wasm64: bool,
     state: &'a state::CodegenState,
     locals: &HashMap<&'a str, (u64, NumericType)>,
-) -> NumericType {
+) -> Result<NumericType, LaminaError> {
     match val {
-        Value::Constant(c) => match c {
+        Value::Constant(c) => Ok(match c {
             Literal::Bool(_) => NumericType::I32,
             Literal::Char(_) => NumericType::I32,
             Literal::I8(_) => NumericType::I32,
@@ -331,18 +331,18 @@ pub fn get_wasm_type_value<'a>(
 
             Literal::F32(_) => NumericType::F32,
             Literal::F64(_) => NumericType::F64,
-        },
+        }),
         Value::Global(id) => {
-            if let Some(global_val) = state.get_global_value(id).as_ref() {
+            if let Some(global_val) = state.get_global_value(id)?.as_ref() {
                 get_wasm_type_value(global_val, is_wasm64, state, locals)
             } else {
                 // Default to I64 if global not found
-                NumericType::I64
+                Ok(NumericType::I64)
             }
         },
-        Value::Variable(id) => locals.get(id)
+        Value::Variable(id) => Ok(locals.get(id)
             .map(|v| v.1)
-            .unwrap_or(NumericType::I64), // Default to I64 if variable not found
+            .unwrap_or(NumericType::I64)), // Default to I64 if variable not found
     }
 }
 
@@ -552,12 +552,12 @@ fn is_const(value: &Value, ty: Option<&PrimitiveType>, is_wasm64: bool) -> Optio
     }
 }
 
-fn get_pointer(value: &Value, state: &state::CodegenState) -> Option<u64> {
+fn get_pointer(value: &Value, state: &state::CodegenState) -> Result<Option<u64>, LaminaError> {
     match value {
-        Value::Constant(_) => None,
-        Value::Global(id) | Value::Variable(id) => match state.get_global(id) {
-            state::GlobalRef::Wasm(_) => None,
-            state::GlobalRef::Memory(ptr) => Some(ptr),
+        Value::Constant(_) => Ok(None),
+        Value::Global(id) | Value::Variable(id) => match state.get_global(id)? {
+            state::GlobalRef::Wasm(_) => Ok(None),
+            state::GlobalRef::Memory(ptr) => Ok(Some(ptr)),
         },
     }
 }
@@ -568,12 +568,16 @@ fn create_load_reg<'a>(
     ty: Option<&PrimitiveType>,
     locals: &HashMap<&'a str, (u64, NumericType)>,
     is_wasm64: bool,
-) -> generate::WasmInstruction<'a> {
+) -> Result<generate::WasmInstruction<'a>, LaminaError> {
     match value {
         Value::Constant(_) => {
-            generate::WasmInstruction::Const(is_const(value, ty, is_wasm64).unwrap())
+            is_const(value, ty, is_wasm64)
+                .map(|c| Ok(generate::WasmInstruction::Const(c)))
+                .unwrap_or_else(|| Err(LaminaError::ValidationError(
+                    "Cannot convert value to constant".to_string()
+                )))
         }
-        Value::Global(id) => match state.get_global(id) {
+        Value::Global(id) => Ok(match state.get_global(id)? {
             state::GlobalRef::Wasm(id) => {
                 generate::WasmInstruction::GlobalGet(generate::Identifier::Index(id))
             }
@@ -582,7 +586,7 @@ fn create_load_reg<'a>(
                 // For now, use a placeholder instruction - this should be validated earlier
                 generate::WasmInstruction::Nop
             }
-        },
+        }),
         Value::Variable(id) => {
             let local_idx = locals.get(id)
                 .map(|v| v.0)
@@ -591,7 +595,7 @@ fn create_load_reg<'a>(
                     // but we need to avoid panic here
                     0
                 });
-            generate::WasmInstruction::LocalGet(generate::Identifier::Index(local_idx))
+            Ok(generate::WasmInstruction::LocalGet(generate::Identifier::Index(local_idx)))
         },
     }
 }
@@ -603,8 +607,9 @@ fn generate_load_reg<'a>(
     ty: Option<&PrimitiveType>,
     locals: &HashMap<&'a str, (u64, NumericType)>,
     is_wasm64: bool,
-) {
-    instructions.push(create_load_reg(state, value, ty, locals, is_wasm64))
+) -> Result<(), LaminaError> {
+    instructions.push(create_load_reg(state, value, ty, locals, is_wasm64)?);
+    Ok(())
 }
 
 fn generate_result<'a>(
@@ -642,10 +647,14 @@ fn generate_memory_write<'a>(
             instructions.push(generate::WasmInstruction::Store(ty, mem))
         }
         (NumericType::I32 | NumericType::I64, 8) => instructions.push(
-            generate::WasmInstruction::Store8(ty.try_into().unwrap(), mem),
+            generate::WasmInstruction::Store8(ty.try_into().map_err(|e| {
+                LaminaError::ValidationError(format!("Invalid type for Store8: {}", e))
+            })?, mem),
         ),
         (NumericType::I32 | NumericType::I64, 16) => instructions.push(
-            generate::WasmInstruction::Store16(ty.try_into().unwrap(), mem),
+            generate::WasmInstruction::Store16(ty.try_into().map_err(|e| {
+                LaminaError::ValidationError(format!("Invalid type for Store16: {}", e))
+            })?, mem),
         ),
         (NumericType::I64, 32) => instructions.push(generate::WasmInstruction::I64_Store32(mem)),
         _ => {
@@ -674,16 +683,24 @@ fn generate_memory_read<'a>(
             instructions.push(generate::WasmInstruction::Load(ty, mem))
         }
         (NumericType::I32 | NumericType::I64, 8, false) => instructions.push(
-            generate::WasmInstruction::Load8U(ty.try_into().unwrap(), mem),
+            generate::WasmInstruction::Load8U(ty.try_into().map_err(|e| {
+                LaminaError::ValidationError(format!("Invalid type for Load8U: {}", e))
+            })?, mem),
         ),
         (NumericType::I32 | NumericType::I64, 8, true) => instructions.push(
-            generate::WasmInstruction::Load8S(ty.try_into().unwrap(), mem),
+            generate::WasmInstruction::Load8S(ty.try_into().map_err(|e| {
+                LaminaError::ValidationError(format!("Invalid type for Load8S: {}", e))
+            })?, mem),
         ),
         (NumericType::I32 | NumericType::I64, 16, false) => instructions.push(
-            generate::WasmInstruction::Load16U(ty.try_into().unwrap(), mem),
+            generate::WasmInstruction::Load16U(ty.try_into().map_err(|e| {
+                LaminaError::ValidationError(format!("Invalid type for Load16U: {}", e))
+            })?, mem),
         ),
         (NumericType::I32 | NumericType::I64, 16, true) => instructions.push(
-            generate::WasmInstruction::Load16S(ty.try_into().unwrap(), mem),
+            generate::WasmInstruction::Load16S(ty.try_into().map_err(|e| {
+                LaminaError::ValidationError(format!("Invalid type for Load16S: {}", e))
+            })?, mem),
         ),
         (NumericType::I64, 32, false) => {
             instructions.push(generate::WasmInstruction::I64_Load32U(mem))
@@ -807,7 +824,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             Some(ty),
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
                         generate_load_reg(
                             &mut instructions,
                             &state,
@@ -815,7 +832,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             Some(ty),
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
 
                         match op {
                             BinaryOp::Add => {
@@ -823,23 +840,32 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }
                             BinaryOp::Div => instructions.push(match wasm_ty {
                                 NumericType::F32 | NumericType::F64 => {
-                                    // SAFETY: for floating-point primitives `float_ty` is always Some.
-                                    generate::WasmInstruction::DivF(float_ty.unwrap())
+                                    generate::WasmInstruction::DivF(float_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Float type expected for floating-point division".to_string()
+                                        )
+                                    })?)
                                 }
                                 NumericType::I32 | NumericType::I64 => match ty {
                                     PrimitiveType::I8
                                     | PrimitiveType::I16
                                     | PrimitiveType::I32
                                     | PrimitiveType::I64 => {
-                                        // SAFETY: for integer primitives `int_ty` is always Some.
-                                        generate::WasmInstruction::DivS(int_ty.unwrap())
+                                        generate::WasmInstruction::DivS(int_ty.ok_or_else(|| {
+                                            LaminaError::ValidationError(
+                                                "Integer type expected for signed division".to_string()
+                                            )
+                                        })?)
                                     }
                                     PrimitiveType::U8
                                     | PrimitiveType::U16
                                     | PrimitiveType::U32
                                     | PrimitiveType::U64 => {
-                                        // SAFETY: for integer primitives `int_ty` is always Some.
-                                        generate::WasmInstruction::DivU(int_ty.unwrap())
+                                        generate::WasmInstruction::DivU(int_ty.ok_or_else(|| {
+                                            LaminaError::ValidationError(
+                                                "Integer type expected for unsigned division".to_string()
+                                            )
+                                        })?)
                                     }
                                     _ => {
                                         return Err(LaminaError::ValidationError(
@@ -966,11 +992,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             None,
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
 
                         // WASM blocks are weird so we need to do a dispatch loop.
 
-                        match get_wasm_type_value(condition, is_wasm64, &state, &locals) {
+                        match get_wasm_type_value(condition, is_wasm64, &state, &locals)? {
                             NumericType::I32 => {}
                             NumericType::I64 => {
                                 instructions.push(generate::WasmInstruction::I32_WrapI64)
@@ -1058,7 +1084,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 None,
                                 &locals,
                                 is_wasm64,
-                            );
+                            )?;
                             instructions.push(generate::WasmInstruction::Comment(format!(
                                 "Argument {arg}"
                             )));
@@ -1076,12 +1102,17 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             let ret = &module
                                 .functions
                                 .get(func_name)
-                                .unwrap()
+                                .ok_or_else(|| LaminaError::ValidationError(format!(
+                                    "Function '{}' not found in module", func_name
+                                )))?
                                 .signature
                                 .return_type;
 
                             let (wasm_ty, is_ptr) =
-                                get_wasm_type_for_return(ret, is_wasm64, module).unwrap();
+                                get_wasm_type_for_return(ret, is_wasm64, module)
+                                    .ok_or_else(|| LaminaError::ValidationError(format!(
+                                        "Cannot determine return type for function '{}'", func_name
+                                    )))?;
 
                             if !is_ptr {
                                 generate_result(
@@ -1169,7 +1200,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 Some(ty),
                                 &locals,
                                 is_wasm64,
-                            );
+                            )?;
                         }
                         if !is_rhs_zero || *op != crate::CmpOp::Eq || int_ty.is_none() {
                             generate_load_reg(
@@ -1179,7 +1210,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 Some(ty),
                                 &locals,
                                 is_wasm64,
-                            );
+                            )?;
                         }
 
                         instructions.push(match op {
@@ -1204,13 +1235,21 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             },
                             crate::CmpOp::Ge => match ty {
                                 PrimitiveType::F32 | PrimitiveType::F64 => {
-                                    generate::WasmInstruction::GeF(float_ty.unwrap())
+                                    generate::WasmInstruction::GeF(float_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Float type expected for floating-point comparison".to_string()
+                                        )
+                                    })?)
                                 }
                                 PrimitiveType::I8
                                 | PrimitiveType::I16
                                 | PrimitiveType::I32
                                 | PrimitiveType::I64 => {
-                                    generate::WasmInstruction::GeS(int_ty.unwrap())
+                                    generate::WasmInstruction::GeS(int_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Integer type expected for signed comparison".to_string()
+                                        )
+                                    })?)
                                 }
                                 PrimitiveType::Bool
                                 | PrimitiveType::Char
@@ -1219,18 +1258,30 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::U16
                                 | PrimitiveType::U32
                                 | PrimitiveType::U64 => {
-                                    generate::WasmInstruction::GeU(int_ty.unwrap())
+                                    generate::WasmInstruction::GeU(int_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Integer type expected for unsigned comparison".to_string()
+                                        )
+                                    })?)
                                 }
                             },
                             crate::CmpOp::Gt => match ty {
                                 PrimitiveType::F32 | PrimitiveType::F64 => {
-                                    generate::WasmInstruction::GtF(float_ty.unwrap())
+                                    generate::WasmInstruction::GtF(float_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Float type expected for floating-point comparison".to_string()
+                                        )
+                                    })?)
                                 }
                                 PrimitiveType::I8
                                 | PrimitiveType::I16
                                 | PrimitiveType::I32
                                 | PrimitiveType::I64 => {
-                                    generate::WasmInstruction::GtS(int_ty.unwrap())
+                                    generate::WasmInstruction::GtS(int_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Integer type expected for signed comparison".to_string()
+                                        )
+                                    })?)
                                 }
                                 PrimitiveType::Bool
                                 | PrimitiveType::Char
@@ -1239,18 +1290,30 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::U16
                                 | PrimitiveType::U32
                                 | PrimitiveType::U64 => {
-                                    generate::WasmInstruction::GtU(int_ty.unwrap())
+                                    generate::WasmInstruction::GtU(int_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Integer type expected for unsigned comparison".to_string()
+                                        )
+                                    })?)
                                 }
                             },
                             crate::CmpOp::Le => match ty {
                                 PrimitiveType::F32 | PrimitiveType::F64 => {
-                                    generate::WasmInstruction::LeF(float_ty.unwrap())
+                                    generate::WasmInstruction::LeF(float_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Float type expected for floating-point comparison".to_string()
+                                        )
+                                    })?)
                                 }
                                 PrimitiveType::I8
                                 | PrimitiveType::I16
                                 | PrimitiveType::I32
                                 | PrimitiveType::I64 => {
-                                    generate::WasmInstruction::LeS(int_ty.unwrap())
+                                    generate::WasmInstruction::LeS(int_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Integer type expected for signed comparison".to_string()
+                                        )
+                                    })?)
                                 }
                                 PrimitiveType::Bool
                                 | PrimitiveType::Char
@@ -1259,18 +1322,30 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::U16
                                 | PrimitiveType::U32
                                 | PrimitiveType::U64 => {
-                                    generate::WasmInstruction::LeU(int_ty.unwrap())
+                                    generate::WasmInstruction::LeU(int_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Integer type expected for unsigned comparison".to_string()
+                                        )
+                                    })?)
                                 }
                             },
                             crate::CmpOp::Lt => match ty {
                                 PrimitiveType::F32 | PrimitiveType::F64 => {
-                                    generate::WasmInstruction::LtF(float_ty.unwrap())
+                                    generate::WasmInstruction::LtF(float_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Float type expected for floating-point comparison".to_string()
+                                        )
+                                    })?)
                                 }
                                 PrimitiveType::I8
                                 | PrimitiveType::I16
                                 | PrimitiveType::I32
                                 | PrimitiveType::I64 => {
-                                    generate::WasmInstruction::LtS(int_ty.unwrap())
+                                    generate::WasmInstruction::LtS(int_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Integer type expected for signed comparison".to_string()
+                                        )
+                                    })?)
                                 }
                                 PrimitiveType::Bool
                                 | PrimitiveType::Char
@@ -1279,7 +1354,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 | PrimitiveType::U16
                                 | PrimitiveType::U32
                                 | PrimitiveType::U64 => {
-                                    generate::WasmInstruction::LtU(int_ty.unwrap())
+                                    generate::WasmInstruction::LtU(int_ty.ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Integer type expected for unsigned comparison".to_string()
+                                        )
+                                    })?)
                                 }
                             },
                             crate::CmpOp::Ne => generate::WasmInstruction::Ne(wasm_ty),
@@ -1314,7 +1393,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             Some(source_type),
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
 
                         instructions.push(match (source_type, target_type) {
                             (_, PrimitiveType::I64) if from_wasm_ty == NumericType::I32 => {
@@ -1398,8 +1477,11 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     }
                     Instruction::Tuple { result, elements } => {
                         let mut align = 1u64;
-                        let size = elements.iter().fold(0u64, |last, v| {
-                            let size = get_wasm_size_value(v, is_wasm64, &state, &locals);
+                        let sizes: Result<Vec<u64>, _> = elements.iter()
+                            .map(|v| get_wasm_size_value(v, is_wasm64, &state, &locals))
+                            .collect();
+                        let sizes = sizes?;
+                        let size = sizes.iter().fold(0u64, |last, &size| {
                             let e_align = (size as f64).log2();
                             if e_align.is_normal()
                                 && e_align.fract() == 0.0
@@ -1430,7 +1512,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                                 } else {
                                     NumericConstant::I32(address as u32)
                                 }),
-                                create_load_reg(&state, value, None, &locals, is_wasm64),
+                                create_load_reg(&state, value, None, &locals, is_wasm64)?,
                                 match size {
                                     ..=32 => NumericType::I32,
                                     33..=64 => NumericType::I64,
@@ -1459,7 +1541,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             _ => todo!(
                                 "Implement extracting values from a tuple constant immediately"
                             ),
-                        }) {
+                        })? {
                             state::GlobalRef::Memory(addr) => addr,
                             _ => {
                                 return Err(LaminaError::ValidationError(
@@ -1468,8 +1550,8 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }
                         } + (*index as u64 * 8);
 
-                        let wasm_size = get_wasm_size_value(ptr, is_wasm64, &state, &locals);
-                        let wasm_ty = get_wasm_type_value(ptr, is_wasm64, &state, &locals);
+                        let wasm_size = get_wasm_size_value(ptr, is_wasm64, &state, &locals)?;
+                        let wasm_ty = get_wasm_type_value(ptr, is_wasm64, &state, &locals)?;
 
                         generate_memory_read(
                             &mut instructions,
@@ -1506,7 +1588,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             _ => todo!(
                                 "Implement extracting values from an array constant immediately"
                             ),
-                        }) {
+                        })? {
                             state::GlobalRef::Memory(addr) => addr,
                             _ => {
                                 return Err(LaminaError::ValidationError(
@@ -1529,7 +1611,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             None,
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
                         instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
                             NumericConstant::I64(elem_size as u64)
                         } else {
@@ -1578,7 +1660,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             Some(&PrimitiveType::I64),
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
                         instructions.push(generate::WasmInstruction::Call(
                             generate::Identifier::Name("i0".into()),
                         ));
@@ -1600,7 +1682,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }),
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
                         generate_load_reg(
                             &mut instructions,
                             &state,
@@ -1612,7 +1694,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }),
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
                         instructions.push(generate::WasmInstruction::Call(
                             generate::Identifier::Name("i1".into()),
                         ));
@@ -1635,8 +1717,8 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             Some(&PrimitiveType::U8),
                             &locals,
                             is_wasm64,
-                        );
-                        match get_wasm_type_value(value, is_wasm64, &state, &locals) {
+                        )?;
+                        match get_wasm_type_value(value, is_wasm64, &state, &locals)? {
                             NumericType::I32 => instructions.push(generate::WasmInstruction::Call(
                                 generate::Identifier::Name("i4".into()),
                             )),
@@ -1672,7 +1754,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             }),
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
                         instructions.push(generate::WasmInstruction::Call(
                             generate::Identifier::Name("i3".into()),
                         ));
@@ -1705,26 +1787,37 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             if is_ptr {
                                 instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
                                     NumericConstant::I64(
-                                        get_pointer(value.as_ref().unwrap(), &state).unwrap(),
+                                        get_pointer(value.as_ref().ok_or_else(|| {
+                                            LaminaError::ValidationError(
+                                                "Expected Some value for pointer conversion".to_string()
+                                            )
+                                        })?, &state)?.unwrap_or(0),
                                     )
                                 } else {
                                     NumericConstant::I32(
-                                        get_pointer(value.as_ref().unwrap(), &state).unwrap()
-                                            as u32,
+                                        get_pointer(value.as_ref().ok_or_else(|| {
+                                            LaminaError::ValidationError(
+                                                "Expected Some value for pointer conversion".to_string()
+                                            )
+                                        })?, &state)?.unwrap_or(0) as u32,
                                     )
                                 }));
                             } else {
                                 generate_load_reg(
                                     &mut instructions,
                                     &state,
-                                    value.as_ref().unwrap(),
+                                    value.as_ref().ok_or_else(|| {
+                                        LaminaError::ValidationError(
+                                            "Expected Some value for load operation".to_string()
+                                        )
+                                    })?,
                                     match ty {
                                         Type::Primitive(ty) => Some(ty),
                                         _ => None,
                                     },
                                     &locals,
                                     is_wasm64,
-                                );
+                                )?;
                             }
                         }
 
@@ -1763,7 +1856,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             Some(&PrimitiveType::Ptr),
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
                         generate_result(
                             &mut instructions,
                             &mut locals,
@@ -1785,7 +1878,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             Some(target_type),
                             &locals,
                             is_wasm64,
-                        );
+                        )?;
                         generate_result(
                             &mut instructions,
                             &mut locals,
@@ -1798,7 +1891,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     Instruction::Load { result, ty, ptr } => {
                         generate_memory_read(
                             &mut instructions,
-                            Some(create_load_reg(&state, ptr, None, &locals, is_wasm64)),
+                            Some(create_load_reg(&state, ptr, None, &locals, is_wasm64)?),
                             get_wasm_type(ty, is_wasm64).0,
                             get_wasm_size(ty, is_wasm64, module)? as u8,
                             matches!(
@@ -1822,12 +1915,12 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                     }
 
                     Instruction::Store { ty, ptr, value } => {
-                        let addr = get_pointer(ptr, &state)
+                        let addr = get_pointer(ptr, &state)?
                             .ok_or_else(|| LaminaError::ValidationError(
                                 "Cannot get pointer for store operation - invalid pointer value".to_string()
                             ))?;
 
-                        if let Some(from) = get_pointer(value, &state) {
+                        if let Some(from) = get_pointer(value, &state)? {
                             instructions.push(generate::WasmInstruction::Const(if is_wasm64 {
                                 NumericConstant::I64(addr)
                             } else {
@@ -1859,7 +1952,7 @@ pub fn generate_wasm_assembly<'a, W: Write>(
                             } else {
                                 NumericConstant::I32(addr as u32)
                             }),
-                            create_load_reg(&state, value, None, &locals, is_wasm64),
+                            create_load_reg(&state, value, None, &locals, is_wasm64)?,
                             get_wasm_type(ty, is_wasm64).0,
                             get_size(ty, is_wasm64, module)? as u8,
                             None,
