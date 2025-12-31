@@ -244,8 +244,8 @@ impl InstructionScheduling {
         // BinaryHeap is max-heap, so higher priority (depth) comes first.
         let mut ready_queue = BinaryHeap::new();
 
-        for i in 0..num_instrs {
-            if in_degree[i] == 0 {
+        for (i, &degree) in in_degree.iter().enumerate().take(num_instrs) {
+            if degree == 0 {
                 ready_queue.push(ScheduledItem {
                     priority: *priorities.get(&i).unwrap_or(&0),
                     index: i,
