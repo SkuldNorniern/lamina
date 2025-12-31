@@ -37,4 +37,3 @@ impl<'a> IRBuilder<'a> {
         self
     }
 }
-

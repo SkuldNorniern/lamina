@@ -94,4 +94,3 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::Fence { ordering })
     }
 }
-

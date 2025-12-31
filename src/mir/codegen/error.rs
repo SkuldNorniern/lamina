@@ -25,7 +25,10 @@ impl fmt::Display for FromIRError {
         match self {
             FromIRError::InvalidIR => write!(f, "Invalid IR structure detected during conversion"),
             FromIRError::UnsupportedType => {
-                write!(f, "IR type cannot be converted to MIR (composite types not yet supported)")
+                write!(
+                    f,
+                    "IR type cannot be converted to MIR (composite types not yet supported)"
+                )
             }
             FromIRError::UnsupportedInstruction => {
                 write!(f, "IR instruction is not supported in MIR")
@@ -34,7 +37,10 @@ impl fmt::Display for FromIRError {
                 write!(f, "Function is missing its entry block")
             }
             FromIRError::UnknownVariable => {
-                write!(f, "Variable reference cannot be resolved in current context")
+                write!(
+                    f,
+                    "Variable reference cannot be resolved in current context"
+                )
             }
         }
     }

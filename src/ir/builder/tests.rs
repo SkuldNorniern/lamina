@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
     use super::super::super::function::FunctionAnnotation;
-    use super::super::super::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
     #[cfg(feature = "nightly")]
     use super::super::super::instruction::SimdOp;
+    use super::super::super::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
     use super::super::super::module::Module;
     #[cfg(feature = "nightly")]
     use super::super::super::module::ModuleAnnotation;
@@ -253,7 +253,10 @@ mod tests {
         assert!(func.annotations.contains(&FunctionAnnotation::Hot));
         assert!(func.annotations.contains(&FunctionAnnotation::Pure));
         assert!(func.annotations.contains(&FunctionAnnotation::CCc));
-        assert!(func.annotations.contains(&FunctionAnnotation::Section(".text.fast".to_string())));
+        assert!(
+            func.annotations
+                .contains(&FunctionAnnotation::Section(".text.fast".to_string()))
+        );
         assert!(func.annotations.contains(&FunctionAnnotation::Align(16)));
     }
 
@@ -265,9 +268,24 @@ mod tests {
         let param2 = builder.param_simple("y", Type::Primitive(PrimitiveType::I64));
 
         builder
-            .function_with_params("add", vec![param1, param2], Type::Primitive(PrimitiveType::I64))
-            .zext("x_extended", PrimitiveType::I32, PrimitiveType::I64, var("x"))
-            .binary(BinaryOp::Add, "sum", PrimitiveType::I64, var("x_extended"), var("y"))
+            .function_with_params(
+                "add",
+                vec![param1, param2],
+                Type::Primitive(PrimitiveType::I64),
+            )
+            .zext(
+                "x_extended",
+                PrimitiveType::I32,
+                PrimitiveType::I64,
+                var("x"),
+            )
+            .binary(
+                BinaryOp::Add,
+                "sum",
+                PrimitiveType::I64,
+                var("x_extended"),
+                var("y"),
+            )
             .ret(Type::Primitive(PrimitiveType::I64), var("sum"));
 
         let module = builder.build();
@@ -284,16 +302,76 @@ mod tests {
 
         builder
             .function("binary_ops", Type::Primitive(PrimitiveType::I32))
-            .binary(BinaryOp::Add, "add_result", PrimitiveType::I32, i32(10), i32(5))
-            .binary(BinaryOp::Sub, "sub_result", PrimitiveType::I32, i32(10), i32(5))
-            .binary(BinaryOp::Mul, "mul_result", PrimitiveType::I32, i32(10), i32(5))
-            .binary(BinaryOp::Div, "div_result", PrimitiveType::I32, i32(10), i32(5))
-            .binary(BinaryOp::Rem, "rem_result", PrimitiveType::I32, i32(10), i32(3))
-            .binary(BinaryOp::And, "and_result", PrimitiveType::I32, i32(0b1010), i32(0b1100))
-            .binary(BinaryOp::Or, "or_result", PrimitiveType::I32, i32(0b1010), i32(0b1100))
-            .binary(BinaryOp::Xor, "xor_result", PrimitiveType::I32, i32(0b1010), i32(0b1100))
-            .binary(BinaryOp::Shl, "shl_result", PrimitiveType::I32, i32(5), i32(2))
-            .binary(BinaryOp::Shr, "shr_result", PrimitiveType::I32, i32(20), i32(2))
+            .binary(
+                BinaryOp::Add,
+                "add_result",
+                PrimitiveType::I32,
+                i32(10),
+                i32(5),
+            )
+            .binary(
+                BinaryOp::Sub,
+                "sub_result",
+                PrimitiveType::I32,
+                i32(10),
+                i32(5),
+            )
+            .binary(
+                BinaryOp::Mul,
+                "mul_result",
+                PrimitiveType::I32,
+                i32(10),
+                i32(5),
+            )
+            .binary(
+                BinaryOp::Div,
+                "div_result",
+                PrimitiveType::I32,
+                i32(10),
+                i32(5),
+            )
+            .binary(
+                BinaryOp::Rem,
+                "rem_result",
+                PrimitiveType::I32,
+                i32(10),
+                i32(3),
+            )
+            .binary(
+                BinaryOp::And,
+                "and_result",
+                PrimitiveType::I32,
+                i32(0b1010),
+                i32(0b1100),
+            )
+            .binary(
+                BinaryOp::Or,
+                "or_result",
+                PrimitiveType::I32,
+                i32(0b1010),
+                i32(0b1100),
+            )
+            .binary(
+                BinaryOp::Xor,
+                "xor_result",
+                PrimitiveType::I32,
+                i32(0b1010),
+                i32(0b1100),
+            )
+            .binary(
+                BinaryOp::Shl,
+                "shl_result",
+                PrimitiveType::I32,
+                i32(5),
+                i32(2),
+            )
+            .binary(
+                BinaryOp::Shr,
+                "shr_result",
+                PrimitiveType::I32,
+                i32(20),
+                i32(2),
+            )
             .ret(Type::Primitive(PrimitiveType::I32), var("add_result"));
 
         let module = builder.build();
@@ -345,10 +423,30 @@ mod tests {
 
         builder
             .function("conversions", Type::Primitive(PrimitiveType::I64))
-            .zext("zext_result", PrimitiveType::I32, PrimitiveType::I64, i32(42))
-            .sext("sext_result", PrimitiveType::I32, PrimitiveType::I64, i32(-42))
-            .trunc("trunc_result", PrimitiveType::I64, PrimitiveType::I32, i64(1000))
-            .bitcast("bitcast_result", PrimitiveType::I32, PrimitiveType::F32, i32(0x40400000))
+            .zext(
+                "zext_result",
+                PrimitiveType::I32,
+                PrimitiveType::I64,
+                i32(42),
+            )
+            .sext(
+                "sext_result",
+                PrimitiveType::I32,
+                PrimitiveType::I64,
+                i32(-42),
+            )
+            .trunc(
+                "trunc_result",
+                PrimitiveType::I64,
+                PrimitiveType::I32,
+                i64(1000),
+            )
+            .bitcast(
+                "bitcast_result",
+                PrimitiveType::I32,
+                PrimitiveType::F32,
+                i32(0x40400000),
+            )
             .ret(Type::Primitive(PrimitiveType::I64), var("zext_result"));
 
         let module = builder.build();
@@ -358,7 +456,13 @@ mod tests {
         assert_eq!(entry.instructions.len(), 5);
 
         // Verify zero extension
-        if let Instruction::ZeroExtend { result, source_type, target_type, .. } = &entry.instructions[0] {
+        if let Instruction::ZeroExtend {
+            result,
+            source_type,
+            target_type,
+            ..
+        } = &entry.instructions[0]
+        {
             assert_eq!(*result, "zext_result");
             assert_eq!(*source_type, PrimitiveType::I32);
             assert_eq!(*target_type, PrimitiveType::I64);
@@ -373,13 +477,24 @@ mod tests {
 
         builder
             .function("pointer_ops", Type::Primitive(PrimitiveType::I32))
-            .alloc_stack("array", Type::Array {
-                element_type: Box::new(Type::Primitive(PrimitiveType::I32)),
-                size: 10,
-            })
+            .alloc_stack(
+                "array",
+                Type::Array {
+                    element_type: Box::new(Type::Primitive(PrimitiveType::I32)),
+                    size: 10,
+                },
+            )
             .getelementptr("elem_ptr", var("array"), i32(5), PrimitiveType::I32)
-            .store(Type::Primitive(PrimitiveType::I32), var("elem_ptr"), i32(42))
-            .load("value", Type::Primitive(PrimitiveType::I32), var("elem_ptr"))
+            .store(
+                Type::Primitive(PrimitiveType::I32),
+                var("elem_ptr"),
+                i32(42),
+            )
+            .load(
+                "value",
+                Type::Primitive(PrimitiveType::I32),
+                var("elem_ptr"),
+            )
             .ret(Type::Primitive(PrimitiveType::I32), var("value"));
 
         let module = builder.build();
@@ -389,7 +504,13 @@ mod tests {
         assert_eq!(entry.instructions.len(), 5);
 
         // Verify getelementptr
-        if let Instruction::GetElemPtr { result, index, element_type, .. } = &entry.instructions[1] {
+        if let Instruction::GetElemPtr {
+            result,
+            index,
+            element_type,
+            ..
+        } = &entry.instructions[1]
+        {
             assert_eq!(*result, "elem_ptr");
             assert_eq!(*index, i32(5));
             assert_eq!(*element_type, PrimitiveType::I32);
@@ -404,16 +525,19 @@ mod tests {
 
         builder
             .function("struct_ops", Type::Primitive(PrimitiveType::I32))
-            .alloc_stack("point", Type::Struct(vec![
-                crate::ir::types::StructField {
-                    name: "x",
-                    ty: Type::Primitive(PrimitiveType::I32),
-                },
-                crate::ir::types::StructField {
-                    name: "y",
-                    ty: Type::Primitive(PrimitiveType::I32),
-                },
-            ]))
+            .alloc_stack(
+                "point",
+                Type::Struct(vec![
+                    crate::ir::types::StructField {
+                        name: "x",
+                        ty: Type::Primitive(PrimitiveType::I32),
+                    },
+                    crate::ir::types::StructField {
+                        name: "y",
+                        ty: Type::Primitive(PrimitiveType::I32),
+                    },
+                ]),
+            )
             .struct_gep("x_ptr", var("point"), 0)
             .store(Type::Primitive(PrimitiveType::I32), var("x_ptr"), i32(10))
             .struct_gep("y_ptr", var("point"), 1)
@@ -428,7 +552,12 @@ mod tests {
         assert_eq!(entry.instructions.len(), 7);
 
         // Verify struct_gep
-        if let Instruction::GetFieldPtr { result, field_index, .. } = &entry.instructions[1] {
+        if let Instruction::GetFieldPtr {
+            result,
+            field_index,
+            ..
+        } = &entry.instructions[1]
+        {
             assert_eq!(*result, "x_ptr");
             assert_eq!(*field_index, 0);
         } else {
@@ -443,7 +572,11 @@ mod tests {
         builder
             .function("heap_ops", Type::Void)
             .alloc_heap("heap_ptr", Type::Primitive(PrimitiveType::I32))
-            .store(Type::Primitive(PrimitiveType::I32), var("heap_ptr"), i32(100))
+            .store(
+                Type::Primitive(PrimitiveType::I32),
+                var("heap_ptr"),
+                i32(100),
+            )
             .dealloc(var("heap_ptr"))
             .ret_void();
 
@@ -454,7 +587,10 @@ mod tests {
         assert_eq!(entry.instructions.len(), 4);
 
         // Verify heap allocation
-        if let Instruction::Alloc { result, alloc_type, .. } = &entry.instructions[0] {
+        if let Instruction::Alloc {
+            result, alloc_type, ..
+        } = &entry.instructions[0]
+        {
             assert_eq!(*result, "heap_ptr");
             assert!(matches!(alloc_type, AllocType::Heap));
         } else {
@@ -493,7 +629,12 @@ mod tests {
         let entry = &caller.basic_blocks["entry"];
 
         // Verify call instruction
-        if let Instruction::Call { result, func_name, args } = &entry.instructions[0] {
+        if let Instruction::Call {
+            result,
+            func_name,
+            args,
+        } = &entry.instructions[0]
+        {
             assert_eq!(*result, Some("result"));
             assert_eq!(*func_name, "helper");
             assert_eq!(args.len(), 0);
@@ -506,8 +647,7 @@ mod tests {
     fn test_external_function() {
         let mut builder = IRBuilder::new();
 
-        builder
-            .external_function("printf", vec![], Type::Void);
+        builder.external_function("printf", vec![], Type::Void);
 
         let module = builder.build();
         let func = &module.functions["printf"];
@@ -550,7 +690,13 @@ mod tests {
         assert!(func.basic_blocks.contains_key("default_case"));
 
         let entry = &func.basic_blocks["entry"];
-        if let Instruction::Switch { ty, value, default, cases } = &entry.instructions[0] {
+        if let Instruction::Switch {
+            ty,
+            value,
+            default,
+            cases,
+        } = &entry.instructions[0]
+        {
             assert_eq!(*ty, PrimitiveType::I32);
             assert_eq!(*value, var("value"));
             assert_eq!(*default, "default_case");
@@ -569,23 +715,41 @@ mod tests {
             .cmp(CmpOp::Gt, "cond", PrimitiveType::I32, var("x"), i32(0))
             .branch(var("cond"), "positive", "negative")
             .block("positive")
-            .binary(BinaryOp::Add, "pos_val", PrimitiveType::I32, var("x"), i32(1))
+            .binary(
+                BinaryOp::Add,
+                "pos_val",
+                PrimitiveType::I32,
+                var("x"),
+                i32(1),
+            )
             .jump("merge")
             .block("negative")
-            .binary(BinaryOp::Sub, "neg_val", PrimitiveType::I32, var("x"), i32(1))
+            .binary(
+                BinaryOp::Sub,
+                "neg_val",
+                PrimitiveType::I32,
+                var("x"),
+                i32(1),
+            )
             .jump("merge")
             .block("merge")
-            .phi("result", Type::Primitive(PrimitiveType::I32), vec![
-                (var("pos_val"), "positive"),
-                (var("neg_val"), "negative"),
-            ])
+            .phi(
+                "result",
+                Type::Primitive(PrimitiveType::I32),
+                vec![(var("pos_val"), "positive"), (var("neg_val"), "negative")],
+            )
             .ret(Type::Primitive(PrimitiveType::I32), var("result"));
 
         let module = builder.build();
         let func = &module.functions["phi_test"];
         let merge = &func.basic_blocks["merge"];
 
-        if let Instruction::Phi { result, ty, incoming } = &merge.instructions[0] {
+        if let Instruction::Phi {
+            result,
+            ty,
+            incoming,
+        } = &merge.instructions[0]
+        {
             assert_eq!(*result, "result");
             assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
             assert_eq!(incoming.len(), 2);
@@ -601,14 +765,27 @@ mod tests {
         builder
             .function("select_test", Type::Primitive(PrimitiveType::I32))
             .cmp(CmpOp::Gt, "cond", PrimitiveType::I32, var("a"), var("b"))
-            .select("max", Type::Primitive(PrimitiveType::I32), var("cond"), var("a"), var("b"))
+            .select(
+                "max",
+                Type::Primitive(PrimitiveType::I32),
+                var("cond"),
+                var("a"),
+                var("b"),
+            )
             .ret(Type::Primitive(PrimitiveType::I32), var("max"));
 
         let module = builder.build();
         let func = &module.functions["select_test"];
         let entry = &func.basic_blocks["entry"];
 
-        if let Instruction::Select { result, ty, cond, true_val, false_val } = &entry.instructions[1] {
+        if let Instruction::Select {
+            result,
+            ty,
+            cond,
+            true_val,
+            false_val,
+        } = &entry.instructions[1]
+        {
             assert_eq!(*result, "max");
             assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
             assert_eq!(*cond, var("cond"));
@@ -625,11 +802,7 @@ mod tests {
 
         builder
             .function("tuple_test", Type::Primitive(PrimitiveType::I32))
-            .tuple("my_tuple", vec![
-                i32(10),
-                i64(20),
-                bool(true),
-            ])
+            .tuple("my_tuple", vec![i32(10), i64(20), bool(true)])
             .extract_tuple("first", var("my_tuple"), 0)
             .extract_tuple("second", var("my_tuple"), 1)
             .ret(Type::Primitive(PrimitiveType::I32), var("first"));
@@ -649,7 +822,12 @@ mod tests {
         }
 
         // Verify tuple extraction
-        if let Instruction::ExtractTuple { result, tuple_val, index } = &entry.instructions[1] {
+        if let Instruction::ExtractTuple {
+            result,
+            tuple_val,
+            index,
+        } = &entry.instructions[1]
+        {
             assert_eq!(*result, "first");
             assert_eq!(*tuple_val, var("my_tuple"));
             assert_eq!(*index, 0);
@@ -664,10 +842,13 @@ mod tests {
 
         builder
             .function("io_test", Type::Void)
-            .alloc_stack("buffer", Type::Array {
-                element_type: Box::new(Type::Primitive(PrimitiveType::I8)),
-                size: 100,
-            })
+            .alloc_stack(
+                "buffer",
+                Type::Array {
+                    element_type: Box::new(Type::Primitive(PrimitiveType::I8)),
+                    size: 100,
+                },
+            )
             .write(var("buffer"), i32(100), "bytes_written")
             .read(var("buffer"), i32(100), "bytes_read")
             .write_byte(i8(65), "byte_written")
@@ -683,7 +864,12 @@ mod tests {
         assert_eq!(entry.instructions.len(), 8);
 
         // Verify write
-        if let Instruction::Write { buffer, size, result } = &entry.instructions[1] {
+        if let Instruction::Write {
+            buffer,
+            size,
+            result,
+        } = &entry.instructions[1]
+        {
             assert_eq!(*result, "bytes_written");
             assert_eq!(*size, i32(100));
         } else {
@@ -706,7 +892,13 @@ mod tests {
             .function("ptr_conv", Type::Primitive(PrimitiveType::I32))
             .alloc_stack("data", Type::Primitive(PrimitiveType::I32))
             .ptrtoint("ptr_as_int", var("data"), PrimitiveType::I64)
-            .binary(BinaryOp::Add, "offset_ptr", PrimitiveType::I64, var("ptr_as_int"), i64(4))
+            .binary(
+                BinaryOp::Add,
+                "offset_ptr",
+                PrimitiveType::I64,
+                var("ptr_as_int"),
+                i64(4),
+            )
             .inttoptr("new_ptr", var("offset_ptr"), PrimitiveType::I32)
             .load("value", Type::Primitive(PrimitiveType::I32), var("new_ptr"))
             .ret(Type::Primitive(PrimitiveType::I32), var("value"));
@@ -716,7 +908,12 @@ mod tests {
         let entry = &func.basic_blocks["entry"];
 
         // Verify ptrtoint
-        if let Instruction::PtrToInt { result, target_type, .. } = &entry.instructions[1] {
+        if let Instruction::PtrToInt {
+            result,
+            target_type,
+            ..
+        } = &entry.instructions[1]
+        {
             assert_eq!(*result, "ptr_as_int");
             assert_eq!(*target_type, PrimitiveType::I64);
         } else {
@@ -724,7 +921,12 @@ mod tests {
         }
 
         // Verify inttoptr
-        if let Instruction::IntToPtr { result, target_type, .. } = &entry.instructions[3] {
+        if let Instruction::IntToPtr {
+            result,
+            target_type,
+            ..
+        } = &entry.instructions[3]
+        {
             assert_eq!(*result, "new_ptr");
             assert_eq!(*target_type, PrimitiveType::I32);
         } else {
@@ -793,9 +995,7 @@ mod tests {
     fn test_void_return() {
         let mut builder = IRBuilder::new();
 
-        builder
-            .function("void_func", Type::Void)
-            .ret_void();
+        builder.function("void_func", Type::Void).ret_void();
 
         let module = builder.build();
         let func = &module.functions["void_func"];
@@ -840,10 +1040,36 @@ mod tests {
         builder
             .function("atomic_test", Type::Primitive(PrimitiveType::I32))
             .alloc_stack("atomic_var", Type::Primitive(PrimitiveType::I32))
-            .atomic_store(Type::Primitive(PrimitiveType::I32), var("atomic_var"), i32(10), MemoryOrdering::SeqCst)
-            .atomic_load("loaded", Type::Primitive(PrimitiveType::I32), var("atomic_var"), MemoryOrdering::SeqCst)
-            .atomic_binary(AtomicBinOp::Add, "result", Type::Primitive(PrimitiveType::I32), var("atomic_var"), i32(5), MemoryOrdering::SeqCst)
-            .atomic_compare_exchange("old_val", "success", Type::Primitive(PrimitiveType::I32), var("atomic_var"), i32(15), i32(20), MemoryOrdering::SeqCst, MemoryOrdering::Acquire)
+            .atomic_store(
+                Type::Primitive(PrimitiveType::I32),
+                var("atomic_var"),
+                i32(10),
+                MemoryOrdering::SeqCst,
+            )
+            .atomic_load(
+                "loaded",
+                Type::Primitive(PrimitiveType::I32),
+                var("atomic_var"),
+                MemoryOrdering::SeqCst,
+            )
+            .atomic_binary(
+                AtomicBinOp::Add,
+                "result",
+                Type::Primitive(PrimitiveType::I32),
+                var("atomic_var"),
+                i32(5),
+                MemoryOrdering::SeqCst,
+            )
+            .atomic_compare_exchange(
+                "old_val",
+                "success",
+                Type::Primitive(PrimitiveType::I32),
+                var("atomic_var"),
+                i32(15),
+                i32(20),
+                MemoryOrdering::SeqCst,
+                MemoryOrdering::Acquire,
+            )
             .fence(MemoryOrdering::SeqCst)
             .ret(Type::Primitive(PrimitiveType::I32), var("loaded"));
 
@@ -854,7 +1080,13 @@ mod tests {
         assert_eq!(entry.instructions.len(), 6);
 
         // Verify atomic store
-        if let Instruction::AtomicStore { ty, ptr, value, ordering } = &entry.instructions[1] {
+        if let Instruction::AtomicStore {
+            ty,
+            ptr,
+            value,
+            ordering,
+        } = &entry.instructions[1]
+        {
             assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
             assert_eq!(*value, i32(10));
             assert_eq!(*ordering, MemoryOrdering::SeqCst);
@@ -879,10 +1111,27 @@ mod tests {
             .function("simd_test", Type::Void)
             .alloc_stack("vec1", vector_type.clone())
             .alloc_stack("vec2", vector_type.clone())
-            .simd_binary(SimdOp::Add, "result", vector_type.clone(), var("vec1"), var("vec2"))
-            .simd_unary(SimdOp::Sqrt, "sqrt_result", vector_type.clone(), var("result"))
+            .simd_binary(
+                SimdOp::Add,
+                "result",
+                vector_type.clone(),
+                var("vec1"),
+                var("vec2"),
+            )
+            .simd_unary(
+                SimdOp::Sqrt,
+                "sqrt_result",
+                vector_type.clone(),
+                var("result"),
+            )
             .simd_extract("scalar", PrimitiveType::F32, var("sqrt_result"), i32(0))
-            .simd_insert("new_vec", vector_type.clone(), var("sqrt_result"), f32(3.14), i32(1))
+            .simd_insert(
+                "new_vec",
+                vector_type.clone(),
+                var("sqrt_result"),
+                f32(3.14),
+                i32(1),
+            )
             .simd_load("loaded_vec", vector_type.clone(), var("vec1"), Some(16))
             .simd_store(vector_type.clone(), var("vec1"), var("new_vec"), Some(16))
             .ret_void();
@@ -902,4 +1151,3 @@ mod tests {
         }
     }
 }
-

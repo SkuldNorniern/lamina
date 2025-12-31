@@ -45,4 +45,3 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::Dealloc { ptr })
     }
 }
-
