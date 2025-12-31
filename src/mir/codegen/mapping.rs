@@ -1,3 +1,9 @@
+//! Type mapping from IR to MIR.
+//!
+//! This module provides functions to convert IR types to MIR types.
+//! The mapping process handles primitive type conversions and validates
+//! that only supported types are converted.
+
 use super::error::FromIRError;
 use crate::mir::types::{MirType, ScalarType};
 
@@ -16,6 +22,10 @@ pub fn map_ir_prim(p: crate::ir::types::PrimitiveType) -> Result<MirType, FromIR
     Ok(MirType::Scalar(scalar))
 }
 
+/// Maps an IR type to a MIR type.
+///
+/// Currently only primitive types are supported. Composite types (structs,
+/// arrays, tuples) will return an error as they require additional lowering.
 pub fn map_ir_type(ty: &crate::ir::types::Type<'_>) -> Result<MirType, FromIRError> {
     use crate::ir::types::Type as IRType;
     match ty {

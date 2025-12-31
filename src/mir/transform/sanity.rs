@@ -1,3 +1,9 @@
+//! Sanity checks and validation for MIR transforms.
+//!
+//! This module provides validation functions to ensure MIR structures are
+//! well-formed after transformations. These checks help catch bugs in
+//! transform implementations.
+
 use crate::mir::{Function, Instruction};
 
 /// Validate that all branch and jump targets reference existing blocks.

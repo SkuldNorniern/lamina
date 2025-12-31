@@ -158,9 +158,11 @@
 
 use std::fmt;
 
-// Using &'a str for identifiers to avoid allocating Strings
-// Assumes the IR lives as long as the source it was parsed from.
 /// A type alias for identifiers in the IR.
+///
+/// Uses `&'a str` to avoid allocating `String` objects, improving performance
+/// and memory efficiency. The lifetime parameter ensures that identifiers remain
+/// valid as long as the source text they were parsed from.
 ///
 /// Identifiers are used for variable names, function names, and other symbols.
 /// Using string references avoids unnecessary allocations and keeps the IR lightweight.

@@ -1,6 +1,8 @@
-//! basic blocks for LUMIR
+//! Basic blocks for LUMIR (Lamina Unified Machine Intermediate Representation).
 //!
-//! A basic block is a sequence of instructions with a single entry and exit point.
+//! A basic block is a sequence of instructions with a single entry point and
+//! a single exit point (terminator instruction). Basic blocks are the fundamental
+//! unit of control flow in LUMIR.
 use super::instruction::Instruction;
 use std::fmt;
 

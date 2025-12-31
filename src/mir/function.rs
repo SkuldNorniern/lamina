@@ -1,4 +1,7 @@
-/// Function representation in LUMIR
+//! Function representation in LUMIR.
+//!
+//! This module defines the structures for representing functions in LUMIR,
+//! including function signatures, parameters, and basic blocks.
 use super::block::Block;
 use super::register::Register;
 use super::types::MirType;
