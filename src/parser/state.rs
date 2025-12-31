@@ -83,10 +83,11 @@ impl<'a> ParserState<'a> {
             self.advance();
             Ok(())
         } else {
-            let found = self.current_char()
+            let found = self
+                .current_char()
                 .map(|c| format!("'{}'", c))
                 .unwrap_or_else(|| "end of input".to_string());
-            
+
             let hint = match expected {
                 '(' => "Did you forget an opening parenthesis?",
                 ')' => "Did you forget a closing parenthesis?",
@@ -99,13 +100,16 @@ impl<'a> ParserState<'a> {
                 '=' => "Did you forget an equals sign?",
                 _ => "",
             };
-            
+
             let msg = if hint.is_empty() {
                 format!("Expected character '{}', but found {}", expected, found)
             } else {
-                format!("Expected character '{}', but found {}\n  Hint: {}", expected, found, hint)
+                format!(
+                    "Expected character '{}', but found {}\n  Hint: {}",
+                    expected, found, hint
+                )
             };
-            
+
             Err(self.error(msg))
         }
     }
@@ -134,11 +138,8 @@ impl<'a> ParserState<'a> {
             } else {
                 format!("Expected keyword '{}'", keyword)
             };
-            
-            Err(self.error(format!(
-                "{}, but found '{}'",
-                suggestion, found
-            )))
+
+            Err(self.error(format!("{}, but found '{}'", suggestion, found)))
         }
     }
 
@@ -282,25 +283,29 @@ impl<'a> ParserState<'a> {
     pub fn error(&self, message: String) -> LaminaError {
         let (line, column) = self.get_line_column();
         let context = self.get_error_context();
-        
+
         let error_msg = if context.is_empty() {
             format!("{} at line {}, column {}", message, line, column)
         } else {
             format!(
                 "{}\n  at line {}, column {}\n  {}\n  {}^",
-                message, line, column, context, " ".repeat(column.saturating_sub(1))
+                message,
+                line,
+                column,
+                context,
+                " ".repeat(column.saturating_sub(1))
             )
         };
-        
+
         LaminaError::ParsingError(error_msg)
     }
-    
+
     /// Gets the line and column number for the current position.
     fn get_line_column(&self) -> (usize, usize) {
         let mut line = 1;
         let mut column = 1;
         let mut pos = 0;
-        
+
         for (i, ch) in self.input.char_indices() {
             if i >= self.position {
                 break;
@@ -313,15 +318,15 @@ impl<'a> ParserState<'a> {
             }
             pos = i;
         }
-        
+
         (line, column)
     }
-    
+
     /// Gets a context string showing the line where the error occurred.
     fn get_error_context(&self) -> String {
         let (line_num, _) = self.get_line_column();
         let lines: Vec<&str> = self.input.lines().collect();
-        
+
         if line_num > 0 && line_num <= lines.len() {
             let line = lines[line_num - 1];
             // Truncate very long lines for readability

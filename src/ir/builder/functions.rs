@@ -35,7 +35,8 @@ impl<'a> IRBuilder<'a> {
         };
 
         self.function_signatures.insert(name, signature);
-        self.function_blocks.insert(name, std::collections::HashMap::new());
+        self.function_blocks
+            .insert(name, std::collections::HashMap::new());
         self.function_annotations.insert(name, vec![]);
         self.current_function = Some(name);
 
@@ -74,4 +75,3 @@ impl<'a> IRBuilder<'a> {
         self.param(name, ty, vec![])
     }
 }
-

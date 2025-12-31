@@ -776,9 +776,9 @@ fn emit_block<W: Write>(
                         }
                     }
 
-                    let target_sym: String = abi.call_stub(name).unwrap_or_else(|| {
-                        abi.mangle_function_name(name)
-                    });
+                    let target_sym: String = abi
+                        .call_stub(name)
+                        .unwrap_or_else(|| abi.mangle_function_name(name));
                     writeln!(w, "    bl {}", target_sym)?;
 
                     if stack_space > 0 {
@@ -794,9 +794,9 @@ fn emit_block<W: Write>(
                 for (i, a) in args.iter().enumerate().take(8) {
                     emit_materialize_operand(w, a, &format!("x{}", i), frame, ra)?;
                 }
-                let target_sym: String = abi.call_stub(name).unwrap_or_else(|| {
-                    abi.mangle_function_name(name)
-                });
+                let target_sym: String = abi
+                    .call_stub(name)
+                    .unwrap_or_else(|| abi.mangle_function_name(name));
                 if frame.frame_size > 0 {
                     writeln!(w, "    add sp, sp, #{}", frame.frame_size)?;
                 }
