@@ -57,7 +57,7 @@ pub fn parse_value_with_type_hint<'a>(
                         Ok(Value::Constant(Literal::String(string_value)))
                     }
                     _ => Err(state.error(format!(
-                        "String literal is not compatible with type hint: {:?}",
+                        "String literal is not compatible with type hint: {:?}\n  Hint: String literals can only be used with array types containing i8 or bool elements",
                         type_hint
                     ))),
                 },
@@ -76,7 +76,7 @@ pub fn parse_value_with_type_hint<'a>(
                         Ok(Value::Constant(Literal::Bool(true)))
                     }
                     _ => Err(state.error(format!(
-                        "Boolean literal not compatible with type hint: {:?}",
+                        "Boolean literal not compatible with type hint: {:?}\n  Hint: Boolean literals (true/false) can only be used with bool type",
                         type_hint
                     ))),
                 }
@@ -93,7 +93,7 @@ pub fn parse_value_with_type_hint<'a>(
                         Ok(Value::Constant(Literal::Bool(false)))
                     }
                     _ => Err(state.error(format!(
-                        "Boolean literal not compatible with type hint: {:?}",
+                        "Boolean literal not compatible with type hint: {:?}\n  Hint: Boolean literals (true/false) can only be used with bool type",
                         type_hint
                     ))),
                 }
@@ -119,15 +119,18 @@ pub fn parse_value_with_type_hint<'a>(
                 Type::Primitive(PrimitiveType::I8) => {
                     let peek_string = state.peek_slice(20).unwrap_or("");
                     if peek_string.contains('.') {
-                        return Err(state
-                            .error("Float literal cannot be used with I8 type hint".to_string()));
+                return Err(state
+                    .error("Float literal cannot be used with I8 type hint\n  Hint: Use an integer literal (e.g., 42) instead of a float (e.g., 42.0) for integer types".to_string()));
                     }
 
                     let i_val = state.parse_integer()?;
                     if i_val < i8::MIN as i64 || i_val > i8::MAX as i64 {
-                        return Err(
-                            state.error(format!("Integer literal {} out of range for i8", i_val))
-                        );
+                    return Err(
+                        state.error(format!(
+                            "Integer literal {} out of range for i8\n  Hint: i8 values must be between {} and {}",
+                            i_val, i8::MIN, i8::MAX
+                        ))
+                    );
                     }
                     Ok(Value::Constant(Literal::I8(i_val as i8)))
                 }
@@ -141,7 +144,10 @@ pub fn parse_value_with_type_hint<'a>(
                     let i_val = state.parse_integer()?;
                     if i_val < i32::MIN as i64 || i_val > i32::MAX as i64 {
                         return Err(
-                            state.error(format!("Integer literal {} out of range for i32", i_val))
+                            state.error(format!(
+                                "Integer literal {} out of range for i32\n  Hint: i32 values must be between {} and {}",
+                                i_val, i32::MIN, i32::MAX
+                            ))
                         );
                     }
                     Ok(Value::Constant(Literal::I32(i_val as i32)))
@@ -171,7 +177,7 @@ pub fn parse_value_with_type_hint<'a>(
                         return Ok(Value::Constant(Literal::F32(f_val)));
                     }
 
-                    Err(state.error("Expected numeric literal".to_string()))
+                    Err(state.error("Expected a numeric literal\n  Hint: Numeric literals can be integers (42, -10) or floats (3.14, -0.5)".to_string()))
                 }
             }
         }

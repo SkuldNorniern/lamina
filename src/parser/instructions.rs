@@ -45,7 +45,18 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "writebyte" => parse_writebyte_assignment(state, result),
             "readbyte" => parse_readbyte_assignment(state, result),
             "writeptr" => parse_writeptr_assignment(state, result),
-            _ => Err(state.error(format!("Unknown opcode after assignment: {}", opcode_str))),
+            _ => {
+                let common_ops = vec!["add", "sub", "mul", "div", "load", "store", "call", "alloc"];
+                let suggestion = if common_ops.iter().any(|&op| opcode_str.starts_with(op)) {
+                    format!("Did you mean one of: {}? (check spelling)", common_ops.join(", "))
+                } else {
+                    "Valid opcodes include: add, sub, mul, div, load, store, call, alloc, and many others".to_string()
+                };
+                Err(state.error(format!(
+                    "Unknown opcode after assignment: '{}'\n  Hint: {}",
+                    opcode_str, suggestion
+                )))
+            },
         }
     } else {
         let opcode_str = state.parse_identifier_str()?;
@@ -66,7 +77,18 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "memcpy" => parse_memcpy(state),
             "memmove" => parse_memmove(state),
             "memset" => parse_memset(state),
-            _ => Err(state.error(format!("Unknown instruction opcode: {}", opcode_str))),
+            _ => {
+                let common_ops = vec!["ret", "jmp", "br", "call", "print", "store"];
+                let suggestion = if common_ops.iter().any(|&op| opcode_str.starts_with(op)) {
+                    format!("Did you mean one of: {}? (check spelling)", common_ops.join(", "))
+                } else {
+                    "Valid instruction opcodes include: ret, jmp, br, call, print, store, and many others".to_string()
+                };
+                Err(state.error(format!(
+                    "Unknown instruction opcode: '{}'\n  Hint: {}",
+                    opcode_str, suggestion
+                )))
+            },
         }
     }
 }
@@ -89,10 +111,13 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
         "bool" => Ok(PrimitiveType::Bool),
         "char" => Ok(PrimitiveType::Char),
         "ptr" => Ok(PrimitiveType::Ptr),
-        _ => Err(state.error(format!(
-            "Expected primitive type suffix, found '.{}'",
-            type_str
-        ))),
+        _ => {
+            let valid_types = "i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr";
+            Err(state.error(format!(
+                "Expected primitive type suffix, found '.{}'\n  Hint: Valid type suffixes are: {}",
+                type_str, valid_types
+            )))
+        },
     }
 }
 
