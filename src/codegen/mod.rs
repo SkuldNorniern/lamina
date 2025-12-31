@@ -51,7 +51,7 @@ use crate::PrimitiveType;
 /// ## Example
 ///
 /// ```rust
-/// use lamina::codegen::CodegenError;
+/// use lamina::codegen::{CodegenError, OperationType};
 ///
 /// // Good: Clear and actionable
 /// let err = CodegenError::UnsupportedTypeForOperation(OperationType::Store);

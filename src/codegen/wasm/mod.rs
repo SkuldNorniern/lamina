@@ -48,7 +48,7 @@ pub fn get_wasm_type<'a>(
         | Type::Struct(_)
         | Type::Tuple(_)
         | Type::Named(_) => get_wasm_type_primitive(PrimitiveType::Ptr, is_wasm64),
-        Type::Void => (NumericType::I32, None, Some(IntegerType::I32)), // probably the best option for now
+        Type::Void => (NumericType::I32, None, Some(IntegerType::I32)), // Need to re-visit later on 
     }
 }
 
