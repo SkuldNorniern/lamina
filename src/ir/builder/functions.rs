@@ -1,3 +1,8 @@
+//! Function definition operations for IR builder.
+//!
+//! This module provides methods for creating functions, defining parameters,
+//! and managing function signatures in the IR builder API.
+
 use super::IRBuilder;
 use crate::ir::function::{FunctionParameter, FunctionSignature};
 use crate::ir::types::Type;

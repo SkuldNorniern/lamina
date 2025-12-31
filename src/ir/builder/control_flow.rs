@@ -1,3 +1,8 @@
+//! Control flow operations for IR builder.
+//!
+//! This module provides methods for branching, jumping, and function return
+//! operations in the IR builder API.
+
 use super::IRBuilder;
 use crate::ir::instruction::Instruction;
 use crate::ir::types::{Literal, PrimitiveType, Type, Value};

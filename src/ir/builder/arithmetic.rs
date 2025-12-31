@@ -1,3 +1,8 @@
+//! Arithmetic and comparison operations for IR builder.
+//!
+//! This module provides methods for binary arithmetic operations, comparisons,
+//! and unary operations (negation, logical not).
+
 use super::IRBuilder;
 use crate::ir::instruction::{BinaryOp, CmpOp, Instruction};
 use crate::ir::types::{PrimitiveType, Value};

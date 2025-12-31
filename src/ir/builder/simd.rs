@@ -1,3 +1,9 @@
+//! SIMD operations for IR builder (nightly feature).
+//!
+//! This module provides methods for SIMD (Single Instruction, Multiple Data)
+//! operations including vector arithmetic, shuffling, and element extraction.
+//! These operations are only available when the `nightly` feature is enabled.
+
 #[cfg(feature = "nightly")]
 use super::IRBuilder;
 #[cfg(feature = "nightly")]
