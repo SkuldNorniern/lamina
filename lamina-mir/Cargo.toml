@@ -1,0 +1,16 @@
+[package]
+name = "lamina-mir"
+version = "0.1.0"
+edition = "2024"
+authors = ["Eira <eira@nornity.com>"]
+description = "MIR (Machine Intermediate Representation) type definitions for Lamina"
+license = "Apache-2.0"
+keywords = ["compiler", "mir", "ir", "intermediate-representation"]
+categories = ["compilers", "development-tools"]
+
+[dependencies]
+lamina-platform = { path = "../lamina-platform" }
+
+[features]
+default = []
+nightly = []
