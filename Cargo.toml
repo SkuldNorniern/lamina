@@ -13,11 +13,15 @@ categories = ["compilers", "development-tools", "parsing"]
 exclude = [ "benchmarks/", "testcases/"]
 
 [dependencies]
-ras = { path = "ras", features = ["mir"] }
+ras = { path = "ras", features = ["encoder"] }
 lamina-platform = { path = "lamina-platform" }
+lamina-mir = { path = "lamina-mir" }
+lamina-codegen = { path = "lamina-codegen" }
 
 [features]
 default = []
+# Enable MIR binary encoding support for JIT creation (MIR → Binary)
+encoder = []
 # Enable the use of the mold linker instead of the default system linker (usually ld via gcc)
 #use_mold = []
 # Enable experimental/nightly features (may change without notice)

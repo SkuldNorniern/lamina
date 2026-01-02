@@ -7,7 +7,7 @@
 //!
 //! ```rust
 //! use ras::RasAssembler;
-//! use lamina::target::{TargetArchitecture, TargetOperatingSystem};
+//! use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 //!
 //! let mut assembler = RasAssembler::new(
 //!     TargetArchitecture::X86_64,
@@ -37,7 +37,7 @@ pub use assembler::RasAssembler;
 pub use error::RasError;
 pub use runtime::{ExecutableMemory, RasRuntime};
 
-use lamina::target::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Main assembler interface
 pub struct Ras {
@@ -80,11 +80,11 @@ impl Ras {
     /// This generates binary machine code directly from MIR, bypassing
     /// assembly text generation. Used for runtime compilation (JIT).
     ///
-    /// Requires the `mir` feature to be enabled.
-    #[cfg(feature = "mir")]
+    /// Requires the `encoder` feature to be enabled.
+    #[cfg(feature = "encoder")]
     pub fn compile_mir_to_binary(
         &mut self,
-        module: &lamina::mir::Module,
+        module: &lamina_mir::Module,
     ) -> Result<Vec<u8>, RasError> {
         self.assembler.compile_mir_to_binary(module)
     }

@@ -18,13 +18,12 @@ path = "src/lib.rs"
 
 [dependencies]
 lamina-platform = { path = "../lamina-platform" }
-
-[dependencies.lamina]
-path = "../"
-optional = true
+lamina-mir = { path = "../lamina-mir", optional=true }
+lamina-codegen = { path = "../lamina-codegen" }
+libc = "0.2"
 
 [features]
 default = []
-# Enable MIR compilation support (MIR → Binary)
+# Enable MIR binary encoding support for JIT creation (MIR → Binary)
 # Without this feature, ras only supports assembly text → binary
-mir = ["lamina"]
+encoder = ["lamina-mir"]
