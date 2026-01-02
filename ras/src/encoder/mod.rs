@@ -5,6 +5,7 @@
 
 pub mod traits;
 pub mod x86_64;
+pub mod aarch64;
 
 pub use traits::InstructionEncoder;
 
