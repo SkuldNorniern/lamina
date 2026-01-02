@@ -5,7 +5,7 @@ use std::io::Write;
 
 use crate::mir::{Global, MirType, Module as MirModule, Signature};
 use crate::mir_codegen::{CodegenError, CodegenOptions};
-use crate::target::TargetOperatingSystem;
+use lamina_platform::TargetOperatingSystem;
 
 /// Base structure for codegen backends with common fields.
 pub struct CodegenBase<'a> {

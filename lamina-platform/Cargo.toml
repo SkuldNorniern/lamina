@@ -1,0 +1,22 @@
+[package]
+name = "lamina-platform"
+version = "0.1.0"
+edition = "2024"
+authors = ["Eira <eira@nornity.com>"]
+description = "Platform and target detection for Lamina compiler"
+license = "Apache-2.0"
+keywords = ["compiler", "target", "platform", "architecture"]
+categories = ["compilers", "development-tools"]
+
+[lib]
+name = "lamina_platform"
+path = "src/lib.rs"
+
+[features]
+default = []
+# Enable experimental/nightly features (may change without notice)
+nightly = []
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"

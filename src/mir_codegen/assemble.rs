@@ -5,7 +5,7 @@
 //! - WASM: wat2wasm
 
 use crate::error::LaminaError;
-use crate::target::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 

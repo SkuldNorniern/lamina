@@ -20,7 +20,7 @@ use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions,
     capability::{CapabilitySet, CodegenCapability},
 };
-use crate::target::TargetOperatingSystem;
+use lamina_platform::TargetOperatingSystem;
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
 fn w_alias(xreg: &str) -> String {

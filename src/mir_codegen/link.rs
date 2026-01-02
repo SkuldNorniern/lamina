@@ -8,7 +8,7 @@
 //! - Custom linkers
 
 use crate::error::LaminaError;
-use crate::target::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::path::Path;
 use std::process::Command;
 

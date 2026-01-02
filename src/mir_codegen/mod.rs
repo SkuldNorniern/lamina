@@ -20,7 +20,7 @@ use std::io::Write;
 
 use crate::error::LaminaError;
 use crate::mir::{Global, MirType, Signature};
-use crate::target::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Generates assembly from MIR for the requested target architecture and OS.
 pub fn generate_mir_to_target<W: Write>(

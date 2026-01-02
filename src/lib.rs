@@ -296,6 +296,7 @@ pub mod error;
 pub mod ir;
 pub mod mir;
 pub mod parser;
+pub mod runtime;
 
 use std::io::Write;
 
@@ -321,7 +322,7 @@ pub fn compile_lamina_ir_to_assembly<W: Write>(
     output_asm: &mut W,
 ) -> std::result::Result<(), LaminaError> {
     // Use the host target as the default target
-    let target = target::Target::detect_host().to_str();
+    let target = lamina_platform::Target::detect_host().to_str();
     compile_lamina_ir_to_target_assembly(input_ir, output_asm, &target)
 }
 
@@ -344,17 +345,17 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 
     // 2. Generate assembly for the specified target
     use std::str::FromStr;
-    let target_obj = target::Target::from_str(target)
+    let target_obj = lamina_platform::Target::from_str(target)
         .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{}': {}", target, e)))?;
     let mir_module = mir::codegen::from_ir(&module, "module")?;
 
     match target_obj.architecture {
-        target::TargetArchitecture::X86_64
-        | target::TargetArchitecture::Aarch64
-        | target::TargetArchitecture::Wasm32
-        | target::TargetArchitecture::Wasm64
-        | target::TargetArchitecture::Riscv32
-        | target::TargetArchitecture::Riscv64 => {
+        lamina_platform::TargetArchitecture::X86_64
+        | lamina_platform::TargetArchitecture::Aarch64
+        | lamina_platform::TargetArchitecture::Wasm32
+        | lamina_platform::TargetArchitecture::Wasm64
+        | lamina_platform::TargetArchitecture::Riscv32
+        | lamina_platform::TargetArchitecture::Riscv64 => {
             mir_codegen::generate_mir_to_target(
                 &mir_module,
                 output_asm,
@@ -363,7 +364,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
             )?;
         }
         #[cfg(feature = "nightly")]
-        target::TargetArchitecture::Riscv128 => {
+        lamina_platform::TargetArchitecture::Riscv128 => {
             mir_codegen::generate_mir_to_target(
                 &mir_module,
                 output_asm,

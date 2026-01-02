@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
-use crate::target::TargetOperatingSystem;
+use lamina_platform::TargetOperatingSystem;
 
 /// x86_64 register allocator supporting System V AMD64 and Microsoft x64 ABIs.
 ///
