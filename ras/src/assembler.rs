@@ -119,10 +119,10 @@ impl RasAssembler {
     /// instead of assembly text. It's used for runtime compilation (JIT).
     ///
     /// Requires the `mir` feature to be enabled.
-    #[cfg(feature = "mir")]
+    #[cfg(feature = "encoder")]
     pub fn compile_mir_to_binary(
         &mut self,
-        module: &lamina::mir::Module,
+        module: &lamina_mir::Module,
     ) -> Result<Vec<u8>, RasError> {
         // Reuse register allocation and ABI from mir_codegen
         match self.target_arch {
@@ -145,24 +145,24 @@ impl RasAssembler {
     ///
     /// This reuses the instruction emission logic from mir_codegen/x86_64
     /// but generates binary instead of assembly text.
-    #[cfg(feature = "mir")]
+    #[cfg(feature = "encoder")]
     fn compile_mir_x86_64(
         &mut self,
-        module: &lamina::mir::Module,
+        module: &lamina_mir::Module,
     ) -> Result<Vec<u8>, RasError> {
-        use lamina::mir_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame};
-        use lamina::mir::{Instruction as MirInst, Register};
+        use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame};
+        use lamina_mir::{Instruction as MirInst, Register};
 
         let abi = X86ABI::new(self.target_os);
         let mut code = Vec::new();
 
         for (func_name, func) in &module.functions {
             let mut reg_alloc = X64RegAlloc::new(self.target_os);
-            let mut stack_slots: std::collections::HashMap<lamina::mir::VirtualReg, i32> =
+            let mut stack_slots: std::collections::HashMap<lamina_mir::VirtualReg, i32> =
                 std::collections::HashMap::new();
-            let mut def_regs: std::collections::HashSet<lamina::mir::VirtualReg> =
+            let mut def_regs: std::collections::HashSet<lamina_mir::VirtualReg> =
                 std::collections::HashSet::new();
-            let mut used_regs: std::collections::HashSet<lamina::mir::VirtualReg> =
+            let mut used_regs: std::collections::HashSet<lamina_mir::VirtualReg> =
                 std::collections::HashSet::new();
 
             // Collect register usage (reuse logic from mir_codegen)
@@ -198,7 +198,7 @@ impl RasAssembler {
             let stack_size = stack_slots.len() * 8;
 
             // Generate function prologue (binary encoded)
-            let prologue = self.encode_prologue_x86_64(stack_size)?;
+            let prologue = self.encode_prologue_x86_64(stack_size as u32)?;
             code.extend_from_slice(&prologue);
 
             // Handle function parameters (reuse ABI logic)
@@ -345,19 +345,19 @@ impl RasAssembler {
     ///
     /// This reuses the instruction emission logic from mir_codegen/x86_64
     /// but generates binary instead of assembly text.
-    #[cfg(feature = "mir")]
+    #[cfg(feature = "encoder")]
     fn encode_mir_instruction_x86_64(
         &mut self,
-        inst: &lamina::mir::Instruction,
-        _reg_alloc: &mut lamina::mir_codegen::x86_64::regalloc::X64RegAlloc,
-        _stack_slots: &std::collections::HashMap<lamina::mir::VirtualReg, i32>,
+        inst: &lamina_mir::Instruction,
+        _reg_alloc: &mut lamina_codegen::x86_64::X64RegAlloc,
+        _stack_slots: &std::collections::HashMap<lamina_mir::VirtualReg, i32>,
         _stack_size: usize,
         _func_name: &str,
     ) -> Result<Vec<u8>, RasError> {
         // TODO: Implement full MIR instruction encoding
         // For now, return placeholder
         match inst {
-            lamina::mir::Instruction::Ret { value: None } => {
+            lamina_mir::Instruction::Ret { value: None } => {
                 Ok(vec![0xC3]) // RET
             }
             _ => Err(RasError::EncodingError(

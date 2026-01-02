@@ -5,11 +5,11 @@
 //!
 //! Requires the `mir` feature to be enabled.
 
-#[cfg(feature = "mir")]
+#[cfg(feature = "encoder")]
 use crate::encoder::traits::InstructionEncoder;
 use crate::error::RasError;
-#[cfg(feature = "mir")]
-use lamina::mir::Module as MirModule;
+#[cfg(feature = "encoder")]
+use lamina_mir::Module as MirModule;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Executable memory for runtime-compiled code
@@ -145,7 +145,7 @@ impl RasRuntime {
     /// executable memory and writes the code.
     ///
     /// Requires the `mir` feature to be enabled.
-    #[cfg(feature = "mir")]
+    #[cfg(feature = "encoder")]
     pub fn compile_to_memory(
         &mut self,
         module: &MirModule,
@@ -169,7 +169,7 @@ impl RasRuntime {
     /// Returns a function pointer that can be called directly.
     ///
     /// Requires the `mir` feature to be enabled.
-    #[cfg(feature = "mir")]
+    #[cfg(feature = "encoder")]
     pub fn compile_function<T>(
         &mut self,
         module: &MirModule,
