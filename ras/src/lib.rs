@@ -79,6 +79,9 @@ impl Ras {
     ///
     /// This generates binary machine code directly from MIR, bypassing
     /// assembly text generation. Used for runtime compilation (JIT).
+    ///
+    /// Requires the `mir` feature to be enabled.
+    #[cfg(feature = "mir")]
     pub fn compile_mir_to_binary(
         &mut self,
         module: &lamina::mir::Module,
