@@ -2,11 +2,15 @@
 //!
 //! This module provides runtime code generation (JIT compilation) using ras.
 //! It can compile MIR directly to executable memory.
+//!
+//! Requires the `mir` feature to be enabled.
 
+#[cfg(feature = "mir")]
 use crate::encoder::traits::InstructionEncoder;
 use crate::error::RasError;
+#[cfg(feature = "mir")]
 use lamina::mir::Module as MirModule;
-use lamina::target::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Executable memory for runtime-compiled code
 pub struct ExecutableMemory {
@@ -139,6 +143,9 @@ impl RasRuntime {
     ///
     /// Uses ras to compile MIR directly to binary, then allocates
     /// executable memory and writes the code.
+    ///
+    /// Requires the `mir` feature to be enabled.
+    #[cfg(feature = "mir")]
     pub fn compile_to_memory(
         &mut self,
         module: &MirModule,
@@ -160,6 +167,9 @@ impl RasRuntime {
     /// Compile a specific function from MIR module to executable memory
     ///
     /// Returns a function pointer that can be called directly.
+    ///
+    /// Requires the `mir` feature to be enabled.
+    #[cfg(feature = "mir")]
     pub fn compile_function<T>(
         &mut self,
         module: &MirModule,

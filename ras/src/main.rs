@@ -104,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Determine target
-    use lamina::target::{Target, TargetArchitecture, TargetOperatingSystem};
+    use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem};
     let target = if let Some(target_str) = &options.target {
         Target::from_str(target_str)
             .map_err(|e| format!("Invalid target '{}': {}", target_str, e))?

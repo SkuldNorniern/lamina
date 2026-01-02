@@ -17,7 +17,14 @@ name = "ras"
 path = "src/lib.rs"
 
 [dependencies]
-lamina = { path = "../" }
+lamina-platform = { path = "../lamina-platform" }
+
+[dependencies.lamina]
+path = "../"
+optional = true
 
 [features]
 default = []
+# Enable MIR compilation support (MIR → Binary)
+# Without this feature, ras only supports assembly text → binary
+mir = ["lamina"]

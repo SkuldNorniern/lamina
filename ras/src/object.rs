@@ -3,7 +3,7 @@
 //! Generates object files in various formats: ELF, Mach-O, COFF/PE
 
 use crate::error::RasError;
-use lamina::target::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Trait for writing object files
 pub trait ObjectWriter {

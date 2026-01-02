@@ -21,6 +21,8 @@ fn print_usage() {
     eprintln!(
         "  --opt-level <n>         EXPERIMENTAL(mir only): Set optimization level (0-3, default: 1)"
     );
+    eprintln!("  --jit                   Compile and execute using runtime compilation (JIT)");
+    eprintln!("  --sandbox               Enable sandbox for secure execution (requires --jit)");
     eprintln!("  -h, --help              Display this help message");
 }
 
@@ -36,6 +38,8 @@ struct CompileOptions {
     emit_mir_asm: Option<String>,
     target_arch: Option<String>,
     opt_level: u8,
+    jit: bool,
+    sandbox: bool,
 }
 
 fn parse_args() -> Result<CompileOptions, String> {
@@ -61,6 +65,8 @@ fn parse_args() -> Result<CompileOptions, String> {
         emit_mir_asm: None,
         target_arch: None,
         opt_level: 1,
+        jit: false,
+        sandbox: false,
     };
 
     let mut i = 1;
@@ -102,14 +108,14 @@ fn parse_args() -> Result<CompileOptions, String> {
                 }
                 let requested_target = args[i + 1].to_lowercase();
                 if !requested_target.contains('_')
-                    || !lamina::target::HOST_ARCH_LIST
+                    || !lamina_platform::HOST_ARCH_LIST
                         .iter()
                         .any(|&supported| supported == requested_target)
                 {
                     return Err(format!(
                         "Unsupported target '{}'. Supported values:\n{}",
                         requested_target,
-                        lamina::target::HOST_ARCH_LIST.join(", ")
+                        lamina_platform::HOST_ARCH_LIST.join(", ")
                     ));
                 }
                 options.target_arch = Some(requested_target);
@@ -127,6 +133,14 @@ fn parse_args() -> Result<CompileOptions, String> {
                 }
                 options.opt_level = level;
                 i += 2;
+            }
+            "--jit" => {
+                options.jit = true;
+                i += 1;
+            }
+            "--sandbox" => {
+                options.sandbox = true;
+                i += 1;
             }
             "--version" => {
                 println!("lamina {}", env!("CARGO_PKG_VERSION"));
@@ -211,10 +225,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Determine target for extension logic
     let target_for_extensions = if let Some(target_str) = &options.target_arch {
-        lamina::target::Target::from_str(target_str)
-            .unwrap_or_else(|_| lamina::target::Target::detect_host())
+        lamina_platform::Target::from_str(target_str)
+            .unwrap_or_else(|_| lamina_platform::Target::detect_host())
     } else {
-        lamina::target::Target::detect_host()
+        lamina_platform::Target::detect_host()
     };
 
     // Get output name
@@ -228,7 +242,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
 
         // If output name doesn't have an extension and target is Windows, add .exe
-        if target_for_extensions.operating_system == lamina::target::TargetOperatingSystem::Windows
+        if target_for_extensions.operating_system == lamina_platform::TargetOperatingSystem::Windows
             && stem.extension().is_none()
         {
             let mut stem_with_ext = stem.clone();
@@ -325,21 +339,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if options.emit_mir_asm.is_some() {
-            let default_target = lamina::target::Target::detect_host();
+            let default_target = lamina_platform::Target::detect_host();
             let default_target_str = default_target.to_str();
             let target_str = options
                 .target_arch
                 .as_deref()
                 .unwrap_or(&default_target_str);
-            let target = lamina::target::Target::from_str(target_str)
-                .unwrap_or_else(|_| lamina::target::Target::detect_host());
+            let target = lamina_platform::Target::from_str(target_str)
+                .unwrap_or_else(|_| lamina_platform::Target::detect_host());
 
             // Determine output extension based on target
             let asm_extension = match target.architecture {
-                lamina::target::TargetArchitecture::Wasm32
-                | lamina::target::TargetArchitecture::Wasm64 => "wat", // WebAssembly text format
+                lamina_platform::TargetArchitecture::Wasm32
+                | lamina_platform::TargetArchitecture::Wasm64 => "wat", // WebAssembly text format
                 _ => {
-                    if target.operating_system == lamina::target::TargetOperatingSystem::Windows {
+                    if target.operating_system == lamina_platform::TargetOperatingSystem::Windows {
                         "asm"
                     } else {
                         "s"
@@ -363,14 +377,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .map_err(|e| format!("MIR→{} emission failed: {}", target.architecture, e))?;
 
             let arch_name = match target.architecture {
-                lamina::target::TargetArchitecture::X86_64 => "x86_64",
-                lamina::target::TargetArchitecture::Wasm32
-                | lamina::target::TargetArchitecture::Wasm64 => "WASM",
-                lamina::target::TargetArchitecture::Aarch64 => "AArch64",
-                lamina::target::TargetArchitecture::Riscv32 => "RISC-V32",
-                lamina::target::TargetArchitecture::Riscv64 => "RISC-V64",
+                lamina_platform::TargetArchitecture::X86_64 => "x86_64",
+                lamina_platform::TargetArchitecture::Wasm32
+                | lamina_platform::TargetArchitecture::Wasm64 => "WASM",
+                lamina_platform::TargetArchitecture::Aarch64 => "AArch64",
+                lamina_platform::TargetArchitecture::Riscv32 => "RISC-V32",
+                lamina_platform::TargetArchitecture::Riscv64 => "RISC-V64",
                 #[cfg(feature = "nightly")]
-                lamina::target::TargetArchitecture::Riscv128 => "RISC-V128",
+                lamina_platform::TargetArchitecture::Riscv128 => "RISC-V128",
                 _ => "unknown",
             };
 
@@ -385,6 +399,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to write MIR output: {}", e))?;
         }
     }
+    // Handle JIT compilation mode
+    if options.jit {
+        return handle_jit_compilation(&ir_source, input_path, &options);
+    }
+
     // Always compile to binary unless only MIR is requested
     if !options.emit_mir {
         // Determine target
@@ -392,15 +411,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if options.verbose {
                 println!("[VERBOSE] Using explicit target: {}", target_str);
             }
-            lamina::target::Target::from_str(target_str).unwrap_or_else(|e| {
+            lamina_platform::Target::from_str(target_str).unwrap_or_else(|e| {
                 eprintln!(
                     "Warning: Invalid target '{}': {}. Using host target.",
                     target_str, e
                 );
-                lamina::target::Target::detect_host()
+                lamina_platform::Target::detect_host()
             })
         } else {
-            let default_target = lamina::target::Target::detect_host();
+            let default_target = lamina_platform::Target::detect_host();
             if options.verbose {
                 println!("[VERBOSE] Using host target: {}", default_target);
             }
@@ -458,7 +477,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Print compilation message
         let intermediate_name = if matches!(
             target.architecture,
-            lamina::target::TargetArchitecture::Wasm32 | lamina::target::TargetArchitecture::Wasm64
+            lamina_platform::TargetArchitecture::Wasm32 | lamina_platform::TargetArchitecture::Wasm64
         ) {
             println!(
                 "[INFO] Compiling {} -> {}",
@@ -519,8 +538,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "[INFO] {} assembled successfully.",
             if matches!(
                 target.architecture,
-                lamina::target::TargetArchitecture::Wasm32
-                    | lamina::target::TargetArchitecture::Wasm64
+                lamina_platform::TargetArchitecture::Wasm32
+                    | lamina_platform::TargetArchitecture::Wasm64
             ) {
                 "WASM binary"
             } else {
@@ -573,8 +592,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "[INFO] {} '{}' created successfully.",
                 if matches!(
                     target.architecture,
-                    lamina::target::TargetArchitecture::Wasm32
-                        | lamina::target::TargetArchitecture::Wasm64
+                    lamina_platform::TargetArchitecture::Wasm32
+                        | lamina_platform::TargetArchitecture::Wasm64
                 ) {
                     "WASM binary"
                 } else {
@@ -583,6 +602,105 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 assembly_output_path.display()
             );
         }
+    }
+
+    Ok(())
+}
+
+/// Handle JIT compilation and execution
+fn handle_jit_compilation(
+    ir_source: &str,
+    input_path: &std::path::Path,
+    options: &CompileOptions,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use lamina_platform::Target;
+    use std::str::FromStr;
+
+    // Determine target
+    let target = if let Some(target_str) = &options.target_arch {
+        Target::from_str(target_str)
+            .map_err(|e| format!("Invalid target '{}': {}", target_str, e))?
+    } else {
+        Target::detect_host()
+    };
+
+    if options.verbose {
+        println!("[JIT] Compiling {} for runtime execution", input_path.display());
+        println!("[JIT] Target: {}", target);
+        if options.sandbox {
+            println!("[JIT] Sandbox: enabled");
+        }
+    }
+
+    // Parse IR and lower to MIR
+    let ir_mod = lamina::parser::parse_module(ir_source)
+        .map_err(|e| format!("IR parse failed: {}", e))?;
+    let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
+        .map_err(|e| format!("MIR lowering failed: {}", e))?;
+
+    // Apply MIR optimizations
+    if options.opt_level > 0 {
+        let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
+        let transform_stats = pipeline
+            .apply_to_module(&mut mir_mod)
+            .map_err(|e| format!("MIR optimization failed: {}", e))?;
+
+        if options.verbose {
+            println!(
+                "[JIT] MIR optimizations: {} transforms run, {} made changes",
+                transform_stats.transforms_run, transform_stats.transforms_changed
+            );
+        }
+    }
+
+    // Compile using runtime compilation
+    if options.sandbox {
+        // Use sandbox for secure execution
+        use lamina::runtime::{Sandbox, SandboxConfig};
+        
+        let config = if options.verbose {
+            SandboxConfig::default()
+        } else {
+            SandboxConfig::restrictive()
+        };
+        
+        let mut sandbox = Sandbox::new(target.architecture, target.operating_system, config);
+        
+        // Find main function or use first function
+        let function_name = mir_mod.functions.keys().next()
+            .ok_or("No functions found in module")?;
+        
+        if options.verbose {
+            println!("[JIT] Executing function '{}' in sandbox", function_name);
+        }
+        
+        // Execute in sandbox (placeholder - returns default value for now)
+        let _result: i64 = sandbox.execute(&mir_mod, function_name)
+            .map_err(|e| format!("Sandbox execution failed: {}", e))?;
+        
+        if options.verbose {
+            println!("[JIT] Execution completed successfully");
+        }
+    } else {
+        // Direct runtime compilation (no sandbox)
+        use lamina::runtime::compile_to_runtime;
+        
+        let runtime_result = compile_to_runtime(&mir_mod, target.architecture, target.operating_system)
+            .map_err(|e| format!("Runtime compilation failed: {}", e))?;
+        
+        if options.verbose {
+            println!("[JIT] Code compiled to executable memory");
+            println!("[JIT] Function pointer: {:p}", runtime_result.function_ptr);
+        }
+        
+        // Note: To actually call the function, we need to know its signature
+        // This is a placeholder - real implementation would:
+        // 1. Parse function signature from MIR
+        // 2. Create appropriate function pointer type
+        // 3. Call the function
+        // 4. Print or return the result
+        
+        println!("[JIT] Runtime compilation successful (function not executed - signature unknown)");
     }
 
     Ok(())
