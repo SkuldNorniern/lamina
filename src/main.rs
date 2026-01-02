@@ -653,24 +653,6 @@ fn handle_jit_compilation(
         }
     }
 
-    // Check if target architecture is supported for JIT
-    match target.architecture {
-        lamina_platform::TargetArchitecture::X86_64 => {
-            // Supported - continue
-        }
-        _ => {
-            return Err(format!(
-                "JIT compilation is not yet supported for architecture {:?}.\n\
-                 Currently only x86_64 is supported for JIT compilation.\n\
-                 You can:\n\
-                 - Use AOT compilation instead (remove --jit flag)\n\
-                 - Cross-compile to x86_64 using --target x86_64_{}",
-                target.architecture,
-                target.operating_system
-            ).into());
-        }
-    }
-
     // Compile using runtime compilation
     if options.sandbox {
         // Use sandbox for secure execution

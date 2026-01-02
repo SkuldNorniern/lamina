@@ -30,18 +30,27 @@ pub fn compile_to_runtime(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
 ) -> Result<RuntimeResult, LaminaError> {
-    use ras::RasRuntime;
-    
-    let mut runtime = RasRuntime::new(target_arch, target_os);
-    let memory = runtime
-        .compile_to_memory(module)
-        .map_err(|e| LaminaError::ValidationError(format!("Runtime compilation failed: {}", e)))?;
-    
-    let function_ptr = unsafe { memory.as_function_ptr::<u8>() };
-    
-    Ok(RuntimeResult {
-        memory,
-        function_ptr,
-    })
+    #[cfg(feature = "encoder")]
+    {
+        use ras::RasRuntime;
+        
+        let mut runtime = RasRuntime::new(target_arch, target_os);
+        let memory = runtime
+            .compile_to_memory(module)
+            .map_err(|e| LaminaError::ValidationError(format!("Runtime compilation failed: {}", e)))?;
+        
+        let function_ptr = unsafe { memory.as_function_ptr::<u8>() };
+        
+        Ok(RuntimeResult {
+            memory,
+            function_ptr,
+        })
+    }
+    #[cfg(not(feature = "encoder"))]
+    {
+        Err(LaminaError::ValidationError(
+            "Runtime compilation requires the 'encoder' feature to be enabled".to_string(),
+        ))
+    }
 }
 

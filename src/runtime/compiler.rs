@@ -39,12 +39,32 @@ impl RuntimeCompiler {
         // For now, always compile fresh
         
         // Compile using ras runtime
-        let memory = self
-            .runtime
-            .compile_to_memory(module)
-            .map_err(|e| LaminaError::ValidationError(format!("Runtime compilation failed: {}", e)))?;
-
-        Ok(memory)
+        #[cfg(feature = "encoder")]
+        {
+            self
+                .runtime
+                .compile_to_memory(module)
+                .map_err(|e| {
+                    let error_msg = format!("{}", e);
+                    if error_msg.contains("not yet implemented") || error_msg.contains("Unsupported target") {
+                        LaminaError::ValidationError(format!(
+                            "JIT compilation is not yet supported for this architecture.\n\
+                             Error: {}\n\
+                             Currently only x86_64 is supported for JIT compilation.\n\
+                             Consider using AOT compilation instead (remove --jit flag).",
+                            error_msg
+                        ))
+                    } else {
+                        LaminaError::ValidationError(format!("Runtime compilation failed: {}", e))
+                    }
+                })
+        }
+        #[cfg(not(feature = "encoder"))]
+        {
+            Err(LaminaError::ValidationError(
+                "Runtime compilation requires the 'encoder' feature to be enabled in ras".to_string(),
+            ))
+        }
     }
 
     /// Compile and get function pointer
