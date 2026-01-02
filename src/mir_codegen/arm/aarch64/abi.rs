@@ -1,7 +1,7 @@
 //! AArch64 ABI utilities for symbol naming and calling conventions.
 
 use crate::mir_codegen::abi::{Abi, common_call_stub, mangle_macos_name};
-use crate::target::TargetOperatingSystem;
+use lamina_platform::TargetOperatingSystem;
 
 /// Platform-specific ABI utilities for AArch64 code generation.
 pub struct AArch64ABI {

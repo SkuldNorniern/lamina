@@ -1,6 +1,6 @@
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
-use crate::target::TargetOperatingSystem;
+use lamina_platform::TargetOperatingSystem;
 
 /// RISC-V register allocator with platform-aware register selection.
 ///

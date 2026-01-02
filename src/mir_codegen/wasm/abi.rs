@@ -4,7 +4,7 @@
 //! but we still need utilities for function naming and module structure.
 
 use crate::mir_codegen::abi::Abi;
-use crate::target::TargetOperatingSystem;
+use lamina_platform::TargetOperatingSystem;
 
 /// Platform-specific ABI utilities for WASM code generation.
 pub struct WasmABI {

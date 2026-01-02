@@ -1,7 +1,7 @@
 //! x86_64 ABI utilities for different platforms.
 
 use crate::mir_codegen::abi::{Abi, common_call_stub, mangle_macos_name};
-use crate::target::TargetOperatingSystem;
+use lamina_platform::TargetOperatingSystem;
 
 /// Platform-specific ABI utilities for x86_64 code generation.
 pub struct X86ABI {

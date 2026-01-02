@@ -11,7 +11,7 @@ use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, assemble,
     capability::{CapabilitySet, CodegenCapability},
 };
-use crate::target::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use abi::WasmABI;
 use util::{
     emit_int_binary_op, emit_int_cmp_op, load_operand_wasm, load_register_wasm,

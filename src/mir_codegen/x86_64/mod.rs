@@ -23,7 +23,7 @@ use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions,
     capability::{CapabilitySet, CodegenCapability},
 };
-use crate::target::TargetOperatingSystem;
+use lamina_platform::TargetOperatingSystem;
 
 use crate::mir_codegen::common::CodegenBase;
 
