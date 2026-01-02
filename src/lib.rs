@@ -290,11 +290,11 @@
 
 pub mod codegen;
 pub mod mir_codegen;
-pub mod target;
+pub mod target; // Re-exports from lamina-platform for backward compatibility
 
 pub mod error;
 pub mod ir;
-pub mod mir;
+pub mod mir; // Re-exports from lamina-mir for backward compatibility
 pub mod parser;
 pub mod runtime;
 
