@@ -1,0 +1,23 @@
+[package]
+name = "ras"
+version = "0.1.0"
+edition = "2024"
+authors = ["Eira <eira@nornity.com>"]
+description = "ras - Raw Assembler for Lamina. Cross-platform assembler that generates object files from assembly text."
+license = "Apache-2.0"
+keywords = ["assembler", "assembly", "object-file", "compiler"]
+categories = ["compilers", "development-tools"]
+
+[[bin]]
+name = "ras"
+path = "src/main.rs"
+
+[lib]
+name = "ras"
+path = "src/lib.rs"
+
+[dependencies]
+lamina = { path = "../" }
+
+[features]
+default = []
