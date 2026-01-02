@@ -3,7 +3,7 @@
 //! This module defines a trait that all ABI implementations must follow,
 //! reducing code duplication and providing a consistent interface.
 
-use crate::target::TargetOperatingSystem;
+use lamina_platform::TargetOperatingSystem;
 
 /// Trait defining the common interface for all ABI implementations.
 ///
@@ -89,3 +89,5 @@ pub fn common_call_stub(name: &str, target_os: TargetOperatingSystem) -> Option<
         _ => None,
     }
 }
+
+
