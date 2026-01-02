@@ -12,6 +12,10 @@ use crate::error::RasError;
 use lamina_mir::Module as MirModule;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
+// Note: errno access varies by platform
+// On macOS, we can use libc::errno directly in some cases, but for better compatibility
+// we'll use a simpler error message approach
+
 /// Executable memory for runtime-compiled code
 pub struct ExecutableMemory {
     ptr: *mut u8,
@@ -19,20 +23,22 @@ pub struct ExecutableMemory {
 }
 
 impl ExecutableMemory {
-    /// Allocate executable memory
-    pub fn allocate(size: usize) -> Result<Self, RasError> {
+    /// Allocate writable memory (not executable yet)
+    /// This allows writing code before making it executable
+    pub fn allocate_writable(size: usize) -> Result<Self, RasError> {
         #[cfg(unix)]
         {
-            use libc::{mmap, MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE, PROT_EXEC};
+            use libc::{mmap, MAP_ANONYMOUS, MAP_PRIVATE, PROT_READ, PROT_WRITE};
             use std::ptr;
 
             let aligned_size = (size + 4095) & !4095; // Page align
 
+            // Allocate with PROT_READ | PROT_WRITE (not executable yet)
             let ptr = unsafe {
                 mmap(
                     ptr::null_mut(),
                     aligned_size,
-                    PROT_READ | PROT_WRITE | PROT_EXEC,
+                    PROT_READ | PROT_WRITE,
                     MAP_ANONYMOUS | MAP_PRIVATE,
                     -1,
                     0,
@@ -40,7 +46,10 @@ impl ExecutableMemory {
             };
 
             if ptr == libc::MAP_FAILED {
-                return Err(RasError::IoError("mmap failed".to_string()));
+                return Err(RasError::IoError(format!(
+                    "mmap failed (size: {} bytes, aligned: {}). This may be due to system security restrictions or insufficient permissions.",
+                    size, aligned_size
+                )));
             }
 
             Ok(Self {
@@ -52,14 +61,14 @@ impl ExecutableMemory {
         #[cfg(windows)]
         {
             use winapi::um::memoryapi::VirtualAlloc;
-            use winapi::um::winnt::{MEM_COMMIT, MEM_RESERVE, PAGE_EXECUTE_READWRITE};
+            use winapi::um::winnt::{MEM_COMMIT, MEM_RESERVE, PAGE_READWRITE};
 
             let ptr = unsafe {
                 VirtualAlloc(
                     std::ptr::null_mut(),
                     size,
                     MEM_COMMIT | MEM_RESERVE,
-                    PAGE_EXECUTE_READWRITE,
+                    PAGE_READWRITE,
                 )
             };
 
@@ -79,6 +88,67 @@ impl ExecutableMemory {
                 "Executable memory allocation not supported on this platform".to_string(),
             ))
         }
+    }
+
+    /// Make the memory executable
+    /// Must be called after writing code
+    pub fn make_executable(&mut self) -> Result<(), RasError> {
+        #[cfg(unix)]
+        {
+            use libc::{mprotect, PROT_READ, PROT_EXEC};
+
+            // Change permissions to executable using mprotect
+            let mprotect_result = unsafe {
+                mprotect(self.ptr as *mut libc::c_void, self.size, PROT_READ | PROT_EXEC)
+            };
+
+            if mprotect_result != 0 {
+                return Err(RasError::IoError(format!(
+                    "mprotect failed (size: {} bytes). Cannot make memory executable.",
+                    self.size
+                )));
+            }
+
+            Ok(())
+        }
+
+        #[cfg(windows)]
+        {
+            use winapi::um::memoryapi::VirtualProtect;
+            use winapi::um::winnt::PAGE_EXECUTE_READ;
+            use std::ptr;
+
+            let mut old_protect: winapi::um::winnt::DWORD = 0;
+            let result = unsafe {
+                VirtualProtect(
+                    self.ptr as *mut winapi::um::winnt::c_void,
+                    self.size,
+                    PAGE_EXECUTE_READ,
+                    &mut old_protect,
+                )
+            };
+
+            if result == 0 {
+                return Err(RasError::IoError("VirtualProtect failed".to_string()));
+            }
+
+            Ok(())
+        }
+
+        #[cfg(not(any(unix, windows)))]
+        {
+            Err(RasError::UnsupportedTarget(
+                "Making memory executable not supported on this platform".to_string(),
+            ))
+        }
+    }
+
+    /// Allocate executable memory (legacy method - kept for compatibility)
+    /// For new code, use allocate_writable + make_executable
+    pub fn allocate(size: usize) -> Result<Self, RasError> {
+        let mut mem = Self::allocate_writable(size)?;
+        mem.make_executable()?;
+        Ok(mem)
     }
 
     /// Write code to executable memory
@@ -153,13 +223,16 @@ impl RasRuntime {
         // 1. Use ras to compile MIR to binary
         use crate::assembler::RasAssembler;
         let mut assembler = RasAssembler::new(self.target_arch, self.target_os)?;
-        let code = assembler.compile_mir_to_binary(module)?;
+        let (code, _) = assembler.compile_mir_to_binary_function(module, None)?;
 
-        // 2. Allocate executable memory
-        let mut mem = ExecutableMemory::allocate(code.len())?;
+        // 2. Allocate writable memory (not executable yet)
+        let mut mem = ExecutableMemory::allocate_writable(code.len())?;
 
-        // 3. Write code to memory
+        // 3. Write code to memory (while it's still writable)
         mem.write_code(&code)?;
+
+        // 4. Make memory executable
+        mem.make_executable()?;
 
         Ok(mem)
     }
