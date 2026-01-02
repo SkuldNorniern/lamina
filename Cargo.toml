@@ -13,6 +13,8 @@ categories = ["compilers", "development-tools", "parsing"]
 exclude = [ "benchmarks/", "testcases/"]
 
 [dependencies]
+ras = { path = "ras", features = ["mir"] }
+lamina-platform = { path = "lamina-platform" }
 
 [features]
 default = []

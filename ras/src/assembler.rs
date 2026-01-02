@@ -7,7 +7,7 @@ use crate::encoder::traits::InstructionEncoder;
 use crate::error::RasError;
 use crate::object::ObjectWriter;
 use crate::parser::AssemblyParser;
-use lamina::target::{TargetArchitecture, TargetOperatingSystem};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// ras assembler - converts assembly text to object files
 pub struct RasAssembler {
@@ -117,6 +117,9 @@ impl RasAssembler {
     ///
     /// This method reuses code from lamina's mir_codegen but generates binary
     /// instead of assembly text. It's used for runtime compilation (JIT).
+    ///
+    /// Requires the `mir` feature to be enabled.
+    #[cfg(feature = "mir")]
     pub fn compile_mir_to_binary(
         &mut self,
         module: &lamina::mir::Module,
@@ -142,6 +145,7 @@ impl RasAssembler {
     ///
     /// This reuses the instruction emission logic from mir_codegen/x86_64
     /// but generates binary instead of assembly text.
+    #[cfg(feature = "mir")]
     fn compile_mir_x86_64(
         &mut self,
         module: &lamina::mir::Module,
@@ -341,6 +345,7 @@ impl RasAssembler {
     ///
     /// This reuses the instruction emission logic from mir_codegen/x86_64
     /// but generates binary instead of assembly text.
+    #[cfg(feature = "mir")]
     fn encode_mir_instruction_x86_64(
         &mut self,
         inst: &lamina::mir::Instruction,
