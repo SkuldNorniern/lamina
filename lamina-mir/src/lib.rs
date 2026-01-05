@@ -36,3 +36,8 @@ pub use instruction::{AtomicBinOp, MemoryOrdering, SimdOp};
 pub use module::{Global, Module, ModuleBuilder};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
 pub use types::{MirType, ScalarType, VectorLane, VectorType};
+#[cfg(feature = "nightly")]
+pub use simd::{
+    extract_vector_type, get_lane_type, is_float_vector, is_integer_vector, lane_count,
+    vector_alignment, vector_size_bytes,
+};
