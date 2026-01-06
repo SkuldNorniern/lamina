@@ -34,6 +34,18 @@ pub fn get_type_size_directive_and_bytes(
         Type::Named(_) => Err(LaminaError::CodegenError(
             CodegenError::NamedTypeNotImplemented,
         )),
+        #[cfg(feature = "nightly")]
+        Type::Vector { element_type, lanes } => {
+            let elem_size = match element_type {
+                PrimitiveType::I8 | PrimitiveType::U8 => 1,
+                PrimitiveType::I16 | PrimitiveType::U16 => 2,
+                PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 8,
+                _ => return Err(LaminaError::CodegenError(CodegenError::TupleNotImplemented)), // Temporary
+            };
+            let total_size = elem_size * (*lanes as u64);
+            Ok((".space", total_size))
+        }
         Type::Void => Err(LaminaError::CodegenError(CodegenError::VoidTypeSize)),
     }
 }

@@ -338,6 +338,22 @@ fn get_alignment_for_type(ty: &crate::Type) -> Result<u64, LaminaError> {
         Type::Struct(_) => Ok(8), // Default alignment for structs
         Type::Tuple(_) => Ok(8),  // Default alignment for tuples
         Type::Named(_) => Ok(8),  // Default alignment for named types
+        #[cfg(feature = "nightly")]
+        Type::Vector { element_type, lanes } => {
+            // Vector alignment is typically the vector size (128-bit = 16 bytes, 256-bit = 32 bytes)
+            let elem_size = match element_type {
+                PrimitiveType::I8 | PrimitiveType::U8 => 1,
+                PrimitiveType::I16 | PrimitiveType::U16 => 2,
+                PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+                PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 8,
+                _ => return Err(LaminaError::CodegenError(
+                    crate::codegen::CodegenError::StructNotImplemented, // Temporary
+                )),
+            };
+            let vector_size = elem_size * (*lanes as u64);
+            // Align to vector size (typically 16 or 32 bytes)
+            Ok(vector_size.min(32).max(16))
+        }
         Type::Void => Err(LaminaError::CodegenError(
             crate::codegen::CodegenError::VoidTypeSize,
         )),

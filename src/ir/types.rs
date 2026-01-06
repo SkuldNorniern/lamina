@@ -253,6 +253,13 @@ pub enum Type<'a> {
         element_type: Box<Type<'a>>,
         size: u64,
     },
+    #[cfg(feature = "nightly")]
+    /// SIMD vector type: `<N x T>` where N is the number of lanes and T is the element type
+    /// Examples: `<4 x i32>`, `<8 x f32>`, `<2 x i64>`
+    Vector {
+        element_type: PrimitiveType,
+        lanes: u32,
+    },
     Struct(Vec<StructField<'a>>),
     Tuple(Vec<Type<'a>>),
     Void, // For functions that don't return a value
@@ -314,6 +321,8 @@ impl fmt::Display for Type<'_> {
             Type::Primitive(pt) => write!(f, "{}", pt),
             Type::Named(id) => write!(f, "@{}", id),
             Type::Array { element_type, size } => write!(f, "[{} x {}]", size, element_type),
+            #[cfg(feature = "nightly")]
+            Type::Vector { element_type, lanes } => write!(f, "<{} x {}>", lanes, element_type),
             Type::Struct(fields) => {
                 write!(f, "struct {{ ")?;
                 for (i, field) in fields.iter().enumerate() {
@@ -416,6 +425,19 @@ mod tests {
         ]);
         assert_eq!(format!("{}", tuple_type), "tuple(i32, @MyBool)");
         assert_eq!(format!("{}", Type::Void), "void");
+        #[cfg(feature = "nightly")]
+        {
+            let vec_type = Type::Vector {
+                element_type: PrimitiveType::I32,
+                lanes: 4,
+            };
+            assert_eq!(format!("{}", vec_type), "<4 x i32>");
+            let vec_f32 = Type::Vector {
+                element_type: PrimitiveType::F32,
+                lanes: 8,
+            };
+            assert_eq!(format!("{}", vec_f32), "<8 x f32>");
+        }
     }
 
     #[test]
