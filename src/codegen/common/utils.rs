@@ -31,7 +31,7 @@ pub fn get_type_size_bytes(ty: &Type<'_>) -> Result<u64, LaminaError> {
                 PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
                 PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 8,
                 _ => return Err(crate::LaminaError::CodegenError(
-                    crate::codegen::CodegenError::StructNotImplemented, // Temporary
+                    crate::codegen::CodegenError::InvalidVectorElementType,
                 )),
             };
             Ok(elem_size * (*lanes as u64))
