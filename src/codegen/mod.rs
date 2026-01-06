@@ -79,6 +79,8 @@ pub enum CodegenError {
     UnsupportedLiteralTypeInGlobal(LiteralType),
     /// Unsupported type for operation
     UnsupportedTypeForOperation(OperationType),
+    /// Invalid vector element type
+    InvalidVectorElementType,
 
     // Instruction Errors
     /// Store operation not implemented for type
@@ -226,6 +228,9 @@ impl std::fmt::Display for CodegenError {
             }
             CodegenError::UnsupportedTypeForOperation(op_type) => {
                 write!(f, "Unsupported type for {} operation", op_type)
+            }
+            CodegenError::InvalidVectorElementType => {
+                write!(f, "Invalid vector element type")
             }
 
             // Instruction Errors
