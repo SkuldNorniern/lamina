@@ -46,18 +46,32 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "readbyte" => parse_readbyte_assignment(state, result),
             "writeptr" => parse_writeptr_assignment(state, result),
             _ => {
-                let common_ops = ["add", "sub", "mul", "div", "load", "store", "call", "alloc"];
-                let suggestion = if common_ops.iter().any(|&op| opcode_str.starts_with(op)) {
-                    format!(
-                        "Did you mean one of: {}? (check spelling)",
-                        common_ops.join(", ")
-                    )
+                let valid_ops = ["add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr", "eq", "ne", "gt", "ge", "lt", "le", "zext", "trunc", "sext", "bitcast", "select", "alloc", "load", "getfield", "getfieldptr", "getelem", "getelementptr", "ptrtoint", "inttoptr", "tuple", "extract", "call", "phi", "write", "read", "writebyte", "readbyte", "writeptr"];
+                let mut suggestions = Vec::new();
+                const MAX_TYPO_DISTANCE: usize = 2;
+                
+                for valid in &valid_ops {
+                    let distance = super::edit_distance(opcode_str, valid, Some(MAX_TYPO_DISTANCE));
+                    if distance <= MAX_TYPO_DISTANCE {
+                        suggestions.push(*valid);
+                    }
+                }
+                
+                suggestions.sort_by_key(|&s| super::edit_distance(opcode_str, s, None));
+                
+                let hint = if !suggestions.is_empty() {
+                    if suggestions.len() == 1 {
+                        format!("Did you mean '{}'?", suggestions[0])
+                    } else {
+                        format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                    }
                 } else {
                     "Valid opcodes include: add, sub, mul, div, load, store, call, alloc, and many others".to_string()
                 };
+                
                 Err(state.error(format!(
                     "Unknown instruction opcode '{}' after assignment\n  Hint: {}",
-                    opcode_str, suggestion
+                    opcode_str, hint
                 )))
             }
         }
@@ -81,25 +95,39 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "memmove" => parse_memmove(state),
             "memset" => parse_memset(state),
             _ => {
-                let common_ops = ["ret", "jmp", "br", "call", "print", "store"];
-                let suggestion = if common_ops.iter().any(|&op| opcode_str.starts_with(op)) {
-                    format!(
-                        "Did you mean one of: {}? (check spelling)",
-                        common_ops.join(", ")
-                    )
+                let valid_ops = ["ret", "jmp", "br", "call", "print", "store", "dealloc", "switch", "write", "read", "writebyte", "readbyte", "writeptr", "memcpy", "memmove", "memset"];
+                let mut suggestions = Vec::new();
+                const MAX_TYPO_DISTANCE: usize = 2;
+                
+                for valid in &valid_ops {
+                    let distance = super::edit_distance(opcode_str, valid, Some(MAX_TYPO_DISTANCE));
+                    if distance <= MAX_TYPO_DISTANCE {
+                        suggestions.push(*valid);
+                    }
+                }
+                
+                suggestions.sort_by_key(|&s| super::edit_distance(opcode_str, s, None));
+                
+                let hint = if !suggestions.is_empty() {
+                    if suggestions.len() == 1 {
+                        format!("Did you mean '{}'?", suggestions[0])
+                    } else {
+                        format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                    }
                 } else {
                     "Valid instruction opcodes include: ret, jmp, br, call, print, store, and many others".to_string()
                 };
+                
                 Err(state.error(format!(
                     "Unknown instruction opcode '{}'\n  Hint: {}",
-                    opcode_str, suggestion
+                    opcode_str, hint
                 )))
             }
         }
     }
 }
 
-/// Parses a primitive type suffix (e.g., `.i32`).
+/// Parses a primitive type suffix after a dot (e.g., `.i32` in `add.i32`).
 fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveType, LaminaError> {
     state.expect_char('.')?;
     let type_str = state.parse_identifier_str()?;
@@ -127,7 +155,7 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
     }
 }
 
-/// Parses a type suffix (e.g., `.i32`, `.struct`).
+/// Parses a type suffix after a dot (e.g., `.i32`, `.struct`, or named types).
 fn parse_type_suffix<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.expect_char('.')?;
     parse_type(state) // Can be any type after the dot
@@ -191,6 +219,8 @@ fn parse_cmp_op<'a>(
     })
 }
 
+/// Parses allocation instruction.
+/// Supports both `alloc.stack T` and `alloc.ptr.stack T` syntax for compatibility.
 fn parse_alloc<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -222,7 +252,35 @@ fn parse_alloc<'a>(
     let alloc_type = match alloc_type_str {
         "stack" => AllocType::Stack,
         "heap" => AllocType::Heap,
-        _ => return Err(state.error(format!("Invalid allocation type: {}", alloc_type_str))),
+        _ => {
+            let valid_types = ["stack", "heap"];
+            let mut suggestions = Vec::new();
+            const MAX_TYPO_DISTANCE: usize = 2;
+            
+            for valid in &valid_types {
+                let distance = super::edit_distance(alloc_type_str, valid, Some(MAX_TYPO_DISTANCE));
+                if distance <= MAX_TYPO_DISTANCE {
+                    suggestions.push(*valid);
+                }
+            }
+            
+            suggestions.sort_by_key(|&s| super::edit_distance(alloc_type_str, s, None));
+            
+            let hint = if !suggestions.is_empty() {
+                if suggestions.len() == 1 {
+                    format!("Did you mean '{}'?", suggestions[0])
+                } else {
+                    format!("Did you mean one of: {}?", suggestions.iter().map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                }
+            } else {
+                "Valid allocation types are: stack, heap".to_string()
+            };
+            
+            return Err(state.error(format!(
+                "Invalid allocation type: '{}'\n  Hint: {}",
+                alloc_type_str, hint
+            )));
+        }
     };
     let allocated_ty = parse_type(state)?;
     state.skip_whitespace_and_comments();
@@ -315,7 +373,35 @@ fn parse_getelem<'a>(
             "bool" => PrimitiveType::Bool,
             "char" => PrimitiveType::Char,
             "ptr" => PrimitiveType::Ptr,
-            _ => return Err(state.error(format!("Expected primitive type, found '{}'", type_str))),
+            _ => {
+                let valid_types = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool", "char", "ptr"];
+                let mut suggestions = Vec::new();
+                const MAX_TYPO_DISTANCE: usize = 2;
+                
+                for valid in &valid_types {
+                    let distance = super::edit_distance(type_str, valid, Some(MAX_TYPO_DISTANCE));
+                    if distance <= MAX_TYPO_DISTANCE {
+                        suggestions.push(*valid);
+                    }
+                }
+                
+                suggestions.sort_by_key(|&s| super::edit_distance(type_str, s, None));
+                
+                let hint = if !suggestions.is_empty() {
+                    if suggestions.len() == 1 {
+                        format!("Did you mean '{}'?", suggestions[0])
+                    } else {
+                        format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                    }
+                } else {
+                    "Valid primitive types include: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr".to_string()
+                };
+                
+                return Err(state.error(format!(
+                    "Expected primitive type, found '{}'\n  Hint: {}",
+                    type_str, hint
+                )));
+            }
         }
     };
 

@@ -61,27 +61,51 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
                 return Ok(Value::Constant(Literal::F32(f_val)));
             }
 
-            Err(state.error("Expected a numeric literal\n  Hint: Numeric literals can be integers (42, -10) or floats (3.14, -0.5)".to_string()))
+            Err(state.error("Expected a numeric literal".to_string()))
         }
         Some('t') => {
             if state.peek_slice(4) == Some("true") {
                 state.advance_by(4);
                 return Ok(Value::Constant(Literal::Bool(true)));
             }
-            Err(state.error(
-                "Expected 'true' boolean literal\n  Hint: Boolean literals are 'true' or 'false'"
-                    .to_string(),
-            ))
+            let found = state.peek_slice(10).unwrap_or("");
+            let mut suggestions = Vec::new();
+            const MAX_TYPO_DISTANCE: usize = 2;
+            
+            let distance = super::edit_distance(found, "true", Some(MAX_TYPO_DISTANCE));
+            if distance <= MAX_TYPO_DISTANCE {
+                suggestions.push("true");
+            }
+            
+            let hint = if !suggestions.is_empty() {
+                format!("Did you mean 'true'?")
+            } else {
+                "Expected 'true' boolean literal".to_string()
+            };
+            
+            Err(state.error(format!("{}\n  Hint: {}", "Expected 'true' boolean literal", hint)))
         }
         Some('f') => {
             if state.peek_slice(5) == Some("false") {
                 state.advance_by(5);
                 return Ok(Value::Constant(Literal::Bool(false)));
             }
-            Err(state.error(
-                "Expected 'false' boolean literal\n  Hint: Boolean literals are 'true' or 'false'"
-                    .to_string(),
-            ))
+            let found = state.peek_slice(10).unwrap_or("");
+            let mut suggestions = Vec::new();
+            const MAX_TYPO_DISTANCE: usize = 2;
+            
+            let distance = super::edit_distance(found, "false", Some(MAX_TYPO_DISTANCE));
+            if distance <= MAX_TYPO_DISTANCE {
+                suggestions.push("false");
+            }
+            
+            let hint = if !suggestions.is_empty() {
+                format!("Did you mean 'false'?")
+            } else {
+                "Expected 'false' boolean literal".to_string()
+            };
+            
+            Err(state.error(format!("{}\n  Hint: {}", "Expected 'false' boolean literal", hint)))
         }
         _ => {
             let found = state
@@ -89,7 +113,7 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
                 .map(|c| format!("'{}'", c))
                 .unwrap_or_else(|| "end of input".to_string());
             Err(state.error(format!(
-                "Expected a value, but found {}\n  Hint: Values can be:\n    - Variables: %name\n    - Globals: @name\n    - Literals: numbers (42, -10), strings (\"hello\"), booleans (true, false)",
+                "Expected a value, but found {}",
                 found
             )))
         }

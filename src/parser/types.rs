@@ -62,10 +62,9 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
         state.expect_char('[')?;
         let size_val = state.parse_integer()?;
         
-        // Validate array size
         if size_val < 0 {
             return Err(state.error(format!(
-                "Invalid array size: {}\n  Hint: Array size must be a non-negative integer",
+                "Invalid array size: {}",
                 size_val
             )));
         }
@@ -78,13 +77,13 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
             element_type: Box::new(elem_type),
             size,
         })
-    } else {
-        let found = state.peek_slice(20).unwrap_or("");
-        Err(state.error(format!(
-            "Expected 'struct' or '[' for composite type, but found '{}'\n  Hint: Composite types are either structs (struct {{ ... }}) or arrays ([size x type])",
-            found
-        )))
-    }
+        } else {
+            let found = state.peek_slice(20).unwrap_or("");
+            Err(state.error(format!(
+                "Expected 'struct' or '[' for composite type, but found '{}'",
+                found
+            )))
+        }
 }
 
 /// Parses a type (primitive, composite, named, or tuple).
@@ -128,13 +127,31 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                 "ptr" => Ok(Type::Primitive(PrimitiveType::Ptr)),
                 "void" => Ok(Type::Void),
                 _ => {
-                    let hint = if potential_primitive.len() <= 3 {
-                        "Did you mean one of: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr, void?".to_string()
+                    let valid_types = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool", "char", "ptr", "void"];
+                    let mut suggestions = Vec::new();
+                    const MAX_TYPO_DISTANCE: usize = 2;
+                    
+                    for valid in &valid_types {
+                        let distance = super::edit_distance(potential_primitive, valid, Some(MAX_TYPO_DISTANCE));
+                        if distance <= MAX_TYPO_DISTANCE {
+                            suggestions.push(*valid);
+                        }
+                    }
+                    
+                    suggestions.sort_by_key(|&s| super::edit_distance(potential_primitive, s, None));
+                    
+                    let hint = if !suggestions.is_empty() {
+                        if suggestions.len() == 1 {
+                            format!("Did you mean '{}'?", suggestions[0])
+                        } else {
+                            format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                        }
                     } else {
                         "Valid type identifiers include: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr, void, or named types starting with @".to_string()
                     };
+                    
                     Err(state.error(format!(
-                        "Unknown or unexpected type identifier: '{}'\n  Hint: {}",
+                        "Unknown type identifier: '{}'\n  Hint: {}",
                         potential_primitive, hint
                     )))
                 }
