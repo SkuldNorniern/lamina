@@ -21,7 +21,6 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
     let mut module = Module::new();
 
-    // Track names to detect duplicates across different declaration types
     let mut seen_names = std::collections::HashSet::new();
     
     loop {
@@ -37,13 +36,13 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let name = decl.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
-                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
+                    "Duplicate name '{}': a type, function, or global with this name already exists",
                     name
                 )));
             }
             if module.type_declarations.insert(name, decl).is_some() {
                 return Err(state.error(format!(
-                    "Duplicate type declaration: @{}\n  Hint: Each type can only be declared once",
+                    "Duplicate type declaration: @{}",
                     name
                 )));
             }
@@ -52,7 +51,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let name = decl.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
-                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
+                    "Duplicate name '{}': a type, function, or global with this name already exists",
                     name
                 )));
             }
@@ -67,7 +66,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let name = func.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
-                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
+                    "Duplicate name '{}': a type, function, or global with this name already exists",
                     name
                 )));
             }
