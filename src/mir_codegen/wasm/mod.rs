@@ -175,10 +175,10 @@ pub fn generate_mir_wasm<W: Write>(
             let mangled_name = abi.mangle_function_name(func_name);
             write!(writer, "  (import \"env\" \"{}\" (func ${}", func_name, mangled_name)?;
             
-            // Parameters
-            for param in &func.sig.params {
-                write!(writer, " (param i64)")?;
-            }
+        // Parameters
+        for _param in &func.sig.params {
+            write!(writer, " (param i64)")?;
+        }
             
             // Return type
             if func.sig.ret_ty.is_some() {

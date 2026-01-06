@@ -22,13 +22,27 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
         state.consume_keyword("struct")?;
         state.expect_char('{')?;
         let mut fields = Vec::new();
+        let mut field_names = std::collections::HashSet::new();
+        
         loop {
             state.skip_whitespace_and_comments();
             if state.current_char() == Some('}') {
+                if fields.is_empty() {
+                    return Err(state.error("Struct type must have at least one field\n  Hint: Empty structs are not allowed. Add at least one field (e.g., 'struct { x: i32 }')".to_string()));
+                }
                 state.advance();
                 break;
             }
             let field_name = state.parse_identifier_str()?;
+            
+            // Check for duplicate field names
+            if !field_names.insert(field_name) {
+                return Err(state.error(format!(
+                    "Duplicate struct field name: '{}'\n  Hint: Each field in a struct must have a unique name",
+                    field_name
+                )));
+            }
+            
             state.expect_char(':')?;
             let field_ty = parse_type(state)?;
             fields.push(StructField {
@@ -46,7 +60,17 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
         Ok(Type::Struct(fields))
     } else if state.current_char() == Some('[') {
         state.expect_char('[')?;
-        let size = state.parse_integer()? as u64;
+        let size_val = state.parse_integer()?;
+        
+        // Validate array size
+        if size_val < 0 {
+            return Err(state.error(format!(
+                "Invalid array size: {}\n  Hint: Array size must be a non-negative integer",
+                size_val
+            )));
+        }
+        
+        let size = size_val as u64;
         state.consume_keyword("x")?;
         let elem_type = parse_type(state)?;
         state.expect_char(']')?;

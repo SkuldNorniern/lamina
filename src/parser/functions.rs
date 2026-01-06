@@ -7,13 +7,50 @@ use crate::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, Label,
     LaminaError,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+/// Simple edit distance calculation for typo suggestions
+fn simple_edit_distance(s1: &str, s2: &str) -> usize {
+    let s1_chars: Vec<char> = s1.chars().collect();
+    let s2_chars: Vec<char> = s2.chars().collect();
+    let m = s1_chars.len();
+    let n = s2_chars.len();
+    
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+    
+    let mut dp = vec![vec![0; n + 1]; m + 1];
+    
+    for i in 0..=m {
+        dp[i][0] = i;
+    }
+    for j in 0..=n {
+        dp[0][j] = j;
+    }
+    
+    for i in 1..=m {
+        for j in 1..=n {
+            let cost = if s1_chars[i - 1] == s2_chars[j - 1] { 0 } else { 1 };
+            dp[i][j] = (dp[i - 1][j] + 1)
+                .min(dp[i][j - 1] + 1)
+                .min(dp[i - 1][j - 1] + cost);
+        }
+    }
+    
+    dp[m][n]
+}
 
 /// Parses function annotations.
 pub fn parse_annotations(
     state: &mut ParserState<'_>,
 ) -> Result<Vec<FunctionAnnotation>, LaminaError> {
     let mut annotations = Vec::new();
+    let mut seen = HashSet::new();
+    
     loop {
         state.skip_whitespace_and_comments();
         if state.current_char() == Some('@') {
@@ -27,13 +64,60 @@ pub fn parse_annotations(
                 "noinline" => FunctionAnnotation::NoInline,
                 "cold" => FunctionAnnotation::Cold,
                 _ => {
-                    let valid_annotations = "inline, export, extern, noreturn, noinline, cold";
+                    // Suggest similar annotation names for typos
+                    let valid_annotations = ["inline", "export", "extern", "noreturn", "noinline", "cold"];
+                    let mut suggestions = Vec::new();
+                    
+                    // Simple edit distance check (Levenshtein-like)
+                    for valid in &valid_annotations {
+                        if simple_edit_distance(name, valid) <= 2 {
+                            suggestions.push(*valid);
+                        }
+                    }
+                    
+                    let hint = if !suggestions.is_empty() {
+                        format!("Did you mean @{}?", suggestions.join(" or @"))
+                    } else {
+                        format!("Valid annotations are: {}", valid_annotations.join(", "))
+                    };
+                    
                     return Err(state.error(format!(
-                        "Unknown function annotation: @{}\n  Hint: Valid annotations are: {}",
-                        name, valid_annotations
+                        "Unknown function annotation: @{}\n  Hint: {}",
+                        name, hint
                     )));
                 }
             };
+            
+            // Check for duplicate annotations
+            if !seen.insert(annotation.clone()) {
+                return Err(state.error(format!(
+                    "Duplicate annotation: @{}\n  Hint: Each annotation can only appear once per function",
+                    name
+                )));
+            }
+            
+            // Check for conflicting annotations
+            if annotation == FunctionAnnotation::Inline && seen.contains(&FunctionAnnotation::NoInline) {
+                return Err(state.error(
+                    "Conflicting annotations: @inline and @noinline cannot be used together\n  Hint: Remove one of these conflicting annotations".to_string()
+                ));
+            }
+            if annotation == FunctionAnnotation::NoInline && seen.contains(&FunctionAnnotation::Inline) {
+                return Err(state.error(
+                    "Conflicting annotations: @noinline and @inline cannot be used together\n  Hint: Remove one of these conflicting annotations".to_string()
+                ));
+            }
+            if annotation == FunctionAnnotation::Extern && seen.contains(&FunctionAnnotation::Export) {
+                return Err(state.error(
+                    "Conflicting annotations: @extern and @export cannot be used together\n  Hint: @extern is for imported functions, @export is for exported functions".to_string()
+                ));
+            }
+            if annotation == FunctionAnnotation::Export && seen.contains(&FunctionAnnotation::Extern) {
+                return Err(state.error(
+                    "Conflicting annotations: @export and @extern cannot be used together\n  Hint: @export is for exported functions, @extern is for imported functions".to_string()
+                ));
+            }
+            
             annotations.push(annotation);
         } else {
             break;
@@ -123,6 +207,8 @@ pub fn parse_param_list<'a>(
     state: &mut ParserState<'a>,
 ) -> Result<Vec<FunctionParameter<'a>>, LaminaError> {
     let mut params = Vec::new();
+    let mut param_names = std::collections::HashSet::new();
+    
     loop {
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
@@ -131,6 +217,15 @@ pub fn parse_param_list<'a>(
 
         let param_ty = parse_type(state)?;
         let param_name = state.parse_value_identifier()?;
+        
+        // Check for duplicate parameter names
+        if !param_names.insert(param_name) {
+            return Err(state.error(format!(
+                "Duplicate parameter name: %{}\n  Hint: Each parameter must have a unique name",
+                param_name
+            )));
+        }
+        
         params.push(FunctionParameter {
             name: param_name,
             ty: param_ty,
