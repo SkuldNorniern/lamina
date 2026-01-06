@@ -4,7 +4,7 @@
 //! top-level unit of organization in LUMIR and can be compiled independently.
 use super::function::Function;
 use super::types::MirType;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// Global variable declaration
@@ -55,6 +55,9 @@ pub struct Module {
 
     /// Global variables
     pub globals: HashMap<String, Global>,
+
+    /// Names of external functions (functions with external linkage)
+    pub external_functions: HashSet<String>,
 }
 
 impl Module {
@@ -64,13 +67,24 @@ impl Module {
             name: name.into(),
             functions: HashMap::new(),
             globals: HashMap::new(),
+            external_functions: HashSet::new(),
         }
     }
 
     /// Add a function to this module
     pub fn add_function(&mut self, func: Function) {
         let name = func.sig.name.clone();
-        self.functions.insert(name, func);
+        self.functions.insert(name.clone(), func);
+    }
+
+    /// Mark a function as external
+    pub fn mark_external(&mut self, name: impl Into<String>) {
+        self.external_functions.insert(name.into());
+    }
+
+    /// Check if a function is external
+    pub fn is_external(&self, name: &str) -> bool {
+        self.external_functions.contains(name)
     }
 
     /// Add a global variable to this module

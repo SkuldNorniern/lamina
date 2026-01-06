@@ -125,7 +125,17 @@ pub fn generate_mir_riscv<W: Write>(
     writeln!(writer, "{}", abi.get_text_section())?;
     writeln!(writer, "{}", abi.get_main_global())?;
 
+    // Emit external function declarations first
+    for func_name in &module.external_functions {
+        let label = abi.mangle_function_name(func_name);
+        writeln!(writer, ".extern {}", label)?;
+    }
+
     for (func_name, func) in &module.functions {
+        // Skip external functions - they're already declared above
+        if module.is_external(func_name) {
+            continue;
+        }
         // Function label
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, "{}:", label)?;
