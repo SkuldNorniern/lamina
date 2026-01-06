@@ -9,13 +9,39 @@ use crate::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// Simple edit distance calculation for typo suggestions
-fn simple_edit_distance(s1: &str, s2: &str) -> usize {
-    let s1_chars: Vec<char> = s1.chars().collect();
-    let s2_chars: Vec<char> = s2.chars().collect();
-    let m = s1_chars.len();
-    let n = s2_chars.len();
+/// Calculates the Levenshtein edit distance between two strings.
+///
+/// This function computes the minimum number of single-character edits
+/// (insertions, deletions, or substitutions) required to transform one string
+/// into another. The comparison is case-insensitive for better typo detection.
+///
+/// # Arguments
+///
+/// * `s1` - First string to compare
+/// * `s2` - Second string to compare
+/// * `max_distance` - Maximum distance to consider (for early termination optimization)
+///
+/// # Returns
+///
+/// The edit distance between the two strings, or `max_distance + 1` if the
+/// distance exceeds `max_distance` (for early termination).
+///
+/// # Examples
+///
+/// ```
+/// # use crate::parser::functions::edit_distance;
+/// assert_eq!(edit_distance("inline", "inlien", None), 2);
+/// assert_eq!(edit_distance("export", "EXPORT", None), 0); // case-insensitive
+/// assert_eq!(edit_distance("extern", "external", Some(2)), 3); // exceeds max
+/// ```
+fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
+    // Normalize to lowercase for case-insensitive comparison
+    let s1_lower: Vec<char> = s1.to_lowercase().chars().collect();
+    let s2_lower: Vec<char> = s2.to_lowercase().chars().collect();
+    let m = s1_lower.len();
+    let n = s2_lower.len();
     
+    // Early exit for empty strings
     if m == 0 {
         return n;
     }
@@ -23,25 +49,53 @@ fn simple_edit_distance(s1: &str, s2: &str) -> usize {
         return m;
     }
     
-    let mut dp = vec![vec![0; n + 1]; m + 1];
-    
-    for i in 0..=m {
-        dp[i][0] = i;
-    }
-    for j in 0..=n {
-        dp[0][j] = j;
-    }
-    
-    for i in 1..=m {
-        for j in 1..=n {
-            let cost = if s1_chars[i - 1] == s2_chars[j - 1] { 0 } else { 1 };
-            dp[i][j] = (dp[i - 1][j] + 1)
-                .min(dp[i][j - 1] + 1)
-                .min(dp[i - 1][j - 1] + cost);
+    // Early exit if length difference exceeds max_distance
+    if let Some(max) = max_distance {
+        let len_diff = if m > n { m - n } else { n - m };
+        if len_diff > max {
+            return max + 1;
         }
     }
     
-    dp[m][n]
+    // Use space-optimized DP: only store two rows at a time
+    // This reduces space complexity from O(m*n) to O(min(m,n))
+    let (shorter, longer) = if m <= n {
+        (&s1_lower, &s2_lower)
+    } else {
+        (&s2_lower, &s1_lower)
+    };
+    let short_len = shorter.len();
+    let long_len = longer.len();
+    
+    // Previous row (dp[i-1])
+    let mut prev_row: Vec<usize> = (0..=short_len).collect();
+    // Current row (dp[i])
+    let mut curr_row = vec![0; short_len + 1];
+    
+    for i in 1..=long_len {
+        curr_row[0] = i;
+        
+        for j in 1..=short_len {
+            // Cost is 0 if characters match, 1 otherwise
+            let cost = if longer[i - 1] == shorter[j - 1] { 0 } else { 1 };
+            
+            curr_row[j] = (prev_row[j] + 1)           // deletion
+                .min(curr_row[j - 1] + 1)             // insertion
+                .min(prev_row[j - 1] + cost);         // substitution
+            
+            // Early termination if we exceed max_distance
+            if let Some(max) = max_distance {
+                if curr_row[j] > max {
+                    return max + 1;
+                }
+            }
+        }
+        
+        // Swap rows for next iteration
+        std::mem::swap(&mut prev_row, &mut curr_row);
+    }
+    
+    prev_row[short_len]
 }
 
 /// Parses function annotations.
@@ -67,16 +121,25 @@ pub fn parse_annotations(
                     // Suggest similar annotation names for typos
                     let valid_annotations = ["inline", "export", "extern", "noreturn", "noinline", "cold"];
                     let mut suggestions = Vec::new();
+                    const MAX_TYPO_DISTANCE: usize = 2;
                     
-                    // Simple edit distance check (Levenshtein-like)
+                    // Find annotations within edit distance threshold
                     for valid in &valid_annotations {
-                        if simple_edit_distance(name, valid) <= 2 {
+                        let distance = edit_distance(name, valid, Some(MAX_TYPO_DISTANCE));
+                        if distance <= MAX_TYPO_DISTANCE {
                             suggestions.push(*valid);
                         }
                     }
                     
+                    // Sort suggestions by edit distance for better ordering
+                    suggestions.sort_by_key(|&s| edit_distance(name, s, None));
+                    
                     let hint = if !suggestions.is_empty() {
-                        format!("Did you mean @{}?", suggestions.join(" or @"))
+                        if suggestions.len() == 1 {
+                            format!("Did you mean @{}?", suggestions[0])
+                        } else {
+                            format!("Did you mean @{}?", suggestions.join(" or @"))
+                        }
                     } else {
                         format!("Valid annotations are: {}", valid_annotations.join(", "))
                     };
