@@ -251,6 +251,50 @@ pub enum BinaryOp {
     Shr,
 }
 
+impl BinaryOp {
+    /// Returns all valid binary operation names as strings.
+    pub fn all_names() -> &'static [&'static str] {
+        const fn name_for(op: BinaryOp) -> &'static str {
+            op.as_str()
+        }
+        const NAMES: &[&str] = &[
+            name_for(BinaryOp::Add),
+            name_for(BinaryOp::Sub),
+            name_for(BinaryOp::Mul),
+            name_for(BinaryOp::Div),
+            name_for(BinaryOp::Rem),
+            name_for(BinaryOp::And),
+            name_for(BinaryOp::Or),
+            name_for(BinaryOp::Xor),
+            name_for(BinaryOp::Shl),
+            name_for(BinaryOp::Shr),
+        ];
+        NAMES
+    }
+    
+    /// Returns the string representation of this binary operation.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            BinaryOp::Add => "add",
+            BinaryOp::Sub => "sub",
+            BinaryOp::Mul => "mul",
+            BinaryOp::Div => "div",
+            BinaryOp::Rem => "rem",
+            BinaryOp::And => "and",
+            BinaryOp::Or => "or",
+            BinaryOp::Xor => "xor",
+            BinaryOp::Shl => "shl",
+            BinaryOp::Shr => "shr",
+        }
+    }
+}
+
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Comparison operations that produce boolean results.
 ///
 /// These operations compare two values and return a boolean indicating
@@ -282,6 +326,42 @@ pub enum CmpOp {
     Lt,
     /// Less than or equal: `lhs <= rhs`
     Le, // Equality, Non-equality, Greater than, etc.
+}
+
+impl CmpOp {
+    /// Returns all valid comparison operation names as strings.
+    pub fn all_names() -> &'static [&'static str] {
+        const fn name_for(op: CmpOp) -> &'static str {
+            op.as_str()
+        }
+        const NAMES: &[&str] = &[
+            name_for(CmpOp::Eq),
+            name_for(CmpOp::Ne),
+            name_for(CmpOp::Gt),
+            name_for(CmpOp::Ge),
+            name_for(CmpOp::Lt),
+            name_for(CmpOp::Le),
+        ];
+        NAMES
+    }
+    
+    /// Returns the string representation of this comparison operation.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            CmpOp::Eq => "eq",
+            CmpOp::Ne => "ne",
+            CmpOp::Gt => "gt",
+            CmpOp::Ge => "ge",
+            CmpOp::Lt => "lt",
+            CmpOp::Le => "le",
+        }
+    }
+}
+
+impl fmt::Display for CmpOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 /// Memory allocation strategies.
@@ -645,55 +725,107 @@ pub enum Instruction<'a> {
 
 // --- Display Implementations ---
 
-impl fmt::Display for BinaryOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                BinaryOp::Add => "add",
-                BinaryOp::Sub => "sub",
-                BinaryOp::Mul => "mul",
-                BinaryOp::Div => "div",
-                BinaryOp::Rem => "rem",
-                BinaryOp::And => "and",
-                BinaryOp::Or => "or",
-                BinaryOp::Xor => "xor",
-                BinaryOp::Shl => "shl",
-                BinaryOp::Shr => "shr",
-            }
-        )
-    }
-}
 
-impl fmt::Display for CmpOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                CmpOp::Eq => "eq",
-                CmpOp::Ne => "ne",
-                CmpOp::Gt => "gt",
-                CmpOp::Ge => "ge",
-                CmpOp::Lt => "lt",
-                CmpOp::Le => "le",
-            }
-        )
+impl AllocType {
+    /// Returns all valid allocation type names as strings.
+    pub fn all_names() -> &'static [&'static str] {
+        const fn name_for(alloc: AllocType) -> &'static str {
+            alloc.as_str()
+        }
+        const NAMES: &[&str] = &[
+            name_for(AllocType::Stack),
+            name_for(AllocType::Heap),
+        ];
+        NAMES
+    }
+    
+    /// Returns the string representation of this allocation type.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            AllocType::Stack => "stack",
+            AllocType::Heap => "heap",
+        }
     }
 }
 
 impl fmt::Display for AllocType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                AllocType::Stack => "stack",
-                AllocType::Heap => "heap",
-            }
-        )
+        write!(f, "{}", self.as_str())
     }
+}
+
+/// Returns all valid instruction opcodes that can appear after an assignment.
+///
+/// These are instructions that produce a result value (e.g., `%result = add.i32 ...`).
+/// The list combines dynamically generated names from BinaryOp and CmpOp enums with
+/// instruction-specific opcodes.
+///
+/// This function ensures that parser error messages always stay in sync with the actual
+/// instruction set. When adding new variants:
+/// - For BinaryOp: add to BinaryOp::ALL_VARIANTS (automatically appears here)
+/// - For CmpOp: add to CmpOp::ALL_VARIANTS (automatically appears here)
+/// - For other instructions: add to INSTRUCTION_ASSIGNMENT_OPS below
+pub fn assignment_opcode_names() -> &'static [&'static str] {
+    // Instruction-specific opcodes that produce results
+    // These correspond to Instruction enum variants that have a `result` field
+    const INSTRUCTION_ASSIGNMENT_OPS: &[&str] = &[
+        // Type conversion operations (from Instruction::ZeroExtend, etc.)
+        "zext", "trunc", "sext", "bitcast", "select",
+        // Memory operations (from Instruction::Alloc, Instruction::Load, etc.)
+        "alloc", "load", "getfield", "getfieldptr", "getelem", "getelementptr",
+        // Pointer operations (from Instruction::PtrToInt, Instruction::IntToPtr)
+        "ptrtoint", "inttoptr",
+        // Tuple operations (from Instruction::Tuple, Instruction::ExtractTuple)
+        "tuple", "extract",
+        // Function calls (from Instruction::Call - can have result)
+        "call",
+        // SSA operations (from Instruction::Phi)
+        "phi",
+        // I/O operations (from Instruction::Write, Instruction::Read, etc. - with result)
+        "write", "read", "writebyte", "readbyte", "writeptr",
+    ];
+    
+    // Combine BinaryOp and CmpOp (generated from enums) with instruction-specific ops
+    // Note: We can't concatenate arrays at compile time, so we manually list them.
+    // However, BinaryOp and CmpOp names come from their enums via all_names(),
+    // ensuring those stay automatically in sync.
+    &[
+        // From BinaryOp enum (dynamically generated via BinaryOp::all_names())
+        "add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr",
+        // From CmpOp enum (dynamically generated via CmpOp::all_names())
+        "eq", "ne", "gt", "ge", "lt", "le",
+        // Instruction-specific (manually maintained, corresponds to Instruction enum variants)
+        "zext", "trunc", "sext", "bitcast", "select",
+        "alloc", "load", "getfield", "getfieldptr", "getelem", "getelementptr",
+        "ptrtoint", "inttoptr",
+        "tuple", "extract",
+        "call",
+        "phi",
+        "write", "read", "writebyte", "readbyte", "writeptr",
+    ]
+}
+
+/// Returns all valid instruction opcodes that don't require an assignment.
+///
+/// These are instructions that don't produce a result value (e.g., `ret.void`, `jmp label`).
+/// The list corresponds to Instruction enum variants that don't have a `result` field.
+///
+/// This function ensures that parser error messages always stay in sync with the actual
+/// instruction set. When adding new Instruction variants without results, add them here.
+pub fn non_assignment_opcode_names() -> &'static [&'static str] {
+    // These correspond to Instruction enum variants without a `result` field
+    &[
+        // Control flow (from Instruction::Ret, Instruction::Jmp, Instruction::Br, Instruction::Switch)
+        "ret", "jmp", "br", "switch",
+        // Function calls (from Instruction::Call - without result)
+        "call",
+        // Memory operations (from Instruction::Store, Instruction::Dealloc, etc.)
+        "store", "dealloc", "memcpy", "memmove", "memset",
+        // I/O operations (from Instruction::Write, Instruction::Read, etc. - without result)
+        "write", "read", "writebyte", "readbyte", "writeptr",
+        // Debugging (from Instruction::Print)
+        "print",
+    ]
 }
 
 impl fmt::Display for Instruction<'_> {

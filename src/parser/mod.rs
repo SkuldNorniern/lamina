@@ -36,7 +36,7 @@ use crate::{LaminaError, Module};
 /// # Examples
 ///
 /// ```
-/// # use crate::parser::edit_distance;
+/// # use lamina::parser::edit_distance;
 /// assert_eq!(edit_distance("inline", "inlien", None), 2);
 /// assert_eq!(edit_distance("export", "EXPORT", None), 0); // case-insensitive
 /// assert_eq!(edit_distance("extern", "external", Some(2)), 3); // exceeds max
@@ -103,6 +103,40 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
     }
     
     prev_row[short_len]
+}
+
+/// Returns all valid primitive type names as strings.
+///
+/// This function delegates to the IR module, ensuring that parser error messages
+/// always stay in sync with the actual type system.
+pub fn get_primitive_type_names() -> &'static [&'static str] {
+    crate::ir::PrimitiveType::all_names()
+}
+
+/// Returns all valid allocation type names as strings.
+///
+/// This function delegates to the IR module, ensuring that parser error messages
+/// always stay in sync with the actual type system.
+pub fn get_alloc_type_names() -> &'static [&'static str] {
+    crate::ir::AllocType::all_names()
+}
+
+/// Returns all valid instruction opcodes that can appear after an assignment.
+///
+/// These are instructions that produce a result value (e.g., `%result = add.i32 ...`).
+/// This function delegates to the IR module, ensuring that parser error messages
+/// always stay in sync with the actual instruction set.
+pub fn get_assignment_opcode_names() -> &'static [&'static str] {
+    crate::ir::assignment_opcode_names()
+}
+
+/// Returns all valid instruction opcodes that don't require an assignment.
+///
+/// These are instructions that don't produce a result value (e.g., `ret.void`, `jmp label`).
+/// This function delegates to the IR module, ensuring that parser error messages
+/// always stay in sync with the actual instruction set.
+pub fn get_non_assignment_opcode_names() -> &'static [&'static str] {
+    crate::ir::non_assignment_opcode_names()
 }
 
 /// Parses a string containing Lamina IR text into a Module.

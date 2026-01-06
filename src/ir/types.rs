@@ -295,23 +295,53 @@ pub enum Value<'a> {
 
 // --- Display implementations for better readability ---
 
+impl PrimitiveType {
+    /// Returns all valid primitive type names as strings.
+    pub fn all_names() -> &'static [&'static str] {
+        const fn name_for(ty: PrimitiveType) -> &'static str {
+            ty.as_str()
+        }
+        const NAMES: &[&str] = &[
+            name_for(PrimitiveType::I8),
+            name_for(PrimitiveType::I16),
+            name_for(PrimitiveType::I32),
+            name_for(PrimitiveType::I64),
+            name_for(PrimitiveType::U8),
+            name_for(PrimitiveType::U16),
+            name_for(PrimitiveType::U32),
+            name_for(PrimitiveType::U64),
+            name_for(PrimitiveType::F32),
+            name_for(PrimitiveType::F64),
+            name_for(PrimitiveType::Bool),
+            name_for(PrimitiveType::Char),
+            name_for(PrimitiveType::Ptr),
+        ];
+        NAMES
+    }
+    
+    /// Returns the string representation of this primitive type.
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            PrimitiveType::I8 => "i8",
+            PrimitiveType::I16 => "i16",
+            PrimitiveType::I32 => "i32",
+            PrimitiveType::I64 => "i64",
+            PrimitiveType::U8 => "u8",
+            PrimitiveType::U16 => "u16",
+            PrimitiveType::U32 => "u32",
+            PrimitiveType::U64 => "u64",
+            PrimitiveType::F32 => "f32",
+            PrimitiveType::F64 => "f64",
+            PrimitiveType::Bool => "bool",
+            PrimitiveType::Char => "char",
+            PrimitiveType::Ptr => "ptr",
+        }
+    }
+}
+
 impl fmt::Display for PrimitiveType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            PrimitiveType::I8 => write!(f, "i8"),
-            PrimitiveType::I16 => write!(f, "i16"),
-            PrimitiveType::I32 => write!(f, "i32"),
-            PrimitiveType::I64 => write!(f, "i64"),
-            PrimitiveType::U8 => write!(f, "u8"),
-            PrimitiveType::U16 => write!(f, "u16"),
-            PrimitiveType::U32 => write!(f, "u32"),
-            PrimitiveType::U64 => write!(f, "u64"),
-            PrimitiveType::F32 => write!(f, "f32"),
-            PrimitiveType::F64 => write!(f, "f64"),
-            PrimitiveType::Bool => write!(f, "bool"),
-            PrimitiveType::Char => write!(f, "char"),
-            PrimitiveType::Ptr => write!(f, "ptr"),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 
