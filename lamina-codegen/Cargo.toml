@@ -11,3 +11,8 @@ categories = ["compilers", "development-tools"]
 [dependencies]
 lamina-platform = { path = "../lamina-platform" }
 lamina-mir = { path = "../lamina-mir" }
+
+[features]
+default = []
+# Enable experimental/nightly features (may change without notice)
+nightly = []
