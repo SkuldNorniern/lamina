@@ -741,10 +741,10 @@ impl AllocType {
     
     /// Returns the string representation of this allocation type.
     pub const fn as_str(&self) -> &'static str {
-        match self {
+            match self {
             AllocType::Stack => "stack",
             AllocType::Heap => "heap",
-        }
+            }
     }
 }
 

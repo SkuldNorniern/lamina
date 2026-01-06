@@ -77,13 +77,13 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
             element_type: Box::new(elem_type),
             size,
         })
-        } else {
-            let found = state.peek_slice(20).unwrap_or("");
-            Err(state.error(format!(
+    } else {
+        let found = state.peek_slice(20).unwrap_or("");
+        Err(state.error(format!(
                 "Expected 'struct' or '[' for composite type, but found '{}'",
-                found
-            )))
-        }
+            found
+        )))
+    }
 }
 
 /// Parses a type (primitive, composite, named, or tuple).
