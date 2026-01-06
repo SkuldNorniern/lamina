@@ -207,6 +207,8 @@ impl InstructionUtils {
                 Type::Primitive(PrimitiveType::I32) => "l",
                 Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => "q",
                 Type::Primitive(PrimitiveType::F32) => "ss",
+                #[cfg(feature = "nightly")]
+                Type::Vector { .. } => "q", // SIMD vectors use 64-bit suffix by default
                 _ => "q",
             },
             "aarch64" => match ty {
@@ -214,6 +216,8 @@ impl InstructionUtils {
                 Type::Primitive(PrimitiveType::I32) => "w",
                 Type::Primitive(PrimitiveType::I64) | Type::Primitive(PrimitiveType::Ptr) => "x",
                 Type::Primitive(PrimitiveType::F32) => "s",
+                #[cfg(feature = "nightly")]
+                Type::Vector { .. } => "q", // SIMD vectors use q suffix
                 _ => "x",
             },
             _ => "",

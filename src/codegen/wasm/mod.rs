@@ -48,6 +48,11 @@ pub fn get_wasm_type<'a>(
         | Type::Struct(_)
         | Type::Tuple(_)
         | Type::Named(_) => get_wasm_type_primitive(PrimitiveType::Ptr, is_wasm64),
+        #[cfg(feature = "nightly")]
+        Type::Vector { element_type, .. } => {
+            // WASM SIMD uses v128 (128-bit vectors)
+            get_wasm_type_primitive(*element_type, is_wasm64)
+        }
         Type::Void => (NumericType::I32, None, Some(IntegerType::I32)), // Need to re-visit later on
     }
 }
@@ -147,6 +152,11 @@ pub fn get_wasm_size<'a>(
             }
             Ok(total)
         }
+        #[cfg(feature = "nightly")]
+        Type::Vector { element_type, lanes } => {
+            let elem_size = get_size_primitive(*element_type, is_wasm64) as u64;
+            Ok(elem_size * (*lanes as u64) / 8) // Convert bits to bytes
+        }
         Type::Tuple(types) => {
             let mut total = 0u64;
             for ty in types {
@@ -206,6 +216,12 @@ pub fn get_align<'a>(
                 .unwrap_or(1); // Default to 1-byte alignment if empty struct
             Ok(max_align)
         }
+        #[cfg(feature = "nightly")]
+        Type::Vector { element_type: _, lanes } => {
+            // WASM SIMD vectors are 128-bit (16 bytes) aligned
+            let vector_size = (*lanes as u64 * 4).min(16); // Assume 32-bit elements, cap at 16
+            Ok(vector_size)
+        }
         Type::Tuple(types) => {
             let max_align = types
                 .iter()
@@ -262,6 +278,11 @@ pub fn get_wasm_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>
             .iter()
             .map(|v| get_wasm_align(&v.ty, is_wasm64, module))
             .sum(),
+        #[cfg(feature = "nightly")]
+        Type::Vector { element_type: _, lanes: _ } => {
+            // WASM SIMD vectors are 128-bit (16 bytes)
+            16
+        }
         Type::Tuple(types) => types
             .iter()
             .map(|v| get_wasm_align(v, is_wasm64, module))
@@ -406,6 +427,14 @@ fn get_wasm_type_for_return<'a>(
             get_wasm_type_for_return_primitive(PrimitiveType::Ptr, is_wasm64),
             true,
         )),
+        #[cfg(feature = "nightly")]
+        Type::Vector { element_type, .. } => {
+            // WASM SIMD vectors can be returned
+            Some((
+                get_wasm_type_for_return_primitive(*element_type, is_wasm64),
+                false,
+            ))
+        }
         Type::Named(id) => {
             if let Some(named_ty) = module.type_declarations.get(id) {
                 get_wasm_type_for_return(&named_ty.ty, is_wasm64, module)
