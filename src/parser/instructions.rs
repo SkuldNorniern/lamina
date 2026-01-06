@@ -46,11 +46,11 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "readbyte" => parse_readbyte_assignment(state, result),
             "writeptr" => parse_writeptr_assignment(state, result),
             _ => {
-                let valid_ops = ["add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr", "eq", "ne", "gt", "ge", "lt", "le", "zext", "trunc", "sext", "bitcast", "select", "alloc", "load", "getfield", "getfieldptr", "getelem", "getelementptr", "ptrtoint", "inttoptr", "tuple", "extract", "call", "phi", "write", "read", "writebyte", "readbyte", "writeptr"];
+                let valid_ops = super::get_assignment_opcode_names();
                 let mut suggestions = Vec::new();
                 const MAX_TYPO_DISTANCE: usize = 2;
                 
-                for valid in &valid_ops {
+                for valid in valid_ops {
                     let distance = super::edit_distance(opcode_str, valid, Some(MAX_TYPO_DISTANCE));
                     if distance <= MAX_TYPO_DISTANCE {
                         suggestions.push(*valid);
@@ -95,11 +95,11 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "memmove" => parse_memmove(state),
             "memset" => parse_memset(state),
             _ => {
-                let valid_ops = ["ret", "jmp", "br", "call", "print", "store", "dealloc", "switch", "write", "read", "writebyte", "readbyte", "writeptr", "memcpy", "memmove", "memset"];
+                let valid_ops = super::get_non_assignment_opcode_names();
                 let mut suggestions = Vec::new();
                 const MAX_TYPO_DISTANCE: usize = 2;
                 
-                for valid in &valid_ops {
+                for valid in valid_ops {
                     let distance = super::edit_distance(opcode_str, valid, Some(MAX_TYPO_DISTANCE));
                     if distance <= MAX_TYPO_DISTANCE {
                         suggestions.push(*valid);
@@ -253,11 +253,11 @@ fn parse_alloc<'a>(
         "stack" => AllocType::Stack,
         "heap" => AllocType::Heap,
         _ => {
-            let valid_types = ["stack", "heap"];
+            let valid_types = super::get_alloc_type_names();
             let mut suggestions = Vec::new();
             const MAX_TYPO_DISTANCE: usize = 2;
             
-            for valid in &valid_types {
+            for valid in valid_types {
                 let distance = super::edit_distance(alloc_type_str, valid, Some(MAX_TYPO_DISTANCE));
                 if distance <= MAX_TYPO_DISTANCE {
                     suggestions.push(*valid);
@@ -273,7 +273,7 @@ fn parse_alloc<'a>(
                     format!("Did you mean one of: {}?", suggestions.iter().map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
                 }
             } else {
-                "Valid allocation types are: stack, heap".to_string()
+                format!("Valid allocation types are: {}", valid_types.join(", "))
             };
             
             return Err(state.error(format!(
@@ -374,11 +374,11 @@ fn parse_getelem<'a>(
             "char" => PrimitiveType::Char,
             "ptr" => PrimitiveType::Ptr,
             _ => {
-                let valid_types = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool", "char", "ptr"];
+                let valid_types = super::get_primitive_type_names();
                 let mut suggestions = Vec::new();
                 const MAX_TYPO_DISTANCE: usize = 2;
                 
-                for valid in &valid_types {
+                for valid in valid_types {
                     let distance = super::edit_distance(type_str, valid, Some(MAX_TYPO_DISTANCE));
                     if distance <= MAX_TYPO_DISTANCE {
                         suggestions.push(*valid);
@@ -394,7 +394,7 @@ fn parse_getelem<'a>(
                         format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
                     }
                 } else {
-                    "Valid primitive types include: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr".to_string()
+                    format!("Valid primitive types include: {}", valid_types.join(", "))
                 };
                 
                 return Err(state.error(format!(

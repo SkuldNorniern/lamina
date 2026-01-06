@@ -127,11 +127,13 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                 "ptr" => Ok(Type::Primitive(PrimitiveType::Ptr)),
                 "void" => Ok(Type::Void),
                 _ => {
-                    let valid_types = ["i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "bool", "char", "ptr", "void"];
+                    let primitive_types = super::get_primitive_type_names();
+                    // Include "void" as it's a valid type identifier but not a primitive type
+                    let all_type_names: Vec<&str> = primitive_types.iter().copied().chain(std::iter::once("void")).collect();
                     let mut suggestions = Vec::new();
                     const MAX_TYPO_DISTANCE: usize = 2;
                     
-                    for valid in &valid_types {
+                    for valid in &all_type_names {
                         let distance = super::edit_distance(potential_primitive, valid, Some(MAX_TYPO_DISTANCE));
                         if distance <= MAX_TYPO_DISTANCE {
                             suggestions.push(*valid);
@@ -147,7 +149,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                             format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
                         }
                     } else {
-                        "Valid type identifiers include: i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr, void, or named types starting with @".to_string()
+                        format!("Valid type identifiers include: {}, void, or named types starting with @", primitive_types.join(", "))
                     };
                     
                     Err(state.error(format!(
