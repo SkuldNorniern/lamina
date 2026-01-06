@@ -145,7 +145,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut module = Module::new();
 
     let mut seen_names = std::collections::HashSet::new();
-    
+
     loop {
         state.skip_whitespace_and_comments();
         if state.is_eof() {

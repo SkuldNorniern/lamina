@@ -14,6 +14,7 @@ pub struct CodegenBase<'a> {
     pub prepared: bool,
     pub verbose: bool,
     pub output: Vec<u8>,
+    pub codegen_units: usize,
 }
 
 impl<'a> CodegenBase<'a> {
@@ -24,6 +25,7 @@ impl<'a> CodegenBase<'a> {
             prepared: false,
             verbose: false,
             output: Vec::new(),
+            codegen_units: 1,
         }
     }
 
@@ -40,10 +42,24 @@ impl<'a> CodegenBase<'a> {
         _types: &HashMap<String, MirType>,
         _globals: &HashMap<String, Global>,
         _funcs: &HashMap<String, Signature>,
+        codegen_units: usize,
         verbose: bool,
         _options: &[CodegenOptions],
         _input_name: &str,
     ) -> Result<(), CodegenError> {
+        const MAX_CODEGEN_UNITS: usize = 16;
+        if codegen_units == 0 {
+            return Err(CodegenError::InvalidCodegenOptions(
+                "codegen_units must be at least 1".to_string(),
+            ));
+        }
+        if codegen_units > MAX_CODEGEN_UNITS {
+            return Err(CodegenError::InvalidCodegenOptions(format!(
+                "codegen_units exceeds maximum: {}",
+                MAX_CODEGEN_UNITS
+            )));
+        }
+        self.codegen_units = codegen_units;
         self.verbose = verbose;
         self.prepared = true;
         Ok(())

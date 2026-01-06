@@ -87,12 +87,13 @@ impl<'a> Codegen for WasmCodegen<'a> {
         types: &std::collections::HashMap<String, crate::mir::MirType>,
         globals: &std::collections::HashMap<String, crate::mir::Global>,
         funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],
         input_name: &str,
     ) -> Result<(), CodegenError> {
         self.base
-            .prepare_base(types, globals, funcs, verbose, options, input_name)
+            .prepare_base(types, globals, funcs, codegen_units, verbose, options, input_name)
     }
 
     fn compile(&mut self) -> Result<(), CodegenError> {

@@ -168,6 +168,7 @@ pub trait Codegen {
         types: &HashMap<String, MirType>,
         globals: &HashMap<String, Global>,
         funcs: &HashMap<String, Signature>,
+        codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],
         input_name: &str,
