@@ -129,10 +129,21 @@ pub fn generate_mir_x86_64<W: Write>(
 
     emit_print_format_section(writer, target_os)?;
 
+    // Emit external function declarations first
+    for func_name in &module.external_functions {
+        let label = abi.mangle_function_name(func_name);
+        writeln!(writer, ".extern {}", label)?;
+    }
+
     writeln!(writer, ".text")?;
     writeln!(writer, "{}", abi.get_main_global())?;
 
     for (func_name, func) in &module.functions {
+        // Skip external functions - they're already declared above
+        if module.is_external(func_name) {
+            continue;
+        }
+        
         ensure_signature_support(&func.sig)?;
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, "{}:", label)?;
