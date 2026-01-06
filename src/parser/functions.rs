@@ -34,13 +34,13 @@ pub fn parse_annotations(
                     const MAX_TYPO_DISTANCE: usize = 2;
                     
                     for valid in &valid_annotations {
-                        let distance = edit_distance(name, valid, Some(MAX_TYPO_DISTANCE));
+                        let distance = super::edit_distance(name, valid, Some(MAX_TYPO_DISTANCE));
                         if distance <= MAX_TYPO_DISTANCE {
                             suggestions.push(*valid);
                         }
                     }
                     
-                    suggestions.sort_by_key(|&s| edit_distance(name, s, None));
+                    suggestions.sort_by_key(|&s| super::edit_distance(name, s, None));
                     
                     let hint = if !suggestions.is_empty() {
                         if suggestions.len() == 1 {
@@ -195,6 +195,9 @@ pub fn parse_param_list<'a>(
 }
 
 /// Parses a basic block.
+/// 
+/// A basic block consists of a label followed by a colon, then zero or more
+/// instructions ending with a terminator (ret, jmp, or br).
 pub fn parse_basic_block<'a>(
     state: &mut ParserState<'a>,
 ) -> Result<(Label<'a>, BasicBlock<'a>), LaminaError> {
