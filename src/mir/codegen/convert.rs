@@ -15,6 +15,8 @@ use crate::mir::{
     AddressMode, Block, Instruction, MemoryAttrs, Module, Operand, Parameter, Register,
     RegisterClass, Signature, VirtualReg, VirtualRegAllocator,
 };
+#[cfg(feature = "nightly")]
+use crate::mir::{MemoryOrdering, SimdOp};
 use std::collections::HashSet;
 
 pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRError> {
@@ -1551,15 +1553,15 @@ fn convert_instruction<'a>(
             let lhs_op = get_operand_permissive(lhs, vreg_alloc, var_to_reg)?;
             let rhs_op = get_operand_permissive(rhs, vreg_alloc, var_to_reg)?;
             let mir_op = match op {
-                crate::ir::instruction::SimdOp::Add => crate::mir::SimdOp::Add,
-                crate::ir::instruction::SimdOp::Sub => crate::mir::SimdOp::Sub,
-                crate::ir::instruction::SimdOp::Mul => crate::mir::SimdOp::Mul,
-                crate::ir::instruction::SimdOp::Div => crate::mir::SimdOp::Div,
-                crate::ir::instruction::SimdOp::Min => crate::mir::SimdOp::Min,
-                crate::ir::instruction::SimdOp::Max => crate::mir::SimdOp::Max,
-                crate::ir::instruction::SimdOp::Abs => crate::mir::SimdOp::Abs,
-                crate::ir::instruction::SimdOp::Neg => crate::mir::SimdOp::Neg,
-                crate::ir::instruction::SimdOp::Sqrt => crate::mir::SimdOp::Sqrt,
+                crate::ir::instruction::SimdOp::Add => SimdOp::Add,
+                crate::ir::instruction::SimdOp::Sub => SimdOp::Sub,
+                crate::ir::instruction::SimdOp::Mul => SimdOp::Mul,
+                crate::ir::instruction::SimdOp::Div => SimdOp::Div,
+                crate::ir::instruction::SimdOp::Min => SimdOp::Min,
+                crate::ir::instruction::SimdOp::Max => SimdOp::Max,
+                crate::ir::instruction::SimdOp::Abs => SimdOp::Abs,
+                crate::ir::instruction::SimdOp::Neg => SimdOp::Neg,
+                crate::ir::instruction::SimdOp::Sqrt => SimdOp::Sqrt,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             Ok(vec![Instruction::SimdBinary {
@@ -1587,9 +1589,9 @@ fn convert_instruction<'a>(
             let mir_ty = map_ir_type(vector_type)?;
             let src_op = get_operand_permissive(operand, vreg_alloc, var_to_reg)?;
             let mir_op = match op {
-                crate::ir::instruction::SimdOp::Abs => crate::mir::SimdOp::Abs,
-                crate::ir::instruction::SimdOp::Neg => crate::mir::SimdOp::Neg,
-                crate::ir::instruction::SimdOp::Sqrt => crate::mir::SimdOp::Sqrt,
+                crate::ir::instruction::SimdOp::Abs => SimdOp::Abs,
+                crate::ir::instruction::SimdOp::Neg => SimdOp::Neg,
+                crate::ir::instruction::SimdOp::Sqrt => SimdOp::Sqrt,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             Ok(vec![Instruction::SimdUnary {
@@ -1617,19 +1619,19 @@ fn convert_instruction<'a>(
             let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
             let mir_ordering = match ordering {
                 crate::ir::instruction::MemoryOrdering::Relaxed => {
-                    crate::mir::MemoryOrdering::Relaxed
+                    MemoryOrdering::Relaxed
                 }
                 crate::ir::instruction::MemoryOrdering::Acquire => {
-                    crate::mir::MemoryOrdering::Acquire
+                    MemoryOrdering::Acquire
                 }
                 crate::ir::instruction::MemoryOrdering::Release => {
-                    crate::mir::MemoryOrdering::Release
+                    MemoryOrdering::Release
                 }
                 crate::ir::instruction::MemoryOrdering::AcqRel => {
-                    crate::mir::MemoryOrdering::AcqRel
+                    MemoryOrdering::AcqRel
                 }
                 crate::ir::instruction::MemoryOrdering::SeqCst => {
-                    crate::mir::MemoryOrdering::SeqCst
+                    MemoryOrdering::SeqCst
                 }
             };
             Ok(vec![Instruction::AtomicLoad {
@@ -1651,19 +1653,19 @@ fn convert_instruction<'a>(
             let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
             let mir_ordering = match ordering {
                 crate::ir::instruction::MemoryOrdering::Relaxed => {
-                    crate::mir::MemoryOrdering::Relaxed
+                    MemoryOrdering::Relaxed
                 }
                 crate::ir::instruction::MemoryOrdering::Acquire => {
-                    crate::mir::MemoryOrdering::Acquire
+                    MemoryOrdering::Acquire
                 }
                 crate::ir::instruction::MemoryOrdering::Release => {
-                    crate::mir::MemoryOrdering::Release
+                    MemoryOrdering::Release
                 }
                 crate::ir::instruction::MemoryOrdering::AcqRel => {
-                    crate::mir::MemoryOrdering::AcqRel
+                    MemoryOrdering::AcqRel
                 }
                 crate::ir::instruction::MemoryOrdering::SeqCst => {
-                    crate::mir::MemoryOrdering::SeqCst
+                    MemoryOrdering::SeqCst
                 }
             };
             Ok(vec![Instruction::AtomicStore {
@@ -1677,19 +1679,19 @@ fn convert_instruction<'a>(
         crate::ir::instruction::Instruction::Fence { ordering } => {
             let mir_ordering = match ordering {
                 crate::ir::instruction::MemoryOrdering::Relaxed => {
-                    crate::mir::MemoryOrdering::Relaxed
+                    MemoryOrdering::Relaxed
                 }
                 crate::ir::instruction::MemoryOrdering::Acquire => {
-                    crate::mir::MemoryOrdering::Acquire
+                    MemoryOrdering::Acquire
                 }
                 crate::ir::instruction::MemoryOrdering::Release => {
-                    crate::mir::MemoryOrdering::Release
+                    MemoryOrdering::Release
                 }
                 crate::ir::instruction::MemoryOrdering::AcqRel => {
-                    crate::mir::MemoryOrdering::AcqRel
+                    MemoryOrdering::AcqRel
                 }
                 crate::ir::instruction::MemoryOrdering::SeqCst => {
-                    crate::mir::MemoryOrdering::SeqCst
+                    MemoryOrdering::SeqCst
                 }
             };
             Ok(vec![Instruction::Fence {

@@ -108,6 +108,11 @@ pub fn get_size<'a>(
             }
             Ok(total)
         }
+        #[cfg(feature = "nightly")]
+        Type::Vector { element_type, lanes } => {
+            let elem_size = get_size_primitive(*element_type, is_wasm64) as u64;
+            Ok(elem_size * (*lanes as u64) / 8) // Convert bits to bytes
+        }
         Type::Void => Ok(0),
     }
 }
