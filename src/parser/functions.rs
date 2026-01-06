@@ -76,9 +76,19 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
 
     let entry_block = entry_block_label
         .ok_or_else(|| {
-            let is_external = annotations.contains(&FunctionAnnotation::Extern);
-            if is_external {
+            // Provide annotation-specific error messages
+            if annotations.contains(&FunctionAnnotation::Extern) {
                 state.error("External functions must have at least one basic block (e.g., 'entry: ret.void')\n  Hint: Even external function declarations need a basic block structure for compatibility".to_string())
+            } else if annotations.contains(&FunctionAnnotation::Export) {
+                state.error("Exported functions must have at least one basic block\n  Hint: Exported functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
+            } else if annotations.contains(&FunctionAnnotation::Inline) {
+                state.error("Inline functions must have at least one basic block\n  Hint: Inline functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
+            } else if annotations.contains(&FunctionAnnotation::NoReturn) {
+                state.error("NoReturn functions must have at least one basic block\n  Hint: NoReturn functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
+            } else if annotations.contains(&FunctionAnnotation::NoInline) {
+                state.error("NoInline functions must have at least one basic block\n  Hint: NoInline functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
+            } else if annotations.contains(&FunctionAnnotation::Cold) {
+                state.error("Cold functions must have at least one basic block\n  Hint: Cold functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
             } else {
                 state.error("Function must have at least one basic block\n  Hint: Functions require at least one basic block (e.g., 'entry:')".to_string())
             }
