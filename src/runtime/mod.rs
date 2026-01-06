@@ -103,18 +103,66 @@ pub fn compile_to_runtime(
                         // Decode instruction type
                         let opcode = (inst >> 26) & 0x3F;
                         let opcode_top = (inst >> 28) & 0xF;
-                        let inst_type = if opcode == 0b100101 {
+                        let bits_29_27 = (inst >> 27) & 0x7;
+                        let bits_25_24 = (inst >> 24) & 0x3;
+                        let inst_type = if (inst >> 25) & 0x7F == 0b1101011 {
+                            // RET/BR: [31:25]=1101011, [24]=0, [23:21]=010
+                            "RET/BR"
+                        } else if opcode == 0b100101 {
                             "BL"
                         } else if opcode_top == 0b00 && (inst >> 27) & 0x1 == 1 {
-                            "STP/LDP"
-                        } else if (inst >> 31) & 0x1 == 1 && (inst >> 29) & 0x3 == 0b10 {
-                            "ADD/SUB"
-                        } else if (inst >> 31) & 0x1 == 1 && (inst >> 29) & 0x3 == 0b00 {
-                            "STR/LDR"
+                            // STP/LDP: [31:30]=00, [27]=1
+                            if (inst >> 28) & 0x1 == 0 {
+                                "STP"
+                            } else {
+                                "LDP"
+                            }
+                        } else if opcode_top == 0b00 && (inst >> 27) & 0x1 == 0 {
+                            // LDP (post-index): [31:30]=00, [28]=1, [27]=0
+                            if (inst >> 28) & 0x1 == 1 {
+                                "LDP"
+                            } else {
+                                "STP"
+                            }
+                        } else if bits_29_27 == 0b010 && (inst >> 23) & 0x3F == 0b100010 && opcode_top != 0b00 {
+                            // ADD/SUB (immediate): [29:27]=010, [28:23]=100010, but not LDP/STP
+                            if (inst >> 30) & 0x1 == 0 {
+                                "ADD(imm)"
+                            } else {
+                                "SUB(imm)"
+                            }
+                        } else if bits_29_27 == 0b001 && (inst >> 23) & 0x3F == 0b010110 && (inst >> 30) & 0x3 == 0b10 {
+                            // ADD (register, shifted register): [31:30]=10, [29:27]=001, [28:24]=01011, [23:22]=00
+                            // This is ADD with no shift
+                            "ADD(reg)"
+                        } else if bits_29_27 == 0b010 && (inst >> 23) & 0x3F == 0b100010 && (inst >> 30) & 0x3 == 0b10 {
+                            // ADD/SUB (register, extended): [31:30]=10, [29:27]=010, [28:23]=100010
+                            if (inst >> 30) & 0x1 == 0 {
+                                "ADD(reg,ext)"
+                            } else {
+                                "SUB(reg,ext)"
+                            }
+                        } else if bits_29_27 == 0b010 && (inst >> 23) & 0x3F == 0b100101 {
+                            // MOVZ/MOVK: [29:27]=010, [28:23]=100101
+                            if (inst >> 21) & 0x3 == 0b00 {
+                                "MOVZ"
+                            } else {
+                                "MOVK"
+                            }
+                        } else if bits_29_27 == 0b111 && (inst >> 26) & 0x1 == 0 {
+                            // STR/LDR unscaled immediate: [29:27]=111, [26]=0
+                            if bits_25_24 == 0b00 {
+                                "STR(unscaled)"
+                            } else if bits_25_24 == 0b01 {
+                                "LDR(unscaled)"
+                            } else {
+                                "STR/LDR(scaled)"
+                            }
+                        } else if bits_29_27 == 0b001 && (inst >> 23) & 0x3F == 0b010100 && (inst >> 30) & 0x3 == 0b11 {
+                            // EOR/XOR (register): [31:30]=11, [29:27]=001, [28:23]=010100
+                            "EOR/XOR"
                         } else if (inst >> 31) & 0x1 == 1 && (inst >> 29) & 0x3 == 0b01 {
                             "MOV/ORR"
-                        } else if (inst >> 25) & 0x7F == 0b11010110 {
-                            "RET/BR"
                         } else {
                             "UNKNOWN"
                         };
