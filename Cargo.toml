@@ -25,7 +25,12 @@ encoder = []
 # Enable the use of the mold linker instead of the default system linker (usually ld via gcc)
 #use_mold = []
 # Enable experimental/nightly features (may change without notice)
-nightly = []
+# When enabled, automatically enables nightly in all lamina-* dependencies
+nightly = [
+    "lamina-platform/nightly",
+    "lamina-mir/nightly",
+    "lamina-codegen/nightly",
+]
 
 [lints.clippy]
 unwrap_used = "warn"
