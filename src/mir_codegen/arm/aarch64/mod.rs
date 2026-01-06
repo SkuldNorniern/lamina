@@ -56,7 +56,17 @@ pub fn generate_mir_aarch64<W: Write>(
 
     let abi = AArch64ABI::new(target_os);
 
+    // Emit external function declarations first
+    for func_name in &module.external_functions {
+        let label = abi.mangle_function_name(func_name);
+        writeln!(writer, ".extern {}", label)?;
+    }
+
     for (func_name, func) in &module.functions {
+        // Skip external functions - they're already declared above
+        if module.is_external(func_name) {
+            continue;
+        }
         if let Some(globl) = abi.get_global_directive(func_name) {
             writeln!(writer, "{}", globl)?;
         }

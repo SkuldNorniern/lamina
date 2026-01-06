@@ -23,6 +23,11 @@ pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRE
     let mut mir_module = Module::new(name);
 
     for (func_name, ir_func) in &ir.functions {
+        // Check if function is external before converting
+        if ir_func.annotations.contains(&crate::ir::function::FunctionAnnotation::Extern) {
+            mir_module.mark_external(func_name);
+        }
+        
         let mir_func = convert_function(func_name, ir_func)?;
         mir_module.add_function(mir_func);
     }

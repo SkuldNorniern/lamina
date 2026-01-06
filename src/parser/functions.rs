@@ -22,11 +22,12 @@ pub fn parse_annotations(
             let annotation = match name {
                 "inline" => FunctionAnnotation::Inline,
                 "export" => FunctionAnnotation::Export,
+                "extern" => FunctionAnnotation::Extern,
                 "noreturn" => FunctionAnnotation::NoReturn,
                 "noinline" => FunctionAnnotation::NoInline,
                 "cold" => FunctionAnnotation::Cold,
                 _ => {
-                    let valid_annotations = "inline, export, noreturn, noinline, cold";
+                    let valid_annotations = "inline, export, extern, noreturn, noinline, cold";
                     return Err(state.error(format!(
                         "Unknown function annotation: @{}\n  Hint: Valid annotations are: {}",
                         name, valid_annotations
@@ -74,7 +75,14 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
     }
 
     let entry_block = entry_block_label
-        .ok_or_else(|| state.error("Function must have at least one basic block\n  Hint: Functions require at least one basic block (e.g., 'entry:')".to_string()))?;
+        .ok_or_else(|| {
+            let is_external = annotations.contains(&FunctionAnnotation::Extern);
+            if is_external {
+                state.error("External functions must have at least one basic block (e.g., 'entry: ret.void')\n  Hint: Even external function declarations need a basic block structure for compatibility".to_string())
+            } else {
+                state.error("Function must have at least one basic block\n  Hint: Functions require at least one basic block (e.g., 'entry:')".to_string())
+            }
+        })?;
 
     Ok(Function {
         name,

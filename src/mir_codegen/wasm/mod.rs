@@ -169,6 +169,26 @@ pub fn generate_mir_wasm<W: Write>(
     writeln!(writer, "(module")?;
     writeln!(writer, "  {}", abi.get_print_import())?;
 
+    // Emit import declarations for external functions
+    for func_name in &module.external_functions {
+        if let Some(func) = module.functions.get(func_name) {
+            let mangled_name = abi.mangle_function_name(func_name);
+            write!(writer, "  (import \"env\" \"{}\" (func ${}", func_name, mangled_name)?;
+            
+            // Parameters
+            for param in &func.sig.params {
+                write!(writer, " (param i64)")?;
+            }
+            
+            // Return type
+            if func.sig.ret_ty.is_some() {
+                write!(writer, " (result i64)")?;
+            }
+            
+            writeln!(writer, ")")?;
+        }
+    }
+
     // Global variables for virtual registers
     let mut global_count = 0;
     for func in module.functions.values() {
@@ -189,6 +209,10 @@ pub fn generate_mir_wasm<W: Write>(
 
     // Functions
     for (func_name, func) in &module.functions {
+        // Skip external functions - they're already imported above
+        if module.is_external(func_name) {
+            continue;
+        }
         let mangled_name = abi.mangle_function_name(func_name);
         writeln!(writer, "  (func ${}", mangled_name)?;
 
