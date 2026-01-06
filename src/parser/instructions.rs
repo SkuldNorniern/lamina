@@ -191,7 +191,6 @@ fn parse_cmp_op<'a>(
     })
 }
 
-/// Parses an allocation instruction.
 fn parse_alloc<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -234,7 +233,6 @@ fn parse_alloc<'a>(
     })
 }
 
-/// Parses a load instruction.
 fn parse_load<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -244,7 +242,6 @@ fn parse_load<'a>(
     Ok(Instruction::Load { result, ty, ptr })
 }
 
-/// Parses a store instruction.
 fn parse_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
@@ -253,12 +250,11 @@ fn parse_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lamin
     Ok(Instruction::Store { ty, ptr, value })
 }
 
-/// Parses a getfieldptr instruction.
 fn parse_getfield<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let _current_pos = state.position();
+    let pos = state.position();
     let has_dot = state.current_char() == Some('.');
 
     if has_dot {
@@ -270,10 +266,9 @@ fn parse_getfield<'a>(
     state.expect_char(',')?;
     let field_index_val = state.parse_integer()?;
     
-    // Validate field index is non-negative
     if field_index_val < 0 {
         return Err(state.error(format!(
-            "Invalid field index: {}\n  Hint: Field indices must be non-negative integers (0, 1, 2, ...)",
+            "Invalid field index: {}",
             field_index_val
         )));
     }
@@ -286,12 +281,11 @@ fn parse_getfield<'a>(
     })
 }
 
-/// Parses a getelementptr instruction.
 fn parse_getelem<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let _current_pos = state.position();
+    let pos = state.position();
     let has_dot = state.current_char() == Some('.');
 
     if has_dot {
@@ -333,7 +327,6 @@ fn parse_getelem<'a>(
     })
 }
 
-/// Parses a ptrtoint instruction.
 fn parse_ptrtoint<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -358,7 +351,6 @@ fn parse_ptrtoint<'a>(
     })
 }
 
-/// Parses an inttoptr instruction.
 fn parse_inttoptr<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -387,46 +379,37 @@ fn parse_tuple<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // tuple.T element1, element2, ... (Simplified: just parse elements)
     let mut elements = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
-        // Check if we're at end of input or block
         if state.is_eof() || state.current_char() == Some('}') {
-            break; // No more elements
+            break;
         }
-        // Check if next token could be an operand
-        let _current_pos = state.position(); // Prefixed with _
+        let pos = state.position();
         if parse_value(state).is_ok() {
-            // Check if this value is followed by '=' (next instruction) or ',' (tuple element)
-            let _after_value_pos = state.position();
+            let after_pos = state.position();
             state.skip_whitespace_and_comments();
             if state.current_char() == Some('=') {
-                // This is the start of the next instruction, not a tuple element
-                state.set_position(_current_pos); // Backtrack to before the value
+                state.set_position(pos);
                 break;
             }
-            // It's a tuple element
-            state.set_position(_current_pos); // Backtrack
+            state.set_position(pos);
             let elem = parse_value(state)?;
             elements.push(elem);
             state.skip_whitespace_and_comments();
             if state.current_char() != Some(',') {
-                break; // No more elements
+                break;
             }
             state.expect_char(',')?;
         } else {
-            state.set_position(_current_pos); // Backtrack
-            break; // No more operands
+            state.set_position(pos);
+            break;
         }
     }
-    // Allow empty tuples (elements can be empty)
-    // Skip any remaining whitespace/comments after tuple elements
     state.skip_whitespace_and_comments();
     Ok(Instruction::Tuple { result, elements })
 }
 
-/// Parses an extract tuple instruction.
 fn parse_extract_tuple<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -437,10 +420,9 @@ fn parse_extract_tuple<'a>(
     state.expect_char(',')?;
     let index_val = state.parse_integer()?;
     
-    // Validate tuple index is non-negative
     if index_val < 0 {
         return Err(state.error(format!(
-            "Invalid tuple index: {}\n  Hint: Tuple indices must be non-negative integers (0, 1, 2, ...)",
+            "Invalid tuple index: {}",
             index_val
         )));
     }
@@ -453,24 +435,23 @@ fn parse_extract_tuple<'a>(
     })
 }
 
-/// Parses a call instruction.
 fn parse_call<'a>(
     state: &mut ParserState<'a>,
     result: Option<Identifier<'a>>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let func_name = state.parse_type_identifier()?; // @func
+    let func_name = state.parse_type_identifier()?;
     state.expect_char('(')?;
     let mut args = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
-            state.advance(); // Consume ')'
+            state.advance();
             break;
         }
         args.push(parse_value(state)?);
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
-            state.advance(); // Consume ')'
+            state.advance();
             break;
         }
         state.expect_char(',')?;
@@ -486,7 +467,6 @@ fn parse_phi<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // phi.T [val1, label1], [val2, label2], ...
     let ty = parse_type_suffix(state)?;
     let mut incoming = Vec::new();
     loop {
@@ -518,7 +498,6 @@ fn parse_phi<'a>(
 }
 
 fn parse_br<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // br cond, label1, label2
     let condition = parse_value(state)?;
     state.expect_char(',')?;
     let true_label = state.parse_label_identifier()?;
@@ -532,16 +511,13 @@ fn parse_br<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaEr
 }
 
 fn parse_jmp<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // jmp label
     let target_label = state.parse_label_identifier()?;
     Ok(Instruction::Jmp { target_label })
 }
 
 fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // ret.T val  OR ret.void
     state.expect_char('.')?;
     state.skip_whitespace_and_comments();
-    // Peek ahead to check for void
     if state.peek_slice(4) == Some("void") {
         state.consume_keyword("void")?;
         Ok(Instruction::Ret {
@@ -559,20 +535,17 @@ fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaE
 }
 
 fn parse_dealloc<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // dealloc.heap ptr
     state.expect_char('.')?;
     state.consume_keyword("heap")?;
     let ptr = parse_value(state)?;
     Ok(Instruction::Dealloc { ptr })
 }
 
-/// Parses a print instruction.
 fn parse_print<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let value = parse_value(state)?;
     Ok(Instruction::Print { value })
 }
 
-/// Parses a write instruction (assignment form).
 fn parse_write_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -587,7 +560,6 @@ fn parse_write_assignment<'a>(
     })
 }
 
-/// Parses a read instruction (assignment form).
 fn parse_read_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
@@ -606,7 +578,6 @@ fn parse_writebyte_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: %result = writebyte %value
     let value = parse_value(state)?;
     Ok(Instruction::WriteByte { value, result })
 }
@@ -615,7 +586,6 @@ fn parse_readbyte_assignment<'a>(
     _state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: %result = readbyte
     Ok(Instruction::ReadByte { result })
 }
 
@@ -623,14 +593,11 @@ fn parse_writeptr_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: %result = writeptr %ptr
     let ptr = parse_value(state)?;
     Ok(Instruction::WritePtr { ptr, result })
 }
 
-// I/O instruction parsers - Non-assignment form (opcode ...)
 fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Format: write %buffer, %size, %result
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
     let size = parse_value(state)?;
@@ -644,7 +611,6 @@ fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lamin
 }
 
 fn parse_read<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Format: read %buffer, %size, %result
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
     let size = parse_value(state)?;
@@ -658,7 +624,6 @@ fn parse_read<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lamina
 }
 
 fn parse_writebyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Format: writebyte %value, %result
     let value = parse_value(state)?;
     state.expect_char(',')?;
     let result = state.parse_identifier_str()?;
@@ -666,13 +631,11 @@ fn parse_writebyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, L
 }
 
 fn parse_readbyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Format: readbyte %result
     let result = state.parse_identifier_str()?;
     Ok(Instruction::ReadByte { result })
 }
 
 fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Format: writeptr %ptr, %result
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
     let result = state.parse_identifier_str()?;
@@ -680,7 +643,6 @@ fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, La
 }
 
 fn parse_memcpy<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Format: memcpy dst, src, size
     let dst = parse_value(state)?;
     state.expect_char(',')?;
     let src = parse_value(state)?;
@@ -690,7 +652,6 @@ fn parse_memcpy<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lami
 }
 
 fn parse_memmove<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Format: memmove dst, src, size
     let dst = parse_value(state)?;
     state.expect_char(',')?;
     let src = parse_value(state)?;
@@ -700,7 +661,6 @@ fn parse_memmove<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lam
 }
 
 fn parse_memset<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Format: memset dst, value, size
     let dst = parse_value(state)?;
     state.expect_char(',')?;
     let value = parse_value(state)?;
@@ -709,12 +669,10 @@ fn parse_memset<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lami
     Ok(Instruction::MemSet { dst, value, size })
 }
 
-// Add parse function for zero extend
 fn parse_zext<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: zext.i32.i64 %value
     state.expect_char('.')?;
     let source_type_str = state.parse_identifier_str()?;
     let source_type = match source_type_str {
@@ -751,8 +709,6 @@ fn parse_zext<'a>(
         _ => return Err(state.error(format!("Invalid target type for zext: {}", target_type_str))),
     };
 
-    // Allow all conversions for now - the IR will handle validation
-    // Source type must be different from target type for meaningful conversion
     if source_type == target_type {
         return Err(state.error(format!(
             "Source and target types must be different for conversion: {}",
@@ -773,7 +729,6 @@ fn parse_trunc<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: trunc.src_tgt %value  e.g. trunc.i64.i32 %x
     state.expect_char('.')?;
     let source_type_str = state.parse_identifier_str()?;
     let source_type = parse_primitive_from_ident(state, source_type_str)?;
@@ -782,7 +737,6 @@ fn parse_trunc<'a>(
     let target_type_str = state.parse_identifier_str()?;
     let target_type = parse_primitive_from_ident(state, target_type_str)?;
 
-    // The IR validator is responsible for enforcing that target_type is narrower.
     let value = parse_value(state)?;
     Ok(Instruction::Trunc {
         result,
@@ -796,7 +750,6 @@ fn parse_sext<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: sext.src_tgt %value  e.g. sext.i32.i64 %x
     state.expect_char('.')?;
     let source_type_str = state.parse_identifier_str()?;
     let source_type = parse_primitive_from_ident(state, source_type_str)?;
@@ -818,7 +771,6 @@ fn parse_bitcast<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: bitcast.src_tgt %value  e.g. bitcast.i32.f32 %x
     state.expect_char('.')?;
     let source_type_str = state.parse_identifier_str()?;
     let source_type = parse_primitive_from_ident(state, source_type_str)?;
@@ -837,7 +789,6 @@ fn parse_bitcast<'a>(
 }
 
 fn parse_switch<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    // Format: switch.T value, default, [lit1, label1], [lit2, label2], ...
     let ty = parse_primitive_type_suffix(state)?;
     let value = parse_value(state)?;
     state.expect_char(',')?;
@@ -855,7 +806,6 @@ fn parse_switch<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lami
             break;
         }
         state.expect_char('[')?;
-        // Switch cases restrict literals to those supported by IR Literal and MIR lowering.
         let lit_value = parse_value(state)?;
         let lit = match lit_value {
             Value::Constant(l) => l,
@@ -883,7 +833,6 @@ fn parse_select<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    // Format: select.T cond, true_val, false_val
     let ty = parse_type_suffix(state)?;
     let cond = parse_value(state)?;
     state.expect_char(',')?;
