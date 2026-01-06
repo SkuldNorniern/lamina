@@ -33,13 +33,25 @@ impl ExecutableMemory {
 
             let aligned_size = (size + 4095) & !4095; // Page align
 
+            // On macOS Apple Silicon, we need MAP_JIT for JIT memory
+            #[cfg(target_os = "macos")]
+            #[cfg(target_arch = "aarch64")]
+            const MAP_JIT: libc::c_int = 0x0800; // From sys/mman.h on macOS
+
+            #[cfg(target_os = "macos")]
+            #[cfg(target_arch = "aarch64")]
+            let map_flags = MAP_ANONYMOUS | MAP_PRIVATE | MAP_JIT;
+
+            #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+            let map_flags = MAP_ANONYMOUS | MAP_PRIVATE;
+
             // Allocate with PROT_READ | PROT_WRITE (not executable yet)
             let ptr = unsafe {
                 mmap(
                     ptr::null_mut(),
                     aligned_size,
                     PROT_READ | PROT_WRITE,
-                    MAP_ANONYMOUS | MAP_PRIVATE,
+                    map_flags,
                     -1,
                     0,
                 )
@@ -109,6 +121,26 @@ impl ExecutableMemory {
                 )));
             }
 
+            // Flush instruction cache on ARM architectures
+            #[cfg(target_arch = "aarch64")]
+            {
+                unsafe {
+                    // Data Memory Barrier (DMB) - ensure all memory writes are visible
+                    std::sync::atomic::fence(std::sync::atomic::Ordering::SeqCst);
+                    
+                    // Use GCC/Clang builtin to flush instruction cache
+                    // This performs IC IALLU (Invalidate all instruction caches to PoU)
+                    // and ISB (Instruction Synchronization Barrier)
+                    unsafe extern "C" {
+                        fn __clear_cache(start: *const u8, end: *const u8);
+                    }
+                    // Flush the entire code region
+                    let start = self.ptr;
+                    let end = self.ptr.add(self.size);
+                    __clear_cache(start, end);
+                }
+            }
+
             Ok(())
         }
 
@@ -157,8 +189,32 @@ impl ExecutableMemory {
             return Err(RasError::IoError("Code too large".to_string()));
         }
 
+        #[cfg(target_os = "macos")]
+        #[cfg(target_arch = "aarch64")]
+        {
+            // On macOS with AArch64, we need to disable write protection before writing
+            unsafe {
+                unsafe extern "C" {
+                    fn pthread_jit_write_protect_np(value: libc::c_int);
+                }
+                pthread_jit_write_protect_np(0); // Disable write protection
+            }
+        }
+
         unsafe {
             std::ptr::copy_nonoverlapping(code.as_ptr(), self.ptr, code.len());
+        }
+
+        #[cfg(target_os = "macos")]
+        #[cfg(target_arch = "aarch64")]
+        {
+            // Re-enable write protection after writing
+            unsafe {
+                unsafe extern "C" {
+                    fn pthread_jit_write_protect_np(value: libc::c_int);
+                }
+                pthread_jit_write_protect_np(1); // Re-enable write protection
+            }
         }
 
         Ok(())
