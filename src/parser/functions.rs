@@ -9,39 +9,14 @@ use crate::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// Calculates the Levenshtein edit distance between two strings.
-///
-/// This function computes the minimum number of single-character edits
-/// (insertions, deletions, or substitutions) required to transform one string
-/// into another. The comparison is case-insensitive for better typo detection.
-///
-/// # Arguments
-///
-/// * `s1` - First string to compare
-/// * `s2` - Second string to compare
-/// * `max_distance` - Maximum distance to consider (for early termination optimization)
-///
-/// # Returns
-///
-/// The edit distance between the two strings, or `max_distance + 1` if the
-/// distance exceeds `max_distance` (for early termination).
-///
-/// # Examples
-///
-/// ```
-/// # use crate::parser::functions::edit_distance;
-/// assert_eq!(edit_distance("inline", "inlien", None), 2);
-/// assert_eq!(edit_distance("export", "EXPORT", None), 0); // case-insensitive
-/// assert_eq!(edit_distance("extern", "external", Some(2)), 3); // exceeds max
-/// ```
+/// Levenshtein edit distance for typo detection in annotation names.
+/// Uses space-optimized dynamic programming with early termination.
 fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
-    // Normalize to lowercase for case-insensitive comparison
     let s1_lower: Vec<char> = s1.to_lowercase().chars().collect();
     let s2_lower: Vec<char> = s2.to_lowercase().chars().collect();
     let m = s1_lower.len();
     let n = s2_lower.len();
     
-    // Early exit for empty strings
     if m == 0 {
         return n;
     }
@@ -49,7 +24,6 @@ fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
         return m;
     }
     
-    // Early exit if length difference exceeds max_distance
     if let Some(max) = max_distance {
         let len_diff = if m > n { m - n } else { n - m };
         if len_diff > max {
@@ -57,8 +31,6 @@ fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
         }
     }
     
-    // Use space-optimized DP: only store two rows at a time
-    // This reduces space complexity from O(m*n) to O(min(m,n))
     let (shorter, longer) = if m <= n {
         (&s1_lower, &s2_lower)
     } else {
@@ -67,23 +39,19 @@ fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
     let short_len = shorter.len();
     let long_len = longer.len();
     
-    // Previous row (dp[i-1])
     let mut prev_row: Vec<usize> = (0..=short_len).collect();
-    // Current row (dp[i])
     let mut curr_row = vec![0; short_len + 1];
     
     for i in 1..=long_len {
         curr_row[0] = i;
         
         for j in 1..=short_len {
-            // Cost is 0 if characters match, 1 otherwise
             let cost = if longer[i - 1] == shorter[j - 1] { 0 } else { 1 };
             
-            curr_row[j] = (prev_row[j] + 1)           // deletion
-                .min(curr_row[j - 1] + 1)             // insertion
-                .min(prev_row[j - 1] + cost);         // substitution
+            curr_row[j] = (prev_row[j] + 1)
+                .min(curr_row[j - 1] + 1)
+                .min(prev_row[j - 1] + cost);
             
-            // Early termination if we exceed max_distance
             if let Some(max) = max_distance {
                 if curr_row[j] > max {
                     return max + 1;
@@ -91,7 +59,6 @@ fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
             }
         }
         
-        // Swap rows for next iteration
         std::mem::swap(&mut prev_row, &mut curr_row);
     }
     
@@ -118,12 +85,10 @@ pub fn parse_annotations(
                 "noinline" => FunctionAnnotation::NoInline,
                 "cold" => FunctionAnnotation::Cold,
                 _ => {
-                    // Suggest similar annotation names for typos
                     let valid_annotations = ["inline", "export", "extern", "noreturn", "noinline", "cold"];
                     let mut suggestions = Vec::new();
                     const MAX_TYPO_DISTANCE: usize = 2;
                     
-                    // Find annotations within edit distance threshold
                     for valid in &valid_annotations {
                         let distance = edit_distance(name, valid, Some(MAX_TYPO_DISTANCE));
                         if distance <= MAX_TYPO_DISTANCE {
@@ -131,7 +96,6 @@ pub fn parse_annotations(
                         }
                     }
                     
-                    // Sort suggestions by edit distance for better ordering
                     suggestions.sort_by_key(|&s| edit_distance(name, s, None));
                     
                     let hint = if !suggestions.is_empty() {
@@ -151,33 +115,31 @@ pub fn parse_annotations(
                 }
             };
             
-            // Check for duplicate annotations
             if !seen.insert(annotation.clone()) {
                 return Err(state.error(format!(
-                    "Duplicate annotation: @{}\n  Hint: Each annotation can only appear once per function",
+                    "Duplicate annotation: @{}",
                     name
                 )));
             }
             
-            // Check for conflicting annotations
             if annotation == FunctionAnnotation::Inline && seen.contains(&FunctionAnnotation::NoInline) {
                 return Err(state.error(
-                    "Conflicting annotations: @inline and @noinline cannot be used together\n  Hint: Remove one of these conflicting annotations".to_string()
+                    "Conflicting annotations: @inline and @noinline cannot be used together".to_string()
                 ));
             }
             if annotation == FunctionAnnotation::NoInline && seen.contains(&FunctionAnnotation::Inline) {
                 return Err(state.error(
-                    "Conflicting annotations: @noinline and @inline cannot be used together\n  Hint: Remove one of these conflicting annotations".to_string()
+                    "Conflicting annotations: @noinline and @inline cannot be used together".to_string()
                 ));
             }
             if annotation == FunctionAnnotation::Extern && seen.contains(&FunctionAnnotation::Export) {
                 return Err(state.error(
-                    "Conflicting annotations: @extern and @export cannot be used together\n  Hint: @extern is for imported functions, @export is for exported functions".to_string()
+                    "Conflicting annotations: @extern and @export cannot be used together".to_string()
                 ));
             }
             if annotation == FunctionAnnotation::Export && seen.contains(&FunctionAnnotation::Extern) {
                 return Err(state.error(
-                    "Conflicting annotations: @export and @extern cannot be used together\n  Hint: @export is for exported functions, @extern is for imported functions".to_string()
+                    "Conflicting annotations: @export and @extern cannot be used together".to_string()
                 ));
             }
             
@@ -215,7 +177,7 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
 
         if basic_blocks.insert(label, block).is_some() {
             return Err(state.error(format!(
-                "Redefinition of basic block label: '{}'\n  Hint: Each basic block label must be unique within a function",
+                "Redefinition of basic block label: '{}'",
                 label
             )));
         }
@@ -223,22 +185,7 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
 
     let entry_block = entry_block_label
         .ok_or_else(|| {
-            // Provide annotation-specific error messages
-            if annotations.contains(&FunctionAnnotation::Extern) {
-                state.error("External functions must have at least one basic block (e.g., 'entry: ret.void')\n  Hint: Even external function declarations need a basic block structure for compatibility".to_string())
-            } else if annotations.contains(&FunctionAnnotation::Export) {
-                state.error("Exported functions must have at least one basic block\n  Hint: Exported functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
-            } else if annotations.contains(&FunctionAnnotation::Inline) {
-                state.error("Inline functions must have at least one basic block\n  Hint: Inline functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
-            } else if annotations.contains(&FunctionAnnotation::NoReturn) {
-                state.error("NoReturn functions must have at least one basic block\n  Hint: NoReturn functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
-            } else if annotations.contains(&FunctionAnnotation::NoInline) {
-                state.error("NoInline functions must have at least one basic block\n  Hint: NoInline functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
-            } else if annotations.contains(&FunctionAnnotation::Cold) {
-                state.error("Cold functions must have at least one basic block\n  Hint: Cold functions require a full implementation with at least one basic block (e.g., 'entry:')".to_string())
-            } else {
-                state.error("Function must have at least one basic block\n  Hint: Functions require at least one basic block (e.g., 'entry:')".to_string())
-            }
+            state.error("Function must have at least one basic block".to_string())
         })?;
 
     Ok(Function {
@@ -281,10 +228,9 @@ pub fn parse_param_list<'a>(
         let param_ty = parse_type(state)?;
         let param_name = state.parse_value_identifier()?;
         
-        // Check for duplicate parameter names
         if !param_names.insert(param_name) {
             return Err(state.error(format!(
-                "Duplicate parameter name: %{}\n  Hint: Each parameter must have a unique name",
+                "Duplicate parameter name: %{}",
                 param_name
             )));
         }
@@ -314,12 +260,12 @@ pub fn parse_basic_block<'a>(
     let mut instructions = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
-        let _current_pos = state.position();
+        let pos = state.position();
         if state.parse_label_identifier().is_ok() && state.current_char() == Some(':') {
-            state.set_position(_current_pos);
+            state.set_position(pos);
             break;
         }
-        state.set_position(_current_pos);
+        state.set_position(pos);
 
         if state.current_char() == Some('}') {
             break;
