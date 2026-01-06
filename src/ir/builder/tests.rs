@@ -1077,7 +1077,7 @@ mod tests {
         let func = &module.functions["atomic_test"];
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 6);
+        assert_eq!(entry.instructions.len(), 7);
 
         // Verify atomic store
         if let Instruction::AtomicStore {
