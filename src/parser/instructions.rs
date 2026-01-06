@@ -268,7 +268,17 @@ fn parse_getfield<'a>(
 
     let struct_ptr = parse_value(state)?;
     state.expect_char(',')?;
-    let field_index = state.parse_integer()? as usize;
+    let field_index_val = state.parse_integer()?;
+    
+    // Validate field index is non-negative
+    if field_index_val < 0 {
+        return Err(state.error(format!(
+            "Invalid field index: {}\n  Hint: Field indices must be non-negative integers (0, 1, 2, ...)",
+            field_index_val
+        )));
+    }
+    
+    let field_index = field_index_val as usize;
     Ok(Instruction::GetFieldPtr {
         result,
         struct_ptr,
@@ -425,7 +435,17 @@ fn parse_extract_tuple<'a>(
     state.consume_keyword("tuple")?;
     let tuple_val = parse_value(state)?;
     state.expect_char(',')?;
-    let index = state.parse_integer()? as usize;
+    let index_val = state.parse_integer()?;
+    
+    // Validate tuple index is non-negative
+    if index_val < 0 {
+        return Err(state.error(format!(
+            "Invalid tuple index: {}\n  Hint: Tuple indices must be non-negative integers (0, 1, 2, ...)",
+            index_val
+        )));
+    }
+    
+    let index = index_val as usize;
     Ok(Instruction::ExtractTuple {
         result,
         tuple_val,

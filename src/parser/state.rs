@@ -215,19 +215,44 @@ impl<'a> ParserState<'a> {
         } else {
             let digits = &self.input[if negative { start + 1 } else { start }..self.position];
 
+            // Handle i64::MIN special case
             if negative && digits == "9223372036854775808" {
                 return Ok(i64::MIN);
             }
 
+            // Check for overflow before parsing
+            if digits.len() > 19 {
+                return Err(self.error(format!(
+                    "Integer literal too large: {}{}\n  Hint: Integer literals must be between {} and {}",
+                    if negative { "-" } else { "" },
+                    digits,
+                    i64::MIN,
+                    i64::MAX
+                )));
+            }
+
             if negative {
                 match digits.parse::<i64>() {
-                    Ok(val) => Ok(-val),
-                    Err(e) => Err(self.error(format!("Failed to parse integer: {}", e))),
+                    Ok(val) => {
+                        // Check for overflow when negating
+                        if val == i64::MIN {
+                            Ok(i64::MIN)
+                        } else {
+                            Ok(-val)
+                        }
+                    },
+                    Err(e) => Err(self.error(format!(
+                        "Failed to parse integer: {}\n  Hint: Integer literals must be between {} and {}",
+                        e, i64::MIN, i64::MAX
+                    ))),
                 }
             } else {
                 digits
                     .parse::<i64>()
-                    .map_err(|e| self.error(format!("Failed to parse integer: {}", e)))
+                    .map_err(|e| self.error(format!(
+                        "Failed to parse integer: {}\n  Hint: Integer literals must be between {} and {}",
+                        e, i64::MIN, i64::MAX
+                    )))
             }
         }
     }
@@ -264,16 +289,43 @@ impl<'a> ParserState<'a> {
         let value_str = &self.input[start..self.position];
         value_str
             .parse::<f32>()
-            .map_err(|e| self.error(format!("Failed to parse float: {}", e)))
+            .map_err(|e| self.error(format!(
+                "Failed to parse float: {}\n  Hint: Float literals must be valid numbers (e.g., 3.14, -0.5, 42.0). Check for overflow or invalid format",
+                e
+            )))
     }
 
     /// Parses a string literal.
     pub fn parse_string_literal(&mut self) -> Result<&'a str, LaminaError> {
         self.expect_char('"')?;
         let start = self.position;
-        while !self.is_eof() && self.bytes[self.position] != b'"' {
+        let mut escaped = false;
+        
+        while !self.is_eof() {
+            let byte = self.bytes[self.position];
+            if escaped {
+                escaped = false;
+                self.advance();
+                continue;
+            }
+            
+            if byte == b'\\' {
+                escaped = true;
+                self.advance();
+                continue;
+            }
+            
+            if byte == b'"' {
+                break;
+            }
+            
             self.advance();
         }
+        
+        if self.is_eof() {
+            return Err(self.error("Unclosed string literal\n  Hint: String literals must be closed with a double quote (\")".to_string()));
+        }
+        
         let end = self.position;
         self.expect_char('"')?;
         Ok(&self.input[start..end])
@@ -304,7 +356,6 @@ impl<'a> ParserState<'a> {
     fn get_line_column(&self) -> (usize, usize) {
         let mut line = 1;
         let mut column = 1;
-        let mut pos = 0;
 
         for (i, ch) in self.input.char_indices() {
             if i >= self.position {
@@ -316,7 +367,6 @@ impl<'a> ParserState<'a> {
             } else {
                 column += 1;
             }
-            pos = i;
         }
 
         (line, column)

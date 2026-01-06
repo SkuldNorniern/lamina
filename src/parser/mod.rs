@@ -21,6 +21,9 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
     let mut module = Module::new();
 
+    // Track names to detect duplicates across different declaration types
+    let mut seen_names = std::collections::HashSet::new();
+    
     loop {
         state.skip_whitespace_and_comments();
         if state.is_eof() {
@@ -31,13 +34,49 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
 
         if keyword_slice.starts_with("type") {
             let decl = parse_type_declaration(&mut state)?;
-            module.type_declarations.insert(decl.name, decl);
+            let name = decl.name;
+            if !seen_names.insert(name) {
+                return Err(state.error(format!(
+                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
+                    name
+                )));
+            }
+            if module.type_declarations.insert(name, decl).is_some() {
+                return Err(state.error(format!(
+                    "Duplicate type declaration: @{}\n  Hint: Each type can only be declared once",
+                    name
+                )));
+            }
         } else if keyword_slice.starts_with("global") {
             let decl = parse_global_declaration(&mut state)?;
-            module.global_declarations.insert(decl.name, decl);
+            let name = decl.name;
+            if !seen_names.insert(name) {
+                return Err(state.error(format!(
+                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
+                    name
+                )));
+            }
+            if module.global_declarations.insert(name, decl).is_some() {
+                return Err(state.error(format!(
+                    "Duplicate global declaration: @{}\n  Hint: Each global can only be declared once",
+                    name
+                )));
+            }
         } else if keyword_slice.starts_with("fn") || keyword_slice.starts_with('@') {
             let func = parse_function_def(&mut state)?;
-            module.functions.insert(func.name, func);
+            let name = func.name;
+            if !seen_names.insert(name) {
+                return Err(state.error(format!(
+                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
+                    name
+                )));
+            }
+            if module.functions.insert(name, func).is_some() {
+                return Err(state.error(format!(
+                    "Duplicate function definition: @{}\n  Hint: Each function can only be defined once",
+                    name
+                )));
+            }
         } else {
             let token = state.peek_slice(20).unwrap_or("");
             let suggestions = if token.starts_with("type") {
