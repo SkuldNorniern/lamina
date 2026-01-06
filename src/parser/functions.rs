@@ -9,62 +9,6 @@ use crate::{
 };
 use std::collections::{HashMap, HashSet};
 
-/// Levenshtein edit distance for typo detection in annotation names.
-/// Uses space-optimized dynamic programming with early termination.
-fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
-    let s1_lower: Vec<char> = s1.to_lowercase().chars().collect();
-    let s2_lower: Vec<char> = s2.to_lowercase().chars().collect();
-    let m = s1_lower.len();
-    let n = s2_lower.len();
-    
-    if m == 0 {
-        return n;
-    }
-    if n == 0 {
-        return m;
-    }
-    
-    if let Some(max) = max_distance {
-        let len_diff = if m > n { m - n } else { n - m };
-        if len_diff > max {
-            return max + 1;
-        }
-    }
-    
-    let (shorter, longer) = if m <= n {
-        (&s1_lower, &s2_lower)
-    } else {
-        (&s2_lower, &s1_lower)
-    };
-    let short_len = shorter.len();
-    let long_len = longer.len();
-    
-    let mut prev_row: Vec<usize> = (0..=short_len).collect();
-    let mut curr_row = vec![0; short_len + 1];
-    
-    for i in 1..=long_len {
-        curr_row[0] = i;
-        
-        for j in 1..=short_len {
-            let cost = if longer[i - 1] == shorter[j - 1] { 0 } else { 1 };
-            
-            curr_row[j] = (prev_row[j] + 1)
-                .min(curr_row[j - 1] + 1)
-                .min(prev_row[j - 1] + cost);
-            
-            if let Some(max) = max_distance {
-                if curr_row[j] > max {
-                    return max + 1;
-                }
-            }
-        }
-        
-        std::mem::swap(&mut prev_row, &mut curr_row);
-    }
-    
-    prev_row[short_len]
-}
-
 /// Parses function annotations.
 pub fn parse_annotations(
     state: &mut ParserState<'_>,

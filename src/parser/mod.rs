@@ -16,6 +16,95 @@ use self::state::ParserState;
 use self::types::parse_type_declaration;
 use crate::{LaminaError, Module};
 
+/// Calculates the Levenshtein edit distance between two strings.
+///
+/// This function computes the minimum number of single-character edits
+/// (insertions, deletions, or substitutions) required to transform one string
+/// into another. The comparison is case-insensitive for better typo detection.
+///
+/// # Arguments
+///
+/// * `s1` - First string to compare
+/// * `s2` - Second string to compare
+/// * `max_distance` - Maximum distance to consider (for early termination optimization)
+///
+/// # Returns
+///
+/// The edit distance between the two strings, or `max_distance + 1` if the
+/// distance exceeds `max_distance` (for early termination).
+///
+/// # Examples
+///
+/// ```
+/// # use crate::parser::edit_distance;
+/// assert_eq!(edit_distance("inline", "inlien", None), 2);
+/// assert_eq!(edit_distance("export", "EXPORT", None), 0); // case-insensitive
+/// assert_eq!(edit_distance("extern", "external", Some(2)), 3); // exceeds max
+/// ```
+pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
+    // Normalize to lowercase for case-insensitive comparison
+    let s1_lower: Vec<char> = s1.to_lowercase().chars().collect();
+    let s2_lower: Vec<char> = s2.to_lowercase().chars().collect();
+    let m = s1_lower.len();
+    let n = s2_lower.len();
+    
+    // Early exit for empty strings
+    if m == 0 {
+        return n;
+    }
+    if n == 0 {
+        return m;
+    }
+    
+    // Early exit if length difference exceeds max_distance
+    if let Some(max) = max_distance {
+        let len_diff = if m > n { m - n } else { n - m };
+        if len_diff > max {
+            return max + 1;
+        }
+    }
+    
+    // Use space-optimized DP: only store two rows at a time
+    // This reduces space complexity from O(m*n) to O(min(m,n))
+    let (shorter, longer) = if m <= n {
+        (&s1_lower, &s2_lower)
+    } else {
+        (&s2_lower, &s1_lower)
+    };
+    let short_len = shorter.len();
+    let long_len = longer.len();
+    
+    // Previous row (dp[i-1])
+    let mut prev_row: Vec<usize> = (0..=short_len).collect();
+    // Current row (dp[i])
+    let mut curr_row = vec![0; short_len + 1];
+    
+    for i in 1..=long_len {
+        curr_row[0] = i;
+        
+        for j in 1..=short_len {
+            // Cost is 0 if characters match, 1 otherwise
+            let cost = if longer[i - 1] == shorter[j - 1] { 0 } else { 1 };
+            
+            curr_row[j] = (prev_row[j] + 1)           // deletion
+                .min(curr_row[j - 1] + 1)             // insertion
+                .min(prev_row[j - 1] + cost);         // substitution
+            
+            // Early termination if we exceed max_distance
+            if let Some(max) = max_distance {
+                if curr_row[j] > max {
+                    return max + 1;
+                }
+            }
+        }
+        
+        // Swap rows for next iteration
+        std::mem::swap(&mut prev_row, &mut curr_row);
+    }
+    
+    prev_row[short_len]
+}
+
 /// Parses a string containing Lamina IR text into a Module.
 pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
@@ -36,13 +125,13 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let name = decl.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
-                    "Duplicate name '{}': a type, function, or global with this name already exists",
+                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
                     name
                 )));
             }
             if module.type_declarations.insert(name, decl).is_some() {
                 return Err(state.error(format!(
-                    "Duplicate type declaration: @{}",
+                    "Duplicate type declaration: @{}\n  Hint: Each type can only be declared once",
                     name
                 )));
             }
@@ -51,7 +140,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let name = decl.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
-                    "Duplicate name '{}': a type, function, or global with this name already exists",
+                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
                     name
                 )));
             }
@@ -66,7 +155,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let name = func.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
-                    "Duplicate name '{}': a type, function, or global with this name already exists",
+                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
                     name
                 )));
             }
