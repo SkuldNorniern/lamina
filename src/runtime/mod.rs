@@ -5,9 +5,15 @@
 
 pub mod sandbox;
 pub mod compiler;
+pub mod executor;
+#[cfg(feature = "encoder")]
+pub mod macro_helpers;
 
 pub use compiler::RuntimeCompiler;
 pub use sandbox::{Sandbox, SandboxConfig};
+pub use executor::execute_jit_function;
+#[cfg(feature = "encoder")]
+pub use macro_helpers::compile_lir_internal;
 
 use crate::error::LaminaError;
 use crate::mir::Module as MirModule;
@@ -33,19 +39,18 @@ pub fn compile_to_runtime(
 ) -> Result<RuntimeResult, LaminaError> {
     #[cfg(feature = "encoder")]
     {
-        use ras::RasRuntime;
         use ras::assembler::RasAssembler;
         
-        let mut assembler = RasAssembler::new(target_arch, target_os)
+        let mut assembler = RasAssembler::new(_target_arch, _target_os)
             .map_err(|e| LaminaError::ValidationError(format!("Failed to create assembler: {}", e)))?;
         
         // Always compile all functions (needed for internal function calls)
-        let (code, function_offsets) = assembler.compile_mir_to_binary_function(module, None)
+        let (code, function_offsets) = assembler.compile_mir_to_binary_function(_module, None)
             .map_err(|e| LaminaError::ValidationError(format!("Runtime compilation failed: {}", e)))?;
         
         // Find the function offset for the requested function
-        let function_offset = if let Some(name) = function_name {
-            let offset = function_offsets.get(name)
+        let function_offset = if let Some(name) = _function_name {
+            let offset = function_offsets.get::<str>(name)
                 .or_else(|| {
                     if name.starts_with('@') {
                         function_offsets.get(&name[1..])
@@ -77,7 +82,7 @@ pub fn compile_to_runtime(
         // Get function pointer, adjusting for function offset if specified
         let base_ptr = unsafe { memory.as_function_ptr::<u8>() };
         let function_ptr = if let Some(offset) = function_offset {
-            let adjusted = unsafe { (base_ptr as usize + offset) as *const u8 };
+            let adjusted = (base_ptr as usize + offset) as *const u8;
             eprintln!("[DEBUG] Function pointer: base={:p}, offset={}, adjusted={:p}", base_ptr, offset, adjusted);
             
             // Debug: Print first few instruction bytes at the function pointer

@@ -298,6 +298,131 @@ pub mod mir; // Re-exports from lamina-mir for backward compatibility
 pub mod parser;
 pub mod runtime;
 
+/// Macro for inline Lamina IR code compilation (similar to `asm!`).
+///
+/// This macro allows you to write Lamina IR code directly in Rust and have it
+/// compiled to native code at runtime. The compiled function can then be called
+/// from Rust code.
+///
+/// # Syntax
+///
+/// ```rust
+/// use lamina::lamina;
+///
+/// // Basic usage - function name is extracted from the IR
+/// let add_fn = lamina!(
+///     r#"
+///     fn @add(i64 %a, i64 %b) -> i64 {
+///         entry:
+///             %res = add.i64 %a, %b
+///             ret.i64 %res
+///     }
+///     "#
+/// );
+///
+/// // Call the compiled function (returns Option<i64>)
+/// let result = add_fn(&[10, 20]);
+/// assert_eq!(result, Some(30));
+/// ```
+///
+/// # Function Name Extraction
+///
+/// The macro automatically extracts the function name from the IR code.
+/// The function must be named with the `@` prefix (e.g., `@add`).
+///
+/// # Safety
+///
+/// The returned function pointer is unsafe to call. The caller must ensure:
+/// 1. The function signature matches the expected signature
+/// 2. Arguments match the function's parameter types
+/// 3. The function is only called on the target architecture it was compiled for
+///
+/// # Limitations
+///
+/// - Currently only supports functions with i64 parameters and i64 return type
+/// - Requires the `encoder` feature to be enabled
+/// - Compilation happens at runtime, not compile-time
+#[macro_export]
+#[cfg(feature = "encoder")]
+macro_rules! lamina {
+    ($ir_code:literal) => {{
+        use $crate::runtime::compile_lir_internal;
+        
+        // Extract function name from IR code
+        let raw_name = $crate::runtime::macro_helpers::extract_function_name($ir_code)
+            .unwrap_or_else(|| {
+                panic!("lamina!: Could not extract function name from IR code. Function must be named with @ prefix (e.g., @add)");
+            });
+        
+        // Ensure function name has @ prefix for lookup
+        let function_name = if raw_name.starts_with('@') {
+            raw_name
+        } else {
+            // Try with @ prefix - need to allocate for format!
+            let owned = format!("@{}", raw_name);
+            // Leak the string to get a &'static str (macro result lives for program lifetime)
+            Box::leak(owned.into_boxed_str())
+        };
+        
+        // Compile the IR code
+        let function_ptr = compile_lir_internal($ir_code, function_name, 1)
+            .unwrap_or_else(|e| {
+                panic!("lamina!: Failed to compile IR code: {}", e);
+            });
+        
+        // Parse IR to get function signature for validation
+        let ir_module = $crate::parser::parse_module($ir_code)
+            .unwrap_or_else(|e| panic!("lamina!: Failed to parse IR: {}", e));
+        let mir_module = $crate::mir::codegen::from_ir(&ir_module, "lamina_macro")
+            .unwrap_or_else(|e| panic!("lamina!: Failed to lower to MIR: {}", e));
+        
+        // Find the function to get its signature
+        // Try multiple name variations since MIR might store names differently
+        let func = mir_module.functions.get(function_name)
+            .or_else(|| {
+                if function_name.starts_with('@') {
+                    mir_module.functions.get(&function_name[1..])
+                } else {
+                    let name_with_at = format!("@{}", function_name);
+                    mir_module.functions.get(&name_with_at)
+                }
+            })
+            .or_else(|| {
+                // Try finding by iterating (in case name format is different)
+                mir_module.functions.values()
+                    .find(|f| {
+                        f.sig.name == function_name || 
+                        f.sig.name == format!("@{}", function_name) ||
+                        (function_name.starts_with('@') && f.sig.name == &function_name[1..])
+                    })
+            })
+            .unwrap_or_else(|| {
+                let available = mir_module.function_names().join(", ");
+                panic!("lamina!: Function '{}' not found in IR code. Available functions: [{}]", function_name, available);
+            });
+        
+        let param_count = func.sig.params.len();
+        let returns_i64 = matches!(
+            func.sig.ret_ty.as_ref(),
+            Some($crate::mir::MirType::Scalar($crate::mir::ScalarType::I64))
+        );
+        
+        // Return a closure that handles dynamic arguments using execute_jit_function
+        let sig = func.sig.clone();
+        move |args: &[i64]| -> Option<i64> {
+            if args.len() != param_count {
+                return None;
+            }
+            // Use execute_jit_function for proper signature handling
+            match $crate::runtime::execute_jit_function(&sig, function_ptr, Some(args), false) {
+                Ok(result) => result,
+                Err(_) => None,
+            }
+        }
+    }};
+}
+
+
 use std::io::Write;
 
 // Re-export core IR structures for easier access
