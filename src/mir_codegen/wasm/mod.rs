@@ -159,10 +159,150 @@ impl<'a> Codegen for WasmCodegen<'a> {
     }
 }
 
+use crate::mir_codegen::common::compile_functions_parallel;
+
+fn compile_single_function_wasm(
+    func_name: &str,
+    func: &crate::mir::Function,
+    target_os: TargetOperatingSystem,
+) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
+    use std::io::Write;
+    let mut output = Vec::new();
+    let abi = WasmABI::new(target_os);
+    
+    let mangled_name = abi.mangle_function_name(func_name);
+    writeln!(output, "  (func ${}", mangled_name).map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+
+    for (i, _param) in func.sig.params.iter().enumerate() {
+        writeln!(output, "    (param $p{} i64)", i).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+
+    if func.sig.ret_ty.is_some() {
+        writeln!(output, "    (result i64)").map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+
+    let mut local_vregs = std::collections::HashSet::new();
+    for block in &func.blocks {
+        for inst in &block.instructions {
+            if let Some(dst) = inst.def_reg()
+                && let Register::Virtual(vreg) = dst
+            {
+                local_vregs.insert(vreg);
+            }
+            for reg in inst.use_regs() {
+                if let Register::Virtual(vreg) = reg {
+                    local_vregs.insert(vreg);
+                }
+            }
+        }
+    }
+
+    let mut vreg_to_local: std::collections::HashMap<crate::mir::VirtualReg, usize> =
+        std::collections::HashMap::new();
+    for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
+        vreg_to_local.insert(*vreg, local_idx);
+        writeln!(output, "{}", abi.generate_local_decl(local_idx)).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+
+    let mut block_labels: std::collections::HashMap<&str, usize> =
+        std::collections::HashMap::new();
+    for (idx, block) in func.blocks.iter().enumerate() {
+        block_labels.insert(&block.label, idx);
+    }
+
+    writeln!(output, "    (local $pc i64)").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+    writeln!(output, "    i64.const 0").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+    writeln!(output, "    local.set $pc").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+    writeln!(output, "    (loop $dispatch_loop").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+
+    let num_blocks = func.blocks.len();
+    for i in (0..num_blocks).rev() {
+        writeln!(output, "      (block $block_{}", i).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+
+    writeln!(output, "        local.get $pc").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+    writeln!(output, "        i32.wrap_i64").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+    write!(output, "        br_table").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+    for i in 0..num_blocks {
+        write!(output, " {}", i).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+    writeln!(output, " 0").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+
+    for block in func.blocks.iter() {
+        writeln!(output, "      )").map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+        writeln!(output, "      ;; Block: {}", block.label).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+        for inst in &block.instructions {
+            emit_instruction_wasm(inst, &mut output, &vreg_to_local, &block_labels).map_err(|e| {
+                crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
+            })?;
+        }
+        writeln!(output, "      br $dispatch_loop").map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+
+    writeln!(output, "    )").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+    
+    if func.sig.ret_ty.is_some() {
+        writeln!(output, "    i64.const 0").map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+    
+    writeln!(output, "  )").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+
+    Ok(output)
+}
+
 pub fn generate_mir_wasm<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
+) -> Result<(), crate::error::LaminaError> {
+    generate_mir_wasm_with_units(module, writer, target_os, 1)
+}
+
+pub fn generate_mir_wasm_with_units<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
 ) -> Result<(), crate::error::LaminaError> {
     let abi = WasmABI::new(target_os);
 
@@ -208,112 +348,25 @@ pub fn generate_mir_wasm<W: Write>(
         writeln!(writer, "{}", abi.generate_global_decl(i))?;
     }
 
-    // Functions
-    for (func_name, func) in &module.functions {
-        // Skip external functions - they're already imported above
-        if module.is_external(func_name) {
-            continue;
-        }
-        let mangled_name = abi.mangle_function_name(func_name);
-        writeln!(writer, "  (func ${}", mangled_name)?;
+    let results = compile_functions_parallel(
+        module,
+        target_os,
+        codegen_units,
+        compile_single_function_wasm,
+    ).map_err(|e| {
+        use crate::codegen::FeatureType;
+        crate::error::LaminaError::CodegenError(
+            crate::codegen::CodegenError::UnsupportedFeature(
+                FeatureType::Custom(format!("Parallel compilation error: {:?}", e))
+            )
+        )
+    })?;
 
-        // Parameters
-        for (i, _param) in func.sig.params.iter().enumerate() {
-            writeln!(writer, "    (param $p{} i64)", i)?;
-        }
+    for result in results {
+        writer.write_all(&result.assembly)?;
+    }
 
-        // Return type
-        if func.sig.ret_ty.is_some() {
-            writeln!(writer, "    (result i64)")?;
-        }
-
-        // Local variables for virtual registers
-        let mut local_vregs = std::collections::HashSet::new();
-        for block in &func.blocks {
-            for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(vreg) = dst
-                {
-                    local_vregs.insert(vreg);
-                }
-                for reg in inst.use_regs() {
-                    if let Register::Virtual(vreg) = reg {
-                        local_vregs.insert(vreg);
-                    }
-                }
-            }
-        }
-
-        // Map virtual registers to local indices
-        let mut vreg_to_local: std::collections::HashMap<crate::mir::VirtualReg, usize> =
-            std::collections::HashMap::new();
-        for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
-            vreg_to_local.insert(*vreg, local_idx);
-            writeln!(writer, "{}", abi.generate_local_decl(local_idx))?;
-        }
-
-        // Use dispatch loop pattern for control flow (like the old WASM backend)
-        // WASM's br/br_table use block depth indices, so we use a PC variable
-
-        // Build a map of block labels to their indices
-        let mut block_labels: std::collections::HashMap<&str, usize> =
-            std::collections::HashMap::new();
-        for (idx, block) in func.blocks.iter().enumerate() {
-            block_labels.insert(&block.label, idx);
-        }
-
-        // Add PC (program counter) local
-        writeln!(writer, "    (local $pc i64)")?;
-
-        // Initialize PC to 0 (entry block)
-        writeln!(writer, "    i64.const 0")?;
-        writeln!(writer, "    local.set $pc")?;
-
-        // Main dispatch loop
-        writeln!(writer, "    (loop $dispatch_loop")?;
-
-        // Generate dispatch table using nested blocks and br_table
-        // Each block index N will br to depth N to jump to the right code
-        let num_blocks = func.blocks.len();
-
-        // Create nested blocks for dispatch - innermost first
-        for i in (0..num_blocks).rev() {
-            writeln!(writer, "      (block $block_{}", i)?;
-        }
-
-        // br_table dispatch based on PC value
-        writeln!(writer, "        local.get $pc")?;
-        writeln!(writer, "        i32.wrap_i64")?;
-        write!(writer, "        br_table")?;
-        for i in 0..num_blocks {
-            write!(writer, " {}", i)?;
-        }
-        writeln!(writer, " 0")?; // default to block 0
-
-        // Close innermost block and emit code for each block
-        for block in func.blocks.iter() {
-            writeln!(writer, "      )")?; // close block_N
-
-            // Emit block code
-            writeln!(writer, "      ;; Block: {}", block.label)?;
-            for inst in &block.instructions {
-                emit_instruction_wasm(inst, writer, &vreg_to_local, &block_labels)?;
-            }
-
-            // After block code, continue dispatch loop (unless return/br already exited)
-            writeln!(writer, "      br $dispatch_loop")?;
-        }
-
-        writeln!(writer, "    )")?; // close dispatch_loop
-
-        // Implicit return value for functions with return type
-        if func.sig.ret_ty.is_some() {
-            writeln!(writer, "    i64.const 0")?;
-        }
-
-        writeln!(writer, "  )")?;
-
-        // Export main function
+    for (func_name, _func) in &module.functions {
         if func_name == "main" {
             writeln!(writer, "  (export \"main\" (func $main))")?;
         }

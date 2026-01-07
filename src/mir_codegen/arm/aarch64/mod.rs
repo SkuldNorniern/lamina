@@ -40,137 +40,204 @@ fn x_alias(reg: &str) -> String {
     }
 }
 
+fn compile_single_function_aarch64(
+    func_name: &str,
+    func: &crate::mir::Function,
+    target_os: TargetOperatingSystem,
+) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
+    use std::io::Write;
+    let mut output = Vec::new();
+    let abi = AArch64ABI::new(target_os);
+    
+    if let Some(globl) = abi.get_global_directive(func_name) {
+        writeln!(output, "{}", globl).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+    let label = abi.mangle_function_name(func_name);
+    writeln!(output, "{}:", label).map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+
+    let mut ra_pro = A64RegAlloc::new();
+    let s0 = ra_pro.alloc_scratch().unwrap_or("x19");
+    let s1 = ra_pro.alloc_scratch().unwrap_or("x20");
+    if s0 != "x29" || s1 != "x30" {
+        writeln!(output, "    stp x29, x30, [sp, #-16]!").map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    } else {
+        writeln!(output, "    stp {}, {}, [sp, #-16]!", s0, s1).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+    writeln!(output, "    mov x29, sp").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+
+    let frame = FrameMap::from_function(func);
+
+    let has_many_vars = func
+        .blocks
+        .iter()
+        .flat_map(|b| b.instructions.iter())
+        .filter(|i| matches!(i, MirInst::IntBinary { .. }))
+        .count()
+        > 100;
+    let adjusted_frame_size = if has_many_vars {
+        (frame.frame_size + 1024) & !15
+    } else {
+        frame.frame_size
+    };
+
+    if adjusted_frame_size > 0 {
+        writeln!(output, "    sub sp, sp, #{}", adjusted_frame_size).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+
+    for (i, p) in func.sig.params.iter().enumerate() {
+        if let Some(off) = frame.slot_of(&p.reg) {
+            let addr = ra_pro.alloc_scratch().unwrap_or("x19");
+            if off >= 0 {
+                writeln!(output, "    add {}, x29, #{}", addr, off).map_err(|e| {
+                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+                })?;
+            } else {
+                writeln!(output, "    sub {}, x29, #{}", addr, -off).map_err(|e| {
+                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+                })?;
+            }
+
+            if i < 8 {
+                writeln!(output, "    str x{}, [{}]", i, addr).map_err(|e| {
+                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+                })?;
+            } else {
+                let caller_offset = 16 + (i - 8) * 8;
+                let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
+                writeln!(output, "    ldr {}, [x29, #{}]", val_reg, caller_offset).map_err(|e| {
+                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+                })?;
+                writeln!(output, "    str {}, [{}]", val_reg, addr).map_err(|e| {
+                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+                })?;
+                ra_pro.free_scratch(val_reg);
+            }
+            ra_pro.free_scratch(addr);
+        }
+    }
+
+    let epilogue_label = format!(".Lret_{}", label.trim_start_matches('_'));
+
+    let mut ra = A64RegAlloc::new();
+    let has_complex_function = func.blocks.len() > 50 || func.blocks.iter().any(|b| b.instructions.len() > 100);
+    if has_complex_function {
+        ra.set_conservative_mode();
+    }
+
+    if let Some(entry) = func.get_block(&func.entry) {
+        let mut ra_entry = A64RegAlloc::new();
+        if has_complex_function {
+            ra_entry.set_conservative_mode();
+        }
+        emit_block(
+            entry.instructions.as_slice(),
+            &mut output,
+            &frame,
+            &abi,
+            &mut ra_entry,
+            &epilogue_label,
+        ).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
+        })?;
+    }
+    for b in &func.blocks {
+        if b.label != func.entry {
+            writeln!(output, "    .align 2").map_err(|e| {
+                crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            })?;
+            writeln!(output, "{}:", b.label).map_err(|e| {
+                crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            })?;
+            let mut ra_block = A64RegAlloc::new();
+            if has_complex_function {
+                ra_block.set_conservative_mode();
+            }
+            emit_block(
+                b.instructions.as_slice(),
+                &mut output,
+                &frame,
+                &abi,
+                &mut ra_block,
+                &epilogue_label,
+            ).map_err(|e| {
+                crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
+            })?;
+        }
+    }
+
+    writeln!(output, "{}:", epilogue_label).map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+    if adjusted_frame_size > 0 {
+        writeln!(output, "    add sp, sp, #{}", adjusted_frame_size).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
+    writeln!(output, "    ldp x29, x30, [sp], #16").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+    writeln!(output, "    ret").map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
+
+    Ok(output)
+}
+
 /// Generate AArch64 assembly from a MIR module.
 pub fn generate_mir_aarch64<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> Result<(), crate::error::LaminaError> {
-    let has_complex_function = module
-        .functions
-        .values()
-        .any(|f| f.blocks.len() > 50 || f.blocks.iter().any(|b| b.instructions.len() > 100));
+    generate_mir_aarch64_with_units(module, writer, target_os, 1)
+}
+
+pub fn generate_mir_aarch64_with_units<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+) -> Result<(), crate::error::LaminaError> {
     emit_print_format_section(writer, target_os)?;
-    // Header
     writeln!(writer, ".text")?;
 
     let abi = AArch64ABI::new(target_os);
 
-    // Emit external function declarations first
     for func_name in &module.external_functions {
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, ".extern {}", label)?;
     }
 
-    for (func_name, func) in &module.functions {
-        // Skip external functions - they're already declared above
-        if module.is_external(func_name) {
-            continue;
-        }
-        if let Some(globl) = abi.get_global_directive(func_name) {
-            writeln!(writer, "{}", globl)?;
-        }
-        let label = abi.mangle_function_name(func_name);
-        writeln!(writer, "{}:", label)?;
+    let results = compile_functions_parallel(
+        module,
+        target_os,
+        codegen_units,
+        compile_single_function_aarch64,
+    ).map_err(|e| {
+        use crate::codegen::FeatureType;
+        crate::error::LaminaError::CodegenError(
+            crate::codegen::CodegenError::UnsupportedFeature(
+                FeatureType::Custom(format!("Parallel compilation error: {:?}", e))
+            )
+        )
+    })?;
 
-        let mut ra_pro = A64RegAlloc::new();
-        let s0 = ra_pro.alloc_scratch().unwrap_or("x19");
-        let s1 = ra_pro.alloc_scratch().unwrap_or("x20");
-        if s0 != "x29" || s1 != "x30" {
-            writeln!(writer, "    stp x29, x30, [sp, #-16]!")?;
-        } else {
-            writeln!(writer, "    stp {}, {}, [sp, #-16]!", s0, s1)?;
-        }
-        writeln!(writer, "    mov x29, sp")?;
-
-        let frame = FrameMap::from_function(func);
-
-        let has_many_vars = func
-            .blocks
-            .iter()
-            .flat_map(|b| b.instructions.iter())
-            .filter(|i| matches!(i, MirInst::IntBinary { .. }))
-            .count()
-            > 100;
-        let adjusted_frame_size = if has_many_vars {
-            (frame.frame_size + 1024) & !15
-        } else {
-            frame.frame_size
-        };
-
-        if adjusted_frame_size > 0 {
-            writeln!(writer, "    sub sp, sp, #{}", adjusted_frame_size)?;
-        }
-
-        for (i, p) in func.sig.params.iter().enumerate() {
-            if let Some(off) = frame.slot_of(&p.reg) {
-                let addr = ra_pro.alloc_scratch().unwrap_or("x19");
-                if off >= 0 {
-                    writeln!(writer, "    add {}, x29, #{}", addr, off)?;
-                } else {
-                    writeln!(writer, "    sub {}, x29, #{}", addr, -off)?;
-                }
-
-                if i < 8 {
-                    writeln!(writer, "    str x{}, [{}]", i, addr)?;
-                } else {
-                    let caller_offset = 16 + (i - 8) * 8;
-                    let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
-                    writeln!(writer, "    ldr {}, [x29, #{}]", val_reg, caller_offset)?;
-                    writeln!(writer, "    str {}, [{}]", val_reg, addr)?;
-                    ra_pro.free_scratch(val_reg);
-                }
-                ra_pro.free_scratch(addr);
-            }
-        }
-
-        let epilogue_label = format!(".Lret_{}", label.trim_start_matches('_'));
-
-        let mut ra = A64RegAlloc::new();
-        if has_complex_function {
-            ra.set_conservative_mode();
-        }
-
-        if let Some(entry) = func.get_block(&func.entry) {
-            let mut ra_entry = A64RegAlloc::new();
-            if has_complex_function {
-                ra_entry.set_conservative_mode();
-            }
-            emit_block(
-                entry.instructions.as_slice(),
-                writer,
-                &frame,
-                &abi,
-                &mut ra_entry,
-                &epilogue_label,
-            )?;
-        }
-        for b in &func.blocks {
-            if b.label != func.entry {
-                writeln!(writer, "    .align 2")?;
-                writeln!(writer, "{}:", b.label)?;
-                let mut ra_block = A64RegAlloc::new();
-                if has_complex_function {
-                    ra_block.set_conservative_mode();
-                }
-                emit_block(
-                    b.instructions.as_slice(),
-                    writer,
-                    &frame,
-                    &abi,
-                    &mut ra_block,
-                    &epilogue_label,
-                )?;
-            }
-        }
-
-        writeln!(writer, "{}:", epilogue_label)?;
-        if adjusted_frame_size > 0 {
-            writeln!(writer, "    add sp, sp, #{}", adjusted_frame_size)?;
-        }
-        writeln!(writer, "    ldp x29, x30, [sp], #16")?;
-        writeln!(writer, "    ret")?;
+    for result in results {
+        writer.write_all(&result.assembly)?;
     }
+
     Ok(())
 }
 
@@ -1048,7 +1115,7 @@ fn materialize_address<W: Write>(
     Ok(())
 }
 
-use crate::mir_codegen::common::{CodegenBase, emit_print_format_section};
+use crate::mir_codegen::common::{compile_functions_parallel, CodegenBase, emit_print_format_section};
 
 /// Trait-backed MIR ⇒ AArch64 code generator.
 pub struct AArch64Codegen<'a> {
@@ -1133,7 +1200,13 @@ impl<'a> Codegen for AArch64Codegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        self.base.emit_asm_base(generate_mir_aarch64, "AArch64")
+        self.base.emit_asm_base_with_units(
+            |module, writer, target_os, codegen_units| {
+                generate_mir_aarch64_with_units(module, writer, target_os, codegen_units)
+            },
+            "AArch64",
+            self.base.codegen_units,
+        )
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
