@@ -22,6 +22,12 @@ pub trait ObjectWriter {
 /// ELF object file writer (Linux, BSD)
 pub struct ElfWriter;
 
+impl Default for ElfWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ElfWriter {
     pub fn new() -> Self {
         Self
@@ -52,6 +58,12 @@ impl ObjectWriter for ElfWriter {
 /// Mach-O object file writer (macOS)
 pub struct MachOWriter;
 
+impl Default for MachOWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MachOWriter {
     pub fn new() -> Self {
         Self
@@ -76,6 +88,12 @@ impl ObjectWriter for MachOWriter {
 
 /// COFF/PE object file writer (Windows)
 pub struct CoffWriter;
+
+impl Default for CoffWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl CoffWriter {
     pub fn new() -> Self {

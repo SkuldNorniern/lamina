@@ -5,8 +5,6 @@
 //!
 //! Requires the `mir` feature to be enabled.
 
-#[cfg(feature = "encoder")]
-use crate::encoder::traits::InstructionEncoder;
 use crate::error::RasError;
 #[cfg(feature = "encoder")]
 use lamina_mir::Module as MirModule;
@@ -302,7 +300,7 @@ impl RasRuntime {
     pub fn compile_function<T>(
         &mut self,
         module: &MirModule,
-        function_name: &str,
+        _function_name: &str,
     ) -> Result<unsafe extern "C" fn() -> T, RasError> {
         // For now, compile entire module
         // TODO: Support compiling individual functions

@@ -137,7 +137,7 @@ fn encode_prologue_x86_64(stack_size: u32) -> Result<Vec<u8>, RasError> {
         code.push(0x48);
         code.push(0x83);
         code.push(0xEC);
-        code.extend_from_slice(&(stack_size as u32).to_le_bytes());
+        code.extend_from_slice(&stack_size.to_le_bytes());
     }
     Ok(code)
 }
@@ -166,7 +166,7 @@ fn encode_mov_reg_mem_x86_64(
     // Mod=01 (disp8/32), R/M=101 (rbp), REG=reg_enc
     code.push(0x45 | (reg_enc << 3));
     // For 32-bit offset, we need 4 bytes
-    if offset >= -128 && offset <= 127 {
+    if (-128..=127).contains(&offset) {
         code.push(offset as u8);
     } else {
         code.push(0x85 | (reg_enc << 3)); // Mod=10 (disp32), R/M=101
@@ -186,7 +186,7 @@ fn encode_mov_mem_reg_x86_64(
     code.push(0x48); // REX.W
     code.push(0x8B);
     // ModR/M: [rbp] + reg encoding
-    if offset >= -128 && offset <= 127 {
+    if (-128..=127).contains(&offset) {
         code.push(0x45 | (reg_enc << 3)); // Mod=01 (disp8)
         code.push(offset as u8);
     } else {
@@ -235,6 +235,7 @@ fn encode_mir_instruction_x86_64(
         )),
     }
 }
+
 
 
 
