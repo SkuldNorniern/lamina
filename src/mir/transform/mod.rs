@@ -17,6 +17,8 @@ pub mod sanity;
 mod scheduling;
 mod strength_reduction;
 mod tail_call;
+#[cfg(feature = "nightly")]
+mod vectorization;
 
 pub use addressing::AddressingCanonicalization;
 pub use branch_opt::BranchOptimization;
@@ -30,6 +32,8 @@ pub use peephole::Peephole;
 pub use scheduling::InstructionScheduling;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
+#[cfg(feature = "nightly")]
+pub use vectorization::AutoVectorization;
 
 /// Trait for MIR transformation passes.
 pub trait Transform {
@@ -159,6 +163,12 @@ impl TransformPipeline {
 
             // InstructionScheduling
             pipeline = pipeline.add_transform(InstructionScheduling);
+
+            // Auto-vectorization (O3 nightly/unstable feature)
+            #[cfg(feature = "nightly")]
+            {
+                pipeline = pipeline.add_transform(AutoVectorization);
+            }
         }
 
         pipeline
@@ -345,4 +355,6 @@ pub enum TransformCategory {
     ArithmeticOptimization,
     /// Optimizes memory access patterns.
     MemoryOptimization,
+    /// Auto-vectorizes scalar operations using SIMD.
+    Vectorization,
 }
