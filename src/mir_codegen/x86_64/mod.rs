@@ -54,8 +54,9 @@ impl<'a> X86Codegen<'a> {
         &mut self,
         module: &'a MirModule,
         writer: &mut W,
+        codegen_units: usize,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_x86_64(module, writer, self.base.target_os)
+        generate_mir_x86_64_with_units(module, writer, self.base.target_os, codegen_units)
     }
 }
 
@@ -125,7 +126,7 @@ impl<'a> Codegen for X86Codegen<'a> {
     }
 }
 
-use crate::mir_codegen::common::{compile_functions_parallel, emit_print_format_section, CompilationResult};
+use crate::mir_codegen::common::{compile_functions_parallel, emit_print_format_section};
 
 fn compile_single_function_x86_64(
     func_name: &str,

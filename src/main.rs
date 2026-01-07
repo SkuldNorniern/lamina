@@ -23,6 +23,7 @@ fn print_usage() {
     );
     eprintln!("  --jit                   Compile and execute using runtime compilation (JIT)");
     eprintln!("  --sandbox               Enable sandbox for secure execution (requires --jit)");
+    eprintln!("  -j, --jobs <n>          Number of parallel compilation threads (default: max - 2)");
     eprintln!("  -h, --help              Display this help message");
 }
 
@@ -40,6 +41,7 @@ struct CompileOptions {
     opt_level: u8,
     jit: bool,
     sandbox: bool,
+    codegen_units: Option<usize>,
 }
 
 fn parse_args() -> Result<CompileOptions, String> {
@@ -67,6 +69,7 @@ fn parse_args() -> Result<CompileOptions, String> {
         opt_level: 1,
         jit: false,
         sandbox: false,
+        codegen_units: None,
     };
 
     let mut i = 1;
@@ -141,6 +144,19 @@ fn parse_args() -> Result<CompileOptions, String> {
             "--sandbox" => {
                 options.sandbox = true;
                 i += 1;
+            }
+            "-j" | "--jobs" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for -j/--jobs".to_string());
+                }
+                let jobs = args[i + 1]
+                    .parse::<usize>()
+                    .map_err(|_| "Invalid -j/--jobs value (must be a positive integer)".to_string())?;
+                if jobs == 0 {
+                    return Err("-j/--jobs must be at least 1".to_string());
+                }
+                options.codegen_units = Some(jobs);
+                i += 2;
             }
             "--version" => {
                 println!("lamina {}", env!("CARGO_PKG_VERSION"));
@@ -253,6 +269,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // Calculate default codegen_units (max_threads - 2, minimum 1)
+    let codegen_units = options.codegen_units.unwrap_or_else(|| {
+        let max_threads = lamina_platform::cpu_count();
+        if max_threads > 2 {
+            max_threads - 2
+        } else {
+            1
+        }
+    });
+
     // Output message will be printed after we determine the actual target
     // (handled in the compilation section below)
 
@@ -260,6 +286,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("[VERBOSE] Compiler options:");
         println!("  Verbose mode: {}", options.verbose);
         println!("  Optimization level: {}", options.opt_level);
+        println!("  Codegen units (parallel threads): {}", codegen_units);
         if let Some(compiler) = &options.forced_compiler {
             println!("  Forced compiler: {}", compiler);
         }
@@ -373,6 +400,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &mut out,
                 target.architecture,
                 target_os,
+                codegen_units,
             )
             .map_err(|e| format!("MIR→{} emission failed: {}", target.architecture, e))?;
 
@@ -455,6 +483,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &mut intermediate_buffer,
             target.architecture,
             target.operating_system,
+            codegen_units,
         )
         .map_err(|e| format!("Code generation failed: {}", e))?;
 

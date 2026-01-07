@@ -28,33 +28,34 @@ pub fn generate_mir_to_target<W: Write>(
     writer: &mut W,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
+    codegen_units: usize,
 ) -> std::result::Result<(), LaminaError> {
     match target_arch {
         TargetArchitecture::Aarch64 => {
             let mut backend = arm::aarch64::AArch64Codegen::new(target_os);
             backend.set_module(module);
-            backend.emit_into(module, writer)?;
+            backend.emit_into(module, writer, codegen_units)?;
         }
         TargetArchitecture::X86_64 => {
             let mut codegen = x86_64::X86Codegen::new(target_os);
             codegen.set_module(module);
-            codegen.emit_into(module, writer)?;
+            codegen.emit_into(module, writer, codegen_units)?;
         }
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
             let mut codegen = wasm::WasmCodegen::new(target_os);
             codegen.set_module(module);
-            codegen.emit_into(module, writer)?;
+            codegen.emit_into(module, writer, codegen_units)?;
         }
         TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
             let mut codegen = riscv::RiscVCodegen::new(target_os);
             codegen.set_module(module);
-            codegen.emit_into(module, writer)?;
+            codegen.emit_into(module, writer, codegen_units)?;
         }
         #[cfg(feature = "nightly")]
         TargetArchitecture::Riscv128 => {
             let mut codegen = riscv::RiscVCodegen::new(target_os);
             codegen.set_module(module);
-            codegen.emit_into(module, writer)?;
+            codegen.emit_into(module, writer, codegen_units)?;
         }
         _ => {
             return Err(LaminaError::ValidationError(format!(
@@ -77,7 +78,7 @@ pub fn generate_mir_to_aarch64<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> std::result::Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::Aarch64, target_os)
+    generate_mir_to_target(module, writer, TargetArchitecture::Aarch64, target_os, 1)
 }
 
 /// Generates x86_64 assembly from MIR for the requested host OS.
@@ -90,7 +91,7 @@ pub fn generate_mir_to_x86_64<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> std::result::Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::X86_64, target_os)
+    generate_mir_to_target(module, writer, TargetArchitecture::X86_64, target_os, 1)
 }
 
 /// Generates WASM from MIR for the requested host OS.
@@ -103,7 +104,7 @@ pub fn generate_mir_to_wasm<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> std::result::Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::Wasm32, target_os)
+    generate_mir_to_target(module, writer, TargetArchitecture::Wasm32, target_os, 1)
 }
 
 /// Generates RISC-V assembly from MIR for the requested host OS.
@@ -116,7 +117,7 @@ pub fn generate_mir_to_riscv<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> std::result::Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::Riscv64, target_os)
+    generate_mir_to_target(module, writer, TargetArchitecture::Riscv64, target_os, 1)
 }
 
 /// Code generation options.

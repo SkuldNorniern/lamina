@@ -46,8 +46,9 @@ impl<'a> RiscVCodegen<'a> {
         &mut self,
         module: &'a MirModule,
         writer: &mut W,
+        codegen_units: usize,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_riscv(module, writer, self.base.target_os)
+        generate_mir_riscv_with_units(module, writer, self.base.target_os, codegen_units)
     }
 }
 
