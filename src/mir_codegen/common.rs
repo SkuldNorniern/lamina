@@ -327,6 +327,7 @@ where
             assembly,
         });
     }
+    results.sort_by_key(|r| r.func_index);
     Ok(results)
 }
 
