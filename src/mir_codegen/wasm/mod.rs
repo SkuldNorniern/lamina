@@ -364,7 +364,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
     for result in results {
         writer.write_all(&result.assembly)?;
-    }
+            }
 
     for (func_name, _func) in &module.functions {
         if func_name == "main" {
