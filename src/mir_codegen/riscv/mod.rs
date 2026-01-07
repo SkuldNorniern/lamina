@@ -101,7 +101,13 @@ impl<'a> Codegen for RiscVCodegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        self.base.emit_asm_base(generate_mir_riscv, "RISC-V")
+        self.base.emit_asm_base_with_units(
+            |module, writer, target_os, codegen_units| {
+                generate_mir_riscv_with_units(module, writer, target_os, codegen_units)
+            },
+            "RISC-V",
+            self.base.codegen_units,
+        )
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
@@ -111,78 +117,109 @@ impl<'a> Codegen for RiscVCodegen<'a> {
     }
 }
 
-pub fn generate_mir_riscv<W: Write>(
-    module: &MirModule,
-    writer: &mut W,
+use crate::mir_codegen::common::compile_functions_parallel;
+
+fn compile_single_function_riscv(
+    func_name: &str,
+    func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
+    use std::io::Write;
+    let mut output = Vec::new();
     let abi = RiscVAbi::new(target_os);
+    
+    let label = abi.mangle_function_name(func_name);
+    writeln!(output, "{}:", label).map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+    })?;
 
-    // Emit format strings for print intrinsics
-    writeln!(writer, "{}", abi.get_data_section())?;
-    writeln!(writer, "{}", abi.get_print_format())?;
+    let mut reg_alloc = RiscVRegAlloc::new(target_os);
+    let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
+        std::collections::HashMap::new();
+    let mut next_slot = 0;
 
-    // Text section header
-    writeln!(writer, "{}", abi.get_text_section())?;
-    writeln!(writer, "{}", abi.get_main_global())?;
-
-    // Emit external function declarations first
-    for func_name in &module.external_functions {
-        let label = abi.mangle_function_name(func_name);
-        writeln!(writer, ".extern {}", label)?;
-    }
-
-    for (func_name, func) in &module.functions {
-        // Skip external functions - they're already declared above
-        if module.is_external(func_name) {
-            continue;
-        }
-        // Function label
-        let label = abi.mangle_function_name(func_name);
-        writeln!(writer, "{}:", label)?;
-
-        // Create register allocator for this function
-        let mut reg_alloc = RiscVRegAlloc::new(target_os);
-
-        // Allocate stack space for virtual registers
-        let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
-            std::collections::HashMap::new();
-        let mut next_slot = 0;
-
-        // Assign stack slots to all virtual registers used in the function
-        for block in &func.blocks {
-            for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(vreg) = dst
+    for block in &func.blocks {
+        for inst in &block.instructions {
+            if let Some(dst) = inst.def_reg()
+                && let Register::Virtual(vreg) = dst
+                && !stack_slots.contains_key(vreg)
+            {
+                stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
+                next_slot += 1;
+            }
+            for reg in inst.use_regs() {
+                if let Register::Virtual(vreg) = reg
                     && !stack_slots.contains_key(vreg)
                 {
                     stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
                     next_slot += 1;
                 }
-                // Also check for registers used in operands
-                for reg in inst.use_regs() {
-                    if let Register::Virtual(vreg) = reg
-                        && !stack_slots.contains_key(vreg)
-                    {
-                        stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
-                        next_slot += 1;
-                    }
-                }
             }
         }
+    }
 
-        // Generate function prologue
-        let stack_size = stack_slots.len() * 8;
-        RiscVFrame::generate_prologue(writer, stack_size)?;
+    let stack_size = stack_slots.len() * 8;
+    RiscVFrame::generate_prologue(&mut output, stack_size).map_err(|e| {
+        crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
+    })?;
 
-        // Process each block
-        for block in &func.blocks {
-            writeln!(writer, ".L_{}:", block.label)?;
+    for block in &func.blocks {
+        writeln!(output, ".L_{}:", block.label).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
 
-            for inst in &block.instructions {
-                emit_instruction_riscv(inst, writer, &mut reg_alloc, &stack_slots, target_os)?;
-            }
+        for inst in &block.instructions {
+            emit_instruction_riscv(inst, &mut output, &mut reg_alloc, &stack_slots, target_os).map_err(|e| {
+                crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
+            })?;
         }
+    }
+
+    Ok(output)
+}
+
+pub fn generate_mir_riscv<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+) -> Result<(), crate::error::LaminaError> {
+    generate_mir_riscv_with_units(module, writer, target_os, 1)
+}
+
+pub fn generate_mir_riscv_with_units<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+) -> Result<(), crate::error::LaminaError> {
+    let abi = RiscVAbi::new(target_os);
+
+    writeln!(writer, "{}", abi.get_data_section())?;
+    writeln!(writer, "{}", abi.get_print_format())?;
+    writeln!(writer, "{}", abi.get_text_section())?;
+    writeln!(writer, "{}", abi.get_main_global())?;
+
+    for func_name in &module.external_functions {
+        let label = abi.mangle_function_name(func_name);
+        writeln!(writer, ".extern {}", label)?;
+    }
+
+    let results = compile_functions_parallel(
+        module,
+        target_os,
+        codegen_units,
+        compile_single_function_riscv,
+    ).map_err(|e| {
+        use crate::codegen::FeatureType;
+        crate::error::LaminaError::CodegenError(
+            crate::codegen::CodegenError::UnsupportedFeature(
+                FeatureType::Custom(format!("Parallel compilation error: {:?}", e))
+            )
+        )
+    })?;
+
+    for result in results {
+        writer.write_all(&result.assembly)?;
     }
 
     Ok(())
