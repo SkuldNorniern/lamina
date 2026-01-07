@@ -40,6 +40,12 @@ pub struct AssemblyParser {
     instructions: Vec<ParsedInstruction>,
 }
 
+impl Default for AssemblyParser {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AssemblyParser {
     pub fn new() -> Self {
         Self {

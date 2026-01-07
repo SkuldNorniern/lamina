@@ -11,6 +11,12 @@ pub struct X86_64Encoder {
     position: usize,
 }
 
+impl Default for X86_64Encoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl X86_64Encoder {
     pub fn new() -> Self {
         Self { position: 0 }

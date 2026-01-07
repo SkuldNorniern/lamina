@@ -11,6 +11,12 @@ pub struct AArch64Encoder {
     position: usize,
 }
 
+impl Default for AArch64Encoder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AArch64Encoder {
     pub fn new() -> Self {
         Self { position: 0 }
@@ -70,7 +76,7 @@ impl AArch64Encoder {
         // ORR <Xd>, XZR, <Xn> (MOV is alias for ORR with zero register)
         // ORR (shifted register): sf=1, opc=01, shift=00, N=0, Rm=<src>, imm6=0, Rn=31 (XZR), Rd=<dst>
         let inst = 0b1_01_01010_0_0_000000_11111_00000_00000;
-        let inst = inst | ((dst as u32) << 0);
+        let inst = inst | (dst as u32);
         let inst = inst | ((31u32) << 5); // XZR
         let inst = inst | ((src as u32) << 16);
         self.encode_u32(inst)
@@ -84,13 +90,13 @@ impl AArch64Encoder {
         if imm <= 0xFFFF {
             // Can encode in single MOVZ
             let inst = 0b1_100101_10_0000000000000000_00000;
-            let inst = inst | ((dst as u32) << 0);
+            let inst = inst | (dst as u32);
             let inst = inst | ((imm as u32 & 0xFFFF) << 5);
             Ok(self.encode_u32(inst))
         } else if (imm & 0xFFFF) == 0 && (imm >> 16) <= 0xFFFF {
             // Can encode in MOVZ with hw=1
             let inst = 0b1_100101_10_01_0000000000000000_00000;
-            let inst = inst | ((dst as u32) << 0);
+            let inst = inst | (dst as u32);
             let inst = inst | (((imm >> 16) as u32 & 0xFFFF) << 5);
             Ok(self.encode_u32(inst))
         } else {
@@ -106,7 +112,7 @@ impl AArch64Encoder {
     /// Encoding: sf=1, op=0, S=0, shift=00, Rm=<Xm>, imm6=0, Rn=<Xn>, Rd=<Xd>
     fn encode_add_reg(&self, dst: u8, src1: u8, src2: u8) -> Vec<u8> {
         let inst = 0b1_0_0_01011_00_0_000000_00000_00000_00000;
-        let inst = inst | ((dst as u32) << 0);
+        let inst = inst | (dst as u32);
         let inst = inst | ((src1 as u32) << 5);
         let inst = inst | ((src2 as u32) << 16);
         self.encode_u32(inst)
@@ -121,7 +127,7 @@ impl AArch64Encoder {
             ));
         }
         let inst = 0b1_0_0_100010_0_000000000000_00000_00000;
-        let inst = inst | ((dst as u32) << 0);
+        let inst = inst | (dst as u32);
         let inst = inst | ((src as u32) << 5);
         let inst = inst | ((imm & 0xFFF) << 10);
         Ok(self.encode_u32(inst))
@@ -130,13 +136,13 @@ impl AArch64Encoder {
     /// Encode STR (store register) instruction: STR <Xt>, [<Xn|SP>, #<imm>]
     /// Encoding: size=11 (64-bit), opc=00, imm12=<imm>, Rn=<base>, Rt=<src>
     fn encode_str(&self, src: u8, base: u8, offset: i32) -> Result<Vec<u8>, RasError> {
-        if offset < 0 || offset > 0xFFF {
+        if !(0..=0xFFF).contains(&offset) {
             return Err(RasError::EncodingError(
                 "STR offset must be 0-4095".to_string(),
             ));
         }
         let inst = 0b11_111_0_00_000000000000_00000_00000;
-        let inst = inst | ((src as u32) << 0);
+        let inst = inst | (src as u32);
         let inst = inst | ((base as u32) << 5);
         let inst = inst | ((offset as u32 & 0xFFF) << 10);
         Ok(self.encode_u32(inst))
@@ -145,13 +151,13 @@ impl AArch64Encoder {
     /// Encode LDR (load register) instruction: LDR <Xt>, [<Xn|SP>, #<imm>]
     /// Encoding: size=11 (64-bit), opc=01, imm12=<imm>, Rn=<base>, Rt=<dst>
     fn encode_ldr(&self, dst: u8, base: u8, offset: i32) -> Result<Vec<u8>, RasError> {
-        if offset < 0 || offset > 0xFFF {
+        if !(0..=0xFFF).contains(&offset) {
             return Err(RasError::EncodingError(
                 "LDR offset must be 0-4095".to_string(),
             ));
         }
         let inst = 0b11_111_0_01_000000000000_00000_00000;
-        let inst = inst | ((dst as u32) << 0);
+        let inst = inst | (dst as u32);
         let inst = inst | ((base as u32) << 5);
         let inst = inst | ((offset as u32 & 0xFFF) << 10);
         Ok(self.encode_u32(inst))
