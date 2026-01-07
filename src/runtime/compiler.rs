@@ -32,7 +32,7 @@ impl RuntimeCompiler {
     /// Future implementation will use reference counting or other strategies.
     pub fn compile(
         &mut self,
-        module: &MirModule,
+        _module: &MirModule,
         _function_name: Option<&str>,
     ) -> Result<ras::ExecutableMemory, LaminaError> {
         // TODO: Implement caching when ExecutableMemory supports it
@@ -76,11 +76,11 @@ impl RuntimeCompiler {
         &mut self,
         module: &MirModule,
         function_name: &str,
-    ) -> Result<unsafe extern "C" fn() -> T, LaminaError> {
+    ) -> Result<unsafe extern "C" fn() -> T, LaminaError> { unsafe {
         let memory = self.compile(module, Some(function_name))?;
         let ptr: *const unsafe extern "C" fn() -> T = memory.as_function_ptr();
         Ok(*ptr)
-    }
+    }}
 
     /// Invalidate cached code
     pub fn invalidate(&mut self, function_name: &str) {

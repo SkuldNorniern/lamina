@@ -26,10 +26,10 @@ pub use ras::{ExecutableMemory, RasRuntime};
 
 /// Compile MIR module to executable memory using runtime compilation
 pub fn compile_to_runtime(
-    module: &MirModule,
-    target_arch: TargetArchitecture,
-    target_os: TargetOperatingSystem,
-    function_name: Option<&str>,
+    _module: &MirModule,
+    _target_arch: TargetArchitecture,
+    _target_os: TargetOperatingSystem,
+    _function_name: Option<&str>,
 ) -> Result<RuntimeResult, LaminaError> {
     #[cfg(feature = "encoder")]
     {
