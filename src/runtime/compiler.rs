@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 /// Runtime compiler for JIT compilation
 pub struct RuntimeCompiler {
+    #[allow(dead_code)] // Used when encoder feature is enabled
     runtime: RasRuntime,
     code_cache: HashMap<String, ras::ExecutableMemory>,
 }
@@ -43,7 +44,7 @@ impl RuntimeCompiler {
         {
             self
                 .runtime
-                .compile_to_memory(module)
+                .compile_to_memory(_module)
                 .map_err(|e| {
                     let error_msg = format!("{}", e);
                     if error_msg.contains("not yet implemented") || error_msg.contains("Unsupported target") {

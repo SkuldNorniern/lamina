@@ -661,13 +661,11 @@ fn handle_jit_compilation(
         }
     }
 
-    // Parse IR and lower to MIR
     let ir_mod = lamina::parser::parse_module(ir_source)
         .map_err(|e| format!("IR parse failed: {}", e))?;
     let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
         .map_err(|e| format!("MIR lowering failed: {}", e))?;
 
-    // Apply MIR optimizations
     if options.opt_level > 0 {
         let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
         let transform_stats = pipeline
@@ -682,9 +680,7 @@ fn handle_jit_compilation(
         }
     }
 
-    // Compile using runtime compilation
     if options.sandbox {
-        // Use sandbox for secure execution
         use lamina::runtime::{Sandbox, SandboxConfig};
         
         let config = if options.verbose {
@@ -695,7 +691,6 @@ fn handle_jit_compilation(
         
         let mut sandbox = Sandbox::new(target.architecture, target.operating_system, config);
         
-        // Find main function or use first function
         let function_name = mir_mod.functions.keys().next()
             .ok_or("No functions found in module")?;
         
@@ -703,7 +698,6 @@ fn handle_jit_compilation(
             println!("[JIT] Executing function '{}' in sandbox", function_name);
         }
         
-        // Execute in sandbox (placeholder - returns default value for now)
         let _result: i64 = sandbox.execute(&mir_mod, function_name)
             .map_err(|e| format!("Sandbox execution failed: {}", e))?;
         
@@ -711,10 +705,8 @@ fn handle_jit_compilation(
             println!("[JIT] Execution completed successfully");
         }
     } else {
-        // Direct runtime compilation (no sandbox)
         use lamina::runtime::compile_to_runtime;
         
-        // Find the function to execute - prioritize 'main'
         let jit_function_name = if mir_mod.functions.contains_key("main") {
             "main"
         } else {
@@ -728,159 +720,19 @@ fn handle_jit_compilation(
         let func = mir_mod.functions.get(jit_function_name)
             .ok_or("Function not found in module")?;
         
-        // Compile all functions (needed for internal function calls)
         let runtime_result = compile_to_runtime(&mir_mod, target.architecture, target.operating_system, Some(jit_function_name))
             .map_err(|e| format!("Runtime compilation failed: {}", e))?;
         
         if options.verbose {
             println!("[JIT] Code compiled to executable memory");
             println!("[JIT] Function pointer: {:p}", runtime_result.function_ptr);
-        }
-        
-        if options.verbose {
             println!("[JIT] Executing function '{}'", jit_function_name);
             println!("[JIT] Signature: {} params, return type: {:?}", 
                      func.sig.params.len(), func.sig.ret_ty);
             println!("[JIT] All functions in module: {:?}", mir_mod.function_names());
         }
         
-        // Use the actual function signature (function pointer is now correctly adjusted)
-        let param_count = func.sig.params.len();
-        
-        // Execute the function based on its signature
-        // Handle functions with 0-8 parameters (AArch64 calling convention)
-        // Check if all parameters are i64 (simplest case)
-        let all_i64 = func.sig.params.iter()
-            .all(|p| matches!(p.ty, lamina_mir::MirType::Scalar(lamina_mir::ScalarType::I64)));
-        
-        if all_i64 && param_count <= 8 {
-            println!("[JIT] DEBUG: param_count={}, ret_ty={:?}", param_count, func.sig.ret_ty);
-            match (param_count, func.sig.ret_ty.as_ref()) {
-                (0, Some(lamina_mir::MirType::Scalar(lamina_mir::ScalarType::I64))) => {
-                    println!("[JIT] Calling function with 0 parameters...");
-                    unsafe {
-                        // Ensure stack is 16-byte aligned before calling (AAPCS64 requirement)
-                        // The function's first instruction (STP) requires 16-byte alignment
-                        #[cfg(target_arch = "aarch64")]
-                        {
-                            use std::arch::asm;
-                            let sp: usize;
-                            asm!("mov {}, sp", out(reg) sp);
-                            if sp % 16 != 0 {
-                                eprintln!("[WARNING] Stack pointer is not 16-byte aligned: SP={:p}, alignment={} bytes", sp as *const u8, sp % 16);
-                                eprintln!("[WARNING] This may cause the STP instruction to fault!");
-                                eprintln!("[WARNING] Attempting to align stack before calling...");
-                                // Try to align by adjusting SP (this is a workaround)
-                                // Note: This is dangerous and may not work correctly
-                            }
-                        }
-                        
-                        let func_ptr: unsafe extern "C" fn() -> i64 = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        let result = func_ptr();
-                        println!("[JIT] Function returned: {}", result);
-                    }
-                }
-                (0, None) => {
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn() = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        func_ptr();
-                        println!("[JIT] Function executed successfully (void return)");
-                    }
-                }
-                (1, Some(lamina_mir::MirType::Scalar(lamina_mir::ScalarType::I64))) => {
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn(i64) -> i64 = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        let result = func_ptr(0);
-                        println!("[JIT] Function returned: {}", result);
-                    }
-                }
-                (2, Some(lamina_mir::MirType::Scalar(lamina_mir::ScalarType::I64))) => {
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn(i64, i64) -> i64 = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        let result = func_ptr(0, 0);
-                        println!("[JIT] Function returned: {}", result);
-                    }
-                }
-                (3, Some(lamina_mir::MirType::Scalar(lamina_mir::ScalarType::I64))) => {
-                    // For matmul_2d: n_rows=256, k_dim=256, n_cols=256
-                    // Note: Function pointer points to first compiled function
-                    // which may not be the one we want due to HashMap iteration order
-                    println!("[JIT] Calling function with 3 i64 parameters (256, 256, 256)...");
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn(i64, i64, i64) -> i64 = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        println!("[JIT] Function pointer: {:p}", func_ptr);
-                        let result = func_ptr(256, 256, 256);
-                        println!("[JIT] Function returned: {}", result);
-                    }
-                }
-                (3, None) => {
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn(i64, i64, i64) = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        func_ptr(256, 256, 256);
-                        println!("[JIT] Function executed successfully (void return)");
-                    }
-                }
-                (4, _) => {
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn(i64, i64, i64, i64) -> i64 = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        let result = func_ptr(0, 0, 0, 0);
-                        println!("[JIT] Function returned: {}", result);
-                    }
-                }
-                (5, _) => {
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn(i64, i64, i64, i64, i64) -> i64 = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        let result = func_ptr(0, 0, 0, 0, 0);
-                        println!("[JIT] Function returned: {}", result);
-                    }
-                }
-                (6, _) => {
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64) -> i64 = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        let result = func_ptr(0, 0, 0, 0, 0, 0);
-                        println!("[JIT] Function returned: {}", result);
-                    }
-                }
-                (7, _) => {
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64) -> i64 = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        let result = func_ptr(0, 0, 0, 0, 0, 0, 0);
-                        println!("[JIT] Function returned: {}", result);
-                    }
-                }
-                (8, _) => {
-                    unsafe {
-                        let func_ptr: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64) -> i64 = 
-                            std::mem::transmute(runtime_result.function_ptr);
-                        let result = func_ptr(0, 0, 0, 0, 0, 0, 0, 0);
-                        println!("[JIT] Function returned: {}", result);
-                    }
-                }
-                _ => {
-                    println!("[JIT] Function signature not yet fully supported");
-                    println!("[JIT] Params: {}, Return: {:?}", param_count, func.sig.ret_ty);
-                }
-            }
-        } else {
-            if !all_i64 {
-                println!("[JIT] Function has non-i64 parameters, not yet supported");
-                println!("[JIT] Parameter types: {:?}", 
-                         func.sig.params.iter().map(|p| &p.ty).collect::<Vec<_>>());
-            } else {
-                println!("[JIT] Functions with more than 8 parameters not yet supported");
-                println!("[JIT] Function has {} parameters", param_count);
-            }
-        }
+        lamina::runtime::execute_jit_function(&func.sig, runtime_result.function_ptr, None, options.verbose)?;
     }
 
     Ok(())
