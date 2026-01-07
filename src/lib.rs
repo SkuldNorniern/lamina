@@ -36,7 +36,7 @@
 //! "#;
 //!
 //! let mut assembly = Vec::new();
-//! compile_lamina_ir_to_assembly(ir_code, &mut assembly)?;
+//! compile_lamina_ir_to_assembly(ir_code, &mut assembly, 1)?;
 //! println!("Generated assembly:\n{}", String::from_utf8(assembly)?);
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
@@ -317,13 +317,14 @@ pub use mir_codegen::generate_mir_to_target;
 /// # Arguments
 /// * `input_ir` - A string slice containing the Lamina IR code.
 /// * `output_asm` - A mutable writer where the generated assembly will be written.
+/// * `codegen_units` - Number of parallel compilation threads (default: 1).
 pub fn compile_lamina_ir_to_assembly<W: Write>(
     input_ir: &str,
     output_asm: &mut W,
+    codegen_units: usize,
 ) -> std::result::Result<(), LaminaError> {
-    // Use the host target as the default target
     let target = lamina_platform::Target::detect_host().to_str();
-    compile_lamina_ir_to_target_assembly(input_ir, output_asm, &target)
+    compile_lamina_ir_to_target_assembly(input_ir, output_asm, &target, codegen_units)
 }
 
 /// Parses Lamina IR text and generates assembly code for a specific target architecture.
@@ -332,6 +333,7 @@ pub fn compile_lamina_ir_to_assembly<W: Write>(
 /// * `input_ir` - A string slice containing the Lamina IR code.
 /// * `output_asm` - A mutable writer where the generated assembly will be written.
 /// * `target` - A string slice specifying the target architecture (e.g., "x86_64", "aarch64").
+/// * `codegen_units` - Number of parallel compilation threads.
 ///
 /// # Returns
 /// * `Result<(),LaminaError>` - Ok if compilation succeeds, Err with error information otherwise.
@@ -339,11 +341,10 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     input_ir: &str,
     output_asm: &mut W,
     target: &str,
+    codegen_units: usize,
 ) -> std::result::Result<(), LaminaError> {
-    // 1. Parse the input string into an IR Module
     let module = parser::parse_module(input_ir)?;
 
-    // 2. Generate assembly for the specified target
     use std::str::FromStr;
     let target_obj = lamina_platform::Target::from_str(target)
         .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{}': {}", target, e)))?;
@@ -361,6 +362,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
                 output_asm,
                 target_obj.architecture,
                 target_obj.operating_system,
+                codegen_units,
             )?;
         }
         #[cfg(feature = "nightly")]
@@ -370,6 +372,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
                 output_asm,
                 target_obj.architecture,
                 target_obj.operating_system,
+                codegen_units,
             )?;
         }
         _ => {
