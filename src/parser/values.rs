@@ -78,7 +78,7 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
             }
             
             let hint = if !suggestions.is_empty() {
-                format!("Did you mean 'true'?")
+                "Did you mean 'true'?".to_string()
             } else {
                 "Expected 'true' boolean literal".to_string()
             };
@@ -100,7 +100,7 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
             }
             
             let hint = if !suggestions.is_empty() {
-                format!("Did you mean 'false'?")
+                "Did you mean 'false'?".to_string()
             } else {
                 "Expected 'false' boolean literal".to_string()
             };

@@ -312,7 +312,7 @@ fn parse_getfield<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let pos = state.position();
+    let _pos = state.position();
     let has_dot = state.current_char() == Some('.');
 
     if has_dot {
@@ -343,7 +343,7 @@ fn parse_getelem<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let pos = state.position();
+    let _pos = state.position();
     let has_dot = state.current_char() == Some('.');
 
     if has_dot {
@@ -473,7 +473,7 @@ fn parse_tuple<'a>(
         }
         let pos = state.position();
         if parse_value(state).is_ok() {
-            let after_pos = state.position();
+            let _after_pos = state.position();
             state.skip_whitespace_and_comments();
             if state.current_char() == Some('=') {
                 state.set_position(pos);

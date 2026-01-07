@@ -58,7 +58,7 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
     
     // Early exit if length difference exceeds max_distance
     if let Some(max) = max_distance {
-        let len_diff = if m > n { m - n } else { n - m };
+        let len_diff = m.abs_diff(n);
         if len_diff > max {
             return max + 1;
         }
@@ -91,11 +91,10 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
                 .min(prev_row[j - 1] + cost);         // substitution
             
             // Early termination if we exceed max_distance
-            if let Some(max) = max_distance {
-                if curr_row[j] > max {
+            if let Some(max) = max_distance
+                && curr_row[j] > max {
                     return max + 1;
                 }
-            }
         }
         
         // Swap rows for next iteration
