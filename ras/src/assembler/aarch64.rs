@@ -53,7 +53,7 @@ pub fn compile_mir_aarch64_function(
         target_name: String,    // Function name to call
         bl_pc_offset: usize,    // PC offset of the BL instruction (for PC+4 calculation)
     }
-    let mut bl_fixups: Vec<BlFixup> = Vec::new();
+    let _bl_fixups: Vec<BlFixup> = Vec::new();
     
     // Now compile all functions, updating offsets with actual values
     for func_name in &all_function_names {
@@ -153,7 +153,7 @@ fn enc_stp_pre_64(rt: u8, rt2: u8, rn: u8, imm_bytes: i32) -> Result<u32, RasErr
         return Err(RasError::EncodingError("STP imm must be multiple of 8".into()));
     }
     let imm7 = imm_bytes / 8;
-    if imm7 < -64 || imm7 > 63 {
+    if !(-64..=63).contains(&imm7) {
         return Err(RasError::EncodingError(format!("STP imm7 out of range: {}", imm7)));
     }
     let imm7_bits = (imm7 as u32) & 0x7F;
@@ -170,7 +170,7 @@ fn enc_ldp_post_64(rt: u8, rt2: u8, rn: u8, imm_bytes: i32) -> Result<u32, RasEr
         return Err(RasError::EncodingError("LDP imm must be multiple of 8".into()));
     }
     let imm7 = imm_bytes / 8;
-    if imm7 < -64 || imm7 > 63 {
+    if !(-64..=63).contains(&imm7) {
         return Err(RasError::EncodingError(format!("LDP imm7 out of range: {}", imm7)));
     }
     let imm7_bits = (imm7 as u32) & 0x7F;
@@ -232,7 +232,6 @@ fn encode_epilogue_aarch64(aligned_stack_size: usize) -> Result<Vec<u8>, RasErro
         }
         // add sp, sp, #aligned_stack_size
         let add_sp = (0b1u32 << 31)
-            | (0b0u32 << 30)
             | (0b100010u32 << 23)
             | ((aligned_stack_size as u32) << 10)
             | (31u32 << 5)
@@ -257,19 +256,14 @@ fn encode_str_aarch64(
     let src = parse_register_aarch64(src_reg)?;
     let mut code = Vec::new();
     
-    if offset >= 0 && offset <= 255 {
+    if (0..=255).contains(&offset) {
         // Small positive offset: use unscaled STR with imm9 (range 0-255 bytes)
         // STR (immediate, unscaled): [31:30]=size(11), [29:27]=111, [26]=0, [25:24]=opc(00), [23:22]=00, [21]=0, [20:12]=imm9, [11:10]=00, [9:5]=Rn, [4:0]=Rt
         // For 64-bit STR unscaled: size=11, opc=00
         let imm9 = offset as u32 & 0x1FF;
-        let inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                   (0b111u32 << 27) |       // [29:27] = 111
-                   (0b0u32 << 26) |         // [26] = 0
-                   (0b00u32 << 24) |        // [25:24] = opc (00 = STR unscaled)
-                   (0b00u32 << 22) |        // [23:22] = 00
-                   (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                   (imm9 << 12) |           // [20:12] = imm9
-                   (0b00u32 << 10) |        // [11:10] = 00
+        let inst = (((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                   (0b111u32 << 27)) |         // [21] = 0 (unscaled)
+                   (imm9 << 12)) |        // [11:10] = 00
                    ((base_reg as u32) << 5) |  // [9:5] = Rn
                    (src as u32);            // [4:0] = Rt
         code.extend_from_slice(&inst.to_le_bytes());
@@ -283,10 +277,8 @@ fn encode_str_aarch64(
             ));
         }
         let imm12 = (offset as u32) / 8;
-        let inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                   (0b111u32 << 27) |       // [29:27] = 111
-                   (0b0u32 << 26) |         // [26] = 0
-                   (0b00u32 << 24) |        // [25:24] = opc (00 = STR)
+        let inst = ((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                   (0b111u32 << 27)) |        // [25:24] = opc (00 = STR)
                    (0b11u32 << 22) |        // [23:22] = size (11 = 64-bit)
                    (0b1u32 << 21) |         // [21] = 1 (scaled)
                    ((imm12 >> 3) << 12) |   // [20:12] = imm12[11:3]
@@ -294,7 +286,7 @@ fn encode_str_aarch64(
                    ((base_reg as u32) << 5) |  // [9:5] = Rn
                    (src as u32);            // [4:0] = Rt
         code.extend_from_slice(&inst.to_le_bytes());
-    } else if offset < 0 && offset >= -256 {
+    } else if (-256..0).contains(&offset) {
         // Negative offset: use SUB to adjust base, then STR with positive offset
         // SUB x10, <base>, #abs(offset)
     let abs_offset = (-offset) as u32;
@@ -303,25 +295,17 @@ fn encode_str_aarch64(
                 format!("STR offset {} out of range", offset)
             ));
     }
-    let sub_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                      (0b1u32 << 30) |        // op=1 (SUB, not ADD!)
-                      (0b0u32 << 29) |        // S=0
-                      (0b100010u32 << 23) |   // opcode
-                      (0b0u32 << 22) |        // shift=0
+    let sub_inst = (((0b1u32 << 31) |        // sf=1 (64-bit)
+                      (0b1u32 << 30)) |        // S=0
+                      (0b100010u32 << 23)) |        // shift=0
                       ((abs_offset & 0xFFF) << 10) | // imm12
                       ((base_reg as u32) << 5) | // Rn
-                      (10u32 << 0);           // Rd=x10 (scratch)
+                      10u32;           // Rd=x10 (scratch)
     code.extend_from_slice(&sub_inst.to_le_bytes());
         
         // STR <src>, [x10]
-        let str_inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                      (0b111u32 << 27) |       // [29:27] = 111
-                      (0b0u32 << 26) |         // [26] = 0
-                      (0b00u32 << 24) |        // [25:24] = opc (00 = STR unscaled)
-                      (0b00u32 << 22) |        // [23:22] = 00
-                      (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                      (0u32 << 12) |           // [20:12] = imm9 = 0
-                      (0b00u32 << 10) |        // [11:10] = 00
+        let str_inst = ((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                      (0b111u32 << 27)) |        // [11:10] = 00
                       (10u32 << 5) |           // [9:5] = Rn = x10
                       (src as u32);            // [4:0] = Rt
         code.extend_from_slice(&str_inst.to_le_bytes());
@@ -344,19 +328,15 @@ fn encode_ldr_aarch64(
     let dst = parse_register_aarch64(dst_reg)?;
     let mut code = Vec::new();
     
-    if offset >= 0 && offset <= 255 {
+    if (0..=255).contains(&offset) {
         // Small positive offset: use unscaled LDR with imm9 (range 0-255 bytes)
         // LDR (immediate, unscaled): [31:30]=size(11), [29:27]=111, [26]=0, [25:24]=opc(01), [23:22]=00, [21]=0, [20:12]=imm9, [11:10]=00, [9:5]=Rn, [4:0]=Rt
         // For 64-bit LDR unscaled: size=11, opc=01
         let imm9 = offset as u32 & 0x1FF;
-        let inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                   (0b111u32 << 27) |       // [29:27] = 111
-                   (0b0u32 << 26) |         // [26] = 0
-                   (0b01u32 << 24) |        // [25:24] = opc (01 = LDR)
-                   (0b00u32 << 22) |        // [23:22] = 00
-                   (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                   (imm9 << 12) |           // [20:12] = imm9
-                   (0b00u32 << 10) |        // [11:10] = 00
+        let inst = ((((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                   (0b111u32 << 27)) |         // [26] = 0
+                   (0b01u32 << 24)) |         // [21] = 0 (unscaled)
+                   (imm9 << 12)) |        // [11:10] = 00
                    ((base_reg as u32) << 5) |  // [9:5] = Rn
                    (dst as u32);            // [4:0] = Rt
         code.extend_from_slice(&inst.to_le_bytes());
@@ -370,9 +350,8 @@ fn encode_ldr_aarch64(
             ));
         }
         let imm12 = (offset as u32) / 8;
-        let inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                   (0b111u32 << 27) |       // [29:27] = 111
-                   (0b0u32 << 26) |         // [26] = 0
+        let inst = ((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                   (0b111u32 << 27)) |         // [26] = 0
                    (0b01u32 << 24) |        // [25:24] = opc (01 = LDR)
                    (0b11u32 << 22) |        // [23:22] = size (11 = 64-bit)
                    (0b1u32 << 21) |         // [21] = 1 (scaled)
@@ -381,23 +360,19 @@ fn encode_ldr_aarch64(
                    ((base_reg as u32) << 5) |  // [9:5] = Rn
                    (dst as u32);            // [4:0] = Rt
         code.extend_from_slice(&inst.to_le_bytes());
-    } else if offset < 0 && offset >= -256 {
+    } else if (-256..0).contains(&offset) {
         // Small negative offset: use unscaled LDR with imm9 (range -256 to -1 bytes)
         // LDR (immediate, unscaled): [31:30]=size(11), [29:27]=111, [26]=0, [25:24]=opc(01), [23:22]=00, [21]=0, [20:12]=imm9, [11:10]=00, [9:5]=Rn, [4:0]=Rt
         // For negative offsets, imm9 is signed: -256 to 255
-        let imm9 = (offset as i32) & 0x1FF; // Sign-extend to 9 bits
-        let inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                   (0b111u32 << 27) |       // [29:27] = 111
-                   (0b0u32 << 26) |         // [26] = 0
-                   (0b01u32 << 24) |        // [25:24] = opc (01 = LDR)
-                   (0b00u32 << 22) |        // [23:22] = 00
-                   (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                   ((imm9 as u32) << 12) |  // [20:12] = imm9 (signed)
-                   (0b00u32 << 10) |        // [11:10] = 00
+        let imm9 = offset & 0x1FF; // Sign-extend to 9 bits
+        let inst = ((((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                   (0b111u32 << 27)) |         // [26] = 0
+                   (0b01u32 << 24)) |         // [21] = 0 (unscaled)
+                   ((imm9 as u32) << 12)) |        // [11:10] = 00
                    ((base_reg as u32) << 5) |  // [9:5] = Rn
                    (dst as u32);            // [4:0] = Rt
         code.extend_from_slice(&inst.to_le_bytes());
-    } else if offset < -256 && offset >= -0xFFF {
+    } else if (-0xFFF..-256).contains(&offset) {
         // Larger negative offset: use SUB to adjust base, then LDR with positive offset
         // SUB x10, <base>, #abs(offset)
     let abs_offset = (-offset) as u32;
@@ -406,25 +381,18 @@ fn encode_ldr_aarch64(
                 format!("LDR offset {} out of range", offset)
             ));
     }
-    let sub_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                      (0b1u32 << 30) |        // op=1 (SUB, not ADD!)
-                      (0b0u32 << 29) |        // S=0
-                      (0b100010u32 << 23) |   // opcode
-                      (0b0u32 << 22) |        // shift=0
+    let sub_inst = (((0b1u32 << 31) |        // sf=1 (64-bit)
+                      (0b1u32 << 30)) |        // S=0
+                      (0b100010u32 << 23)) |        // shift=0
                       ((abs_offset & 0xFFF) << 10) | // imm12
                       ((base_reg as u32) << 5) | // Rn
-                      (10u32 << 0);           // Rd=x10 (scratch)
+                      10u32;           // Rd=x10 (scratch)
     code.extend_from_slice(&sub_inst.to_le_bytes());
         
         // LDR <dst>, [x10]
-        let ldr_inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                      (0b111u32 << 27) |       // [29:27] = 111
-                      (0b0u32 << 26) |         // [26] = 0
-                      (0b01u32 << 24) |        // [25:24] = opc (01 = LDR)
-                      (0b00u32 << 22) |        // [23:22] = 00
-                      (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                      (0u32 << 12) |           // [20:12] = imm9 = 0
-                      (0b00u32 << 10) |        // [11:10] = 00
+        let ldr_inst = (((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                      (0b111u32 << 27)) |         // [26] = 0
+                      (0b01u32 << 24)) |        // [11:10] = 00
                       (10u32 << 5) |           // [9:5] = Rn = x10
                       (dst as u32);            // [4:0] = Rt
         code.extend_from_slice(&ldr_inst.to_le_bytes());
@@ -442,12 +410,10 @@ fn encode_ret_aarch64(reg: u8) -> Result<Vec<u8>, RasError> {
     // RET <Xn>: BR (Branch to Register) instruction
     // Encoding: [31:25] = 1101011, [24] = 0, [23:21] = 010, [20:16] = 11111, [15:5] = Rn << 5, [4:0] = 00000
     // RET is an alias for BR <Xn>
-    let inst = (0b1101011u32 << 25) |   // [31:25] = 1101011
-               (0b0u32 << 24) |          // [24] = 0
+    let inst = (0b1101011u32 << 25) |          // [24] = 0
                (0b010u32 << 21) |         // [23:21] = 010
                (0b11111u32 << 16) |      // [20:16] = 11111
-               ((reg as u32) << 5) |     // [15:5] = Rn << 5
-               (0b00000u32 << 0);        // [4:0] = 00000
+               ((reg as u32) << 5);        // [4:0] = 00000
     Ok(inst.to_le_bytes().to_vec())
 }
 
@@ -519,9 +485,9 @@ fn encode_mir_instruction_aarch64_with_context(
     _stack_size: usize,
     _func_name: &str,
     function_offsets: &std::collections::HashMap<String, usize>,
-    current_offset: usize,
+    _current_offset: usize,
 ) -> Result<Vec<u8>, RasError> {
-    use lamina_mir::{IntBinOp, Operand, Register};
+    use lamina_mir::{IntBinOp, Register};
     let mut code = Vec::new();
     
     match inst {
@@ -550,43 +516,32 @@ fn encode_mir_instruction_aarch64_with_context(
             match op {
                 IntBinOp::Add => {
                     // ADD dst, lhs, rhs
-                    let add_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                                  (0b0u32 << 30) |        // op=0
-                                  (0b0u32 << 29) |        // S=0
-                                  (0b01011u32 << 24) |    // opcode
-                                  (0b0u32 << 22) |        // shift=00
-                                  ((rhs_reg as u32) << 16) | // Rm
-                                  (0u32 << 10) |         // imm6=0
+                    let add_inst = (((0b1u32 << 31) |        // S=0
+                                  (0b01011u32 << 24)) |        // shift=00
+                                  ((rhs_reg as u32) << 16)) |         // imm6=0
                                   ((lhs_reg as u32) << 5) | // Rn
                                   (dst_reg as u32);       // Rd
                     code.extend_from_slice(&add_inst.to_le_bytes());
                 }
                 IntBinOp::Sub => {
                     // SUB dst, lhs, rhs
-                    let sub_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                                  (0b0u32 << 30) |        // op=0
-                                  (0b0u32 << 29) |        // S=0
-                                  (0b11011u32 << 24) |    // opcode (SUB)
-                                  (0b0u32 << 22) |        // shift=00
-                                  ((rhs_reg as u32) << 16) | // Rm
-                                  (0u32 << 10) |         // imm6=0
+                    let sub_inst = (((0b1u32 << 31) |        // S=0
+                                  (0b11011u32 << 24)) |        // shift=00
+                                  ((rhs_reg as u32) << 16)) |         // imm6=0
                                   ((lhs_reg as u32) << 5) | // Rn
                                   (dst_reg as u32);       // Rd
                     code.extend_from_slice(&sub_inst.to_le_bytes());
                 }
                 IntBinOp::Mul => {
                     // MUL dst, lhs, rhs (MADD dst, lhs, rhs, xzr)
-                    let mul_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                                  (0b00u32 << 29) |       // opcode
+                    let _mul_inst = ((0b1u32 << 31) |       // opcode
                                   (0b11011u32 << 24) |    // opcode (MADD)
-                                  ((rhs_reg as u32) << 16) | // Rm
-                                  (0u32 << 15) |         // o0=0
+                                  ((rhs_reg as u32) << 16)) |         // o0=0
                                   ((lhs_reg as u32) << 10) | // Ra (xzr=31, but we use 0 for MUL)
                                   ((lhs_reg as u32) << 5) | // Rn
                                   (dst_reg as u32);       // Rd
                     // Actually, MUL is MADD with Ra=xzr (31)
                     let mul_inst = (0b1u32 << 31) |
-                                  (0b00u32 << 29) |
                                   (0b11011u32 << 24) |
                                   ((rhs_reg as u32) << 16) |
                                   (31u32 << 10) |         // Ra=xzr
@@ -602,15 +557,14 @@ fn encode_mir_instruction_aarch64_with_context(
             }
             
             // Store result to destination
-            if let Register::Virtual(vreg) = dst {
-                if let Some(offset) = stack_slots.get(vreg) {
+            if let Register::Virtual(vreg) = dst
+                && let Some(offset) = stack_slots.get(vreg) {
                     code.extend_from_slice(&encode_str_aarch64(
                         dst_reg_str,
                         29, // x29 (FP)
                         *offset,
                     )?);
                 }
-            }
             
             // Free scratch registers
             reg_alloc.free_scratch(lhs_reg_str);
@@ -652,14 +606,10 @@ fn encode_mir_instruction_aarch64_with_context(
                     // LDR tmp, [base_reg, #offset]
                     if *offset >= 0 && (*offset as u32) <= 0xFFF {
                         let imm9 = (*offset as u32) & 0x1FF;
-                        let ldr_inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                                      (0b111u32 << 27) |       // [29:27] = 111
-                                      (0b0u32 << 26) |         // [26] = 0
-                                      (0b01u32 << 24) |        // [25:24] = opc (01 = LDR)
-                                      (0b00u32 << 22) |        // [23:22] = 00
-                                      (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                                      (imm9 << 12) |           // [20:12] = imm9
-                                      (0b00u32 << 10) |        // [11:10] = 00
+                        let ldr_inst = ((((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                                      (0b111u32 << 27)) |         // [26] = 0
+                                      (0b01u32 << 24)) |         // [21] = 0 (unscaled)
+                                      (imm9 << 12)) |        // [11:10] = 00
                                       ((base_reg as u32) << 5) |  // [9:5] = Rn
                                       (tmp_reg as u32);        // [4:0] = Rt
                         code.extend_from_slice(&ldr_inst.to_le_bytes());
@@ -681,15 +631,14 @@ fn encode_mir_instruction_aarch64_with_context(
             }
             
             // Store to destination
-            if let Register::Virtual(vreg) = dst {
-                if let Some(offset) = stack_slots.get(vreg) {
+            if let Register::Virtual(vreg) = dst
+                && let Some(offset) = stack_slots.get(vreg) {
                     code.extend_from_slice(&encode_str_aarch64(
                         tmp_reg_str,
                         29, // x29 (FP)
                         *offset,
                     )?);
                 }
-            }
             
             reg_alloc.free_scratch(tmp_reg_str);
     }
@@ -730,14 +679,9 @@ fn encode_mir_instruction_aarch64_with_context(
                     // STR src_reg, [base_reg, #offset]
                     if *offset >= 0 && (*offset as u32) <= 0xFFF {
                         let imm9 = (*offset as u32) & 0x1FF;
-                        let str_inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                                      (0b111u32 << 27) |       // [29:27] = 111
-                                      (0b0u32 << 26) |         // [26] = 0
-                                      (0b00u32 << 24) |        // [25:24] = opc (00 = STR unscaled)
-                                      (0b00u32 << 22) |        // [23:22] = 00
-                                      (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                                      (imm9 << 12) |           // [20:12] = imm9
-                                      (0b00u32 << 10) |        // [11:10] = 00
+                        let str_inst = (((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                                      (0b111u32 << 27)) |         // [21] = 0 (unscaled)
+                                      (imm9 << 12)) |        // [11:10] = 00
                                       ((base_reg as u32) << 5) |  // [9:5] = Rn
                                       (src_reg as u32);        // [4:0] = Rt
                         code.extend_from_slice(&str_inst.to_le_bytes());
@@ -777,15 +721,13 @@ fn encode_mir_instruction_aarch64_with_context(
             // CMP instruction: CMP lhs, rhs
             // Encoding: sf=1 (64-bit), op=1, S=1, shift=00, Rm=rhs, imm6=0, Rn=lhs, Rd=31 (xzr)
             let is_64bit = ty.size_bytes() == 8;
-            let cmp_inst = ((if is_64bit { 1u32 } else { 0u32 }) << 31) | // sf
+            let cmp_inst = ((((if is_64bit { 1u32 } else { 0u32 }) << 31) | // sf
                           (0b1u32 << 30) |        // op=1
                           (0b1u32 << 29) |        // S=1 (set flags)
-                          (0b11010u32 << 24) |     // opcode (SUBS)
-                          (0b0u32 << 22) |         // shift=00
-                          ((rhs_reg as u32) << 16) | // Rm
-                          (0u32 << 10) |          // imm6=0
+                          (0b11010u32 << 24)) |         // shift=00
+                          ((rhs_reg as u32) << 16)) |          // imm6=0
                           ((lhs_reg as u32) << 5) | // Rn
-                          (31u32 << 0);           // Rd=xzr
+                          31u32;           // Rd=xzr
             code.extend_from_slice(&cmp_inst.to_le_bytes());
             
             // CSET instruction: CSET dst, cond
@@ -802,26 +744,22 @@ fn encode_mir_instruction_aarch64_with_context(
                 IntCmpOp::UGt => 0b1000u32, // hi (unsigned)
                 IntCmpOp::UGe => 0b0010u32, // hs (unsigned)
             };
-            let cset_inst = ((if is_64bit { 1u32 } else { 0u32 }) << 31) | // sf
-                           (0b0u32 << 30) |        // op=0
-                           (0b0u32 << 29) |        // S=0
+            let cset_inst = (((if is_64bit { 1u32 } else { 0u32 }) << 31) |        // S=0
                            (0b11010100u32 << 21) |  // opcode (CSET)
-                           (cond_code << 12) |     // cond
-                           (0b0u32 << 10) |        // o2=0
+                           (cond_code << 12)) |        // o2=0
                            (31u32 << 5) |          // Rn=xzr
                            (dst_reg as u32);       // Rd
             code.extend_from_slice(&cset_inst.to_le_bytes());
             
             // Store result to destination
-            if let Register::Virtual(vreg) = dst {
-                if let Some(offset) = stack_slots.get(vreg) {
+            if let Register::Virtual(vreg) = dst
+                && let Some(offset) = stack_slots.get(vreg) {
                     code.extend_from_slice(&encode_str_aarch64(
                         dst_reg_str,
                         29, // x29 (FP)
                         *offset,
                     )?);
                 }
-            }
             
             // Free scratch registers
             reg_alloc.free_scratch(lhs_reg_str);
@@ -830,7 +768,7 @@ fn encode_mir_instruction_aarch64_with_context(
     }
     lamina_mir::Instruction::Call { name, args, ret } => {
             use lamina_codegen::aarch64::AArch64ABI;
-            let abi = AArch64ABI::new(assembler.target_os);
+            let _abi = AArch64ABI::new(assembler.target_os);
             
             // Materialize arguments into argument registers (x0-x7)
             let arg_regs = AArch64ABI::ARG_REGISTERS;
@@ -851,14 +789,12 @@ fn encode_mir_instruction_aarch64_with_context(
                         format!("Stack space {} too large for single SUB", stack_space)
                     ));
                 }
-                let sub_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                              (0b1u32 << 30) |        // op=1 (SUB)
-                              (0b0u32 << 29) |        // S=0
-                              (0b100010u32 << 23) |   // opcode
-                              (0b0u32 << 22) |        // shift=0
+                let sub_inst = (((0b1u32 << 31) |        // sf=1 (64-bit)
+                              (0b1u32 << 30)) |        // S=0
+                              (0b100010u32 << 23)) |        // shift=0
                               ((stack_space as u32 & 0xFFF) << 10) | // imm12
                               (31u32 << 5) |         // Rn=sp (x31)
-                              (31u32 << 0);          // Rd=sp (x31)
+                              31u32;          // Rd=sp (x31)
                 code.extend_from_slice(&sub_inst.to_le_bytes());
                 
                 // Store stack arguments
@@ -871,14 +807,9 @@ fn encode_mir_instruction_aarch64_with_context(
                     // STR scratch, [sp, #offset]
                     if offset <= 0xFFF {
                         let imm9 = (offset as u32) & 0x1FF;
-                        let str_inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                                      (0b111u32 << 27) |       // [29:27] = 111
-                                      (0b0u32 << 26) |         // [26] = 0
-                                      (0b00u32 << 24) |        // [25:24] = opc (00 = STR unscaled)
-                                      (0b00u32 << 22) |        // [23:22] = 00
-                                      (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                                      (imm9 << 12) |           // [20:12] = imm9
-                                      (0b00u32 << 10) |        // [11:10] = 00
+                        let str_inst = (((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                                      (0b111u32 << 27)) |         // [21] = 0 (unscaled)
+                                      (imm9 << 12)) |        // [11:10] = 00
                                       (31u32 << 5) |           // [9:5] = Rn = sp
                                       (scratch as u32);        // [4:0] = Rt
                         code.extend_from_slice(&str_inst.to_le_bytes());
@@ -947,11 +878,9 @@ fn encode_mir_instruction_aarch64_with_context(
                 // Allocate 48 bytes for home area (matches AOT codegen: 0x30)
                 // AOT uses 48 bytes: 32 for home area + 16 for local vars
                 let home_area_size = 48u32;
-                let sub_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                             (0b1u32 << 30) |         // op=1 (SUB)
-                             (0b0u32 << 29) |         // [29] = 0
-                             (0b100010u32 << 23) |    // [28:23] = 100010
-                             (0b0u32 << 22) |         // [22] = 0
+                let sub_inst = (((0b1u32 << 31) |        // sf=1 (64-bit)
+                             (0b1u32 << 30)) |         // [29] = 0
+                             (0b100010u32 << 23)) |         // [22] = 0
                              ((home_area_size & 0xFFF) << 10) | // [21:10] = imm12
                              (31u32 << 5) |           // [9:5] = Rn = sp
                              (31u32);                 // [4:0] = Rd = sp
@@ -976,7 +905,7 @@ fn encode_mir_instruction_aarch64_with_context(
                 let chunk3 = ((format_bytes >> 48) & 0xFFFF) as u16;
                 
                 if chunk0 != 0 || (chunk1 == 0 && chunk2 == 0 && chunk3 == 0) {
-                    let movz = (0b1u32 << 31) | (0b100101u32 << 25) | (0b00u32 << 21) |
+                    let movz = ((0b1u32 << 31) | (0b100101u32 << 25)) |
                               ((chunk0 as u32) << 5) | (scratch as u32);
                     code.extend_from_slice(&movz.to_le_bytes());
                 }
@@ -998,41 +927,26 @@ fn encode_mir_instruction_aarch64_with_context(
                 
                 // Store x1 to [sp] FIRST (spill variadic argument - CRITICAL for macOS ABI, matches AOT codegen)
                 // AOT code: str x8, [x9] where x9=sp, so value goes to [sp]
-                let str_x1 = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                            (0b111u32 << 27) |       // [29:27] = 111
-                            (0b0u32 << 26) |         // [26] = 0
-                            (0b00u32 << 24) |        // [25:24] = opc (00 = STR unscaled)
-                            (0b00u32 << 22) |        // [23:22] = 00
-                            (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                            (0u32 << 12) |           // [20:12] = imm9 = 0
-                            (0b00u32 << 10) |        // [11:10] = 00
+                let str_x1 = ((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                            (0b111u32 << 27)) |        // [11:10] = 00
                             (31u32 << 5) |           // [9:5] = Rn = sp
                             (1u32);                  // [4:0] = Rt = x1
                 code.extend_from_slice(&str_x1.to_le_bytes());
                 
                 // Store format string at [sp+16] (after home area, matches AOT pattern of using higher offsets)
-                let str_fmt = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                             (0b111u32 << 27) |       // [29:27] = 111
-                             (0b0u32 << 26) |         // [26] = 0
-                             (0b00u32 << 24) |        // [25:24] = opc (00 = STR unscaled)
-                             (0b00u32 << 22) |        // [23:22] = 00
-                             (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                             (16u32 << 12) |         // [20:12] = imm9 = 16
-                             (0b00u32 << 10) |        // [11:10] = 00
+                let str_fmt = (((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                             (0b111u32 << 27)) |         // [21] = 0 (unscaled)
+                             (16u32 << 12)) |        // [11:10] = 00
                              (31u32 << 5) |           // [9:5] = Rn = sp
                              (scratch as u32);        // [4:0] = Rt
                 code.extend_from_slice(&str_fmt.to_le_bytes());
                 
                 // MOV x0, sp+16 (format string address - first argument)
                 // ADD x0, sp, #16
-                let add_x0 = (0b1u32 << 31) |        // sf=1 (64-bit)
-                            (0b0u32 << 30) |         // op=0 (ADD)
-                            (0b0u32 << 29) |         // [29] = 0
-                            (0b100010u32 << 23) |    // [28:23] = 100010
-                            (0b0u32 << 22) |         // [22] = 0
+                let add_x0 = ((0b1u32 << 31) |         // [29] = 0
+                            (0b100010u32 << 23)) |         // [22] = 0
                             ((16u32 & 0xFFF) << 10) | // [21:10] = imm12 = 16
-                            (31u32 << 5) |           // [9:5] = Rn = sp
-                            (0u32);                  // [4:0] = Rd = x0
+                            (31u32 << 5);                  // [4:0] = Rd = x0
                 code.extend_from_slice(&add_x0.to_le_bytes());
                 
                 // Load printf function pointer into x16 using MOVZ+MOVK
@@ -1042,7 +956,7 @@ fn encode_mir_instruction_aarch64_with_context(
                 let addr_chunk3 = ((printf_addr >> 48) & 0xFFFF) as u16;
                 
                 if addr_chunk0 != 0 || (addr_chunk1 == 0 && addr_chunk2 == 0 && addr_chunk3 == 0) {
-                    let movz = (0b1u32 << 31) | (0b100101u32 << 25) | (0b00u32 << 21) |
+                    let movz = ((0b1u32 << 31) | (0b100101u32 << 25)) |
                               ((addr_chunk0 as u32) << 5) | (16u32);
                     code.extend_from_slice(&movz.to_le_bytes());
                 }
@@ -1070,11 +984,8 @@ fn encode_mir_instruction_aarch64_with_context(
                 // For now, skip fflush to keep it simple - can add later if needed
                 
                 // Restore stack (ADD sp, sp, #32)
-                let add_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                             (0b0u32 << 30) |         // op=0 (ADD)
-                             (0b0u32 << 29) |         // [29] = 0
-                             (0b100010u32 << 23) |    // [28:23] = 100010
-                             (0b0u32 << 22) |         // [22] = 0
+                let add_inst = ((0b1u32 << 31) |         // [29] = 0
+                             (0b100010u32 << 23)) |         // [22] = 0
                              ((home_area_size & 0xFFF) << 10) | // [21:10] = imm12 = 32
                              (31u32 << 5) |           // [9:5] = Rn = sp
                              (31u32);                 // [4:0] = Rd = sp
@@ -1123,8 +1034,8 @@ fn encode_mir_instruction_aarch64_with_context(
                             ));
                         }
                         // SUB sp, sp, #stack_space (op=1 for SUB, not op=0 for ADD!)
-                        let sub_inst = (0b1u32 << 31) | (0b1u32 << 30) | (0b0u32 << 29) |
-                                      (0b100010u32 << 23) | (0b0u32 << 22) |
+                        let sub_inst = (((0b1u32 << 31) | (0b1u32 << 30)) |
+                                      (0b100010u32 << 23)) |
                                       ((stack_space as u32 & 0xFFF) << 10) |
                                       (31u32 << 5) | (31u32);
                         code.extend_from_slice(&sub_inst.to_le_bytes());
@@ -1139,14 +1050,9 @@ fn encode_mir_instruction_aarch64_with_context(
                             // STR scratch, [sp, #offset]
                             if offset <= 0xFFF {
                                 let imm9 = (offset as u32) & 0x1FF;
-                                let str_inst = (0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
-                                              (0b111u32 << 27) |       // [29:27] = 111
-                                              (0b0u32 << 26) |         // [26] = 0
-                                              (0b00u32 << 24) |        // [25:24] = opc (00 = STR unscaled)
-                                              (0b00u32 << 22) |        // [23:22] = 00
-                                              (0b0u32 << 21) |         // [21] = 0 (unscaled)
-                                              (imm9 << 12) |           // [20:12] = imm9
-                                              (0b00u32 << 10) |        // [11:10] = 00
+                                let str_inst = (((0b11u32 << 30) |        // [31:30] = size (11 = 64-bit)
+                                              (0b111u32 << 27)) |         // [21] = 0 (unscaled)
+                                              (imm9 << 12)) |        // [11:10] = 00
                                               (31u32 << 5) |           // [9:5] = Rn = sp
                                               (scratch as u32);        // [4:0] = Rt
                                 code.extend_from_slice(&str_inst.to_le_bytes());
@@ -1185,7 +1091,7 @@ fn encode_mir_instruction_aarch64_with_context(
                         }
                         let imm26_signed = offset / 4;
                         // BL uses signed 26-bit immediate: range is -2^25 to 2^25-1 (±128MB)
-                        if imm26_signed < -(1i64 << 25) || imm26_signed >= (1i64 << 25) {
+                        if !(-(1i64 << 25)..(1i64 << 25)).contains(&imm26_signed) {
                             return Err(RasError::EncodingError(
                                 format!("Function offset {} too large for BL instruction (max ±128MB)", offset)
                             ));
@@ -1203,8 +1109,8 @@ fn encode_mir_instruction_aarch64_with_context(
                     
                     // Restore stack if needed
                     if stack_space > 0 {
-                        let add_inst = (0b1u32 << 31) | (0b0u32 << 30) | (0b0u32 << 29) |
-                                      (0b100010u32 << 23) | (0b0u32 << 22) |
+                        let add_inst = ((0b1u32 << 31) |
+                                      (0b100010u32 << 23)) |
                                       ((stack_space as u32 & 0xFFF) << 10) |
                                       (31u32 << 5) | (31u32);
                         code.extend_from_slice(&add_inst.to_le_bytes());
@@ -1225,21 +1131,18 @@ fn encode_mir_instruction_aarch64_with_context(
             // Restore stack if needed (unreachable for now, but kept for future implementation)
             if stack_space > 0 {
                 // ADD sp, sp, #stack_space
-                let add_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                              (0b0u32 << 30) |        // op=0
-                              (0b0u32 << 29) |        // S=0
-                              (0b100010u32 << 23) |   // opcode
-                              (0b0u32 << 22) |        // shift=0
+                let add_inst = ((0b1u32 << 31) |        // S=0
+                              (0b100010u32 << 23)) |        // shift=0
                               ((stack_space as u32 & 0xFFF) << 10) | // imm12
                               (31u32 << 5) |         // Rn=sp (x31)
-                              (31u32 << 0);          // Rd=sp (x31)
+                              31u32;          // Rd=sp (x31)
                 code.extend_from_slice(&add_inst.to_le_bytes());
             }
             
             // Store return value if needed
-            if let Some(dst) = ret {
-                if let Register::Virtual(vreg) = dst {
-                    if let Some(offset) = stack_slots.get(vreg) {
+            if let Some(dst) = ret
+                && let Register::Virtual(vreg) = dst
+                    && let Some(offset) = stack_slots.get(vreg) {
                         // STR x0, [x29, #offset]
                         code.extend_from_slice(&encode_str_aarch64(
                             "x0",
@@ -1247,8 +1150,6 @@ fn encode_mir_instruction_aarch64_with_context(
                             *offset,
                         )?);
                     }
-                }
-            }
     }
     lamina_mir::Instruction::Jmp { .. } => {
             // Jumps are handled at block level, not instruction level
@@ -1272,7 +1173,7 @@ fn encode_mir_instruction_aarch64_with_context(
 /// Loads from stack slot if operand is a virtual register, or moves immediate
 #[cfg(feature = "encoder")]
 fn materialize_operand_aarch64(
-    assembler: &mut RasAssembler,
+    _assembler: &mut RasAssembler,
     op: &lamina_mir::Operand,
     dst_reg: u8,
     stack_slots: &std::collections::HashMap<lamina_mir::VirtualReg, i32>,
@@ -1296,9 +1197,9 @@ fn materialize_operand_aarch64(
             
             // Handle sign extension for signed types
             let imm_val = match imm {
-                Immediate::I8(v) => *v as i8 as u64,
-                Immediate::I16(v) => *v as i16 as u64,
-                Immediate::I32(v) => *v as i32 as u64,
+                Immediate::I8(v) => *v as u64,
+                Immediate::I16(v) => *v as u64,
+                Immediate::I32(v) => *v as u64,
                 Immediate::I64(v) => *v as u64,
                 _ => imm_val,
             };
@@ -1306,10 +1207,9 @@ fn materialize_operand_aarch64(
             // Use MOVZ for small immediates (0-65535)
             if imm_val <= 0xFFFF {
                 // MOVZ: [31:30]=sf(11), [29:27]=op(010), [28:23]=100101, [22:21]=hw(00), [20:5]=imm16, [4:0]=Rd
-                let mov_inst = (0b11u32 << 30) |       // [31:30] = sf (11 = 64-bit)
+                let mov_inst = ((0b11u32 << 30) |       // [31:30] = sf (11 = 64-bit)
                               (0b010u32 << 27) |       // [29:27] = op (010)
-                              (0b100101u32 << 23) |    // [28:23] = opcode (100101 = MOVZ)
-                              (0b00u32 << 21) |        // [22:21] = hw (00 = bits 0-15)
+                              (0b100101u32 << 23)) |        // [22:21] = hw (00 = bits 0-15)
                               ((imm_val as u32 & 0xFFFF) << 5) | // [20:5] = imm16
                               (dst_reg as u32);        // [4:0] = Rd
                 code.extend_from_slice(&mov_inst.to_le_bytes());
@@ -1344,9 +1244,8 @@ fn materialize_operand_aarch64(
                 // Emit MOVK for remaining non-zero chunks
                 // MOVK: sf=1, op=100101, hw=<hw>, imm16=<chunk>, Rd=<dst>
                 if chunk0 != 0 && first_chunk.1 != 0b00 {
-                    let movk_inst = (0b1u32 << 31) |        // sf=1 (64-bit)
-                                   (0b100101u32 << 25) |    // opcode (MOVK)
-                                   (0b00u32 << 21) |        // hw=00
+                    let movk_inst = ((0b1u32 << 31) |        // sf=1 (64-bit)
+                                   (0b100101u32 << 25)) |        // hw=00
                                    ((chunk0 as u32) << 5) | // imm16
                                    (dst_reg as u32);        // Rd
                     code.extend_from_slice(&movk_inst.to_le_bytes());
