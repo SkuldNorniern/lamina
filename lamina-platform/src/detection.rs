@@ -1,7 +1,5 @@
 //! Host system detection functions.
 
-use crate::target::{TargetArchitecture, TargetOperatingSystem};
-
 /// Detect the host system's architecture only.
 ///
 /// Returns a string representing the detected architecture: "x86_64", "aarch64", etc.
@@ -98,5 +96,103 @@ pub fn detect_host_architecture() -> &'static str {
             }
         }
     }
+}
+
+/// Get the number of available CPU cores.
+///
+/// Returns the number of logical CPU cores available on the system.
+/// Falls back to 1 if detection fails.
+///
+/// # Examples
+///
+/// ```
+/// use lamina_platform::detection::cpu_count;
+/// let cores = cpu_count();
+/// println!("System has {} CPU cores", cores);
+/// ```
+pub fn cpu_count() -> usize {
+    #[cfg(target_os = "linux")]
+    {
+        // Try reading from /proc/cpuinfo first (most reliable)
+        if let Ok(content) = std::fs::read_to_string("/proc/cpuinfo") {
+            let count = content
+                .lines()
+                .filter(|line| line.starts_with("processor"))
+                .count();
+            if count > 0 {
+                return count;
+            }
+        }
+        
+        // Fallback to sysconf
+        unsafe {
+            unsafe extern "C" {
+                fn sysconf(name: i32) -> i64;
+            }
+            const _SC_NPROCESSORS_ONLN: i32 = 84;
+            let count = sysconf(_SC_NPROCESSORS_ONLN);
+            if count > 0 {
+                return count as usize;
+            }
+        }
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        unsafe {
+            unsafe extern "C" {
+                fn sysctlbyname(
+                    name: *const i8,
+                    oldp: *mut std::ffi::c_void,
+                    oldlenp: *mut usize,
+                    newp: *const std::ffi::c_void,
+                    newlen: usize,
+                ) -> i32;
+            }
+            let name = CString::new("hw.ncpu").unwrap();
+            let mut count: u32 = 0;
+            let mut size = std::mem::size_of::<u32>();
+            if sysctlbyname(
+                name.as_ptr(),
+                &mut count as *mut _ as *mut std::ffi::c_void,
+                &mut size,
+                std::ptr::null(),
+                0,
+            ) == 0
+            {
+                return count as usize;
+            }
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        unsafe {
+            unsafe extern "system" {
+                fn GetSystemInfo(lpSystemInfo: *mut SystemInfo);
+            }
+            #[repr(C)]
+            struct SystemInfo {
+                wProcessorArchitecture: u16,
+                wReserved: u16,
+                dwPageSize: u32,
+                lpMinimumApplicationAddress: *mut std::ffi::c_void,
+                lpMaximumApplicationAddress: *mut std::ffi::c_void,
+                dwActiveProcessorMask: *mut u32,
+                dwNumberOfProcessors: u32,
+                dwProcessorType: u32,
+                dwAllocationGranularity: u32,
+                wProcessorLevel: u16,
+                wProcessorRevision: u16,
+            }
+            let mut info = std::mem::zeroed::<SystemInfo>();
+            GetSystemInfo(&mut info);
+            return info.dwNumberOfProcessors as usize;
+        }
+    }
+    
+    // Fallback for other platforms
+    1
 }
 
