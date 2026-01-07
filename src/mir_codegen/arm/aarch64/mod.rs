@@ -1144,8 +1144,9 @@ impl<'a> AArch64Codegen<'a> {
         &mut self,
         module: &'a MirModule,
         writer: &mut W,
+        codegen_units: usize,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_aarch64(module, writer, self.base.target_os)
+        generate_mir_aarch64_with_units(module, writer, self.base.target_os, codegen_units)
     }
 }
 

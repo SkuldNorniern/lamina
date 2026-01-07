@@ -47,8 +47,9 @@ impl<'a> WasmCodegen<'a> {
         &mut self,
         module: &'a MirModule,
         writer: &mut W,
+        codegen_units: usize,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_wasm(module, writer, self.base.target_os)
+        generate_mir_wasm_with_units(module, writer, self.base.target_os, codegen_units)
     }
 }
 
@@ -366,7 +367,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         writer.write_all(&result.assembly)?;
             }
 
-    for (func_name, _func) in &module.functions {
+    for func_name in module.functions.keys() {
         if func_name == "main" {
             writeln!(writer, "  (export \"main\" (func $main))")?;
         }

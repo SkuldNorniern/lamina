@@ -208,7 +208,7 @@ where
     let mut task_senders = Vec::new();
     let (result_sender, result_receiver) = mpsc::channel::<CompilationResult>();
 
-    for worker_id in 0..num_workers {
+    for _worker_id in 0..num_workers {
         let (task_sender, task_receiver) = mpsc::channel::<CompilationTask>();
         task_senders.push(task_sender);
         let result_sender = result_sender.clone();
