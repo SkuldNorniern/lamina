@@ -19,7 +19,7 @@ pub mod simd;
 // Re-export main types
 pub use target::{Target, TargetArchitecture, TargetOperatingSystem, HOST_ARCH_LIST};
 pub use detection::{
-    detect_host_architecture, detect_host_architecture_only, detect_host_os,
+    cpu_count, detect_host_architecture, detect_host_architecture_only, detect_host_os,
 };
 
 #[cfg(feature = "nightly")]
