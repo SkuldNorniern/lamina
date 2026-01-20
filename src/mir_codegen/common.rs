@@ -5,9 +5,17 @@ use std::io::Write;
 use std::sync::mpsc;
 use std::thread;
 
+use crate::error::LaminaError;
 use crate::mir::{Global, MirType, Module as MirModule, Signature};
 use crate::mir_codegen::{CodegenError, CodegenOptions};
 use lamina_platform::TargetOperatingSystem;
+
+pub fn parallel_codegen_error(error: impl std::fmt::Debug) -> LaminaError {
+    LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+        "Parallel compilation error: {:?}",
+        error
+    )))
+}
 
 /// Base structure for codegen backends with common fields.
 pub struct CodegenBase<'a> {

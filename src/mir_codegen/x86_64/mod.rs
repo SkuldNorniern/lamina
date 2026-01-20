@@ -133,7 +133,9 @@ impl<'a> Codegen for X86Codegen<'a> {
     }
 }
 
-use crate::mir_codegen::common::{compile_functions_parallel, emit_print_format_section};
+use crate::mir_codegen::common::{
+    compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
+};
 
 fn compile_single_function_x86_64(
     func_name: &str,
@@ -291,12 +293,7 @@ pub fn generate_mir_x86_64_with_units<W: Write>(
         codegen_units,
         compile_single_function_x86_64,
     )
-    .map_err(|e| {
-        use crate::codegen::FeatureType;
-        crate::error::LaminaError::CodegenError(crate::codegen::CodegenError::UnsupportedFeature(
-            FeatureType::Custom(format!("Parallel compilation error: {:?}", e)),
-        ))
-    })?;
+    .map_err(parallel_codegen_error)?;
 
     for result in results {
         writer.write_all(&result.assembly)?;

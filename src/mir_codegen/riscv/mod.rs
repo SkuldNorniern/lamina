@@ -125,7 +125,7 @@ impl<'a> Codegen for RiscVCodegen<'a> {
     }
 }
 
-use crate::mir_codegen::common::compile_functions_parallel;
+use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
 
 fn compile_single_function_riscv(
     func_name: &str,
@@ -218,12 +218,7 @@ pub fn generate_mir_riscv_with_units<W: Write>(
         codegen_units,
         compile_single_function_riscv,
     )
-    .map_err(|e| {
-        use crate::codegen::FeatureType;
-        crate::error::LaminaError::CodegenError(crate::codegen::CodegenError::UnsupportedFeature(
-            FeatureType::Custom(format!("Parallel compilation error: {:?}", e)),
-        ))
-    })?;
+    .map_err(parallel_codegen_error)?;
 
     for result in results {
         writer.write_all(&result.assembly)?;

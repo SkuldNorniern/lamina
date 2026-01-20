@@ -47,8 +47,8 @@
 //! );
 //! ```
 
-use crate::codegen::CodegenError;
 use crate::mir::codegen::FromIRError;
+use crate::mir_codegen::CodegenError;
 use std::error::Error;
 use std::fmt;
 use std::string::FromUtf8Error;
