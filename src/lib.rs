@@ -288,7 +288,6 @@
 //! - **Standard library**: Common functions and data structures
 //! - **Language bindings**: C, Python, JavaScript, and other language interfaces
 
-pub mod codegen;
 pub mod mir_codegen;
 pub mod target; // Re-exports from lamina-platform for backward compatibility
 
@@ -355,6 +354,7 @@ macro_rules! lamina {
                     *const u8,
                     *mut $crate::runtime::ExecutableMemory,
                     usize,
+                    $crate::mir::Function,
                 ),
                 String,
             > {
@@ -372,10 +372,22 @@ macro_rules! lamina {
             };
 
             let runtime_result = compile_lir_internal($ir_code, function_name, 1)
-                .map_err(|e| format!("lamina!: Failed to compile IR code: {}", e))?;
+                .map_err(|e| format!("lamina!: Failed to compile IR code: {}", e));
 
-            let memory_handle = Box::leak(Box::new(runtime_result.memory));
-            let function_ptr = runtime_result.function_ptr;
+            let (memory_handle, function_ptr) = match runtime_result {
+                Ok(runtime_result) => {
+                    let memory_handle = Box::leak(Box::new(runtime_result.memory));
+                    (memory_handle as *mut _, runtime_result.function_ptr)
+                }
+                Err(error_message) => {
+                    if cfg!(target_arch = "aarch64") {
+                        eprintln!("{}", error_message);
+                        (std::ptr::null_mut(), std::ptr::null())
+                    } else {
+                        return Err(error_message);
+                    }
+                }
+            };
 
             let ir_module = $crate::parser::parse_module($ir_code)
                 .map_err(|e| format!("lamina!: Failed to parse IR: {}", e))?;
@@ -411,7 +423,7 @@ macro_rules! lamina {
             let param_count = func.sig.params.len();
             let signature = func.sig.clone();
 
-            Ok((signature, function_ptr, memory_handle, param_count))
+            Ok((signature, function_ptr, memory_handle, param_count, func.clone()))
         })();
 
         let jit_handle = match initialization {
@@ -423,7 +435,8 @@ macro_rules! lamina {
         };
 
         move |args: &[i64]| -> Option<i64> {
-            let (signature, function_ptr, memory_handle, param_count) = jit_handle.as_ref()?;
+            let (signature, function_ptr, memory_handle, param_count, function) =
+                jit_handle.as_ref()?;
             let _memory_ref = memory_handle;
             if args.len() != *param_count {
                 return None;
@@ -433,6 +446,7 @@ macro_rules! lamina {
                 *function_ptr,
                 Some(args),
                 false,
+                Some(function),
             ) {
                 Ok(result) => result,
                 Err(_) => None,
@@ -444,8 +458,6 @@ macro_rules! lamina {
 use std::io::Write;
 
 // Re-export core IR structures for easier access
-use codegen::CodegenError;
-pub use codegen::generate_x86_64_assembly;
 pub use error::LaminaError;
 pub use ir::{
     function::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
@@ -453,6 +465,7 @@ pub use ir::{
     module::{GlobalDeclaration, Module, TypeDeclaration},
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
 };
+use mir_codegen::CodegenError;
 pub use mir_codegen::generate_mir_to_target;
 
 /// Parses Lamina IR text and generates assembly code using the host system's architecture.
@@ -520,10 +533,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         }
         _ => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                codegen::FeatureType::Custom(format!(
-                    "Unsupported target architecture: {}",
-                    target
-                )),
+                format!("Unsupported target architecture: {}", target),
             )));
         }
     }

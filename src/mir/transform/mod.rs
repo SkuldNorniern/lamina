@@ -114,6 +114,13 @@ impl TransformPipeline {
         self
     }
 
+    pub fn transform_names(&self) -> Vec<&'static str> {
+        self.transforms
+            .iter()
+            .map(|transform| transform.name())
+            .collect()
+    }
+
     /// Create a default optimization pipeline for the given optimization level
     pub fn default_for_opt_level(opt_level: u8) -> Self {
         let mut pipeline = Self::new();
@@ -125,46 +132,22 @@ impl TransformPipeline {
         if opt_level >= 1 {
             pipeline = pipeline.add_transform(CfgSimplify);
             pipeline = pipeline.add_transform(JumpThreading);
-            // BranchOptimization disabled at O1 - too aggressive, can break code
-            // pipeline = pipeline.add_transform(BranchOptimization);
         }
 
         if opt_level >= 2 {
-            // O2 transforms
             pipeline = pipeline.add_transform(ConstantFolding);
-            // AddressingCanonicalization disabled - x86_64 backend doesn't support BaseIndexScale
-            // pipeline = pipeline.add_transform(AddressingCanonicalization);
-
-            // MemoryOptimization
             pipeline = pipeline.add_transform(MemoryOptimization);
-
-            // DeadCodeElimination enabled with proper Liveness Analysis
             pipeline = pipeline.add_transform(DeadCodeElimination);
-
             pipeline = pipeline.add_transform(TailCallOptimization);
             pipeline = pipeline.add_transform(Peephole);
-            // CopyPropagation disabled - can cause cycles with other transforms
-            // pipeline = pipeline.add_transform(CopyPropagation);
         }
 
         if opt_level >= 3 {
             pipeline = pipeline.add_transform(StrengthReduction);
-            // FunctionInlining disabled - causes duplicate label conflicts
-            // pipeline = pipeline.add_transform(FunctionInlining);
-
-            // Run DCE again after strength reduction
             pipeline = pipeline.add_transform(DeadCodeElimination);
-
-            // CSE
             pipeline = pipeline.add_transform(CommonSubexpressionElimination);
-            // Loop optimizations
-            // pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
-            // pipeline = pipeline.add_transform(LoopUnrolling);
-
-            // InstructionScheduling
             pipeline = pipeline.add_transform(InstructionScheduling);
 
-            // Auto-vectorization (O3 nightly/unstable feature)
             #[cfg(feature = "nightly")]
             {
                 pipeline = pipeline.add_transform(AutoVectorization);

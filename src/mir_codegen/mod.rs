@@ -16,6 +16,7 @@ pub use abi::Abi;
 pub use capability::{CapabilitySet, CodegenCapability};
 
 use std::collections::HashMap;
+use std::fmt;
 use std::io::Write;
 
 use crate::error::LaminaError;
@@ -121,7 +122,7 @@ pub fn generate_mir_to_riscv<W: Write>(
 }
 
 /// Code generation options.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodegenOptions {
     /// Debug mode outputs full debug information.
     Debug,
@@ -182,7 +183,7 @@ pub trait Codegen {
 }
 
 /// Code generation errors.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodegenError {
     UnsupportedFeature(String),
     InvalidCodegenOptions(String),
@@ -194,4 +195,31 @@ pub enum CodegenError {
     InvalidTypes(Vec<String>),
     InvalidGlobals(Vec<String>),
     InvalidFuncs(Vec<String>),
+}
+
+impl fmt::Display for CodegenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CodegenError::UnsupportedFeature(message) => {
+                write!(f, "Unsupported feature: {}", message)
+            }
+            CodegenError::InvalidCodegenOptions(message) => {
+                write!(f, "Invalid codegen options: {}", message)
+            }
+            CodegenError::InvalidTargetOs(message) => write!(f, "Invalid target OS: {}", message),
+            CodegenError::InvalidMaxBitWidth(width) => {
+                write!(f, "Invalid max bit width: {}", width)
+            }
+            CodegenError::InvalidInputName(message) => {
+                write!(f, "Invalid input name: {}", message)
+            }
+            CodegenError::InvalidVerbose(value) => write!(f, "Invalid verbose flag: {}", value),
+            CodegenError::InvalidOptions(options) => {
+                write!(f, "Invalid options: {:?}", options)
+            }
+            CodegenError::InvalidTypes(types) => write!(f, "Invalid types: {:?}", types),
+            CodegenError::InvalidGlobals(globals) => write!(f, "Invalid globals: {:?}", globals),
+            CodegenError::InvalidFuncs(funcs) => write!(f, "Invalid functions: {:?}", funcs),
+        }
+    }
 }
