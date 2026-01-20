@@ -88,27 +88,58 @@ pub fn compile_mir_aarch64_function(
     let prologue = encode_prologue_aarch64(aligned_stack_size)?;
     code.extend_from_slice(&prologue);
 
-        // Handle function parameters (reuse ABI logic)
+        // Handle function parameters - copy from ABI registers to allocator registers/stack slots
+        // Since allocator uses x9-x15 (caller-saved), we copy x0-x7 to allocator registers first
+        // Then store to stack slots if needed
     if !func.sig.params.is_empty() {
             let arg_regs = AArch64ABI::ARG_REGISTERS;
+            // Allocator registers we can use (x9-x15, avoiding x8 which might be used by platform)
+            let allocator_regs = ["x9", "x10", "x11", "x12", "x13", "x14", "x15"];
+            
             for (index, param) in func.sig.params.iter().enumerate() {
                 if let Register::Virtual(vreg) = &param.reg
                     && let Some(slot_off) = stack_slots.get(vreg)
                 {
                     if index < arg_regs.len() {
-                        // STR from argument register to stack slot
-                        let str_bytes = encode_str_aarch64(
-                            arg_regs[index],
-                            29, // x29 (FP)
-                            *slot_off,
-                        )?;
-                        code.extend_from_slice(&str_bytes);
+                        // Copy from ABI register (x0-x7) to allocator register first
+                        // This ensures the value is in an allocator register if the allocator wants to use it
+                        if index < allocator_regs.len() {
+                            // Copy x0-x7 to x9-x15
+                            let mov_bytes = encode_mov_reg_aarch64(
+                                parse_register_aarch64(allocator_regs[index])?,
+                                parse_register_aarch64(arg_regs[index])?,
+                            );
+                            code.extend_from_slice(&mov_bytes);
+                            
+                            // Also store to stack slot for spilling
+                            let adjusted_offset = *slot_off - (aligned_stack_size as i32);
+                            let str_bytes = encode_str_aarch64(
+                                allocator_regs[index],
+                                29, // x29 (FP)
+                                adjusted_offset,
+                            )?;
+                            code.extend_from_slice(&str_bytes);
+                        } else {
+                            // More than 7 args in registers - store directly to stack
+                            let adjusted_offset = *slot_off - (aligned_stack_size as i32);
+                            let str_bytes = encode_str_aarch64(
+                                arg_regs[index],
+                                29, // x29 (FP)
+                                adjusted_offset,
+                            )?;
+                            code.extend_from_slice(&str_bytes);
+                        }
                     } else {
-                        // Handle stack arguments (AAPCS64: stack args start at [sp, #0])
-                        let caller_off = ((index - arg_regs.len()) * 8) as i32;
+                        // Handle stack arguments (AAPCS64: stack args start at caller's [sp, #0])
+                        // After prologue: stp x29,x30,[sp,#-16]! then mov x29,sp
+                        // Caller's stack args are now at [x29, #16] (16 bytes for saved fp/lr)
+                        // First stack arg (arg8) is at [x29, #16], second at [x29, #24], etc.
+                        let stack_arg_index = index - arg_regs.len();
+                        let caller_off = (16 + stack_arg_index * 8) as i32; // 16 for saved fp/lr
                         let ldr1 = encode_ldr_aarch64("x10", 29, caller_off)?;
                         code.extend_from_slice(&ldr1);
-                        let str1 = encode_str_aarch64("x10", 29, *slot_off)?;
+                        let adjusted_offset = *slot_off - (aligned_stack_size as i32);
+                        let str1 = encode_str_aarch64("x10", 29, adjusted_offset)?;
                         code.extend_from_slice(&str1);
                     }
                 }
@@ -124,7 +155,7 @@ pub fn compile_mir_aarch64_function(
                     inst,
                     &mut reg_alloc,
                     &stack_slots,
-                    stack_size,
+                    aligned_stack_size,
                     func_name,
                     &function_offsets,
                     current_offset,
@@ -206,12 +237,13 @@ fn encode_prologue_aarch64(stack_size: usize) -> Result<Vec<u8>, RasError> {
             ));
     }
         // sub sp, sp, #aligned
-        let sub_sp = (0b1u32 << 31)
-            | (0b1u32 << 30)
-            | (0b100010u32 << 23)
-            | ((aligned_size as u32) << 10)
-            | (31u32 << 5)
-            | 31u32;
+        // SUB (immediate): [31]=sf(1), [30]=S(0), [29:24]=opcode(100010), [23:22]=shift(0), [21:10]=imm12, [9:5]=Rn, [4:0]=Rd
+        let sub_sp = (0b1u32 << 31)           // [31] = sf (1 for 64-bit)
+            | (0b0u32 << 30)                  // [30] = S (0, non-setting)
+            | (0b100010u32 << 23)             // [29:24] = opcode (100010 for SUB immediate)
+            | ((aligned_size as u32) << 10)   // [21:10] = imm12
+            | (31u32 << 5)                     // [9:5] = Rn (sp = 31)
+            | 31u32;                           // [4:0] = Rd (sp = 31)
         code.extend_from_slice(&sub_sp.to_le_bytes());
     }
 
@@ -318,6 +350,23 @@ fn encode_str_aarch64(
     Ok(code)
 }
 
+/// Encode MOV (register) instruction: MOV <Xd>, <Xn>
+/// MOV is an alias for ORR <Xd>, XZR, <Xn>
+/// ORR (shifted register): sf=1, opc=01, shift=00, N=0, Rm=<src>, imm6=0, Rn=31 (XZR), Rd=<dst>
+fn encode_mov_reg_aarch64(dst: u8, src: u8) -> Vec<u8> {
+    // ORR <Xd>, XZR, <Xn>
+    // Encoding: [31]=sf(1), [30:29]=opc(01), [28:24]=01010, [23:22]=shift(00), [21:16]=imm6(0), [15:10]=Rm, [9:5]=Rn(31=XZR), [4:0]=Rd
+    let inst = (0b1u32 << 31) |           // [31] = sf (1 for 64-bit)
+              (0b01u32 << 29) |           // [30:29] = opc (01 = ORR)
+              (0b01010u32 << 24) |        // [28:24] = 01010 (ORR opcode)
+              (0b0u32 << 22) |            // [23:22] = shift (00 = LSL)
+              (0b000000u32 << 16) |       // [21:16] = imm6 (0 = no shift)
+              ((src as u32) << 10) |      // [15:10] = Rm (source register)
+              (31u32 << 5) |              // [9:5] = Rn (31 = XZR)
+              (dst as u32);               // [4:0] = Rd (destination register)
+    inst.to_le_bytes().to_vec()
+}
+
 /// Encode LDR instruction (AArch64)
 /// Handles both positive and negative offsets by using SUB for negative offsets
 fn encode_ldr_aarch64(
@@ -406,15 +455,24 @@ fn encode_ldr_aarch64(
 }
 
 /// Encode RET instruction (AArch64)
+/// RET Xn = 0xD65F0000 | (n << 5)
 fn encode_ret_aarch64(reg: u8) -> Result<Vec<u8>, RasError> {
-    // RET <Xn>: BR (Branch to Register) instruction
-    // Encoding: [31:25] = 1101011, [24] = 0, [23:21] = 010, [20:16] = 11111, [15:5] = Rn << 5, [4:0] = 00000
-    // RET is an alias for BR <Xn>
-    let inst = (0b1101011u32 << 25) |          // [24] = 0
-               (0b010u32 << 21) |         // [23:21] = 010
-               (0b11111u32 << 16) |      // [20:16] = 11111
-               ((reg as u32) << 5);        // [4:0] = 00000
-    Ok(inst.to_le_bytes().to_vec())
+    let instr: u32 = 0xD65F_0000 | ((reg as u32) << 5);
+    Ok(instr.to_le_bytes().to_vec())
+}
+
+/// Encode BR instruction (AArch64)
+/// BR Xn = 0xD61F0000 | (n << 5)
+fn encode_br_aarch64(reg: u8) -> Result<Vec<u8>, RasError> {
+    let instr: u32 = 0xD61F_0000 | ((reg as u32) << 5);
+    Ok(instr.to_le_bytes().to_vec())
+}
+
+/// Encode BLR instruction (AArch64)
+/// BLR Xn = 0xD63F0000 | (n << 5)
+fn encode_blr_aarch64(reg: u8) -> Result<Vec<u8>, RasError> {
+    let instr: u32 = 0xD63F_0000 | ((reg as u32) << 5);
+    Ok(instr.to_le_bytes().to_vec())
 }
 
 /// Parse register name to encoding (AArch64)
@@ -482,7 +540,7 @@ fn encode_mir_instruction_aarch64_with_context(
     inst: &lamina_mir::Instruction,
     reg_alloc: &mut lamina_codegen::aarch64::A64RegAlloc,
     stack_slots: &std::collections::HashMap<lamina_mir::VirtualReg, i32>,
-    _stack_size: usize,
+    stack_size: usize,
     _func_name: &str,
     function_offsets: &std::collections::HashMap<String, usize>,
     _current_offset: usize,
@@ -494,7 +552,7 @@ fn encode_mir_instruction_aarch64_with_context(
             lamina_mir::Instruction::Ret { value } => {
                 if let Some(v) = value {
                     // Load return value to x0 (return value register)
-                    materialize_operand_aarch64(assembler, v, 0, stack_slots, reg_alloc, &mut code)?;
+                    materialize_operand_aarch64(assembler, v, 0, stack_slots, reg_alloc, &mut code, stack_size)?;
                 }
                 // Don't emit RET here - it will be emitted after the epilogue at function end
                 // Just fall through to the epilogue
@@ -509,44 +567,51 @@ fn encode_mir_instruction_aarch64_with_context(
             let dst_reg = parse_register_aarch64(dst_reg_str)?;
             
                 // Materialize operands
-                materialize_operand_aarch64(assembler, lhs, lhs_reg, stack_slots, reg_alloc, &mut code)?;
-                materialize_operand_aarch64(assembler, rhs, rhs_reg, stack_slots, reg_alloc, &mut code)?;
+                materialize_operand_aarch64(assembler, lhs, lhs_reg, stack_slots, reg_alloc, &mut code, stack_size)?;
+                materialize_operand_aarch64(assembler, rhs, rhs_reg, stack_slots, reg_alloc, &mut code, stack_size)?;
             
             // Encode binary operation
             match op {
                 IntBinOp::Add => {
                     // ADD dst, lhs, rhs
-                    let add_inst = (((0b1u32 << 31) |        // S=0
-                                  (0b01011u32 << 24)) |        // shift=00
-                                  ((rhs_reg as u32) << 16)) |         // imm6=0
-                                  ((lhs_reg as u32) << 5) | // Rn
-                                  (dst_reg as u32);       // Rd
+                    // ARM64 encoding: [31]=sf(1), [30]=S(0), [29:24]=opcode(010110), [23:22]=shift(00), [21:16]=imm6(0), [15:10]=Rm, [9:5]=Rn, [4:0]=Rd
+                    let add_inst = (0b1u32 << 31) |           // [31] = sf (1 for 64-bit)
+                                  (0b0u32 << 30) |            // [30] = S (0, non-setting)
+                                  (0b010110u32 << 24) |      // [29:24] = opcode (010110 for ADD)
+                                  (0b00u32 << 22) |           // [23:22] = shift type (00 for LSL)
+                                  (0b000000u32 << 16) |      // [21:16] = imm6 (0 for no shift)
+                                  ((rhs_reg as u32) << 10) | // [15:10] = Rm (second source)
+                                  ((lhs_reg as u32) << 5) |  // [9:5] = Rn (first source)
+                                  (dst_reg as u32);          // [4:0] = Rd (destination)
                     code.extend_from_slice(&add_inst.to_le_bytes());
                 }
                 IntBinOp::Sub => {
                     // SUB dst, lhs, rhs
-                    let sub_inst = (((0b1u32 << 31) |        // S=0
-                                  (0b11011u32 << 24)) |        // shift=00
-                                  ((rhs_reg as u32) << 16)) |         // imm6=0
-                                  ((lhs_reg as u32) << 5) | // Rn
-                                  (dst_reg as u32);       // Rd
+                    // Encoding: sf=1, op=1, S=0, shift=00, Rm=<rhs>, imm6=0, Rn=<lhs>, Rd=<dst>
+                    // Format: [31]=sf(1), [30]=S(0), [29:24]=opcode(010111), [23:22]=shift(00), [21:16]=imm6(0), [15:10]=Rm, [9:5]=Rn, [4:0]=Rd
+                    let sub_inst = (0b1u32 << 31) |           // [31] = sf (1 for 64-bit)
+                                  (0b0u32 << 30) |            // [30] = S (0, non-setting)
+                                  (0b010111u32 << 24) |      // [29:24] = opcode (010111 for SUB)
+                                  (0b00u32 << 22) |           // [23:22] = shift type (00 for LSL)
+                                  (0b000000u32 << 16) |      // [21:16] = imm6 (0 for no shift)
+                                  ((rhs_reg as u32) << 10) | // [15:10] = Rm (second source)
+                                  ((lhs_reg as u32) << 5) |  // [9:5] = Rn (first source)
+                                  (dst_reg as u32);          // [4:0] = Rd (destination)
                     code.extend_from_slice(&sub_inst.to_le_bytes());
                 }
                 IntBinOp::Mul => {
                     // MUL dst, lhs, rhs (MADD dst, lhs, rhs, xzr)
-                    let _mul_inst = ((0b1u32 << 31) |       // opcode
-                                  (0b11011u32 << 24) |    // opcode (MADD)
-                                  ((rhs_reg as u32) << 16)) |         // o0=0
-                                  ((lhs_reg as u32) << 10) | // Ra (xzr=31, but we use 0 for MUL)
-                                  ((lhs_reg as u32) << 5) | // Rn
-                                  (dst_reg as u32);       // Rd
-                    // Actually, MUL is MADD with Ra=xzr (31)
-                    let mul_inst = (0b1u32 << 31) |
-                                  (0b11011u32 << 24) |
-                                  ((rhs_reg as u32) << 16) |
-                                  (31u32 << 10) |         // Ra=xzr
-                                  ((lhs_reg as u32) << 5) |
-                                  (dst_reg as u32);
+                    // MADD encoding: sf=1, op=11011, Ra=xzr(31), Rm=<rhs>, Rn=<lhs>, Rd=<dst>
+                    // Format: [31]=sf(1), [30:29]=00, [28:24]=opcode(11011), [23:21]=Ra[2:0], [20:16]=Rm, [15:10]=Ra[4:3], [9:5]=Rn, [4:0]=Rd
+                    // For MUL: Ra = xzr = 31
+                    let mul_inst = (0b1u32 << 31) |           // [31] = sf (1 for 64-bit)
+                                  (0b00u32 << 29) |          // [30:29] = 00
+                                  (0b11011u32 << 24) |       // [28:24] = opcode (11011 for MADD)
+                                  (0b111u32 << 21) |         // [23:21] = Ra[2:0] (31 & 0x7 = 7)
+                                  ((rhs_reg as u32) << 16) | // [20:16] = Rm (second source)
+                                  (0b11u32 << 10) |          // [15:10] = Ra[4:3] (31 >> 3 = 3)
+                                  ((lhs_reg as u32) << 5) |  // [9:5] = Rn (first source)
+                                  (dst_reg as u32);          // [4:0] = Rd (destination)
                     code.extend_from_slice(&mul_inst.to_le_bytes());
                 }
                 _ => {
@@ -559,10 +624,11 @@ fn encode_mir_instruction_aarch64_with_context(
             // Store result to destination
             if let Register::Virtual(vreg) = dst
                 && let Some(offset) = stack_slots.get(vreg) {
+                    let adjusted_offset = *offset - (stack_size as i32);
                     code.extend_from_slice(&encode_str_aarch64(
                         dst_reg_str,
                         29, // x29 (FP)
-                        *offset,
+                        adjusted_offset,
                     )?);
                 }
             
@@ -584,10 +650,11 @@ fn encode_mir_instruction_aarch64_with_context(
                     let base_reg_str = if let Register::Virtual(vreg) = base {
                         if let Some(base_offset) = stack_slots.get(vreg) {
                             let base_tmp = reg_alloc.alloc_scratch().unwrap_or("x11");
+                            let adjusted_base_offset = *base_offset - (stack_size as i32);
                             code.extend_from_slice(&encode_ldr_aarch64(
                                 base_tmp,
                                 29, // x29 (FP)
-                                *base_offset,
+                                adjusted_base_offset,
                             )?);
                             base_tmp
                         } else {
@@ -633,10 +700,11 @@ fn encode_mir_instruction_aarch64_with_context(
             // Store to destination
             if let Register::Virtual(vreg) = dst
                 && let Some(offset) = stack_slots.get(vreg) {
+                    let adjusted_offset = *offset - (stack_size as i32);
                     code.extend_from_slice(&encode_str_aarch64(
                         tmp_reg_str,
                         29, // x29 (FP)
-                        *offset,
+                        adjusted_offset,
                     )?);
                 }
             
@@ -649,7 +717,7 @@ fn encode_mir_instruction_aarch64_with_context(
             let src_reg = parse_register_aarch64(src_reg_str)?;
             
                 // Materialize source
-                materialize_operand_aarch64(assembler, src, src_reg, stack_slots, reg_alloc, &mut code)?;
+                materialize_operand_aarch64(assembler, src, src_reg, stack_slots, reg_alloc, &mut code, stack_size)?;
             
             // Handle address mode
             match addr {
@@ -658,10 +726,11 @@ fn encode_mir_instruction_aarch64_with_context(
                     let base_reg_str = if let Register::Virtual(vreg) = base {
                         if let Some(base_offset) = stack_slots.get(vreg) {
                             let base_tmp = reg_alloc.alloc_scratch().unwrap_or("x11");
+                            let adjusted_base_offset = *base_offset - (stack_size as i32);
                             code.extend_from_slice(&encode_ldr_aarch64(
                                 base_tmp,
                                 29, // x29 (FP)
-                                *base_offset,
+                                adjusted_base_offset,
                             )?);
                             base_tmp
                         } else {
@@ -715,8 +784,8 @@ fn encode_mir_instruction_aarch64_with_context(
             let dst_reg = parse_register_aarch64(dst_reg_str)?;
             
                 // Materialize operands
-                materialize_operand_aarch64(assembler, lhs, lhs_reg, stack_slots, reg_alloc, &mut code)?;
-                materialize_operand_aarch64(assembler, rhs, rhs_reg, stack_slots, reg_alloc, &mut code)?;
+                materialize_operand_aarch64(assembler, lhs, lhs_reg, stack_slots, reg_alloc, &mut code, stack_size)?;
+                materialize_operand_aarch64(assembler, rhs, rhs_reg, stack_slots, reg_alloc, &mut code, stack_size)?;
             
             // CMP instruction: CMP lhs, rhs
             // Encoding: sf=1 (64-bit), op=1, S=1, shift=00, Rm=rhs, imm6=0, Rn=lhs, Rd=31 (xzr)
@@ -754,10 +823,11 @@ fn encode_mir_instruction_aarch64_with_context(
             // Store result to destination
             if let Register::Virtual(vreg) = dst
                 && let Some(offset) = stack_slots.get(vreg) {
+                    let adjusted_offset = *offset - (stack_size as i32);
                     code.extend_from_slice(&encode_str_aarch64(
                         dst_reg_str,
                         29, // x29 (FP)
-                        *offset,
+                        adjusted_offset,
                     )?);
                 }
             
@@ -775,7 +845,7 @@ fn encode_mir_instruction_aarch64_with_context(
                 for (i, arg) in args.iter().enumerate().take(8) {
                     let arg_reg_str = arg_regs[i];
                     let arg_reg = parse_register_aarch64(arg_reg_str)?;
-                    materialize_operand_aarch64(assembler, arg, arg_reg, stack_slots, reg_alloc, &mut code)?;
+                    materialize_operand_aarch64(assembler, arg, arg_reg, stack_slots, reg_alloc, &mut code, stack_size)?;
                 }
             
             // Handle stack arguments (args beyond 8)
@@ -802,7 +872,7 @@ fn encode_mir_instruction_aarch64_with_context(
                     let offset = i * 8;
                     let scratch_str = reg_alloc.alloc_scratch().unwrap_or("x9");
                         let scratch = parse_register_aarch64(scratch_str)?;
-                        materialize_operand_aarch64(assembler, arg, scratch, stack_slots, reg_alloc, &mut code)?;
+                        materialize_operand_aarch64(assembler, arg, scratch, stack_slots, reg_alloc, &mut code, stack_size)?;
                     
                     // STR scratch, [sp, #offset]
                     if offset <= 0xFFF {
@@ -867,7 +937,7 @@ fn encode_mir_instruction_aarch64_with_context(
                 };
                 
                 // Materialize the value to print into x1 (second argument for printf)
-                materialize_operand_aarch64(assembler, &args[0], 1, stack_slots, reg_alloc, &mut code)?;
+                materialize_operand_aarch64(assembler, &args[0], 1, stack_slots, reg_alloc, &mut code, stack_size)?;
                 
                 // macOS variadic ABI requires:
                 // 1. Allocate 32 bytes for home area (16-byte aligned)
@@ -1019,7 +1089,7 @@ fn encode_mir_instruction_aarch64_with_context(
                 for (i, arg) in args.iter().enumerate().take(8) {
                     let arg_reg_str = arg_regs[i];
                     let arg_reg = parse_register_aarch64(arg_reg_str)?;
-                    materialize_operand_aarch64(assembler, arg, arg_reg, stack_slots, reg_alloc, &mut code)?;
+                    materialize_operand_aarch64(assembler, arg, arg_reg, stack_slots, reg_alloc, &mut code, stack_size)?;
                 }
                     
                     // Handle stack arguments (args beyond 8)
@@ -1045,7 +1115,7 @@ fn encode_mir_instruction_aarch64_with_context(
                             let offset = i * 8;
                             let scratch_str = reg_alloc.alloc_scratch().unwrap_or("x9");
                         let scratch = parse_register_aarch64(scratch_str)?;
-                        materialize_operand_aarch64(assembler, arg, scratch, stack_slots, reg_alloc, &mut code)?;
+                        materialize_operand_aarch64(assembler, arg, scratch, stack_slots, reg_alloc, &mut code, stack_size)?;
                             
                             // STR scratch, [sp, #offset]
                             if offset <= 0xFFF {
@@ -1144,10 +1214,11 @@ fn encode_mir_instruction_aarch64_with_context(
                 && let Register::Virtual(vreg) = dst
                     && let Some(offset) = stack_slots.get(vreg) {
                         // STR x0, [x29, #offset]
+                        let adjusted_offset = *offset - (stack_size as i32);
                         code.extend_from_slice(&encode_str_aarch64(
                             "x0",
                             29, // x29 (FP)
-                            *offset,
+                            adjusted_offset,
                         )?);
                     }
     }
@@ -1179,6 +1250,7 @@ fn materialize_operand_aarch64(
     stack_slots: &std::collections::HashMap<lamina_mir::VirtualReg, i32>,
     _reg_alloc: &mut lamina_codegen::aarch64::A64RegAlloc,
     code: &mut Vec<u8>,
+    stack_size: usize,
 ) -> Result<(), RasError> {
     use lamina_mir::{Immediate, Operand, Register};
     
@@ -1278,12 +1350,15 @@ fn materialize_operand_aarch64(
     }
     Operand::Register(Register::Virtual(vreg)) => {
             // Load from stack slot
+            // Stack slots are at negative offsets relative to FP after stack allocation
+            // But FP is set before stack allocation, so adjust offset by -stack_size
             if let Some(offset) = stack_slots.get(vreg) {
+                let adjusted_offset = *offset - (stack_size as i32);
                 let dst_reg_str = format!("x{}", dst_reg);
                 code.extend_from_slice(&encode_ldr_aarch64(
                     &dst_reg_str,
                     29, // x29 (FP)
-                    *offset,
+                    adjusted_offset,
                 )?);
             } else {
                 return Err(RasError::EncodingError(
