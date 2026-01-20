@@ -23,7 +23,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
         state.expect_char('{')?;
         let mut fields = Vec::new();
         let mut field_names = std::collections::HashSet::new();
-        
+
         loop {
             state.skip_whitespace_and_comments();
             if state.current_char() == Some('}') {
@@ -34,7 +34,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
                 break;
             }
             let field_name = state.parse_identifier_str()?;
-            
+
             // Check for duplicate field names
             if !field_names.insert(field_name) {
                 return Err(state.error(format!(
@@ -42,7 +42,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
                     field_name
                 )));
             }
-            
+
             state.expect_char(':')?;
             let field_ty = parse_type(state)?;
             fields.push(StructField {
@@ -61,14 +61,11 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
     } else if state.current_char() == Some('[') {
         state.expect_char('[')?;
         let size_val = state.parse_integer()?;
-        
+
         if size_val < 0 {
-            return Err(state.error(format!(
-                "Invalid array size: {}",
-                size_val
-            )));
+            return Err(state.error(format!("Invalid array size: {}", size_val)));
         }
-        
+
         let size = size_val as u64;
         state.consume_keyword("x")?;
         let elem_type = parse_type(state)?;
@@ -80,7 +77,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
     } else {
         let found = state.peek_slice(20).unwrap_or("");
         Err(state.error(format!(
-                "Expected 'struct' or '[' for composite type, but found '{}'",
+            "Expected 'struct' or '[' for composite type, but found '{}'",
             found
         )))
     }
@@ -129,29 +126,49 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                 _ => {
                     let primitive_types = super::get_primitive_type_names();
                     // Include "void" as it's a valid type identifier but not a primitive type
-                    let all_type_names: Vec<&str> = primitive_types.iter().copied().chain(std::iter::once("void")).collect();
+                    let all_type_names: Vec<&str> = primitive_types
+                        .iter()
+                        .copied()
+                        .chain(std::iter::once("void"))
+                        .collect();
                     let mut suggestions = Vec::new();
                     const MAX_TYPO_DISTANCE: usize = 2;
-                    
+
                     for valid in &all_type_names {
-                        let distance = super::edit_distance(potential_primitive, valid, Some(MAX_TYPO_DISTANCE));
+                        let distance = super::edit_distance(
+                            potential_primitive,
+                            valid,
+                            Some(MAX_TYPO_DISTANCE),
+                        );
                         if distance <= MAX_TYPO_DISTANCE {
                             suggestions.push(*valid);
                         }
                     }
-                    
-                    suggestions.sort_by_key(|&s| super::edit_distance(potential_primitive, s, None));
-                    
+
+                    suggestions
+                        .sort_by_key(|&s| super::edit_distance(potential_primitive, s, None));
+
                     let hint = if !suggestions.is_empty() {
                         if suggestions.len() == 1 {
                             format!("Did you mean '{}'?", suggestions[0])
                         } else {
-                            format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                            format!(
+                                "Did you mean one of: {}?",
+                                suggestions
+                                    .iter()
+                                    .take(3)
+                                    .map(|s| format!("'{}'", s))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            )
                         }
                     } else {
-                        format!("Valid type identifiers include: {}, void, or named types starting with @", primitive_types.join(", "))
+                        format!(
+                            "Valid type identifiers include: {}, void, or named types starting with @",
+                            primitive_types.join(", ")
+                        )
                     };
-                    
+
                     Err(state.error(format!(
                         "Unknown type identifier: '{}'\n  Hint: {}",
                         potential_primitive, hint

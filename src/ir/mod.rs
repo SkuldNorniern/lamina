@@ -642,7 +642,7 @@ pub use function::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
 };
 pub use instruction::{
-    AllocType, assignment_opcode_names, BinaryOp, CmpOp, Instruction, non_assignment_opcode_names,
+    AllocType, BinaryOp, CmpOp, Instruction, assignment_opcode_names, non_assignment_opcode_names,
 };
 #[cfg(feature = "nightly")]
 pub use instruction::{AtomicBinOp, MemoryOrdering, SimdOp};
