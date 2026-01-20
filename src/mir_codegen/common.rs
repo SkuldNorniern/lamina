@@ -156,7 +156,7 @@ pub struct CompilationResult {
 }
 
 /// Compile functions in parallel using channels (no Arc<Mutex>).
-/// 
+///
 /// This function distributes function compilation tasks across multiple threads
 /// using message passing. Each thread compiles functions independently and sends
 /// results back via channels. The main thread collects and merges results.
@@ -187,9 +187,9 @@ where
             }
         })
         .collect();
-    
+
     functions.sort_by(|a, b| a.0.cmp(&b.0));
-    
+
     let functions: Vec<(String, crate::mir::Function, usize)> = functions
         .into_iter()
         .enumerate()
@@ -260,7 +260,7 @@ where
 
     let mut results: Vec<CompilationResult> = Vec::new();
     let mut worker_errors = Vec::new();
-    
+
     for _ in 0..functions.len() {
         match result_receiver.recv() {
             Ok(result) => results.push(result),
@@ -315,9 +315,9 @@ where
             }
         })
         .collect();
-    
+
     functions.sort_by(|a, b| a.0.cmp(b.0));
-    
+
     let mut results = Vec::new();
     for (idx, (func_name, func)) in functions.into_iter().enumerate() {
         let assembly = compile_func(func_name, func, target_os)?;

@@ -97,8 +97,15 @@ impl<'a> Codegen for X86Codegen<'a> {
         options: &[CodegenOptions],
         input_name: &str,
     ) -> Result<(), CodegenError> {
-        self.base
-            .prepare_base(types, globals, funcs, codegen_units, verbose, options, input_name)
+        self.base.prepare_base(
+            types,
+            globals,
+            funcs,
+            codegen_units,
+            verbose,
+            options,
+            input_name,
+        )
     }
 
     fn compile(&mut self) -> Result<(), CodegenError> {
@@ -137,108 +144,116 @@ fn compile_single_function_x86_64(
     let mut output = Vec::new();
     let abi = X86ABI::new(target_os);
 
-    ensure_signature_support(&func.sig).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-    })?;
-    
-        let label = abi.mangle_function_name(func_name);
+    ensure_signature_support(&func.sig)
+        .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+
+    let label = abi.mangle_function_name(func_name);
     writeln!(output, "{}:", label).map_err(|e| {
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
-        let mut reg_alloc = X64RegAlloc::new(target_os);
+    let mut reg_alloc = X64RegAlloc::new(target_os);
 
-        let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
-            std::collections::HashMap::new();
-        let mut def_regs: std::collections::HashSet<crate::mir::VirtualReg> =
-            std::collections::HashSet::new();
-        let mut used_regs: std::collections::HashSet<crate::mir::VirtualReg> =
-            std::collections::HashSet::new();
+    let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
+        std::collections::HashMap::new();
+    let mut def_regs: std::collections::HashSet<crate::mir::VirtualReg> =
+        std::collections::HashSet::new();
+    let mut used_regs: std::collections::HashSet<crate::mir::VirtualReg> =
+        std::collections::HashSet::new();
 
-        for block in &func.blocks {
-            for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(vreg) = dst
-                {
-                    def_regs.insert(*vreg);
+    for block in &func.blocks {
+        for inst in &block.instructions {
+            if let Some(dst) = inst.def_reg()
+                && let Register::Virtual(vreg) = dst
+            {
+                def_regs.insert(*vreg);
+            }
+            for reg in inst.use_regs() {
+                if let Register::Virtual(vreg) = reg {
+                    used_regs.insert(*vreg);
                 }
-                for reg in inst.use_regs() {
-                    if let Register::Virtual(vreg) = reg {
-                        used_regs.insert(*vreg);
-                    }
-                }
             }
         }
+    }
 
-        for vreg in &def_regs {
-            if !stack_slots.contains_key(vreg) {
-                let slot_index = stack_slots.len();
-                stack_slots.insert(*vreg, X86Frame::calculate_stack_offset(slot_index));
-            }
+    for vreg in &def_regs {
+        if !stack_slots.contains_key(vreg) {
+            let slot_index = stack_slots.len();
+            stack_slots.insert(*vreg, X86Frame::calculate_stack_offset(slot_index));
         }
-        for vreg in used_regs {
-            if !def_regs.contains(&vreg) && !stack_slots.contains_key(&vreg) {
-                let slot_index = stack_slots.len();
-                stack_slots.insert(vreg, X86Frame::calculate_stack_offset(slot_index));
-            }
+    }
+    for vreg in used_regs {
+        if !def_regs.contains(&vreg) && !stack_slots.contains_key(&vreg) {
+            let slot_index = stack_slots.len();
+            stack_slots.insert(vreg, X86Frame::calculate_stack_offset(slot_index));
         }
+    }
 
-        let stack_size = stack_slots.len() * 8;
-    X86Frame::generate_prologue(&mut output, stack_size).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-    })?;
+    let stack_size = stack_slots.len() * 8;
+    X86Frame::generate_prologue(&mut output, stack_size)
+        .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
-        if !func.sig.params.is_empty() {
-            let abi_for_func = X86ABI::new(target_os);
-            let arg_regs = abi_for_func.arg_registers();
+    if !func.sig.params.is_empty() {
+        let abi_for_func = X86ABI::new(target_os);
+        let arg_regs = abi_for_func.arg_registers();
 
-            for (index, param) in func.sig.params.iter().enumerate() {
-                if let Register::Virtual(vreg) = &param.reg
-                    && let Some(slot_off) = stack_slots.get(vreg)
-                {
-                    if index < arg_regs.len() {
-                        let phys_arg = arg_regs[index];
-                    writeln!(output, "    movq %{}, {}(%rbp)", phys_arg, slot_off).map_err(|e| {
-                        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-                    })?;
-                    } else {
-                        let stack_index = index - arg_regs.len();
-                        let caller_off = 16 + (stack_index as i32) * 8;
+        for (index, param) in func.sig.params.iter().enumerate() {
+            if let Register::Virtual(vreg) = &param.reg
+                && let Some(slot_off) = stack_slots.get(vreg)
+            {
+                if index < arg_regs.len() {
+                    let phys_arg = arg_regs[index];
+                    writeln!(output, "    movq %{}, {}(%rbp)", phys_arg, slot_off).map_err(
+                        |e| {
+                            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
+                                "IO error: {}",
+                                e
+                            ))
+                        },
+                    )?;
+                } else {
+                    let stack_index = index - arg_regs.len();
+                    let caller_off = 16 + (stack_index as i32) * 8;
                     writeln!(output, "    movq {}(%rbp), %rax", caller_off).map_err(|e| {
-                        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+                        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
+                            "IO error: {}",
+                            e
+                        ))
                     })?;
                     writeln!(output, "    movq %rax, {}(%rbp)", slot_off).map_err(|e| {
-                        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+                        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
+                            "IO error: {}",
+                            e
+                        ))
                     })?;
-                    }
                 }
             }
         }
+    }
 
     writeln!(output, "    jmp .L_{}_{}", func_name, func.entry).map_err(|e| {
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
-        for block in &func.blocks {
+    for block in &func.blocks {
         writeln!(output, ".L_{}_{}:", func_name, block.label).map_err(|e| {
             crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
 
-            for inst in &block.instructions {
-                emit_instruction_x86_64(
-                    inst,
+        for inst in &block.instructions {
+            emit_instruction_x86_64(
+                inst,
                 &mut output,
-                    &mut reg_alloc,
-                    &stack_slots,
-                    stack_size,
-                    target_os,
-                    func_name,
-                    &def_regs,
-            ).map_err(|e| {
-                crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-            })?;
-            }
+                &mut reg_alloc,
+                &stack_slots,
+                stack_size,
+                target_os,
+                func_name,
+                &def_regs,
+            )
+            .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
+    }
 
     Ok(output)
 }
@@ -275,13 +290,12 @@ pub fn generate_mir_x86_64_with_units<W: Write>(
         target_os,
         codegen_units,
         compile_single_function_x86_64,
-    ).map_err(|e| {
+    )
+    .map_err(|e| {
         use crate::codegen::FeatureType;
-        crate::error::LaminaError::CodegenError(
-            crate::codegen::CodegenError::UnsupportedFeature(
-                FeatureType::Custom(format!("Parallel compilation error: {:?}", e))
-            )
-        )
+        crate::error::LaminaError::CodegenError(crate::codegen::CodegenError::UnsupportedFeature(
+            FeatureType::Custom(format!("Parallel compilation error: {:?}", e)),
+        ))
     })?;
 
     for result in results {

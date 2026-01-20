@@ -89,8 +89,15 @@ impl<'a> Codegen for RiscVCodegen<'a> {
         options: &[CodegenOptions],
         input_name: &str,
     ) -> Result<(), CodegenError> {
-        self.base
-            .prepare_base(types, globals, funcs, codegen_units, verbose, options, input_name)
+        self.base.prepare_base(
+            types,
+            globals,
+            funcs,
+            codegen_units,
+            verbose,
+            options,
+            input_name,
+        )
     }
 
     fn compile(&mut self) -> Result<(), CodegenError> {
@@ -129,50 +136,50 @@ fn compile_single_function_riscv(
     let mut output = Vec::new();
     let abi = RiscVAbi::new(target_os);
 
-        let label = abi.mangle_function_name(func_name);
+    let label = abi.mangle_function_name(func_name);
     writeln!(output, "{}:", label).map_err(|e| {
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
-        let mut reg_alloc = RiscVRegAlloc::new(target_os);
-        let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
-            std::collections::HashMap::new();
-        let mut next_slot = 0;
+    let mut reg_alloc = RiscVRegAlloc::new(target_os);
+    let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
+        std::collections::HashMap::new();
+    let mut next_slot = 0;
 
-        for block in &func.blocks {
-            for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(vreg) = dst
+    for block in &func.blocks {
+        for inst in &block.instructions {
+            if let Some(dst) = inst.def_reg()
+                && let Register::Virtual(vreg) = dst
+                && !stack_slots.contains_key(vreg)
+            {
+                stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
+                next_slot += 1;
+            }
+            for reg in inst.use_regs() {
+                if let Register::Virtual(vreg) = reg
                     && !stack_slots.contains_key(vreg)
                 {
                     stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
                     next_slot += 1;
                 }
-                for reg in inst.use_regs() {
-                    if let Register::Virtual(vreg) = reg
-                        && !stack_slots.contains_key(vreg)
-                    {
-                        stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
-                        next_slot += 1;
-                    }
-                }
             }
         }
+    }
 
-        let stack_size = stack_slots.len() * 8;
-    RiscVFrame::generate_prologue(&mut output, stack_size).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-    })?;
+    let stack_size = stack_slots.len() * 8;
+    RiscVFrame::generate_prologue(&mut output, stack_size)
+        .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
-        for block in &func.blocks {
+    for block in &func.blocks {
         writeln!(output, ".L_{}:", block.label).map_err(|e| {
             crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
 
-            for inst in &block.instructions {
-            emit_instruction_riscv(inst, &mut output, &mut reg_alloc, &stack_slots, target_os).map_err(|e| {
-                crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-            })?;
+        for inst in &block.instructions {
+            emit_instruction_riscv(inst, &mut output, &mut reg_alloc, &stack_slots, target_os)
+                .map_err(|e| {
+                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
+                })?;
         }
     }
 
@@ -210,13 +217,12 @@ pub fn generate_mir_riscv_with_units<W: Write>(
         target_os,
         codegen_units,
         compile_single_function_riscv,
-    ).map_err(|e| {
+    )
+    .map_err(|e| {
         use crate::codegen::FeatureType;
-        crate::error::LaminaError::CodegenError(
-            crate::codegen::CodegenError::UnsupportedFeature(
-                FeatureType::Custom(format!("Parallel compilation error: {:?}", e))
-            )
-        )
+        crate::error::LaminaError::CodegenError(crate::codegen::CodegenError::UnsupportedFeature(
+            FeatureType::Custom(format!("Parallel compilation error: {:?}", e)),
+        ))
     })?;
 
     for result in results {

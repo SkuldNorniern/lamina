@@ -2,14 +2,85 @@
 //!
 //! This module defines a trait that all ABI implementations must follow,
 //! reducing code duplication and providing a consistent interface.
+//!
+//! Builtin overrides can be provided via `LAMINA_BUILTINS`:
+//! `LAMINA_BUILTINS="print=printf,malloc=jemalloc_malloc,dealloc=jemalloc_free"`.
 
 use lamina_platform::TargetOperatingSystem;
+use std::collections::HashMap;
+use std::env;
+
+pub struct BuiltinLibrary {
+    target_os: TargetOperatingSystem,
+    overrides: HashMap<String, String>,
+}
+
+impl BuiltinLibrary {
+    pub fn from_env(target_os: TargetOperatingSystem) -> Self {
+        let overrides = builtin_overrides_from_env();
+        Self {
+            target_os,
+            overrides,
+        }
+    }
+
+    pub fn resolve(&self, name: &str) -> Option<String> {
+        self.overrides
+            .get(name)
+            .cloned()
+            .or_else(|| self.default_symbol(name))
+    }
+
+    fn default_symbol(&self, name: &str) -> Option<String> {
+        match name {
+            "print" => Some(get_printf_symbol(self.target_os).to_string()),
+            "malloc" => Some(get_malloc_symbol(self.target_os).to_string()),
+            "dealloc" => Some(get_free_symbol(self.target_os).to_string()),
+            _ => None,
+        }
+    }
+}
+
+fn builtin_overrides_from_env() -> HashMap<String, String> {
+    let mut overrides = HashMap::new();
+    if let Ok(value) = env::var("LAMINA_BUILTINS") {
+        for entry in value.split(',') {
+            let mut parts = entry.splitn(2, '=');
+            let name = parts.next().unwrap_or("").trim();
+            let symbol = parts.next().unwrap_or("").trim();
+            if !name.is_empty() && !symbol.is_empty() {
+                overrides.insert(name.to_string(), symbol.to_string());
+            }
+        }
+    }
+    overrides
+}
+
+/// Parses the `LAMINA_BUILTINS` override map.
+///
+/// Format: `LAMINA_BUILTINS="print=printf,malloc=jemalloc_malloc"`.
+/// Entries are comma-separated key/value pairs, where each key is the Lamina
+/// builtin name and each value is the platform symbol to link against.
 
 /// Trait defining the common interface for all ABI implementations.
 ///
-/// This trait provides a standardized way to interact with platform-specific
-/// ABI details across different architectures. Each backend implements this
-/// trait to provide architecture and OS-specific behavior.
+/// This contract covers name mangling, builtin symbol mapping, and the
+/// minimal calling convention expectations shared by MIR backends.
+///
+/// ## Calling Convention Assumptions
+/// - Arguments are passed using the platform C ABI register order, with
+///   overflow arguments spilled to the stack.
+/// - Integer arguments use 64-bit slots, even for narrower integer types.
+/// - Return values use the C ABI integer return register when present.
+///
+/// ## Builtins
+/// - Builtins are resolved by `call_stub`, which can be overridden with
+///   the `LAMINA_BUILTINS` environment variable.
+/// - The default builtin map recognizes `print`, `malloc`, and `dealloc`.
+///
+/// ## Naming
+/// - Backends must apply platform-specific symbol mangling, such as
+///   the underscore prefix on macOS.
 pub trait Abi {
     /// Returns the target operating system for this ABI instance.
     fn target_os(&self) -> TargetOperatingSystem;
@@ -20,6 +91,10 @@ pub trait Abi {
     /// such as the underscore prefix on macOS.
     fn mangle_function_name(&self, name: &str) -> String;
 
+    fn builtin_library(&self) -> BuiltinLibrary {
+        BuiltinLibrary::from_env(self.target_os())
+    }
+
     /// Maps well-known intrinsic/runtime names to platform symbol stubs.
     ///
     /// Returns `None` if the name is not a known intrinsic that needs
@@ -29,8 +104,7 @@ pub trait Abi {
     /// Default implementation returns `None` for all names, meaning
     /// no special mapping is needed.
     fn call_stub(&self, name: &str) -> Option<String> {
-        let _ = name;
-        None
+        self.builtin_library().resolve(name)
     }
 }
 
@@ -82,18 +156,5 @@ pub fn get_free_symbol(target_os: TargetOperatingSystem) -> &'static str {
 /// to their platform-specific symbols. Backends can use this to reduce
 /// duplication in their `call_stub` implementations.
 pub fn common_call_stub(name: &str, target_os: TargetOperatingSystem) -> Option<String> {
-    match name {
-        "print" => Some(get_printf_symbol(target_os).to_string()),
-        "malloc" => Some(get_malloc_symbol(target_os).to_string()),
-        "dealloc" => Some(get_free_symbol(target_os).to_string()),
-        _ => None,
-    }
+    BuiltinLibrary::from_env(target_os).resolve(name)
 }
-
-
-
-
-
-
-
-
