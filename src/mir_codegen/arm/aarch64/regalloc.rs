@@ -18,10 +18,9 @@ pub struct A64RegAlloc {
     scratch_used: HashSet<&'static str>,
 }
 
-const MAP_GPRS: &[&str] = &[
-    "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x19", "x20", "x21", "x22", "x23", "x24",
-    "x25", "x26", "x27", "x28",
-];
+// Only use caller-saved registers (x9-x15) until we implement callee-saved save/restore
+// x19-x28 are callee-saved and must be saved/restored in prologue/epilogue if used
+const MAP_GPRS: &[&str] = &["x9", "x10", "x11", "x12", "x13", "x14", "x15"];
 
 const SCRATCH_GPRS: &[&str] = &["x9", "x10", "x11", "x12", "x13", "x14", "x15"];
 
@@ -59,11 +58,7 @@ impl A64RegAlloc {
         self.free_gprs.push_back("x13");
         self.free_gprs.push_back("x14");
         self.free_gprs.push_back("x15");
-        self.free_gprs.push_back("x19");
-        self.free_gprs.push_back("x20");
-        self.free_gprs.push_back("x21");
-        self.free_gprs.push_back("x22");
-        self.free_gprs.push_back("x23");
+        // Removed x19-x23 - these are callee-saved and need prologue/epilogue save/restore
         self.used_gprs.retain(|r| self.free_gprs.contains(r));
         let free_set: HashSet<&str> = self.free_gprs.iter().copied().collect();
         self.vreg_to_preg.retain(|_, preg| free_set.contains(preg));

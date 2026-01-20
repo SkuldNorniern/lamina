@@ -11,8 +11,8 @@ use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, assemble,
     capability::{CapabilitySet, CodegenCapability},
 };
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use abi::WasmABI;
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use util::{
     emit_int_binary_op, emit_int_cmp_op, load_operand_wasm, load_register_wasm,
     store_to_register_wasm,
@@ -93,8 +93,15 @@ impl<'a> Codegen for WasmCodegen<'a> {
         options: &[CodegenOptions],
         input_name: &str,
     ) -> Result<(), CodegenError> {
-        self.base
-            .prepare_base(types, globals, funcs, codegen_units, verbose, options, input_name)
+        self.base.prepare_base(
+            types,
+            globals,
+            funcs,
+            codegen_units,
+            verbose,
+            options,
+            input_name,
+        )
     }
 
     fn compile(&mut self) -> Result<(), CodegenError> {
@@ -170,7 +177,7 @@ fn compile_single_function_wasm(
     use std::io::Write;
     let mut output = Vec::new();
     let abi = WasmABI::new(target_os);
-    
+
     let mangled_name = abi.mangle_function_name(func_name);
     writeln!(output, "  (func ${}", mangled_name).map_err(|e| {
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
@@ -213,8 +220,7 @@ fn compile_single_function_wasm(
         })?;
     }
 
-    let mut block_labels: std::collections::HashMap<&str, usize> =
-        std::collections::HashMap::new();
+    let mut block_labels: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for (idx, block) in func.blocks.iter().enumerate() {
         block_labels.insert(&block.label, idx);
     }
@@ -265,9 +271,9 @@ fn compile_single_function_wasm(
             crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
         for inst in &block.instructions {
-            emit_instruction_wasm(inst, &mut output, &vreg_to_local, &block_labels).map_err(|e| {
-                crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-            })?;
+            emit_instruction_wasm(inst, &mut output, &vreg_to_local, &block_labels).map_err(
+                |e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()),
+            )?;
         }
         writeln!(output, "      br $dispatch_loop").map_err(|e| {
             crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
@@ -277,13 +283,13 @@ fn compile_single_function_wasm(
     writeln!(output, "    )").map_err(|e| {
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
-    
+
     if func.sig.ret_ty.is_some() {
         writeln!(output, "    i64.const 0").map_err(|e| {
             crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
-    
+
     writeln!(output, "  )").map_err(|e| {
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
@@ -315,18 +321,22 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     for func_name in &module.external_functions {
         if let Some(func) = module.functions.get(func_name) {
             let mangled_name = abi.mangle_function_name(func_name);
-            write!(writer, "  (import \"env\" \"{}\" (func ${}", func_name, mangled_name)?;
-            
-        // Parameters
-        for _param in &func.sig.params {
-            write!(writer, " (param i64)")?;
-        }
-            
+            write!(
+                writer,
+                "  (import \"env\" \"{}\" (func ${}",
+                func_name, mangled_name
+            )?;
+
+            // Parameters
+            for _param in &func.sig.params {
+                write!(writer, " (param i64)")?;
+            }
+
             // Return type
             if func.sig.ret_ty.is_some() {
                 write!(writer, " (result i64)")?;
             }
-            
+
             writeln!(writer, ")")?;
         }
     }
@@ -354,18 +364,17 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         target_os,
         codegen_units,
         compile_single_function_wasm,
-    ).map_err(|e| {
+    )
+    .map_err(|e| {
         use crate::codegen::FeatureType;
-        crate::error::LaminaError::CodegenError(
-            crate::codegen::CodegenError::UnsupportedFeature(
-                FeatureType::Custom(format!("Parallel compilation error: {:?}", e))
-            )
-        )
+        crate::error::LaminaError::CodegenError(crate::codegen::CodegenError::UnsupportedFeature(
+            FeatureType::Custom(format!("Parallel compilation error: {:?}", e)),
+        ))
     })?;
 
     for result in results {
         writer.write_all(&result.assembly)?;
-            }
+    }
 
     for func_name in module.functions.keys() {
         if func_name == "main" {
