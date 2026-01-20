@@ -347,81 +347,99 @@ pub mod runtime;
 macro_rules! lamina {
     ($ir_code:literal) => {{
         use $crate::runtime::compile_lir_internal;
-        
-        // Extract function name from IR code
-        let raw_name = $crate::runtime::macro_helpers::extract_function_name($ir_code)
-            .unwrap_or_else(|| {
-                panic!("lamina!: Could not extract function name from IR code. Function must be named with @ prefix (e.g., @add)");
-            });
-        
-        // Ensure function name has @ prefix for lookup
-        let function_name = if raw_name.starts_with('@') {
-            raw_name
-        } else {
-            // Try with @ prefix - need to allocate for format!
-            let owned = format!("@{}", raw_name);
-            // Leak the string to get a &'static str (macro result lives for program lifetime)
-            Box::leak(owned.into_boxed_str())
-        };
-        
-        // Compile the IR code
-        let function_ptr = compile_lir_internal($ir_code, function_name, 1)
-            .unwrap_or_else(|e| {
-                panic!("lamina!: Failed to compile IR code: {}", e);
-            });
-        
-        // Parse IR to get function signature for validation
-        let ir_module = $crate::parser::parse_module($ir_code)
-            .unwrap_or_else(|e| panic!("lamina!: Failed to parse IR: {}", e));
-        let mir_module = $crate::mir::codegen::from_ir(&ir_module, "lamina_macro")
-            .unwrap_or_else(|e| panic!("lamina!: Failed to lower to MIR: {}", e));
-        
-        // Find the function to get its signature
-        // Try multiple name variations since MIR might store names differently
-        let func = mir_module.functions.get(function_name)
-            .or_else(|| {
-                if function_name.starts_with('@') {
-                    mir_module.functions.get(&function_name[1..])
-                } else {
-                    let name_with_at = format!("@{}", function_name);
-                    mir_module.functions.get(&name_with_at)
-                }
-            })
-            .or_else(|| {
-                // Try finding by iterating (in case name format is different)
-                mir_module.functions.values()
-                    .find(|f| {
-                        f.sig.name == function_name || 
-                        f.sig.name == format!("@{}", function_name) ||
-                        (function_name.starts_with('@') && f.sig.name == &function_name[1..])
+
+        let initialization = (||
+            -> Result<
+                (
+                    $crate::mir::Signature,
+                    *const u8,
+                    *mut $crate::runtime::ExecutableMemory,
+                    usize,
+                ),
+                String,
+            > {
+            let raw_name = $crate::runtime::macro_helpers::extract_function_name($ir_code)
+                .ok_or_else(|| {
+                    "lamina!: Could not extract function name from IR code. Function must be named with @ prefix (e.g., @add)"
+                        .to_string()
+                })?;
+
+            let function_name: &'static str = if raw_name.starts_with('@') {
+                raw_name
+            } else {
+                let owned_name = format!("@{}", raw_name);
+                Box::leak(owned_name.into_boxed_str())
+            };
+
+            let runtime_result = compile_lir_internal($ir_code, function_name, 1)
+                .map_err(|e| format!("lamina!: Failed to compile IR code: {}", e))?;
+
+            let memory_handle = Box::leak(Box::new(runtime_result.memory));
+            let function_ptr = runtime_result.function_ptr;
+
+            let ir_module = $crate::parser::parse_module($ir_code)
+                .map_err(|e| format!("lamina!: Failed to parse IR: {}", e))?;
+            let mir_module = $crate::mir::codegen::from_ir(&ir_module, "lamina_macro")
+                .map_err(|e| format!("lamina!: Failed to lower to MIR: {}", e))?;
+
+            let func = mir_module
+                .functions
+                .get(function_name)
+                .or_else(|| {
+                    if function_name.starts_with('@') {
+                        mir_module.functions.get(&function_name[1..])
+                    } else {
+                        let name_with_at = format!("@{}", function_name);
+                        mir_module.functions.get(&name_with_at)
+                    }
+                })
+                .or_else(|| {
+                    mir_module.functions.values().find(|f| {
+                        f.sig.name == function_name
+                            || f.sig.name == format!("@{}", function_name)
+                            || (function_name.starts_with('@') && f.sig.name == &function_name[1..])
                     })
-            })
-            .unwrap_or_else(|| {
-                let available = mir_module.function_names().join(", ");
-                panic!("lamina!: Function '{}' not found in IR code. Available functions: [{}]", function_name, available);
-            });
-        
-        let param_count = func.sig.params.len();
-        let returns_i64 = matches!(
-            func.sig.ret_ty.as_ref(),
-            Some($crate::mir::MirType::Scalar($crate::mir::ScalarType::I64))
-        );
-        
-        // Return a closure that handles dynamic arguments using execute_jit_function
-        let sig = func.sig.clone();
+                })
+                .ok_or_else(|| {
+                    let available = mir_module.function_names().join(", ");
+                    format!(
+                        "lamina!: Function '{}' not found in IR code. Available functions: [{}]",
+                        function_name, available
+                    )
+                })?;
+
+            let param_count = func.sig.params.len();
+            let signature = func.sig.clone();
+
+            Ok((signature, function_ptr, memory_handle, param_count))
+        })();
+
+        let jit_handle = match initialization {
+            Ok(handle) => Some(handle),
+            Err(error_message) => {
+                eprintln!("{}", error_message);
+                None
+            }
+        };
+
         move |args: &[i64]| -> Option<i64> {
-            if args.len() != param_count {
+            let (signature, function_ptr, memory_handle, param_count) = jit_handle.as_ref()?;
+            let _memory_ref = memory_handle;
+            if args.len() != *param_count {
                 return None;
             }
-            // Use execute_jit_function for proper signature handling
-            match $crate::runtime::execute_jit_function(&sig, function_ptr, Some(args), false) {
+            match $crate::runtime::execute_jit_function(
+                signature,
+                *function_ptr,
+                Some(args),
+                false,
+            ) {
                 Ok(result) => result,
                 Err(_) => None,
             }
         }
     }};
 }
-
 
 use std::io::Write;
 

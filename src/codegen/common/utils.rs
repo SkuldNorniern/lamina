@@ -24,15 +24,20 @@ pub fn get_type_size_bytes(ty: &Type<'_>) -> Result<u64, LaminaError> {
             crate::codegen::CodegenError::NamedTypeNotImplemented,
         )),
         #[cfg(feature = "nightly")]
-        Type::Vector { element_type, lanes } => {
+        Type::Vector {
+            element_type,
+            lanes,
+        } => {
             let elem_size = match element_type {
                 PrimitiveType::I8 | PrimitiveType::U8 => 1,
                 PrimitiveType::I16 | PrimitiveType::U16 => 2,
                 PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
                 PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 8,
-                _ => return Err(crate::LaminaError::CodegenError(
-                    crate::codegen::CodegenError::InvalidVectorElementType,
-                )),
+                _ => {
+                    return Err(crate::LaminaError::CodegenError(
+                        crate::codegen::CodegenError::InvalidVectorElementType,
+                    ));
+                }
             };
             Ok(elem_size * (*lanes as u64))
         }
@@ -56,16 +61,21 @@ pub fn get_type_alignment(ty: &Type<'_>) -> Result<u64, LaminaError> {
         Type::Tuple(_) => Ok(8),  // Default to 8-byte alignment for tuples
         Type::Named(_) => Ok(8),  // Default to 8-byte alignment for named types
         #[cfg(feature = "nightly")]
-        Type::Vector { element_type, lanes } => {
+        Type::Vector {
+            element_type,
+            lanes,
+        } => {
             // Vector alignment is typically the vector size (128-bit = 16 bytes, 256-bit = 32 bytes)
             let elem_size = match element_type {
                 PrimitiveType::I8 | PrimitiveType::U8 => 1,
                 PrimitiveType::I16 | PrimitiveType::U16 => 2,
                 PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
                 PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 => 8,
-                _ => return Err(crate::LaminaError::CodegenError(
-                    crate::codegen::CodegenError::InvalidVectorElementType,
-                )),
+                _ => {
+                    return Err(crate::LaminaError::CodegenError(
+                        crate::codegen::CodegenError::InvalidVectorElementType,
+                    ));
+                }
             };
             let vector_size = elem_size * (*lanes as u64);
             // Align to vector size (typically 16 or 32 bytes)

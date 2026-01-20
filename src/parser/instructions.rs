@@ -49,26 +49,34 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 let valid_ops = super::get_assignment_opcode_names();
                 let mut suggestions = Vec::new();
                 const MAX_TYPO_DISTANCE: usize = 2;
-                
+
                 for valid in valid_ops {
                     let distance = super::edit_distance(opcode_str, valid, Some(MAX_TYPO_DISTANCE));
                     if distance <= MAX_TYPO_DISTANCE {
                         suggestions.push(*valid);
                     }
                 }
-                
+
                 suggestions.sort_by_key(|&s| super::edit_distance(opcode_str, s, None));
-                
+
                 let hint = if !suggestions.is_empty() {
                     if suggestions.len() == 1 {
                         format!("Did you mean '{}'?", suggestions[0])
                     } else {
-                        format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                        format!(
+                            "Did you mean one of: {}?",
+                            suggestions
+                                .iter()
+                                .take(3)
+                                .map(|s| format!("'{}'", s))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
                     }
                 } else {
                     "Valid opcodes include: add, sub, mul, div, load, store, call, alloc, and many others".to_string()
                 };
-                
+
                 Err(state.error(format!(
                     "Unknown instruction opcode '{}' after assignment\n  Hint: {}",
                     opcode_str, hint
@@ -98,26 +106,34 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 let valid_ops = super::get_non_assignment_opcode_names();
                 let mut suggestions = Vec::new();
                 const MAX_TYPO_DISTANCE: usize = 2;
-                
+
                 for valid in valid_ops {
                     let distance = super::edit_distance(opcode_str, valid, Some(MAX_TYPO_DISTANCE));
                     if distance <= MAX_TYPO_DISTANCE {
                         suggestions.push(*valid);
                     }
                 }
-                
+
                 suggestions.sort_by_key(|&s| super::edit_distance(opcode_str, s, None));
-                
+
                 let hint = if !suggestions.is_empty() {
                     if suggestions.len() == 1 {
                         format!("Did you mean '{}'?", suggestions[0])
                     } else {
-                        format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                        format!(
+                            "Did you mean one of: {}?",
+                            suggestions
+                                .iter()
+                                .take(3)
+                                .map(|s| format!("'{}'", s))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
                     }
                 } else {
                     "Valid instruction opcodes include: ret, jmp, br, call, print, store, and many others".to_string()
                 };
-                
+
                 Err(state.error(format!(
                     "Unknown instruction opcode '{}'\n  Hint: {}",
                     opcode_str, hint
@@ -256,26 +272,33 @@ fn parse_alloc<'a>(
             let valid_types = super::get_alloc_type_names();
             let mut suggestions = Vec::new();
             const MAX_TYPO_DISTANCE: usize = 2;
-            
+
             for valid in valid_types {
                 let distance = super::edit_distance(alloc_type_str, valid, Some(MAX_TYPO_DISTANCE));
                 if distance <= MAX_TYPO_DISTANCE {
                     suggestions.push(*valid);
                 }
             }
-            
+
             suggestions.sort_by_key(|&s| super::edit_distance(alloc_type_str, s, None));
-            
+
             let hint = if !suggestions.is_empty() {
                 if suggestions.len() == 1 {
                     format!("Did you mean '{}'?", suggestions[0])
                 } else {
-                    format!("Did you mean one of: {}?", suggestions.iter().map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                    format!(
+                        "Did you mean one of: {}?",
+                        suggestions
+                            .iter()
+                            .map(|s| format!("'{}'", s))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
                 }
             } else {
                 format!("Valid allocation types are: {}", valid_types.join(", "))
             };
-            
+
             return Err(state.error(format!(
                 "Invalid allocation type: '{}'\n  Hint: {}",
                 alloc_type_str, hint
@@ -323,14 +346,11 @@ fn parse_getfield<'a>(
     let struct_ptr = parse_value(state)?;
     state.expect_char(',')?;
     let field_index_val = state.parse_integer()?;
-    
+
     if field_index_val < 0 {
-        return Err(state.error(format!(
-            "Invalid field index: {}",
-            field_index_val
-        )));
+        return Err(state.error(format!("Invalid field index: {}", field_index_val)));
     }
-    
+
     let field_index = field_index_val as usize;
     Ok(Instruction::GetFieldPtr {
         result,
@@ -377,26 +397,34 @@ fn parse_getelem<'a>(
                 let valid_types = super::get_primitive_type_names();
                 let mut suggestions = Vec::new();
                 const MAX_TYPO_DISTANCE: usize = 2;
-                
+
                 for valid in valid_types {
                     let distance = super::edit_distance(type_str, valid, Some(MAX_TYPO_DISTANCE));
                     if distance <= MAX_TYPO_DISTANCE {
                         suggestions.push(*valid);
                     }
                 }
-                
+
                 suggestions.sort_by_key(|&s| super::edit_distance(type_str, s, None));
-                
+
                 let hint = if !suggestions.is_empty() {
                     if suggestions.len() == 1 {
                         format!("Did you mean '{}'?", suggestions[0])
                     } else {
-                        format!("Did you mean one of: {}?", suggestions.iter().take(3).map(|s| format!("'{}'", s)).collect::<Vec<_>>().join(", "))
+                        format!(
+                            "Did you mean one of: {}?",
+                            suggestions
+                                .iter()
+                                .take(3)
+                                .map(|s| format!("'{}'", s))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
                     }
                 } else {
                     format!("Valid primitive types include: {}", valid_types.join(", "))
                 };
-                
+
                 return Err(state.error(format!(
                     "Expected primitive type, found '{}'\n  Hint: {}",
                     type_str, hint
@@ -505,14 +533,11 @@ fn parse_extract_tuple<'a>(
     let tuple_val = parse_value(state)?;
     state.expect_char(',')?;
     let index_val = state.parse_integer()?;
-    
+
     if index_val < 0 {
-        return Err(state.error(format!(
-            "Invalid tuple index: {}",
-            index_val
-        )));
+        return Err(state.error(format!("Invalid tuple index: {}", index_val)));
     }
-    
+
     let index = index_val as usize;
     Ok(Instruction::ExtractTuple {
         result,

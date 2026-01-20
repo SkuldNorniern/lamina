@@ -300,7 +300,7 @@ impl<'a> ParserState<'a> {
         self.expect_char('"')?;
         let start = self.position;
         let mut escaped = false;
-        
+
         while !self.is_eof() {
             let byte = self.bytes[self.position];
             if escaped {
@@ -308,24 +308,24 @@ impl<'a> ParserState<'a> {
                 self.advance();
                 continue;
             }
-            
+
             if byte == b'\\' {
                 escaped = true;
                 self.advance();
                 continue;
             }
-            
+
             if byte == b'"' {
                 break;
             }
-            
+
             self.advance();
         }
-        
+
         if self.is_eof() {
             return Err(self.error("Unclosed string literal\n  Hint: String literals must be closed with a double quote (\")".to_string()));
         }
-        
+
         let end = self.position;
         self.expect_char('"')?;
         Ok(&self.input[start..end])

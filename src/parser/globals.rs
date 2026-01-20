@@ -84,18 +84,18 @@ pub fn parse_value_with_type_hint<'a>(
                 let found = state.peek_slice(10).unwrap_or("");
                 let mut suggestions = Vec::new();
                 const MAX_TYPO_DISTANCE: usize = 2;
-                
+
                 let distance = super::edit_distance(found, "true", Some(MAX_TYPO_DISTANCE));
                 if distance <= MAX_TYPO_DISTANCE {
                     suggestions.push("true");
                 }
-                
+
                 let hint = if !suggestions.is_empty() {
                     "Did you mean 'true'?".to_string()
                 } else {
                     "Expected 'true' boolean literal".to_string()
                 };
-                
+
                 Err(state.error(format!("Expected 'true'\n  Hint: {}", hint)))
             }
         }
@@ -116,18 +116,18 @@ pub fn parse_value_with_type_hint<'a>(
                 let found = state.peek_slice(10).unwrap_or("");
                 let mut suggestions = Vec::new();
                 const MAX_TYPO_DISTANCE: usize = 2;
-                
+
                 let distance = super::edit_distance(found, "false", Some(MAX_TYPO_DISTANCE));
                 if distance <= MAX_TYPO_DISTANCE {
                     suggestions.push("false");
                 }
-                
+
                 let hint = if !suggestions.is_empty() {
                     "Did you mean 'false'?".to_string()
                 } else {
                     "Expected 'false' boolean literal".to_string()
                 };
-                
+
                 Err(state.error(format!("Expected 'false'\n  Hint: {}", hint)))
             }
         }
@@ -149,14 +149,17 @@ pub fn parse_value_with_type_hint<'a>(
                 Type::Primitive(PrimitiveType::I8) => {
                     let peek_string = state.peek_slice(20).unwrap_or("");
                     if peek_string.contains('.') {
-                        return Err(state.error("Float literal cannot be used with I8 type hint".to_string()));
+                        return Err(state
+                            .error("Float literal cannot be used with I8 type hint".to_string()));
                     }
 
                     let i_val = state.parse_integer()?;
                     if i_val < i8::MIN as i64 || i_val > i8::MAX as i64 {
                         return Err(state.error(format!(
                             "Integer literal {} out of range for i8 (must be between {} and {})",
-                            i_val, i8::MIN, i8::MAX
+                            i_val,
+                            i8::MIN,
+                            i8::MAX
                         )));
                     }
                     Ok(Value::Constant(Literal::I8(i_val as i8)))
@@ -172,7 +175,9 @@ pub fn parse_value_with_type_hint<'a>(
                     if i_val < i32::MIN as i64 || i_val > i32::MAX as i64 {
                         return Err(state.error(format!(
                             "Integer literal {} out of range for i32 (must be between {} and {})",
-                            i_val, i32::MIN, i32::MAX
+                            i_val,
+                            i32::MIN,
+                            i32::MAX
                         )));
                     }
                     Ok(Value::Constant(Literal::I32(i_val as i32)))

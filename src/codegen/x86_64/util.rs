@@ -41,7 +41,10 @@ pub fn get_type_size_directive_and_bytes(
             CodegenError::NamedTypeNotImplemented,
         )),
         #[cfg(feature = "nightly")]
-        Type::Vector { element_type, lanes } => {
+        Type::Vector {
+            element_type,
+            lanes,
+        } => {
             let elem_size = match element_type {
                 PrimitiveType::I8 | PrimitiveType::U8 => 1,
                 PrimitiveType::I16 | PrimitiveType::U16 => 2,

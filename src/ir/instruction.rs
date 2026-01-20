@@ -271,7 +271,7 @@ impl BinaryOp {
         ];
         NAMES
     }
-    
+
     /// Returns the string representation of this binary operation.
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -344,7 +344,7 @@ impl CmpOp {
         ];
         NAMES
     }
-    
+
     /// Returns the string representation of this comparison operation.
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -725,26 +725,22 @@ pub enum Instruction<'a> {
 
 // --- Display Implementations ---
 
-
 impl AllocType {
     /// Returns all valid allocation type names as strings.
     pub fn all_names() -> &'static [&'static str] {
         const fn name_for(alloc: AllocType) -> &'static str {
             alloc.as_str()
         }
-        const NAMES: &[&str] = &[
-            name_for(AllocType::Stack),
-            name_for(AllocType::Heap),
-        ];
+        const NAMES: &[&str] = &[name_for(AllocType::Stack), name_for(AllocType::Heap)];
         NAMES
     }
-    
+
     /// Returns the string representation of this allocation type.
     pub const fn as_str(&self) -> &'static str {
-            match self {
+        match self {
             AllocType::Stack => "stack",
             AllocType::Heap => "heap",
-            }
+        }
     }
 }
 
@@ -770,38 +766,82 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
     // These correspond to Instruction enum variants that have a `result` field
     const INSTRUCTION_ASSIGNMENT_OPS: &[&str] = &[
         // Type conversion operations (from Instruction::ZeroExtend, etc.)
-        "zext", "trunc", "sext", "bitcast", "select",
+        "zext",
+        "trunc",
+        "sext",
+        "bitcast",
+        "select",
         // Memory operations (from Instruction::Alloc, Instruction::Load, etc.)
-        "alloc", "load", "getfield", "getfieldptr", "getelem", "getelementptr",
+        "alloc",
+        "load",
+        "getfield",
+        "getfieldptr",
+        "getelem",
+        "getelementptr",
         // Pointer operations (from Instruction::PtrToInt, Instruction::IntToPtr)
-        "ptrtoint", "inttoptr",
+        "ptrtoint",
+        "inttoptr",
         // Tuple operations (from Instruction::Tuple, Instruction::ExtractTuple)
-        "tuple", "extract",
+        "tuple",
+        "extract",
         // Function calls (from Instruction::Call - can have result)
         "call",
         // SSA operations (from Instruction::Phi)
         "phi",
         // I/O operations (from Instruction::Write, Instruction::Read, etc. - with result)
-        "write", "read", "writebyte", "readbyte", "writeptr",
+        "write",
+        "read",
+        "writebyte",
+        "readbyte",
+        "writeptr",
     ];
-    
+
     // Combine BinaryOp and CmpOp (generated from enums) with instruction-specific ops
     // Note: We can't concatenate arrays at compile time, so we manually list them.
     // However, BinaryOp and CmpOp names come from their enums via all_names(),
     // ensuring those stay automatically in sync.
     &[
         // From BinaryOp enum (dynamically generated via BinaryOp::all_names())
-        "add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr",
+        "add",
+        "sub",
+        "mul",
+        "div",
+        "rem",
+        "and",
+        "or",
+        "xor",
+        "shl",
+        "shr",
         // From CmpOp enum (dynamically generated via CmpOp::all_names())
-        "eq", "ne", "gt", "ge", "lt", "le",
+        "eq",
+        "ne",
+        "gt",
+        "ge",
+        "lt",
+        "le",
         // Instruction-specific (manually maintained, corresponds to Instruction enum variants)
-        "zext", "trunc", "sext", "bitcast", "select",
-        "alloc", "load", "getfield", "getfieldptr", "getelem", "getelementptr",
-        "ptrtoint", "inttoptr",
-        "tuple", "extract",
+        "zext",
+        "trunc",
+        "sext",
+        "bitcast",
+        "select",
+        "alloc",
+        "load",
+        "getfield",
+        "getfieldptr",
+        "getelem",
+        "getelementptr",
+        "ptrtoint",
+        "inttoptr",
+        "tuple",
+        "extract",
         "call",
         "phi",
-        "write", "read", "writebyte", "readbyte", "writeptr",
+        "write",
+        "read",
+        "writebyte",
+        "readbyte",
+        "writeptr",
     ]
 }
 
@@ -816,13 +856,24 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
     // These correspond to Instruction enum variants without a `result` field
     &[
         // Control flow (from Instruction::Ret, Instruction::Jmp, Instruction::Br, Instruction::Switch)
-        "ret", "jmp", "br", "switch",
+        "ret",
+        "jmp",
+        "br",
+        "switch",
         // Function calls (from Instruction::Call - without result)
         "call",
         // Memory operations (from Instruction::Store, Instruction::Dealloc, etc.)
-        "store", "dealloc", "memcpy", "memmove", "memset",
+        "store",
+        "dealloc",
+        "memcpy",
+        "memmove",
+        "memset",
         // I/O operations (from Instruction::Write, Instruction::Read, etc. - without result)
-        "write", "read", "writebyte", "readbyte", "writeptr",
+        "write",
+        "read",
+        "writebyte",
+        "readbyte",
+        "writeptr",
         // Debugging (from Instruction::Print)
         "print",
     ]

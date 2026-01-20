@@ -8,10 +8,10 @@
 #![cfg(feature = "nightly")]
 
 use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::Function;
 use crate::mir::instruction::{AddressMode, FloatBinOp, Instruction, IntBinOp, Operand, VectorOp};
 use crate::mir::register::{Register, VirtualReg};
 use crate::mir::types::{MirType, ScalarType, VectorLane, VectorType};
-use crate::mir::Function;
 use std::collections::{HashMap, HashSet};
 
 /// Auto-vectorization transform that converts scalar loop operations to SIMD.
@@ -147,7 +147,10 @@ impl AutoVectorization {
                 }
 
                 let mut new_doms = if let Some(first_pred) = preds.first() {
-                    dominators.get(first_pred.as_str()).cloned().unwrap_or_default()
+                    dominators
+                        .get(first_pred.as_str())
+                        .cloned()
+                        .unwrap_or_default()
                 } else {
                     HashSet::new()
                 };
@@ -272,7 +275,11 @@ impl AutoVectorization {
     }
 
     /// Try to vectorize a loop
-    fn try_vectorize_loop(&self, func: &mut Function, loop_info: &LoopInfo) -> Result<bool, String> {
+    fn try_vectorize_loop(
+        &self,
+        func: &mut Function,
+        loop_info: &LoopInfo,
+    ) -> Result<bool, String> {
         // Find vectorizable patterns in the loop
         let patterns = self.find_vectorizable_patterns(func, loop_info);
 
@@ -306,19 +313,20 @@ impl AutoVectorization {
         for block_label in &loop_info.blocks {
             if let Some(block) = func.get_block(block_label) {
                 let instructions = &block.instructions;
-                
+
                 // Pattern 1: Load -> IntBinary -> Store (integer operations)
                 for i in 0..instructions.len().saturating_sub(2) {
                     // Pattern: Load -> Binary Op -> Store
                     if let (
                         Instruction::Load { ty, dst, addr, .. },
                         Instruction::IntBinary { op, .. },
-                        Instruction::Store { src, addr: store_addr, .. },
-                    ) = (
-                        &instructions[i],
-                        &instructions[i + 1],
-                        &instructions[i + 2],
-                    ) {
+                        Instruction::Store {
+                            src,
+                            addr: store_addr,
+                            ..
+                        },
+                    ) = (&instructions[i], &instructions[i + 1], &instructions[i + 2])
+                    {
                         // Check if this is a vectorizable pattern
                         if self.is_vectorizable_type(ty)
                             && self.is_sequential_access(addr, store_addr)
@@ -345,12 +353,13 @@ impl AutoVectorization {
                     if let (
                         Instruction::Load { ty, dst, addr, .. },
                         Instruction::FloatBinary { op, .. },
-                        Instruction::Store { src, addr: store_addr, .. },
-                    ) = (
-                        &instructions[i],
-                        &instructions[i + 1],
-                        &instructions[i + 2],
-                    ) {
+                        Instruction::Store {
+                            src,
+                            addr: store_addr,
+                            ..
+                        },
+                    ) = (&instructions[i], &instructions[i + 1], &instructions[i + 2])
+                    {
                         if self.is_vectorizable_type(ty)
                             && self.is_sequential_access(addr, store_addr)
                             && self.is_vectorizable_float_op(*op)
@@ -385,7 +394,11 @@ impl AutoVectorization {
                         Instruction::Load { ty, dst, addr, .. },
                         Instruction::IntBinary { op: op1, .. },
                         Instruction::IntBinary { op: _op2, .. },
-                        Instruction::Store { src, addr: store_addr, .. },
+                        Instruction::Store {
+                            src,
+                            addr: store_addr,
+                            ..
+                        },
                     ) = (
                         &instructions[i],
                         &instructions[i + 1],
@@ -422,8 +435,14 @@ impl AutoVectorization {
     fn is_vectorizable_type(&self, ty: &MirType) -> bool {
         matches!(
             ty,
-            MirType::Scalar(ScalarType::I8 | ScalarType::I16 | ScalarType::I32 | ScalarType::I64
-                | ScalarType::F32 | ScalarType::F64)
+            MirType::Scalar(
+                ScalarType::I8
+                    | ScalarType::I16
+                    | ScalarType::I32
+                    | ScalarType::I64
+                    | ScalarType::F32
+                    | ScalarType::F64
+            )
         )
     }
 
@@ -440,8 +459,14 @@ impl AutoVectorization {
     fn is_sequential_access(&self, load_addr: &AddressMode, store_addr: &AddressMode) -> bool {
         match (load_addr, store_addr) {
             (
-                AddressMode::BaseOffset { base: lb, offset: lo },
-                AddressMode::BaseOffset { base: sb, offset: so },
+                AddressMode::BaseOffset {
+                    base: lb,
+                    offset: lo,
+                },
+                AddressMode::BaseOffset {
+                    base: sb,
+                    offset: so,
+                },
             ) => {
                 // Same base register and reasonable offset differences
                 // More aggressive: allow up to 64 bytes difference (for unrolled loops)
@@ -460,7 +485,12 @@ impl AutoVectorization {
     fn is_vectorizable_op(&self, op: IntBinOp) -> bool {
         matches!(
             op,
-            IntBinOp::Add | IntBinOp::Sub | IntBinOp::Mul | IntBinOp::And | IntBinOp::Or | IntBinOp::Xor
+            IntBinOp::Add
+                | IntBinOp::Sub
+                | IntBinOp::Mul
+                | IntBinOp::And
+                | IntBinOp::Or
+                | IntBinOp::Xor
         )
     }
 
@@ -508,17 +538,14 @@ impl AutoVectorization {
         let vectorization_factor = match pattern.element_type {
             ScalarType::I32 | ScalarType::F32 => 4, // v128 with 4 lanes
             ScalarType::I64 | ScalarType::F64 => 2, // v128 with 2 lanes
-            ScalarType::I16 => 8,                    // v128 with 8 lanes
-            ScalarType::I8 => 16,                    // v128 with 16 lanes
+            ScalarType::I16 => 8,                   // v128 with 8 lanes
+            ScalarType::I8 => 16,                   // v128 with 16 lanes
             _ => return Ok(false),                  // Not supported
         };
 
         // Extract operands from instructions
-        let (load_addr, compute_rhs, store_addr) = match (
-            &load_instr,
-            &compute_instr,
-            &store_instr,
-        ) {
+        let (load_addr, compute_rhs, store_addr) = match (&load_instr, &compute_instr, &store_instr)
+        {
             (
                 Instruction::Load { addr, .. },
                 Instruction::IntBinary { rhs, .. },
@@ -544,7 +571,10 @@ impl AutoVectorization {
             block.instructions[pattern.load_idx] = Instruction::Load {
                 ty: MirType::Vector(vector_type),
                 dst: vector_dst.clone(),
-                addr: AddressMode::BaseOffset { base: base.clone(), offset },
+                addr: AddressMode::BaseOffset {
+                    base: base.clone(),
+                    offset,
+                },
                 attrs: Default::default(),
             };
 
@@ -573,7 +603,10 @@ impl AutoVectorization {
                         dst: vector_rhs_reg.clone(),
                         addr: AddressMode::BaseOffset {
                             base: base.clone(),
-                            offset: offset + (MirType::Scalar(pattern.element_type).size_bytes() * vectorization_factor) as i16,
+                            offset: offset
+                                + (MirType::Scalar(pattern.element_type).size_bytes()
+                                    * vectorization_factor)
+                                    as i16,
                         },
                         attrs: Default::default(),
                     },
@@ -587,14 +620,15 @@ impl AutoVectorization {
                 op: vector_op,
                 ty: MirType::Vector(vector_type),
                 dst: vector_dst.clone(),
-                operands: vec![
-                    Operand::Register(vector_lhs_reg),
-                    vector_rhs,
-                ],
+                operands: vec![Operand::Register(vector_lhs_reg), vector_rhs],
             };
 
             // Create vector store
-            if let AddressMode::BaseOffset { base: sbase, offset: soffset } = store_addr {
+            if let AddressMode::BaseOffset {
+                base: sbase,
+                offset: soffset,
+            } = store_addr
+            {
                 block.instructions[pattern.store_idx + 1] = Instruction::Store {
                     ty: MirType::Vector(vector_type),
                     src: Operand::Register(vector_dst),
@@ -712,8 +746,8 @@ mod tests {
             .ret(i64_ty.clone(), ir::builder::var("v0"));
 
         let ir_module = builder.build();
-        let mir_module = mir::codegen::from_ir(&ir_module, "test_module")
-            .expect("Failed to lower to MIR");
+        let mir_module =
+            mir::codegen::from_ir(&ir_module, "test_module").expect("Failed to lower to MIR");
 
         let func = mir_module
             .functions
@@ -743,7 +777,11 @@ mod tests {
                 ir::builder::var("val"),
                 ir::builder::i32(1),
             )
-            .store(i32_ty.clone(), ir::builder::var("arr"), ir::builder::var("val"))
+            .store(
+                i32_ty.clone(),
+                ir::builder::var("arr"),
+                ir::builder::var("val"),
+            )
             .cmp(
                 ir::instruction::CmpOp::Lt,
                 "cond",
@@ -756,8 +794,8 @@ mod tests {
             .ret(i32_ty.clone(), ir::builder::var("val"));
 
         let ir_module = builder.build();
-        let mir_module = mir::codegen::from_ir(&ir_module, "test_module")
-            .expect("Failed to lower to MIR");
+        let mir_module =
+            mir::codegen::from_ir(&ir_module, "test_module").expect("Failed to lower to MIR");
 
         let func = mir_module
             .functions
@@ -794,8 +832,8 @@ mod tests {
             .ret(i64_ty.clone(), ir::builder::var("result"));
 
         let ir_module = builder.build();
-        let mir_module = mir::codegen::from_ir(&ir_module, "test_module")
-            .expect("Failed to lower to MIR");
+        let mir_module =
+            mir::codegen::from_ir(&ir_module, "test_module").expect("Failed to lower to MIR");
 
         let mut func = mir_module
             .functions
@@ -810,4 +848,3 @@ mod tests {
         assert!(!changed, "Should not change function without loops");
     }
 }
-

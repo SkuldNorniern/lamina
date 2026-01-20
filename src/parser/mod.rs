@@ -47,7 +47,7 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
     let s2_lower: Vec<char> = s2.to_lowercase().chars().collect();
     let m = s1_lower.len();
     let n = s2_lower.len();
-    
+
     // Early exit for empty strings
     if m == 0 {
         return n;
@@ -55,7 +55,7 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
     if n == 0 {
         return m;
     }
-    
+
     // Early exit if length difference exceeds max_distance
     if let Some(max) = max_distance {
         let len_diff = m.abs_diff(n);
@@ -63,7 +63,7 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
             return max + 1;
         }
     }
-    
+
     // Use space-optimized DP: only store two rows at a time
     // This reduces space complexity from O(m*n) to O(min(m,n))
     let (shorter, longer) = if m <= n {
@@ -73,34 +73,39 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
     };
     let short_len = shorter.len();
     let long_len = longer.len();
-    
+
     // Previous row (dp[i-1])
     let mut prev_row: Vec<usize> = (0..=short_len).collect();
     // Current row (dp[i])
     let mut curr_row = vec![0; short_len + 1];
-    
+
     for i in 1..=long_len {
         curr_row[0] = i;
-        
+
         for j in 1..=short_len {
             // Cost is 0 if characters match, 1 otherwise
-            let cost = if longer[i - 1] == shorter[j - 1] { 0 } else { 1 };
-            
-            curr_row[j] = (prev_row[j] + 1)           // deletion
-                .min(curr_row[j - 1] + 1)             // insertion
-                .min(prev_row[j - 1] + cost);         // substitution
-            
+            let cost = if longer[i - 1] == shorter[j - 1] {
+                0
+            } else {
+                1
+            };
+
+            curr_row[j] = (prev_row[j] + 1) // deletion
+                .min(curr_row[j - 1] + 1) // insertion
+                .min(prev_row[j - 1] + cost); // substitution
+
             // Early termination if we exceed max_distance
             if let Some(max) = max_distance
-                && curr_row[j] > max {
-                    return max + 1;
-                }
+                && curr_row[j] > max
+            {
+                return max + 1;
+            }
         }
-        
+
         // Swap rows for next iteration
         std::mem::swap(&mut prev_row, &mut curr_row);
     }
-    
+
     prev_row[short_len]
 }
 
