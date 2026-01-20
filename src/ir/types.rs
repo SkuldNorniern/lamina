@@ -318,7 +318,7 @@ impl PrimitiveType {
         ];
         NAMES
     }
-    
+
     /// Returns the string representation of this primitive type.
     pub const fn as_str(&self) -> &'static str {
         match self {
@@ -352,7 +352,10 @@ impl fmt::Display for Type<'_> {
             Type::Named(id) => write!(f, "@{}", id),
             Type::Array { element_type, size } => write!(f, "[{} x {}]", size, element_type),
             #[cfg(feature = "nightly")]
-            Type::Vector { element_type, lanes } => write!(f, "<{} x {}>", lanes, element_type),
+            Type::Vector {
+                element_type,
+                lanes,
+            } => write!(f, "<{} x {}>", lanes, element_type),
             Type::Struct(fields) => {
                 write!(f, "struct {{ ")?;
                 for (i, field) in fields.iter().enumerate() {

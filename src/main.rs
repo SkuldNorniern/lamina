@@ -23,7 +23,9 @@ fn print_usage() {
     );
     eprintln!("  --jit                   Compile and execute using runtime compilation (JIT)");
     eprintln!("  --sandbox               Enable sandbox for secure execution (requires --jit)");
-    eprintln!("  -j, --jobs <n>          Number of parallel compilation threads (default: max - 2)");
+    eprintln!(
+        "  -j, --jobs <n>          Number of parallel compilation threads (default: max - 2)"
+    );
     eprintln!("  -h, --help              Display this help message");
 }
 
@@ -149,9 +151,9 @@ fn parse_args() -> Result<CompileOptions, String> {
                 if i + 1 >= args.len() {
                     return Err("Missing argument for -j/--jobs".to_string());
                 }
-                let jobs = args[i + 1]
-                    .parse::<usize>()
-                    .map_err(|_| "Invalid -j/--jobs value (must be a positive integer)".to_string())?;
+                let jobs = args[i + 1].parse::<usize>().map_err(|_| {
+                    "Invalid -j/--jobs value (must be a positive integer)".to_string()
+                })?;
                 if jobs == 0 {
                     return Err("-j/--jobs must be at least 1".to_string());
                 }
@@ -272,11 +274,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Calculate default codegen_units (max_threads - 2, minimum 1)
     let codegen_units = options.codegen_units.unwrap_or_else(|| {
         let max_threads = lamina_platform::cpu_count();
-        if max_threads > 2 {
-            max_threads - 2
-        } else {
-            1
-        }
+        if max_threads > 2 { max_threads - 2 } else { 1 }
     });
 
     // Output message will be printed after we determine the actual target
@@ -506,7 +504,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Print compilation message
         let intermediate_name = if matches!(
             target.architecture,
-            lamina_platform::TargetArchitecture::Wasm32 | lamina_platform::TargetArchitecture::Wasm64
+            lamina_platform::TargetArchitecture::Wasm32
+                | lamina_platform::TargetArchitecture::Wasm64
         ) {
             println!(
                 "[INFO] Compiling {} -> {}",
@@ -654,15 +653,18 @@ fn handle_jit_compilation(
     };
 
     if options.verbose {
-        println!("[JIT] Compiling {} for runtime execution", input_path.display());
+        println!(
+            "[JIT] Compiling {} for runtime execution",
+            input_path.display()
+        );
         println!("[JIT] Target: {}", target);
         if options.sandbox {
             println!("[JIT] Sandbox: enabled");
         }
     }
 
-    let ir_mod = lamina::parser::parse_module(ir_source)
-        .map_err(|e| format!("IR parse failed: {}", e))?;
+    let ir_mod =
+        lamina::parser::parse_module(ir_source).map_err(|e| format!("IR parse failed: {}", e))?;
     let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
         .map_err(|e| format!("MIR lowering failed: {}", e))?;
 
@@ -682,57 +684,81 @@ fn handle_jit_compilation(
 
     if options.sandbox {
         use lamina::runtime::{Sandbox, SandboxConfig};
-        
+
         let config = if options.verbose {
             SandboxConfig::default()
         } else {
             SandboxConfig::restrictive()
         };
-        
+
         let mut sandbox = Sandbox::new(target.architecture, target.operating_system, config);
-        
-        let function_name = mir_mod.functions.keys().next()
+
+        let function_name = mir_mod
+            .functions
+            .keys()
+            .next()
             .ok_or("No functions found in module")?;
-        
+
         if options.verbose {
             println!("[JIT] Executing function '{}' in sandbox", function_name);
         }
-        
-        let _result: i64 = sandbox.execute(&mir_mod, function_name)
+
+        let _result: i64 = sandbox
+            .execute(&mir_mod, function_name)
             .map_err(|e| format!("Sandbox execution failed: {}", e))?;
-        
+
         if options.verbose {
             println!("[JIT] Execution completed successfully");
         }
     } else {
         use lamina::runtime::compile_to_runtime;
-        
+
         let jit_function_name = if mir_mod.functions.contains_key("main") {
             "main"
         } else {
-            mir_mod.functions.keys()
+            mir_mod
+                .functions
+                .keys()
                 .find(|name| name.contains("main") || name.contains("matmul"))
                 .map(|s| s.as_str())
                 .or_else(|| mir_mod.functions.keys().next().map(|s| s.as_str()))
                 .ok_or("No functions found in module")?
         };
-        
-        let func = mir_mod.functions.get(jit_function_name)
+
+        let func = mir_mod
+            .functions
+            .get(jit_function_name)
             .ok_or("Function not found in module")?;
-        
-        let runtime_result = compile_to_runtime(&mir_mod, target.architecture, target.operating_system, Some(jit_function_name))
-            .map_err(|e| format!("Runtime compilation failed: {}", e))?;
-        
+
+        let runtime_result = compile_to_runtime(
+            &mir_mod,
+            target.architecture,
+            target.operating_system,
+            Some(jit_function_name),
+        )
+        .map_err(|e| format!("Runtime compilation failed: {}", e))?;
+
         if options.verbose {
             println!("[JIT] Code compiled to executable memory");
             println!("[JIT] Function pointer: {:p}", runtime_result.function_ptr);
             println!("[JIT] Executing function '{}'", jit_function_name);
-            println!("[JIT] Signature: {} params, return type: {:?}", 
-                     func.sig.params.len(), func.sig.ret_ty);
-            println!("[JIT] All functions in module: {:?}", mir_mod.function_names());
+            println!(
+                "[JIT] Signature: {} params, return type: {:?}",
+                func.sig.params.len(),
+                func.sig.ret_ty
+            );
+            println!(
+                "[JIT] All functions in module: {:?}",
+                mir_mod.function_names()
+            );
         }
-        
-        lamina::runtime::execute_jit_function(&func.sig, runtime_result.function_ptr, None, options.verbose)?;
+
+        lamina::runtime::execute_jit_function(
+            &func.sig,
+            runtime_result.function_ptr,
+            None,
+            options.verbose,
+        )?;
     }
 
     Ok(())

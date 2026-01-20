@@ -109,7 +109,10 @@ pub fn get_size<'a>(
             Ok(total)
         }
         #[cfg(feature = "nightly")]
-        Type::Vector { element_type, lanes } => {
+        Type::Vector {
+            element_type,
+            lanes,
+        } => {
             let elem_size = get_size_primitive(*element_type, is_wasm64) as u64;
             Ok(elem_size * (*lanes as u64) / 8) // Convert bits to bytes
         }
@@ -158,7 +161,10 @@ pub fn get_wasm_size<'a>(
             Ok(total)
         }
         #[cfg(feature = "nightly")]
-        Type::Vector { element_type, lanes } => {
+        Type::Vector {
+            element_type,
+            lanes,
+        } => {
             let elem_size = get_size_primitive(*element_type, is_wasm64) as u64;
             Ok(elem_size * (*lanes as u64) / 8) // Convert bits to bytes
         }
@@ -222,7 +228,10 @@ pub fn get_align<'a>(
             Ok(max_align)
         }
         #[cfg(feature = "nightly")]
-        Type::Vector { element_type: _, lanes } => {
+        Type::Vector {
+            element_type: _,
+            lanes,
+        } => {
             // WASM SIMD vectors are 128-bit (16 bytes) aligned
             let vector_size = (*lanes as u64 * 4).min(16); // Assume 32-bit elements, cap at 16
             Ok(vector_size)
@@ -284,7 +293,10 @@ pub fn get_wasm_align<'a>(ty: &Type<'a>, is_wasm64: bool, module: &'a Module<'a>
             .map(|v| get_wasm_align(&v.ty, is_wasm64, module))
             .sum(),
         #[cfg(feature = "nightly")]
-        Type::Vector { element_type: _, lanes: _ } => {
+        Type::Vector {
+            element_type: _,
+            lanes: _,
+        } => {
             // WASM SIMD vectors are 128-bit (16 bytes)
             16
         }

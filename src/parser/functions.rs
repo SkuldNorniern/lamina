@@ -15,7 +15,7 @@ pub fn parse_annotations(
 ) -> Result<Vec<FunctionAnnotation>, LaminaError> {
     let mut annotations = Vec::new();
     let mut seen = HashSet::new();
-    
+
     loop {
         state.skip_whitespace_and_comments();
         if state.current_char() == Some('@') {
@@ -29,19 +29,20 @@ pub fn parse_annotations(
                 "noinline" => FunctionAnnotation::NoInline,
                 "cold" => FunctionAnnotation::Cold,
                 _ => {
-                    let valid_annotations = ["inline", "export", "extern", "noreturn", "noinline", "cold"];
+                    let valid_annotations =
+                        ["inline", "export", "extern", "noreturn", "noinline", "cold"];
                     let mut suggestions = Vec::new();
                     const MAX_TYPO_DISTANCE: usize = 2;
-                    
+
                     for valid in &valid_annotations {
                         let distance = super::edit_distance(name, valid, Some(MAX_TYPO_DISTANCE));
                         if distance <= MAX_TYPO_DISTANCE {
                             suggestions.push(*valid);
                         }
                     }
-                    
+
                     suggestions.sort_by_key(|&s| super::edit_distance(name, s, None));
-                    
+
                     let hint = if !suggestions.is_empty() {
                         if suggestions.len() == 1 {
                             format!("Did you mean @{}?", suggestions[0])
@@ -51,42 +52,51 @@ pub fn parse_annotations(
                     } else {
                         format!("Valid annotations are: {}", valid_annotations.join(", "))
                     };
-                    
+
                     return Err(state.error(format!(
                         "Unknown function annotation: @{}\n  Hint: {}",
                         name, hint
                     )));
                 }
             };
-            
+
             if !seen.insert(annotation.clone()) {
-                return Err(state.error(format!(
-                    "Duplicate annotation: @{}",
-                    name
-                )));
+                return Err(state.error(format!("Duplicate annotation: @{}", name)));
             }
-            
-            if annotation == FunctionAnnotation::Inline && seen.contains(&FunctionAnnotation::NoInline) {
+
+            if annotation == FunctionAnnotation::Inline
+                && seen.contains(&FunctionAnnotation::NoInline)
+            {
                 return Err(state.error(
-                    "Conflicting annotations: @inline and @noinline cannot be used together".to_string()
+                    "Conflicting annotations: @inline and @noinline cannot be used together"
+                        .to_string(),
                 ));
             }
-            if annotation == FunctionAnnotation::NoInline && seen.contains(&FunctionAnnotation::Inline) {
+            if annotation == FunctionAnnotation::NoInline
+                && seen.contains(&FunctionAnnotation::Inline)
+            {
                 return Err(state.error(
-                    "Conflicting annotations: @noinline and @inline cannot be used together".to_string()
+                    "Conflicting annotations: @noinline and @inline cannot be used together"
+                        .to_string(),
                 ));
             }
-            if annotation == FunctionAnnotation::Extern && seen.contains(&FunctionAnnotation::Export) {
+            if annotation == FunctionAnnotation::Extern
+                && seen.contains(&FunctionAnnotation::Export)
+            {
                 return Err(state.error(
-                    "Conflicting annotations: @extern and @export cannot be used together".to_string()
+                    "Conflicting annotations: @extern and @export cannot be used together"
+                        .to_string(),
                 ));
             }
-            if annotation == FunctionAnnotation::Export && seen.contains(&FunctionAnnotation::Extern) {
+            if annotation == FunctionAnnotation::Export
+                && seen.contains(&FunctionAnnotation::Extern)
+            {
                 return Err(state.error(
-                    "Conflicting annotations: @export and @extern cannot be used together".to_string()
+                    "Conflicting annotations: @export and @extern cannot be used together"
+                        .to_string(),
                 ));
             }
-            
+
             annotations.push(annotation);
         } else {
             break;
@@ -120,17 +130,12 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
         }
 
         if basic_blocks.insert(label, block).is_some() {
-            return Err(state.error(format!(
-                "Redefinition of basic block label: '{}'",
-                label
-            )));
+            return Err(state.error(format!("Redefinition of basic block label: '{}'", label)));
         }
     }
 
     let entry_block = entry_block_label
-        .ok_or_else(|| {
-            state.error("Function must have at least one basic block".to_string())
-        })?;
+        .ok_or_else(|| state.error("Function must have at least one basic block".to_string()))?;
 
     Ok(Function {
         name,
@@ -162,7 +167,7 @@ pub fn parse_param_list<'a>(
 ) -> Result<Vec<FunctionParameter<'a>>, LaminaError> {
     let mut params = Vec::new();
     let mut param_names = std::collections::HashSet::new();
-    
+
     loop {
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
@@ -171,14 +176,11 @@ pub fn parse_param_list<'a>(
 
         let param_ty = parse_type(state)?;
         let param_name = state.parse_value_identifier()?;
-        
+
         if !param_names.insert(param_name) {
-            return Err(state.error(format!(
-                "Duplicate parameter name: %{}",
-                param_name
-            )));
+            return Err(state.error(format!("Duplicate parameter name: %{}", param_name)));
         }
-        
+
         params.push(FunctionParameter {
             name: param_name,
             ty: param_ty,
@@ -195,7 +197,7 @@ pub fn parse_param_list<'a>(
 }
 
 /// Parses a basic block.
-/// 
+///
 /// A basic block consists of a label followed by a colon, then zero or more
 /// instructions ending with a terminator (ret, jmp, or br).
 pub fn parse_basic_block<'a>(
