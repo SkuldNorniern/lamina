@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::codegen::mir_ver::regalloc::RegisterAllocator as MirRegisterAllocator;
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
+use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
 
 /// Minimal MIPS register allocator used by the MIR code generator.
 ///
