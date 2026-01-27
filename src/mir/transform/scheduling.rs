@@ -5,7 +5,7 @@ use crate::mir::{Block, Function, Instruction, Register};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
-/// Instruction scheduling that reorders instructions for better ILP.
+/// Instruction scheduling that reorders instructions to improve ILP.
 #[derive(Default)]
 pub struct InstructionScheduling;
 
@@ -15,7 +15,7 @@ impl Transform for InstructionScheduling {
     }
 
     fn description(&self) -> &'static str {
-        "Reorders instructions for better instruction-level parallelism"
+        "Reorders instructions to improve instruction-level parallelism"
     }
 
     fn category(&self) -> TransformCategory {

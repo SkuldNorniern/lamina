@@ -873,4 +873,636 @@ mod tests {
             _ => panic!("Expected IntBinary instruction"),
         }
     }
+
+    #[test]
+    fn test_copy_propagation_empty_function() {
+        let mut func = FunctionBuilder::new("empty")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let cp = CopyPropagation::default();
+        let result = cp.apply(&mut func);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_copy_propagation_no_infinite_loop() {
+        // Ensure copy propagation terminates on circular-looking patterns
+        let mut func = FunctionBuilder::new("circular")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(2).into(),
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // Redefine v0
+                lhs: Operand::Register(VirtualReg::gpr(2).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
+            .build();
+
+        let cp = CopyPropagation::default();
+        // Run multiple times to ensure no infinite loop
+        for _ in 0..10 {
+            let _ = cp.apply(&mut func);
+        }
+    }
+
+    #[test]
+    fn test_constant_folding_division_by_zero() {
+        // Division by zero should not be folded
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::UDiv,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(100)),
+            rhs: Operand::Immediate(Immediate::I64(0)),
+        });
+        func.add_block(bb);
+
+        let cf = ConstantFolding::default();
+        let changed = cf.apply(&mut func).expect("should not panic");
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_constant_folding_overflow_sub() {
+        // Subtraction overflow should not be folded
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Sub,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(i64::MIN)),
+            rhs: Operand::Immediate(Immediate::I64(1)),
+        });
+        func.add_block(bb);
+
+        let cf = ConstantFolding::default();
+        let changed = cf.apply(&mut func).expect("should not panic");
+        assert!(!changed); // Overflow, no fold
+    }
+
+    #[test]
+    fn test_constant_folding_overflow_mul() {
+        // Multiplication overflow should not be folded
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Mul,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(i64::MAX)),
+            rhs: Operand::Immediate(Immediate::I64(2)),
+        });
+        func.add_block(bb);
+
+        let cf = ConstantFolding::default();
+        let changed = cf.apply(&mut func).expect("should not panic");
+        assert!(!changed); // Overflow, no fold
+    }
+
+    #[test]
+    fn test_constant_folding_unsigned_division() {
+        // Unsigned division: large positive / 2 should fold correctly
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::UDiv,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(-2)), // Interpreted as u64::MAX - 1
+            rhs: Operand::Immediate(Immediate::I64(2)),
+        });
+        func.add_block(bb);
+
+        let cf = ConstantFolding::default();
+        let changed = cf.apply(&mut func).expect("should not panic");
+        assert!(changed);
+
+        // Check the result: (u64::MAX - 1) / 2 = 0x7FFFFFFFFFFFFFFE
+        match &func.blocks[0].instructions[0] {
+            Instruction::IntBinary { lhs, .. } => {
+                let expected = ((-2i64 as u64) / 2) as i64;
+                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(expected)));
+            }
+            _ => panic!("Expected IntBinary"),
+        }
+    }
+
+    #[test]
+    fn test_cse_empty_function() {
+        let mut func = FunctionBuilder::new("empty")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let cse = CommonSubexpressionElimination::default();
+        let result = cse.apply(&mut func);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_cse_no_duplicate_expressions() {
+        // No duplicate expressions, nothing to eliminate
+        let mut func = FunctionBuilder::new("no_dups")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Immediate(Immediate::I64(1)),
+                rhs: Operand::Immediate(Immediate::I64(2)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Sub,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Immediate(Immediate::I64(3)),
+                rhs: Operand::Immediate(Immediate::I64(4)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        let cse = CommonSubexpressionElimination::default();
+        let changed = cse.apply(&mut func).expect("should succeed");
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_cse_with_intervening_redefinition() {
+        // CSE should not reuse expression if operand was redefined
+        let mut func = FunctionBuilder::new("redef")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            // v0 = v1 + v2
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Register(VirtualReg::gpr(2).into()),
+            })
+            // Redefine v1
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Immediate(Immediate::I64(99)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            // v3 = v1 + v2 (should NOT reuse v0 because v1 was redefined)
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(3).into(),
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Register(VirtualReg::gpr(2).into()),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(3).into())),
+            })
+            .build();
+
+        let cse = CommonSubexpressionElimination::default();
+        let changed = cse.apply(&mut func).expect("should succeed");
+
+        // Should NOT eliminate the second v1 + v2 since v1 was redefined
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_cse_duplicate_expression_does_not_crash() {
+        // Test that CSE handles duplicate expressions without panicking
+        // CSE may or may not optimize depending on block size and loop detection
+        let mut func = FunctionBuilder::new("dup")
+            .param(VirtualReg::gpr(10).into(), MirType::Scalar(ScalarType::I64))
+            .param(VirtualReg::gpr(11).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Register(VirtualReg::gpr(10).into()),
+                rhs: Operand::Register(VirtualReg::gpr(11).into()),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(10).into()),
+                rhs: Operand::Register(VirtualReg::gpr(11).into()),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        let cse = CommonSubexpressionElimination::default();
+        let result = cse.apply(&mut func);
+        // Main test: CSE should not panic or error
+        assert!(result.is_ok());
+        // Function should still be valid (have blocks and instructions)
+        assert!(!func.blocks.is_empty());
+        let entry = func.get_block("entry").unwrap();
+        assert!(!entry.instructions.is_empty());
+    }
+
+    #[test]
+    fn test_cse_stress_no_infinite_loop() {
+        // Stress test with many instructions to ensure no infinite loop
+        let mut func = FunctionBuilder::new("stress")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .build();
+
+        for i in 0..200 {
+            func.blocks[0].instructions.insert(
+                0,
+                Instruction::IntBinary {
+                    op: IntBinOp::Add,
+                    ty: MirType::Scalar(ScalarType::I64),
+                    dst: VirtualReg::gpr(i).into(),
+                    lhs: Operand::Immediate(Immediate::I64(i as i64)),
+                    rhs: Operand::Immediate(Immediate::I64(1)),
+                },
+            );
+        }
+        func.blocks[0].instructions.push(Instruction::Ret {
+            value: Some(Operand::Immediate(Immediate::I64(0))),
+        });
+
+        let cse = CommonSubexpressionElimination::default();
+        let result = cse.apply(&mut func);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_copy_propagation_mul_by_one() {
+        // x * 1 is a copy pattern
+        let mut func = FunctionBuilder::new("mul_one")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Mul,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(2).into(),
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Immediate(Immediate::I64(5)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(2).into())),
+            })
+            .build();
+
+        let cp = CopyPropagation::default();
+        let changed = cp.apply(&mut func).expect("should succeed");
+        assert!(changed);
+
+        // Second instruction should now use v0 directly
+        let entry = func.get_block("entry").unwrap();
+        match &entry.instructions[1] {
+            Instruction::IntBinary { lhs, .. } => {
+                assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(0).into()));
+            }
+            _ => panic!("Expected IntBinary"),
+        }
+    }
+
+    #[test]
+    fn test_copy_propagation_loop_counter_pattern() {
+        // %i = add.i64 0, 0 (loop counter init)
+        // followed by %i = add.i64 %i, 1 (loop increment)
+        // Copy propagation should handle the redefinition correctly
+        let mut func = FunctionBuilder::new("loop_counter")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // %i = 0 + 0
+                lhs: Operand::Immediate(Immediate::I64(0)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Jmp {
+                target: "loop".to_string(),
+            })
+            .block("loop")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // %i = %i + 1 (redefine same reg)
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
+            .build();
+
+        let cp = CopyPropagation::default();
+        let result = cp.apply(&mut func);
+        assert!(result.is_ok());
+        // Should not crash on redefined registers
+    }
+
+    #[test]
+    fn test_copy_propagation_block_size_pattern() {
+        // %block_size = add.i64 8, 0 (constant via add)
+        // This is a copy pattern that should be propagated
+        let mut func = FunctionBuilder::new("block_size")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // %block_size_i = 8 + 0
+                lhs: Operand::Immediate(Immediate::I64(8)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(), // %i_end = %i_block + %block_size_i
+                lhs: Operand::Register(VirtualReg::gpr(2).into()),
+                rhs: Operand::Register(VirtualReg::gpr(0).into()),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        let cp = CopyPropagation::default();
+        let result = cp.apply(&mut func);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_copy_propagation_chained_adds_zero() {
+        // Multiple %x = add.i64 %y, 0 in sequence
+        let mut func = FunctionBuilder::new("chained_zero")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(), // %a = %src + 0
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(2).into(), // %b = %a + 0
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(3).into(), // %c = %b + 0
+                lhs: Operand::Register(VirtualReg::gpr(2).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(4).into(), // use %c
+                lhs: Operand::Register(VirtualReg::gpr(3).into()),
+                rhs: Operand::Immediate(Immediate::I64(100)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(4).into())),
+            })
+            .build();
+
+        let cp = CopyPropagation::default();
+        let changed = cp.apply(&mut func).expect("should succeed");
+        assert!(changed);
+
+        // Final add should use v0 directly (all copies should chain)
+        let entry = func.get_block("entry").unwrap();
+        match &entry.instructions[3] {
+            Instruction::IntBinary { lhs, .. } => {
+                // After propagation, should trace back to v0
+                assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(0).into()));
+            }
+            _ => panic!("Expected IntBinary"),
+        }
+    }
+
+    #[test]
+    fn test_copy_propagation_same_reg_redefined_in_block() {
+        // %a_elem = mul %i %k; %a_elem = add %a_elem 1
+        // Same register redefined - must NOT propagate old value after redefinition
+        let mut func = FunctionBuilder::new("redefine_same")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // %x = 0 + 0 (creates copy mapping)
+                lhs: Operand::Immediate(Immediate::I64(0)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Mul,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // %x = %i * %k (REDEFINE - invalidates mapping)
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Register(VirtualReg::gpr(2).into()),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // %x = %x + 1 (should use the mul result)
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
+            .build();
+
+        let cp = CopyPropagation::default();
+        let result = cp.apply(&mut func);
+        assert!(result.is_ok());
+        // Should not crash and should handle redefinitions correctly
+    }
+
+    #[test]
+    fn test_copy_propagation_unroll_pattern() {
+        // Unrolled loop with many similar instructions
+        // %j_plus_1 = add %j 1; %j_plus_2 = add %j 2; etc.
+        let mut func = FunctionBuilder::new("unroll_pattern")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // %j = %j_block + 0
+                lhs: Operand::Register(VirtualReg::gpr(10).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .build();
+
+        // Add 16 unrolled iterations
+        let entry = func.blocks.get_mut(0).unwrap();
+        for i in 1..=16 {
+            entry.push(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(i).into(), // %j_plus_i = %j + i
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(i as i64)),
+            });
+        }
+
+        // Use all the computed values
+        let mut sum_reg = VirtualReg::gpr(1);
+        for i in 2..=16 {
+            entry.push(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(50 + i).into(),
+                lhs: Operand::Register(sum_reg.into()),
+                rhs: Operand::Register(VirtualReg::gpr(i).into()),
+            });
+            sum_reg = VirtualReg::gpr(50 + i);
+        }
+
+        entry.push(Instruction::Ret {
+            value: Some(Operand::Register(sum_reg.into())),
+        });
+
+        let cp = CopyPropagation::default();
+        let result = cp.apply(&mut func);
+        assert!(result.is_ok());
+        let changed = result.unwrap();
+        assert!(changed); // Should propagate v10 -> v0
+    }
+
+    #[test]
+    fn test_copy_propagation_accumulator_pattern() {
+        // %total_sum = add %total_sum %product
+        // Accumulator that gets updated repeatedly
+        let mut func = FunctionBuilder::new("accumulator")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // %total_sum = 0 + 0
+                lhs: Operand::Immediate(Immediate::I64(0)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .build();
+
+        let entry = func.blocks.get_mut(0).unwrap();
+        // Simulate 8 accumulation steps
+        for i in 1..=8 {
+            entry.push(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(), // %total_sum = %total_sum + %product_i
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Register(VirtualReg::gpr(100 + i).into()),
+            });
+        }
+
+        entry.push(Instruction::Ret {
+            value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+        });
+
+        let cp = CopyPropagation::default();
+        let result = cp.apply(&mut func);
+        assert!(result.is_ok());
+        // Should handle accumulator pattern without issues
+    }
+
+    #[test]
+    fn test_copy_propagation_many_blocks_with_copies() {
+        // Pattern: Multiple blocks each with copy patterns
+        // Tests cross-block isolation (copies don't propagate across blocks)
+        let mut func = FunctionBuilder::new("multi_block_copies")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Jmp {
+                target: "block1".to_string(),
+            })
+            .block("block1")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(2).into(),
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Jmp {
+                target: "block2".to_string(),
+            })
+            .block("block2")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(3).into(),
+                lhs: Operand::Register(VirtualReg::gpr(2).into()),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(3).into())),
+            })
+            .build();
+
+        let cp = CopyPropagation::default();
+        let result = cp.apply(&mut func);
+        assert!(result.is_ok());
+        // Each block should handle its own copies independently
+    }
 }

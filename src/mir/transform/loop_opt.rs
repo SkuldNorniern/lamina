@@ -677,7 +677,7 @@ impl LoopUnrolling {
 
         // 1. Identify loops
         // We reuse the logic from LoopInvariantCodeMotion (conceptually) but we need to own the detection here
-        // or refactor to share. For now, we implement a robust detector here.
+        // or refactor to share. For now, we implement a detector here.
         let loops = self.find_unrollable_loops(func);
 
         let loops_to_unroll: Vec<_> = loops.into_iter().take(MAX_LOOPS_TO_UNROLL).collect();
@@ -1249,5 +1249,230 @@ mod tests {
             Instruction::Br { true_target, .. } => assert_eq!(true_target, "exit"), // Last iter jumps to exit
             _ => panic!("Expected branch/jump to exit"),
         }
+    }
+
+    #[test]
+    fn test_licm_empty_function() {
+        let mut func = FunctionBuilder::new("empty")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let licm = LoopInvariantCodeMotion::default();
+        let result = licm.apply(&mut func);
+        assert!(result.is_ok());
+        assert!(!result.unwrap()); // No changes expected
+    }
+
+    #[test]
+    fn test_licm_no_loops() {
+        // Function with no loops - nothing to optimize
+        let mut func = FunctionBuilder::new("no_loop")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Immediate(Immediate::I64(1)),
+                rhs: Operand::Immediate(Immediate::I64(2)),
+            })
+            .instr(Instruction::Jmp {
+                target: "exit".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
+            .build();
+
+        let licm = LoopInvariantCodeMotion::default();
+        let changed = licm.apply(&mut func).expect("should succeed");
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_licm_side_effect_not_moved() {
+        // Store inside loop should NOT be moved out
+        let mut func = FunctionBuilder::new("side_effect")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "loop".to_string(),
+            })
+            .block("loop")
+            .instr(Instruction::Store {
+                ty: MirType::Scalar(ScalarType::I64),
+                src: Operand::Immediate(Immediate::I64(42)),
+                addr: crate::mir::AddressMode::BaseOffset {
+                    base: VirtualReg::gpr(0).into(),
+                    offset: 0,
+                },
+                attrs: crate::mir::MemoryAttrs::default(),
+            })
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(0).into(),
+                true_target: "loop".to_string(),
+                false_target: "exit".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let licm = LoopInvariantCodeMotion::default();
+        let changed = licm.apply(&mut func).expect("should succeed");
+        // Store has side effects - should not be moved
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_loop_unrolling_empty_function() {
+        let mut func = FunctionBuilder::new("empty")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let unroll = LoopUnrolling::default();
+        let result = unroll.apply(&mut func);
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_loop_unrolling_no_loops() {
+        let mut func = FunctionBuilder::new("no_loop")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Immediate(Immediate::I64(1)),
+                rhs: Operand::Immediate(Immediate::I64(2)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
+            .build();
+
+        let unroll = LoopUnrolling::default();
+        let changed = unroll.apply(&mut func).expect("should succeed");
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_loop_unrolling_large_bound_not_unrolled() {
+        // Loop with bound > 32 should not be unrolled
+        let mut func = FunctionBuilder::new("large_bound")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Immediate(Immediate::I64(0)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
+            })
+            .instr(Instruction::Jmp {
+                target: "loop".to_string(),
+            })
+            .block("loop")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::IntCmp {
+                op: IntCmpOp::SLt,
+                ty: MirType::Scalar(ScalarType::I1),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(100)), // > 32
+            })
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(1).into(),
+                true_target: "loop".to_string(),
+                false_target: "exit".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let unroll = LoopUnrolling::default();
+        let changed = unroll.apply(&mut func).expect("should succeed");
+        // Loop with large bound should not be unrolled
+        assert!(!changed);
+        // Original loop should still exist
+        assert!(func.get_block("loop").is_some());
+    }
+
+    #[test]
+    fn test_licm_stress_no_infinite_loop() {
+        // Create function with nested-looking structure but no actual loop
+        let mut func = FunctionBuilder::new("stress")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .build();
+
+        // Add many blocks in linear fashion
+        for i in 0..50 {
+            let label = format!("block{}", i);
+            let next_label = if i < 49 {
+                format!("block{}", i + 1)
+            } else {
+                "exit".to_string()
+            };
+
+            let mut block = crate::mir::Block::new(&label);
+            block.push(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(i).into(),
+                lhs: Operand::Immediate(Immediate::I64(i as i64)),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            });
+            block.push(Instruction::Jmp { target: next_label });
+            func.add_block(block);
+        }
+
+        let mut exit_block = crate::mir::Block::new("exit");
+        exit_block.push(Instruction::Ret { value: None });
+        func.add_block(exit_block);
+
+        // Update entry to jump to block0
+        func.blocks[0].instructions.push(Instruction::Jmp {
+            target: "block0".to_string(),
+        });
+
+        let licm = LoopInvariantCodeMotion::default();
+        let result = licm.apply(&mut func);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_loop_unrolling_stress_no_infinite_loop() {
+        // Many simple blocks should not cause infinite loop
+        let mut func = FunctionBuilder::new("stress")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        // Add 100 independent blocks
+        for i in 0..100 {
+            let label = format!("dead_block_{}", i);
+            let mut block = crate::mir::Block::new(&label);
+            block.push(Instruction::Ret { value: None });
+            func.add_block(block);
+        }
+
+        let unroll = LoopUnrolling::default();
+        let result = unroll.apply(&mut func);
+        assert!(result.is_ok());
     }
 }
