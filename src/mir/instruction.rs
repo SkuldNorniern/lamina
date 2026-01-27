@@ -1185,7 +1185,7 @@ impl fmt::Display for Instruction {
 mod tests {
     use super::*;
     use crate::mir::register::VirtualReg;
-    use crate::mir::types::ScalarType;
+    use crate::mir::types::{ScalarType, VectorLane, VectorType};
 
     #[test]
     fn test_instruction_def_reg() {
@@ -1220,5 +1220,258 @@ mod tests {
         assert!(ret.is_terminator());
         assert!(jmp.is_terminator());
         assert!(!add.is_terminator());
+    }
+
+    #[test]
+    fn test_integer_sizes_i8() {
+        // Test I8 operations
+        let v0 = VirtualReg::gpr(0);
+        let v1 = VirtualReg::gpr(1);
+        let v2 = VirtualReg::gpr(2);
+
+        let add_i8 = Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ScalarType::I8),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Immediate(Immediate::I8(10)),
+            rhs: Operand::Immediate(Immediate::I8(20)),
+        };
+
+        assert_eq!(add_i8.def_reg(), Some(&v2));
+        assert_eq!(add_i8.ty(), &MirType::Scalar(ScalarType::I8));
+
+        let cmp_i8 = Instruction::IntCmp {
+            op: IntCmpOp::Eq,
+            ty: MirType::Scalar(ScalarType::I8),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(cmp_i8.ty(), &MirType::Scalar(ScalarType::I8));
+    }
+
+    #[test]
+    fn test_integer_sizes_i16() {
+        // Test I16 operations
+        let v0 = VirtualReg::gpr(0);
+        let v1 = VirtualReg::gpr(1);
+        let v2 = VirtualReg::gpr(2);
+
+        let add_i16 = Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ScalarType::I16),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Immediate(Immediate::I16(100)),
+            rhs: Operand::Immediate(Immediate::I16(200)),
+        };
+
+        assert_eq!(add_i16.def_reg(), Some(&v2));
+        assert_eq!(add_i16.ty(), &MirType::Scalar(ScalarType::I16));
+
+        let mul_i16 = Instruction::IntBinary {
+            op: IntBinOp::Mul,
+            ty: MirType::Scalar(ScalarType::I16),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(mul_i16.ty(), &MirType::Scalar(ScalarType::I16));
+    }
+
+    #[test]
+    fn test_integer_sizes_i32() {
+        // Test I32 operations
+        let v0 = VirtualReg::gpr(0);
+        let v1 = VirtualReg::gpr(1);
+        let v2 = VirtualReg::gpr(2);
+
+        let add_i32 = Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ScalarType::I32),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Immediate(Immediate::I32(1000)),
+            rhs: Operand::Immediate(Immediate::I32(2000)),
+        };
+
+        assert_eq!(add_i32.def_reg(), Some(&v2));
+        assert_eq!(add_i32.ty(), &MirType::Scalar(ScalarType::I32));
+
+        let div_i32 = Instruction::IntBinary {
+            op: IntBinOp::SDiv,
+            ty: MirType::Scalar(ScalarType::I32),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(div_i32.ty(), &MirType::Scalar(ScalarType::I32));
+    }
+
+    #[test]
+    fn test_integer_sizes_i64() {
+        // Test I64 operations
+        let v0 = VirtualReg::gpr(0);
+        let v1 = VirtualReg::gpr(1);
+        let v2 = VirtualReg::gpr(2);
+
+        let add_i64 = Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Immediate(Immediate::I64(100000)),
+            rhs: Operand::Immediate(Immediate::I64(200000)),
+        };
+
+        assert_eq!(add_i64.def_reg(), Some(&v2));
+        assert_eq!(add_i64.ty(), &MirType::Scalar(ScalarType::I64));
+
+        let rem_i64 = Instruction::IntBinary {
+            op: IntBinOp::SRem,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(rem_i64.ty(), &MirType::Scalar(ScalarType::I64));
+    }
+
+    #[test]
+    fn test_floating_point_f32() {
+        // Test F32 operations
+        let v0 = VirtualReg::gpr(0);
+        let v1 = VirtualReg::gpr(1);
+        let v2 = VirtualReg::gpr(2);
+
+        let add_f32 = Instruction::FloatBinary {
+            op: FloatBinOp::FAdd,
+            ty: MirType::Scalar(ScalarType::F32),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(add_f32.def_reg(), Some(&v2));
+        assert_eq!(add_f32.ty(), &MirType::Scalar(ScalarType::F32));
+
+        let mul_f32 = Instruction::FloatBinary {
+            op: FloatBinOp::FMul,
+            ty: MirType::Scalar(ScalarType::F32),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(mul_f32.ty(), &MirType::Scalar(ScalarType::F32));
+
+        let neg_f32 = Instruction::FloatUnary {
+            op: FloatUnOp::FNeg,
+            ty: MirType::Scalar(ScalarType::F32),
+            dst: Register::Virtual(v2),
+            src: Operand::Register(Register::Virtual(v0)),
+        };
+
+        assert_eq!(neg_f32.ty(), &MirType::Scalar(ScalarType::F32));
+    }
+
+    #[test]
+    fn test_floating_point_f64() {
+        // Test F64 operations
+        let v0 = VirtualReg::gpr(0);
+        let v1 = VirtualReg::gpr(1);
+        let v2 = VirtualReg::gpr(2);
+
+        let add_f64 = Instruction::FloatBinary {
+            op: FloatBinOp::FAdd,
+            ty: MirType::Scalar(ScalarType::F64),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(add_f64.def_reg(), Some(&v2));
+        assert_eq!(add_f64.ty(), &MirType::Scalar(ScalarType::F64));
+
+        let div_f64 = Instruction::FloatBinary {
+            op: FloatBinOp::FDiv,
+            ty: MirType::Scalar(ScalarType::F64),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(div_f64.ty(), &MirType::Scalar(ScalarType::F64));
+
+        let sqrt_f64 = Instruction::FloatUnary {
+            op: FloatUnOp::FSqrt,
+            ty: MirType::Scalar(ScalarType::F64),
+            dst: Register::Virtual(v2),
+            src: Operand::Register(Register::Virtual(v0)),
+        };
+
+        assert_eq!(sqrt_f64.ty(), &MirType::Scalar(ScalarType::F64));
+    }
+
+    #[test]
+    fn test_floating_point_comparisons() {
+        // Test floating point comparisons
+        let v0 = VirtualReg::gpr(0);
+        let v1 = VirtualReg::gpr(1);
+        let v2 = VirtualReg::gpr(2);
+
+        let cmp_f32 = Instruction::FloatCmp {
+            op: FloatCmpOp::FEq,
+            ty: MirType::Scalar(ScalarType::F32),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(cmp_f32.ty(), &MirType::Scalar(ScalarType::F32));
+
+        let cmp_f64 = Instruction::FloatCmp {
+            op: FloatCmpOp::FLt,
+            ty: MirType::Scalar(ScalarType::F64),
+            dst: Register::Virtual(v2),
+            lhs: Operand::Register(Register::Virtual(v0)),
+            rhs: Operand::Register(Register::Virtual(v1)),
+        };
+
+        assert_eq!(cmp_f64.ty(), &MirType::Scalar(ScalarType::F64));
+    }
+
+    #[test]
+    fn test_vector_types() {
+        // Test vector operations
+        let v0 = VirtualReg::gpr(0);
+        let v1 = VirtualReg::gpr(1);
+        let v2 = VirtualReg::gpr(2);
+
+        let vec_i32 = Instruction::VectorOp {
+            op: VectorOp::Add,
+            ty: MirType::Vector(VectorType::V128(VectorLane::I32)),
+            dst: Register::Virtual(v2),
+            operands: vec![
+                Operand::Register(Register::Virtual(v0)),
+                Operand::Register(Register::Virtual(v1)),
+            ],
+        };
+
+        assert_eq!(vec_i32.def_reg(), Some(&v2));
+        assert!(vec_i32.ty().is_vector());
+
+        let vec_f32 = Instruction::VectorOp {
+            op: VectorOp::Add,
+            ty: MirType::Vector(VectorType::V128(VectorLane::F32)),
+            dst: Register::Virtual(v2),
+            operands: vec![
+                Operand::Register(Register::Virtual(v0)),
+                Operand::Register(Register::Virtual(v1)),
+            ],
+        };
+
+        assert!(vec_f32.ty().is_vector());
     }
 }
