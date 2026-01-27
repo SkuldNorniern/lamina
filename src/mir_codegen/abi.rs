@@ -1,12 +1,12 @@
 //! Common ABI trait and utilities for code generation backends.
 //!
-//! This module defines a trait that all ABI implementations must follow,
-//! reducing code duplication and providing a consistent interface.
+//! A trait that all ABI implementations must follow,
+//! reducing code duplication and giving a consistent interface.
 //!
 //! # Application Binary Interface (ABI) Overview
 //!
 //! Lamina uses platform C ABIs for function calls. The ABI implementation is
-//! abstracted through the `Abi` trait, which provides a consistent interface
+//! abstracted through the `Abi` trait, which gives a consistent interface
 //! across all backends.
 //!
 //! ## Common ABI Contract
@@ -26,11 +26,46 @@
 //! - Integer arguments use 64-bit slots, even for narrower integer types (i8, i16, i32)
 //! - Floating-point arguments follow platform-specific rules
 //!
+//! **Example: Function call with 3 arguments (RISC-V)**
+//! ```text
+//! # Arguments: a0=arg1, a1=arg2, a2=arg3
+//! mv a0, t0        # Load arg1 to a0
+//! mv a1, t1        # Load arg2 to a1
+//! mv a2, t2        # Load arg3 to a2
+//! call my_function # Call function
+//! ```
+//!
+//! **Example: Function call with 10 arguments (x86_64 System V)**
+//! ```text
+//! # First 6 args in registers: rdi, rsi, rdx, rcx, r8, r9
+//! # Remaining 4 args on stack (16-byte aligned)
+//! mov %rdi, %rax   # arg1
+//! mov %rsi, %rbx   # arg2
+//! # ... args 3-6 in rdx, rcx, r8, r9
+//! push %r10        # arg7 on stack
+//! push %r11        # arg8 on stack
+//! push %r12        # arg9 on stack
+//! push %r13        # arg10 on stack
+//! call my_function
+//! add $32, %rsp    # Clean up stack
+//! ```
+//!
 //! ### Return Values
 //!
 //! - Integer return values use the C ABI integer return register
 //! - Floating-point return values use the FP return register (if applicable)
 //! - Void functions return nothing
+//!
+//! **Example: Return value handling**
+//! ```text
+//! # RISC-V: return value in a0 (integer) or fa0 (float)
+//! call my_function
+//! mv t0, a0        # Save integer return value
+//!
+//! # x86_64: return value in rax (integer) or xmm0 (float)
+//! call my_function
+//! mov %rax, %rbx   # Save integer return value
+//! ```
 //!
 //! ### Builtin Functions
 //!
@@ -145,7 +180,7 @@ pub trait Abi {
     /// Maps well-known intrinsic/runtime names to platform symbol stubs.
     ///
     /// Returns `None` if the name is not a known intrinsic that needs
-    /// special handling. This allows backends to map internal names
+    /// special handling. This lets backends map internal names
     /// (like "print") to platform-specific symbols (like "_printf" on macOS).
     ///
     /// Default implementation returns `None` for all names, meaning
@@ -204,4 +239,80 @@ pub fn get_free_symbol(target_os: TargetOperatingSystem) -> &'static str {
 /// duplication in their `call_stub` implementations.
 pub fn common_call_stub(name: &str, target_os: TargetOperatingSystem) -> Option<String> {
     BuiltinLibrary::from_env(target_os).resolve(name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mangle_macos_name() {
+        assert_eq!(mangle_macos_name("main"), "_main");
+        assert_eq!(mangle_macos_name("foo"), "_foo");
+        assert_eq!(mangle_macos_name("my_function"), "_my_function");
+    }
+
+    #[test]
+    fn test_get_printf_symbol() {
+        assert_eq!(get_printf_symbol(TargetOperatingSystem::MacOS), "_printf");
+        assert_eq!(get_printf_symbol(TargetOperatingSystem::Linux), "printf");
+        assert_eq!(get_printf_symbol(TargetOperatingSystem::Windows), "printf");
+    }
+
+    #[test]
+    fn test_get_malloc_symbol() {
+        assert_eq!(get_malloc_symbol(TargetOperatingSystem::MacOS), "_malloc");
+        assert_eq!(get_malloc_symbol(TargetOperatingSystem::Linux), "malloc");
+        assert_eq!(get_malloc_symbol(TargetOperatingSystem::Windows), "malloc");
+    }
+
+    #[test]
+    fn test_get_free_symbol() {
+        assert_eq!(get_free_symbol(TargetOperatingSystem::MacOS), "_free");
+        assert_eq!(get_free_symbol(TargetOperatingSystem::Linux), "free");
+        assert_eq!(get_free_symbol(TargetOperatingSystem::Windows), "free");
+    }
+
+    #[test]
+    fn test_builtin_library_default_symbols() {
+        let lib_macos = BuiltinLibrary::from_env(TargetOperatingSystem::MacOS);
+        assert_eq!(lib_macos.resolve("print"), Some("_printf".to_string()));
+        assert_eq!(lib_macos.resolve("malloc"), Some("_malloc".to_string()));
+        assert_eq!(lib_macos.resolve("dealloc"), Some("_free".to_string()));
+
+        let lib_linux = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
+        assert_eq!(lib_linux.resolve("print"), Some("printf".to_string()));
+        assert_eq!(lib_linux.resolve("malloc"), Some("malloc".to_string()));
+        assert_eq!(lib_linux.resolve("dealloc"), Some("free".to_string()));
+    }
+
+    #[test]
+    fn test_builtin_library_unknown_symbol() {
+        let lib = BuiltinLibrary::from_env(TargetOperatingSystem::Linux);
+        assert_eq!(lib.resolve("unknown_function"), None);
+    }
+
+    #[test]
+    fn test_common_call_stub() {
+        assert_eq!(
+            common_call_stub("print", TargetOperatingSystem::MacOS),
+            Some("_printf".to_string())
+        );
+        assert_eq!(
+            common_call_stub("print", TargetOperatingSystem::Linux),
+            Some("printf".to_string())
+        );
+        assert_eq!(
+            common_call_stub("malloc", TargetOperatingSystem::MacOS),
+            Some("_malloc".to_string())
+        );
+        assert_eq!(
+            common_call_stub("dealloc", TargetOperatingSystem::Linux),
+            Some("free".to_string())
+        );
+        assert_eq!(
+            common_call_stub("unknown", TargetOperatingSystem::Linux),
+            None
+        );
+    }
 }

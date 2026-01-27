@@ -1,6 +1,6 @@
 //! IR-to-MIR conversion implementation.
 //!
-//! This module contains the main conversion logic that transforms high-level
+//! Main conversion logic that transforms high-level
 //! Lamina IR into low-level LUMIR. The conversion process includes:
 //!
 //! - Function signature conversion

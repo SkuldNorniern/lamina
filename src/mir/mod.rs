@@ -1,6 +1,6 @@
 //! MIR (Machine Intermediate Representation) module
 //!
-//! This module re-exports MIR types from `lamina-mir` for backward compatibility.
+//! Re-exports MIR types from `lamina-mir` for backward compatibility.
 //! It also includes lamina-specific modules like codegen (IR → MIR conversion)
 //! and transform (optimizations).
 

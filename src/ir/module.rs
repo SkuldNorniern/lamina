@@ -1,6 +1,6 @@
 //! # Module Representation
 //!
-//! This module defines the top-level structures for representing complete
+//! Top-level structures for representing complete
 //! Lamina IR modules. A module is the highest level of organization and
 //! contains all functions, types, and global variables that make up a program.
 //!
@@ -138,7 +138,7 @@ use std::fmt;
 use super::function::Function;
 use super::types::{Identifier, Type, Value};
 
-/// Represents a named type declaration (e.g., `type @Vec2 = struct { ... }`).
+/// A named type declaration (e.g., `type @Vec2 = struct { ... }`).
 ///
 /// Type declarations allow you to define custom types that can be referenced
 /// throughout the module. This is useful for creating reusable type definitions
@@ -165,7 +165,7 @@ pub struct TypeDeclaration<'a> {
     pub ty: Type<'a>,
 }
 
-/// Represents a global variable declaration (e.g., `global @message: [5 x i8] = "hello"`).
+/// A global variable declaration (e.g., `global @message: [5 x i8] = "hello"`).
 ///
 /// Global variables are module-level data that persists for the lifetime of the program.
 /// They can be initialized with constant values or left uninitialized (for external symbols).
@@ -194,7 +194,7 @@ pub struct GlobalDeclaration<'a> {
     pub initializer: Option<Value<'a>>, // Globals might be uninitialized (extern)
 }
 
-/// Represents a complete Lamina IR module (file).
+/// A complete Lamina IR module (file).
 ///
 /// A module is the top-level container for all IR code. It contains functions,
 /// type declarations, and global variables that together form a complete program.
@@ -241,7 +241,7 @@ pub struct GlobalDeclaration<'a> {
 pub enum ModuleAnnotation {
     /// Generate position-independent code (PIC).
     ///
-    /// PIC allows the code to be loaded at any address in memory, which is
+    /// PIC lets the code be loaded at any address in memory, which is
     /// required for shared libraries and improves security through ASLR.
     PositionIndependentCode,
 
@@ -263,7 +263,7 @@ pub enum ModuleAnnotation {
 
     /// Include debug information in the compiled output.
     ///
-    /// Debug information allows for better debugging and profiling
+    /// Debug information improves debugging and profiling.
     /// but increases the size of the final binary.
     IncludeDebugInfo,
 
@@ -299,7 +299,7 @@ impl fmt::Display for ModuleAnnotation {
 pub struct Module<'a> {
     /// Named type declarations in this module
     ///
-    /// Using a HashMap allows efficient lookup by type name. The order
+    /// Using a HashMap enables efficient lookup by type name. The order
     /// of type declarations is not preserved, but this is typically not critical.
     pub type_declarations: HashMap<Identifier<'a>, TypeDeclaration<'a>>,
     /// Global variable declarations in this module
@@ -310,7 +310,7 @@ pub struct Module<'a> {
     /// Function definitions in this module
     ///
     /// Functions contain the actual code of the module. They are organized
-    /// by name for efficient lookup during function calls.
+    /// by name for fast lookup during function calls.
     pub functions: HashMap<Identifier<'a>, Function<'a>>,
 
     /// Module-level annotations that affect compilation.
@@ -511,7 +511,7 @@ mod tests {
 
         // Note: Hashmap iteration order isn't guaranteed, but Display impl sorts function keys.
         // Type/Global order isn't sorted, so this test might be fragile if more are added.
-        // A more robust test might parse the output or check for substrings.
+        // A more thorough test might parse the output or check for substrings.
         assert_eq!(format!("{}", module), expected_output);
     }
 

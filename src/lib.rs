@@ -1,18 +1,17 @@
 //! # Lamina Compiler Library
 //!
-//! Lamina is a modern compiler that generates efficient machine code from a high-level
-//! intermediate representation (IR). It supports multiple target architectures and provides
-//! a comprehensive set of tools for building compilers, interpreters, and language runtimes.
+//! Lamina is a compiler that generates machine code from a high-level
+//! intermediate representation (IR). It supports multiple target architectures.
 //!
 //! ## Overview
 //!
-//! Lamina consists of several key components:
+//! Lamina has four main parts:
 //!
 //! - **IR (Intermediate Representation)**: A low-level, architecture-agnostic representation
-//!   of programs that serves as the bridge between high-level source code and machine code.
-//! - **Parser**: Converts text-based IR into structured data that can be processed by the compiler.
-//! - **Code Generator**: Translates IR into native assembly code for various target architectures.
-//! - **Error Handling**: Comprehensive error reporting and recovery mechanisms.
+//!   of programs. It's the bridge between high-level source code and machine code.
+//! - **Parser**: Converts text-based IR into structured data.
+//! - **Code Generator**: Translates IR into native assembly code for different architectures.
+//! - **Error Handling**: Error reporting and recovery.
 //!
 //! ## Quick Start
 //!
@@ -74,13 +73,13 @@
 //! The codegen module translates IR into native assembly:
 //!
 //! - **Architecture-specific backends**: Separate implementations for x86_64 and AArch64
-//! - **Register allocation**: Efficient use of target architecture registers
+//! - **Register allocation**: Uses target architecture registers
 //! - **Instruction selection**: Optimal instruction choice for IR operations
 //! - **ABI compliance**: Proper calling conventions and stack management
 //!
 //! ### Error Handling
 //!
-//! Comprehensive error reporting with detailed context:
+//! Error reporting with context:
 //!
 //! - **Parse errors**: Syntax and semantic errors in IR input
 //! - **Codegen errors**: Architecture-specific compilation issues
@@ -89,7 +88,7 @@
 //!
 //! ## Memory Management
 //!
-//! Lamina provides sophisticated memory management capabilities:
+//! Memory management:
 //!
 //! - **Stack allocation**: Fast, automatic memory management for local variables
 //! - **Heap allocation**: Manual memory management for persistent data
@@ -242,8 +241,8 @@
 //! ## Performance Considerations
 //!
 //! - **Zero-copy parsing**: IR uses string references to avoid unnecessary allocations
-//! - **Efficient data structures**: HashMaps for O(1) lookups of functions and types
-//! - **SSA form**: Single Static Assignment form enables powerful optimizations
+//! - **Data structures**: HashMaps for O(1) lookups of functions and types
+//! - **SSA form**: Single Static Assignment form enables optimizations
 //! - **Architecture-specific optimizations**: Tailored code generation for each target
 //!
 //! ## Thread Safety

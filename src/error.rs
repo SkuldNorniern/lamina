@@ -55,7 +55,7 @@ use std::string::FromUtf8Error;
 
 /// Main error type for the Lamina compiler.
 ///
-/// This enum represents all possible errors that can occur during compilation,
+/// All possible errors that can occur during compilation.
 /// including parsing, validation, code generation, and I/O errors.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaminaError {

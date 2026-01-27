@@ -1,6 +1,6 @@
 //! x86_64 code generation for MIR (Mid-level IR).
 //!
-//! This module provides code generation from MIR to x86_64 assembly,
+//! Code generation from MIR to x86_64 assembly,
 //! supporting System V AMD64 and Microsoft x64 calling conventions.
 
 pub mod abi;
@@ -70,21 +70,7 @@ impl<'a> Codegen for X86Codegen<'a> {
     const MAX_BIT_WIDTH: u8 = 64;
 
     fn capabilities() -> CapabilitySet {
-        [
-            CodegenCapability::IntegerArithmetic,
-            CodegenCapability::FloatingPointArithmetic,
-            CodegenCapability::ControlFlow,
-            CodegenCapability::FunctionCalls,
-            CodegenCapability::Recursion,
-            CodegenCapability::Print,
-            CodegenCapability::StackAllocation,
-            CodegenCapability::MemoryOperations,
-            CodegenCapability::SystemCalls,
-            CodegenCapability::InlineAssembly,
-            CodegenCapability::ForeignFunctionInterface,
-        ]
-        .into_iter()
-        .collect()
+        CapabilitySet::standard_native()
     }
 
     fn prepare(
@@ -681,7 +667,7 @@ fn emit_instruction_x86_64(
             }
 
             // 2. Handle Stack Arguments (Overwrite incoming args)
-            // Note: TailCallOptimization ensures args.len() == current_func.args.len()
+            // Note: TailCallOptimization guarantees args.len() == current_func.args.len()
             // So we can strictly overwrite our own incoming stack slots.
             if num_stack_args > 0 {
                 let shadow_space = if target_os == TargetOperatingSystem::Windows {

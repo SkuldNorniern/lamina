@@ -14,8 +14,9 @@ use crate::mir_codegen::{
 use abi::WasmABI;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use util::{
-    emit_int_binary_op, emit_int_cmp_op, load_operand_wasm, load_register_wasm,
-    store_to_register_wasm,
+    emit_float_binary_op, emit_float_cmp_op, emit_float_unary_op, emit_int_binary_op,
+    emit_int_cmp_op, load_fp_operand_wasm, load_operand_wasm, load_register_wasm,
+    store_fp_to_register_wasm, store_to_register_wasm,
 };
 
 use crate::mir_codegen::common::CodegenBase;
@@ -63,24 +64,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
     const MAX_BIT_WIDTH: u8 = 64;
 
     fn capabilities() -> CapabilitySet {
-        [
-            CodegenCapability::IntegerArithmetic,
-            CodegenCapability::ControlFlow,
-            CodegenCapability::FunctionCalls,
-            CodegenCapability::Recursion,
-            // Print requires runtime support (console.log import)
-            CodegenCapability::Print,
-            // Memory operations are supported but limited
-            CodegenCapability::MemoryOperations,
-            // Note: The following are NOT supported:
-            // - HeapAllocation (requires WASM memory management)
-            // - SystemCalls (WASM is sandboxed)
-            // - InlineAssembly (not applicable to WASM)
-            // - Threading (requires WASM threads proposal)
-            // - AtomicOperations (requires WASM threads proposal)
-        ]
-        .into_iter()
-        .collect()
+        CapabilitySet::wasm()
     }
 
     fn prepare(
@@ -705,6 +689,65 @@ fn emit_instruction_wasm(
             writeln!(writer, "        )")?;
             // Continue dispatch loop
             writeln!(writer, "        br $dispatch_loop")?;
+        }
+        MirInst::FloatBinary {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty,
+        } => {
+            let is_f32 = ty.size_bytes() == 4;
+
+            // Load operands as floats
+            load_fp_operand_wasm(lhs, writer, vreg_to_local, is_f32)?;
+            load_fp_operand_wasm(rhs, writer, vreg_to_local, is_f32)?;
+
+            // Perform floating-point operation
+            emit_float_binary_op(op, writer, is_f32)?;
+
+            // Store result back to register
+            if let Register::Virtual(vreg) = dst {
+                store_fp_to_register_wasm(writer, vreg_to_local, vreg, is_f32)?;
+            }
+        }
+        MirInst::FloatUnary { op, dst, src, ty } => {
+            let is_f32 = ty.size_bytes() == 4;
+
+            // Load operand as float
+            load_fp_operand_wasm(src, writer, vreg_to_local, is_f32)?;
+
+            // Perform floating-point unary operation
+            emit_float_unary_op(op, writer, is_f32)?;
+
+            // Store result back to register
+            if let Register::Virtual(vreg) = dst {
+                store_fp_to_register_wasm(writer, vreg_to_local, vreg, is_f32)?;
+            }
+        }
+        MirInst::FloatCmp {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty,
+        } => {
+            let is_f32 = ty.size_bytes() == 4;
+
+            // Load operands as floats
+            load_fp_operand_wasm(lhs, writer, vreg_to_local, is_f32)?;
+            load_fp_operand_wasm(rhs, writer, vreg_to_local, is_f32)?;
+
+            // Perform floating-point comparison (result is i32)
+            emit_float_cmp_op(op, writer, is_f32)?;
+
+            // Extend i32 result to i64 for storage
+            writeln!(writer, "      i64.extend_i32_u")?;
+
+            // Store result to destination
+            if let Register::Virtual(vreg) = dst {
+                store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
+            }
         }
         _ => {
             return Err(crate::error::LaminaError::CodegenError(
