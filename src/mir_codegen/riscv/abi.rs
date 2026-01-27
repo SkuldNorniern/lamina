@@ -1,7 +1,35 @@
+//! RISC-V ABI utilities for symbol naming and calling conventions.
+//!
+//! # RISC-V ABI Documentation
+//!
+//! ## RISC-V Calling Convention (RV64)
+//!
+//! **Argument Registers** (first 8 arguments):
+//! 1. `a0` - 1st argument
+//! 2. `a1` - 2nd argument
+//! 3. `a2` - 3rd argument
+//! 4. `a3` - 4th argument
+//! 5. `a4` - 5th argument
+//! 6. `a5` - 6th argument
+//! 7. `a6` - 7th argument
+//! 8. `a7` - 8th argument
+//!
+//! **Stack Arguments**: 9th argument and beyond are passed on the stack, 16-byte aligned.
+//!
+//! **Return Register**: `a0` for integer returns, `fa0` for floating-point returns.
+//!
+//! **Caller-Saved Registers**: `a0-a7`, `t0-t6`
+//!
+//! **Callee-Saved Registers**: `s0-s11`, `ra` (return address)
+//!
+//! **Stack Alignment**: 16-byte aligned at function entry.
+
 use crate::mir_codegen::abi::{Abi, common_call_stub, mangle_macos_name};
 use lamina_platform::TargetOperatingSystem;
 
-/// RISC-V ABI utilities
+/// RISC-V ABI utilities.
+///
+/// Implements the RISC-V calling convention for RV64.
 pub struct RiscVAbi {
     target_os: TargetOperatingSystem,
 }

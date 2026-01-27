@@ -708,9 +708,11 @@ fn emit_instruction_wasm(
         }
         _ => {
             return Err(crate::error::LaminaError::CodegenError(
-                crate::mir_codegen::CodegenError::UnsupportedFeature(
-                    "WASM instruction not yet supported".to_string(),
-                ),
+                crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                    "WASM instruction not yet supported: {:?}. \
+                     This instruction may be partially implemented or not yet available for WebAssembly.",
+                    inst
+                )),
             ));
         }
     }

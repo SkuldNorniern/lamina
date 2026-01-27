@@ -1,7 +1,20 @@
 //! WASM ABI utilities
 //!
-//! WASM has a more standardized ABI compared to native platforms,
-//! but we still need utilities for function naming and module structure.
+//! # WebAssembly ABI Documentation
+//!
+//! WebAssembly uses a stack-based calling convention, not register-based.
+//!
+//! **Arguments**: Passed on the stack in order (first argument on top).
+//!
+//! **Return Values**: Left on the stack after function execution.
+//!
+//! **Locals**: Function parameters become local variables.
+//!
+//! **Memory**: Linear memory is used for heap allocations.
+//!
+//! Unlike native platforms, WASM doesn't require name mangling or register allocation
+//! for function calls. Parameters are passed as locals and return values are left
+//! on the evaluation stack.
 
 use crate::mir_codegen::abi::Abi;
 use lamina_platform::TargetOperatingSystem;
