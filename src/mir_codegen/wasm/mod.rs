@@ -707,7 +707,11 @@ fn emit_instruction_wasm(
             writeln!(writer, "        br $dispatch_loop")?;
         }
         _ => {
-            writeln!(writer, "      ;; TODO: unimplemented instruction")?;
+            return Err(crate::error::LaminaError::CodegenError(
+                crate::mir_codegen::CodegenError::UnsupportedFeature(
+                    "WASM instruction not yet supported".to_string(),
+                ),
+            ));
         }
     }
 
