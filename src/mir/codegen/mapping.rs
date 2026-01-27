@@ -1,6 +1,6 @@
 //! Type mapping from IR to MIR.
 //!
-//! This module provides functions to convert IR types to MIR types.
+//! Functions to convert IR types to MIR types.
 //! The mapping process handles primitive type conversions and validates
 //! that only supported types are converted.
 

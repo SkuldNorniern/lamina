@@ -1,6 +1,6 @@
 //! # Type System
 //!
-//! This module defines the complete type system for the Lamina IR, including
+//! Complete type system for the Lamina IR, including
 //! primitive types, composite types, and value representations.
 //!
 //! ## Type Categories
@@ -57,7 +57,7 @@
 //!
 //! ## IMPLEMENTED: Raw I/O Support
 //!
-//! Lamina provides comprehensive raw I/O operations for direct system-level
+//! Lamina provides raw I/O operations for direct system-level
 //! input and output without stdlib dependencies:
 //!
 //! ### I/O Instruction Categories:
@@ -65,7 +65,7 @@
 //! #### **Byte-Level I/O**:
 //! - **`writebyte`**: Write single ASCII character to stdout
 //! - **`readbyte`**: Read single byte from stdin
-//! - **Use case**: Character I/O, simple text output, keyboard input
+//! - **Use case**: Character I/O, text output, keyboard input
 //!
 //! #### **Buffer-Level I/O**:
 //! - **`write`**: Write buffer contents to stdout
@@ -127,7 +127,7 @@
 //!
 //! ## Type Safety
 //!
-//! The type system ensures:
+//! The type system provides:
 //! - **Type checking**: Operations are only performed on compatible types
 //! - **Memory safety**: Proper handling of pointers and memory access
 //! - **Correctness**: Many classes of errors are caught at compile time
@@ -160,8 +160,8 @@ use std::fmt;
 
 /// A type alias for identifiers in the IR.
 ///
-/// Uses `&'a str` to avoid allocating `String` objects, improving performance
-/// and memory efficiency. The lifetime parameter ensures that identifiers remain
+/// Uses `&'a str` to avoid allocating `String` objects
+/// and memory efficiency. The lifetime parameter keeps identifiers
 /// valid as long as the source text they were parsed from.
 ///
 /// Identifiers are used for variable names, function names, and other symbols.
@@ -293,7 +293,7 @@ pub enum Value<'a> {
     Global(Identifier<'a>),
 }
 
-// --- Display implementations for better readability ---
+// --- Display implementations for readability ---
 
 impl PrimitiveType {
     /// Returns all valid primitive type names as strings.

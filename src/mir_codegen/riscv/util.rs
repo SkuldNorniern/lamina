@@ -115,6 +115,107 @@ pub fn emit_int_binary_op<W: std::io::Write>(
     Ok(())
 }
 
+/// Load a floating-point operand into a floating-point register
+/// For RISC-V F/D extensions, we use fa0/fa1 as scratch FP registers
+pub fn load_fp_operand_to_register<W: std::io::Write>(
+    operand: &crate::mir::Operand,
+    writer: &mut W,
+    reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
+    dest_fp_reg: &str,
+    is_f32: bool,
+) -> Result<(), std::io::Error> {
+    match operand {
+        crate::mir::Operand::Register(reg) => match reg {
+            Register::Virtual(v) => {
+                // Load from stack to integer register, then move to FP register
+                if let Some(offset) = stack_slots.get(v) {
+                    if is_f32 {
+                        writeln!(writer, "    flw {}, {}(fp)", dest_fp_reg, offset)?;
+                    } else {
+                        writeln!(writer, "    fld {}, {}(fp)", dest_fp_reg, offset)?;
+                    }
+                } else if let Some(phys) = reg_alloc.get_mapping(v) {
+                    // Move from integer register to FP register
+                    if is_f32 {
+                        writeln!(writer, "    fmv.w.x {}, {}", dest_fp_reg, phys)?;
+                    } else {
+                        writeln!(writer, "    fmv.d.x {}, {}", dest_fp_reg, phys)?;
+                    }
+                } else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidData,
+                        format!("Virtual register {:?} has no mapping or stack slot", v),
+                    ));
+                }
+            }
+            Register::Physical(p) => {
+                // Move from physical integer register to FP register
+                if is_f32 {
+                    writeln!(writer, "    fmv.w.x {}, {}", dest_fp_reg, p.name)?;
+                } else {
+                    writeln!(writer, "    fmv.d.x {}, {}", dest_fp_reg, p.name)?;
+                }
+            }
+        },
+        crate::mir::Operand::Immediate(imm) => {
+            match imm {
+                crate::mir::instruction::Immediate::F32(v) => {
+                    // Load F32 immediate via integer register
+                    let bits = v.to_bits();
+                    writeln!(writer, "    li t0, {}", bits)?;
+                    writeln!(writer, "    fmv.w.x {}, t0", dest_fp_reg)?;
+                }
+                crate::mir::instruction::Immediate::F64(v) => {
+                    // Load F64 immediate via integer register
+                    let bits = v.to_bits();
+                    writeln!(writer, "    li t0, {}", bits)?;
+                    writeln!(writer, "    fmv.d.x {}, t0", dest_fp_reg)?;
+                }
+                _ => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "Expected floating-point immediate for FP operation",
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Store a floating-point register to a virtual register
+pub fn store_fp_register_to_register<W: std::io::Write>(
+    src_fp_reg: &str,
+    dst: &VirtualReg,
+    writer: &mut W,
+    reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
+    is_f32: bool,
+) -> Result<(), std::io::Error> {
+    if let Some(phys) = reg_alloc.get_mapping(dst) {
+        // Move from FP register to integer register
+        if is_f32 {
+            writeln!(writer, "    fmv.x.w {}, {}", phys, src_fp_reg)?;
+        } else {
+            writeln!(writer, "    fmv.x.d {}, {}", phys, src_fp_reg)?;
+        }
+    } else if let Some(offset) = stack_slots.get(dst) {
+        // Store directly from FP register to stack
+        if is_f32 {
+            writeln!(writer, "    fsw {}, {}(fp)", src_fp_reg, offset)?;
+        } else {
+            writeln!(writer, "    fsd {}, {}(fp)", src_fp_reg, offset)?;
+        }
+    } else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("Virtual register {:?} has no mapping or stack slot", dst),
+        ));
+    }
+    Ok(())
+}
+
 /// Emit RISC-V instruction for integer comparison operations
 pub fn emit_int_cmp_op<W: std::io::Write>(
     op: &crate::mir::IntCmpOp,

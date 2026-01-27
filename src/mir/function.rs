@@ -1,6 +1,6 @@
 //! Function representation in LUMIR.
 //!
-//! This module defines the structures for representing functions in LUMIR,
+//! Structures for representing functions in LUMIR,
 //! including function signatures, parameters, and basic blocks.
 use super::block::Block;
 use super::register::Register;

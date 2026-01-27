@@ -1,12 +1,12 @@
 //! Backend capabilities for MIR codegen
 //!
-//! This module defines the capabilities that different codegen backends may or may not support.
-//! This allows the compiler to properly handle unsupported features and provide meaningful
+//! Capabilities that different codegen backends may or may not support.
+//! This lets the compiler handle unsupported features and return clear
 //! error messages.
 //!
 //! # Capability System
 //!
-//! Each backend declares which capabilities it supports. When codegen encounters an operation
+//! Each backend declares which capabilities it has. When codegen encounters an operation
 //! that requires an unsupported capability, it returns an `UnsupportedFeature` error with
 //! a clear message indicating what's missing.
 //!
@@ -191,6 +191,61 @@ impl FromIterator<CodegenCapability> for CapabilitySet {
         Self {
             capabilities: iter.into_iter().collect(),
         }
+    }
+}
+
+/// Capability set builders for common backend configurations.
+///
+/// These builders reduce duplication when declaring backend capabilities.
+impl CapabilitySet {
+    /// Standard native backend capabilities (x86_64, AArch64, RISC-V).
+    ///
+    /// Includes: integer/float arithmetic, control flow, function calls,
+    /// recursion, print, stack/memory operations, system calls, inline assembly, FFI.
+    pub fn standard_native() -> Self {
+        [
+            CodegenCapability::IntegerArithmetic,
+            CodegenCapability::FloatingPointArithmetic,
+            CodegenCapability::ControlFlow,
+            CodegenCapability::FunctionCalls,
+            CodegenCapability::Recursion,
+            CodegenCapability::Print,
+            CodegenCapability::StackAllocation,
+            CodegenCapability::MemoryOperations,
+            CodegenCapability::SystemCalls,
+            CodegenCapability::InlineAssembly,
+            CodegenCapability::ForeignFunctionInterface,
+        ]
+        .into_iter()
+        .collect()
+    }
+
+    /// Extended native backend capabilities (includes SIMD).
+    ///
+    /// Same as `standard_native()` plus SIMD operations.
+    pub fn extended_native() -> Self {
+        let mut set = Self::standard_native();
+        set.capabilities.insert(CodegenCapability::SimdOperations);
+        set
+    }
+
+    /// WASM backend capabilities.
+    ///
+    /// Includes: integer/float arithmetic, control flow, function calls,
+    /// recursion, print, memory operations. Excludes: heap allocation,
+    /// system calls, inline assembly (WASM is sandboxed).
+    pub fn wasm() -> Self {
+        [
+            CodegenCapability::IntegerArithmetic,
+            CodegenCapability::FloatingPointArithmetic,
+            CodegenCapability::ControlFlow,
+            CodegenCapability::FunctionCalls,
+            CodegenCapability::Recursion,
+            CodegenCapability::Print,
+            CodegenCapability::MemoryOperations,
+        ]
+        .into_iter()
+        .collect()
     }
 }
 

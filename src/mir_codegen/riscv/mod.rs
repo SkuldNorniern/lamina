@@ -8,7 +8,10 @@ use frame::RiscVFrame;
 use regalloc::RiscVRegAlloc;
 use std::io::Write;
 use std::result::Result;
-use util::*;
+use util::{
+    emit_int_cmp_op, load_fp_operand_to_register, load_operand_to_register,
+    load_register_to_register, store_fp_register_to_register, store_register_to_register,
+};
 
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
@@ -62,21 +65,7 @@ impl<'a> Codegen for RiscVCodegen<'a> {
     const MAX_BIT_WIDTH: u8 = 64;
 
     fn capabilities() -> CapabilitySet {
-        [
-            CodegenCapability::IntegerArithmetic,
-            CodegenCapability::FloatingPointArithmetic,
-            CodegenCapability::ControlFlow,
-            CodegenCapability::FunctionCalls,
-            CodegenCapability::Recursion,
-            CodegenCapability::Print,
-            CodegenCapability::StackAllocation,
-            CodegenCapability::MemoryOperations,
-            CodegenCapability::SystemCalls,
-            CodegenCapability::InlineAssembly,
-            CodegenCapability::ForeignFunctionInterface,
-        ]
-        .into_iter()
-        .collect()
+        CapabilitySet::standard_native()
     }
 
     fn prepare(
@@ -388,19 +377,24 @@ fn emit_instruction_riscv<W: Write>(
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "lw",
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
                 | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "ld",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::F64)
-                | crate::mir::MirType::Vector(_) => {
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => "flw",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "fld",
+                crate::mir::MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
                         crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
                             "RISC-V load unsupported for type {:?}. \
-                             Floating-point and vector types are not yet implemented for RISC-V. \
-                             Use integer types (i8, i16, i32, i64) instead.",
+                             Vector types are not yet implemented for RISC-V.",
                             ty
                         )),
                     ));
                 }
             };
+
+            let is_float = matches!(
+                ty,
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
+                    | crate::mir::MirType::Scalar(crate::mir::ScalarType::F64)
+            );
 
             match addr {
                 crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
@@ -411,10 +405,30 @@ fn emit_instruction_riscv<W: Write>(
                         Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
                     }
 
-                    writeln!(writer, "    {} a0, {}(t0)", load_op, offset)?;
+                    if is_float {
+                        // Load to floating-point register fa0
+                        writeln!(writer, "    {} fa0, {}(t0)", load_op, offset)?;
 
-                    if let Register::Virtual(vreg) = dst {
-                        store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
+                        if let Register::Virtual(vreg) = dst {
+                            let is_f32 = matches!(
+                                ty,
+                                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
+                            );
+                            store_fp_register_to_register(
+                                "fa0",
+                                vreg,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                                is_f32,
+                            )?;
+                        }
+                    } else {
+                        writeln!(writer, "    {} a0, {}(t0)", load_op, offset)?;
+
+                        if let Register::Virtual(vreg) = dst {
+                            store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
+                        }
                     }
                 }
                 _ => {
@@ -441,21 +455,31 @@ fn emit_instruction_riscv<W: Write>(
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "sw",
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
                 | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "sd",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::F64)
-                | crate::mir::MirType::Vector(_) => {
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => "fsw",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "fsd",
+                crate::mir::MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
                         crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
                             "RISC-V store unsupported for type {:?}. \
-                             Floating-point and vector types are not yet implemented for RISC-V. \
-                             Use integer types (i8, i16, i32, i64) instead.",
+                             Vector types are not yet implemented for RISC-V.",
                             ty
                         )),
                     ));
                 }
             };
 
-            load_operand_to_register(src, writer, reg_alloc, stack_slots, "a0")?;
+            let is_float = matches!(
+                ty,
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
+                    | crate::mir::MirType::Scalar(crate::mir::ScalarType::F64)
+            );
+            let is_f32 = matches!(ty, crate::mir::MirType::Scalar(crate::mir::ScalarType::F32));
+
+            if is_float {
+                load_fp_operand_to_register(src, writer, reg_alloc, stack_slots, "fa0", is_f32)?;
+            } else {
+                load_operand_to_register(src, writer, reg_alloc, stack_slots, "a0")?;
+            }
 
             match addr {
                 crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
@@ -466,7 +490,11 @@ fn emit_instruction_riscv<W: Write>(
                         Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
                     }
 
-                    writeln!(writer, "    {} a0, {}(t0)", store_op, offset)?;
+                    if is_float {
+                        writeln!(writer, "    {} fa0, {}(t0)", store_op, offset)?;
+                    } else {
+                        writeln!(writer, "    {} a0, {}(t0)", store_op, offset)?;
+                    }
                 }
                 _ => {
                     return Err(crate::error::LaminaError::CodegenError(
@@ -499,6 +527,99 @@ fn emit_instruction_riscv<W: Write>(
                 load_register_to_register(vreg, writer, reg_alloc, stack_slots, "t0")?;
                 writeln!(writer, "    bnez t0, .L_{}", true_target)?;
                 writeln!(writer, "    j .L_{}", false_target)?;
+            }
+        }
+        MirInst::FloatBinary {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty,
+        } => {
+            let is_f32 = ty.size_bytes() == 4;
+            let suffix = if is_f32 { "s" } else { "d" };
+
+            // Load operands to floating-point registers
+            load_fp_operand_to_register(lhs, writer, reg_alloc, stack_slots, "fa0", is_f32)?;
+            load_fp_operand_to_register(rhs, writer, reg_alloc, stack_slots, "fa1", is_f32)?;
+
+            // Perform floating-point operation
+            match op {
+                crate::mir::FloatBinOp::FAdd => {
+                    writeln!(writer, "    fadd.{} fa0, fa0, fa1", suffix)?
+                }
+                crate::mir::FloatBinOp::FSub => {
+                    writeln!(writer, "    fsub.{} fa0, fa0, fa1", suffix)?
+                }
+                crate::mir::FloatBinOp::FMul => {
+                    writeln!(writer, "    fmul.{} fa0, fa0, fa1", suffix)?
+                }
+                crate::mir::FloatBinOp::FDiv => {
+                    writeln!(writer, "    fdiv.{} fa0, fa0, fa1", suffix)?
+                }
+            }
+
+            // Store result
+            if let Register::Virtual(vreg) = dst {
+                store_fp_register_to_register("fa0", vreg, writer, reg_alloc, stack_slots, is_f32)?;
+            }
+        }
+        MirInst::FloatUnary { op, dst, src, ty } => {
+            let is_f32 = ty.size_bytes() == 4;
+            let suffix = if is_f32 { "s" } else { "d" };
+
+            // Load operand to floating-point register
+            load_fp_operand_to_register(src, writer, reg_alloc, stack_slots, "fa0", is_f32)?;
+
+            // Perform floating-point unary operation
+            match op {
+                crate::mir::FloatUnOp::FNeg => writeln!(writer, "    fneg.{} fa0, fa0", suffix)?,
+                crate::mir::FloatUnOp::FSqrt => writeln!(writer, "    fsqrt.{} fa0, fa0", suffix)?,
+            }
+
+            // Store result
+            if let Register::Virtual(vreg) = dst {
+                store_fp_register_to_register("fa0", vreg, writer, reg_alloc, stack_slots, is_f32)?;
+            }
+        }
+        MirInst::FloatCmp {
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty,
+        } => {
+            let is_f32 = ty.size_bytes() == 4;
+            let suffix = if is_f32 { "s" } else { "d" };
+
+            // Load operands to floating-point registers
+            load_fp_operand_to_register(lhs, writer, reg_alloc, stack_slots, "fa0", is_f32)?;
+            load_fp_operand_to_register(rhs, writer, reg_alloc, stack_slots, "fa1", is_f32)?;
+
+            // Perform floating-point comparison
+            // Result goes into integer register a0
+            match op {
+                crate::mir::FloatCmpOp::Eq => writeln!(writer, "    feq.{} a0, fa0, fa1", suffix)?,
+                crate::mir::FloatCmpOp::Ne => {
+                    // NE = !(a == b)
+                    writeln!(writer, "    feq.{} a0, fa0, fa1", suffix)?;
+                    writeln!(writer, "    xori a0, a0, 1")?;
+                }
+                crate::mir::FloatCmpOp::Lt => writeln!(writer, "    flt.{} a0, fa0, fa1", suffix)?,
+                crate::mir::FloatCmpOp::Le => writeln!(writer, "    fle.{} a0, fa0, fa1", suffix)?,
+                crate::mir::FloatCmpOp::Gt => {
+                    // GT = b < a
+                    writeln!(writer, "    flt.{} a0, fa1, fa0", suffix)?
+                }
+                crate::mir::FloatCmpOp::Ge => {
+                    // GE = b <= a
+                    writeln!(writer, "    fle.{} a0, fa1, fa0", suffix)?
+                }
+            }
+
+            // Store result to destination
+            if let Register::Virtual(vreg) = dst {
+                store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
         }
         _ => {
