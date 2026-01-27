@@ -1172,22 +1172,7 @@ impl<'a> Codegen for AArch64Codegen<'a> {
     const MAX_BIT_WIDTH: u8 = 64;
 
     fn capabilities() -> CapabilitySet {
-        [
-            CodegenCapability::IntegerArithmetic,
-            CodegenCapability::FloatingPointArithmetic,
-            CodegenCapability::ControlFlow,
-            CodegenCapability::FunctionCalls,
-            CodegenCapability::Recursion,
-            CodegenCapability::Print,
-            CodegenCapability::StackAllocation,
-            CodegenCapability::MemoryOperations,
-            CodegenCapability::SystemCalls,
-            CodegenCapability::InlineAssembly,
-            CodegenCapability::SimdOperations,
-            CodegenCapability::ForeignFunctionInterface,
-        ]
-        .into_iter()
-        .collect()
+        CapabilitySet::extended_native()
     }
 
     fn prepare(

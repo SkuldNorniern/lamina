@@ -1,6 +1,6 @@
 //! IR-to-MIR conversion module.
 //!
-//! This module provides functionality to convert high-level Lamina IR into
+//! Functionality to convert high-level Lamina IR into
 //! low-level LUMIR (Lamina Unified Machine Intermediate Representation).
 //! The conversion process includes:
 //!

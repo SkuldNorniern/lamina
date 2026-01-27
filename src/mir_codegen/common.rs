@@ -165,7 +165,7 @@ pub struct CompilationResult {
 
 /// Compile functions in parallel using channels (no Arc<Mutex>).
 ///
-/// This function distributes function compilation tasks across multiple threads
+/// Distributes function compilation tasks across multiple threads
 /// using message passing. Each thread compiles functions independently and sends
 /// results back via channels. The main thread collects and merges results.
 pub fn compile_functions_parallel<F>(
@@ -380,4 +380,69 @@ pub fn lamina_to_codegen_error(err: crate::error::LaminaError) -> CodegenError {
         | crate::error::LaminaError::IoError(msg)
         | crate::error::LaminaError::Utf8Error(msg) => CodegenError::InvalidCodegenOptions(msg),
     }
+}
+
+/// Macro to implement common backend methods that delegate to CodegenBase.
+///
+/// This reduces duplication across backends. All backends have the same
+/// `new()`, `set_module()`, and `drain_output()` implementations.
+#[macro_export]
+macro_rules! impl_backend_boilerplate {
+    ($backend:ty) => {
+        impl<'a> $backend {
+            pub fn new(target_os: TargetOperatingSystem) -> Self {
+                Self {
+                    base: CodegenBase::new(target_os),
+                }
+            }
+
+            /// Attach the MIR module that should be emitted in the next codegen pass.
+            pub fn set_module(&mut self, module: &'a MirModule) {
+                self.base.set_module(module);
+            }
+
+            /// Drain the internal assembly buffer produced by `emit_asm`.
+            pub fn drain_output(&mut self) -> Vec<u8> {
+                self.base.drain_output()
+            }
+        }
+    };
+}
+
+/// Macro to implement common Codegen trait methods that delegate to CodegenBase.
+///
+/// This reduces duplication in `prepare()`, `compile()`, and `finalize()` methods
+/// across all backends.
+#[macro_export]
+macro_rules! impl_codegen_trait_methods {
+    ($backend:ty) => {
+        fn prepare(
+            &mut self,
+            types: &std::collections::HashMap<String, crate::mir::MirType>,
+            globals: &std::collections::HashMap<String, crate::mir::Global>,
+            funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+            codegen_units: usize,
+            verbose: bool,
+            options: &[CodegenOptions],
+            input_name: &str,
+        ) -> Result<(), CodegenError> {
+            self.base.prepare_base(
+                types,
+                globals,
+                funcs,
+                codegen_units,
+                verbose,
+                options,
+                input_name,
+            )
+        }
+
+        fn compile(&mut self) -> Result<(), CodegenError> {
+            self.base.compile_base()
+        }
+
+        fn finalize(&mut self) -> Result<(), CodegenError> {
+            self.base.finalize_base()
+        }
+    };
 }

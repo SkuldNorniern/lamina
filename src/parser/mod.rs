@@ -1,6 +1,6 @@
 //! Lamina IR parser.
 //!
-//! This module provides parsing functionality for Lamina IR text into structured
+//! Parsing functionality for Lamina IR text into structured
 //! Module representations.
 
 mod functions;
@@ -20,7 +20,7 @@ use crate::{LaminaError, Module};
 ///
 /// This function computes the minimum number of single-character edits
 /// (insertions, deletions, or substitutions) required to transform one string
-/// into another. The comparison is case-insensitive for better typo detection.
+/// into another. The comparison is case-insensitive to improve typo detection.
 ///
 /// # Arguments
 ///
@@ -111,16 +111,16 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
 
 /// Returns all valid primitive type names as strings.
 ///
-/// This function delegates to the IR module, ensuring that parser error messages
-/// always stay in sync with the actual type system.
+/// This function delegates to the IR module so parser error messages
+/// stay in sync with the actual type system.
 pub fn get_primitive_type_names() -> &'static [&'static str] {
     crate::ir::PrimitiveType::all_names()
 }
 
 /// Returns all valid allocation type names as strings.
 ///
-/// This function delegates to the IR module, ensuring that parser error messages
-/// always stay in sync with the actual type system.
+/// This function delegates to the IR module so parser error messages
+/// stay in sync with the actual type system.
 pub fn get_alloc_type_names() -> &'static [&'static str] {
     crate::ir::AllocType::all_names()
 }
@@ -128,8 +128,8 @@ pub fn get_alloc_type_names() -> &'static [&'static str] {
 /// Returns all valid instruction opcodes that can appear after an assignment.
 ///
 /// These are instructions that produce a result value (e.g., `%result = add.i32 ...`).
-/// This function delegates to the IR module, ensuring that parser error messages
-/// always stay in sync with the actual instruction set.
+/// This function delegates to the IR module so parser error messages
+/// stay in sync with the actual instruction set.
 pub fn get_assignment_opcode_names() -> &'static [&'static str] {
     crate::ir::assignment_opcode_names()
 }
@@ -137,8 +137,8 @@ pub fn get_assignment_opcode_names() -> &'static [&'static str] {
 /// Returns all valid instruction opcodes that don't require an assignment.
 ///
 /// These are instructions that don't produce a result value (e.g., `ret.void`, `jmp label`).
-/// This function delegates to the IR module, ensuring that parser error messages
-/// always stay in sync with the actual instruction set.
+/// This function delegates to the IR module so parser error messages
+/// stay in sync with the actual instruction set.
 pub fn get_non_assignment_opcode_names() -> &'static [&'static str] {
     crate::ir::non_assignment_opcode_names()
 }

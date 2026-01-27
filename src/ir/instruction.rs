@@ -32,7 +32,7 @@
 //! All instructions follow Single Static Assignment (SSA) form:
 //! - Each variable is assigned exactly once
 //! - Instructions produce new values rather than modifying existing ones
-//! - This enables powerful optimizations and simplifies analysis
+//! - This enables optimizations and simplifies analysis
 //!
 //! ## Example
 //!
@@ -155,7 +155,7 @@ impl fmt::Display for SimdOp {
 /// Atomic binary operations for concurrent programming.
 ///
 /// These operations perform read-modify-write sequences atomically,
-/// ensuring thread-safe updates to shared memory locations.
+/// for thread-safe updates to shared memory locations.
 #[cfg(feature = "nightly")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AtomicBinOp {
@@ -388,7 +388,7 @@ pub enum AllocType {
     Heap,
 }
 
-// Represents a single instruction in a basic block
+// A single instruction in a basic block
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction<'a> {
     // --- Arithmetic and Logic ---
@@ -756,7 +756,7 @@ impl fmt::Display for AllocType {
 /// The list combines dynamically generated names from BinaryOp and CmpOp enums with
 /// instruction-specific opcodes.
 ///
-/// This function ensures that parser error messages always stay in sync with the actual
+/// This function keeps parser error messages in sync with the actual
 /// instruction set. When adding new variants:
 /// - For BinaryOp: add to BinaryOp::ALL_VARIANTS (automatically appears here)
 /// - For CmpOp: add to CmpOp::ALL_VARIANTS (automatically appears here)
@@ -799,7 +799,7 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
     // Combine BinaryOp and CmpOp (generated from enums) with instruction-specific ops
     // Note: We can't concatenate arrays at compile time, so we manually list them.
     // However, BinaryOp and CmpOp names come from their enums via all_names(),
-    // ensuring those stay automatically in sync.
+    // so those stay automatically in sync.
     &[
         // From BinaryOp enum (dynamically generated via BinaryOp::all_names())
         "add",
@@ -850,7 +850,7 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
 /// These are instructions that don't produce a result value (e.g., `ret.void`, `jmp label`).
 /// The list corresponds to Instruction enum variants that don't have a `result` field.
 ///
-/// This function ensures that parser error messages always stay in sync with the actual
+/// This function keeps parser error messages in sync with the actual
 /// instruction set. When adding new Instruction variants without results, add them here.
 pub fn non_assignment_opcode_names() -> &'static [&'static str] {
     // These correspond to Instruction enum variants without a `result` field

@@ -1,6 +1,6 @@
 //! Error types for IR-to-MIR conversion.
 //!
-//! This module defines errors that can occur during the conversion from
+//! Errors that can occur during the conversion from
 //! high-level IR to low-level MIR.
 
 use std::fmt;

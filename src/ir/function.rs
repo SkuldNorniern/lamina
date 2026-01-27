@@ -1,6 +1,6 @@
 //! # Function Representation
 //!
-//! This module defines the structures for representing functions in the Lamina IR.
+//! Structures for representing functions in the Lamina IR.
 //! Functions are the primary unit of code organization and execution, containing
 //! basic blocks which hold the actual instructions.
 //!
@@ -81,7 +81,7 @@
 //! ### Single Static Assignment
 //! - Each variable is assigned exactly **once** in its lifetime
 //! - Variables are immutable after assignment
-//! - Enables powerful optimizations and analysis
+//! - Enables optimizations and analysis
 //!
 //! ### Variable Naming Convention
 //! ```text
@@ -165,7 +165,7 @@
 //! - Local variables allocated on stack
 //! - Stack frame cleaned up on function return
 //!
-//! ## Advanced Features
+//! ## Advanced
 //!
 //! ### Exception Handling
 //! ```rust
@@ -264,7 +264,7 @@ pub enum FunctionAnnotation {
     /// Indicate that this function never returns normally.
     ///
     /// Functions marked with `NoReturn` always terminate the program (e.g., `exit`, `panic`).
-    /// This allows the compiler to optimize control flow and eliminate unreachable code.
+    /// This lets the compiler optimize control flow and eliminate unreachable code.
     NoReturn,
 
     /// Hint to the compiler to never inline this function.
@@ -282,7 +282,7 @@ pub enum FunctionAnnotation {
     /// Mark this function as "hot" (frequently executed).
     ///
     /// Hot functions are aggressively optimized for performance and may be
-    /// placed in hot code sections for better instruction cache usage.
+    /// placed in hot code sections to improve instruction cache usage.
     Hot,
 
     /// Mark this function as pure (has no side effects and depends only on inputs).
@@ -300,7 +300,7 @@ pub enum FunctionAnnotation {
     /// Mark this function as having internal linkage (private to this module).
     ///
     /// Internal functions are not visible outside the current module and cannot
-    /// be called from other modules. This allows more aggressive optimizations.
+    /// be called from other modules. This enables more aggressive optimizations.
     Internal,
 
     /// Mark this function as having private linkage (ELF-specific).
@@ -312,14 +312,14 @@ pub enum FunctionAnnotation {
     /// Mark this function as having hidden visibility (ELF-specific).
     ///
     /// Hidden symbols are not exported but may be accessed from other components
-    /// within the same shared object. This provides better optimization opportunities
+    /// within the same shared object. This improves optimization opportunities
     /// than protected visibility.
     Hidden,
 
     /// Mark this function as having protected visibility (ELF-specific).
     ///
     /// Protected symbols are exported but can only be preempted by symbols
-    /// from the same shared object. This allows intra-module function calls to
+    /// from the same shared object. This lets intra-module function calls
     /// use direct references while still allowing inter-module calls.
     Protected,
 
@@ -367,7 +367,7 @@ pub enum FunctionAnnotation {
 
     /// Use the tail calling convention (enables tail call optimization).
     ///
-    /// Tail calling convention allows the compiler to optimize tail recursive calls
+    /// Tail calling convention lets the compiler optimize tail recursive calls
     /// and function calls in tail position into jumps instead of calls.
     CCtail,
 
@@ -385,8 +385,8 @@ pub enum FunctionAnnotation {
 
     /// Specify the minimum alignment for this function in bytes.
     ///
-    /// Function alignment can improve performance by ensuring the function
-    /// starts at an address that's optimal for the target architecture.
+    /// Function alignment can improve performance by making the function
+    /// starts at an address that works well for the target architecture.
     Align(u32),
 
     /// Mark this function as unsafe (bypasses safety checks).
@@ -407,7 +407,7 @@ pub enum FunctionAnnotation {
 pub enum VariableAnnotation {
     /// Mark this parameter as non-null (never accepts null pointers).
     ///
-    /// This allows the compiler to optimize away null checks and enables
+    /// This lets the compiler optimize away null checks and enables
     /// more aggressive optimizations for pointer operations.
     NonNull,
 
@@ -432,7 +432,7 @@ pub enum VariableAnnotation {
     /// Mark this parameter as sensitive (contains security-critical data).
     ///
     /// Sensitive parameters may receive special treatment such as avoiding
-    /// storage in registers or ensuring they are zeroed after use.
+    /// storage in registers or zeroing them after use.
     Sensitive,
 
     /// Specify that this parameter should be passed in a specific register.
@@ -447,7 +447,7 @@ pub enum VariableAnnotation {
     Unused,
 }
 
-/// Represents a function parameter with its name, type, and attributes.
+/// A function parameter with its name, type, and attributes.
 ///
 /// Function parameters are the inputs to a function and are bound to values
 /// when the function is called. Each parameter has a unique name within the
@@ -477,7 +477,7 @@ pub struct FunctionParameter<'a> {
     pub annotations: Vec<VariableAnnotation>,
 }
 
-/// Represents the signature of a function (parameters and return type).
+/// The signature of a function (parameters and return type).
 ///
 /// A function signature defines the interface of a function, including what
 /// parameters it accepts and what type it returns. This is used for type
@@ -504,11 +504,11 @@ pub struct FunctionSignature<'a> {
     pub return_type: Type<'a>, // Type::Void if it doesn't return
 }
 
-/// Represents a basic block within a function.
+/// A basic block within a function.
 ///
 /// A basic block is a sequence of instructions that execute sequentially
 /// and end with a terminator instruction (branch, jump, or return). This
-/// structure enables control flow analysis and optimization.
+/// structure supports control flow analysis and optimization.
 ///
 /// # Invariants
 ///
@@ -541,7 +541,7 @@ pub struct BasicBlock<'a> {
     // Note: The last instruction MUST be a terminator (Br, Jmp, Ret)
 }
 
-/// Represents a complete function definition.
+/// A complete function definition.
 ///
 /// A function contains its signature, implementation (basic blocks), and
 /// metadata (annotations). Functions are the primary unit of code organization
@@ -581,7 +581,7 @@ pub struct Function<'a> {
     pub annotations: Vec<FunctionAnnotation>,
     /// Basic blocks in this function, keyed by their label
     ///
-    /// Using a HashMap allows efficient lookup by label name. The order
+    /// Using a HashMap enables efficient lookup by label name. The order
     /// of blocks is implicitly defined by the control flow (branches and jumps).
     pub basic_blocks: HashMap<Label<'a>, BasicBlock<'a>>,
     /// Label of the first block to execute when the function is called

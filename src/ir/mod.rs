@@ -1,9 +1,8 @@
 //! # Lamina Intermediate Representation (IR)
 //!
-//! The Lamina IR is a sophisticated, low-level, architecture-agnostic intermediate
-//! representation that serves as the critical bridge between high-level programming
-//! languages and machine code. It provides a clean, efficient, and extensible
-//! representation that enables powerful optimizations and seamless code generation
+//! The Lamina IR is a low-level, architecture-agnostic intermediate
+//! representation. It's the bridge between high-level programming
+//! languages and machine code. It's designed to enable optimizations and code generation
 //! across multiple target architectures.
 //!
 //! ## Design Philosophy
@@ -12,18 +11,18 @@
 //!
 //! ### Core Design Principles
 //!
-//! - **SSA Form**: Single Static Assignment ensures each variable is assigned exactly once,
-//!   enabling powerful optimizations and simplifying analysis
-//! - **Type Safety**: Comprehensive type system prevents many classes of runtime errors
+//! - **SSA Form**: Single Static Assignment means each variable is assigned exactly once,
+//!   enabling optimizations and simplifying analysis
+//! - **Type Safety**: Type system prevents many runtime errors
 //! - **Architecture Agnostic**: IR operations work identically across all supported platforms
 //! - **Zero-Copy**: Uses string references to minimize memory allocations and copying
 //! - **Extensible**: Easy to add new instruction types, types, and optimization passes
-//! - **Optimization-First**: Designed specifically to enable advanced compiler optimizations
+//! - **Optimization-First**: Designed to enable compiler optimizations
 //!
 //! ### Technical Foundations
 //!
-//! - **Memory Efficient**: Minimal runtime overhead with compact representations
-//! - **Analysis Friendly**: Structure enables fast static analysis and optimization
+//! - **Memory**: Minimal runtime overhead with compact representations
+//! - **Analysis Friendly**: Structure supports fast static analysis and optimization
 //! - **Code Generation Ready**: Natural mapping to assembly instructions
 //! - **Debuggable**: Rich metadata support for debugging and profiling
 //!
@@ -61,7 +60,7 @@
 //!
 //! - **Compile-time verification**: All operations are type-checked
 //! - **Memory safety**: Pointer operations are bounds-checked where possible
-//! - **Optimization enabling**: Types guide optimization decisions
+//! - **Optimization**: Types guide optimization decisions
 //! - **Code generation**: Types determine appropriate assembly instructions
 //!
 //! ### Instruction Architecture
@@ -174,7 +173,7 @@
 //! - **Fast**: Minimal allocation overhead
 //! - **Automatic**: No manual deallocation needed
 //! - **Limited**: Function scope only
-//! - **Efficient**: Reuses stack frames
+//! - **Reuses stack frames**
 //!
 //! ##### Heap Allocation (`alloc_heap`)
 //! ```rust
@@ -221,13 +220,13 @@
 //! ## Module Organization Deep Dive
 //!
 //! The Lamina IR is organized as a modular system where each component serves a specific
-//! purpose in the compilation pipeline. Understanding this organization is key to
+//! purpose in the compilation pipeline. Understanding this organization is useful
 //! effectively using and extending the IR.
 //!
 //! ### [`builder`] - Fluent IR Construction API
 //!
 //! The `IRBuilder` is the primary interface for programmatically constructing IR modules.
-//! It provides a fluent, type-safe API that handles the complexity of managing functions,
+//! It has a fluent, type-safe API that handles the complexity of managing functions,
 //! basic blocks, and instruction sequences.
 //!
 //! #### Builder Pattern Usage
@@ -277,7 +276,7 @@
 //! - **Fluent API**: Chain operations naturally
 //! - **Automatic SSA**: Manages variable assignments
 //! - **Block management**: Handles basic block creation and transitions
-//! - **Validation**: Ensures IR correctness during construction
+//! - **Validation**: Checks IR correctness during construction
 //!
 //! ### [`function`] - Function Definition and Control Flow
 //!
@@ -294,7 +293,7 @@
 //!    Return Types     Block Transitions        Scope Rules       Optimization
 //! ```
 //!
-//! #### Advanced Function Features
+//! #### Advanced Function
 //!
 //! ##### Function Annotations
 //! ```rust
@@ -385,10 +384,10 @@
 //! builder_b.call(Some("result"), "public_func", vec![]);
 //! ```
 //!
-//! ### [`types`] - Comprehensive Type System
+//! ### [`types`] - Type System
 //!
 //! The type system is the foundation of Lamina's safety and optimization capabilities.
-//! It provides both static guarantees and runtime efficiency.
+//! It has both static guarantees and runtime efficiency.
 //!
 //! #### Type Hierarchy and Properties
 //!
@@ -400,11 +399,11 @@
 //! | **Structs** | `{i32, f64}` | Field layout | Field access, construction |
 //! | **Functions** | `(i32, i32) -> i32` | Function pointer | Call, return |
 //!
-//! #### Type System Features
+//! #### Type System
 //!
 //! - **Memory Safety**: Bounds checking and null pointer prevention
 //! - **Optimization**: Types guide code generation and optimization
-//! - **Analysis**: Types enable static analysis and verification
+//! - **Analysis**: Types support static analysis and verification
 //! - **Interoperability**: Compatible with C ABI and other systems
 //!
 //! ## Advanced Memory Management Patterns
@@ -448,11 +447,11 @@
 //! store.i32 %element_ptr, 42
 //! ```
 //!
-//! ## Performance Optimization Features
+//! ## Performance Optimization
 //!
 //! ### Compiler Optimization Opportunities
 //!
-//! #### SSA-Enabled Optimizations
+//! #### SSA Optimizations
 //! - **Dead Code Elimination**: Remove unused variables and instructions
 //! - **Constant Propagation**: Replace variables with known constants
 //! - **Common Subexpression Elimination**: Reuse computed values
@@ -466,7 +465,7 @@
 //! #### Control Flow Optimization
 //! - **Block Merging**: Combine compatible basic blocks
 //! - **Jump Threading**: Simplify conditional branches
-//! - **Loop Unrolling**: Expand small loops for better ILP
+//! - **Loop Unrolling**: Expand small loops to improve ILP
 //! - **Tail Call Optimization**: Optimize recursive functions
 //!
 //! ### Performance Characteristics
@@ -474,7 +473,7 @@
 //! #### Memory Efficiency
 //! - **Zero-copy parsing**: String references avoid allocations
 //! - **Compact representation**: Minimal memory overhead for IR structures
-//! - **Efficient lookups**: HashMap-based symbol tables with O(1) access
+//! - **Lookups**: HashMap-based symbol tables with O(1) access
 //! - **Cache-friendly layout**: Contiguous memory for instruction sequences
 //!
 //! #### Analysis Performance
@@ -593,7 +592,7 @@
 //!
 //! ## Future Extensions and Roadmap
 //!
-//! ### Planned Features
+//! ### Planned
 //!
 //! #### Advanced Type System
 //! - **Generic types**: Parametric polymorphism
@@ -601,7 +600,7 @@
 //! - **Trait system**: Interface-based polymorphism
 //! - **Associated types**: Type families and relationships
 //!
-//! #### Enhanced Optimization
+//! #### Optimization
 //! - **Interprocedural analysis**: Cross-function optimizations
 //! - **Profile-guided optimization**: Runtime feedback integration
 //! - **Vectorization**: SIMD instruction generation
@@ -613,7 +612,7 @@
 //! - **Exception handling**: Try/catch semantics
 //! - **Coroutine support**: Asynchronous programming primitives
 //!
-//! #### Advanced Features
+//! #### Advanced
 //! - **Debug information**: Source-level debugging support
 //! - **Metadata annotations**: Rich program metadata
 //! - **Serialization**: Binary IR format for fast loading
@@ -621,14 +620,14 @@
 //!
 //! ### Extensibility Design
 //!
-//! The IR is designed to be highly extensible:
+//! The IR is extensible:
 //!
 //! - **New instruction types**: Easy to add through the instruction enum
 //! - **Custom optimization passes**: Plugin architecture for analysis and transformation
 //! - **Target-specific backends**: Clean separation of architecture-specific code
 //! - **User-defined types**: Runtime type system extension
 //!
-//! This modular design ensures that Lamina IR can evolve with new language features,
+//! This modular design lets Lamina IR evolve with new language features,
 //! optimization techniques, and target architectures while maintaining backward compatibility.
 pub mod builder;
 pub mod function;

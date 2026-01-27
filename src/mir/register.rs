@@ -1,6 +1,6 @@
 //! Register management for LUMIR.
 //!
-//! This module defines the register representation used in LUMIR, including
+//! Register representation used in LUMIR, including
 //! virtual registers (pre-allocation) and physical registers (post-allocation).
 //!
 //! ## Register Classes

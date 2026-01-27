@@ -1,8 +1,8 @@
 //! SIMD types and operations for LUMIR.
 //!
-//! This module defines SIMD (Single Instruction, Multiple Data) vector types
-//! and operations. SIMD operations enable parallel computation on multiple
-//! data elements simultaneously, improving performance for data-parallel workloads.
+//! SIMD (Single Instruction, Multiple Data) vector types
+//! and operations. SIMD operations do parallel computation on multiple
+//! data elements simultaneously.
 //!
 //! ## Vector Types
 //!
