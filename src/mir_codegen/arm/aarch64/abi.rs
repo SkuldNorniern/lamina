@@ -1,9 +1,35 @@
 //! AArch64 ABI utilities for symbol naming and calling conventions.
+//!
+//! # AArch64 ABI Documentation
+//!
+//! ## AAPCS64 (Linux, macOS)
+//!
+//! **Argument Registers** (first 8 arguments):
+//! 1. `x0` - 1st argument
+//! 2. `x1` - 2nd argument
+//! 3. `x2` - 3rd argument
+//! 4. `x3` - 4th argument
+//! 5. `x4` - 5th argument
+//! 6. `x5` - 6th argument
+//! 7. `x6` - 7th argument
+//! 8. `x7` - 8th argument
+//!
+//! **Stack Arguments**: 9th argument and beyond are passed on the stack, 16-byte aligned.
+//!
+//! **Return Register**: `x0` for integer returns, `v0` (or `d0`) for floating-point returns.
+//!
+//! **Caller-Saved Registers**: `x0-x18` (x16, x17 are IP0, IP1)
+//!
+//! **Callee-Saved Registers**: `x19-x30` (x29 is FP, x30 is LR)
+//!
+//! **Stack Alignment**: 16-byte aligned at function entry.
 
 use crate::mir_codegen::abi::{Abi, common_call_stub, mangle_macos_name};
 use lamina_platform::TargetOperatingSystem;
 
 /// Platform-specific ABI utilities for AArch64 code generation.
+///
+/// Implements the AAPCS64 (ARM Architecture Procedure Call Standard 64-bit) calling convention.
 pub struct AArch64ABI {
     target_os: TargetOperatingSystem,
 }

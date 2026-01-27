@@ -81,8 +81,10 @@ pub fn load_operand_to_register<W: std::io::Write>(
                 }
                 crate::mir::instruction::Immediate::F32(_)
                 | crate::mir::instruction::Immediate::F64(_) => {
-                    writeln!(writer, "    # TODO: floating point immediates")?;
-                    writeln!(writer, "    mv {}, zero", dest_reg)?;
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "RISC-V: Floating-point immediates not yet implemented. Use integer types or load from memory instead.",
+                    ));
                 }
             }
             Ok(())

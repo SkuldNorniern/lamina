@@ -1,9 +1,47 @@
 //! x86_64 ABI utilities for different platforms.
+//!
+//! # x86_64 ABI Documentation
+//!
+//! ## System V AMD64 (Linux, macOS)
+//!
+//! **Argument Registers** (first 6 arguments):
+//! 1. `%rdi` - 1st argument
+//! 2. `%rsi` - 2nd argument
+//! 3. `%rdx` - 3rd argument
+//! 4. `%rcx` - 4th argument
+//! 5. `%r8` - 5th argument
+//! 6. `%r9` - 6th argument
+//!
+//! **Stack Arguments**: 7th argument and beyond are passed on the stack, pushed right-to-left.
+//!
+//! **Return Register**: `%rax` for integer returns, `%xmm0` for floating-point returns.
+//!
+//! **Caller-Saved Registers**: `%rax`, `%rcx`, `%rdx`, `%rsi`, `%rdi`, `%r8`, `%r9`, `%r10`, `%r11`
+//!
+//! **Callee-Saved Registers**: `%rbx`, `%rbp`, `%r12`, `%r13`, `%r14`, `%r15`
+//!
+//! **Stack Alignment**: 16-byte aligned at function entry.
+//!
+//! ## Microsoft x64 (Windows)
+//!
+//! **Argument Registers** (first 4 arguments):
+//! 1. `%rcx` - 1st argument
+//! 2. `%rdx` - 2nd argument
+//! 3. `%r8` - 3rd argument
+//! 4. `%r9` - 4th argument
+//!
+//! **Shadow Space**: 32 bytes of shadow space allocated before stack arguments.
+//!
+//! **Stack Arguments**: 5th argument and beyond are passed on the stack in shadow space.
+//!
+//! **Return Register**: `%rax` for integer returns, `%xmm0` for floating-point returns.
 
 use crate::mir_codegen::abi::{Abi, common_call_stub, mangle_macos_name};
 use lamina_platform::TargetOperatingSystem;
 
 /// Platform-specific ABI utilities for x86_64 code generation.
+///
+/// Supports both System V AMD64 (Linux, macOS) and Microsoft x64 (Windows) calling conventions.
 pub struct X86ABI {
     target_os: TargetOperatingSystem,
 }
