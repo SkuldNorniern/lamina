@@ -1,6 +1,6 @@
 //! AArch64 code generation for MIR (Mid-level IR).
 //!
-//! This module provides code generation from MIR to AArch64 assembly,
+//! Code generation from MIR to AArch64 assembly,
 //! following the AAPCS64 calling convention.
 
 mod abi;

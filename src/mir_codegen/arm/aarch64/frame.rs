@@ -1,6 +1,6 @@
 //! Stack frame layout for AArch64 code generation.
 //!
-//! This module provides frame mapping for virtual registers to stack slots.
+//! Frame mapping for virtual registers to stack slots.
 
 use crate::mir::{Function, Register};
 use std::collections::{HashMap, HashSet};

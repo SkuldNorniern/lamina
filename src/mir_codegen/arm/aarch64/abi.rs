@@ -18,6 +18,27 @@
 //!
 //! **Return Register**: `x0` for integer returns, `v0` (or `d0`) for floating-point returns.
 //!
+//! ## Example: Function Call Codegen
+//!
+//! ```text
+//! # Calling function foo(x, y, z) where x, y, z are in x10, x11, x12
+//! mov x0, x10      # First argument in x0
+//! mov x1, x11      # Second argument in x1
+//! mov x2, x12      # Third argument in x2
+//! bl foo           # Call function (or _foo on macOS)
+//! mov x13, x0      # Save return value from x0
+//!
+//! # Calling function with 10 arguments (8 in registers, 2 on stack)
+//! mov x0, x10      # arg1
+//! mov x1, x11      # arg2
+//! # ... args 3-8 in x2-x7
+//! sub sp, sp, #16  # Allocate stack space (16-byte aligned)
+//! str x18, [sp]    # arg9 on stack
+//! str x19, [sp, #8] # arg10 on stack
+//! bl bar
+//! add sp, sp, #16  # Clean up stack
+//! ```
+//!
 //! **Caller-Saved Registers**: `x0-x18` (x16, x17 are IP0, IP1)
 //!
 //! **Callee-Saved Registers**: `x19-x30` (x29 is FP, x30 is LR)
@@ -93,5 +114,89 @@ impl Abi for AArch64ABI {
 
     fn call_stub(&self, name: &str) -> Option<String> {
         AArch64ABI::call_stub(self, name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_aarch64_abi_new() {
+        let abi = AArch64ABI::new(TargetOperatingSystem::Linux);
+        assert_eq!(abi.target_os(), TargetOperatingSystem::Linux);
+
+        let abi_macos = AArch64ABI::new(TargetOperatingSystem::MacOS);
+        assert_eq!(abi_macos.target_os(), TargetOperatingSystem::MacOS);
+    }
+
+    #[test]
+    fn test_aarch64_mangle_function_name() {
+        let abi_linux = AArch64ABI::new(TargetOperatingSystem::Linux);
+        assert_eq!(abi_linux.mangle_function_name("main"), "main");
+        assert_eq!(abi_linux.mangle_function_name("foo"), "foo");
+        assert_eq!(abi_linux.mangle_function_name("my_func"), "my_func");
+
+        let abi_macos = AArch64ABI::new(TargetOperatingSystem::MacOS);
+        assert_eq!(abi_macos.mangle_function_name("main"), "_main");
+        assert_eq!(abi_macos.mangle_function_name("foo"), "_foo");
+        assert_eq!(abi_macos.mangle_function_name("my_func"), "_my_func");
+    }
+
+    #[test]
+    fn test_aarch64_call_stub() {
+        let abi_linux = AArch64ABI::new(TargetOperatingSystem::Linux);
+        assert_eq!(abi_linux.call_stub("print"), Some("printf".to_string()));
+        assert_eq!(abi_linux.call_stub("malloc"), Some("malloc".to_string()));
+        assert_eq!(abi_linux.call_stub("dealloc"), Some("free".to_string()));
+        assert_eq!(abi_linux.call_stub("unknown"), None);
+
+        let abi_macos = AArch64ABI::new(TargetOperatingSystem::MacOS);
+        assert_eq!(abi_macos.call_stub("print"), Some("_printf".to_string()));
+        assert_eq!(abi_macos.call_stub("malloc"), Some("_malloc".to_string()));
+    }
+
+    #[test]
+    fn test_aarch64_arg_registers() {
+        assert_eq!(AArch64ABI::ARG_REGISTERS.len(), 8);
+        assert_eq!(AArch64ABI::ARG_REGISTERS[0], "x0");
+        assert_eq!(AArch64ABI::ARG_REGISTERS[7], "x7");
+    }
+
+    #[test]
+    fn test_aarch64_caller_saved_registers() {
+        assert_eq!(AArch64ABI::CALLER_SAVED_REGISTERS.len(), 18);
+        assert!(AArch64ABI::CALLER_SAVED_REGISTERS.contains(&"x0"));
+        assert!(AArch64ABI::CALLER_SAVED_REGISTERS.contains(&"x15"));
+    }
+
+    #[test]
+    fn test_aarch64_callee_saved_registers() {
+        assert_eq!(AArch64ABI::CALLEE_SAVED_REGISTERS.len(), 12);
+        assert!(AArch64ABI::CALLEE_SAVED_REGISTERS.contains(&"x19"));
+        assert!(AArch64ABI::CALLEE_SAVED_REGISTERS.contains(&"x30"));
+    }
+
+    #[test]
+    fn test_aarch64_get_global_directive() {
+        let abi_linux = AArch64ABI::new(TargetOperatingSystem::Linux);
+        assert_eq!(
+            abi_linux.get_global_directive("main"),
+            Some(".globl main".to_string())
+        );
+        assert_eq!(
+            abi_linux.get_global_directive("foo"),
+            Some(".globl foo".to_string())
+        );
+
+        let abi_macos = AArch64ABI::new(TargetOperatingSystem::MacOS);
+        assert_eq!(
+            abi_macos.get_global_directive("main"),
+            Some(".globl _main".to_string())
+        );
+        assert_eq!(
+            abi_macos.get_global_directive("foo"),
+            Some(".globl _foo".to_string())
+        );
     }
 }
