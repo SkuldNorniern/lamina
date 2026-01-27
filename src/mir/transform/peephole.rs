@@ -5,9 +5,9 @@ use crate::mir::{Block, Function};
 
 use super::{Transform, TransformCategory, TransformLevel};
 
-/// Advanced peephole optimizations performing local rewrites.
+/// Peephole optimizations that do local rewrites.
 ///
-/// Performs arithmetic identities, comparison optimizations, constant folding,
+/// Handles arithmetic identities, comparison optimizations, constant folding,
 /// strength reduction, and address calculation optimizations.
 #[derive(Default)]
 pub struct Peephole;
@@ -18,7 +18,7 @@ impl Transform for Peephole {
     }
 
     fn description(&self) -> &'static str {
-        "Advanced local rewrites for arithmetic, comparison, and algebraic optimizations"
+        "Local rewrites for arithmetic, comparison, and algebraic optimizations"
     }
 
     fn category(&self) -> TransformCategory {
@@ -663,6 +663,312 @@ mod tests {
                 assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
             }
             _ => panic!("Expected IntBinary (move)"),
+        }
+    }
+
+    #[test]
+    fn test_peephole_empty_function() {
+        let mut func = Function::new(crate::mir::function::Signature::new("empty"))
+            .with_entry("entry".to_string());
+        let bb = Block::new("entry");
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_peephole_no_canonicalization_loop() {
+        // Test that canonicalization doesn't cause infinite swap loop
+        // imm + reg should become reg + imm and stay that way
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(5)),
+            rhs: Operand::Register(Register::Virtual(VirtualReg::gpr(1))),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+
+        // Run multiple times to ensure no infinite loop
+        for _ in 0..10 {
+            pass.run_on_function(&mut func);
+        }
+
+        // LHS should be register now
+        match &func.blocks[0].instructions[0] {
+            Instruction::IntBinary { lhs, rhs, .. } => {
+                assert!(matches!(lhs, Operand::Register(_)));
+                assert!(matches!(rhs, Operand::Immediate(_)));
+            }
+            _ => panic!("Expected IntBinary"),
+        }
+    }
+
+    #[test]
+    fn test_peephole_division_by_zero_not_folded() {
+        // Division by zero should not be constant-folded
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::SDiv,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(10)),
+            rhs: Operand::Immediate(Immediate::I64(0)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+
+        // Should NOT fold division by zero
+        assert!(!changed);
+        match &func.blocks[0].instructions[0] {
+            Instruction::IntBinary { op, rhs, .. } => {
+                assert_eq!(*op, IntBinOp::SDiv);
+                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            }
+            _ => panic!("Expected IntBinary"),
+        }
+    }
+
+    #[test]
+    fn test_peephole_i64_min_div_neg_one() {
+        // i64::MIN / -1 would overflow, should not be folded
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::SDiv,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(i64::MIN)),
+            rhs: Operand::Immediate(Immediate::I64(-1)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+
+        // Should NOT fold due to overflow
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_peephole_overflow_add_not_folded() {
+        // Overflow in constant folding should be skipped
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(i64::MAX)),
+            rhs: Operand::Immediate(Immediate::I64(1)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+
+        // Checked_add returns None on overflow, so no fold
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_peephole_mul_zero_result() {
+        // x * 0 = 0 is a valid transformation
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Mul,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Register(Register::Virtual(VirtualReg::gpr(1))),
+            rhs: Operand::Immediate(Immediate::I64(0)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed);
+        // Result should be 0 + 0 (constant zero)
+        match &func.blocks[0].instructions[0] {
+            Instruction::IntBinary { op, lhs, rhs, .. } => {
+                assert_eq!(*op, IntBinOp::Add);
+                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(0)));
+                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            }
+            _ => panic!("Expected IntBinary"),
+        }
+    }
+
+    #[test]
+    fn test_peephole_xor_self_is_zero() {
+        // x ^ x = 0
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        let reg = Register::Virtual(VirtualReg::gpr(1));
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Xor,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Register(reg.clone()),
+            rhs: Operand::Register(reg),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed);
+        match &func.blocks[0].instructions[0] {
+            Instruction::IntBinary { lhs, rhs, .. } => {
+                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(0)));
+                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            }
+            _ => panic!("Expected IntBinary"),
+        }
+    }
+
+    #[test]
+    fn test_peephole_and_zero_is_zero() {
+        // x & 0 = 0
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::And,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Register(Register::Virtual(VirtualReg::gpr(1))),
+            rhs: Operand::Immediate(Immediate::I64(0)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+
+        assert!(changed);
+        match &func.blocks[0].instructions[0] {
+            Instruction::IntBinary { lhs, rhs, .. } => {
+                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(0)));
+                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            }
+            _ => panic!("Expected IntBinary"),
+        }
+    }
+
+    #[test]
+    fn test_peephole_shift_bounds() {
+        // Shift by >= 64 should not be folded (undefined behavior)
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntBinary {
+            op: IntBinOp::Shl,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(1)),
+            rhs: Operand::Immediate(Immediate::I64(64)), // Out of bounds
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+
+        // Should NOT fold shift by 64+
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_peephole_stress_many_instructions() {
+        // Ensure peephole doesn't hang on large blocks
+        let mut func = Function::new(crate::mir::function::Signature::new("stress"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+
+        for i in 0..1000 {
+            bb.push(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: Register::Virtual(VirtualReg::gpr(i)),
+                lhs: Operand::Immediate(Immediate::I64(i as i64)),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            });
+        }
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        // Constant folding should occur
+        assert!(changed);
+    }
+
+    #[test]
+    fn test_peephole_unsigned_cmp_folding() {
+        // ULt: 0 < 1 is true for unsigned
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntCmp {
+            op: crate::mir::IntCmpOp::ULt,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(0)),
+            rhs: Operand::Immediate(Immediate::I64(1)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+
+        // Should fold to 1 (true)
+        match &func.blocks[0].instructions[0] {
+            Instruction::IntBinary { lhs, .. } => {
+                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(1)));
+            }
+            _ => panic!("Expected IntBinary"),
+        }
+    }
+
+    #[test]
+    fn test_peephole_negative_unsigned_cmp() {
+        // -1 as unsigned is MAX, so -1 > 0 (unsigned) is true
+        let mut func = Function::new(crate::mir::function::Signature::new("f"))
+            .with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::IntCmp {
+            op: crate::mir::IntCmpOp::UGt,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
+            lhs: Operand::Immediate(Immediate::I64(-1)), // u64::MAX
+            rhs: Operand::Immediate(Immediate::I64(0)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole::default();
+        let changed = pass.run_on_function(&mut func);
+        assert!(changed);
+
+        match &func.blocks[0].instructions[0] {
+            Instruction::IntBinary { lhs, .. } => {
+                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(1))); // true
+            }
+            _ => panic!("Expected IntBinary"),
         }
     }
 }

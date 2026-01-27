@@ -1,6 +1,6 @@
 //! Control flow graph (CFG) simplification transforms.
 //!
-//! This module provides transforms that simplify the control flow graph:
+//! Transforms that simplify the control flow graph:
 //!
 //! - **CfgSimplify**: Simplifies trivial branches and selects
 //! - **JumpThreading**: Bypasses trivial jump-only blocks
@@ -149,7 +149,7 @@ impl CfgSimplify {
 
 /// CFG Jump Threading / Target Bypass
 /// Rewrites branches/jumps that target trivial jump-only blocks to jump directly
-/// to the final destination. This reduces unnecessary hops and helps other passes.
+/// to the final destination. This reduces unnecessary hops and makes other passes more effective.
 #[derive(Default)]
 pub struct JumpThreading;
 

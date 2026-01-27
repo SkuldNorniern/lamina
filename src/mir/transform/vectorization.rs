@@ -1,7 +1,7 @@
 //! Auto-vectorization transform for MIR.
 //!
-//! This transform automatically converts scalar operations in loops to SIMD vector
-//! operations for improved performance. This is an O3 nightly/unstable feature.
+//! This transform converts scalar operations in loops to SIMD vector
+//! operations. This is an O3 nightly/unstable feature.
 //!
 //! Requires `#[cfg(feature = "nightly")]` to compile.
 
@@ -17,7 +17,7 @@ use std::collections::{HashMap, HashSet};
 /// Auto-vectorization transform that converts scalar loop operations to SIMD.
 ///
 /// This transform identifies loops with sequential memory access patterns and
-/// converts scalar arithmetic operations to vector operations for speedup.
+/// converts scalar arithmetic operations to vector operations.
 #[derive(Default)]
 pub struct AutoVectorization;
 
@@ -288,7 +288,7 @@ impl AutoVectorization {
         }
 
         // For now, we'll vectorize simple patterns
-        // This is a basic implementation - more sophisticated analysis can be added later
+        // This is a basic implementation - more analysis can be added later
         let mut changed = false;
 
         for pattern in patterns {
@@ -455,7 +455,7 @@ impl AutoVectorization {
     }
 
     /// Check if two address modes represent sequential access
-    /// More aggressive: allows larger offset differences and different base registers
+    /// More aggressive: permits larger offset differences and different base registers
     fn is_sequential_access(&self, load_addr: &AddressMode, store_addr: &AddressMode) -> bool {
         match (load_addr, store_addr) {
             (
