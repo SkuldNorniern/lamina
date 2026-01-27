@@ -378,12 +378,30 @@ fn emit_instruction_riscv<W: Write>(
         MirInst::Load {
             dst,
             addr,
-            ty: _,
+            ty,
             attrs: _,
         } => {
+            let load_op = match ty {
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
+                | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "lb",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => "lh",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "lw",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
+                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "ld",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
+                | crate::mir::MirType::Scalar(crate::mir::ScalarType::F64)
+                | crate::mir::MirType::Vector(_) => {
+                    return Err(crate::error::LaminaError::CodegenError(
+                        crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                            "RISC-V load unsupported for type {:?}",
+                            ty
+                        )),
+                    ));
+                }
+            };
+
             match addr {
                 crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
-                    // Load base address into t0
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?
@@ -391,30 +409,50 @@ fn emit_instruction_riscv<W: Write>(
                         Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
                     }
 
-                    // Load value from [t0 + offset] into a0
-                    // TODO: Handle different types (lw vs ld) based on ty
-                    writeln!(writer, "    ld a0, {}(t0)", offset)?;
+                    writeln!(writer, "    {} a0, {}(t0)", load_op, offset)?;
 
-                    // Store a0 into dst
                     if let Register::Virtual(vreg) = dst {
                         store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
                     }
                 }
-                _ => writeln!(writer, "    # TODO: complex addressing modes for Load")?,
+                _ => {
+                    return Err(crate::error::LaminaError::CodegenError(
+                        crate::mir_codegen::CodegenError::UnsupportedFeature(
+                            "RISC-V load supports only base+offset addressing".to_string(),
+                        ),
+                    ));
+                }
             }
         }
         MirInst::Store {
             addr,
             src,
-            ty: _,
+            ty,
             attrs: _,
         } => {
-            // Load value to store into a0
+            let store_op = match ty {
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
+                | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "sb",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => "sh",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "sw",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
+                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "sd",
+                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
+                | crate::mir::MirType::Scalar(crate::mir::ScalarType::F64)
+                | crate::mir::MirType::Vector(_) => {
+                    return Err(crate::error::LaminaError::CodegenError(
+                        crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                            "RISC-V store unsupported for type {:?}",
+                            ty
+                        )),
+                    ));
+                }
+            };
+
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "a0")?;
 
             match addr {
                 crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
-                    // Load base address into t0
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?
@@ -422,11 +460,15 @@ fn emit_instruction_riscv<W: Write>(
                         Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
                     }
 
-                    // Store a0 into [t0 + offset]
-                    // TODO: Handle different types (sw vs sd) based on ty
-                    writeln!(writer, "    sd a0, {}(t0)", offset)?;
+                    writeln!(writer, "    {} a0, {}(t0)", store_op, offset)?;
                 }
-                _ => writeln!(writer, "    # TODO: complex addressing modes for Store")?,
+                _ => {
+                    return Err(crate::error::LaminaError::CodegenError(
+                        crate::mir_codegen::CodegenError::UnsupportedFeature(
+                            "RISC-V store supports only base+offset addressing".to_string(),
+                        ),
+                    ));
+                }
             }
         }
         MirInst::Ret { value } => {
@@ -452,7 +494,11 @@ fn emit_instruction_riscv<W: Write>(
             }
         }
         _ => {
-            writeln!(writer, "    # TODO: unimplemented instruction")?;
+            return Err(crate::error::LaminaError::CodegenError(
+                crate::mir_codegen::CodegenError::UnsupportedFeature(
+                    "RISC-V instruction not yet supported".to_string(),
+                ),
+            ));
         }
     }
 
