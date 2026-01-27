@@ -317,6 +317,166 @@ mod tests {
         let stats = pipeline.apply_to_module(&mut module).unwrap();
         assert_eq!(stats.transforms_run, 0); // No functions in module
     }
+
+    #[test]
+    fn test_phase_ordering_o1_passes() {
+        // Test that O1 passes work together
+        let func = FunctionBuilder::new("test")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .build();
+
+        let mut func = func;
+        let pipeline = TransformPipeline::default_for_opt_level(1);
+        let stats = pipeline.apply_to_function(&mut func).unwrap();
+        assert!(stats.transforms_run > 0);
+    }
+
+    #[test]
+    fn test_phase_ordering_o2_passes() {
+        // Test that O2 passes work together
+        let func = FunctionBuilder::new("test")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .build();
+
+        let mut func = func;
+        let pipeline = TransformPipeline::default_for_opt_level(2);
+        let stats = pipeline.apply_to_function(&mut func).unwrap();
+        assert!(stats.transforms_run > 0);
+    }
+
+    #[test]
+    fn test_phase_ordering_o3_passes() {
+        // Test that O3 passes work together
+        let func = FunctionBuilder::new("test")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .build();
+
+        let mut func = func;
+        let pipeline = TransformPipeline::default_for_opt_level(3);
+        let stats = pipeline.apply_to_function(&mut func).unwrap();
+        assert!(stats.transforms_run > 0);
+    }
+
+    #[test]
+    fn test_phase_ordering_cfg_then_constant_folding() {
+        // Test that CFG simplification before constant folding works
+        use crate::mir::instruction::{Instruction, IntBinOp, Operand};
+        use crate::mir::register::Register;
+
+        let func = FunctionBuilder::new("test")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: Register::Virtual(VirtualReg::gpr(1)),
+                lhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(5)),
+                rhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(3)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(1)))),
+            })
+            .build();
+
+        let mut func = func;
+        let pipeline = TransformPipeline::new()
+            .add_transform(CfgSimplify)
+            .add_transform(ConstantFolding);
+        let stats = pipeline.apply_to_function(&mut func).unwrap();
+        assert!(stats.transforms_run == 2);
+    }
+
+    #[test]
+    fn test_phase_ordering_dce_after_optimizations() {
+        // Test that DCE after other optimizations works correctly
+        use crate::mir::instruction::{Instruction, IntBinOp, Operand};
+        use crate::mir::register::Register;
+
+        let func = FunctionBuilder::new("test")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: Register::Virtual(VirtualReg::gpr(1)),
+                lhs: Operand::Register(Register::Virtual(VirtualReg::gpr(0))),
+                rhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(0)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(0)))),
+            })
+            .build();
+
+        let mut func = func;
+        let pipeline = TransformPipeline::new()
+            .add_transform(Peephole)
+            .add_transform(DeadCodeElimination);
+        let stats = pipeline.apply_to_function(&mut func).unwrap();
+        assert!(stats.transforms_run == 2);
+    }
+
+    #[test]
+    fn test_regression_branch_optimization_disabled() {
+        // Regression test: BranchOptimization is disabled, verify it's not in default pipeline
+        let pipeline_o1 = TransformPipeline::default_for_opt_level(1);
+        let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
+        let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
+
+        let names_o1: Vec<&str> = pipeline_o1.transform_names();
+        let names_o2: Vec<&str> = pipeline_o2.transform_names();
+        let names_o3: Vec<&str> = pipeline_o3.transform_names();
+
+        // BranchOptimization should not be in any default pipeline
+        assert!(!names_o1.contains(&"branch_optimization"));
+        assert!(!names_o2.contains(&"branch_optimization"));
+        assert!(!names_o3.contains(&"branch_optimization"));
+    }
+
+    #[test]
+    fn test_regression_copy_propagation_disabled() {
+        // Regression test: CopyPropagation is disabled, verify it's not in default pipeline
+        let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
+        let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
+
+        let names_o2: Vec<&str> = pipeline_o2.transform_names();
+        let names_o3: Vec<&str> = pipeline_o3.transform_names();
+
+        // CopyPropagation should not be in default pipelines
+        assert!(!names_o2.contains(&"copy_propagation"));
+        assert!(!names_o3.contains(&"copy_propagation"));
+    }
+
+    #[test]
+    fn test_regression_function_inlining_disabled() {
+        // Regression test: FunctionInlining is disabled, verify it's not in default pipeline
+        let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
+        let names_o3: Vec<&str> = pipeline_o3.transform_names();
+
+        // FunctionInlining should not be in default O3 pipeline
+        assert!(!names_o3.contains(&"function_inlining"));
+    }
+
+    #[test]
+    fn test_regression_addressing_canonicalization_disabled() {
+        // Regression test: AddressingCanonicalization is disabled
+        let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
+        let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
+
+        let names_o2: Vec<&str> = pipeline_o2.transform_names();
+        let names_o3: Vec<&str> = pipeline_o3.transform_names();
+
+        // AddressingCanonicalization should not be in default pipelines
+        assert!(!names_o2.contains(&"addressing_canonicalization"));
+        assert!(!names_o3.contains(&"addressing_canonicalization"));
+    }
 }
 
 /// Categories of transformations.
