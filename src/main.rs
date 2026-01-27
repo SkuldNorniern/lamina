@@ -753,12 +753,15 @@ fn handle_jit_compilation(
             );
         }
 
-        lamina::runtime::execute_jit_function(
-            &func.sig,
-            runtime_result.function_ptr,
-            None,
-            options.verbose,
-        )?;
+        unsafe {
+            lamina::runtime::execute_jit_function(
+                &func.sig,
+                runtime_result.function_ptr,
+                None,
+                options.verbose,
+                Some(func),
+            )?;
+        }
     }
 
     Ok(())

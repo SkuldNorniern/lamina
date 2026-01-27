@@ -441,13 +441,15 @@ macro_rules! lamina {
             if args.len() != *param_count {
                 return None;
             }
-            match $crate::runtime::execute_jit_function(
-                signature,
-                *function_ptr,
-                Some(args),
-                false,
-                Some(function),
-            ) {
+            match unsafe {
+                $crate::runtime::execute_jit_function(
+                    signature,
+                    *function_ptr,
+                    Some(args),
+                    false,
+                    Some(function),
+                )
+            } {
                 Ok(result) => result,
                 Err(_) => None,
             }
