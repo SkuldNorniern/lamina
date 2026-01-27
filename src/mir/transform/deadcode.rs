@@ -319,4 +319,246 @@ mod tests {
             _ => panic!("Expected IntBinary"),
         }
     }
+
+    #[test]
+    fn test_dce_empty_function() {
+        // Test with empty function - should not panic
+        let mut func = FunctionBuilder::new("empty")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let dce = DeadCodeElimination::default();
+        let result = dce.apply(&mut func);
+        assert!(result.is_ok());
+        assert!(!result.unwrap()); // No changes expected
+    }
+
+    #[test]
+    fn test_dce_single_block_all_live() {
+        // All instructions are live - nothing should be removed
+        let mut func = FunctionBuilder::new("all_live")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        let dce = DeadCodeElimination::default();
+        let changed = dce.apply(&mut func).expect("should succeed");
+        assert!(!changed);
+        assert_eq!(func.blocks[0].instructions.len(), 2);
+    }
+
+    #[test]
+    fn test_dce_preserves_terminators() {
+        // Terminators must never be removed even if they define no live registers
+        let mut func = FunctionBuilder::new("terminators")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "exit".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let dce = DeadCodeElimination::default();
+        let result = dce.apply(&mut func);
+        assert!(result.is_ok());
+
+        // Jmp and Ret should still exist
+        let entry = func.get_block("entry").unwrap();
+        assert!(matches!(
+            entry.instructions.last(),
+            Some(Instruction::Jmp { .. })
+        ));
+    }
+
+    #[test]
+    fn test_dce_preserves_side_effects() {
+        // Store and Call have side effects - must not be removed
+        let mut func = FunctionBuilder::new("side_effects")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Store {
+                ty: MirType::Scalar(ScalarType::I64),
+                src: Operand::Immediate(Immediate::I64(42)),
+                addr: crate::mir::AddressMode::BaseOffset {
+                    base: VirtualReg::gpr(0).into(),
+                    offset: 0,
+                },
+                attrs: crate::mir::MemoryAttrs::default(),
+            })
+            .instr(Instruction::Call {
+                name: "print".to_string(),
+                args: vec![Operand::Immediate(Immediate::I64(1))],
+                ret: None,
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
+            .build();
+
+        let dce = DeadCodeElimination::default();
+        let changed = dce.apply(&mut func).expect("should succeed");
+
+        // Store and Call should remain
+        assert!(!changed);
+        assert_eq!(func.blocks[0].instructions.len(), 3);
+    }
+
+    #[test]
+    fn test_dce_chain_of_dead_instructions() {
+        // Chain of dead instructions: v1 = f(v0), v2 = f(v1), v3 = f(v2)
+        // None used in return
+        let mut func = FunctionBuilder::new("dead_chain")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(2).into(),
+                lhs: Operand::Register(VirtualReg::gpr(1).into()),
+                rhs: Operand::Immediate(Immediate::I64(2)),
+            })
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(3).into(),
+                lhs: Operand::Register(VirtualReg::gpr(2).into()),
+                rhs: Operand::Immediate(Immediate::I64(3)),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(99))),
+            })
+            .build();
+
+        let dce = DeadCodeElimination::default();
+        let changed = dce.apply(&mut func).expect("should succeed");
+        assert!(changed);
+        // Only return should remain
+        assert_eq!(func.blocks[0].instructions.len(), 1);
+    }
+
+    #[test]
+    fn test_dce_multi_block_liveness() {
+        // Value defined in entry, used in exit block
+        let mut func = FunctionBuilder::new("multi_block")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(10)),
+            })
+            .instr(Instruction::Jmp {
+                target: "exit".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        let dce = DeadCodeElimination::default();
+        let changed = dce.apply(&mut func).expect("should succeed");
+
+        // v1 is used in exit block, so entry's add should remain
+        assert!(!changed);
+        let entry = func.get_block("entry").unwrap();
+        assert_eq!(entry.instructions.len(), 2);
+    }
+
+    #[test]
+    fn test_dce_loop_back_edge_liveness() {
+        // Test liveness across loop back-edge
+        // v0 defined in entry, used in loop, loop branches back
+        let mut func = FunctionBuilder::new("loop_liveness")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "loop".to_string(),
+            })
+            .block("loop")
+            .instr(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(0).into(),
+                lhs: Operand::Register(VirtualReg::gpr(0).into()),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(0).into(),
+                true_target: "loop".to_string(),
+                false_target: "exit".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
+            .build();
+
+        let dce = DeadCodeElimination::default();
+        let result = dce.apply(&mut func);
+        assert!(result.is_ok());
+
+        // Loop body should be preserved (v0 is used)
+        let loop_block = func.get_block("loop").unwrap();
+        assert_eq!(loop_block.instructions.len(), 2);
+    }
+
+    #[test]
+    fn test_dce_does_not_infinite_loop() {
+        // Stress test: large function should not cause infinite loop
+        let mut func = FunctionBuilder::new("stress")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .build();
+
+        // Add 500 dead instructions
+        for i in 0..500 {
+            func.blocks[0].instructions.insert(
+                0,
+                Instruction::IntBinary {
+                    op: IntBinOp::Add,
+                    ty: MirType::Scalar(ScalarType::I64),
+                    dst: VirtualReg::gpr(i + 1).into(),
+                    lhs: Operand::Immediate(Immediate::I64(i as i64)),
+                    rhs: Operand::Immediate(Immediate::I64(1)),
+                },
+            );
+        }
+        func.blocks[0].instructions.push(Instruction::Ret {
+            value: Some(Operand::Immediate(Immediate::I64(0))),
+        });
+
+        let dce = DeadCodeElimination::default();
+        let result = dce.apply(&mut func);
+        assert!(result.is_ok());
+        // All dead instructions should be removed, only ret remains
+        assert_eq!(func.blocks[0].instructions.len(), 1);
+    }
 }

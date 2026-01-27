@@ -52,7 +52,7 @@ impl TailCallOptimization {
         let _sig = &func.sig;
         // We need to bypass the borrow checker restriction on `func` being borrowed mutably for blocks
         // while we need `sig`. Since `sig` and `blocks` are disjoint fields, we can destructure or just clone signature if needed.
-        // Cloning signature is safe but slightly inefficient.
+        // Cloning signature is safe but not ideal.
         // However, `Function` struct definition:
         // struct Function { sig, blocks, entry }
         // We can't easily iterate `func.blocks` mutably while holding `&func.sig` because `func` is borrowed.
@@ -145,8 +145,8 @@ impl TailCallOptimization {
 
     /// Check if a function is suitable for tail call optimization
     ///
-    /// This now supports generalized tail calls (not just self-recursion) by strictly
-    /// checking signature compatibility, which is crucial for Windows x86 (stdcall).
+    /// Handles generalized tail calls (not just self-recursion) by strictly
+    /// checking signature compatibility. This is required for Windows x86 (stdcall).
     ///
     /// Helper for checking if the caller and callee have compatible signatures.
     /// Since we don't have access to the callee's definition here, we infer its

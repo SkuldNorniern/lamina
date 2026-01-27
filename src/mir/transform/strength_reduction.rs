@@ -84,7 +84,7 @@ impl StrengthReduction {
         }
     }
 
-    /// Reduce multiplication operations with enhanced patterns for matrix operations
+    /// Reduce multiplication operations, including patterns for matrix operations
     fn reduce_multiplication(
         &self,
         op: &mut IntBinOp,

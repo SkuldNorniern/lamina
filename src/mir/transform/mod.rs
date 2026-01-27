@@ -132,10 +132,14 @@ impl TransformPipeline {
         if opt_level >= 1 {
             pipeline = pipeline.add_transform(CfgSimplify);
             pipeline = pipeline.add_transform(JumpThreading);
+            // NOTE: BranchOptimization disabled - causes infinite loop at O3
+            // pipeline = pipeline.add_transform(BranchOptimization);
         }
 
         if opt_level >= 2 {
             pipeline = pipeline.add_transform(ConstantFolding);
+            // NOTE: CopyPropagation disabled - causes infinite loop at O3
+            // pipeline = pipeline.add_transform(CopyPropagation);
             pipeline = pipeline.add_transform(MemoryOptimization);
             pipeline = pipeline.add_transform(DeadCodeElimination);
             pipeline = pipeline.add_transform(TailCallOptimization);
@@ -425,7 +429,7 @@ mod tests {
 
     #[test]
     fn test_regression_branch_optimization_disabled() {
-        // Regression test: BranchOptimization is disabled, verify it's not in default pipeline
+        // Regression test: BranchOptimization is disabled due to infinite loop bug
         let pipeline_o1 = TransformPipeline::default_for_opt_level(1);
         let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
         let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
@@ -434,7 +438,7 @@ mod tests {
         let names_o2: Vec<&str> = pipeline_o2.transform_names();
         let names_o3: Vec<&str> = pipeline_o3.transform_names();
 
-        // BranchOptimization should not be in any default pipeline
+        // BranchOptimization should NOT be in any default pipeline until bug is fixed
         assert!(!names_o1.contains(&"branch_optimization"));
         assert!(!names_o2.contains(&"branch_optimization"));
         assert!(!names_o3.contains(&"branch_optimization"));
@@ -442,14 +446,14 @@ mod tests {
 
     #[test]
     fn test_regression_copy_propagation_disabled() {
-        // Regression test: CopyPropagation is disabled, verify it's not in default pipeline
+        // Regression test: CopyPropagation is disabled due to infinite loop bug
         let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
         let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
 
         let names_o2: Vec<&str> = pipeline_o2.transform_names();
         let names_o3: Vec<&str> = pipeline_o3.transform_names();
 
-        // CopyPropagation should not be in default pipelines
+        // CopyPropagation should NOT be in default pipelines until bug is fixed
         assert!(!names_o2.contains(&"copy_propagation"));
         assert!(!names_o3.contains(&"copy_propagation"));
     }
@@ -484,20 +488,20 @@ mod tests {
 pub enum TransformCategory {
     /// Removes code that doesn't affect program output.
     DeadCodeElimination,
-    /// Expands function calls inline for performance.
+    /// Expands function calls inline.
     Inlining,
     /// Evaluates constant expressions at compile time.
     ConstantFolding,
     /// Replaces variable copies with their source values.
     CopyPropagation,
-    /// Chooses optimal machine instructions.
+    /// Chooses machine instructions.
     InstructionSelection,
-    /// Optimizes control flow patterns.
+    /// Optimizes control flow.
     ControlFlowOptimization,
-    /// Optimizes arithmetic operations.
+    /// Optimizes arithmetic.
     ArithmeticOptimization,
-    /// Optimizes memory access patterns.
+    /// Optimizes memory access.
     MemoryOptimization,
-    /// Auto-vectorizes scalar operations using SIMD.
+    /// Vectorizes scalar operations using SIMD.
     Vectorization,
 }
