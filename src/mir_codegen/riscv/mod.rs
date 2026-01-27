@@ -393,7 +393,9 @@ fn emit_instruction_riscv<W: Write>(
                 | crate::mir::MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
                         crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
-                            "RISC-V load unsupported for type {:?}",
+                            "RISC-V load unsupported for type {:?}. \
+                             Floating-point and vector types are not yet implemented for RISC-V. \
+                             Use integer types (i8, i16, i32, i64) instead.",
                             ty
                         )),
                     ));
@@ -418,7 +420,9 @@ fn emit_instruction_riscv<W: Write>(
                 _ => {
                     return Err(crate::error::LaminaError::CodegenError(
                         crate::mir_codegen::CodegenError::UnsupportedFeature(
-                            "RISC-V load supports only base+offset addressing".to_string(),
+                            "RISC-V load supports only base+offset addressing. \
+                             Complex addressing modes (BaseIndexScale) are not yet implemented."
+                                .to_string(),
                         ),
                     ));
                 }
@@ -442,7 +446,9 @@ fn emit_instruction_riscv<W: Write>(
                 | crate::mir::MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
                         crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
-                            "RISC-V store unsupported for type {:?}",
+                            "RISC-V store unsupported for type {:?}. \
+                             Floating-point and vector types are not yet implemented for RISC-V. \
+                             Use integer types (i8, i16, i32, i64) instead.",
                             ty
                         )),
                     ));
@@ -465,7 +471,9 @@ fn emit_instruction_riscv<W: Write>(
                 _ => {
                     return Err(crate::error::LaminaError::CodegenError(
                         crate::mir_codegen::CodegenError::UnsupportedFeature(
-                            "RISC-V store supports only base+offset addressing".to_string(),
+                            "RISC-V store supports only base+offset addressing. \
+                             Complex addressing modes (BaseIndexScale) are not yet implemented."
+                                .to_string(),
                         ),
                     ));
                 }
@@ -495,9 +503,11 @@ fn emit_instruction_riscv<W: Write>(
         }
         _ => {
             return Err(crate::error::LaminaError::CodegenError(
-                crate::mir_codegen::CodegenError::UnsupportedFeature(
-                    "RISC-V instruction not yet supported".to_string(),
-                ),
+                crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                    "RISC-V instruction not yet supported: {:?}. \
+                     This instruction may be partially implemented or not yet available for RISC-V.",
+                    inst
+                )),
             ));
         }
     }

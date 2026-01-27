@@ -28,8 +28,9 @@ pub fn load_operand_wasm<W: Write>(
                 writeln!(writer, "      i64.const {}", val)?;
             }
             Immediate::F32(_) | Immediate::F64(_) => {
-                writeln!(writer, "      ;; TODO: floating point immediates")?;
-                writeln!(writer, "      i64.const 0")?;
+                return Err(LaminaError::ValidationError(
+                    "WASM: Floating-point immediates not yet implemented. Use integer types or load from memory instead.".to_string(),
+                ));
             }
         },
         #[allow(unreachable_patterns)]
@@ -49,16 +50,19 @@ pub fn load_register_wasm<W: Write>(
     vreg_to_local: &std::collections::HashMap<VirtualReg, usize>,
 ) -> Result<(), LaminaError> {
     match reg {
-        Register::Physical(p) => {
-            writeln!(writer, "      ;; TODO: physical register {}", p.name)?;
-            writeln!(writer, "      i64.const 0")?;
+        Register::Physical(_) => {
+            return Err(LaminaError::ValidationError(
+                "WASM: Physical registers are not supported. WASM uses a stack-based execution model with local variables only.".to_string(),
+            ));
         }
         Register::Virtual(v) => {
             if let Some(local_idx) = vreg_to_local.get(v) {
                 writeln!(writer, "      local.get $l{}", local_idx)?;
             } else {
-                writeln!(writer, "      ;; ERROR: no mapping for virtual register")?;
-                writeln!(writer, "      i64.const 0")?;
+                return Err(LaminaError::ValidationError(format!(
+                    "WASM: No mapping found for virtual register {:?}. This indicates a register allocation error.",
+                    v
+                )));
             }
         }
     }
@@ -72,18 +76,19 @@ pub fn store_to_register_wasm<W: Write>(
     vreg_to_local: &std::collections::HashMap<VirtualReg, usize>,
 ) -> Result<(), LaminaError> {
     match reg {
-        Register::Physical(p) => {
-            writeln!(
-                writer,
-                "      ;; TODO: store to physical register {}",
-                p.name
-            )?;
+        Register::Physical(_) => {
+            return Err(LaminaError::ValidationError(
+                "WASM: Physical registers are not supported. WASM uses a stack-based execution model with local variables only.".to_string(),
+            ));
         }
         Register::Virtual(v) => {
             if let Some(local_idx) = vreg_to_local.get(v) {
                 writeln!(writer, "      local.set $l{}", local_idx)?;
             } else {
-                writeln!(writer, "      ;; ERROR: no mapping for virtual register")?;
+                return Err(LaminaError::ValidationError(format!(
+                    "WASM: No mapping found for virtual register {:?}. This indicates a register allocation error.",
+                    v
+                )));
             }
         }
     }

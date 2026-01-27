@@ -3,6 +3,37 @@
 //! This module defines the capabilities that different codegen backends may or may not support.
 //! This allows the compiler to properly handle unsupported features and provide meaningful
 //! error messages.
+//!
+//! # Capability System
+//!
+//! Each backend declares which capabilities it supports. When codegen encounters an operation
+//! that requires an unsupported capability, it returns an `UnsupportedFeature` error with
+//! a clear message indicating what's missing.
+//!
+//! ## Checking Capabilities
+//!
+//! ```rust
+//! use lamina::mir_codegen::capability::{CodegenCapability, CapabilitySet};
+//!
+//! let caps = X86Codegen::capabilities();
+//! if !caps.supports(&CodegenCapability::FloatingPointArithmetic) {
+//!     return Err("Floating point not supported on this backend");
+//! }
+//! ```
+//!
+//! ## Backend Capability Matrix
+//!
+//! | Capability | x86_64 | AArch64 | RISC-V | WASM |
+//! |------------|--------|---------|--------|------|
+//! | IntegerArithmetic | ✅ | ✅ | ✅ | ✅ |
+//! | FloatingPointArithmetic | ✅ | ✅ | ⚠️ | ⚠️ |
+//! | ControlFlow | ✅ | ✅ | ✅ | ✅ |
+//! | FunctionCalls | ✅ | ✅ | ✅ | ✅ |
+//! | MemoryOperations | ✅ | ✅ | ⚠️ | ⚠️ |
+//! | SimdOperations | ✅ | ✅ | ❌ | ❌ |
+//!
+//! ⚠️ = Partial support (some types/operations may not work)
+//! ❌ = Not supported
 
 use std::fmt;
 

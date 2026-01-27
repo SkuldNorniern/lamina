@@ -3,8 +3,55 @@
 //! This module defines a trait that all ABI implementations must follow,
 //! reducing code duplication and providing a consistent interface.
 //!
-//! Builtin overrides can be provided via `LAMINA_BUILTINS`:
-//! `LAMINA_BUILTINS="print=printf,malloc=jemalloc_malloc,dealloc=jemalloc_free"`.
+//! # Application Binary Interface (ABI) Overview
+//!
+//! Lamina uses platform C ABIs for function calls. The ABI implementation is
+//! abstracted through the `Abi` trait, which provides a consistent interface
+//! across all backends.
+//!
+//! ## Common ABI Contract
+//!
+//! ### Function Name Mangling
+//!
+//! All backends apply platform-specific symbol mangling:
+//! - **macOS**: Functions are prefixed with underscore (e.g., `main` → `_main`)
+//! - **Linux/Windows**: Functions use their original names (e.g., `main` → `main`)
+//!
+//! The `mangle_function_name()` method handles this automatically.
+//!
+//! ### Argument Passing
+//!
+//! - Arguments are passed using the platform C ABI register order
+//! - Overflow arguments (beyond register capacity) are spilled to the stack
+//! - Integer arguments use 64-bit slots, even for narrower integer types (i8, i16, i32)
+//! - Floating-point arguments follow platform-specific rules
+//!
+//! ### Return Values
+//!
+//! - Integer return values use the C ABI integer return register
+//! - Floating-point return values use the FP return register (if applicable)
+//! - Void functions return nothing
+//!
+//! ### Builtin Functions
+//!
+//! Builtin functions can be overridden via the `LAMINA_BUILTINS` environment variable:
+//!
+//! ```bash
+//! LAMINA_BUILTINS="print=printf,malloc=jemalloc_malloc,dealloc=jemalloc_free"
+//! ```
+//!
+//! Default builtins:
+//! - `print` → `printf` (or `_printf` on macOS)
+//! - `malloc` → `malloc` (or `_malloc` on macOS)
+//! - `dealloc` → `free` (or `_free` on macOS)
+//!
+//! ## Backend-Specific ABIs
+//!
+//! See the documentation in each backend's ABI module:
+//! - `x86_64::abi` - System V AMD64 and Microsoft x64
+//! - `arm::aarch64::abi` - AAPCS64
+//! - `riscv::abi` - RISC-V calling convention
+//! - `wasm::abi` - WebAssembly stack-based calling
 
 use lamina_platform::TargetOperatingSystem;
 use std::collections::HashMap;
