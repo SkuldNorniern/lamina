@@ -129,6 +129,7 @@ impl ExecutableMemory {
                     // Use GCC/Clang builtin to flush instruction cache
                     // This performs IC IALLU (Invalidate all instruction caches to PoU)
                     // and ISB (Instruction Synchronization Barrier)
+                    // Works on macOS, Linux, and other platforms
                     unsafe extern "C" {
                         fn __clear_cache(start: *const u8, end: *const u8);
                     }
@@ -136,6 +137,10 @@ impl ExecutableMemory {
                     let start = self.ptr;
                     let end = self.ptr.add(self.size);
                     __clear_cache(start, end);
+                    
+                    // Additional ISB to ensure CPU sees the new instructions
+                    // This is a compiler barrier that prevents reordering
+                    std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
                 }
             }
 
