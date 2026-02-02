@@ -110,11 +110,16 @@ impl AArch64Encoder {
 
     /// Encode ADD (register) instruction: ADD <Xd>, <Xn>, <Xm>
     /// Encoding: sf=1, op=0, S=0, shift=00, Rm=<Xm>, imm6=0, Rn=<Xn>, Rd=<Xd>
+    /// ARM64 format: [31]=sf(1), [30]=S(0), [29:24]=opcode(010110), [23:22]=shift(00), [21:16]=imm6(0), [15:10]=Rm, [9:5]=Rn, [4:0]=Rd
     fn encode_add_reg(&self, dst: u8, src1: u8, src2: u8) -> Vec<u8> {
-        let inst = 0b1_0_0_01011_00_0_000000_00000_00000_00000;
-        let inst = inst | (dst as u32);
-        let inst = inst | ((src1 as u32) << 5);
-        let inst = inst | ((src2 as u32) << 16);
+        let inst = (0b1u32 << 31) |           // [31] = sf (1 for 64-bit)
+                  (0b0u32 << 30) |            // [30] = S (0, non-setting)
+                  (0b010110u32 << 24) |      // [29:24] = opcode (010110 for ADD)
+                  (0b00u32 << 22) |           // [23:22] = shift type (00 for LSL)
+                  (0b000000u32 << 16) |      // [21:16] = imm6 (0 for no shift)
+                  ((src2 as u32) << 10) |    // [15:10] = Rm (second source)
+                  ((src1 as u32) << 5) |     // [9:5] = Rn (first source)
+                  (dst as u32);              // [4:0] = Rd (destination)
         self.encode_u32(inst)
     }
 
@@ -164,11 +169,24 @@ impl AArch64Encoder {
     }
 
     /// Encode RET instruction: RET <Xn>
-    /// Encoding: op=1101011, op2=00000, Rn=<Xn>, op3=00000
+    /// RET Xn = 0xD65F0000 | (n << 5)
     fn encode_ret(&self, reg: u8) -> Vec<u8> {
-        let inst = 0b1101011_0_000_00000_00000_00000;
-        let inst = inst | ((reg as u32) << 5);
-        self.encode_u32(inst)
+        let instr: u32 = 0xD65F_0000 | ((reg as u32) << 5);
+        self.encode_u32(instr)
+    }
+
+    /// Encode BR instruction: BR <Xn>
+    /// BR Xn = 0xD61F0000 | (n << 5)
+    fn encode_br(&self, reg: u8) -> Vec<u8> {
+        let instr: u32 = 0xD61F_0000 | ((reg as u32) << 5);
+        self.encode_u32(instr)
+    }
+
+    /// Encode BLR instruction: BLR <Xn>
+    /// BLR Xn = 0xD63F0000 | (n << 5)
+    fn encode_blr(&self, reg: u8) -> Vec<u8> {
+        let instr: u32 = 0xD63F_0000 | ((reg as u32) << 5);
+        self.encode_u32(instr)
     }
 }
 
