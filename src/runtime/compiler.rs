@@ -17,10 +17,7 @@ pub struct RuntimeCompiler {
 
 impl RuntimeCompiler {
     /// Create a new runtime compiler
-    pub fn new(
-        target_arch: TargetArchitecture,
-        target_os: TargetOperatingSystem,
-    ) -> Self {
+    pub fn new(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Self {
         Self {
             runtime: RasRuntime::new(target_arch, target_os),
             code_cache: HashMap::new(),
@@ -38,32 +35,32 @@ impl RuntimeCompiler {
     ) -> Result<ras::ExecutableMemory, LaminaError> {
         // TODO: Implement caching when ExecutableMemory supports it
         // For now, always compile fresh
-        
+
         // Compile using ras runtime
         #[cfg(feature = "encoder")]
         {
-            self
-                .runtime
-                .compile_to_memory(_module)
-                .map_err(|e| {
-                    let error_msg = format!("{}", e);
-                    if error_msg.contains("not yet implemented") || error_msg.contains("Unsupported target") {
-                        LaminaError::ValidationError(format!(
-                            "JIT compilation is not yet supported for this architecture.\n\
+            self.runtime.compile_to_memory(_module).map_err(|e| {
+                let error_msg = format!("{}", e);
+                if error_msg.contains("not yet implemented")
+                    || error_msg.contains("Unsupported target")
+                {
+                    LaminaError::ValidationError(format!(
+                        "JIT compilation is not yet supported for this architecture.\n\
                              Error: {}\n\
                              Currently only x86_64 is supported for JIT compilation.\n\
                              Consider using AOT compilation instead (remove --jit flag).",
-                            error_msg
-                        ))
-                    } else {
-                        LaminaError::ValidationError(format!("Runtime compilation failed: {}", e))
-                    }
-                })
+                        error_msg
+                    ))
+                } else {
+                    LaminaError::ValidationError(format!("Runtime compilation failed: {}", e))
+                }
+            })
         }
         #[cfg(not(feature = "encoder"))]
         {
             Err(LaminaError::ValidationError(
-                "Runtime compilation requires the 'encoder' feature to be enabled in ras".to_string(),
+                "Runtime compilation requires the 'encoder' feature to be enabled in ras"
+                    .to_string(),
             ))
         }
     }
@@ -77,11 +74,19 @@ impl RuntimeCompiler {
         &mut self,
         module: &MirModule,
         function_name: &str,
-    ) -> Result<unsafe extern "C" fn() -> T, LaminaError> { unsafe {
+    ) -> Result<unsafe extern "C" fn() -> T, LaminaError> {
         let memory = self.compile(module, Some(function_name))?;
-        let ptr: *const unsafe extern "C" fn() -> T = memory.as_function_ptr();
-        Ok(*ptr)
-    }}
+        unsafe {
+            let ptr = memory.as_function_ptr::<u8>();
+            if ptr.is_null() {
+                return Err(LaminaError::ValidationError(
+                    "ExecutableMemory has null ptr".to_string(),
+                ));
+            }
+            let f: unsafe extern "C" fn() -> T = std::mem::transmute(ptr);
+            Ok(f)
+        }
+    }
 
     /// Invalidate cached code
     pub fn invalidate(&mut self, function_name: &str) {
@@ -93,4 +98,3 @@ impl RuntimeCompiler {
         self.code_cache.clear();
     }
 }
-
