@@ -125,7 +125,9 @@ impl ConstantFolding {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{Function, FunctionBuilder, Immediate, IntBinOp, MirType, ScalarType, VirtualReg};
+    use crate::mir::{
+        Function, FunctionBuilder, Immediate, IntBinOp, MirType, ScalarType, VirtualReg,
+    };
 
     #[test]
     fn test_signed_division_overflow_prevention() {
