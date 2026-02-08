@@ -1,6 +1,6 @@
 //! Sandbox for secure runtime execution
 //!
-//! Provides sandboxing capabilities for safely executing JIT-compiled code.
+//! Sandboxing for safely executing JIT-compiled code.
 //! Useful for JavaScript engines and other dynamic language runtimes.
 
 use crate::error::LaminaError;
@@ -27,7 +27,7 @@ impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
             max_memory: Some(64 * 1024 * 1024), // 64 MB default
-            max_execution_time: Some(5000),      // 5 seconds default
+            max_execution_time: Some(5000),     // 5 seconds default
             allow_syscalls: false,
             allow_file_io: false,
             allow_network: false,
@@ -50,7 +50,7 @@ impl SandboxConfig {
     /// Create a permissive sandbox (allows most operations)
     pub fn permissive() -> Self {
         Self {
-            max_memory: None, // No limit
+            max_memory: None,         // No limit
             max_execution_time: None, // No limit
             allow_syscalls: true,
             allow_file_io: true,
@@ -85,11 +85,7 @@ impl Sandbox {
     /// 2. Validate the code (check for disallowed operations)
     /// 3. Execute with resource limits
     /// 4. Monitor execution
-    pub fn execute<T>(
-        &mut self,
-        module: &MirModule,
-        function_name: &str,
-    ) -> Result<T, LaminaError>
+    pub fn execute<T>(&mut self, module: &MirModule, function_name: &str) -> Result<T, LaminaError>
     where
         T: Default, // Placeholder - actual return type depends on function signature
     {
@@ -117,7 +113,7 @@ impl Sandbox {
     fn validate_module(&self, module: &MirModule) -> Result<(), LaminaError> {
         // Check for disallowed operations
         // This is a simplified check - real implementation would analyze MIR instructions
-        
+
         // Check memory usage estimate
         if let Some(max_mem) = self.config.max_memory {
             // Estimate memory usage from module
@@ -147,4 +143,3 @@ impl Sandbox {
         &self.config
     }
 }
-

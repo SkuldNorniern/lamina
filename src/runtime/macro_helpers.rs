@@ -7,9 +7,9 @@ use crate::mir::codegen::from_ir;
 use crate::parser::parse_module;
 use lamina_platform::Target;
 
-/// Compiles Lamina IR code at runtime and returns a function pointer.
+/// Compiles Lamina IR code at runtime and returns the runtime result.
 ///
-/// This is a helper function used by the `lir!` macro. It parses, lowers to MIR,
+/// This is a helper function used by the `lamina!` macro. It parses, lowers to MIR,
 /// and JIT compiles the provided IR code.
 ///
 /// # Arguments
@@ -21,13 +21,13 @@ use lamina_platform::Target;
 /// # Returns
 ///
 /// Returns a `Result` containing either:
-/// - `Ok(function_ptr)` - A function pointer to the compiled code
+/// - `Ok(RuntimeResult)` - The runtime result containing memory and function pointer
 /// - `Err(LaminaError)` - If parsing, lowering, or compilation fails
 pub fn compile_lir_internal(
     ir_code: &str,
     function_name: &str,
-    codegen_units: usize,
-) -> Result<*const u8, LaminaError> {
+    _codegen_units: usize,
+) -> Result<crate::runtime::RuntimeResult, LaminaError> {
     let host = Target::detect_host();
     let target_arch = host.architecture;
     let target_os = host.operating_system;
@@ -35,14 +35,14 @@ pub fn compile_lir_internal(
     let ir_module = parse_module(ir_code)?;
     let mir_module = from_ir(&ir_module, "lir_macro")?;
 
-    let runtime_result = crate::runtime::compile_to_runtime(
-        &mir_module,
-        target_arch,
-        target_os,
-        Some(function_name),
-    )?;
+    // MIR stores function names without @ prefix, so strip it if present
+    let lookup_name = if function_name.starts_with('@') {
+        &function_name[1..]
+    } else {
+        function_name
+    };
 
-    Ok(runtime_result.function_ptr)
+    crate::runtime::compile_to_runtime(&mir_module, target_arch, target_os, Some(lookup_name))
 }
 
 /// Extracts the function name from Lamina IR code string.
@@ -67,7 +67,7 @@ pub fn extract_function_name(ir_code: &str) -> Option<&str> {
             return Some(name);
         }
     }
-    
+
     // Fallback: look for "fn " pattern (without @)
     if let Some(start) = ir_code.find("fn ") {
         let after_fn = &ir_code[start + 3..];
@@ -77,7 +77,6 @@ pub fn extract_function_name(ir_code: &str) -> Option<&str> {
             return Some(name);
         }
     }
-    
+
     None
 }
-
