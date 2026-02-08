@@ -18,9 +18,10 @@ pub struct A64RegAlloc {
     scratch_used: HashSet<&'static str>,
 }
 
+// Only use caller-saved registers (x9-x15) until we implement callee-saved save/restore
+// x19-x28 are callee-saved and must be saved/restored in prologue/epilogue if used
 const MAP_GPRS: &[&str] = &[
-    "x9", "x10", "x11", "x12", "x13", "x14", "x15", "x19", "x20", "x21", "x22", "x23", "x24",
-    "x25", "x26", "x27", "x28",
+    "x9", "x10", "x11", "x12", "x13", "x14", "x15",
 ];
 
 const SCRATCH_GPRS: &[&str] = &["x9", "x10", "x11", "x12", "x13", "x14", "x15"];
