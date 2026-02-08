@@ -47,7 +47,7 @@ impl RuntimeCompiler {
                     LaminaError::ValidationError(format!(
                         "JIT compilation is not yet supported for this architecture.\n\
                              Error: {}\n\
-                             Currently only x86_64 is supported for JIT compilation.\n\
+                             Currently only x86_64 and AArch64 are supported for JIT compilation.\n\
                              Consider using AOT compilation instead (remove --jit flag).",
                         error_msg
                     ))
