@@ -246,8 +246,7 @@ impl RasAssembler {
         // Reuse register allocation and ABI from mir_codegen
         match self.target_arch {
             TargetArchitecture::X86_64 => {
-                let code = crate::assembler::x86_64::compile_mir_x86_64_function(self, module, function_name)?;
-                Ok((code, std::collections::HashMap::new()))
+                crate::assembler::x86_64::compile_mir_x86_64_function(self, module, function_name)
             }
             TargetArchitecture::Aarch64 => {
                 crate::assembler::aarch64::compile_mir_aarch64_function(self, module, function_name)
