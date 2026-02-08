@@ -15,10 +15,11 @@
 //! ```rust
 //! use lamina::mir_codegen::capability::{CodegenCapability, CapabilitySet};
 //!
-//! let caps = X86Codegen::capabilities();
-//! if !caps.supports(&CodegenCapability::FloatingPointArithmetic) {
-//!     return Err("Floating point not supported on this backend");
-//! }
+//! let native = CapabilitySet::standard_native();
+//! assert!(native.supports(&CodegenCapability::FloatingPointArithmetic));
+//!
+//! let wasm = CapabilitySet::wasm();
+//! assert!(!wasm.supports(&CodegenCapability::SystemCalls));
 //! ```
 //!
 //! ## Backend Capability Matrix
