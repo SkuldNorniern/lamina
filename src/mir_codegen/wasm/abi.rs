@@ -127,15 +127,9 @@ mod tests {
     fn test_wasm_get_wasm_type() {
         use crate::mir::{MirType, ScalarType};
         let abi = WasmABI::new(TargetOperatingSystem::Linux);
-        assert_eq!(
-            abi.get_wasm_type(&MirType::Scalar(ScalarType::I64)),
-            "i64"
-        );
+        assert_eq!(abi.get_wasm_type(&MirType::Scalar(ScalarType::I64)), "i64");
         // Currently everything maps to i64
-        assert_eq!(
-            abi.get_wasm_type(&MirType::Scalar(ScalarType::I32)),
-            "i64"
-        );
+        assert_eq!(abi.get_wasm_type(&MirType::Scalar(ScalarType::I32)), "i64");
     }
 
     #[test]
