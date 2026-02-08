@@ -171,9 +171,15 @@ mod tests {
     #[test]
     fn test_riscv_get_print_format() {
         let abi_linux = RiscVAbi::new(TargetOperatingSystem::Linux);
-        assert_eq!(abi_linux.get_print_format(), ".L_mir_fmt_int: .string \"%lld\\n\"");
+        assert_eq!(
+            abi_linux.get_print_format(),
+            ".L_mir_fmt_int: .string \"%lld\\n\""
+        );
 
         let abi_macos = RiscVAbi::new(TargetOperatingSystem::MacOS);
-        assert_eq!(abi_macos.get_print_format(), "__mir_fmt_int: .asciz \"%lld\\n\"");
+        assert_eq!(
+            abi_macos.get_print_format(),
+            "__mir_fmt_int: .asciz \"%lld\\n\""
+        );
     }
 }
