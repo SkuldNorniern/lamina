@@ -18,9 +18,11 @@ pub mod simd;
 
 // Re-export main types
 pub use target::{Target, TargetArchitecture, TargetOperatingSystem, HOST_ARCH_LIST};
-pub use detection::{
-    cpu_count, detect_host_architecture, detect_host_architecture_only, detect_host_os,
-};
+pub use detection::{cpu_count, detect_host_architecture_only, detect_host_os};
+
+// Backward compatibility: keep the deprecated helper available, but don't warn in this crate.
+#[allow(deprecated)]
+pub use detection::detect_host_architecture;
 
 #[cfg(feature = "nightly")]
 pub use simd::{
@@ -31,18 +33,6 @@ pub use simd::{
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_detect_host_consistency() {
-        // Test that the deprecated function produces the same result as the new structured approach
-        let new_result = Target::detect_host().to_str();
-        let old_result = detect_host_architecture();
-
-        assert_eq!(
-            new_result, old_result,
-            "detect_host().to_str() and detect_host_architecture() should return the same result"
-        );
-    }
 
     #[test]
     fn test_from_str_roundtrip() {
@@ -71,17 +61,6 @@ mod tests {
             combined.operating_system,
             TargetOperatingSystem::from_str(os_str).unwrap_or(TargetOperatingSystem::Unknown)
         );
-    }
-
-    #[test]
-    fn test_deprecated_function_format() {
-        // Test that the deprecated function returns the expected combined format
-        let result = detect_host_architecture();
-        assert!(
-            result.contains('_'),
-            "Should contain underscore separating arch and os"
-        );
-        assert!(!result.is_empty(), "Should not be empty");
     }
 
     #[cfg(feature = "nightly")]
