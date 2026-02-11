@@ -1,7 +1,8 @@
 //! Assembly/compilation backends for converting intermediate formats to binaries.
 //!
 //! Supports multiple assemblers:
-//! - Native: gas (GNU Assembler), clang's as, custom assemblers
+//! - **Ras**: Drop-in replacement for as/gas; x86_64 and AArch64, ELF (library or `ras` binary).
+//! - gas (GNU Assembler), clang's as
 //! - WASM: wat2wasm
 
 use crate::error::LaminaError;
@@ -12,6 +13,8 @@ use std::process::Command;
 /// Assembler backend type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssemblerBackend {
+    /// Ras (drop-in replacement for as/gas); x86_64 and AArch64, ELF object output
+    Ras,
     /// GNU Assembler (gas/as)
     Gas,
     /// Clang's integrated assembler
@@ -125,7 +128,29 @@ fn assemble_native(
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<AssembleResult, LaminaError> {
-    let backend = backend.unwrap_or_else(detect_assembler_backend);
+    let backend = backend.unwrap_or_else(|| detect_assembler_backend(target_arch, target_os));
+
+    if backend == AssemblerBackend::Ras {
+        if !matches!(target_arch, TargetArchitecture::X86_64 | TargetArchitecture::Aarch64) {
+            return Err(LaminaError::ValidationError(format!(
+                "Ras assembler supports x86_64 and AArch64 only, not {:?}",
+                target_arch
+            )));
+        }
+        if verbose {
+            println!("[VERBOSE] Assembling with ras (as/GAS alternative): {} -> {}", input_path.display(), output_path.display());
+        }
+        let mut ras = ras::Ras::new(target_arch, target_os).map_err(|e| {
+            LaminaError::ValidationError(format!("Failed to create ras assembler: {}", e))
+        })?;
+        ras.assemble_file(input_path, output_path).map_err(|e| {
+            LaminaError::ValidationError(format!("ras assembly failed: {}", e))
+        })?;
+        return Ok(AssembleResult {
+            output_path: output_path.to_path_buf(),
+            needs_linking: true,
+        });
+    }
 
     let (cmd, args) = match backend {
         AssemblerBackend::Gas => {
@@ -211,11 +236,11 @@ fn assemble_native(
             ];
             (name, args)
         }
-        _ => {
-            return Err(LaminaError::ValidationError(format!(
-                "Unsupported assembler backend for native targets: {:?}",
-                backend
-            )));
+        AssemblerBackend::Ras => unreachable!("Ras handled above"),
+        AssemblerBackend::Wat2Wasm => {
+            return Err(LaminaError::ValidationError(
+                "Wat2Wasm is for WASM targets only".to_string(),
+            ));
         }
     };
 
@@ -242,8 +267,18 @@ fn assemble_native(
     })
 }
 
-/// Detect available assembler backend
-fn detect_assembler_backend() -> AssemblerBackend {
+/// Detect available assembler backend for the given target.
+/// Uses ras (library) for x86_64 and AArch64 when ras can emit object files for that target (ELF; macOS/Windows use gas/clang until ras has Mach-O/COFF).
+pub fn detect_assembler_backend(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> AssemblerBackend {
+    if matches!(target_arch, TargetArchitecture::X86_64 | TargetArchitecture::Aarch64)
+        && ras::is_object_file_supported(target_arch, target_os)
+    {
+        return AssemblerBackend::Ras;
+    }
+
     if Command::new("as").arg("--version").output().is_ok() {
         return AssemblerBackend::Gas;
     }

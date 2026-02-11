@@ -1,9 +1,10 @@
 //! Linking backends for creating final executables or binaries.
 //!
 //! Supports multiple linkers:
-//! - GCC's ld (via gcc)
-//! - Clang's ld (via clang)
-//! - Mold linker (faster alternative)
+//! - **Weld**: Lamina's custom linker; drop-in replacement for ld/lld. Use `-c weld` when available.
+//! - GNU ld (binutils)
+//! - LLVM lld
+//! - Mold (faster alternative)
 //! - MSVC linker (on Windows)
 //! - Custom linkers
 
@@ -194,6 +195,8 @@ pub enum LinkerBackend {
     Lld,
     /// Mold linker (fast alternative)
     Mold,
+    /// Weld (Lamina's custom linker; drop-in replacement for ld/lld)
+    Weld,
     /// MSVC linker (Windows)
     Msvc,
     /// Custom linker (specified by name)
@@ -259,6 +262,16 @@ pub fn link(
             );
             ("mold", args)
         }
+        LinkerBackend::Weld => {
+            let args = build_unix_linker_args(
+                input_path,
+                output_path,
+                target_arch,
+                target_os,
+                additional_flags,
+            );
+            ("weld", args)
+        }
         LinkerBackend::Msvc => {
             let mut args = vec!["/nologo".to_string()];
             args.push("/subsystem:console".to_string());
@@ -300,10 +313,15 @@ pub fn link(
     Ok(())
 }
 
-/// Detect available linker backend
+/// Detect available linker backend.
+/// Weld is a drop-in replacement for ld/lld; prefer it when available.
 pub fn detect_linker_backend() -> LinkerBackend {
     if cfg!(windows) && Command::new("link").arg("/?").output().is_ok() {
         return LinkerBackend::Msvc;
+    }
+
+    if Command::new("weld").arg("--version").output().is_ok() {
+        return LinkerBackend::Weld;
     }
 
     if Command::new("mold").arg("--version").output().is_ok() {
