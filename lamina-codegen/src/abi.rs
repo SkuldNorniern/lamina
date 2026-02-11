@@ -48,7 +48,8 @@ pub fn mangle_macos_name(name: &str) -> String {
 
 /// Helper function to get the platform-specific printf symbol name.
 ///
-/// Returns "_printf" on macOS, "printf" on other platforms.
+/// macOS uses leading underscore ("_printf"); Linux, BSD, and Windows use "printf".
+/// Cross-compilation: pass the target OS, not the host.
 pub fn get_printf_symbol(target_os: TargetOperatingSystem) -> &'static str {
     match target_os {
         TargetOperatingSystem::MacOS => "_printf",
@@ -58,7 +59,7 @@ pub fn get_printf_symbol(target_os: TargetOperatingSystem) -> &'static str {
 
 /// Helper function to get the platform-specific malloc symbol name.
 ///
-/// Returns "_malloc" on macOS, "malloc" on other platforms.
+/// macOS uses "_malloc"; Linux, BSD, Windows use "malloc".
 pub fn get_malloc_symbol(target_os: TargetOperatingSystem) -> &'static str {
     match target_os {
         TargetOperatingSystem::MacOS => "_malloc",
@@ -68,7 +69,7 @@ pub fn get_malloc_symbol(target_os: TargetOperatingSystem) -> &'static str {
 
 /// Helper function to get the platform-specific free symbol name.
 ///
-/// Returns "_free" on macOS, "free" on other platforms.
+/// macOS uses "_free"; Linux, BSD, Windows use "free".
 pub fn get_free_symbol(target_os: TargetOperatingSystem) -> &'static str {
     match target_os {
         TargetOperatingSystem::MacOS => "_free",
