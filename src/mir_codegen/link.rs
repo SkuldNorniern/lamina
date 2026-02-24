@@ -314,13 +314,15 @@ pub fn link(
 }
 
 /// Detect available linker backend.
-/// Weld is a drop-in replacement for ld/lld; prefer it when available.
+/// Weld supports -lc on Linux (ELF) and -lSystem on macOS (Mach-O).
 pub fn detect_linker_backend() -> LinkerBackend {
     if cfg!(windows) && Command::new("link").arg("/?").output().is_ok() {
         return LinkerBackend::Msvc;
     }
 
-    if Command::new("weld").arg("--version").output().is_ok() {
+    if (cfg!(target_os = "linux") || cfg!(target_os = "macos"))
+        && Command::new("weld").arg("--version").output().is_ok()
+    {
         return LinkerBackend::Weld;
     }
 
