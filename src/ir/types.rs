@@ -63,7 +63,7 @@
 //! ### I/O Instruction Categories:
 //!
 //! #### **Byte-Level I/O**:
-//! - **`writebyte`**: Write single ASCII character to stdout
+//! - **`writebyte`**: Write single byte (low 8 bits) to stdout; canonical for portable output
 //! - **`readbyte`**: Read single byte from stdin
 //! - **Use case**: Character I/O, text output, keyboard input
 //!

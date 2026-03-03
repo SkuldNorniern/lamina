@@ -100,12 +100,13 @@
 //!
 //! ### Simple Function (No Parameters)
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type};
+//! use lamina::ir::{IRBuilder, Type, PrimitiveType};
+//! use lamina::ir::builder::i32;
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
 //!     .function("hello", Type::Void)
-//!     .print(lamina::ir::builder::string("Hello, World!"))
+//!     .print(i32(42))
 //!     .ret_void();
 //! ```
 //!

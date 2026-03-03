@@ -1807,4 +1807,26 @@ mod tests {
             result
         );
     }
+
+    #[test]
+    fn test_print_string_rejected_text_ir() {
+        let ir_source = r#"
+fn @main() -> i64 {
+  entry:
+    print "x"
+    ret.i64 0
+}
+"#;
+        let ir_module = crate::parser::parse_module(ir_source).expect("parse should succeed");
+        let result = from_ir(&ir_module, "test");
+        assert!(
+            matches!(result, Err(FromIRError::PrintStringLiteralUnsupported)),
+            "print \"x\" in text IR should fail: {:?}",
+            result
+        );
+        if let Err(e) = &result {
+            let msg = format!("{}", e);
+            assert!(msg.contains("writebyte"), "error should mention writebyte: {}", msg);
+        }
+    }
 }
