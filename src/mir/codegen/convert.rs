@@ -1344,6 +1344,9 @@ fn convert_instruction<'a>(
         }
         // Debug and I/O operations: lower to calls with conventional names
         crate::ir::instruction::Instruction::Print { value } => {
+            if matches!(value, crate::ir::types::Value::Constant(crate::ir::types::Literal::String(_))) {
+                return Err(FromIRError::PrintStringLiteralUnsupported);
+            }
             let arg = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::Call {
                 name: "print".to_string(),
@@ -1713,7 +1716,7 @@ fn reg_class_for_type(ty: &crate::ir::types::Type<'_>) -> RegisterClass {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::builder::{i64 as ir_i64, var};
+    use crate::ir::builder::{i64 as ir_i64, string, var};
     use crate::ir::instruction::BinaryOp;
     use crate::ir::types::{PrimitiveType, Type};
     use crate::ir::{FunctionParameter, IRBuilder};
@@ -1773,5 +1776,35 @@ mod tests {
             }
             other => panic!("Unexpected second instruction: {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_print_numeric_succeeds() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("main", Type::Primitive(PrimitiveType::I64))
+            .print(ir_i64(42))
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
+
+        let ir_module = builder.build();
+        let result = from_ir(&ir_module, "test");
+        assert!(result.is_ok(), "print with numeric literal should succeed: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_print_string_fails() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("main", Type::Primitive(PrimitiveType::I64))
+            .print(string("hello"))
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
+
+        let ir_module = builder.build();
+        let result = from_ir(&ir_module, "test");
+        assert!(
+            matches!(result, Err(FromIRError::PrintStringLiteralUnsupported)),
+            "print with string literal should fail with PrintStringLiteralUnsupported: {:?}",
+            result
+        );
     }
 }
