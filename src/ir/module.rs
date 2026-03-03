@@ -76,13 +76,13 @@
 //! ### Simple Module
 //! ```rust
 //! use lamina::ir::{IRBuilder, Type, PrimitiveType};
-//! use lamina::ir::builder::{i32, string};
+//! use lamina::ir::builder::i32;
 //!
 //! let mut builder = IRBuilder::new();
 //!
 //! builder
 //!     .function("main", Type::Void)
-//!     .print(string("Hello from module!"))
+//!     .print(i32(42))
 //!     .ret_void();
 //!
 //! let module = builder.build();
