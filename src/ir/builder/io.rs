@@ -2,6 +2,10 @@
 //!
 //! This module provides methods for input/output operations including reading
 //! from stdin, writing to stdout, and printing values for debugging.
+//!
+//! For portable user output, prefer `write_byte` (maps to `writebyte`). The `print`
+//! instruction is debug-oriented and does not support string literals; use `write_byte`
+//! in a loop for string output. See `docs/OUTPUT_SEMANTICS.md` in the repository.
 
 use super::IRBuilder;
 use crate::ir::instruction::Instruction;
@@ -41,7 +45,8 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::WritePtr { ptr, result })
     }
 
-    /// Creates a print instruction for debugging
+    /// Creates a print instruction for debugging. Accepts numeric literals and SSA
+    /// variables only; string literals are not supported (use `write_byte` for portable output).
     pub fn print(&mut self, value: Value<'a>) -> &mut Self {
         self.inst(Instruction::Print { value })
     }

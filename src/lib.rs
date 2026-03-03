@@ -175,7 +175,7 @@
 //!
 //! ```rust
 //! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp, CmpOp};
-//! use lamina::ir::builder::{var, i32, string};
+//! use lamina::ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //!
@@ -201,7 +201,7 @@
 //!     .load("current", Type::Primitive(PrimitiveType::I32), var("temp"))
 //!     .binary(BinaryOp::Mul, "doubled", PrimitiveType::I32, var("current"), i32(2))
 //!     .store(Type::Primitive(PrimitiveType::I32), var("temp"), var("doubled"))
-//!     .print(string("Processed positive value"))
+//!     .print(var("doubled"))
 //!     .jump("cleanup")
 //!
 //!     // Negative path: take absolute value
@@ -209,10 +209,10 @@
 //!     .load("current", Type::Primitive(PrimitiveType::I32), var("temp"))
 //!     .binary(BinaryOp::Sub, "abs", PrimitiveType::I32, i32(0), var("current"))
 //!     .store(Type::Primitive(PrimitiveType::I32), var("temp"), var("abs"))
-//!     .print(string("Processed negative value"))
+//!     .print(var("abs"))
 //!     .jump("cleanup")
 //!
-//!     // Cleanup: print final result
+//!     // Cleanup: print final result (print is debug-only; for portable output use writebyte)
 //!     .block("cleanup")
 //!     .load("final_result", Type::Primitive(PrimitiveType::I32), var("temp"))
 //!     .print(var("final_result"))
@@ -505,6 +505,15 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     use std::str::FromStr;
     let target_obj = lamina_platform::Target::from_str(target)
         .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{}': {}", target, e)))?;
+
+    if !lamina_codegen::is_assembly_supported(target_obj.architecture, target_obj.operating_system) {
+        return Err(LaminaError::ValidationError(format!(
+            "Target {} is not supported for assembly generation. {}",
+            target,
+            lamina_codegen::supported_assembly_targets_hint()
+        )));
+    }
+
     let mir_module = mir::codegen::from_ir(&module, "module")?;
 
     match target_obj.architecture {
