@@ -561,6 +561,9 @@ fn interpret_mir_function(
                 | Instruction::PatchPoint { .. } => {
                     return Err("Interpreter: unsupported instruction".into());
                 }
+                _ => {
+                    return Err("Interpreter: unsupported instruction".into());
+                }
             }
         }
 
