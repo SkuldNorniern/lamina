@@ -113,6 +113,6 @@ impl From<CodegenError> for LaminaError {
 /// Convert a FromIRError to LaminaError
 impl From<FromIRError> for LaminaError {
     fn from(err: FromIRError) -> Self {
-        LaminaError::MirError(format!("{:?}", err))
+        LaminaError::MirError(format!("{}", err))
     }
 }

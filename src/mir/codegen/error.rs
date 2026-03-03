@@ -18,6 +18,8 @@ pub enum FromIRError {
     MissingEntryBlock,
     /// A variable reference cannot be resolved.
     UnknownVariable,
+    /// print with string literal is not supported; use writebyte for portable output.
+    PrintStringLiteralUnsupported,
 }
 
 impl fmt::Display for FromIRError {
@@ -42,6 +44,10 @@ impl fmt::Display for FromIRError {
                     "Variable reference cannot be resolved in current context"
                 )
             }
+            FromIRError::PrintStringLiteralUnsupported => write!(
+                f,
+                "print with string literal is not supported. Use writebyte in a loop for portable output. See docs/OUTPUT_SEMANTICS.md"
+            ),
         }
     }
 }
