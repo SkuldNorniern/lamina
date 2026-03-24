@@ -1,7 +1,7 @@
-use lamina_mir::register::{Register, RegisterClass, VirtualReg};
 use crate::regalloc::{
     PhysRegConvertible, PhysRegHandle, RegisterAllocator as MirRegisterAllocator,
 };
+use lamina_mir::register::{Register, RegisterClass, VirtualReg};
 
 /// WASM "register allocator" for stack-based virtual machine.
 ///

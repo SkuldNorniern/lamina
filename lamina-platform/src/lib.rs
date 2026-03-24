@@ -10,25 +10,22 @@
 //! - [`detection`] - Host system detection functions
 //! - [`simd`] - SIMD capabilities detection (nightly feature)
 
-pub mod target;
 pub mod detection;
+pub mod target;
 
 #[cfg(feature = "nightly")]
 pub mod simd;
 
 // Re-export main types
-pub use target::{Target, TargetArchitecture, TargetOperatingSystem, HOST_ARCH_LIST};
 pub use detection::{cpu_count, detect_host_architecture_only, detect_host_os};
+pub use target::{HOST_ARCH_LIST, Target, TargetArchitecture, TargetOperatingSystem};
 
 // Backward compatibility: keep the deprecated helper available, but don't warn in this crate.
 #[allow(deprecated)]
 pub use detection::detect_host_architecture;
 
 #[cfg(feature = "nightly")]
-pub use simd::{
-    ArmSimdExtension, RiscvSimdExtension, SimdCapabilities, X86SimdExtension,
-};
-
+pub use simd::{ArmSimdExtension, RiscvSimdExtension, SimdCapabilities, X86SimdExtension};
 
 #[cfg(test)]
 mod tests {

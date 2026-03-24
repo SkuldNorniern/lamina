@@ -1344,7 +1344,10 @@ fn convert_instruction<'a>(
         }
         // Debug and I/O operations: lower to calls with conventional names
         crate::ir::instruction::Instruction::Print { value } => {
-            if matches!(value, crate::ir::types::Value::Constant(crate::ir::types::Literal::String(_))) {
+            if matches!(
+                value,
+                crate::ir::types::Value::Constant(crate::ir::types::Literal::String(_))
+            ) {
                 return Err(FromIRError::PrintStringLiteralUnsupported);
             }
             let arg = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
@@ -1788,7 +1791,11 @@ mod tests {
 
         let ir_module = builder.build();
         let result = from_ir(&ir_module, "test");
-        assert!(result.is_ok(), "print with numeric literal should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "print with numeric literal should succeed: {:?}",
+            result.err()
+        );
     }
 
     #[test]
@@ -1826,7 +1833,11 @@ fn @main() -> i64 {
         );
         if let Err(e) = &result {
             let msg = format!("{}", e);
-            assert!(msg.contains("writebyte"), "error should mention writebyte: {}", msg);
+            assert!(
+                msg.contains("writebyte"),
+                "error should mention writebyte: {}",
+                msg
+            );
         }
     }
 }

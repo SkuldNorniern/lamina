@@ -233,10 +233,10 @@ impl FunctionBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::instruction::{Immediate, Instruction, IntBinOp, Operand};
     use super::register::VirtualReg;
     use super::types::ScalarType;
+    use super::*;
 
     #[test]
     fn test_signature_creation() {

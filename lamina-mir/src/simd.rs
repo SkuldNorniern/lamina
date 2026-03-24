@@ -36,12 +36,8 @@ use crate::types::{MirType, VectorLane, VectorType};
 #[cfg(feature = "nightly")]
 pub fn lane_count(vector_type: &VectorType) -> usize {
     match vector_type {
-        VectorType::V128(lane) => {
-            128 / lane_size_bits(lane)
-        }
-        VectorType::V256(lane) => {
-            256 / lane_size_bits(lane)
-        }
+        VectorType::V128(lane) => 128 / lane_size_bits(lane),
+        VectorType::V256(lane) => 256 / lane_size_bits(lane),
     }
 }
 

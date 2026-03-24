@@ -52,7 +52,6 @@ pub fn detect_host_os() -> &'static str {
     "unknown"
 }
 
-
 /// Detect the host system's architecture and operating system combination.
 ///
 /// Returns a string representing the detected architecture and host system combination.
@@ -123,7 +122,7 @@ pub fn cpu_count() -> usize {
                 return count;
             }
         }
-        
+
         // Fallback to sysconf
         unsafe {
             unsafe extern "C" {
@@ -136,7 +135,7 @@ pub fn cpu_count() -> usize {
             }
         }
     }
-    
+
     #[cfg(target_os = "macos")]
     {
         use std::ffi::CString;
@@ -165,7 +164,7 @@ pub fn cpu_count() -> usize {
             }
         }
     }
-    
+
     #[cfg(target_os = "windows")]
     {
         unsafe {
@@ -191,8 +190,7 @@ pub fn cpu_count() -> usize {
             return info.dwNumberOfProcessors as usize;
         }
     }
-    
+
     // Fallback for other platforms
     1
 }
-

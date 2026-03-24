@@ -87,10 +87,10 @@ impl Block {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::instruction::{Immediate, Instruction, IntBinOp, Operand};
     use super::register::{Register, VirtualReg};
     use super::types::{MirType, ScalarType};
+    use super::*;
 
     #[test]
     fn test_basic_block_creation() {

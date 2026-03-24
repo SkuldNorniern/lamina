@@ -196,4 +196,3 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     #[cfg(feature = "nightly")]
     "riscv128_unknown",
 ];
-
