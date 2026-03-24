@@ -66,7 +66,6 @@ impl ModuleInlining {
         const MAX_INLINE_ITERATIONS: usize = 20;
         const MAX_TOTAL_INSTRUCTIONS: usize = 50_000;
 
-        // Safety check: prevent inlining if module is too large
         let total_instructions: usize = module
             .functions
             .values()

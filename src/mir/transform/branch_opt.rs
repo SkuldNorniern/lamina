@@ -32,7 +32,6 @@ impl Transform for BranchOptimization {
 
 impl BranchOptimization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        // Safety check: prevent transforms on extremely large functions
         const MAX_BLOCKS: usize = 1_000;
         if func.blocks.len() > MAX_BLOCKS {
             return Err(format!(
@@ -42,34 +41,21 @@ impl BranchOptimization {
             ));
         }
 
-        // Safety: Skip if function has no blocks or only one block
         if func.blocks.len() <= 1 {
             return Ok(false);
         }
 
         let mut changed = false;
 
-        // For now, just remove obviously unreachable blocks
-        // More branch optimizations could be added later
-        let reachable_blocks = self.compute_reachable_blocks(func);
-
-        // Ensure entry block is always in reachable set
-        let entry_label = func.blocks.first().map(|b| b.label.clone());
-        let mut reachable_blocks = reachable_blocks;
-        if let Some(ref entry) = entry_label {
-            reachable_blocks.insert(entry.clone());
-        }
+        let mut reachable_blocks = self.compute_reachable_blocks(func);
+        reachable_blocks.insert(func.entry.clone());
 
         let original_count = func.blocks.len();
 
-        // Compute which blocks we intend to remove.
         let to_remove: HashSet<String> = func
             .blocks
             .iter()
-            .filter(|b| {
-                Some(&b.label) != entry_label.as_ref()
-                    && !reachable_blocks.contains(&b.label)
-            })
+            .filter(|b| b.label != func.entry && !reachable_blocks.contains(&b.label))
             .map(|b| b.label.clone())
             .collect();
 
@@ -77,13 +63,8 @@ impl BranchOptimization {
             return Ok(false);
         }
 
-        // Safety: collect all branch targets referenced by blocks we are KEEPING.
-        // If the BFS under-approximated reachability (e.g. due to an unhandled
-        // terminator variant), a surviving block might still branch into a block
-        // we flagged for removal.  Removing such a block would leave a dangling
-        // branch target that causes runtime infinite-loops (the jump goes to
-        // garbage / wraps around to a wrong block).
-        // Solution: only remove blocks that are NOT referenced by any keeper.
+        // Only remove blocks that are not referenced by any surviving block.
+        // This guards against BFS under-approximation leaving dangling edges.
         let surviving_targets: HashSet<String> = func
             .blocks
             .iter()
@@ -91,25 +72,17 @@ impl BranchOptimization {
             .flat_map(|b| Self::block_successors(b))
             .collect();
 
-        let safe_to_remove: HashSet<String> = to_remove
-            .difference(&surviving_targets)
-            .cloned()
-            .collect();
+        let safe_to_remove: HashSet<String> =
+            to_remove.difference(&surviving_targets).cloned().collect();
 
         if safe_to_remove.is_empty() {
-            // All candidate-removals are still referenced — skip to avoid
-            // leaving dangling edges.
             return Ok(false);
         }
 
-        func.blocks
-            .retain(|b| !safe_to_remove.contains(&b.label));
+        func.blocks.retain(|b| !safe_to_remove.contains(&b.label));
 
-        // Safety: Ensure we never remove all blocks
         if func.blocks.is_empty() {
-            return Err(
-                "Branch optimization would remove all blocks - aborting for safety".to_string(),
-            );
+            return Err("Branch optimization would remove all blocks".to_string());
         }
 
         if func.blocks.len() != original_count {
@@ -119,7 +92,6 @@ impl BranchOptimization {
         Ok(changed)
     }
 
-    /// Compute which blocks are reachable from the entry block
     fn compute_reachable_blocks(&self, func: &Function) -> std::collections::HashSet<String> {
         use std::collections::{HashSet, VecDeque};
 
@@ -127,24 +99,17 @@ impl BranchOptimization {
         let mut worklist = VecDeque::new();
         const MAX_ITERATIONS: usize = 10_000;
 
-        // Start with the entry block
-        if let Some(entry) = func.blocks.first() {
-            reachable.insert(entry.label.clone());
-            worklist.push_back(entry.label.clone());
-        }
+        reachable.insert(func.entry.clone());
+        worklist.push_back(func.entry.clone());
 
-        // BFS to find all reachable blocks with iteration limit
         let mut iterations = 0;
         while let Some(current_label) = worklist.pop_front() {
             if iterations >= MAX_ITERATIONS {
-                // Safety: prevent infinite loops in malformed CFGs
                 break;
             }
             iterations += 1;
 
             if let Some(block) = func.get_block(&current_label) {
-                // Scan ALL instructions, not just the last one, so that any
-                // Jmp/Br embedded anywhere in the block is discovered.
                 for succ in Self::block_successors(block) {
                     if reachable.insert(succ.clone()) {
                         worklist.push_back(succ);
@@ -156,9 +121,6 @@ impl BranchOptimization {
         reachable
     }
 
-    /// Return all direct successor block labels for a given block.
-    /// This covers every instruction variant that names a target label so
-    /// that `surviving_targets` is always complete.
     fn block_successors(block: &crate::mir::Block) -> Vec<String> {
         let mut targets = Vec::new();
         for instr in &block.instructions {

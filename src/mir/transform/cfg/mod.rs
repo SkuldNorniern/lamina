@@ -42,7 +42,6 @@ impl CfgSimplify {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
         let mut changed = false;
 
-        // First pass: local simplifications within blocks
         for block in &mut func.blocks {
             for instr in &mut block.instructions {
                 match instr {
@@ -56,7 +55,7 @@ impl CfgSimplify {
                         *instr = Instruction::Jmp { target };
                         changed = true;
                     }
-                    // select cond, x, x -> x
+                    // select cond, x, x -> add x, 0
                     Instruction::Select {
                         dst,
                         ty,
@@ -64,7 +63,6 @@ impl CfgSimplify {
                         true_val,
                         false_val,
                     } if true_val == false_val => {
-                        // Replace with a move via add of immediate 0
                         let replacement = Instruction::IntBinary {
                             op: crate::mir::IntBinOp::Add,
                             ty: *ty,
@@ -80,7 +78,6 @@ impl CfgSimplify {
             }
         }
 
-        // Second pass: trivial block merge
         let mut preds: HashMap<String, Vec<String>> = HashMap::new();
         for block in &func.blocks {
             if let Some(term) = block.instructions.last()
@@ -107,7 +104,7 @@ impl CfgSimplify {
                             .or_default()
                             .push(block.label.clone());
                     }
-                    _ => {} // Ignore switch, ret, etc. for simplicity
+                    _ => {}
                 }
             }
         }
@@ -124,7 +121,6 @@ impl CfgSimplify {
             }
         }
 
-        // Now perform the merges
         let mut to_remove = Vec::new();
         for (pred_label, new_target, trivial_label) in merges {
             if let Some(pred_block) = func.blocks.iter_mut().find(|b| b.label == pred_label)
@@ -138,9 +134,7 @@ impl CfgSimplify {
             }
         }
 
-        // Remove merged blocks
         func.blocks.retain(|b| !to_remove.contains(&b.label));
-        // Sort blocks by label for consistent ordering
         func.blocks.sort_by_key(|b| b.label.clone());
 
         Ok(changed)
@@ -178,7 +172,6 @@ impl Transform for JumpThreading {
 
 impl JumpThreading {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        // Build a mapping from block label to its simple jump target if it's a trivial block
         let mut simple_jumps: HashMap<String, String> = HashMap::new();
 
         for block in &func.blocks {
@@ -189,44 +182,35 @@ impl JumpThreading {
             }
         }
 
-        // Resolve to ultimate targets (follow chains)
-        // Safety: limit chain length to prevent excessive resolution
         fn resolve_target(map: &HashMap<String, String>, mut tgt: String) -> String {
             let mut seen = std::collections::HashSet::new();
-            const MAX_CHAIN_LENGTH: usize = 100; // Safety limit
-            let mut iterations = 0;
-
+            const MAX_CHAIN: usize = 100;
+            let mut i = 0;
             while let Some(next) = map.get(&tgt) {
-                if iterations >= MAX_CHAIN_LENGTH {
-                    // Chain too long, return current target to avoid infinite loops
-                    break;
-                }
-                if !seen.insert(tgt.clone()) {
-                    // Cycle detected, return current target
+                if i >= MAX_CHAIN || !seen.insert(tgt.clone()) {
                     break;
                 }
                 tgt = next.clone();
-                iterations += 1;
+                i += 1;
             }
             tgt
         }
 
-        for (k, v) in simple_jumps.clone() {
-            let resolved = resolve_target(&simple_jumps, v.clone());
-            if resolved != v {
-                // compress path
-                simple_jumps.insert(k, resolved);
+        // Map each trivial block to its non-trivial terminal, skipping cycles.
+        let mut resolved_targets: HashMap<String, String> = HashMap::new();
+        for k in simple_jumps.keys() {
+            let resolved = resolve_target(&simple_jumps, k.clone());
+            if resolved != *k && !simple_jumps.contains_key(&resolved) {
+                resolved_targets.insert(k.clone(), resolved);
             }
         }
 
         let mut changed = false;
-
-        // Rewrite all Jmp/Br targets through the mapping
         for block in &mut func.blocks {
             for instr in &mut block.instructions {
                 match instr {
                     Instruction::Jmp { target } => {
-                        if let Some(new_tgt) = simple_jumps.get(target)
+                        if let Some(new_tgt) = resolved_targets.get(target)
                             && new_tgt != target
                         {
                             *target = new_tgt.clone();
@@ -238,13 +222,13 @@ impl JumpThreading {
                         true_target,
                         false_target,
                     } => {
-                        if let Some(new_tgt) = simple_jumps.get(true_target)
+                        if let Some(new_tgt) = resolved_targets.get(true_target)
                             && new_tgt != true_target
                         {
                             *true_target = new_tgt.clone();
                             changed = true;
                         }
-                        if let Some(new_tgt) = simple_jumps.get(false_target)
+                        if let Some(new_tgt) = resolved_targets.get(false_target)
                             && new_tgt != false_target
                         {
                             *false_target = new_tgt.clone();
@@ -256,7 +240,7 @@ impl JumpThreading {
                     } => {
                         let mut local_change = false;
                         for (_val, tgt) in cases.iter_mut() {
-                            if let Some(new_tgt) = simple_jumps.get(tgt)
+                            if let Some(new_tgt) = resolved_targets.get(tgt)
                                 && new_tgt != tgt
                             {
                                 *tgt = new_tgt.clone();

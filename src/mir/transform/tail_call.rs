@@ -34,7 +34,6 @@ impl Transform for TailCallOptimization {
 
 impl TailCallOptimization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        // Safety check: limit block size
         const MAX_BLOCK_INSTRUCTIONS: usize = 1_000;
         for block in &func.blocks {
             if block.instructions.len() > MAX_BLOCK_INSTRUCTIONS {

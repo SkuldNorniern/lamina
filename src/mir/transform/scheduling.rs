@@ -35,7 +35,6 @@ impl InstructionScheduling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
         let mut changed = false;
 
-        // Safety check: limit function size
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 2_000;
 

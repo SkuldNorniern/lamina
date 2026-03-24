@@ -38,7 +38,6 @@ impl Transform for AddressingCanonicalization {
 
 impl AddressingCanonicalization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        // Safety check: limit function size
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
 
@@ -74,7 +73,7 @@ impl AddressingCanonicalization {
             }
 
             let len = block.instructions.len();
-            // Safety: limit number of rewrites per block to prevent excessive changes
+
             const MAX_REWRITES_PER_BLOCK: usize = 50;
             let mut rewrites_this_block = 0;
 
@@ -134,10 +133,7 @@ impl AddressingCanonicalization {
     ) -> bool {
         match addr {
             AddressMode::BaseOffset { base, offset } => {
-                // Safety: only rewrite if we can find the definition
-                // and it's a simple pattern we can verify
                 if let Some(def_pos) = def_index.get(base) {
-                    // Safety: ensure def_pos is valid
                     if *def_pos >= instructions.len() {
                         return false;
                     }
@@ -147,13 +143,10 @@ impl AddressingCanonicalization {
                         def_index,
                         instructions,
                     ) {
-                        // Keep original offset, scale is guaranteed in {1,2,4,8}
-                        // Only convert if offset fits in i8 range to avoid information loss
+                        // Only convert if offset fits in i8 range and base != index
                         if (*offset >= i8::MIN as i16) && (*offset <= i8::MAX as i16) {
-                            // Safety: verify base_reg and index_reg are actually defined
-                            // and not the same register (which could cause issues)
                             if base_reg == index_reg {
-                                return false; // Don't rewrite if base == index
+                                return false;
                             }
 
                             let clamped_off = *offset as i8;
@@ -271,8 +264,7 @@ impl AddressingCanonicalization {
 mod tests {
     use super::*;
     use crate::mir::{
-        Block, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand, ScalarType,
-        VirtualReg,
+        FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand, ScalarType, VirtualReg,
     };
 
     #[test]

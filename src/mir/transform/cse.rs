@@ -51,7 +51,6 @@ impl CommonSubexpressionElimination {
     }
 
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        // Safety check: limit function size
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 500;
 
@@ -192,7 +191,6 @@ impl CommonSubexpressionElimination {
                 if let Some((existing_reg, existing_ver)) = expr_to_reg.get(&expr_key) {
                     // Replace this instruction with a copy from the existing register
                     if let Some(dst) = instr.def_reg() {
-                        // Ensure the producing register has not been redefined since
                         let cur_ver = def_version.get(existing_reg).copied().unwrap_or(0);
                         if cur_ver != *existing_ver {
                             // Stale producer, cannot reuse
