@@ -116,8 +116,6 @@ mod tests_licm {
             "Invariant instruction should be moved out of loop"
         );
 
-        // Pre-header should have usage
-        // Note: Implementation creates "loop_pre"
         let pre_header = func.get_block("loop_pre").expect("pre-header created");
         let has_moved = pre_header.instructions.iter().any(|i| {
             if let Instruction::IntBinary { lhs, rhs, .. } = i {
@@ -267,8 +265,6 @@ impl LoopInvariantCodeMotion {
                     .filter(|pred| self.has_edge_to(func, &pred.label, &block.label))
                     .collect();
 
-                // If a node has no preds (unreachable), it effectively keeps "all blocks" as doms (or empty?)
-                // Standard algorithm assumes reachable. For unreachable, we can just skip or clear.
                 if preds.is_empty() {
                     continue;
                 }
@@ -398,6 +394,23 @@ impl LoopInvariantCodeMotion {
         let mut invariant = Vec::new();
         let defs_in_loop = self.collect_defs_in_loop(func, loop_info);
 
+        // Count how many times each register is defined inside the loop.
+        // If a register is defined more than once (e.g. accumulator %sum, induction
+        // var %j), it cannot be safely hoisted — one of those assignments is a
+        // loop-carried update that must execute every iteration.
+        let mut def_counts: std::collections::HashMap<Register, usize> =
+            std::collections::HashMap::new();
+        for block in &func.blocks {
+            if !loop_info.blocks.contains(&block.label) {
+                continue;
+            }
+            for instr in &block.instructions {
+                if let Some(def) = instr.def_reg() {
+                    *def_counts.entry(def.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+
         let max_invariant_instructions = 20;
 
         for (block_idx, block) in func.blocks.iter().enumerate() {
@@ -405,10 +418,13 @@ impl LoopInvariantCodeMotion {
                 continue;
             }
 
-            // Allow optimizing the header block if it has invariant instructions
-            // (safe because we move to pre-header which dominates header)
-
             for (instr_idx, instr) in block.instructions.iter().enumerate() {
+                // Skip if this register is defined more than once in the loop.
+                if let Some(def) = instr.def_reg() {
+                    if def_counts.get(def).copied().unwrap_or(0) > 1 {
+                        continue;
+                    }
+                }
                 if self.is_invariant_instruction(func, loop_info, &defs_in_loop, instr) {
                     invariant.push((block_idx, instr_idx));
 
@@ -555,17 +571,10 @@ impl LoopInvariantCodeMotion {
             }
         }
 
-        // Update incoming edges to point to the pre-header
-        // IMPORTANT: Do NOT update edges coming from inside the loop (backedges)
-        // Only update edges entering the loop from outside
+        // Redirect non-loop incoming edges to go through the pre-header.
+        // Back-edges from inside the loop are skipped.
         for (block_idx, block) in func.blocks.iter_mut().enumerate() {
-            // Skip the pre-header itself (which we just inserted at header_idx)
-            if block_idx == header_idx {
-                continue;
-            }
-
-            // Skip blocks that are part of the loop - satisfied if label is in loop_info.blocks
-            if loop_info.blocks.contains(&block.label) {
+            if block_idx == header_idx || loop_info.blocks.contains(&block.label) {
                 continue;
             }
 
@@ -661,7 +670,6 @@ impl Transform for LoopUnrolling {
 
 impl LoopUnrolling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        // Safety check: limit function size. Unrolling increases size significantly.
         const MAX_BLOCKS: usize = 1000;
         const MAX_LOOPS_TO_UNROLL: usize = 10;
 
@@ -928,7 +936,6 @@ impl LoopUnrolling {
                 }
             }
         }
-        // Ensure latch is in
         body.insert(latch.to_string());
 
         // Return sorted list
@@ -1058,36 +1065,9 @@ impl LoopUnrolling {
             }
         }
 
-        // Remove old body blocks
-        // We can't easily remove by index because indices shift.
-        // Should filter out.
         let old_body_set: std::collections::HashSet<_> = loop_info.body_blocks.iter().collect();
         func.blocks.retain(|b| !old_body_set.contains(&b.label));
-
-        // Insert new blocks. Where? Order matters for layout sometimes, but logically valid anywhere.
-        // Let's append them.
         func.blocks.extend(unrolled_blocks);
-
-        // 4. Remove the conditional check from the unrolled bodies?
-        // In a purely unrolled loop (count exact), the back-edge condition is always true (until last).
-        // Optimizing it out is cleaner.
-        // We can change `Br` to `Jmp` for the loop-continuation edge.
-        // Current implementation left `Br` pointing to next iter.
-        // Peephole/DeadCode will clean it up if cond is constant?
-        // But cond is NOT constant (variable incremented).
-        // So we really should replace logical branches with Jumps if we know we are continuing.
-        // BUT `cond` checks `i < N`. `i` is updated.
-        // If we don't remove the check, we are running the check redundanty.
-        // To remove check, we must know which branch is the "stay in loop" branch.
-        // For now, let's keep it simple: fully functional unroll, rely on predictor/other passes or leave overhead (still better than branch miss?).
-        // Actually, removing check is key benefit.
-        // If we know `count` matches exactly, we can turn the back-edge-branch into Jmp(NextIter).
-        // Then `i` (induction var) calculation might become dead if not used elsewhere.
-        // Let's do the replacement to Unconditional Jump for all but last.
-        // Last one becomes Jump(Exit).
-        // Done in step 2 logic above implicitly?
-        // No, step 2 logic kept `Br` but updated targets.
-        // We should convert `Br` to `Jmp` if it was the latch condition.
 
         for block in &mut func.blocks {
             if block
@@ -1163,9 +1143,6 @@ mod tests {
         // exit:
         //   ret
 
-        // Note: Our simple analyzer assumes start=0 implicitly or just checks the bound.
-        // In a real compiler we'd check the entry block.
-
         let mut func = FunctionBuilder::new("test_loop")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
@@ -1227,11 +1204,6 @@ mod tests {
         let loop_0 = func
             .get_block("loop_unroll_0")
             .expect("loop_unroll_0 exists");
-        // Should contain body instructions + Jump to next
-        // Body: v2=v2+1, v0=v0+1, v1=v0<4, Jmp loop_unroll_1
-        // Note: The condition check v1=v0<4 and Br are preserved but Br targets updated?
-        // Actually our logic kept Br but we attempted to convert to Jmp if possible.
-        // Let's just check length > 0 and terminator.
         assert!(loop_0.instructions.len() > 0);
 
         match loop_0.instructions.last().unwrap() {

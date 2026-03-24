@@ -37,7 +37,6 @@ impl Transform for Peephole {
 impl Peephole {
     /// Apply peephole rewrites to a function. Returns true if any change occurred.
     pub fn run_on_function(&self, func: &mut Function) -> bool {
-        // Safety check: limit block size to prevent excessive processing
         const MAX_BLOCK_INSTRUCTIONS: usize = 10_000;
         for block in &func.blocks {
             if block.instructions.len() > MAX_BLOCK_INSTRUCTIONS {
@@ -895,7 +894,6 @@ mod tests {
 
     #[test]
     fn test_peephole_stress_many_instructions() {
-        // Ensure peephole doesn't hang on large blocks
         let mut func = Function::new(crate::mir::function::Signature::new("stress"))
             .with_entry("entry".to_string());
         let mut bb = Block::new("entry");

@@ -131,21 +131,27 @@ fn assemble_native(
     let backend = backend.unwrap_or_else(|| detect_assembler_backend(target_arch, target_os));
 
     if backend == AssemblerBackend::Ras {
-        if !matches!(target_arch, TargetArchitecture::X86_64 | TargetArchitecture::Aarch64) {
+        if !matches!(
+            target_arch,
+            TargetArchitecture::X86_64 | TargetArchitecture::Aarch64
+        ) {
             return Err(LaminaError::ValidationError(format!(
                 "Ras assembler supports x86_64 and AArch64 only, not {:?}",
                 target_arch
             )));
         }
         if verbose {
-            println!("[VERBOSE] Assembling with ras (as/GAS alternative): {} -> {}", input_path.display(), output_path.display());
+            println!(
+                "[VERBOSE] Assembling with ras (as/GAS alternative): {} -> {}",
+                input_path.display(),
+                output_path.display()
+            );
         }
         let mut ras = ras::Ras::new(target_arch, target_os).map_err(|e| {
             LaminaError::ValidationError(format!("Failed to create ras assembler: {}", e))
         })?;
-        ras.assemble_file(input_path, output_path).map_err(|e| {
-            LaminaError::ValidationError(format!("ras assembly failed: {}", e))
-        })?;
+        ras.assemble_file(input_path, output_path)
+            .map_err(|e| LaminaError::ValidationError(format!("ras assembly failed: {}", e)))?;
         return Ok(AssembleResult {
             output_path: output_path.to_path_buf(),
             needs_linking: true,
@@ -273,8 +279,10 @@ pub fn detect_assembler_backend(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
 ) -> AssemblerBackend {
-    if matches!(target_arch, TargetArchitecture::X86_64 | TargetArchitecture::Aarch64)
-        && ras::is_object_file_supported(target_arch, target_os)
+    if matches!(
+        target_arch,
+        TargetArchitecture::X86_64 | TargetArchitecture::Aarch64
+    ) && ras::is_object_file_supported(target_arch, target_os)
     {
         return AssemblerBackend::Ras;
     }

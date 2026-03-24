@@ -32,7 +32,6 @@ impl Transform for CopyPropagation {
 
 impl CopyPropagation {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        // Safety check: limit function size
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
 
@@ -423,7 +422,6 @@ mod tests {
 
     #[test]
     fn test_copy_propagation_no_infinite_loop() {
-        // Ensure copy propagation terminates on circular-looking patterns
         let mut func = FunctionBuilder::new("circular")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
