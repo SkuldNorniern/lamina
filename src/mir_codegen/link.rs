@@ -243,14 +243,32 @@ pub fn link(
             ("ld", args)
         }
         LinkerBackend::Lld => {
-            let args = build_unix_linker_args(
+            let mut args = build_unix_linker_args(
                 input_path,
                 output_path,
                 target_arch,
                 target_os,
                 additional_flags,
             );
-            ("lld", args)
+            if target_os == TargetOperatingSystem::MacOS {
+                if let Ok(out) = Command::new("xcrun").args(["--show-sdk-version"]).output() {
+                    if let Ok(sdk) = String::from_utf8(out.stdout) {
+                        let sdk_ver = sdk.trim();
+                        if !sdk_ver.is_empty() {
+                            args.insert(0, sdk_ver.to_string());
+                            args.insert(0, "10.15".to_string());
+                            args.insert(0, "macos".to_string());
+                            args.insert(0, "-platform_version".to_string());
+                        }
+                    }
+                }
+            }
+            let cmd = if target_os == TargetOperatingSystem::MacOS {
+                "ld64.lld"
+            } else {
+                "lld"
+            };
+            (cmd, args)
         }
         LinkerBackend::Mold => {
             let args = build_unix_linker_args(
@@ -330,8 +348,18 @@ pub fn detect_linker_backend() -> LinkerBackend {
         return LinkerBackend::Mold;
     }
 
-    if Command::new("lld").arg("-v").output().is_ok()
-        || Command::new("ld.lld").arg("-v").output().is_ok()
+    if cfg!(target_os = "macos")
+        && (Command::new("ld").arg("-v").output().is_ok()
+            || Command::new("ld").arg("--version").output().is_ok())
+    {
+        return LinkerBackend::Ld;
+    }
+
+    if Command::new("ld64.lld").arg("-v").output().is_ok() {
+        return LinkerBackend::Lld;
+    }
+    if Command::new("ld.lld").arg("-v").output().is_ok()
+        || Command::new("lld").arg("-v").output().is_ok()
     {
         return LinkerBackend::Lld;
     }

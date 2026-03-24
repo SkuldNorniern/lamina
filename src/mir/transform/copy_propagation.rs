@@ -88,6 +88,14 @@ impl CopyPropagation {
 
             if let Some(def_reg) = new_instr.def_reg() {
                 value_map.remove(def_reg);
+                // Also invalidate any entry whose mapped *value* is def_reg.
+                // Without this, patterns like:
+                //   %a = add %b, 0   → map: {a → b}
+                //   %c = add %a, 0   → propagated: c = add b, 0; map: {a → b, c → b}
+                //   %b = add %x, 5   → removes b as key, but {c → b} stays STALE
+                //   %d = add %c, 0   → propagates c → b, but b is now redefined
+                // would silently produce wrong code on non-SSA loops.
+                value_map.retain(|_, v| !matches!(v, Operand::Register(r) if r == def_reg));
             }
             if let Instruction::IntBinary {
                 op: crate::mir::IntBinOp::Add,

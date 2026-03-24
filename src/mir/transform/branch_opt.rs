@@ -2,6 +2,7 @@
 
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Function, Instruction};
+use std::collections::HashSet;
 
 /// Branch optimization that eliminates unreachable branches.
 #[derive(Default)]
@@ -61,13 +62,48 @@ impl BranchOptimization {
 
         let original_count = func.blocks.len();
 
-        func.blocks.retain(|block| {
-            // Always keep entry block
-            if Some(&block.label) == entry_label.as_ref() {
-                return true;
-            }
-            reachable_blocks.contains(&block.label)
-        });
+        // Compute which blocks we intend to remove.
+        let to_remove: HashSet<String> = func
+            .blocks
+            .iter()
+            .filter(|b| {
+                Some(&b.label) != entry_label.as_ref()
+                    && !reachable_blocks.contains(&b.label)
+            })
+            .map(|b| b.label.clone())
+            .collect();
+
+        if to_remove.is_empty() {
+            return Ok(false);
+        }
+
+        // Safety: collect all branch targets referenced by blocks we are KEEPING.
+        // If the BFS under-approximated reachability (e.g. due to an unhandled
+        // terminator variant), a surviving block might still branch into a block
+        // we flagged for removal.  Removing such a block would leave a dangling
+        // branch target that causes runtime infinite-loops (the jump goes to
+        // garbage / wraps around to a wrong block).
+        // Solution: only remove blocks that are NOT referenced by any keeper.
+        let surviving_targets: HashSet<String> = func
+            .blocks
+            .iter()
+            .filter(|b| !to_remove.contains(&b.label))
+            .flat_map(|b| Self::block_successors(b))
+            .collect();
+
+        let safe_to_remove: HashSet<String> = to_remove
+            .difference(&surviving_targets)
+            .cloned()
+            .collect();
+
+        if safe_to_remove.is_empty() {
+            // All candidate-removals are still referenced — skip to avoid
+            // leaving dangling edges.
+            return Ok(false);
+        }
+
+        func.blocks
+            .retain(|b| !safe_to_remove.contains(&b.label));
 
         // Safety: Ensure we never remove all blocks
         if func.blocks.is_empty() {
@@ -106,39 +142,40 @@ impl BranchOptimization {
             }
             iterations += 1;
 
-            if let Some(block) = func.get_block(&current_label)
-                && let Some(last_instr) = block.instructions.last()
-            {
-                match last_instr {
-                    Instruction::Jmp { target } => {
-                        if reachable.insert(target.clone()) {
-                            worklist.push_back(target.clone());
-                        }
-                    }
-                    Instruction::Br {
-                        true_target,
-                        false_target,
-                        ..
-                    } => {
-                        if reachable.insert(true_target.clone()) {
-                            worklist.push_back(true_target.clone());
-                        }
-                        if reachable.insert(false_target.clone()) {
-                            worklist.push_back(false_target.clone());
-                        }
-                    }
-                    Instruction::Ret { .. } => {
-                        // Terminal instruction, no successors
-                    }
-                    _ => {
-                        // For other instructions, assume fallthrough to next block
-                        // (though MIR doesn't have implicit fallthrough)
+            if let Some(block) = func.get_block(&current_label) {
+                // Scan ALL instructions, not just the last one, so that any
+                // Jmp/Br embedded anywhere in the block is discovered.
+                for succ in Self::block_successors(block) {
+                    if reachable.insert(succ.clone()) {
+                        worklist.push_back(succ);
                     }
                 }
             }
         }
 
         reachable
+    }
+
+    /// Return all direct successor block labels for a given block.
+    /// This covers every instruction variant that names a target label so
+    /// that `surviving_targets` is always complete.
+    fn block_successors(block: &crate::mir::Block) -> Vec<String> {
+        let mut targets = Vec::new();
+        for instr in &block.instructions {
+            match instr {
+                Instruction::Jmp { target } => targets.push(target.clone()),
+                Instruction::Br {
+                    true_target,
+                    false_target,
+                    ..
+                } => {
+                    targets.push(true_target.clone());
+                    targets.push(false_target.clone());
+                }
+                _ => {}
+            }
+        }
+        targets
     }
 }
 
