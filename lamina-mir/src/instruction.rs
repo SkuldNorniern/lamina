@@ -1183,8 +1183,8 @@ impl fmt::Display for Instruction {
 
 #[cfg(test)]
 mod tests {
-    use super::register::VirtualReg;
-    use super::types::ScalarType;
+    use crate::register::VirtualReg;
+    use crate::types::ScalarType;
     use super::*;
 
     #[test]

@@ -233,9 +233,9 @@ impl FunctionBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::instruction::{Immediate, Instruction, IntBinOp, Operand};
-    use super::register::VirtualReg;
-    use super::types::ScalarType;
+    use crate::instruction::{Instruction, IntBinOp, Operand};
+    use crate::register::VirtualReg;
+    use crate::types::ScalarType;
     use super::*;
 
     #[test]

@@ -198,8 +198,8 @@ impl ModuleBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::function::{Function, Signature};
-    use super::types::{MirType, ScalarType};
+    use crate::function::{Function, Signature};
+    use crate::types::{MirType, ScalarType};
     use super::*;
 
     #[test]

@@ -87,9 +87,9 @@ impl Block {
 
 #[cfg(test)]
 mod tests {
-    use super::instruction::{Immediate, Instruction, IntBinOp, Operand};
-    use super::register::{Register, VirtualReg};
-    use super::types::{MirType, ScalarType};
+    use crate::instruction::{Immediate, Instruction, IntBinOp, Operand};
+    use crate::register::{Register, VirtualReg};
+    use crate::types::{MirType, ScalarType};
     use super::*;
 
     #[test]
