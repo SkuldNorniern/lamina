@@ -198,19 +198,19 @@ impl SimdCapabilities {
             v512_supported: true,  // AVX-512 exists but may need runtime check
             float_simd_supported: true,
             integer_simd_supported: true,
-            fma_supported: true, // FMA3 is common on modern x86_64
+            fma_supported: true,  // FMA3 is common on modern x86_64
             fp16_supported: true, // F16C and AVX-512-FP16
             bf16_supported: true, // AVX-512-BF16
             x86_extensions: vec![
-                X86SimdExtension::Sse2,  // Baseline
+                X86SimdExtension::Sse2, // Baseline
                 X86SimdExtension::Sse3,
                 X86SimdExtension::Ssse3,
                 X86SimdExtension::Sse41,
                 X86SimdExtension::Sse42,
-                X86SimdExtension::Avx,   // Common
-                X86SimdExtension::Avx2,  // Common
-                X86SimdExtension::Fma3,   // Common
-                X86SimdExtension::F16c,  // Common
+                X86SimdExtension::Avx,  // Common
+                X86SimdExtension::Avx2, // Common
+                X86SimdExtension::Fma3, // Common
+                X86SimdExtension::F16c, // Common
                 // AVX-512 extensions - may need runtime detection
                 X86SimdExtension::Avx512f,
                 X86SimdExtension::Avx512vl,
@@ -230,18 +230,18 @@ impl SimdCapabilities {
         Self {
             supported: true,
             max_vector_width: 2048, // SVE can go up to 2048 bits, but 128 is baseline
-            v128_supported: true,  // NEON is baseline for AArch64
+            v128_supported: true,   // NEON is baseline for AArch64
             v256_supported: false,  // NEON doesn't support 256-bit, SVE would but it's optional
             v512_supported: false,  // SVE can support this but requires runtime detection
             float_simd_supported: true,
             integer_simd_supported: true,
-            fma_supported: true, // NEON supports FMA
-            fp16_supported: true, // NEON supports FP16
+            fma_supported: true,   // NEON supports FMA
+            fp16_supported: true,  // NEON supports FP16
             bf16_supported: false, // BF16 requires SVE2 or newer
             x86_extensions: Vec::new(),
             arm_extensions: vec![
                 ArmSimdExtension::Neon, // Baseline
-                // SVE and SVE2 are optional and would need runtime detection
+                                        // SVE and SVE2 are optional and would need runtime detection
             ],
             riscv_extensions: Vec::new(),
         }
@@ -657,7 +657,7 @@ impl SimdCapabilities {
     /// ```
     pub fn update_with_runtime_detection(&mut self) {
         let runtime_caps = Self::detect_runtime();
-        
+
         // Update with runtime-detected values
         self.supported = runtime_caps.supported;
         self.max_vector_width = runtime_caps.max_vector_width;
@@ -772,4 +772,3 @@ mod tests {
         assert!(!caps.v512_supported);
     }
 }
-

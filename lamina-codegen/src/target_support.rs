@@ -13,11 +13,12 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
     match arch {
         TargetArchitecture::X86_64 => os_supported_for_x86_64(os),
         TargetArchitecture::Aarch64 => os_supported_for_aarch64(os),
-        TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
-            os_supported_for_riscv(os)
-        }
+        TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => os_supported_for_riscv(os),
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
-            matches!(os, TargetOperatingSystem::Unknown | TargetOperatingSystem::Linux)
+            matches!(
+                os,
+                TargetOperatingSystem::Unknown | TargetOperatingSystem::Linux
+            )
         }
         _ => false,
     }

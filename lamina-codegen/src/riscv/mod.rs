@@ -7,4 +7,3 @@ pub mod regalloc;
 pub use abi::RiscVAbi;
 pub use frame::RiscVFrame;
 pub use regalloc::RiscVRegAlloc;
-
