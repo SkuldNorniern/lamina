@@ -136,14 +136,12 @@ impl TransformPipeline {
         if opt_level >= 1 {
             pipeline = pipeline.add_transform(CfgSimplify);
             pipeline = pipeline.add_transform(JumpThreading);
-            // NOTE: BranchOptimization disabled - causes infinite loop at O3
-            // pipeline = pipeline.add_transform(BranchOptimization);
+            pipeline = pipeline.add_transform(BranchOptimization);
         }
 
         if opt_level >= 2 {
             pipeline = pipeline.add_transform(ConstantFolding);
-            // NOTE: CopyPropagation disabled - causes infinite loop at O3
-            // pipeline = pipeline.add_transform(CopyPropagation);
+            pipeline = pipeline.add_transform(CopyPropagation);
             pipeline = pipeline.add_transform(MemoryOptimization);
             pipeline = pipeline.add_transform(DeadCodeElimination);
             pipeline = pipeline.add_transform(TailCallOptimization);
@@ -151,6 +149,7 @@ impl TransformPipeline {
         }
 
         if opt_level >= 3 {
+            pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
             pipeline = pipeline.add_transform(StrengthReduction);
             pipeline = pipeline.add_transform(DeadCodeElimination);
             pipeline = pipeline.add_transform(CommonSubexpressionElimination);
@@ -432,8 +431,11 @@ mod tests {
     }
 
     #[test]
-    fn test_regression_branch_optimization_disabled() {
-        // Regression test: BranchOptimization is disabled due to infinite loop bug
+    fn test_branch_optimization_enabled() {
+        // BranchOptimization is now enabled after fixing:
+        // 1. BFS now scans all instructions (not just last) via block_successors()
+        // 2. post-removal safety check prevents removing blocks still referenced
+        //    by surviving blocks, guarding against BFS under-approximation
         let pipeline_o1 = TransformPipeline::default_for_opt_level(1);
         let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
         let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
@@ -442,24 +444,24 @@ mod tests {
         let names_o2: Vec<&str> = pipeline_o2.transform_names();
         let names_o3: Vec<&str> = pipeline_o3.transform_names();
 
-        // BranchOptimization should NOT be in any default pipeline until bug is fixed
-        assert!(!names_o1.contains(&"branch_optimization"));
-        assert!(!names_o2.contains(&"branch_optimization"));
-        assert!(!names_o3.contains(&"branch_optimization"));
+        assert!(names_o1.contains(&"branch_optimization"));
+        assert!(names_o2.contains(&"branch_optimization"));
+        assert!(names_o3.contains(&"branch_optimization"));
     }
 
     #[test]
-    fn test_regression_copy_propagation_disabled() {
-        // Regression test: CopyPropagation is disabled due to infinite loop bug
+    fn test_copy_propagation_enabled() {
+        // CopyPropagation is now enabled after fixing the stale value_map bug:
+        // when def_reg is redefined, entries where def_reg appears as a VALUE
+        // are also evicted, preventing propagation to a now-stale source.
         let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
         let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
 
         let names_o2: Vec<&str> = pipeline_o2.transform_names();
         let names_o3: Vec<&str> = pipeline_o3.transform_names();
 
-        // CopyPropagation should NOT be in default pipelines until bug is fixed
-        assert!(!names_o2.contains(&"copy_propagation"));
-        assert!(!names_o3.contains(&"copy_propagation"));
+        assert!(names_o2.contains(&"copy_propagation"));
+        assert!(names_o3.contains(&"copy_propagation"));
     }
 
     #[test]
