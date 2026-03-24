@@ -2,8 +2,8 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use lamina_mir::{Register, RegisterClass, VirtualReg};
 use crate::regalloc::RegisterAllocator as MirRegisterAllocator;
+use lamina_mir::{Register, RegisterClass, VirtualReg};
 use lamina_platform::TargetOperatingSystem;
 
 /// x86_64 register allocator supporting System V AMD64 and Microsoft x64 ABIs.

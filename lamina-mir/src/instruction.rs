@@ -1183,9 +1183,9 @@ impl fmt::Display for Instruction {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::register::VirtualReg;
     use super::types::ScalarType;
+    use super::*;
 
     #[test]
     fn test_instruction_def_reg() {

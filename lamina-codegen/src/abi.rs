@@ -90,5 +90,3 @@ pub fn common_call_stub(name: &str, target_os: TargetOperatingSystem) -> Option<
         _ => None,
     }
 }
-
-

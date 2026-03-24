@@ -198,9 +198,9 @@ impl ModuleBuilder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::function::{Function, Signature};
     use super::types::{MirType, ScalarType};
+    use super::*;
 
     #[test]
     fn test_module_creation() {

@@ -20,19 +20,19 @@ pub mod abi;
 pub mod regalloc;
 pub mod target_support;
 
-pub mod x86_64;
 pub mod aarch64;
 pub mod riscv;
 pub mod wasm;
+pub mod x86_64;
 
 // Re-exports for convenience
 pub use abi::Abi;
-pub use regalloc::{PhysRegHandle, PhysRegConvertible, RegisterAllocator};
+pub use regalloc::{
+    Allocation, LinearScanAllocator, LiveInterval, PhysRegConvertible, PhysRegHandle,
+    RegisterAllocator,
+};
 pub use target_support::{
-    is_assembly_supported,
-    os_uses_coff,
-    os_uses_elf,
-    os_uses_macho,
+    is_assembly_supported, os_uses_coff, os_uses_elf, os_uses_macho,
     supported_assembly_targets_hint,
 };
 
