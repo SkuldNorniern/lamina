@@ -506,7 +506,8 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     let target_obj = lamina_platform::Target::from_str(target)
         .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{}': {}", target, e)))?;
 
-    if !lamina_codegen::is_assembly_supported(target_obj.architecture, target_obj.operating_system) {
+    if !lamina_codegen::is_assembly_supported(target_obj.architecture, target_obj.operating_system)
+    {
         return Err(LaminaError::ValidationError(format!(
             "Target {} is not supported for assembly generation. {}",
             target,

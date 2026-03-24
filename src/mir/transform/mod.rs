@@ -96,23 +96,19 @@ pub struct TransformStats {
     pub iterations: usize,
 }
 
-/// A pipeline of transforms that can be applied to MIR
 pub struct TransformPipeline {
     transforms: Vec<Box<dyn Transform>>,
-    /// Safety limit for total iterations across all transforms
     max_total_iterations: usize,
 }
 
 impl TransformPipeline {
-    /// Create a new empty transform pipeline
     pub fn new() -> Self {
         Self {
             transforms: Vec::new(),
-            max_total_iterations: 1000, // Safety limit to prevent infinite loops
+            max_total_iterations: 1000,
         }
     }
 
-    /// Add a transform to the pipeline
     pub fn add_transform<T: Transform + 'static>(mut self, transform: T) -> Self {
         self.transforms.push(Box::new(transform));
         self
@@ -125,7 +121,6 @@ impl TransformPipeline {
             .collect()
     }
 
-    /// Create a default optimization pipeline for the given optimization level
     pub fn default_for_opt_level(opt_level: u8) -> Self {
         let mut pipeline = Self::new();
 
@@ -164,12 +159,10 @@ impl TransformPipeline {
         pipeline
     }
 
-    /// Apply all transforms in the pipeline to a function
     pub fn apply_to_function(
         &self,
         func: &mut crate::mir::Function,
     ) -> Result<TransformStats, String> {
-        // Safety check: prevent transforms on extremely large functions
         let total_instructions: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
         const MAX_INSTRUCTIONS: usize = 100_000;
         if total_instructions > MAX_INSTRUCTIONS {
@@ -182,8 +175,6 @@ impl TransformPipeline {
         let mut stats = TransformStats::default();
         let mut total_iterations = 0;
 
-        // Single-pass only - no fixed-point iteration to prevent infinite loops
-        // Individual transforms can do their own fixed-point iteration if needed
         for transform in &self.transforms {
             if total_iterations >= self.max_total_iterations {
                 return Err(format!(
@@ -212,7 +203,6 @@ impl TransformPipeline {
         Ok(stats)
     }
 
-    /// Apply all transforms in the pipeline to a module (all functions)
     pub fn apply_to_module(
         &self,
         module: &mut crate::mir::Module,
@@ -228,13 +218,11 @@ impl TransformPipeline {
                     total_stats.iterations += func_stats.iterations;
                 }
                 Err(e) => {
-                    // Collect errors but continue processing other functions
                     failed_functions.push((func_name.clone(), e));
                 }
             }
         }
 
-        // If all functions failed, return error. Otherwise, log warnings but succeed.
         if !failed_functions.is_empty() && total_stats.transforms_run == 0 {
             return Err(format!(
                 "All functions failed transforms: {}",
@@ -246,7 +234,6 @@ impl TransformPipeline {
             ));
         }
 
-        // Log warnings for failed functions but don't fail the entire pipeline
         if !failed_functions.is_empty() {
             eprintln!(
                 "Warning: {} function(s) failed transforms:",
@@ -260,12 +247,10 @@ impl TransformPipeline {
         Ok(total_stats)
     }
 
-    /// Get the number of transforms in this pipeline
     pub fn len(&self) -> usize {
         self.transforms.len()
     }
 
-    /// Check if the pipeline is empty
     pub fn is_empty(&self) -> bool {
         self.transforms.is_empty()
     }
@@ -302,7 +287,6 @@ mod tests {
 
     #[test]
     fn test_transform_pipeline_apply_to_function() {
-        // Create a simple function with some dead code
         let func = FunctionBuilder::new("test")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
@@ -317,17 +301,14 @@ mod tests {
 
     #[test]
     fn test_transform_pipeline_apply_to_module() {
-        // Create a simple module
-        let module = crate::mir::Module::new("test");
-        let mut module = module;
+        let mut module = crate::mir::Module::new("test");
         let pipeline = TransformPipeline::new().add_transform(Peephole);
         let stats = pipeline.apply_to_module(&mut module).unwrap();
-        assert_eq!(stats.transforms_run, 0); // No functions in module
+        assert_eq!(stats.transforms_run, 0);
     }
 
     #[test]
     fn test_phase_ordering_o1_passes() {
-        // Test that O1 passes work together
         let func = FunctionBuilder::new("test")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
@@ -342,7 +323,6 @@ mod tests {
 
     #[test]
     fn test_phase_ordering_o2_passes() {
-        // Test that O2 passes work together
         let func = FunctionBuilder::new("test")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
@@ -357,7 +337,6 @@ mod tests {
 
     #[test]
     fn test_phase_ordering_o3_passes() {
-        // Test that O3 passes work together
         let func = FunctionBuilder::new("test")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
@@ -372,7 +351,6 @@ mod tests {
 
     #[test]
     fn test_phase_ordering_cfg_then_constant_folding() {
-        // Test that CFG simplification before constant folding works
         use crate::mir::instruction::{Instruction, IntBinOp, Operand};
         use crate::mir::register::Register;
 
@@ -432,60 +410,57 @@ mod tests {
 
     #[test]
     fn test_branch_optimization_enabled() {
-        // BranchOptimization is now enabled after fixing:
-        // 1. BFS now scans all instructions (not just last) via block_successors()
-        // 2. post-removal safety check prevents removing blocks still referenced
-        //    by surviving blocks, guarding against BFS under-approximation
         let pipeline_o1 = TransformPipeline::default_for_opt_level(1);
         let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
         let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
 
-        let names_o1: Vec<&str> = pipeline_o1.transform_names();
-        let names_o2: Vec<&str> = pipeline_o2.transform_names();
-        let names_o3: Vec<&str> = pipeline_o3.transform_names();
-
-        assert!(names_o1.contains(&"branch_optimization"));
-        assert!(names_o2.contains(&"branch_optimization"));
-        assert!(names_o3.contains(&"branch_optimization"));
+        assert!(
+            pipeline_o1
+                .transform_names()
+                .contains(&"branch_optimization")
+        );
+        assert!(
+            pipeline_o2
+                .transform_names()
+                .contains(&"branch_optimization")
+        );
+        assert!(
+            pipeline_o3
+                .transform_names()
+                .contains(&"branch_optimization")
+        );
     }
 
     #[test]
     fn test_copy_propagation_enabled() {
-        // CopyPropagation is now enabled after fixing the stale value_map bug:
-        // when def_reg is redefined, entries where def_reg appears as a VALUE
-        // are also evicted, preventing propagation to a now-stale source.
         let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
         let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
 
-        let names_o2: Vec<&str> = pipeline_o2.transform_names();
-        let names_o3: Vec<&str> = pipeline_o3.transform_names();
-
-        assert!(names_o2.contains(&"copy_propagation"));
-        assert!(names_o3.contains(&"copy_propagation"));
+        assert!(pipeline_o2.transform_names().contains(&"copy_propagation"));
+        assert!(pipeline_o3.transform_names().contains(&"copy_propagation"));
     }
 
     #[test]
     fn test_regression_function_inlining_disabled() {
-        // Regression test: FunctionInlining is disabled, verify it's not in default pipeline
         let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
-        let names_o3: Vec<&str> = pipeline_o3.transform_names();
-
-        // FunctionInlining should not be in default O3 pipeline
-        assert!(!names_o3.contains(&"function_inlining"));
+        assert!(!pipeline_o3.transform_names().contains(&"function_inlining"));
     }
 
     #[test]
     fn test_regression_addressing_canonicalization_disabled() {
-        // Regression test: AddressingCanonicalization is disabled
         let pipeline_o2 = TransformPipeline::default_for_opt_level(2);
         let pipeline_o3 = TransformPipeline::default_for_opt_level(3);
 
-        let names_o2: Vec<&str> = pipeline_o2.transform_names();
-        let names_o3: Vec<&str> = pipeline_o3.transform_names();
-
-        // AddressingCanonicalization should not be in default pipelines
-        assert!(!names_o2.contains(&"addressing_canonicalization"));
-        assert!(!names_o3.contains(&"addressing_canonicalization"));
+        assert!(
+            !pipeline_o2
+                .transform_names()
+                .contains(&"addressing_canonicalization")
+        );
+        assert!(
+            !pipeline_o3
+                .transform_names()
+                .contains(&"addressing_canonicalization")
+        );
     }
 }
 
