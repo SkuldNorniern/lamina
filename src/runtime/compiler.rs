@@ -67,9 +67,14 @@ impl RuntimeCompiler {
 
     /// Compile and get function pointer
     ///
-    /// Returns an unsafe function pointer. The caller must ensure:
-    /// 1. The signature matches the expected function signature
-    /// 2. The memory remains valid for the lifetime of the function pointer
+    /// Returns an unsafe function pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure:
+    /// 1. The signature `T` matches the actual function signature in the compiled module.
+    /// 2. The returned `ExecutableMemory` (and the `RuntimeCompiler` that owns it) outlives
+    ///    every invocation of the returned function pointer.
     pub unsafe fn compile_function<T>(
         &mut self,
         module: &MirModule,
