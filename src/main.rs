@@ -1,267 +1,13 @@
-use std::env;
+mod cli;
+
+use cli::jit::handle_jit_compilation;
+use cli::options::{parse_args, print_usage, toolchain_backends};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::str::FromStr;
 
-fn toolchain_backends(
-    forced_compiler: &Option<String>,
-    assembler_override: &Option<String>,
-) -> (
-    Option<lamina::mir_codegen::assemble::AssemblerBackend>,
-    Option<lamina::mir_codegen::link::LinkerBackend>,
-) {
-    use lamina::mir_codegen::assemble::AssemblerBackend;
-    use lamina::mir_codegen::link::LinkerBackend;
-
-    let assem = assembler_override
-        .as_deref()
-        .and_then(|s| match s {
-            "ras" => Some(AssemblerBackend::Ras),
-            "gas" | "as" => Some(AssemblerBackend::Gas),
-            "clang" => Some(AssemblerBackend::Lld),
-            _ => None,
-        })
-        .or_else(|| {
-            forced_compiler.as_deref().and_then(|s| match s {
-                "gnu" => Some(AssemblerBackend::Gas),
-                "clang" => Some(AssemblerBackend::Lld),
-                "lamina" => Some(AssemblerBackend::Ras),
-                _ => None,
-            })
-        });
-
-    let link = forced_compiler.as_deref().and_then(|s| match s {
-        "gnu" => Some(LinkerBackend::Ld),
-        "clang" => Some(LinkerBackend::Lld),
-        "msvc" => Some(LinkerBackend::Msvc),
-        "lamina" => Some(LinkerBackend::Weld),
-        "ld" => Some(LinkerBackend::Ld),
-        "lld" => Some(LinkerBackend::Lld),
-        "mold" => Some(LinkerBackend::Mold),
-        "weld" => Some(LinkerBackend::Weld),
-        "link" | "cl" => Some(LinkerBackend::Msvc),
-        _ => None,
-    });
-
-    (assem, link)
-}
-
-fn print_usage() {
-    eprintln!("Usage: lamina <input.lamina> [options]");
-    eprintln!("Options:");
-    eprintln!("  -o, --output <file>     Specify output executable name");
-    eprintln!("  -v, --verbose           Enable verbose output");
-    eprintln!(
-        "  -c, --compiler <n>      Toolchain: gnu | clang | msvc | lamina. Or linker only: ld, lld, mold, weld, link, cl"
-    );
-    eprintln!("  --assembler <n>         Override assembler: ras, gas, clang");
-    eprintln!("  -Wl,<flag>              Pass flag(s) to linker (GCC/Clang compatible)");
-    eprintln!("  -Wa,<flag>              Pass flag(s) to assembler (GCC/Clang compatible)");
-    eprintln!("  --emit-asm              Only emit assembly file without compiling");
-    eprintln!("  --target <arch_os>      Specify target (e.g., x86_64_linux)");
-    eprintln!("  --emit-mir              Only emit MIR (.lumir) and exit");
-    eprintln!(
-        "  --emit-mir-asm          EXPERIMENTAL: emit assembly from MIR (uses --target for OS, architecture)"
-    );
-    eprintln!(
-        "  --opt-level <n>         EXPERIMENTAL(mir only): Set optimization level (0-3, default: 1)"
-    );
-    eprintln!("  --jit                   Compile and execute using runtime compilation (JIT)");
-    eprintln!("  --sandbox               Enable sandbox for secure execution (requires --jit)");
-    eprintln!(
-        "  -j, --jobs <n>          Number of parallel compilation threads (default: max - 2)"
-    );
-    eprintln!("  -h, --help              Display this help message");
-}
-
-struct CompileOptions {
-    input_file: PathBuf,
-    output_file: Option<PathBuf>,
-    verbose: bool,
-    forced_compiler: Option<String>,
-    assembler: Option<String>,
-    assembler_flags: Vec<String>,
-    linker_flags: Vec<String>,
-    emit_asm_only: bool,
-    emit_mir: bool,
-    emit_mir_asm: Option<String>,
-    target_arch: Option<String>,
-    opt_level: u8,
-    jit: bool,
-    sandbox: bool,
-    codegen_units: Option<usize>,
-}
-
-fn parse_args() -> Result<CompileOptions, String> {
-    let args: Vec<String> = env::args().collect();
-
-    if args.len() < 2 {
-        return Err("Not enough arguments".to_string());
-    }
-
-    if args[1] == "-h" || args[1] == "--help" {
-        return Err("help".to_string());
-    }
-
-    let mut options = CompileOptions {
-        input_file: PathBuf::new(),
-        output_file: None,
-        verbose: false,
-        forced_compiler: None,
-        assembler: None,
-        assembler_flags: Vec::new(),
-        linker_flags: Vec::new(),
-        emit_asm_only: false,
-        emit_mir: false,
-        emit_mir_asm: None,
-        target_arch: None,
-        opt_level: 1,
-        jit: false,
-        sandbox: false,
-        codegen_units: None,
-    };
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "-o" | "--output" => {
-                if i + 1 >= args.len() {
-                    return Err("Missing argument for output file".to_string());
-                }
-                options.output_file = Some(PathBuf::from(&args[i + 1]));
-                i += 2;
-            }
-            "-v" | "--verbose" => {
-                options.verbose = true;
-                i += 1;
-            }
-            "-c" | "--compiler" => {
-                if i + 1 >= args.len() {
-                    return Err("Missing argument for compiler".to_string());
-                }
-                options.forced_compiler = Some(args[i + 1].clone());
-                i += 2;
-            }
-            "--assembler" => {
-                if i + 1 >= args.len() {
-                    return Err("Missing argument for --assembler".to_string());
-                }
-                options.assembler = Some(args[i + 1].clone());
-                i += 2;
-            }
-            "--emit-asm" => {
-                options.emit_asm_only = true;
-                i += 1;
-            }
-            "--emit-mir" => {
-                options.emit_mir = true;
-                i += 1;
-            }
-            "--emit-mir-asm" => {
-                options.emit_mir_asm = Some("default".to_string());
-                i += 1;
-            }
-            "--target" => {
-                if i + 1 >= args.len() {
-                    return Err("Missing argument for target architecture".to_string());
-                }
-                let requested_target = args[i + 1].to_lowercase();
-                if !requested_target.contains('_')
-                    || !lamina_platform::HOST_ARCH_LIST
-                        .iter()
-                        .any(|&supported| supported == requested_target)
-                {
-                    return Err(format!(
-                        "Unsupported target '{}'. Supported values:\n{}",
-                        requested_target,
-                        lamina_platform::HOST_ARCH_LIST.join(", ")
-                    ));
-                }
-                options.target_arch = Some(requested_target);
-                i += 2;
-            }
-            "--opt-level" => {
-                if i + 1 >= args.len() {
-                    return Err("Missing argument for optimization level".to_string());
-                }
-                let level = args[i + 1]
-                    .parse::<u8>()
-                    .map_err(|_| "Invalid --opt-level value (must be 0-3)".to_string())?;
-                if level > 3 {
-                    return Err("--opt-level must be between 0 and 3".to_string());
-                }
-                options.opt_level = level;
-                i += 2;
-            }
-            "--jit" => {
-                options.jit = true;
-                i += 1;
-            }
-            "--sandbox" => {
-                options.sandbox = true;
-                i += 1;
-            }
-            "-j" | "--jobs" => {
-                if i + 1 >= args.len() {
-                    return Err("Missing argument for -j/--jobs".to_string());
-                }
-                let jobs = args[i + 1].parse::<usize>().map_err(|_| {
-                    "Invalid -j/--jobs value (must be a positive integer)".to_string()
-                })?;
-                if jobs == 0 {
-                    return Err("-j/--jobs must be at least 1".to_string());
-                }
-                options.codegen_units = Some(jobs);
-                i += 2;
-            }
-            "--version" => {
-                println!("lamina {}", env!("CARGO_PKG_VERSION"));
-                std::process::exit(0);
-            }
-            _ => {
-                if args[i].starts_with("-Wl,") {
-                    let flags = args[i][4..].split(',');
-                    options.linker_flags.extend(flags.map(|s| s.to_string()));
-                    i += 1;
-                } else if args[i].starts_with("-Wa,") {
-                    let flags = args[i][4..].split(',');
-                    options.assembler_flags.extend(flags.map(|s| s.to_string()));
-                    i += 1;
-                } else if args[i] == "-Wl" {
-                    if i + 1 >= args.len() {
-                        return Err("Missing argument for -Wl".to_string());
-                    }
-                    let flags = args[i + 1].split(',');
-                    options.linker_flags.extend(flags.map(|s| s.to_string()));
-                    i += 2;
-                } else if args[i] == "-Wa" {
-                    if i + 1 >= args.len() {
-                        return Err("Missing argument for -Wa".to_string());
-                    }
-                    let flags = args[i + 1].split(',');
-                    options.assembler_flags.extend(flags.map(|s| s.to_string()));
-                    i += 2;
-                } else if options.input_file.as_os_str().is_empty() {
-                    options.input_file = PathBuf::from(&args[i]);
-                    i += 1;
-                } else {
-                    return Err(format!("Unknown argument: {}", args[i]));
-                }
-            }
-        }
-    }
-
-    // Check if input file is specified
-    if options.input_file.as_os_str().is_empty() {
-        return Err("No input file specified".to_string());
-    }
-
-    Ok(options)
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Parse command line arguments
     let options = match parse_args() {
         Ok(opts) => opts,
         Err(e) => {
@@ -292,11 +38,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    // Determine default executable extension based on platform
-    // It's not used, but we keep it for reference and maybe in the future
     let _exe_extension = if cfg!(windows) { ".exe" } else { "" };
 
-    // Determine target for extension logic
     let target_for_extensions = if let Some(target_str) = &options.target_arch {
         lamina_platform::Target::from_str(target_str)
             .unwrap_or_else(|_| lamina_platform::Target::detect_host())
@@ -304,17 +47,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         lamina_platform::Target::detect_host()
     };
 
-    // Get output name
     let output_stem = if let Some(out_path) = &options.output_file {
         out_path.clone()
     } else {
-        // Default output name based on input file
         let stem = input_path.file_stem().map_or_else(
-            || "a".into(), // "a.out" on Unix, "a.exe" on Windows
+            || "a".into(),
             PathBuf::from,
         );
-
-        // If output name doesn't have an extension and target is Windows, add .exe
         if target_for_extensions.operating_system == lamina_platform::TargetOperatingSystem::Windows
             && stem.extension().is_none()
         {
@@ -326,14 +65,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    // Calculate default codegen_units (max_threads - 2, minimum 1)
     let codegen_units = options.codegen_units.unwrap_or_else(|| {
         let max_threads = lamina_platform::cpu_count();
         if max_threads > 2 { max_threads - 2 } else { 1 }
     });
-
-    // Output message will be printed after we determine the actual target
-    // (handled in the compilation section below)
 
     if options.verbose {
         println!("[VERBOSE] Compiler options:");
@@ -354,7 +89,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // 1. Read Input Lamina IR
     let mut input_file = match File::open(input_path) {
         Ok(file) => file,
         Err(e) => {
@@ -369,31 +103,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    // 2. Compile IR to Assembly/Binary (handled below)
-
-    // 2-1 Optionally lower the IR to MIR and emit (.lumir) or experimental MIR->AArch64 asm
     if options.emit_mir || options.emit_mir_asm.is_some() {
-        // Parse IR and lower to MIR, then exit early
         let ir_mod = lamina::parser::parse_module(&ir_source)
             .map_err(|e| format!("IR parse failed: {}", e))?;
         let mut mir_mod =
             lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
                 .map_err(|e| format!("MIR lowering failed: {}", e))?;
 
-        // Apply MIR optimizations
         if options.opt_level > 0 {
             let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
             let transform_stats = pipeline
                 .apply_to_module(&mut mir_mod)
                 .map_err(|e| format!("MIR optimization failed: {}", e))?;
 
-            // Apply function inlining at higher optimization levels
             let mut inlined_count = 0;
             if options.opt_level >= 2 {
                 let inliner = lamina::mir::ModuleInlining::new();
-                match inliner.inline_functions(&mut mir_mod) {
-                    Ok(count) => inlined_count = count,
-                    Err(_) => {} // Inlining is best-effort; don't fail compilation on error
+                if let Ok(count) = inliner.inline_functions(&mut mir_mod) {
+                    inlined_count = count;
                 }
             }
 
@@ -428,10 +155,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let target = lamina_platform::Target::from_str(target_str)
                 .unwrap_or_else(|_| lamina_platform::Target::detect_host());
 
-            // Determine output extension based on target
             let asm_extension = match target.architecture {
                 lamina_platform::TargetArchitecture::Wasm32
-                | lamina_platform::TargetArchitecture::Wasm64 => "wat", // WebAssembly text format
+                | lamina_platform::TargetArchitecture::Wasm64 => "wat",
                 _ => {
                     if target.operating_system == lamina_platform::TargetOperatingSystem::Windows {
                         "asm"
@@ -444,8 +170,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             mir_asm_path.set_extension(asm_extension);
 
             let mut out = Vec::<u8>::new();
-
-            // Use OS from the target
             let target_os = target.operating_system;
 
             lamina::mir_codegen::generate_mir_to_target(
@@ -480,17 +204,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map_err(|e| format!("Failed to write MIR output: {}", e))?;
         }
 
-        // These flags are "emit and exit" modes. Do not continue into assembly/linking.
         return Ok(());
     }
-    // Handle JIT compilation mode
+
     if options.jit {
         return handle_jit_compilation(&ir_source, input_path, &options);
     }
 
-    // Always compile to binary unless only MIR is requested
     if !options.emit_mir {
-        // Determine target
         let target = if let Some(target_str) = &options.target_arch {
             if options.verbose {
                 println!("[VERBOSE] Using explicit target: {}", target_str);
@@ -510,14 +231,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             default_target
         };
 
-        // Parse IR and lower to MIR
         let ir_mod = lamina::parser::parse_module(&ir_source)
             .map_err(|e| format!("IR parse failed: {}", e))?;
         let mut mir_mod =
             lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
                 .map_err(|e| format!("MIR lowering failed: {}", e))?;
 
-        // Apply MIR optimizations
         if options.opt_level > 0 {
             let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
             let transform_stats = pipeline
@@ -532,7 +251,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // Generate intermediate format (assembly or WAT)
         let mut intermediate_buffer = Vec::<u8>::new();
         lamina::mir_codegen::generate_mir_to_target(
             &mir_mod,
@@ -543,13 +261,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .map_err(|e| format!("Code generation failed: {}", e))?;
 
-        // Determine intermediate file path and extension
         let intermediate_ext =
             lamina::mir_codegen::assemble::get_intermediate_extension(target.architecture);
         let mut intermediate_path = output_stem.clone();
         intermediate_path.set_extension(intermediate_ext);
 
-        // Determine final output path for display
         let final_ext = lamina::mir_codegen::link::get_output_extension(
             target.architecture,
             target.operating_system,
@@ -559,7 +275,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             final_output_display.set_extension(final_ext);
         }
 
-        // Print compilation message
         let intermediate_name = if matches!(
             target.architecture,
             lamina_platform::TargetArchitecture::Wasm32
@@ -581,7 +296,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Assembly"
         };
 
-        // Write intermediate format to file
         File::create(&intermediate_path)
             .and_then(|mut f| f.write_all(&intermediate_buffer))
             .map_err(|e| format!("Failed to write intermediate file: {}", e))?;
@@ -597,13 +311,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             intermediate_path.display()
         );
 
-        // Skip assembly/linking if --emit-asm flag is present
         if options.emit_asm_only {
             println!("[INFO] Skipping assembly and linking as requested (--emit-asm flag)");
             return Ok(());
         }
 
-        // Assemble intermediate format to binary/object file
         let assembly_output_ext =
             lamina::mir_codegen::assemble::get_assembly_output_extension(target.architecture);
         let mut assembly_output_path = output_stem.clone();
@@ -635,7 +347,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         );
 
-        // Link if needed (native targets only)
         if assemble_result.needs_linking {
             let final_output_ext = lamina::mir_codegen::link::get_output_extension(
                 target.architecture,
@@ -662,7 +373,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 final_output_path.display()
             );
         } else {
-            // WASM doesn't need linking
             println!(
                 "[INFO] {} '{}' created successfully.",
                 if matches!(
@@ -676,276 +386,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
                 assembly_output_path.display()
             );
-        }
-    }
-
-    Ok(())
-}
-
-/// Handle JIT compilation and execution
-fn handle_jit_compilation(
-    ir_source: &str,
-    input_path: &std::path::Path,
-    options: &CompileOptions,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use lamina_platform::Target;
-    use std::process::Command;
-    use std::str::FromStr;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    // Determine target
-    let target = if let Some(target_str) = &options.target_arch {
-        Target::from_str(target_str)
-            .map_err(|e| format!("Invalid target '{}': {}", target_str, e))?
-    } else {
-        Target::detect_host()
-    };
-
-    if options.verbose {
-        println!(
-            "[JIT] Compiling {} for runtime execution",
-            input_path.display()
-        );
-        println!("[JIT] Target: {}", target);
-        if options.sandbox {
-            println!("[JIT] Sandbox: enabled");
-        }
-    }
-
-    let ir_mod =
-        lamina::parser::parse_module(ir_source).map_err(|e| format!("IR parse failed: {}", e))?;
-    let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-        .map_err(|e| format!("MIR lowering failed: {}", e))?;
-
-    if options.opt_level > 0 {
-        let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
-        let transform_stats = pipeline
-            .apply_to_module(&mut mir_mod)
-            .map_err(|e| format!("MIR optimization failed: {}", e))?;
-
-        if options.verbose {
-            println!(
-                "[JIT] MIR optimizations: {} transforms run, {} made changes",
-                transform_stats.transforms_run, transform_stats.transforms_changed
-            );
-        }
-    }
-
-    if options.sandbox {
-        use lamina::runtime::{Sandbox, SandboxConfig};
-
-        let config = if options.verbose {
-            SandboxConfig::default()
-        } else {
-            SandboxConfig::restrictive()
-        };
-
-        let mut sandbox = Sandbox::new(target.architecture, target.operating_system, config);
-
-        let function_name = if mir_mod.functions.contains_key("main") {
-            "main"
-        } else {
-            mir_mod
-                .functions
-                .keys()
-                .next()
-                .ok_or("No functions found in module")?
-                .as_str()
-        };
-
-        if options.verbose {
-            println!("[JIT] Executing function '{}' in sandbox", function_name);
-        }
-
-        let result: i64 = sandbox
-            .execute(&mir_mod, function_name)
-            .map_err(|e| format!("Sandbox execution failed: {}", e))?;
-
-        if options.verbose {
-            println!("[JIT] Execution completed successfully; return={}", result);
-        }
-
-        // Match AOT behavior: treat `main` return value as process exit status.
-        if function_name == "main" {
-            std::process::exit(result as i32);
-        }
-    } else {
-        use lamina::runtime::compile_to_runtime;
-
-        // Calculate default codegen_units (max_threads - 2, minimum 1)
-        let codegen_units = options.codegen_units.unwrap_or_else(|| {
-            let max_threads = lamina_platform::cpu_count();
-            if max_threads > 2 { max_threads - 2 } else { 1 }
-        });
-
-        let jit_function_name = if mir_mod.functions.contains_key("main") {
-            "main"
-        } else {
-            mir_mod
-                .functions
-                .keys()
-                .find(|name| name.contains("main") || name.contains("matmul"))
-                .map(|s| s.as_str())
-                .or_else(|| mir_mod.functions.keys().next().map(|s| s.as_str()))
-                .ok_or("No functions found in module")?
-        };
-
-        let func = mir_mod
-            .functions
-            .get(jit_function_name)
-            .ok_or("Function not found in module")?;
-
-        let runtime_result = compile_to_runtime(
-            &mir_mod,
-            target.architecture,
-            target.operating_system,
-            Some(jit_function_name),
-        )
-        .map_err(|e| format!("Runtime compilation failed: {}", e));
-
-        let runtime_result = match runtime_result {
-            Ok(result) => Some(result),
-            Err(err) => {
-                if options.verbose {
-                    eprintln!(
-                        "[JIT] In-memory compilation failed; falling back to AOT execution.\n  Reason: {}",
-                        err
-                    );
-                }
-                None
-            }
-        };
-
-        if let Some(runtime_result) = runtime_result {
-            if options.verbose {
-                println!("[JIT] Code compiled to executable memory");
-                println!("[JIT] Function pointer: {:p}", runtime_result.function_ptr);
-                println!("[JIT] Executing function '{}'", jit_function_name);
-                println!(
-                    "[JIT] Signature: {} params, return type: {:?}",
-                    func.sig.params.len(),
-                    func.sig.ret_ty
-                );
-                println!(
-                    "[JIT] All functions in module: {:?}",
-                    mir_mod.function_names()
-                );
-            }
-
-            unsafe {
-                let result = lamina::runtime::execute_jit_function(
-                    &func.sig,
-                    runtime_result.function_ptr,
-                    None,
-                    options.verbose,
-                    Some(func),
-                )?;
-                if let Some(ret) = result {
-                    if options.verbose {
-                        println!("[JIT] Function returned {}", ret);
-                    }
-                    if jit_function_name == "main" {
-                        std::process::exit(ret as i32);
-                    }
-                } else if jit_function_name == "main" {
-                    std::process::exit(0);
-                }
-            }
-        } else {
-            // AOT fallback: compile to a temp executable and run it.
-            if matches!(
-                target.architecture,
-                lamina_platform::TargetArchitecture::Wasm32
-                    | lamina_platform::TargetArchitecture::Wasm64
-            ) {
-                return Err("JIT fallback: cannot execute WASM targets directly".into());
-            }
-
-            let pid = std::process::id();
-            let nanos = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos();
-            let tmp_dir = std::env::temp_dir().join(format!("lamina_jit_{}_{}", pid, nanos));
-            std::fs::create_dir_all(&tmp_dir)?;
-
-            let intermediate_ext =
-                lamina::mir_codegen::assemble::get_intermediate_extension(target.architecture);
-            let assembly_output_ext =
-                lamina::mir_codegen::assemble::get_assembly_output_extension(target.architecture);
-            let final_ext = lamina::mir_codegen::link::get_output_extension(
-                target.architecture,
-                target.operating_system,
-            );
-
-            let mut intermediate_path = tmp_dir.join("module");
-            intermediate_path.set_extension(intermediate_ext);
-            let mut object_path = tmp_dir.join("module");
-            object_path.set_extension(assembly_output_ext);
-            let mut exe_path = tmp_dir.join("module");
-            if !final_ext.is_empty() {
-                exe_path.set_extension(final_ext);
-            }
-
-            let mut intermediate = Vec::<u8>::new();
-            lamina::mir_codegen::generate_mir_to_target(
-                &mir_mod,
-                &mut intermediate,
-                target.architecture,
-                target.operating_system,
-                codegen_units,
-            )
-            .map_err(|e| format!("JIT fallback: codegen failed: {}", e))?;
-
-            std::fs::write(&intermediate_path, &intermediate)?;
-
-            let (assembler_backend, linker_backend) =
-                toolchain_backends(&options.forced_compiler, &options.assembler);
-            let assemble_result = lamina::mir_codegen::assemble::assemble(
-                &intermediate_path,
-                &object_path,
-                target.architecture,
-                target.operating_system,
-                assembler_backend,
-                &options.assembler_flags,
-                options.verbose,
-            )
-            .map_err(|e| format!("JIT fallback: assembly failed: {}", e))?;
-
-            if assemble_result.needs_linking {
-                lamina::mir_codegen::link::link(
-                    &assemble_result.output_path,
-                    &exe_path,
-                    target.architecture,
-                    target.operating_system,
-                    linker_backend,
-                    &options.linker_flags,
-                    options.verbose,
-                )
-                .map_err(|e| format!("JIT fallback: linking failed: {}", e))?;
-            } else {
-                // WASM or already-final artifact.
-                exe_path = assemble_result.output_path;
-            }
-
-            if options.verbose {
-                println!("[JIT] Running {}", exe_path.display());
-            }
-            let status = Command::new(&exe_path).status()?;
-            if !status.success() {
-                // For --jit, treat the executed program's status as the CLI's status.
-                // Non-zero exit codes are not compilation errors.
-                if let Some(code) = status.code() {
-                    if options.verbose {
-                        eprintln!("[JIT] Program exited with status {}", code);
-                    }
-                    std::process::exit(code);
-                }
-                return Err(format!("JIT fallback: program terminated: {}", status).into());
-            }
-
-            // Best-effort cleanup; keep temp dir around on failure paths for debugging.
-            let _ = std::fs::remove_dir_all(&tmp_dir);
         }
     }
 
