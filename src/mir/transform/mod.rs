@@ -132,6 +132,7 @@ impl TransformPipeline {
             pipeline = pipeline.add_transform(CfgSimplify);
             pipeline = pipeline.add_transform(JumpThreading);
             pipeline = pipeline.add_transform(BranchOptimization);
+            pipeline = pipeline.add_transform(DeadCodeElimination);
         }
 
         if opt_level >= 2 {
