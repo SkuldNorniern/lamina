@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn test_multiplication_by_power_of_2() {
         // Test x * 4 → x << 2
-        let mut func = FunctionBuilder::new("test")
+        let func = FunctionBuilder::new("test")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntBinary {
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn test_unsigned_division_by_power_of_2() {
         // Test x / 8 → x >>> 3
-        let mut func = FunctionBuilder::new("test")
+        let func = FunctionBuilder::new("test")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntBinary {
@@ -277,7 +277,7 @@ mod tests {
     fn test_signed_division_by_power_of_2() {
         // Signed division by powers of 2 is disabled for safety (requires range analysis)
         // Test that x / 16 does NOT get transformed
-        let mut func = FunctionBuilder::new("test")
+        let func = FunctionBuilder::new("test")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntBinary {
@@ -316,7 +316,7 @@ mod tests {
     #[test]
     fn test_unsigned_remainder_by_power_of_2() {
         // Test x % 32 → x & 31
-        let mut func = FunctionBuilder::new("test")
+        let func = FunctionBuilder::new("test")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntBinary {
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn test_no_change_for_non_power_of_2() {
         // Test that non-powers of 2 are not changed
-        let mut func = FunctionBuilder::new("test")
+        let func = FunctionBuilder::new("test")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntBinary {
@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn test_no_change_for_non_constants() {
         // Test that operations with non-constant operands are not changed
-        let mut func = FunctionBuilder::new("test")
+        let func = FunctionBuilder::new("test")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntBinary {
