@@ -98,6 +98,46 @@ impl MirType {
     pub fn is_vector(&self) -> bool {
         matches!(self, MirType::Vector(_))
     }
+
+    /// Shorthand for `MirType::Scalar(ScalarType::I1)`.
+    pub fn i1() -> Self {
+        MirType::Scalar(ScalarType::I1)
+    }
+
+    /// Shorthand for `MirType::Scalar(ScalarType::I8)`.
+    pub fn i8() -> Self {
+        MirType::Scalar(ScalarType::I8)
+    }
+
+    /// Shorthand for `MirType::Scalar(ScalarType::I16)`.
+    pub fn i16() -> Self {
+        MirType::Scalar(ScalarType::I16)
+    }
+
+    /// Shorthand for `MirType::Scalar(ScalarType::I32)`.
+    pub fn i32() -> Self {
+        MirType::Scalar(ScalarType::I32)
+    }
+
+    /// Shorthand for `MirType::Scalar(ScalarType::I64)`.
+    pub fn i64() -> Self {
+        MirType::Scalar(ScalarType::I64)
+    }
+
+    /// Shorthand for `MirType::Scalar(ScalarType::F32)`.
+    pub fn f32() -> Self {
+        MirType::Scalar(ScalarType::F32)
+    }
+
+    /// Shorthand for `MirType::Scalar(ScalarType::F64)`.
+    pub fn f64() -> Self {
+        MirType::Scalar(ScalarType::F64)
+    }
+
+    /// Shorthand for `MirType::Scalar(ScalarType::Ptr)`.
+    pub fn ptr() -> Self {
+        MirType::Scalar(ScalarType::Ptr)
+    }
 }
 
 impl fmt::Display for ScalarType {
