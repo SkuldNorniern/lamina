@@ -8,6 +8,7 @@ pub mod link;
 pub mod regalloc;
 
 pub mod arm;
+pub mod powerpc;
 pub mod riscv;
 pub mod wasm;
 pub mod x86_64;
@@ -49,6 +50,11 @@ pub fn generate_mir_to_target<W: Write>(
         }
         TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
             let mut codegen = riscv::RiscVCodegen::new(target_os);
+            codegen.set_module(module);
+            codegen.emit_into(module, writer, codegen_units)?;
+        }
+        TargetArchitecture::PowerPC64 => {
+            let mut codegen = powerpc::Ppc64Codegen::new(target_os);
             codegen.set_module(module);
             codegen.emit_into(module, writer, codegen_units)?;
         }
@@ -165,6 +171,7 @@ pub trait Codegen {
         Self::capabilities().supports(cap)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn prepare(
         &mut self,
         types: &HashMap<String, MirType>,

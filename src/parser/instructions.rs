@@ -981,15 +981,3 @@ fn parse_primitive_from_ident(
     }
 }
 
-impl Instruction<'_> {
-    /// Checks if this instruction is a terminator instruction.
-    ///
-    /// Terminator instructions end a basic block and transfer control flow.
-    /// Valid terminators are: `ret`, `jmp`, and `br`.
-    pub fn is_terminator(&self) -> bool {
-        matches!(
-            self,
-            Instruction::Ret { .. } | Instruction::Jmp { .. } | Instruction::Br { .. }
-        )
-    }
-}
