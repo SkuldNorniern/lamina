@@ -4,10 +4,9 @@ mod tests {
     #[cfg(feature = "nightly")]
     use super::super::super::instruction::SimdOp;
     use super::super::super::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
-    use super::super::super::module::Module;
     #[cfg(feature = "nightly")]
     use super::super::super::module::ModuleAnnotation;
-    use super::super::super::types::{Literal, PrimitiveType, Type, Value};
+    use super::super::super::types::{Literal, PrimitiveType, Type};
     use super::super::IRBuilder;
     use super::super::values::*;
 
@@ -865,7 +864,7 @@ mod tests {
 
         // Verify write
         if let Instruction::Write {
-            buffer,
+            buffer: _,
             size,
             result,
         } = &entry.instructions[1]

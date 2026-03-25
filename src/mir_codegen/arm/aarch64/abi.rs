@@ -55,6 +55,7 @@ pub struct AArch64ABI {
     target_os: TargetOperatingSystem,
 }
 
+#[allow(dead_code)]
 impl AArch64ABI {
     /// Creates a new ABI instance for the specified target OS.
     pub fn new(target_os: TargetOperatingSystem) -> Self {
@@ -83,16 +84,19 @@ impl AArch64ABI {
     }
 
     /// AArch64 AAPCS64 calling convention argument registers (first 8 arguments).
+    #[allow(dead_code)]
     pub const ARG_REGISTERS: &'static [&'static str] =
         &["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"];
 
     /// Caller-saved registers that must be preserved by the caller if live across function calls.
+    #[allow(dead_code)]
     pub const CALLER_SAVED_REGISTERS: &'static [&'static str] = &[
         "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13",
         "x14", "x15", "x16", "x17",
     ];
 
     /// Callee-saved registers that are preserved by called functions.
+    #[allow(dead_code)]
     pub const CALLEE_SAVED_REGISTERS: &'static [&'static str] = &[
         "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26", "x27", "x28", "x29", "x30",
     ];

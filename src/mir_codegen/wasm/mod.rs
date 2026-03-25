@@ -9,7 +9,7 @@ use std::result::Result;
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, assemble,
-    capability::{CapabilitySet, CodegenCapability},
+    capability::CapabilitySet,
 };
 use abi::WasmABI;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
