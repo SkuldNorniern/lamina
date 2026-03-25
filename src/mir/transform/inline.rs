@@ -182,7 +182,22 @@ impl ModuleInlining {
 
     /// Decides whether a function call should be inlined.
     fn should_inline(&self, call_site: &CallSite, module: &Module) -> bool {
+        // Never inline a function that calls itself (direct recursion)
+        if call_site.callee == call_site.caller {
+            return false;
+        }
+
         if let Some(callee_func) = module.functions.get(&call_site.callee) {
+            // Never inline a function that contains a recursive call to itself
+            let is_recursive = callee_func.blocks.iter().any(|block| {
+                block.instructions.iter().any(|instr| {
+                    matches!(instr, Instruction::Call { name, .. } if name == &call_site.callee)
+                })
+            });
+            if is_recursive {
+                return false;
+            }
+
             let total_instructions = callee_func.instruction_count();
             if total_instructions > 50 {
                 return false;

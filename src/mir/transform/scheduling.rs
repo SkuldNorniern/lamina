@@ -346,7 +346,7 @@ mod tests {
         // Scheduler should move 2 and 3 between 0 and 1 to hide Load latency.
         // Expected: 0, 2, 3, 1 (or 0, 3, 2, 1)
 
-        let mut func = FunctionBuilder::new("test")
+        let func = FunctionBuilder::new("test")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             // 0: Load (High latency)
