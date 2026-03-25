@@ -151,6 +151,18 @@ impl Function {
             }
         }
 
+        // Check that all branch/jump targets reference existing blocks
+        for block in &self.blocks {
+            for label in block.successors() {
+                if !seen_labels.contains(&label) {
+                    return Err(format!(
+                        "Block '{}' references undefined target '{}'",
+                        block.label, label
+                    ));
+                }
+            }
+        }
+
         Ok(())
     }
 }
