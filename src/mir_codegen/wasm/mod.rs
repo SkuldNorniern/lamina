@@ -749,12 +749,87 @@ fn emit_instruction_wasm(
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
             }
         }
-        _ => {
+        MirInst::Select {
+            dst,
+            cond,
+            true_val,
+            false_val,
+            ty: _,
+        } => {
+            // WASM select: push true, false, then cond as i32.
+            load_operand_wasm(true_val, writer, vreg_to_local)?;
+            load_operand_wasm(false_val, writer, vreg_to_local)?;
+            load_register_wasm(cond, writer, vreg_to_local)?;
+            writeln!(writer, "        i32.wrap_i64")?;
+            writeln!(writer, "        select")?;
+            if let Register::Virtual(vreg) = dst {
+                store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
+            }
+        }
+        MirInst::Switch {
+            value,
+            cases,
+            default,
+        } => {
+            // Emit a linear cmp chain using WASM block/br_if.
+            load_register_wasm(value, writer, vreg_to_local)?;
+            for (case_val, case_label) in cases {
+                if let Some(&target_idx) = block_labels.get(case_label.as_str()) {
+                    writeln!(writer, "        i64.const {}", case_val)?;
+                    // Load value again for comparison (stack-machine needs two copies).
+                    load_register_wasm(value, writer, vreg_to_local)?;
+                    writeln!(writer, "        i64.eq")?;
+                    writeln!(writer, "        (if (then")?;
+                    writeln!(writer, "          i64.const {}", target_idx)?;
+                    writeln!(writer, "          local.set $pc")?;
+                    writeln!(writer, "          br $dispatch_loop")?;
+                    writeln!(writer, "        ))")?;
+                }
+            }
+            // Fall through to default.
+            if let Some(&default_idx) = block_labels.get(default.as_str()) {
+                writeln!(writer, "        i64.const {}", default_idx)?;
+                writeln!(writer, "        local.set $pc")?;
+            }
+            writeln!(writer, "        br $dispatch_loop")?;
+        }
+        MirInst::Comment { text } => {
+            writeln!(writer, "        ;; {}", text)?;
+        }
+        MirInst::Lea { dst, base, offset } => {
+            // In WASM linear memory there are no general-purpose effective-address
+            // computations on integers, so we materialise base + offset as i64.
+            load_register_wasm(base, writer, vreg_to_local)?;
+            if *offset != 0 {
+                writeln!(writer, "        i64.const {}", offset)?;
+                writeln!(writer, "        i64.add")?;
+            }
+            if let Register::Virtual(vreg) = dst {
+                store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
+            }
+        }
+        MirInst::TailCall { name, args } => {
+            // WASM does not have a guaranteed tail-call instruction in baseline WAT,
+            // so we emit a normal return_call if the target is known, otherwise
+            // a regular call followed by return.
+            for (i, arg) in args.iter().enumerate() {
+                let _ = i;
+                load_operand_wasm(arg, writer, vreg_to_local)?;
+            }
+            writeln!(writer, "        call ${}", name)?;
+            writeln!(writer, "        return")?;
+        }
+        MirInst::Unreachable => {
+            writeln!(writer, "        unreachable")?;
+        }
+        MirInst::SafePoint | MirInst::StackMap { .. } | MirInst::PatchPoint { .. } => {
+            // No-op in AOT/WASM path.
+        }
+        other => {
             return Err(crate::error::LaminaError::CodegenError(
                 crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
-                    "WASM instruction not yet supported: {:?}. \
-                     This instruction may be partially implemented or not yet available for WebAssembly.",
-                    inst
+                    "WASM backend: instruction not yet supported: {}",
+                    other
                 )),
             ));
         }

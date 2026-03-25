@@ -911,8 +911,37 @@ fn emit_block<W: Write>(
                 writeln!(w, "    b {}", false_target)?;
                 ra.free_scratch(t);
             }
-            _ => {
-                writeln!(w, "    // Unhandled MIR: {}", inst)?;
+            MirInst::Switch {
+                value,
+                cases,
+                default,
+            } => {
+                let t = ra.alloc_scratch().unwrap_or("x19");
+                load_reg_to(w, value, t, frame, ra)?;
+                for (case_val, case_label) in cases {
+                    writeln!(w, "    mov x9, #{}", case_val)?;
+                    writeln!(w, "    cmp {}, x9", x_alias(t))?;
+                    writeln!(w, "    b.eq {}", case_label)?;
+                }
+                writeln!(w, "    b {}", default)?;
+                ra.free_scratch(t);
+            }
+            MirInst::Comment { text } => {
+                writeln!(w, "    // {}", text)?;
+            }
+            MirInst::Unreachable => {
+                // Emit an undefined-instruction trap so the CPU halts immediately if reached.
+                writeln!(w, "    udf #0")?;
+            }
+            MirInst::SafePoint | MirInst::StackMap { .. } | MirInst::PatchPoint { .. } => {
+                // No-op in AOT path — only meaningful for JIT/GC runtimes.
+            }
+            MirInst::VectorOp { .. } => {
+                return Err(crate::error::LaminaError::CodegenError(
+                    CodegenError::UnsupportedFeature(
+                        "VectorOp is not yet supported by the AArch64 backend".to_string(),
+                    ),
+                ));
             }
         }
     }

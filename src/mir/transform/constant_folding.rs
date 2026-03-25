@@ -81,19 +81,19 @@ impl ConstantFolding {
                 crate::mir::IntBinOp::Or => lhs_val | rhs_val,
                 crate::mir::IntBinOp::Xor => lhs_val ^ rhs_val,
                 crate::mir::IntBinOp::Shl => {
-                    if rhs_val < 0 || rhs_val >= 64 {
+                    if !(0..64).contains(&rhs_val) {
                         return false;
                     }
                     lhs_val << rhs_val
                 }
                 crate::mir::IntBinOp::LShr => {
-                    if rhs_val < 0 || rhs_val >= 64 {
+                    if !(0..64).contains(&rhs_val) {
                         return false;
                     }
                     ((lhs_val as u64) >> rhs_val) as i64
                 }
                 crate::mir::IntBinOp::AShr => {
-                    if rhs_val < 0 || rhs_val >= 64 {
+                    if !(0..64).contains(&rhs_val) {
                         return false;
                     }
                     lhs_val >> rhs_val

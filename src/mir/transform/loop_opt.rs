@@ -420,10 +420,10 @@ impl LoopInvariantCodeMotion {
 
             for (instr_idx, instr) in block.instructions.iter().enumerate() {
                 // Skip if this register is defined more than once in the loop.
-                if let Some(def) = instr.def_reg() {
-                    if def_counts.get(def).copied().unwrap_or(0) > 1 {
-                        continue;
-                    }
+                if let Some(def) = instr.def_reg()
+                    && def_counts.get(def).copied().unwrap_or(0) > 1
+                {
+                    continue;
                 }
                 if self.is_invariant_instruction(func, loop_info, &defs_in_loop, instr) {
                     invariant.push((block_idx, instr_idx));

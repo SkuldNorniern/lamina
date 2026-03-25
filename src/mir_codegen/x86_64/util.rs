@@ -1,6 +1,82 @@
 //! Utility functions for x86_64 code generation.
 
 use crate::mir::register::{Register, VirtualReg};
+use crate::mir::types::MirType;
+
+/// Whether a MirType is a 32-bit float (`f32`).
+pub fn is_f32(ty: &MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Scalar(crate::mir::types::ScalarType::F32)
+    )
+}
+
+/// Whether a MirType is a floating-point type (`f32` or `f64`).
+pub fn is_float(ty: &MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Scalar(
+            crate::mir::types::ScalarType::F32 | crate::mir::types::ScalarType::F64
+        )
+    )
+}
+
+/// Load a float operand (stored as integer bits in a GPR stack slot) into an XMM register.
+///
+/// Strategy: integers hold float bit patterns via `movd` (f32) or `movq` (f64) into xmm.
+pub fn load_float_operand_to_xmm<
+    W: std::io::Write,
+    RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>,
+>(
+    operand: &crate::mir::Operand,
+    writer: &mut W,
+    reg_alloc: &RA,
+    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
+    xmm: &str,
+    ty: &MirType,
+) -> Result<(), std::io::Error> {
+    let mov_to_xmm = if is_f32(ty) { "movd" } else { "movq" };
+    match operand {
+        crate::mir::Operand::Register(_) => {
+            load_operand_to_rax(operand, writer, reg_alloc, stack_slots)?;
+            writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
+        }
+        crate::mir::Operand::Immediate(imm) => match imm {
+            crate::mir::instruction::Immediate::F32(v) => {
+                let bits = v.to_bits() as i64;
+                writeln!(writer, "    movq ${}, %rax", bits)?;
+                writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
+            }
+            crate::mir::instruction::Immediate::F64(v) => {
+                let bits = v.to_bits() as i64;
+                writeln!(writer, "    movq ${}, %rax", bits)?;
+                writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
+            }
+            _ => {
+                // Integer bits treated as float bits
+                load_operand_to_rax(operand, writer, reg_alloc, stack_slots)?;
+                writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
+            }
+        },
+    }
+}
+
+/// Store the float result from an XMM register back into a virtual register (as integer bits).
+pub fn store_xmm_to_register<
+    W: std::io::Write,
+    RA: crate::mir_codegen::regalloc::RegisterAllocator<PhysReg = &'static str>,
+>(
+    xmm: &str,
+    reg: &VirtualReg,
+    writer: &mut W,
+    reg_alloc: &RA,
+    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
+    ty: &MirType,
+) -> Result<(), std::io::Error> {
+    let mov_from_xmm = if is_f32(ty) { "movd" } else { "movq" };
+    writeln!(writer, "    {} %{}, %rax", mov_from_xmm, xmm)?;
+    store_rax_to_register(reg, writer, reg_alloc, stack_slots)
+}
 
 /// Load a virtual register into RAX
 pub fn load_register_to_rax<

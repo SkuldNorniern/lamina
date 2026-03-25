@@ -149,6 +149,8 @@ pub fn cpu_count() -> usize {
                     newlen: usize,
                 ) -> i32;
             }
+            // SAFETY: "hw.ncpu" contains no interior nul bytes, so CString::new never fails.
+            #[allow(clippy::unwrap_used)]
             let name = CString::new("hw.ncpu").unwrap();
             let mut count: u32 = 0;
             let mut size = std::mem::size_of::<u32>();

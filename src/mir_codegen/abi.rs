@@ -138,12 +138,6 @@ fn builtin_overrides_from_env() -> HashMap<String, String> {
     overrides
 }
 
-/// Parses the `LAMINA_BUILTINS` override map.
-///
-/// Format: `LAMINA_BUILTINS="print=printf,malloc=jemalloc_malloc"`.
-/// Entries are comma-separated key/value pairs, where each key is the Lamina
-/// builtin name and each value is the platform symbol to link against.
-
 /// Trait defining the common interface for all ABI implementations.
 ///
 /// This contract covers name mangling, builtin symbol mapping, and the
