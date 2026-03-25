@@ -4,8 +4,8 @@
 //! and pointer-integer conversions.
 
 use super::IRBuilder;
-use crate::ir::instruction::Instruction;
-use crate::ir::types::{PrimitiveType, Value};
+use crate::instruction::Instruction;
+use crate::types::{PrimitiveType, Value};
 
 impl<'a> IRBuilder<'a> {
     /// Gets a pointer to an array element (pointer arithmetic)

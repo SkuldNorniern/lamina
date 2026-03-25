@@ -27,8 +27,8 @@
 //! fn add_numbers(a: i32, b: i32) -> i32 { a + b }
 //!
 //! // Corresponding IR structure
-//! # use lamina::ir::{Type, PrimitiveType};
-//! # use lamina::ir::function::{FunctionSignature, FunctionParameter};
+//! # use lamina_ir::{Type, PrimitiveType};
+//! # use lamina_ir::function::{FunctionSignature, FunctionParameter};
 //! let signature = FunctionSignature {
 //!     params: vec![
 //!         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
@@ -100,8 +100,8 @@
 //!
 //! ### Simple Function (No Parameters)
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType};
-//! use lamina::ir::builder::i32;
+//! use lamina_ir::{IRBuilder, Type, PrimitiveType};
+//! use lamina_ir::builder::i32;
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -112,18 +112,18 @@
 //!
 //! ### Function with Parameters
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-//! use lamina::ir::builder::{var, i32};
+//! use lamina_ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina_ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
 //!     .function_with_params("add", vec![
-//!         lamina::ir::FunctionParameter {
+//!         lamina_ir::FunctionParameter {
 //!             name: "a",
 //!             ty: Type::Primitive(PrimitiveType::I32),
 //!             annotations: vec![]
 //!         },
-//!         lamina::ir::FunctionParameter {
+//!         lamina_ir::FunctionParameter {
 //!             name: "b",
 //!             ty: Type::Primitive(PrimitiveType::I32),
 //!             annotations: vec![]
@@ -135,8 +135,8 @@
 //!
 //! ### Function with Control Flow
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType, CmpOp};
-//! use lamina::ir::builder::{var, i32};
+//! use lamina_ir::{IRBuilder, Type, PrimitiveType, CmpOp};
+//! use lamina_ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -170,7 +170,7 @@
 //!
 //! ### Exception Handling
 //! ```rust
-//! # use lamina::ir::{IRBuilder, Type, PrimitiveType};
+//! # use lamina_ir::{IRBuilder, Type, PrimitiveType};
 //! // Functions can have exception handling blocks
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -183,7 +183,7 @@
 //!
 //! ### Tail Recursion
 //! ```rust
-//! # use lamina::ir::{IRBuilder, Type, PrimitiveType};
+//! # use lamina_ir::{IRBuilder, Type, PrimitiveType};
 //! // Functions can be optimized for tail recursion
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -195,20 +195,20 @@
 //!
 //! ### Complete Function Example
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType, CmpOp, BinaryOp};
-//! use lamina::ir::builder::{var, i32};
+//! use lamina_ir::{IRBuilder, Type, PrimitiveType, CmpOp, BinaryOp};
+//! use lamina_ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //!
 //! builder
 //!     .function_with_params("absolute_value", vec![
-//!         lamina::ir::FunctionParameter {
+//!         lamina_ir::FunctionParameter {
 //!             name: "x",
 //!             ty: Type::Primitive(PrimitiveType::I32),
 //!             annotations: vec![]
 //!         }
 //!     ], Type::Primitive(PrimitiveType::I32))
-//!     .annotate(lamina::ir::FunctionAnnotation::Inline)
+//!     .annotate(lamina_ir::FunctionAnnotation::Inline)
 //!     .cmp(CmpOp::Lt, "is_negative", PrimitiveType::I32, var("x"), i32(0))
 //!     .branch(var("is_negative"), "negate", "return_x")
 //!     .block("negate")
@@ -234,7 +234,7 @@ use super::types::{Identifier, Label, Type};
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{IRBuilder, Type, FunctionAnnotation};
+/// use lamina_ir::{IRBuilder, Type, FunctionAnnotation};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -458,9 +458,9 @@ pub enum VariableAnnotation {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::function::FunctionParameter;
-/// use lamina::ir::{Type, PrimitiveType};
-/// use lamina::ir::function::VariableAnnotation;
+/// use lamina_ir::function::FunctionParameter;
+/// use lamina_ir::{Type, PrimitiveType};
+/// use lamina_ir::function::VariableAnnotation;
 ///
 /// let param = FunctionParameter {
 ///     name: "data",
@@ -487,7 +487,7 @@ pub struct FunctionParameter<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{FunctionSignature, FunctionParameter, Type, PrimitiveType};
+/// use lamina_ir::{FunctionSignature, FunctionParameter, Type, PrimitiveType};
 ///
 /// let signature = FunctionSignature {
 ///     params: vec![
@@ -520,8 +520,8 @@ pub struct FunctionSignature<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+/// use lamina_ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+/// use lamina_ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -559,8 +559,8 @@ pub struct BasicBlock<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+/// use lamina_ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+/// use lamina_ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -587,6 +587,142 @@ pub struct Function<'a> {
     pub basic_blocks: HashMap<Label<'a>, BasicBlock<'a>>,
     /// Label of the first block to execute when the function is called
     pub entry_block: Label<'a>, // Label of the first block to execute
+}
+
+// ---------------------------------------------------------------------------
+// IR Validation
+// ---------------------------------------------------------------------------
+
+impl<'a> Function<'a> {
+    /// Validate this function's IR for well-formedness.
+    ///
+    /// Checks performed:
+    /// - Entry block exists among the function's basic blocks.
+    /// - Every branch target (in `Br`, `Jmp`, `Switch`) names a block that
+    ///   exists in this function.
+    /// - Every block ends with a terminator (`Br`, `Jmp`, or `Ret`).
+    /// - Return instructions carry a value when the return type is non-void,
+    ///   and are bare when the return type is void.
+    /// - SSA variables are defined before they are used within each block
+    ///   (does not perform cross-block dominance analysis).
+    ///
+    /// Returns `Ok(())` when the function is valid, or a list of diagnostic
+    /// strings describing every violation found.
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        let mut errors: Vec<String> = Vec::new();
+
+        // 1. Entry block must exist.
+        if !self.basic_blocks.contains_key(self.entry_block) {
+            errors.push(format!(
+                "entry block '{}' does not exist in function '@{}'",
+                self.entry_block, self.name
+            ));
+        }
+
+        for (label, block) in &self.basic_blocks {
+            // 2. Each block must end with a terminator.
+            let last = block.instructions.last();
+            let has_terminator = last.map(|i| i.is_terminator()).unwrap_or(false);
+            if !has_terminator {
+                errors.push(format!(
+                    "block '{}' in '@{}' has no terminator instruction",
+                    label, self.name
+                ));
+            }
+
+            // 3. Validate each instruction.
+            let mut defined: std::collections::HashSet<&str> =
+                self.signature.params.iter().map(|p| p.name).collect();
+
+            for instr in &block.instructions {
+                // Check branch targets exist.
+                match instr {
+                    Instruction::Br {
+                        true_label,
+                        false_label,
+                        ..
+                    } => {
+                        if !self.basic_blocks.contains_key(true_label) {
+                            errors.push(format!(
+                                "branch true target '{}' in block '{}' of '@{}' not found",
+                                true_label, label, self.name
+                            ));
+                        }
+                        if !self.basic_blocks.contains_key(false_label) {
+                            errors.push(format!(
+                                "branch false target '{}' in block '{}' of '@{}' not found",
+                                false_label, label, self.name
+                            ));
+                        }
+                    }
+                    Instruction::Jmp { target_label } => {
+                        if !self.basic_blocks.contains_key(target_label) {
+                            errors.push(format!(
+                                "jump target '{}' in block '{}' of '@{}' not found",
+                                target_label, label, self.name
+                            ));
+                        }
+                    }
+                    Instruction::Switch { default, cases, .. } => {
+                        if !self.basic_blocks.contains_key(default) {
+                            errors.push(format!(
+                                "switch default target '{}' in block '{}' of '@{}' not found",
+                                default, label, self.name
+                            ));
+                        }
+                        for (_, case_label) in cases {
+                            if !self.basic_blocks.contains_key(case_label) {
+                                errors.push(format!(
+                                    "switch case target '{}' in block '{}' of '@{}' not found",
+                                    case_label, label, self.name
+                                ));
+                            }
+                        }
+                    }
+                    // 4. Return value/type consistency.
+                    Instruction::Ret { ty, value } => {
+                        let ret_is_void = matches!(ty, Type::Void);
+                        let sig_is_void =
+                            matches!(self.signature.return_type, Type::Void);
+                        if ret_is_void != sig_is_void {
+                            errors.push(format!(
+                                "return in block '{}' of '@{}': return type '{}' does not match signature return type '{}'",
+                                label, self.name, ty, self.signature.return_type
+                            ));
+                        }
+                        if !ret_is_void && value.is_none() {
+                            errors.push(format!(
+                                "non-void return in block '{}' of '@{}' has no value",
+                                label, self.name
+                            ));
+                        }
+                        if ret_is_void && value.is_some() {
+                            errors.push(format!(
+                                "void return in block '{}' of '@{}' carries a value",
+                                label, self.name
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
+
+                // 5. SSA: check uses come after definitions (within-block only).
+                for used in instr.used_vars() {
+                    if !defined.contains(used) {
+                        errors.push(format!(
+                            "use of undefined variable '%{}' in block '{}' of '@{}'",
+                            used, label, self.name
+                        ));
+                    }
+                }
+                if let Some(def) = instr.defined_var() {
+                    defined.insert(def);
+                }
+            }
+        }
+
+        if errors.is_empty() { Ok(()) } else { Err(errors) }
+    }
 }
 
 // --- Display Implementations ---
@@ -706,8 +842,8 @@ impl fmt::Display for Function<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::instruction::{AllocType, BinaryOp, Instruction};
-    use crate::ir::types::{Literal, PrimitiveType, Type, Value};
+    use crate::instruction::{AllocType, BinaryOp, Instruction};
+    use crate::types::{Literal, PrimitiveType, Type, Value};
     use std::collections::HashMap;
 
     #[test]
@@ -905,5 +1041,161 @@ mod tests {
             expected_order1,
             expected_order2
         );
+    }
+
+    // ---------------------------------------------------------------------------
+    // validate() tests
+    // ---------------------------------------------------------------------------
+
+    fn simple_func<'a>(
+        params: Vec<FunctionParameter<'a>>,
+        return_type: Type<'a>,
+        blocks: HashMap<&'a str, BasicBlock<'a>>,
+        entry: &'a str,
+    ) -> Function<'a> {
+        Function {
+            name: "test",
+            signature: FunctionSignature { params, return_type },
+            annotations: vec![],
+            basic_blocks: blocks,
+            entry_block: entry,
+        }
+    }
+
+    #[test]
+    fn test_validate_valid_void_function() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Ret {
+                    ty: Type::Void,
+                    value: None,
+                }],
+            },
+        );
+        let f = simple_func(vec![], Type::Void, blocks, "entry");
+        assert!(f.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_missing_entry_block() {
+        let f = simple_func(vec![], Type::Void, HashMap::new(), "entry");
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("entry block")));
+    }
+
+    #[test]
+    fn test_validate_missing_terminator() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Binary {
+                    op: BinaryOp::Add,
+                    result: "x",
+                    ty: PrimitiveType::I32,
+                    lhs: Value::Constant(Literal::I32(1)),
+                    rhs: Value::Constant(Literal::I32(2)),
+                }],
+            },
+        );
+        let f = simple_func(vec![], Type::Void, blocks, "entry");
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("no terminator")));
+    }
+
+    #[test]
+    fn test_validate_invalid_branch_target() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Jmp {
+                    target_label: "nonexistent",
+                }],
+            },
+        );
+        let f = simple_func(vec![], Type::Void, blocks, "entry");
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("nonexistent")));
+    }
+
+    #[test]
+    fn test_validate_return_type_mismatch() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Ret {
+                    ty: Type::Void,
+                    value: None,
+                }],
+            },
+        );
+        let f = simple_func(
+            vec![],
+            Type::Primitive(PrimitiveType::I32),
+            blocks,
+            "entry",
+        );
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("return type")));
+    }
+
+    #[test]
+    fn test_validate_undefined_variable() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![
+                    Instruction::Binary {
+                        op: BinaryOp::Add,
+                        result: "sum",
+                        ty: PrimitiveType::I32,
+                        lhs: Value::Variable("undefined_var"),
+                        rhs: Value::Constant(Literal::I32(1)),
+                    },
+                    Instruction::Ret {
+                        ty: Type::Void,
+                        value: None,
+                    },
+                ],
+            },
+        );
+        let f = simple_func(vec![], Type::Void, blocks, "entry");
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("undefined_var")));
+    }
+
+    #[test]
+    fn test_validate_ssa_define_then_use() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![
+                    Instruction::Binary {
+                        op: BinaryOp::Add,
+                        result: "sum",
+                        ty: PrimitiveType::I32,
+                        lhs: Value::Constant(Literal::I32(1)),
+                        rhs: Value::Constant(Literal::I32(2)),
+                    },
+                    Instruction::Ret {
+                        ty: Type::Primitive(PrimitiveType::I32),
+                        value: Some(Value::Variable("sum")),
+                    },
+                ],
+            },
+        );
+        let f = simple_func(
+            vec![],
+            Type::Primitive(PrimitiveType::I32),
+            blocks,
+            "entry",
+        );
+        assert!(f.validate().is_ok());
     }
 }

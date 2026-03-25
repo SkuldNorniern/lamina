@@ -8,8 +8,8 @@
 //! in a loop for string output. See `docs/OUTPUT_SEMANTICS.md` in the repository.
 
 use super::IRBuilder;
-use crate::ir::instruction::Instruction;
-use crate::ir::types::Value;
+use crate::instruction::Instruction;
+use crate::types::Value;
 
 impl<'a> IRBuilder<'a> {
     /// Writes a buffer to stdout (raw syscall)

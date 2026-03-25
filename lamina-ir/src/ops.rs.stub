@@ -1,0 +1,159 @@
+//! Operation types for the Lamina IR.
+//!
+//! These enums represent the operations that instructions can perform, separate
+//! from the instruction variants themselves so they can be reused across contexts.
+
+use std::fmt;
+
+/// Binary arithmetic and bitwise operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BinaryOp {
+    // Arithmetic
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    // Bitwise
+    And,
+    Or,
+    Xor,
+    Shl,
+    Shr,
+}
+
+impl BinaryOp {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            BinaryOp::Add => "add",
+            BinaryOp::Sub => "sub",
+            BinaryOp::Mul => "mul",
+            BinaryOp::Div => "div",
+            BinaryOp::Rem => "rem",
+            BinaryOp::And => "and",
+            BinaryOp::Or => "or",
+            BinaryOp::Xor => "xor",
+            BinaryOp::Shl => "shl",
+            BinaryOp::Shr => "shr",
+        }
+    }
+
+    /// Returns `true` for operations that are commutative (`a op b == b op a`).
+    pub const fn is_commutative(self) -> bool {
+        matches!(self, BinaryOp::Add | BinaryOp::Mul | BinaryOp::And | BinaryOp::Or | BinaryOp::Xor)
+    }
+}
+
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Comparison operations (always produce a boolean result).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CmpOp {
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+impl CmpOp {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            CmpOp::Eq => "eq",
+            CmpOp::Ne => "ne",
+            CmpOp::Lt => "lt",
+            CmpOp::Le => "le",
+            CmpOp::Gt => "gt",
+            CmpOp::Ge => "ge",
+        }
+    }
+
+    /// Returns the inverse comparison (the operation that returns true when this
+    /// one would return false).
+    pub const fn inverse(self) -> Self {
+        match self {
+            CmpOp::Eq => CmpOp::Ne,
+            CmpOp::Ne => CmpOp::Eq,
+            CmpOp::Lt => CmpOp::Ge,
+            CmpOp::Le => CmpOp::Gt,
+            CmpOp::Gt => CmpOp::Le,
+            CmpOp::Ge => CmpOp::Lt,
+        }
+    }
+
+    /// Returns the mirrored comparison (swap operands: `a op b` → `b op' a`).
+    pub const fn mirror(self) -> Self {
+        match self {
+            CmpOp::Eq => CmpOp::Eq,
+            CmpOp::Ne => CmpOp::Ne,
+            CmpOp::Lt => CmpOp::Gt,
+            CmpOp::Le => CmpOp::Ge,
+            CmpOp::Gt => CmpOp::Lt,
+            CmpOp::Ge => CmpOp::Le,
+        }
+    }
+}
+
+impl fmt::Display for CmpOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Unary operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum UnaryOp {
+    Neg,
+    Not,
+}
+
+impl UnaryOp {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            UnaryOp::Neg => "neg",
+            UnaryOp::Not => "not",
+        }
+    }
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_binary_op_display() {
+        assert_eq!(format!("{}", BinaryOp::Add), "add");
+        assert_eq!(format!("{}", BinaryOp::Xor), "xor");
+    }
+
+    #[test]
+    fn test_cmp_inverse() {
+        assert_eq!(CmpOp::Lt.inverse(), CmpOp::Ge);
+        assert_eq!(CmpOp::Eq.inverse(), CmpOp::Ne);
+    }
+
+    #[test]
+    fn test_cmp_mirror() {
+        assert_eq!(CmpOp::Lt.mirror(), CmpOp::Gt);
+        assert_eq!(CmpOp::Eq.mirror(), CmpOp::Eq);
+    }
+
+    #[test]
+    fn test_commutativity() {
+        assert!(BinaryOp::Add.is_commutative());
+        assert!(BinaryOp::Mul.is_commutative());
+        assert!(!BinaryOp::Sub.is_commutative());
+        assert!(!BinaryOp::Div.is_commutative());
+    }
+}

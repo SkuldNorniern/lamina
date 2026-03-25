@@ -405,6 +405,7 @@ mod tests {
         let func = &module.functions["cmp_ops"];
         let entry = &func.basic_blocks["entry"];
 
+        assert_eq!(entry.instructions.len(), 7);
 
         // Verify comparison operations
         if let Instruction::Cmp { op, .. } = &entry.instructions[0] {
@@ -526,11 +527,11 @@ mod tests {
             .alloc_stack(
                 "point",
                 Type::Struct(vec![
-                    crate::ir::types::StructField {
+                    crate::types::StructField {
                         name: "x",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },
-                    crate::ir::types::StructField {
+                    crate::types::StructField {
                         name: "y",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },
@@ -547,6 +548,7 @@ mod tests {
         let func = &module.functions["struct_ops"];
         let entry = &func.basic_blocks["entry"];
 
+        assert_eq!(entry.instructions.len(), 7);
 
         // Verify struct_gep
         if let Instruction::GetFieldPtr {
@@ -1032,7 +1034,7 @@ mod tests {
     fn test_atomic_operations() {
         let mut builder = IRBuilder::new();
 
-        use crate::ir::instruction::{AtomicBinOp, MemoryOrdering};
+        use crate::instruction::{AtomicBinOp, MemoryOrdering};
 
         builder
             .function("atomic_test", Type::Primitive(PrimitiveType::I32))
@@ -1074,6 +1076,7 @@ mod tests {
         let func = &module.functions["atomic_test"];
         let entry = &func.basic_blocks["entry"];
 
+        assert_eq!(entry.instructions.len(), 7);
 
         // Verify atomic store
         if let Instruction::AtomicStore {
@@ -1096,7 +1099,7 @@ mod tests {
     fn test_simd_operations() {
         let mut builder = IRBuilder::new();
 
-        use crate::ir::instruction::SimdOp;
+        use crate::instruction::SimdOp;
 
         let vector_type = Type::Array {
             element_type: Box::new(Type::Primitive(PrimitiveType::F32)),

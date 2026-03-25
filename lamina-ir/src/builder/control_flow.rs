@@ -4,8 +4,8 @@
 //! operations in the IR builder API.
 
 use super::IRBuilder;
-use crate::ir::instruction::Instruction;
-use crate::ir::types::{Literal, PrimitiveType, Type, Value};
+use crate::instruction::Instruction;
+use crate::types::{Literal, PrimitiveType, Type, Value};
 
 impl<'a> IRBuilder<'a> {
     /// Creates a conditional branch instruction

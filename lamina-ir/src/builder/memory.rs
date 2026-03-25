@@ -4,8 +4,8 @@
 //! operations in the IR builder API.
 
 use super::IRBuilder;
-use crate::ir::instruction::{AllocType, Instruction};
-use crate::ir::types::{Type, Value};
+use crate::instruction::{AllocType, Instruction};
+use crate::types::{Type, Value};
 
 impl<'a> IRBuilder<'a> {
     /// Allocates stack memory (automatic lifetime management)

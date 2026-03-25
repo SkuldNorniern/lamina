@@ -4,9 +4,9 @@
 //! Annotations provide metadata that affects optimization, linking, and code generation.
 
 use super::IRBuilder;
-use crate::ir::function::FunctionAnnotation;
+use crate::function::FunctionAnnotation;
 #[cfg(feature = "nightly")]
-use crate::ir::module::ModuleAnnotation;
+use crate::module::ModuleAnnotation;
 
 impl<'a> IRBuilder<'a> {
     /// Adds an annotation to the current function

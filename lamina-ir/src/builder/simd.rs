@@ -7,9 +7,9 @@
 #[cfg(feature = "nightly")]
 use super::IRBuilder;
 #[cfg(feature = "nightly")]
-use crate::ir::instruction::{Instruction, SimdOp};
+use crate::instruction::{Instruction, SimdOp};
 #[cfg(feature = "nightly")]
-use crate::ir::types::{PrimitiveType, Type, Value};
+use crate::types::{PrimitiveType, Type, Value};
 
 #[cfg(feature = "nightly")]
 impl<'a> IRBuilder<'a> {
