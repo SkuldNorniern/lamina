@@ -3,304 +3,18 @@
 //! LUMIR instructions are low-level, machine-friendly operations that map
 //! closely to actual assembly instructions. This design supports
 //! code generation and optimization.
+
+pub mod ops;
+pub use ops::{
+    FloatBinOp, FloatCmpOp, FloatUnOp, IntBinOp, IntCmpOp, VectorOp,
+};
+#[cfg(feature = "nightly")]
+pub use ops::{AtomicBinOp, MemoryOrdering, SimdOp};
+
 use super::register::Register;
 use super::types::MirType;
 use std::fmt;
 
-/// Integer binary operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IntBinOp {
-    Add,
-    Sub,
-    Mul,
-    UDiv,
-    SDiv,
-    URem,
-    SRem,
-    And,
-    Or,
-    Xor,
-    Shl,
-    LShr,
-    AShr,
-}
-
-impl fmt::Display for IntBinOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            IntBinOp::Add => "add",
-            IntBinOp::Sub => "sub",
-            IntBinOp::Mul => "mul",
-            IntBinOp::UDiv => "udiv",
-            IntBinOp::SDiv => "sdiv",
-            IntBinOp::URem => "urem",
-            IntBinOp::SRem => "srem",
-            IntBinOp::And => "and",
-            IntBinOp::Or => "or",
-            IntBinOp::Xor => "xor",
-            IntBinOp::Shl => "shl",
-            IntBinOp::LShr => "lshr",
-            IntBinOp::AShr => "ashr",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-/// Floating-point binary operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FloatBinOp {
-    FAdd,
-    FSub,
-    FMul,
-    FDiv,
-}
-
-impl fmt::Display for FloatBinOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            FloatBinOp::FAdd => "fadd",
-            FloatBinOp::FSub => "fsub",
-            FloatBinOp::FMul => "fmul",
-            FloatBinOp::FDiv => "fdiv",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-/// Floating-point unary operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FloatUnOp {
-    FNeg,
-    FSqrt,
-}
-
-impl fmt::Display for FloatUnOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            FloatUnOp::FNeg => "fneg",
-            FloatUnOp::FSqrt => "fsqrt",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-/// Integer comparison operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IntCmpOp {
-    Eq,
-    Ne,
-    ULt,
-    ULe,
-    UGt,
-    UGe,
-    SLt,
-    SLe,
-    SGt,
-    SGe,
-}
-
-impl fmt::Display for IntCmpOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            IntCmpOp::Eq => "eq",
-            IntCmpOp::Ne => "ne",
-            IntCmpOp::ULt => "ult",
-            IntCmpOp::ULe => "ule",
-            IntCmpOp::UGt => "ugt",
-            IntCmpOp::UGe => "uge",
-            IntCmpOp::SLt => "slt",
-            IntCmpOp::SLe => "sle",
-            IntCmpOp::SGt => "sgt",
-            IntCmpOp::SGe => "sge",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-/// Floating-point comparison operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FloatCmpOp {
-    Eq,
-    Ne,
-    Lt,
-    Le,
-    Gt,
-    Ge,
-}
-
-impl fmt::Display for FloatCmpOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            FloatCmpOp::Eq => "eq",
-            FloatCmpOp::Ne => "ne",
-            FloatCmpOp::Lt => "lt",
-            FloatCmpOp::Le => "le",
-            FloatCmpOp::Gt => "gt",
-            FloatCmpOp::Ge => "ge",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-/// Vector operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VectorOp {
-    VAdd,
-    VSub,
-    VMul,
-    VAnd,
-    VOr,
-    VXor,
-    VShl,
-    VLShr,
-    VAShr,
-    VSplat,
-    VExtractLane,
-    VInsertLane,
-}
-
-impl fmt::Display for VectorOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            VectorOp::VAdd => "vadd",
-            VectorOp::VSub => "vsub",
-            VectorOp::VMul => "vmul",
-            VectorOp::VAnd => "vand",
-            VectorOp::VOr => "vor",
-            VectorOp::VXor => "vxor",
-            VectorOp::VShl => "vshl",
-            VectorOp::VLShr => "vlshr",
-            VectorOp::VAShr => "vashr",
-            VectorOp::VSplat => "vsplat",
-            VectorOp::VExtractLane => "vextractlane",
-            VectorOp::VInsertLane => "vinsertlane",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-/// SIMD (Single Instruction, Multiple Data) vector operations for MIR.
-#[cfg(feature = "nightly")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SimdOp {
-    /// Vector addition: `result = lhs + rhs` (element-wise)
-    Add,
-    /// Vector subtraction: `result = lhs - rhs` (element-wise)
-    Sub,
-    /// Vector multiplication: `result = lhs * rhs` (element-wise)
-    Mul,
-    /// Vector division: `result = lhs / rhs` (element-wise)
-    Div,
-    /// Vector minimum: `result = min(lhs, rhs)` (element-wise)
-    Min,
-    /// Vector maximum: `result = max(lhs, rhs)` (element-wise)
-    Max,
-    /// Vector absolute value: `result = abs(value)`
-    Abs,
-    /// Vector negation: `result = -value`
-    Neg,
-    /// Vector square root: `result = sqrt(value)`
-    Sqrt,
-    /// Vector fused multiply-add: `result = (lhs * rhs) + acc`
-    Fma,
-    /// Vector shuffle/rearrange elements according to mask
-    Shuffle,
-    /// Vector extract lane: extract single element from vector
-    ExtractLane,
-    /// Vector insert lane: insert single element into vector
-    InsertLane,
-    /// Vector splat: broadcast scalar to all vector lanes
-    Splat,
-}
-
-#[cfg(feature = "nightly")]
-impl fmt::Display for SimdOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            SimdOp::Add => "simd_add",
-            SimdOp::Sub => "simd_sub",
-            SimdOp::Mul => "simd_mul",
-            SimdOp::Div => "simd_div",
-            SimdOp::Min => "simd_min",
-            SimdOp::Max => "simd_max",
-            SimdOp::Abs => "simd_abs",
-            SimdOp::Neg => "simd_neg",
-            SimdOp::Sqrt => "simd_sqrt",
-            SimdOp::Fma => "simd_fma",
-            SimdOp::Shuffle => "simd_shuffle",
-            SimdOp::ExtractLane => "simd_extract_lane",
-            SimdOp::InsertLane => "simd_insert_lane",
-            SimdOp::Splat => "simd_splat",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-/// Memory ordering constraints for atomic operations.
-#[cfg(feature = "nightly")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MemoryOrdering {
-    /// Relaxed ordering - no synchronization
-    Relaxed,
-    /// Acquire ordering - synchronizes with previous releases
-    Acquire,
-    /// Release ordering - synchronizes with subsequent acquires
-    Release,
-    /// Acquire and release ordering
-    AcqRel,
-    /// Sequentially consistent ordering - strongest guarantee
-    SeqCst,
-}
-
-#[cfg(feature = "nightly")]
-impl fmt::Display for MemoryOrdering {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            MemoryOrdering::Relaxed => "relaxed",
-            MemoryOrdering::Acquire => "acquire",
-            MemoryOrdering::Release => "release",
-            MemoryOrdering::AcqRel => "acqrel",
-            MemoryOrdering::SeqCst => "seqcst",
-        };
-        write!(f, "{}", s)
-    }
-}
-
-/// Atomic binary operations for concurrent programming.
-#[cfg(feature = "nightly")]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AtomicBinOp {
-    /// Atomic addition: `*ptr += value`
-    Add,
-    /// Atomic subtraction: `*ptr -= value`
-    Sub,
-    /// Atomic bitwise AND: `*ptr &= value`
-    And,
-    /// Atomic bitwise OR: `*ptr |= value`
-    Or,
-    /// Atomic bitwise XOR: `*ptr ^= value`
-    Xor,
-    /// Atomic exchange: `old = *ptr; *ptr = value; return old`
-    Exchange,
-    /// Atomic compare-exchange (returns success flag)
-    CompareExchange,
-}
-
-#[cfg(feature = "nightly")]
-impl fmt::Display for AtomicBinOp {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            AtomicBinOp::Add => "atomic_add",
-            AtomicBinOp::Sub => "atomic_sub",
-            AtomicBinOp::And => "atomic_and",
-            AtomicBinOp::Or => "atomic_or",
-            AtomicBinOp::Xor => "atomic_xor",
-            AtomicBinOp::Exchange => "atomic_exchange",
-            AtomicBinOp::CompareExchange => "atomic_cmpxchg",
-        };
-        write!(f, "{}", s)
-    }
-}
 
 /// Immediate value (constant operand)
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1494,7 +1208,7 @@ mod tests {
         let v2 = VirtualReg::gpr(2);
 
         let cmp_f32 = Instruction::FloatCmp {
-            op: FloatCmpOp::FEq,
+            op: FloatCmpOp::Eq,
             ty: MirType::Scalar(ScalarType::F32),
             dst: Register::Virtual(v2),
             lhs: Operand::Register(Register::Virtual(v0)),
@@ -1504,7 +1218,7 @@ mod tests {
         assert_eq!(cmp_f32.ty(), &MirType::Scalar(ScalarType::F32));
 
         let cmp_f64 = Instruction::FloatCmp {
-            op: FloatCmpOp::FLt,
+            op: FloatCmpOp::Lt,
             ty: MirType::Scalar(ScalarType::F64),
             dst: Register::Virtual(v2),
             lhs: Operand::Register(Register::Virtual(v0)),
@@ -1522,7 +1236,7 @@ mod tests {
         let v2 = VirtualReg::gpr(2);
 
         let vec_i32 = Instruction::VectorOp {
-            op: VectorOp::Add,
+            op: VectorOp::VAdd,
             ty: MirType::Vector(VectorType::V128(VectorLane::I32)),
             dst: Register::Virtual(v2),
             operands: vec![
@@ -1535,7 +1249,7 @@ mod tests {
         assert!(vec_i32.ty().is_vector());
 
         let vec_f32 = Instruction::VectorOp {
-            op: VectorOp::Add,
+            op: VectorOp::VAdd,
             ty: MirType::Vector(VectorType::V128(VectorLane::F32)),
             dst: Register::Virtual(v2),
             operands: vec![
