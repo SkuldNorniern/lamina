@@ -4,8 +4,8 @@
 //! and managing function signatures in the IR builder API.
 
 use super::IRBuilder;
-use crate::ir::function::{FunctionParameter, FunctionSignature};
-use crate::ir::types::Type;
+use crate::function::{FunctionParameter, FunctionSignature};
+use crate::types::Type;
 
 impl<'a> IRBuilder<'a> {
     /// Creates a new function with no parameters
@@ -57,7 +57,7 @@ impl<'a> IRBuilder<'a> {
         &mut self,
         name: &'a str,
         ty: Type<'a>,
-        annotations: Vec<crate::ir::function::VariableAnnotation>,
+        annotations: Vec<crate::function::VariableAnnotation>,
     ) -> FunctionParameter<'a> {
         FunctionParameter {
             name,

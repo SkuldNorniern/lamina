@@ -7,9 +7,9 @@
 #[cfg(feature = "nightly")]
 use super::IRBuilder;
 #[cfg(feature = "nightly")]
-use crate::ir::instruction::{AtomicBinOp, Instruction, MemoryOrdering};
+use crate::instruction::{AtomicBinOp, Instruction, MemoryOrdering};
 #[cfg(feature = "nightly")]
-use crate::ir::types::{Type, Value};
+use crate::types::{Type, Value};
 
 #[cfg(feature = "nightly")]
 impl<'a> IRBuilder<'a> {

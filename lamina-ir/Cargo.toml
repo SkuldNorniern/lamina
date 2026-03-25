@@ -1,0 +1,14 @@
+[package]
+name = "lamina-ir"
+version = "0.1.0"
+edition = "2024"
+authors = ["Eira <eira@nornity.com>"]
+description = "Lamina Intermediate Representation — high-level SSA IR for the Lamina compiler"
+keywords = ["compiler", "IR", "SSA", "intermediate-representation"]
+categories = ["compilers", "development-tools"]
+
+[dependencies]
+
+[features]
+default = []
+nightly = []
