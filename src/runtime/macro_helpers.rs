@@ -36,11 +36,7 @@ pub fn compile_lir_internal(
     let mir_module = from_ir(&ir_module, "lir_macro")?;
 
     // MIR stores function names without @ prefix, so strip it if present
-    let lookup_name = if function_name.starts_with('@') {
-        &function_name[1..]
-    } else {
-        function_name
-    };
+    let lookup_name = function_name.strip_prefix('@').unwrap_or(function_name);
 
     crate::runtime::compile_to_runtime(&mir_module, target_arch, target_os, Some(lookup_name))
 }

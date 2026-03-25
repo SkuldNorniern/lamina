@@ -60,8 +60,8 @@ pub fn compile_to_runtime(
             let offset = function_offsets
                 .get::<str>(name)
                 .or_else(|| {
-                    if name.starts_with('@') {
-                        function_offsets.get(&name[1..])
+                    if let Some(stripped) = name.strip_prefix('@') {
+                        function_offsets.get(stripped)
                     } else {
                         function_offsets.get(&format!("@{}", name))
                     }
@@ -131,7 +131,7 @@ pub fn compile_to_runtime(
                         );
 
                         // Check alignment
-                        if (adjusted as usize) % 4 != 0 {
+                        if !(adjusted as usize).is_multiple_of(4) {
                             eprintln!(
                                 "[JIT-DEBUG][WARNING] Function pointer is not 4-byte aligned! Address: {:p}, alignment: {} bytes",
                                 adjusted,
