@@ -4,8 +4,8 @@
 //! and extracting individual elements from tuples.
 
 use super::IRBuilder;
-use crate::ir::instruction::Instruction;
-use crate::ir::types::Value;
+use crate::instruction::Instruction;
+use crate::types::Value;
 
 impl<'a> IRBuilder<'a> {
     /// Creates a tuple from multiple values (composite data construction)

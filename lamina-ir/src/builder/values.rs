@@ -4,7 +4,7 @@
 //! for use with the IR builder API. These functions make IR construction
 //! more readable and type-safe.
 
-use crate::ir::types::{Literal, Value};
+use crate::types::{Literal, Value};
 
 /// Creates a variable reference
 pub fn var(name: &str) -> Value<'_> {

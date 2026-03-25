@@ -36,25 +36,25 @@
 //!
 //! ### Construction Phase
 //! ```rust
-//! use lamina::ir::IRBuilder;
+//! use lamina_ir::IRBuilder;
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
-//!     .function("main", lamina::ir::Type::Void)
+//!     .function("main", lamina_ir::Type::Void)
 //!     // ... add instructions
 //!     .ret_void();
 //! ```
 //!
 //! ### Build Phase
 //! ```rust
-//! # use lamina::ir::IRBuilder;
+//! # use lamina_ir::IRBuilder;
 //! let mut builder = IRBuilder::new();
 //! let module = builder.build(); // Convert to Module struct
 //! ```
 //!
 //! ### Code Generation Phase
 //! ```rust
-//! # use lamina::ir::IRBuilder;
+//! # use lamina_ir::IRBuilder;
 //!
 //! let mut builder = IRBuilder::new();
 //! let module = builder.build();
@@ -75,8 +75,8 @@
 //!
 //! ### Simple Module
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType};
-//! use lamina::ir::builder::i32;
+//! use lamina_ir::{IRBuilder, Type, PrimitiveType};
+//! use lamina_ir::builder::i32;
 //!
 //! let mut builder = IRBuilder::new();
 //!
@@ -91,8 +91,8 @@
 //!
 //! ### Module with Custom Types
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType, StructField};
-//! use lamina::ir::builder::{var, i32};
+//! use lamina_ir::{IRBuilder, Type, PrimitiveType, StructField};
+//! use lamina_ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //!
@@ -111,8 +111,8 @@
 //!
 //! ### Multi-Function Module
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-//! use lamina::ir::builder::{var, i32};
+//! use lamina_ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina_ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //!
@@ -147,7 +147,7 @@ use super::types::{Identifier, Type, Value};
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{TypeDeclaration, Type, StructField, PrimitiveType, Value, Literal};
+/// use lamina_ir::{TypeDeclaration, Type, StructField, PrimitiveType, Value, Literal};
 ///
 /// let point_type = TypeDeclaration {
 ///     name: "Point",
@@ -173,7 +173,7 @@ pub struct TypeDeclaration<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{GlobalDeclaration, Type, PrimitiveType, Value, Literal};
+/// use lamina_ir::{GlobalDeclaration, Type, PrimitiveType, Value, Literal};
 ///
 /// let message_global = GlobalDeclaration {
 ///     name: "message",
@@ -208,8 +208,8 @@ pub struct GlobalDeclaration<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+/// use lamina_ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+/// use lamina_ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -321,7 +321,7 @@ pub struct Module<'a> {
     pub annotations: Vec<ModuleAnnotation>,
 }
 
-impl Module<'_> {
+impl<'a> Module<'a> {
     // Basic constructor
     pub fn new() -> Self {
         #[cfg(feature = "nightly")]
@@ -334,6 +334,20 @@ impl Module<'_> {
             #[cfg(feature = "nightly")]
             annotations,
         }
+    }
+
+    /// Validate all functions in the module.
+    ///
+    /// Runs `Function::validate()` on every function and aggregates all errors.
+    /// Returns `Ok(())` if no errors are found, or a list of all violations.
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        let mut all_errors: Vec<String> = Vec::new();
+        for func in self.functions.values() {
+            if let Err(errs) = func.validate() {
+                all_errors.extend(errs);
+            }
+        }
+        if all_errors.is_empty() { Ok(()) } else { Err(all_errors) }
     }
 }
 
@@ -400,9 +414,9 @@ impl fmt::Display for Module<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::function::{BasicBlock, Function, FunctionParameter, FunctionSignature};
-    use crate::ir::instruction::{BinaryOp, Instruction};
-    use crate::ir::types::{Literal, PrimitiveType, Type, Value}; // Assuming crate root
+    use crate::function::{BasicBlock, Function, FunctionParameter, FunctionSignature};
+    use crate::instruction::{BinaryOp, Instruction};
+    use crate::types::{Literal, PrimitiveType, Type, Value}; // Assuming crate root
     use std::collections::HashMap;
 
     #[test]
@@ -447,11 +461,11 @@ mod tests {
             TypeDeclaration {
                 name: "Vec2",
                 ty: Type::Struct(vec![
-                    crate::ir::types::StructField {
+                    crate::types::StructField {
                         name: "x",
                         ty: Type::Primitive(PrimitiveType::F32),
                     },
-                    crate::ir::types::StructField {
+                    crate::types::StructField {
                         name: "y",
                         ty: Type::Primitive(PrimitiveType::F32),
                     },

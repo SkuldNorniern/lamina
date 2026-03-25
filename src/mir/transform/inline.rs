@@ -583,19 +583,23 @@ impl ModuleInlining {
         Ok(mapping)
     }
 
-    /// Clone callee blocks and rename registers to avoid conflicts
+    /// Clone callee blocks and rename registers to avoid conflicts.
+    ///
+    /// `caller_max_reg` must be the highest virtual register ID currently in use
+    /// by the caller function so that new registers start above that, preventing
+    /// any collisions.
     fn clone_and_rename_blocks(
         &self,
         blocks: &[Block],
         param_mapping: &HashMap<Register, Operand>,
         suffix: &str,
-        inline_id: usize,
+        caller_max_reg: u32,
     ) -> Result<Vec<Block>, String> {
         let mut renamed_blocks = Vec::new();
         let mut register_mapping = HashMap::new();
 
-        // Base register offset unique to this inline instance (avoid conflicts)
-        let base_reg_offset = (inline_id + 1) * 10000;
+        // Start new register IDs above the caller's highest register to avoid all conflicts.
+        let base_reg_offset = caller_max_reg as usize + 1;
 
         // First pass: collect all registers that need renaming
         for block in blocks {
@@ -675,8 +679,19 @@ impl ModuleInlining {
     ) -> Result<(), String> {
         let inline_id = self.next_inline_id();
         let suffix = format!("_inline_{}_{}", call_site.callee, inline_id);
-        let mut inlined_blocks =
-            self.clone_and_rename_blocks(&callee_func.blocks, param_mapping, &suffix, inline_id)?;
+
+        let caller_max_reg = module
+            .functions
+            .get(&call_site.caller)
+            .map(|f| self.find_max_register_id(f))
+            .unwrap_or(0);
+
+        let mut inlined_blocks = self.clone_and_rename_blocks(
+            &callee_func.blocks,
+            param_mapping,
+            &suffix,
+            caller_max_reg,
+        )?;
 
         if inlined_blocks.is_empty() {
             return Err("Callee has no blocks".to_string());

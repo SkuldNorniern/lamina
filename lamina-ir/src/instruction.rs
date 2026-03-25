@@ -37,8 +37,8 @@
 //! ## Example
 //!
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-//! use lamina::ir::builder::{var, i32};
+//! use lamina_ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+//! use lamina_ir::builder::{var, i32};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -202,8 +202,8 @@ impl fmt::Display for AtomicBinOp {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
-/// use lamina::ir::builder::{var, i32};
+/// use lamina_ir::{IRBuilder, Type, PrimitiveType, BinaryOp};
+/// use lamina_ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -303,8 +303,8 @@ impl fmt::Display for BinaryOp {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{IRBuilder, Type, PrimitiveType, CmpOp};
-/// use lamina::ir::builder::{var, i32};
+/// use lamina_ir::{IRBuilder, Type, PrimitiveType, CmpOp};
+/// use lamina_ir::builder::{var, i32};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -372,7 +372,7 @@ impl fmt::Display for CmpOp {
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{IRBuilder, Type, PrimitiveType, AllocType};
+/// use lamina_ir::{IRBuilder, Type, PrimitiveType, AllocType};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder
@@ -388,26 +388,56 @@ pub enum AllocType {
     Heap,
 }
 
-// A single instruction in a basic block
+/// A single instruction in a basic block.
+///
+/// # Precondition conventions
+///
+/// Each variant documents its *preconditions* — conditions that must hold for
+/// the instruction to be well-defined.  Violating a precondition produces
+/// either a **trap** (program abort at the point of the instruction) or
+/// **poison** (a value that propagates silently until it reaches a
+/// side-effecting instruction, which then causes undefined behavior).
+/// The per-variant doc comments state which applies.
+///
+/// See the [`crate::types`] module doc for a full description of the undef /
+/// poison / trap value-state model.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction<'a> {
-    // --- Arithmetic and Logic ---
+    /// Perform a binary arithmetic or bitwise operation.
+    ///
+    /// # Preconditions
+    /// - `lhs` and `rhs` must have type `ty`.
+    /// - For `Div` and `Rem`: `rhs` must not be zero. A zero divisor causes a
+    ///   **trap**.
+    /// - For `Shl` and `Shr`: the shift count must be in the range
+    ///   `[0, bit_width(ty))`. An out-of-range shift count produces **poison**.
+    /// - Signed integer overflow (wrap-around on Add/Sub/Mul) produces **poison**.
     Binary {
         op: BinaryOp,
         result: Identifier<'a>,
-        ty: PrimitiveType, // Assuming binary ops work on primitives
+        ty: PrimitiveType,
         lhs: Value<'a>,
         rhs: Value<'a>,
     },
-    // --- Comparison ---
+    /// Compare two values and produce a boolean result.
+    ///
+    /// # Preconditions
+    /// - `lhs` and `rhs` must have type `ty`.
+    /// - Ordered floating-point comparisons on NaN produce `false`.
+    /// - If either operand is **poison**, the result is **poison**.
     Cmp {
         op: CmpOp,
         result: Identifier<'a>,
-        ty: PrimitiveType, // Type being compared
+        ty: PrimitiveType,
         lhs: Value<'a>,
         rhs: Value<'a>,
     },
-    // --- Type Conversion ---
+    /// Zero-extend a smaller integer to a larger integer type.
+    ///
+    /// # Preconditions
+    /// - `value` must have type `source_type`.
+    /// - `source_type` must be an integer type strictly smaller than
+    ///   `target_type`.  A mismatch produces **poison**.
     ZeroExtend {
         result: Identifier<'a>,
         source_type: PrimitiveType,
@@ -468,37 +498,77 @@ pub enum Instruction<'a> {
         /// Default target label when no case matches.
         default: Label<'a>,
         /// Case list as pairs of (literal, target_label).
-        cases: Vec<(crate::ir::types::Literal<'a>, Label<'a>)>,
+        cases: Vec<(crate::types::Literal<'a>, Label<'a>)>,
     },
+    /// Conditional branch to one of two target blocks.
+    ///
+    /// # Preconditions
+    /// - `condition` must have type `bool`.
+    /// - Both `true_label` and `false_label` must name blocks in the same
+    ///   function.
+    /// - If `condition` is **poison**, behavior is undefined (the branch may
+    ///   go to either target non-deterministically, or the program may abort).
     Br {
-        // Conditional branch
-        condition: Value<'a>, // Must be bool type
+        condition: Value<'a>,
         true_label: Label<'a>,
         false_label: Label<'a>,
     },
+    /// Unconditional jump to `target_label`.
+    ///
+    /// # Preconditions
+    /// - `target_label` must name a block in the same function.
     Jmp {
-        // Unconditional jump
         target_label: Label<'a>,
     },
+    /// Return from the current function.
+    ///
+    /// # Preconditions
+    /// - If `ty` is `Type::Void`, `value` must be `None`.
+    /// - If `ty` is non-void, `value` must be `Some(_)` with a value of type `ty`.
+    /// - The return type must match the enclosing function's declared return type.
     Ret {
-        // Return from function
-        ty: Type<'a>,             // Use Type::Void for void returns
-        value: Option<Value<'a>>, // None if ty is Void
+        ty: Type<'a>,
+        value: Option<Value<'a>>,
     },
     // --- Memory Operations ---
+    /// Allocate memory for a value of type `allocated_ty`.
+    ///
+    /// # Preconditions
+    /// - For `AllocType::Stack`: the allocation is automatically freed when the
+    ///   function returns. Reading from stack memory before writing produces
+    ///   **undef**.
+    /// - For `AllocType::Heap`: the caller must explicitly `dealloc` the
+    ///   returned pointer. Failing to do so is a memory leak (not UB in the IR,
+    ///   but wrong behavior).
+    /// - The result is always of type `ptr` and is guaranteed non-null.
     Alloc {
-        result: Identifier<'a>, // Result is always a ptr
+        result: Identifier<'a>,
         alloc_type: AllocType,
-        allocated_ty: Type<'a>, // Type of the memory being allocated
+        allocated_ty: Type<'a>,
     },
+    /// Load a value of type `ty` from the address in `ptr`.
+    ///
+    /// # Preconditions
+    /// - `ptr` must have type `ptr` and must point to memory of type `ty`.
+    /// - `ptr` must not be null — a null pointer causes a **trap**.
+    /// - The memory at `ptr` must be initialized; loading uninitialized memory
+    ///   produces **undef**.
+    /// - The memory must be accessible (allocated and not freed).
     Load {
         result: Identifier<'a>,
-        ty: Type<'a>,   // Type being loaded
-        ptr: Value<'a>, // Must be a ptr type
+        ty: Type<'a>,
+        ptr: Value<'a>,
     },
+    /// Store a `value` of type `ty` to the address in `ptr`.
+    ///
+    /// # Preconditions
+    /// - `ptr` must have type `ptr` and point to memory of type `ty`.
+    /// - `ptr` must not be null — a null pointer causes a **trap**.
+    /// - `value` must have type `ty`. If `value` is **poison**, the stored
+    ///   bit pattern is unspecified and reads after this store return **poison**.
     Store {
-        ty: Type<'a>,   // Type being stored
-        ptr: Value<'a>, // Must be a ptr type
+        ty: Type<'a>,
+        ptr: Value<'a>,
         value: Value<'a>,
     },
     /// Copy `size` bytes from `src` to `dst` (memory may not overlap).
@@ -880,6 +950,123 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
     ]
 }
 
+impl<'a> Instruction<'a> {
+    /// Returns true if this instruction is a basic-block terminator
+    /// (i.e. it transfers control flow: `ret`, `jmp`, or `br`).
+    pub fn is_terminator(&self) -> bool {
+        matches!(
+            self,
+            Instruction::Ret { .. } | Instruction::Jmp { .. } | Instruction::Br { .. }
+        )
+    }
+
+    /// Returns the name of the SSA variable defined by this instruction, if any.
+    ///
+    /// Only assignment-style instructions (`Binary`, `Cmp`, `Alloc`, `Load`, `Call` with
+    /// a result, etc.) define a variable. Terminators and stores do not.
+    pub fn defined_var(&self) -> Option<&'a str> {
+        match self {
+            Instruction::Binary { result, .. }
+            | Instruction::Cmp { result, .. }
+            | Instruction::Alloc { result, .. }
+            | Instruction::Load { result, .. }
+            | Instruction::ZeroExtend { result, .. }
+            | Instruction::SignExtend { result, .. }
+            | Instruction::Trunc { result, .. }
+            | Instruction::Bitcast { result, .. }
+            | Instruction::Select { result, .. }
+            | Instruction::GetElemPtr { result, .. }
+            | Instruction::GetFieldPtr { result, .. }
+            | Instruction::WriteByte { result, .. }
+            | Instruction::ReadByte { result, .. }
+            | Instruction::WritePtr { result, .. }
+            | Instruction::Write { result, .. }
+            | Instruction::Read { result, .. }
+            | Instruction::Phi { result, .. }
+            | Instruction::Tuple { result, .. }
+            | Instruction::ExtractTuple { result, .. }
+            | Instruction::PtrToInt { result, .. }
+            | Instruction::IntToPtr { result, .. } => Some(result),
+            Instruction::Call {
+                result: Some(result),
+                ..
+            } => Some(result),
+            _ => None,
+        }
+    }
+
+    /// Returns the names of all SSA variables *used* (read) by this instruction.
+    ///
+    /// Globals (prefixed `@`) and literal constants are not SSA variables and
+    /// are not returned.
+    pub fn used_vars(&self) -> Vec<&'a str> {
+        let mut vars: Vec<&'a str> = Vec::new();
+
+        let push_value = |v: &Value<'a>, vars: &mut Vec<&'a str>| {
+            if let Value::Variable(name) = v {
+                vars.push(name);
+            }
+        };
+
+        match self {
+            Instruction::Binary { lhs, rhs, .. } | Instruction::Cmp { lhs, rhs, .. } => {
+                push_value(lhs, &mut vars);
+                push_value(rhs, &mut vars);
+            }
+            Instruction::Store { ptr, value, .. } => {
+                push_value(ptr, &mut vars);
+                push_value(value, &mut vars);
+            }
+            Instruction::Load { ptr, .. } => push_value(ptr, &mut vars),
+            Instruction::Alloc { .. } => {}
+            Instruction::Dealloc { ptr, .. } => push_value(ptr, &mut vars),
+            Instruction::Br { condition, .. } => push_value(condition, &mut vars),
+            Instruction::Ret { value: Some(v), .. } => push_value(v, &mut vars),
+            Instruction::Ret { value: None, .. } | Instruction::Jmp { .. } => {}
+            Instruction::Switch { value, .. } => push_value(value, &mut vars),
+            Instruction::Call { args, .. } => {
+                for arg in args {
+                    push_value(arg, &mut vars);
+                }
+            }
+            Instruction::GetElemPtr { array_ptr, index, .. } => {
+                push_value(array_ptr, &mut vars);
+                push_value(index, &mut vars);
+            }
+            Instruction::GetFieldPtr { struct_ptr, .. } => push_value(struct_ptr, &mut vars),
+            Instruction::ZeroExtend { value, .. }
+            | Instruction::SignExtend { value, .. }
+            | Instruction::Trunc { value, .. }
+            | Instruction::Bitcast { value, .. } => push_value(value, &mut vars),
+            Instruction::PtrToInt { ptr_value, .. } => push_value(ptr_value, &mut vars),
+            Instruction::IntToPtr { int_value, .. } => push_value(int_value, &mut vars),
+            Instruction::Select {
+                cond,
+                true_val,
+                false_val,
+                ..
+            } => {
+                push_value(cond, &mut vars);
+                push_value(true_val, &mut vars);
+                push_value(false_val, &mut vars);
+            }
+            Instruction::Write { buffer, .. } => push_value(buffer, &mut vars),
+            Instruction::Read { buffer, .. } => push_value(buffer, &mut vars),
+            Instruction::WriteByte { value, .. } => push_value(value, &mut vars),
+            Instruction::WritePtr { ptr, .. } => push_value(ptr, &mut vars),
+            Instruction::Phi { incoming, .. } => {
+                for (v, _) in incoming {
+                    push_value(v, &mut vars);
+                }
+            }
+            Instruction::ExtractTuple { tuple_val, .. } => push_value(tuple_val, &mut vars),
+            _ => {}
+        }
+
+        vars
+    }
+}
+
 impl fmt::Display for Instruction<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -1204,7 +1391,7 @@ impl fmt::Display for Instruction<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ir::types::{Literal, PrimitiveType, StructField, Type, Value}; // Assuming crate root
+    use crate::types::{Literal, PrimitiveType, StructField, Type, Value}; // Assuming crate root
 
     #[test]
     fn test_display_binary_op() {

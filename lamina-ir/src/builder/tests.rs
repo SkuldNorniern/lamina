@@ -527,11 +527,11 @@ mod tests {
             .alloc_stack(
                 "point",
                 Type::Struct(vec![
-                    crate::ir::types::StructField {
+                    crate::types::StructField {
                         name: "x",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },
-                    crate::ir::types::StructField {
+                    crate::types::StructField {
                         name: "y",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },
@@ -1034,7 +1034,7 @@ mod tests {
     fn test_atomic_operations() {
         let mut builder = IRBuilder::new();
 
-        use crate::ir::instruction::{AtomicBinOp, MemoryOrdering};
+        use crate::instruction::{AtomicBinOp, MemoryOrdering};
 
         builder
             .function("atomic_test", Type::Primitive(PrimitiveType::I32))
@@ -1099,7 +1099,7 @@ mod tests {
     fn test_simd_operations() {
         let mut builder = IRBuilder::new();
 
-        use crate::ir::instruction::SimdOp;
+        use crate::instruction::SimdOp;
 
         let vector_type = Type::Array {
             element_type: Box::new(Type::Primitive(PrimitiveType::F32)),

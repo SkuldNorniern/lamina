@@ -132,11 +132,44 @@
 //! - **Memory safety**: Proper handling of pointers and memory access
 //! - **Correctness**: Many classes of errors are caught at compile time
 //!
+//! ## Value States (Semantics Contract)
+//!
+//! The IR distinguishes three special value states that every optimization pass
+//! and code generator must handle correctly:
+//!
+//! ### Undef
+//! An *undef* value represents an uninitialized read — any bit pattern is valid.
+//! Optimizers may replace every occurrence of an undef with any concrete value
+//! of the matching type.  Code that reads from uninitialized memory produces
+//! undef.  Undef propagates only when the result of an operation is entirely
+//! determined by an undef operand (e.g. `load` of an un-stored alloc).
+//!
+//! ### Poison
+//! A *poison* value is produced when an instruction's preconditions are
+//! violated but the violation is not observable at the point of production —
+//! for example, integer overflow in a signed `add`, an out-of-range shift
+//! count, or using `undef` as an operand to a pure arithmetic operation.
+//! Poison propagates eagerly through pure operations: any instruction whose
+//! operands include poison produces poison.  A poison value that reaches a
+//! side-effecting instruction (store, branch condition, return value, call
+//! argument) causes **undefined behavior** — the compiler is free to assume
+//! this path is unreachable.  Optimizations may exploit this freedom.
+//!
+//! ### Trap
+//! A *trap* terminates the process at the point of the offending instruction.
+//! The following operations always trap on violation and never produce poison:
+//! - Integer division or remainder by zero (`BinaryOp::Div`, `BinaryOp::Rem`)
+//! - Null-pointer dereference (`Load` / `Store` through a null `Ptr`)
+//! - Out-of-bounds memory access (if bounds information is available)
+//!
+//! All other precondition violations produce poison (see individual instruction
+//! doc comments for details).
+//!
 //! ## Examples
 //!
 //! ```rust
-//! use lamina::ir::{IRBuilder, Type, PrimitiveType, StructField, BinaryOp, CmpOp};
-//! use lamina::ir::builder::{var, i32, bool};
+//! use lamina_ir::{IRBuilder, Type, PrimitiveType, StructField, BinaryOp, CmpOp};
+//! use lamina_ir::builder::{var, i32, bool};
 //!
 //! let mut builder = IRBuilder::new();
 //! builder
@@ -198,8 +231,8 @@ pub type Label<'a> = &'a str;
 /// # Examples
 ///
 /// ```rust
-/// use lamina::ir::{IRBuilder, Type, PrimitiveType, BinaryOp, CmpOp};
-/// use lamina::ir::builder::{var, i32, bool};
+/// use lamina_ir::{IRBuilder, Type, PrimitiveType, BinaryOp, CmpOp};
+/// use lamina_ir::builder::{var, i32, bool};
 ///
 /// let mut builder = IRBuilder::new();
 /// builder

@@ -4,8 +4,8 @@
 //! and unary operations (negation, logical not).
 
 use super::IRBuilder;
-use crate::ir::instruction::{BinaryOp, CmpOp, Instruction};
-use crate::ir::types::{PrimitiveType, Value};
+use crate::instruction::{BinaryOp, CmpOp, Instruction};
+use crate::types::{PrimitiveType, Value};
 
 impl<'a> IRBuilder<'a> {
     /// Creates a binary operation instruction
