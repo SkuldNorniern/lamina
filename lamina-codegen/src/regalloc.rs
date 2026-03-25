@@ -172,17 +172,17 @@ impl LinearScanAllocator {
         intervals: &mut HashMap<VirtualReg, LiveInterval>,
     ) {
         // Record definition (sets `start` if unseen, extends `end` to `pos`).
-        if let Some(def) = Self::def_reg(instr) {
-            if let Register::Virtual(v) = def {
-                let entry = intervals.entry(v).or_insert(LiveInterval {
-                    vreg: v,
-                    start: pos,
-                    end: pos,
-                });
-                // If we see a re-definition extend the interval to cover this point.
-                if pos > entry.end {
-                    entry.end = pos;
-                }
+        if let Some(def) = Self::def_reg(instr)
+            && let Register::Virtual(v) = def
+        {
+            let entry = intervals.entry(v).or_insert(LiveInterval {
+                vreg: v,
+                start: pos,
+                end: pos,
+            });
+            // If we see a re-definition extend the interval to cover this point.
+            if pos > entry.end {
+                entry.end = pos;
             }
         }
 

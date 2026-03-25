@@ -76,6 +76,7 @@ pub enum TargetArchitecture {
     Riscv128,
     Wasm32,
     Wasm64,
+    PowerPC64,
     #[cfg(feature = "nightly")]
     Lisa,
     Unknown,
@@ -97,6 +98,7 @@ impl FromStr for TargetArchitecture {
             "wasm64" => Ok(Self::Wasm64),
             "wasm" => Ok(Self::Wasm32),
             // default to 32-bit for backward compatibility
+            "ppc64" | "powerpc64" | "ppc64le" => Ok(Self::PowerPC64),
             #[cfg(feature = "nightly")]
             "lisa" => Ok(Self::Lisa),
             _ => Err("Unknown architecture"),
@@ -153,6 +155,7 @@ impl fmt::Display for TargetArchitecture {
             Self::Riscv128 => "riscv128",
             Self::Wasm32 => "wasm32",
             Self::Wasm64 => "wasm64",
+            Self::PowerPC64 => "ppc64le",
             #[cfg(feature = "nightly")]
             Self::Lisa => "lisa",
             Self::Unknown => "unknown",

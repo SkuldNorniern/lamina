@@ -121,6 +121,14 @@ impl TransformPipeline {
             .collect()
     }
 
+    /// Build the standard optimization pipeline for the given level.
+    ///
+    /// | Level | Transforms added |
+    /// |-------|-----------------|
+    /// | O0    | (none) |
+    /// | O1    | CFG simplify, jump threading, branch opt, DCE |
+    /// | O2    | + constant folding, copy propagation, memory opt, tail-call opt, peephole |
+    /// | O3    | + LICM, strength reduction, CSE, instruction scheduling |
     pub fn default_for_opt_level(opt_level: u8) -> Self {
         let mut pipeline = Self::new();
 

@@ -250,17 +250,16 @@ pub fn link(
                 target_os,
                 additional_flags,
             );
-            if target_os == TargetOperatingSystem::MacOS {
-                if let Ok(out) = Command::new("xcrun").args(["--show-sdk-version"]).output() {
-                    if let Ok(sdk) = String::from_utf8(out.stdout) {
-                        let sdk_ver = sdk.trim();
-                        if !sdk_ver.is_empty() {
-                            args.insert(0, sdk_ver.to_string());
-                            args.insert(0, "10.15".to_string());
-                            args.insert(0, "macos".to_string());
-                            args.insert(0, "-platform_version".to_string());
-                        }
-                    }
+            if target_os == TargetOperatingSystem::MacOS
+                && let Ok(out) = Command::new("xcrun").args(["--show-sdk-version"]).output()
+                && let Ok(sdk) = String::from_utf8(out.stdout)
+            {
+                let sdk_ver = sdk.trim();
+                if !sdk_ver.is_empty() {
+                    args.insert(0, sdk_ver.to_string());
+                    args.insert(0, "10.15".to_string());
+                    args.insert(0, "macos".to_string());
+                    args.insert(0, "-platform_version".to_string());
                 }
             }
             let cmd = if target_os == TargetOperatingSystem::MacOS {

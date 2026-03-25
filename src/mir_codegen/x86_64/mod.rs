@@ -321,6 +321,7 @@ fn ensure_type_supported(ty: &MirType, context: &str) -> Result<(), LaminaError>
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_instruction_x86_64(
     inst: &MirInst,
     writer: &mut impl Write,
@@ -906,6 +907,136 @@ fn emit_instruction_x86_64(
             if let Register::Virtual(vreg) = dst {
                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
+        }
+        MirInst::FloatBinary {
+            op,
+            ty,
+            dst,
+            lhs,
+            rhs,
+        } => {
+            let (add, sub, mul, div) = if is_f32(ty) {
+                ("addss", "subss", "mulss", "divss")
+            } else {
+                ("addsd", "subsd", "mulsd", "divsd")
+            };
+            load_float_operand_to_xmm(lhs, writer, reg_alloc, stack_slots, "xmm0", ty)?;
+            load_float_operand_to_xmm(rhs, writer, reg_alloc, stack_slots, "xmm1", ty)?;
+            let sse_op = match op {
+                crate::mir::FloatBinOp::FAdd => add,
+                crate::mir::FloatBinOp::FSub => sub,
+                crate::mir::FloatBinOp::FMul => mul,
+                crate::mir::FloatBinOp::FDiv => div,
+            };
+            writeln!(writer, "    {} %xmm1, %xmm0", sse_op)?;
+            if let Register::Virtual(vreg) = dst {
+                store_xmm_to_register("xmm0", vreg, writer, reg_alloc, stack_slots, ty)?;
+            }
+        }
+        MirInst::FloatUnary { op, ty, dst, src } => {
+            load_float_operand_to_xmm(src, writer, reg_alloc, stack_slots, "xmm0", ty)?;
+            match op {
+                crate::mir::FloatUnOp::FNeg => {
+                    if is_f32(ty) {
+                        // XOR with the sign bit of f32
+                        writeln!(writer, "    movq $0x80000000, %rax")?;
+                        writeln!(writer, "    movd %rax, %xmm1")?;
+                        writeln!(writer, "    xorps %xmm1, %xmm0")?;
+                    } else {
+                        // XOR with the sign bit of f64
+                        writeln!(writer, "    movq $0x8000000000000000, %rax")?;
+                        writeln!(writer, "    movq %rax, %xmm1")?;
+                        writeln!(writer, "    xorpd %xmm1, %xmm0")?;
+                    }
+                }
+                crate::mir::FloatUnOp::FSqrt => {
+                    let sqrt = if is_f32(ty) { "sqrtss" } else { "sqrtsd" };
+                    writeln!(writer, "    {} %xmm0, %xmm0", sqrt)?;
+                }
+            }
+            if let Register::Virtual(vreg) = dst {
+                store_xmm_to_register("xmm0", vreg, writer, reg_alloc, stack_slots, ty)?;
+            }
+        }
+        MirInst::FloatCmp {
+            op,
+            ty,
+            dst,
+            lhs,
+            rhs,
+        } => {
+            load_float_operand_to_xmm(lhs, writer, reg_alloc, stack_slots, "xmm0", ty)?;
+            load_float_operand_to_xmm(rhs, writer, reg_alloc, stack_slots, "xmm1", ty)?;
+            let ucomi = if is_f32(ty) { "ucomiss" } else { "ucomisd" };
+            writeln!(writer, "    {} %xmm1, %xmm0", ucomi)?;
+            match op {
+                crate::mir::FloatCmpOp::Eq => writeln!(writer, "    sete %al")?,
+                crate::mir::FloatCmpOp::Ne => writeln!(writer, "    setne %al")?,
+                crate::mir::FloatCmpOp::Lt => writeln!(writer, "    setb %al")?,
+                crate::mir::FloatCmpOp::Le => writeln!(writer, "    setbe %al")?,
+                crate::mir::FloatCmpOp::Gt => writeln!(writer, "    seta %al")?,
+                crate::mir::FloatCmpOp::Ge => writeln!(writer, "    setae %al")?,
+            }
+            writeln!(writer, "    movzbq %al, %rax")?;
+            if let Register::Virtual(vreg) = dst {
+                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            }
+        }
+        MirInst::Select {
+            dst,
+            cond,
+            true_val,
+            false_val,
+            ty: _,
+        } => {
+            // Load false_val into a scratch register, true_val into rax.
+            // Then test the condition and cmovnz true_val path.
+            let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+            load_operand_to_register(false_val, writer, reg_alloc, stack_slots, scratch)?;
+            load_operand_to_rax(true_val, writer, reg_alloc, stack_slots)?;
+            match cond {
+                Register::Virtual(vreg) => {
+                    if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
+                        writeln!(writer, "    testq %{}, %{}", phys, phys)?;
+                    } else if let Some(offset) = stack_slots.get(vreg) {
+                        writeln!(writer, "    cmpq $0, {}(%rbp)", offset)?;
+                    }
+                }
+                Register::Physical(p) => {
+                    writeln!(writer, "    testq %{}, %{}", p.name, p.name)?;
+                }
+            }
+            // cmovz: if condition is zero (false), move scratch into rax
+            writeln!(writer, "    cmovzq %{}, %rax", scratch)?;
+            if scratch != "rbx" {
+                reg_alloc.free_scratch(scratch);
+            }
+            if let Register::Virtual(vreg) = dst {
+                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            }
+        }
+        MirInst::Switch {
+            value,
+            cases,
+            default,
+        } => {
+            // Load switch value into rax, then emit a linear cmp/je chain.
+            match value {
+                Register::Virtual(vreg) => {
+                    load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
+                }
+                Register::Physical(p) => {
+                    writeln!(writer, "    movq %{}, %rax", p.name)?;
+                }
+            }
+            for (case_val, case_label) in cases {
+                writeln!(writer, "    cmpq ${}, %rax", case_val)?;
+                writeln!(writer, "    je .L_{}_{}", func_name, case_label)?;
+            }
+            writeln!(writer, "    jmp .L_{}_{}", func_name, default)?;
+        }
+        MirInst::Comment { text } => {
+            writeln!(writer, "    # {}", text)?;
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
