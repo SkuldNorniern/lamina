@@ -69,7 +69,7 @@ impl BranchOptimization {
             .blocks
             .iter()
             .filter(|b| !to_remove.contains(&b.label))
-            .flat_map(|b| Self::block_successors(b))
+            .flat_map(Self::block_successors)
             .collect();
 
         let safe_to_remove: HashSet<String> =

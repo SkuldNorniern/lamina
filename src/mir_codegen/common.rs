@@ -47,6 +47,7 @@ impl<'a> CodegenBase<'a> {
         std::mem::take(&mut self.output)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn prepare_base(
         &mut self,
         _types: &HashMap<String, MirType>,
@@ -221,8 +222,6 @@ where
         task_senders.push(task_sender);
         let result_sender = result_sender.clone();
         let compile_func_arc = compile_func_arc.clone();
-        let target_os = target_os;
-
         let handle = thread::spawn(move || -> Result<(), CodegenError> {
             let mut error_occurred = None;
             while let Ok(task) = task_receiver.recv() {
@@ -418,9 +417,9 @@ macro_rules! impl_codegen_trait_methods {
     ($backend:ty) => {
         fn prepare(
             &mut self,
-            types: &std::collections::HashMap<String, crate::mir::MirType>,
-            globals: &std::collections::HashMap<String, crate::mir::Global>,
-            funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+            types: &std::collections::HashMap<String, $crate::mir::MirType>,
+            globals: &std::collections::HashMap<String, $crate::mir::Global>,
+            funcs: &std::collections::HashMap<String, $crate::mir::Signature>,
             codegen_units: usize,
             verbose: bool,
             options: &[CodegenOptions],

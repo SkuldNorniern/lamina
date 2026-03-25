@@ -622,12 +622,70 @@ fn emit_instruction_riscv<W: Write>(
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
         }
-        _ => {
+        MirInst::Select {
+            dst,
+            cond,
+            true_val,
+            false_val,
+            ty: _,
+        } => {
+            // Load false_val into a1, true_val into a0, then pick with branch.
+            load_operand_to_register(false_val, writer, reg_alloc, stack_slots, "a1")?;
+            load_operand_to_register(true_val, writer, reg_alloc, stack_slots, "a0")?;
+            match cond {
+                Register::Virtual(vreg) => {
+                    load_register_to_register(vreg, writer, reg_alloc, stack_slots, "t0")?;
+                }
+                Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
+            }
+            // If condition is zero (false), replace a0 with a1.
+            writeln!(writer, "    bnez t0, .L_riscv_sel_{:p}", cond)?;
+            writeln!(writer, "    mv a0, a1")?;
+            writeln!(writer, ".L_riscv_sel_{:p}:", cond)?;
+            if let Register::Virtual(vreg) = dst {
+                store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
+            }
+        }
+        MirInst::Switch {
+            value,
+            cases,
+            default,
+        } => {
+            match value {
+                Register::Virtual(v) => {
+                    load_register_to_register(v, writer, reg_alloc, stack_slots, "a0")?;
+                }
+                Register::Physical(p) => writeln!(writer, "    mv a0, {}", p.name)?,
+            }
+            for (case_val, case_label) in cases {
+                writeln!(writer, "    li t0, {}", case_val)?;
+                writeln!(writer, "    beq a0, t0, .L_{}", case_label)?;
+            }
+            writeln!(writer, "    j .L_{}", default)?;
+        }
+        MirInst::Comment { text } => {
+            writeln!(writer, "    # {}", text)?;
+        }
+        MirInst::Unreachable => {
+            // Emit an illegal instruction — RISC-V has no official trap mnemonic,
+            // but encoding 0x00000000 is reserved and will cause an illegal-instruction exception.
+            writeln!(writer, "    .word 0")?;
+        }
+        MirInst::SafePoint | MirInst::StackMap { .. } | MirInst::PatchPoint { .. } => {
+            // No-op in AOT path.
+        }
+        MirInst::VectorOp { .. } => {
+            return Err(crate::error::LaminaError::CodegenError(
+                crate::mir_codegen::CodegenError::UnsupportedFeature(
+                    "VectorOp is not yet supported by the RISC-V backend".to_string(),
+                ),
+            ));
+        }
+        other => {
             return Err(crate::error::LaminaError::CodegenError(
                 crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
-                    "RISC-V instruction not yet supported: {:?}. \
-                     This instruction may be partially implemented or not yet available for RISC-V.",
-                    inst
+                    "RISC-V backend: instruction not yet supported: {}",
+                    other
                 )),
             ));
         }
