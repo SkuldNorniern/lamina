@@ -17,6 +17,7 @@ use lamina_platform::TargetOperatingSystem;
 ///
 /// For simplicity, we'll use a subset of these registers.
 pub struct RiscVRegAlloc {
+    #[allow(dead_code)]
     target_os: TargetOperatingSystem,
     // Available general-purpose registers for allocation
     available_gprs: Vec<&'static str>,

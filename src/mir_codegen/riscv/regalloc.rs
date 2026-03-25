@@ -17,6 +17,7 @@ use lamina_platform::TargetOperatingSystem;
 ///
 /// For simplicity, we'll use a subset of these registers.
 pub struct RiscVRegAlloc {
+    #[allow(dead_code)]
     target_os: TargetOperatingSystem,
     // Available general-purpose registers for allocation
     available_gprs: Vec<&'static str>,
@@ -55,6 +56,7 @@ impl RiscVRegAlloc {
     }
 
     /// Set conservative mode (limit to fewer registers)
+    #[allow(dead_code)]
     pub fn set_conservative_mode(&mut self) {
         // Use only a subset of registers for conservative allocation
         self.available_gprs = vec![
@@ -64,6 +66,7 @@ impl RiscVRegAlloc {
     }
 
     /// Get stack slot for a virtual register
+    #[allow(dead_code)]
     pub fn get_stack_slot(&self, vreg: &VirtualReg) -> Option<i32> {
         self.stack_slots.get(vreg).copied()
     }

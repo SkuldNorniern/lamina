@@ -93,6 +93,7 @@ pub fn load_operand_to_register<W: std::io::Write>(
 }
 
 /// Emit RISC-V instruction for integer binary operations
+#[allow(dead_code)]
 pub fn emit_int_binary_op<W: std::io::Write>(
     op: &crate::mir::IntBinOp,
     writer: &mut W,
