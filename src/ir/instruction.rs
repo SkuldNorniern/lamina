@@ -764,6 +764,7 @@ impl fmt::Display for AllocType {
 pub fn assignment_opcode_names() -> &'static [&'static str] {
     // Instruction-specific opcodes that produce results
     // These correspond to Instruction enum variants that have a `result` field
+    #[allow(dead_code)]
     const INSTRUCTION_ASSIGNMENT_OPS: &[&str] = &[
         // Type conversion operations (from Instruction::ZeroExtend, etc.)
         "zext",

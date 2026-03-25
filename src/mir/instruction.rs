@@ -354,6 +354,78 @@ impl From<Immediate> for Operand {
     }
 }
 
+impl Operand {
+    /// Create an immediate `i8` operand.
+    pub fn imm_i8(v: i8) -> Self {
+        Operand::Immediate(Immediate::I8(v))
+    }
+
+    /// Create an immediate `i32` operand.
+    pub fn imm_i32(v: i32) -> Self {
+        Operand::Immediate(Immediate::I32(v))
+    }
+
+    /// Create an immediate `i64` operand.
+    pub fn imm_i64(v: i64) -> Self {
+        Operand::Immediate(Immediate::I64(v))
+    }
+
+    /// Create an immediate `f32` operand.
+    pub fn imm_f32(v: f32) -> Self {
+        Operand::Immediate(Immediate::F32(v))
+    }
+
+    /// Create an immediate `f64` operand.
+    pub fn imm_f64(v: f64) -> Self {
+        Operand::Immediate(Immediate::F64(v))
+    }
+
+    /// Create a register operand from a `Register`.
+    pub fn reg(r: Register) -> Self {
+        Operand::Register(r)
+    }
+
+    /// Create a virtual GPR operand with the given id.
+    pub fn v_gpr(id: u32) -> Self {
+        Operand::Register(Register::Virtual(
+            super::register::VirtualReg::new(id, super::register::RegisterClass::Gpr),
+        ))
+    }
+
+    /// Create a virtual FPR operand with the given id.
+    pub fn v_fpr(id: u32) -> Self {
+        Operand::Register(Register::Virtual(
+            super::register::VirtualReg::new(id, super::register::RegisterClass::Fpr),
+        ))
+    }
+
+    /// Return `true` if this operand is an immediate value.
+    pub fn is_immediate(&self) -> bool {
+        matches!(self, Operand::Immediate(_))
+    }
+
+    /// Return `true` if this operand is a register.
+    pub fn is_register(&self) -> bool {
+        matches!(self, Operand::Register(_))
+    }
+
+    /// Extract the immediate value, if any.
+    pub fn as_immediate(&self) -> Option<&Immediate> {
+        match self {
+            Operand::Immediate(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    /// Extract the register, if any.
+    pub fn as_register(&self) -> Option<&Register> {
+        match self {
+            Operand::Register(r) => Some(r),
+            _ => None,
+        }
+    }
+}
+
 /// Memory addressing mode
 #[derive(Debug, Clone, PartialEq)]
 pub enum AddressMode {

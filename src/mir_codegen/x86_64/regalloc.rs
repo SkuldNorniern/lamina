@@ -11,6 +11,7 @@ use lamina_platform::TargetOperatingSystem;
 /// Uses platform-appropriate GPR pools for stable virtual-to-physical register mappings
 /// and separate scratch pools for short-lived temporaries.
 pub struct X64RegAlloc {
+    #[allow(dead_code)]
     target_os: TargetOperatingSystem,
     free_gprs: VecDeque<&'static str>,
     used_gprs: HashSet<&'static str>,
@@ -20,10 +21,14 @@ pub struct X64RegAlloc {
 }
 
 const SYSV_MAP_GPRS: &[&str] = &["r12", "r13", "r14", "r15", "rbx"];
-const SYSV_SCRATCH_GPRS: &[&str] = &["r10", "r11"];
+const SYSV_LEAF_MAP_GPRS: &[&str] = &["r12", "r13", "r14", "r15", "rbx", "r10", "r11"];
+const SYSV_SCRATCH_GPRS: &[&str] = &["r10", "r11"]; // keep as-is for non-leaf
+const SYSV_LEAF_SCRATCH_GPRS: &[&str] = &["rcx", "rdx"]; // for leaf functions
 
 const WIN64_MAP_GPRS: &[&str] = &["rbx", "rsi", "rdi", "r12", "r13", "r14", "r15"];
+const WIN64_LEAF_MAP_GPRS: &[&str] = &["rbx", "rsi", "rdi", "r12", "r13", "r14", "r15", "r10", "r11"];
 const WIN64_SCRATCH_GPRS: &[&str] = &["r10", "r11"];
+const WIN64_LEAF_SCRATCH_GPRS: &[&str] = &["rcx", "rdx"];
 
 impl Default for X64RegAlloc {
     fn default() -> Self {
@@ -58,6 +63,31 @@ impl X64RegAlloc {
             scratch_free.push_back(r);
         }
 
+        Self {
+            target_os,
+            free_gprs,
+            used_gprs: HashSet::new(),
+            vreg_to_preg: HashMap::new(),
+            scratch_free,
+            scratch_used: HashSet::new(),
+        }
+    }
+
+    /// Creates a new register allocator for leaf functions (no calls), expanding the available
+    /// register pool by including r10/r11 as mappable GPRs since they won't be clobbered.
+    pub fn new_leaf(target_os: TargetOperatingSystem) -> Self {
+        let (map_gprs, scratch_gprs) = match target_os {
+            TargetOperatingSystem::Windows => (WIN64_LEAF_MAP_GPRS, WIN64_LEAF_SCRATCH_GPRS),
+            _ => (SYSV_LEAF_MAP_GPRS, SYSV_LEAF_SCRATCH_GPRS),
+        };
+        let mut free_gprs = VecDeque::new();
+        for &r in map_gprs {
+            free_gprs.push_back(r);
+        }
+        let mut scratch_free = VecDeque::new();
+        for &r in scratch_gprs {
+            scratch_free.push_back(r);
+        }
         Self {
             target_os,
             free_gprs,

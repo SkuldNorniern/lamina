@@ -18,7 +18,7 @@ use util::{emit_mov_imm64, imm_to_u64};
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions,
-    capability::{CapabilitySet, CodegenCapability},
+    capability::CapabilitySet,
 };
 use lamina_platform::TargetOperatingSystem;
 

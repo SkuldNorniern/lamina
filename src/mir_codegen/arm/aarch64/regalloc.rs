@@ -30,6 +30,7 @@ impl Default for A64RegAlloc {
     }
 }
 
+#[allow(dead_code)]
 impl A64RegAlloc {
     /// Creates a new register allocator with default register pools.
     pub fn new() -> Self {
@@ -53,6 +54,7 @@ impl A64RegAlloc {
     }
 
     /// Sets conservative mode for complex functions, using fewer registers to reduce pressure.
+    #[allow(dead_code)]
     pub fn set_conservative_mode(&mut self) {
         self.free_gprs.clear();
         self.free_gprs.push_back("x13");
@@ -75,16 +77,19 @@ impl A64RegAlloc {
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn is_occupied(&self, phys: &'static str) -> bool {
         MirRegisterAllocator::is_occupied(self, phys)
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn occupy(&mut self, phys: &'static str) {
         MirRegisterAllocator::occupy(self, phys);
     }
 
     #[inline]
+    #[allow(dead_code)]
     pub fn release(&mut self, phys: &'static str) {
         MirRegisterAllocator::release(self, phys);
     }
