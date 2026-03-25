@@ -7,8 +7,10 @@ use std::collections::HashMap;
 
 /// Function-level inlining transform.
 ///
-/// This transform handles function-level inlining within a single function context.
-/// For module-level inlining that requires cross-function analysis, see `ModuleInlining`.
+/// Without module context this pass can only detect direct self-recursive tail
+/// calls that were not already handled by `TailCallOptimization` and mark them.
+/// Full cross-function inlining is done by `ModuleInlining` which operates on
+/// the whole module before per-function transforms run.
 #[derive(Default)]
 pub struct FunctionInlining;
 
@@ -18,7 +20,7 @@ impl Transform for FunctionInlining {
     }
 
     fn description(&self) -> &'static str {
-        "Replaces function calls with inlined function bodies (module-level)"
+        "Module-level function inlining (see ModuleInlining for full implementation)"
     }
 
     fn category(&self) -> TransformCategory {
@@ -29,8 +31,36 @@ impl Transform for FunctionInlining {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, _func: &mut crate::mir::Function) -> Result<bool, String> {
-        Ok(false)
+    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+        // Without access to the module we cannot inline callees.  However we can
+        // detect and remove trivially dead self-calls: a call to the same function
+        // whose return value is never used and whose block already has a return.
+        let func_name = func.sig.name.clone();
+        let mut changed = false;
+
+        for block in &mut func.blocks {
+            let mut to_remove = Vec::new();
+            for (i, instr) in block.instructions.iter().enumerate() {
+                if let Instruction::Call { name, ret, .. } = instr
+                    && *name == func_name
+                    && ret.is_none()
+                {
+                    // Self-call with no return value — check if next instruction is Ret
+                    if let Some(next) = block.instructions.get(i + 1)
+                        && matches!(next, Instruction::Ret { value: None })
+                    {
+                        to_remove.push(i);
+                    }
+                }
+            }
+            // Remove in reverse order so indices stay valid
+            for idx in to_remove.iter().rev() {
+                block.instructions.remove(*idx);
+                changed = true;
+            }
+        }
+
+        Ok(changed)
     }
 }
 
@@ -922,7 +952,7 @@ mod tests {
         // entry:
         //   v1 = call callee(10)
         //   ret v1
-        let mut caller = FunctionBuilder::new("caller")
+        let caller = FunctionBuilder::new("caller")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Call {
