@@ -16,6 +16,11 @@ const LINKAGE_SIZE: usize = 32;
 pub struct Ppc64Frame;
 
 impl Ppc64Frame {
+    /// Total stack frame size (linkage + locals), 16-byte aligned.
+    pub fn aligned_frame_size(local_bytes: usize) -> usize {
+        ((LINKAGE_SIZE + local_bytes) + 15) & !15
+    }
+
     /// Calculate the stack offset for local slot `n` (0-based).
     ///
     /// Slots start above the linkage area and grow upward in address
@@ -32,8 +37,7 @@ impl Ppc64Frame {
     /// if needed (we don't track that here, so we just save LR and
     /// update the back-chain).
     pub fn generate_prologue<W: Write>(writer: &mut W, local_bytes: usize) -> io::Result<()> {
-        // Round frame size up to 16-byte alignment.
-        let frame_size = ((LINKAGE_SIZE + local_bytes) + 15) & !15;
+        let frame_size = Self::aligned_frame_size(local_bytes);
         writeln!(writer, "    mflr 0")?;
         writeln!(writer, "    std 0, 16(1)")?;        // Save LR to LR save slot
         writeln!(writer, "    stdu 1, -{}(1)", frame_size)?; // Allocate frame + store back-chain
@@ -42,11 +46,21 @@ impl Ppc64Frame {
 
     /// Emit the function epilogue and return.
     pub fn generate_epilogue<W: Write>(writer: &mut W, local_bytes: usize) -> io::Result<()> {
-        let frame_size = ((LINKAGE_SIZE + local_bytes) + 15) & !15;
+        let frame_size = Self::aligned_frame_size(local_bytes);
         writeln!(writer, "    addi 1, 1, {}", frame_size)?; // Deallocate frame
         writeln!(writer, "    ld 0, 16(1)")?;               // Restore LR
         writeln!(writer, "    mtlr 0")?;
         writeln!(writer, "    blr")?;
+        Ok(())
+    }
+
+    /// Deallocate the frame and restore LR, then the caller must branch to the tail target
+    /// (no `blr` — that would return to this function instead of tail-calling).
+    pub fn generate_tail_epilogue<W: Write>(writer: &mut W, local_bytes: usize) -> io::Result<()> {
+        let frame_size = Self::aligned_frame_size(local_bytes);
+        writeln!(writer, "    addi 1, 1, {}", frame_size)?;
+        writeln!(writer, "    ld 0, 16(1)")?;
+        writeln!(writer, "    mtlr 0")?;
         Ok(())
     }
 }
@@ -84,5 +98,14 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("blr"), "Expected blr in epilogue: {s}");
         assert!(s.contains("mtlr"), "Expected mtlr in epilogue: {s}");
+    }
+
+    #[test]
+    fn test_tail_epilogue_has_no_blr() {
+        let mut buf = Vec::new();
+        Ppc64Frame::generate_tail_epilogue(&mut buf, 0).unwrap();
+        let s = String::from_utf8(buf).unwrap();
+        assert!(!s.contains("blr"), "tail epilogue must not return: {s}");
+        assert!(s.contains("mtlr"), "Expected mtlr: {s}");
     }
 }
