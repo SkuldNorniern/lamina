@@ -29,9 +29,16 @@ use util::{
     store_r3_to_register,
 };
 
+use crate::mir::register::RegisterClass;
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
-use crate::mir_codegen::{Codegen, CodegenError, CodegenOptions, capability::CapabilitySet};
+use crate::mir_codegen::{
+    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
+    capability::CapabilitySet,
+};
+use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
 use lamina_platform::TargetOperatingSystem;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::mir_codegen::common::CodegenBase;
 
@@ -60,7 +67,13 @@ impl<'a> Ppc64Codegen<'a> {
         writer: &mut W,
         codegen_units: usize,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_ppc64_with_units(module, writer, self.base.target_os, codegen_units)
+        generate_mir_ppc64_with_units_and_settings(
+            module,
+            writer,
+            self.base.target_os,
+            codegen_units,
+            &MirCodegenSettings::default(),
+        )
     }
 }
 
@@ -109,7 +122,13 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
         self.base.emit_asm_base_with_units(
             |module, writer, target_os, codegen_units| {
-                generate_mir_ppc64_with_units(module, writer, target_os, codegen_units)
+                generate_mir_ppc64_with_units_and_settings(
+                    module,
+                    writer,
+                    target_os,
+                    codegen_units,
+                    &MirCodegenSettings::default(),
+                )
             },
             "PowerPC64",
             self.base.codegen_units,
@@ -125,10 +144,17 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
 
 use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
 
+fn ppc64_stack_offset_for_linear_spill(off: i32) -> i32 {
+    let k = ((-off) / 8) as usize;
+    let slot_ix = k.saturating_sub(1);
+    Ppc64Frame::calculate_stack_offset(slot_ix)
+}
+
 fn compile_single_function_ppc64(
     func_name: &str,
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
+    settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
     let mut output = Vec::new();
     let abi = Ppc64Abi::new(target_os);
@@ -138,27 +164,87 @@ fn compile_single_function_ppc64(
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e))
     })?;
 
-    let mut reg_alloc = Ppc64RegAlloc::new(target_os);
-    let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
-        std::collections::HashMap::new();
-    let mut next_slot = 0;
+    if settings.emit_asm_debug_lines {
+        let tag = settings.debug_file_tag.replace('\"', "'");
+        writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e))
+        })?;
+    }
 
-    // First pass: assign stack slots to all virtual registers.
-    for block in &func.blocks {
-        for inst in &block.instructions {
-            if let Some(dst) = inst.def_reg()
-                && let Register::Virtual(vreg) = dst
-                && !stack_slots.contains_key(vreg)
-            {
-                stack_slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(next_slot));
-                next_slot += 1;
+    let mut reg_alloc = Ppc64RegAlloc::new(target_os);
+    let mut stack_slots: HashMap<crate::mir::VirtualReg, i32> = HashMap::new();
+
+    if settings.regalloc != RegallocStrategy::Incremental {
+        let mut def_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
+        let mut used_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(vreg) = dst
+                {
+                    def_regs.insert(*vreg);
+                }
+                for reg in inst.use_regs() {
+                    if let Register::Virtual(vreg) = reg {
+                        used_regs.insert(*vreg);
+                    }
+                }
             }
-            for reg in inst.use_regs() {
-                if let Register::Virtual(vreg) = reg
+        }
+        for vreg in &def_regs {
+            if !stack_slots.contains_key(vreg) {
+                let slot_index = stack_slots.len();
+                stack_slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(slot_index));
+            }
+        }
+        for vreg in used_regs {
+            if !def_regs.contains(&vreg) && !stack_slots.contains_key(&vreg) {
+                let slot_index = stack_slots.len();
+                stack_slots.insert(vreg, Ppc64Frame::calculate_stack_offset(slot_index));
+            }
+        }
+        let pool = Ppc64RegAlloc::gpr_pool_for_global_allocation();
+        let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
+            .into_iter()
+            .filter(|i| i.vreg.class == RegisterClass::Gpr)
+            .collect();
+        let plan = match settings.regalloc {
+            RegallocStrategy::LinearScanGlobal => {
+                LinearScanAllocator::allocate(&intervals, pool.as_slice())
+            }
+            RegallocStrategy::GraphColorGlobal => {
+                GraphColorAllocator::allocate(&intervals, pool.as_slice())
+            }
+            RegallocStrategy::Incremental => {
+                return Err(crate::mir_codegen::CodegenError::InvalidCodegenOptions(
+                    "internal: incremental in global branch".to_string(),
+                ));
+            }
+        };
+        reg_alloc = Ppc64RegAlloc::from_global_plan(target_os, &plan);
+        for (v, a) in &plan {
+            if let MirAllocation::Spill(off) = a {
+                stack_slots.insert(*v, ppc64_stack_offset_for_linear_spill(*off));
+            }
+        }
+    } else {
+        let mut next_slot = 0usize;
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(vreg) = dst
                     && !stack_slots.contains_key(vreg)
                 {
                     stack_slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(next_slot));
                     next_slot += 1;
+                }
+                for reg in inst.use_regs() {
+                    if let Register::Virtual(vreg) = reg
+                        && !stack_slots.contains_key(vreg)
+                    {
+                        stack_slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(next_slot));
+                        next_slot += 1;
+                    }
                 }
             }
         }
@@ -169,16 +255,25 @@ fn compile_single_function_ppc64(
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
     })?;
 
+    let mut debug_line: u32 = 0;
     for block in &func.blocks {
         writeln!(output, ".L_{}:", block.label).map_err(|e| {
             crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e))
         })?;
 
         for inst in &block.instructions {
-            emit_instruction_ppc64(inst, &mut output, &mut reg_alloc, &stack_slots, target_os)
-                .map_err(|e| {
-                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-                })?;
+            emit_instruction_ppc64(
+                inst,
+                &mut output,
+                &mut reg_alloc,
+                &stack_slots,
+                target_os,
+                settings,
+                &mut debug_line,
+            )
+            .map_err(|e| {
+                crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
+            })?;
         }
     }
 
@@ -199,6 +294,22 @@ pub fn generate_mir_ppc64_with_units<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
 ) -> Result<(), crate::error::LaminaError> {
+    generate_mir_ppc64_with_units_and_settings(
+        module,
+        writer,
+        target_os,
+        codegen_units,
+        &MirCodegenSettings::default(),
+    )
+}
+
+pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+    settings: &MirCodegenSettings,
+) -> Result<(), crate::error::LaminaError> {
     let abi = Ppc64Abi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;
@@ -211,9 +322,19 @@ pub fn generate_mir_ppc64_with_units<W: Write>(
         writeln!(writer, ".extern {}", label)?;
     }
 
-    let results =
-        compile_functions_parallel(module, target_os, codegen_units, compile_single_function_ppc64)
-            .map_err(parallel_codegen_error)?;
+    let settings_arc = Arc::new(settings.clone());
+    let results = compile_functions_parallel(
+        module,
+        target_os,
+        codegen_units,
+        {
+            let settings_arc = settings_arc.clone();
+            move |name, func, os| {
+                compile_single_function_ppc64(name, func, os, settings_arc.as_ref())
+            }
+        },
+    )
+    .map_err(parallel_codegen_error)?;
 
     for result in results {
         writer.write_all(&result.assembly)?;
@@ -229,7 +350,13 @@ fn emit_instruction_ppc64<W: Write>(
     reg_alloc: &mut Ppc64RegAlloc,
     stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
     target_os: TargetOperatingSystem,
+    settings: &MirCodegenSettings,
+    debug_line: &mut u32,
 ) -> Result<(), crate::error::LaminaError> {
+    if settings.emit_asm_debug_lines {
+        *debug_line = debug_line.saturating_add(1);
+        writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
+    }
     match inst {
         MirInst::IntBinary {
             op,
@@ -462,16 +589,25 @@ fn emit_instruction_ppc64<W: Write>(
             let abi = Ppc64Abi::new(target_os);
             let arg_regs = Ppc64Abi::ARG_REGISTERS;
             let num_reg_args = args.len().min(arg_regs.len());
+            let num_stack_args = args.len().saturating_sub(arg_regs.len());
             for (i, arg) in args.iter().take(num_reg_args).enumerate() {
                 load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[i])?;
             }
             let local_bytes = stack_slots.len() * 8;
-            Ppc64Frame::generate_epilogue(writer, local_bytes)
-                .map_err(|e| crate::error::LaminaError::CodegenError(
+            let frame_size = Ppc64Frame::aligned_frame_size(local_bytes);
+            if num_stack_args > 0 {
+                for (j, arg) in args.iter().skip(num_reg_args).enumerate() {
+                    let disp = frame_size as i32 + (j as i32) * 8;
+                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
+                    writeln!(writer, "    std 11, {}(1)", disp)?;
+                }
+            }
+            Ppc64Frame::generate_tail_epilogue(writer, local_bytes).map_err(|e| {
+                crate::error::LaminaError::CodegenError(
                     crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()),
-                ))?;
+                )
+            })?;
             let target_sym = abi.call_stub(name).unwrap_or_else(|| abi.mangle_function_name(name));
-            // Restore LR and jump instead of calling (tail call optimization).
             writeln!(writer, "    b {}", target_sym)?;
         }
         MirInst::Load { dst, addr, ty, attrs: _ } => {
@@ -710,7 +846,6 @@ mod tests {
         use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
         let mut m = MirModule::new("test_ppc64_add");
         let v0 = VirtualReg::gpr(0);
-        let v1 = VirtualReg::gpr(1);
         let v2 = VirtualReg::gpr(2);
         let f = FunctionBuilder::new("add_fn")
             .returns(MirType::Scalar(ScalarType::I64))

@@ -5,6 +5,7 @@
 
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
+use lamina_codegen::Allocation;
 use lamina_platform::TargetOperatingSystem;
 use std::collections::HashMap;
 
@@ -48,6 +49,28 @@ impl Ppc64RegAlloc {
             }
         }
         None
+    }
+
+    pub fn gpr_pool_for_global_allocation() -> Vec<&'static str> {
+        AVAILABLE_GPRS.to_vec()
+    }
+
+    pub fn from_global_plan(
+        target_os: TargetOperatingSystem,
+        plan: &HashMap<VirtualReg, Allocation<&'static str>>,
+    ) -> Self {
+        let mut s = Self::new(target_os);
+        for (&vreg, alloc) in plan {
+            if vreg.class != RegisterClass::Gpr {
+                continue;
+            }
+            if let Allocation::Register(phys) = alloc
+                && AVAILABLE_GPRS.contains(phys)
+            {
+                s.allocated_gprs.insert(*phys, vreg);
+            }
+        }
+        s
     }
 }
 
