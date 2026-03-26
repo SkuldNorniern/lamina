@@ -328,7 +328,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let changed = cp
             .apply(&mut func)
             .expect("Copy propagation should succeed");
@@ -385,7 +385,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let changed = cp
             .apply(&mut func)
             .expect("Copy propagation should succeed");
@@ -414,7 +414,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let result = cp.apply(&mut func);
         assert!(result.is_ok());
         assert!(!result.unwrap());
@@ -451,7 +451,7 @@ mod tests {
             })
             .build();
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         // Run multiple times to ensure no infinite loop
         for _ in 0..10 {
             let _ = cp.apply(&mut func);
@@ -483,7 +483,7 @@ mod tests {
             })
             .build();
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let changed = cp.apply(&mut func).expect("should succeed");
         assert!(changed);
 
@@ -528,7 +528,7 @@ mod tests {
             })
             .build();
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let result = cp.apply(&mut func);
         assert!(result.is_ok());
         // Should not crash on redefined registers
@@ -560,7 +560,7 @@ mod tests {
             })
             .build();
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let result = cp.apply(&mut func);
         assert!(result.is_ok());
     }
@@ -604,7 +604,7 @@ mod tests {
             })
             .build();
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let changed = cp.apply(&mut func).expect("should succeed");
         assert!(changed);
 
@@ -652,7 +652,7 @@ mod tests {
             })
             .build();
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let result = cp.apply(&mut func);
         assert!(result.is_ok());
         // Should not crash and should handle redefinitions correctly
@@ -703,7 +703,7 @@ mod tests {
             value: Some(Operand::Register(sum_reg.into())),
         });
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let result = cp.apply(&mut func);
         assert!(result.is_ok());
         let changed = result.unwrap();
@@ -742,7 +742,7 @@ mod tests {
             value: Some(Operand::Register(VirtualReg::gpr(0).into())),
         });
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let result = cp.apply(&mut func);
         assert!(result.is_ok());
         // Should handle accumulator pattern without issues
@@ -789,7 +789,7 @@ mod tests {
             })
             .build();
 
-        let cp = CopyPropagation::default();
+        let cp = CopyPropagation;
         let result = cp.apply(&mut func);
         assert!(result.is_ok());
         // Each block should handle its own copies independently

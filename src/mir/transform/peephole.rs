@@ -612,7 +612,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
         assert!(!changed);
     }
@@ -631,7 +631,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
         assert!(changed);
     }
@@ -650,7 +650,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
         assert!(changed);
 
@@ -672,7 +672,7 @@ mod tests {
         let bb = Block::new("entry");
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
         assert!(!changed);
     }
@@ -693,7 +693,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
 
         // Run multiple times to ensure no infinite loop
         for _ in 0..10 {
@@ -725,7 +725,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
 
         // Should NOT fold division by zero
@@ -754,7 +754,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
 
         // Should NOT fold due to overflow
@@ -776,7 +776,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
 
         // Checked_add returns None on overflow, so no fold
@@ -798,7 +798,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
 
         assert!(changed);
@@ -829,7 +829,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
 
         assert!(changed);
@@ -857,7 +857,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
 
         assert!(changed);
@@ -885,7 +885,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
 
         // Should NOT fold shift by 64+
@@ -909,7 +909,7 @@ mod tests {
         }
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
         // Constant folding should occur
         assert!(changed);
@@ -930,7 +930,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
         assert!(changed);
 
@@ -958,7 +958,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = Peephole::default();
+        let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
         assert!(changed);
 

@@ -220,7 +220,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let pass = ConstantFolding::default();
+        let pass = ConstantFolding;
         let changed = pass.try_fold_int(&mut func.blocks[0].instructions[0]);
         // Should NOT change due to overflow prevention
         assert!(!changed);
@@ -241,7 +241,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let cf = ConstantFolding::default();
+        let cf = ConstantFolding;
         let changed = cf.apply(&mut func).expect("should not panic");
         assert!(!changed);
     }
@@ -261,7 +261,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let cf = ConstantFolding::default();
+        let cf = ConstantFolding;
         let changed = cf.apply(&mut func).expect("should not panic");
         assert!(!changed); // Overflow, no fold
     }
@@ -281,7 +281,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let cf = ConstantFolding::default();
+        let cf = ConstantFolding;
         let changed = cf.apply(&mut func).expect("should not panic");
         assert!(!changed); // Overflow, no fold
     }
@@ -301,7 +301,7 @@ mod tests {
         });
         func.add_block(bb);
 
-        let cf = ConstantFolding::default();
+        let cf = ConstantFolding;
         let changed = cf.apply(&mut func).expect("should not panic");
         assert!(changed);
 
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_constant_folding_bitwise() {
-        let cf = ConstantFolding::default();
+        let cf = ConstantFolding;
 
         let mk = |op: IntBinOp, l: i64, r: i64| {
             let mut func = Function::new(crate::mir::function::Signature::new("f"))
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn test_constant_folding_float() {
         use crate::mir::FloatBinOp;
-        let cf = ConstantFolding::default();
+        let cf = ConstantFolding;
 
         let mk = |op: FloatBinOp, l: f64, r: f64| {
             let mut func = Function::new(crate::mir::function::Signature::new("f"))
@@ -404,7 +404,7 @@ mod tests {
     #[test]
     fn test_constant_folding_cmp() {
         use crate::mir::IntCmpOp;
-        let cf = ConstantFolding::default();
+        let cf = ConstantFolding;
 
         let mk = |op: IntCmpOp, l: i64, r: i64| {
             let mut func = Function::new(crate::mir::function::Signature::new("f"))
