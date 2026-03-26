@@ -215,7 +215,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let pass = StrengthReduction::default();
+        let pass = StrengthReduction;
         let changed = pass
             .apply(&mut func)
             .expect("Strength reduction should succeed");
@@ -254,7 +254,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let pass = StrengthReduction::default();
+        let pass = StrengthReduction;
         let changed = pass
             .apply(&mut func)
             .expect("Strength reduction should succeed");
@@ -293,7 +293,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let pass = StrengthReduction::default();
+        let pass = StrengthReduction;
         let changed = pass
             .apply(&mut func)
             .expect("Strength reduction should succeed");
@@ -332,7 +332,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let pass = StrengthReduction::default();
+        let pass = StrengthReduction;
         let changed = pass
             .apply(&mut func)
             .expect("Strength reduction should succeed");
@@ -370,7 +370,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let pass = StrengthReduction::default();
+        let pass = StrengthReduction;
         let changed = pass
             .apply(&mut func)
             .expect("Strength reduction should succeed");
@@ -409,7 +409,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let pass = StrengthReduction::default();
+        let pass = StrengthReduction;
         let changed = pass
             .apply(&mut func)
             .expect("Strength reduction should succeed");
@@ -440,7 +440,7 @@ mod tests {
                 })
                 .build();
 
-            let pass = StrengthReduction::default();
+            let pass = StrengthReduction;
             let changed = pass.apply(&mut func).expect("transform should succeed");
             assert!(changed, "expected change for mul by 2^{}", expected_shift);
 

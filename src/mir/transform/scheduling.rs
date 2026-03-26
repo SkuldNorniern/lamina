@@ -386,7 +386,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let pass = InstructionScheduling::default();
+        let pass = InstructionScheduling;
         let _changed = pass.apply(&mut func).expect("Scheduling failed");
 
         // Verify all instructions are still present (scheduler is correct)
@@ -402,11 +402,10 @@ mod tests {
         let r2_def_idx = instrs
             .iter()
             .position(|i| {
-                if let Instruction::IntBinary { dst, .. } = i {
-                    if let crate::mir::Register::Virtual(vreg) = dst {
+                if let Instruction::IntBinary { dst, .. } = i
+                    && let crate::mir::Register::Virtual(vreg) = dst {
                         return vreg.id == 2;
                     }
-                }
                 false
             })
             .unwrap();
