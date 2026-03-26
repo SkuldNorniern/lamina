@@ -300,7 +300,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let dce = DeadCodeElimination::default();
+        let dce = DeadCodeElimination;
 
         let changed = dce.apply(&mut func).expect("DCE should succeed");
 
@@ -329,7 +329,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let dce = DeadCodeElimination::default();
+        let dce = DeadCodeElimination;
         let result = dce.apply(&mut func);
         assert!(result.is_ok());
         assert!(!result.unwrap()); // No changes expected
@@ -354,7 +354,7 @@ mod tests {
             })
             .build();
 
-        let dce = DeadCodeElimination::default();
+        let dce = DeadCodeElimination;
         let changed = dce.apply(&mut func).expect("should succeed");
         assert!(!changed);
         assert_eq!(func.blocks[0].instructions.len(), 2);
@@ -373,7 +373,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let dce = DeadCodeElimination::default();
+        let dce = DeadCodeElimination;
         let result = dce.apply(&mut func);
         assert!(result.is_ok());
 
@@ -410,7 +410,7 @@ mod tests {
             })
             .build();
 
-        let dce = DeadCodeElimination::default();
+        let dce = DeadCodeElimination;
         let changed = dce.apply(&mut func).expect("should succeed");
 
         // Store and Call should remain
@@ -452,7 +452,7 @@ mod tests {
             })
             .build();
 
-        let dce = DeadCodeElimination::default();
+        let dce = DeadCodeElimination;
         let changed = dce.apply(&mut func).expect("should succeed");
         assert!(changed);
         // Only return should remain
@@ -482,7 +482,7 @@ mod tests {
             })
             .build();
 
-        let dce = DeadCodeElimination::default();
+        let dce = DeadCodeElimination;
         let changed = dce.apply(&mut func).expect("should succeed");
 
         // v1 is used in exit block, so entry's add should remain
@@ -521,7 +521,7 @@ mod tests {
             })
             .build();
 
-        let dce = DeadCodeElimination::default();
+        let dce = DeadCodeElimination;
         let result = dce.apply(&mut func);
         assert!(result.is_ok());
 
@@ -555,7 +555,7 @@ mod tests {
             value: Some(Operand::Immediate(Immediate::I64(0))),
         });
 
-        let dce = DeadCodeElimination::default();
+        let dce = DeadCodeElimination;
         let result = dce.apply(&mut func);
         assert!(result.is_ok());
         // All dead instructions should be removed, only ret remains

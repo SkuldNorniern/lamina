@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn test_tail_call_detection() {
-        let tco = TailCallOptimization::default();
+        let tco = TailCallOptimization;
 
         // Test direct return of call result
         let ret_reg = VirtualReg::gpr(0).into();
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn test_tail_call_conversion() {
-        let tco = TailCallOptimization::default();
+        let tco = TailCallOptimization;
 
         let mut instr = Instruction::Call {
             name: "factorial".to_string(),
@@ -273,7 +273,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let tco = TailCallOptimization::default();
+        let tco = TailCallOptimization;
 
         // The function calls itself with the same name, so it should be optimized
         let changed = tco.apply(&mut func).expect("TCO should succeed");
@@ -308,7 +308,7 @@ mod tests {
             .build();
 
         let mut func = func;
-        let tco = TailCallOptimization::default();
+        let tco = TailCallOptimization;
         let changed = tco.apply(&mut func).expect("TCO should succeed");
 
         // Should not have changed anything

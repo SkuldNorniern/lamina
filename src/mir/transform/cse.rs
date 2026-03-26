@@ -354,7 +354,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let cse = CommonSubexpressionElimination::default();
+        let cse = CommonSubexpressionElimination;
         let result = cse.apply(&mut func);
         assert!(result.is_ok());
         assert!(!result.unwrap());
@@ -385,7 +385,7 @@ mod tests {
             })
             .build();
 
-        let cse = CommonSubexpressionElimination::default();
+        let cse = CommonSubexpressionElimination;
         let changed = cse.apply(&mut func).expect("should succeed");
         assert!(!changed);
     }
@@ -425,7 +425,7 @@ mod tests {
             })
             .build();
 
-        let cse = CommonSubexpressionElimination::default();
+        let cse = CommonSubexpressionElimination;
         let changed = cse.apply(&mut func).expect("should succeed");
 
         // Should NOT eliminate the second v1 + v2 since v1 was redefined
@@ -460,7 +460,7 @@ mod tests {
             })
             .build();
 
-        let cse = CommonSubexpressionElimination::default();
+        let cse = CommonSubexpressionElimination;
         let result = cse.apply(&mut func);
         // Main test: CSE should not panic or error
         assert!(result.is_ok());
@@ -494,7 +494,7 @@ mod tests {
             value: Some(Operand::Immediate(Immediate::I64(0))),
         });
 
-        let cse = CommonSubexpressionElimination::default();
+        let cse = CommonSubexpressionElimination;
         let result = cse.apply(&mut func);
         assert!(result.is_ok());
     }

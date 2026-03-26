@@ -96,7 +96,7 @@ mod tests_licm {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let licm = LoopInvariantCodeMotion::default();
+        let licm = LoopInvariantCodeMotion;
         let changed = licm.apply(&mut func).expect("LICM failed");
 
         assert!(changed);
@@ -1191,7 +1191,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let unrolling = LoopUnrolling::default();
+        let unrolling = LoopUnrolling;
         let changed = unrolling.apply(&mut func).expect("Unrolling failed");
 
         assert!(changed);
@@ -1204,7 +1204,7 @@ mod tests {
         let loop_0 = func
             .get_block("loop_unroll_0")
             .expect("loop_unroll_0 exists");
-        assert!(loop_0.instructions.len() > 0);
+        assert!(!loop_0.instructions.is_empty());
 
         match loop_0.instructions.last().unwrap() {
             Instruction::Jmp { target } => assert_eq!(target, "loop_unroll_1"),
@@ -1231,7 +1231,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let licm = LoopInvariantCodeMotion::default();
+        let licm = LoopInvariantCodeMotion;
         let result = licm.apply(&mut func);
         assert!(result.is_ok());
         assert!(!result.unwrap()); // No changes expected
@@ -1259,7 +1259,7 @@ mod tests {
             })
             .build();
 
-        let licm = LoopInvariantCodeMotion::default();
+        let licm = LoopInvariantCodeMotion;
         let changed = licm.apply(&mut func).expect("should succeed");
         assert!(!changed);
     }
@@ -1293,7 +1293,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let licm = LoopInvariantCodeMotion::default();
+        let licm = LoopInvariantCodeMotion;
         let changed = licm.apply(&mut func).expect("should succeed");
         // Store has side effects - should not be moved
         assert!(!changed);
@@ -1307,7 +1307,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let unroll = LoopUnrolling::default();
+        let unroll = LoopUnrolling;
         let result = unroll.apply(&mut func);
         assert!(result.is_ok());
         assert!(!result.unwrap());
@@ -1330,7 +1330,7 @@ mod tests {
             })
             .build();
 
-        let unroll = LoopUnrolling::default();
+        let unroll = LoopUnrolling;
         let changed = unroll.apply(&mut func).expect("should succeed");
         assert!(!changed);
     }
@@ -1375,7 +1375,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let unroll = LoopUnrolling::default();
+        let unroll = LoopUnrolling;
         let changed = unroll.apply(&mut func).expect("should succeed");
         // Loop with large bound should not be unrolled
         assert!(!changed);
@@ -1421,7 +1421,7 @@ mod tests {
             target: "block0".to_string(),
         });
 
-        let licm = LoopInvariantCodeMotion::default();
+        let licm = LoopInvariantCodeMotion;
         let result = licm.apply(&mut func);
         assert!(result.is_ok());
     }
@@ -1443,7 +1443,7 @@ mod tests {
             func.add_block(block);
         }
 
-        let unroll = LoopUnrolling::default();
+        let unroll = LoopUnrolling;
         let result = unroll.apply(&mut func);
         assert!(result.is_ok());
     }

@@ -171,7 +171,7 @@ mod tests {
             })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
@@ -192,7 +192,7 @@ mod tests {
             })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed); // No unreachable blocks
 
@@ -220,7 +220,7 @@ mod tests {
             func.add_block(block);
         }
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let result = pass.apply(&mut func);
         assert!(result.is_err());
     }
@@ -234,7 +234,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
         assert!(!result.unwrap());
@@ -258,7 +258,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed);
         assert_eq!(func.blocks.len(), 3);
@@ -279,7 +279,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
         assert_eq!(func.blocks.len(), 1);
@@ -305,7 +305,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed);
         assert_eq!(func.blocks.len(), 3);
@@ -334,7 +334,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed); // All blocks reachable
         assert_eq!(func.blocks.len(), 4);
@@ -356,7 +356,7 @@ mod tests {
         });
         func.add_block(dead);
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed); // Dead block removed
         assert_eq!(func.blocks.len(), 1);
@@ -394,7 +394,7 @@ mod tests {
             target: "block0".to_string(),
         });
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
         // All blocks should remain (all reachable)
@@ -445,7 +445,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
         // All blocks are reachable - nothing should be removed
@@ -477,7 +477,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
         // All blocks reachable
@@ -557,7 +557,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
         // All blocks are reachable through different paths
@@ -639,7 +639,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
         // All blocks are reachable
@@ -691,7 +691,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = BranchOptimization::default();
+        let pass = BranchOptimization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
         assert!(!result.unwrap());

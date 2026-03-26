@@ -275,7 +275,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = AddressingCanonicalization::default();
+        let pass = AddressingCanonicalization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
         assert!(!result.unwrap()); // No changes expected
@@ -299,7 +299,7 @@ mod tests {
             })
             .build();
 
-        let pass = AddressingCanonicalization::default();
+        let pass = AddressingCanonicalization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed);
     }
@@ -325,7 +325,7 @@ mod tests {
             })
             .build();
 
-        let pass = AddressingCanonicalization::default();
+        let pass = AddressingCanonicalization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed);
     }
@@ -370,7 +370,7 @@ mod tests {
             })
             .build();
 
-        let pass = AddressingCanonicalization::default();
+        let pass = AddressingCanonicalization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
@@ -428,7 +428,7 @@ mod tests {
             })
             .build();
 
-        let pass = AddressingCanonicalization::default();
+        let pass = AddressingCanonicalization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
@@ -481,7 +481,7 @@ mod tests {
             })
             .build();
 
-        let pass = AddressingCanonicalization::default();
+        let pass = AddressingCanonicalization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed); // Scale=3 is not valid for BaseIndexScale
     }
@@ -522,7 +522,7 @@ mod tests {
             })
             .build();
 
-        let pass = AddressingCanonicalization::default();
+        let pass = AddressingCanonicalization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed); // Offset too large
     }
@@ -561,7 +561,7 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
-        let pass = AddressingCanonicalization::default();
+        let pass = AddressingCanonicalization;
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
@@ -606,7 +606,7 @@ mod tests {
             value: Some(Operand::Immediate(Immediate::I64(0))),
         });
 
-        let pass = AddressingCanonicalization::default();
+        let pass = AddressingCanonicalization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
     }
