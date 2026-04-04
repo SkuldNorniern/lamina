@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::mir::{Register, RegisterClass, VirtualReg};
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
+use lamina_codegen::Allocation;
 
 // AArch64 register allocator for MIR virtual registers.
 
@@ -112,6 +113,31 @@ impl A64RegAlloc {
     #[inline]
     pub fn mapped_for_register(&self, r: &Register) -> Option<&'static str> {
         MirRegisterAllocator::mapped_for_register(self, r)
+    }
+
+    pub fn gpr_pool_for_global_allocation() -> Vec<&'static str> {
+        MAP_GPRS.to_vec()
+    }
+
+    pub fn from_global_plan(
+        plan: &HashMap<VirtualReg, Allocation<&'static str>>,
+    ) -> Self {
+        let mut s = Self::new();
+        for (&vreg, alloc) in plan {
+            if vreg.class != RegisterClass::Gpr {
+                continue;
+            }
+            if let Allocation::Register(phys) = alloc
+                && MAP_GPRS.contains(phys)
+                && s.vreg_to_preg.insert(vreg, *phys).is_none()
+            {
+                s.used_gprs.insert(*phys);
+                if let Some(pos) = s.free_gprs.iter().position(|&p| p == *phys) {
+                    let _ = s.free_gprs.remove(pos);
+                }
+            }
+        }
+        s
     }
 }
 

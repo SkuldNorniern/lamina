@@ -295,6 +295,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
 ) -> Result<(), crate::error::LaminaError> {
+    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::Wasm64)?;
     let abi = WasmABI::new(target_os);
 
     // WASM module header

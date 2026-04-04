@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
+use lamina_codegen::Allocation;
 use lamina_platform::TargetOperatingSystem;
 
 /// RISC-V register allocator with platform-aware register selection.
@@ -69,6 +72,42 @@ impl RiscVRegAlloc {
     #[allow(dead_code)]
     pub fn get_stack_slot(&self, vreg: &VirtualReg) -> Option<i32> {
         self.stack_slots.get(vreg).copied()
+    }
+
+    pub fn gpr_pool_for_global_allocation() -> Vec<&'static str> {
+        Self::AVAILABLE_REGISTERS.to_vec()
+    }
+
+    pub fn from_global_plan(
+        target_os: TargetOperatingSystem,
+        plan: &HashMap<VirtualReg, Allocation<&'static str>>,
+    ) -> Self {
+        let mut s = Self::new(target_os);
+        let mut min_spill = 0i32;
+        for (&vreg, alloc) in plan {
+            if vreg.class != RegisterClass::Gpr {
+                continue;
+            }
+            match alloc {
+                Allocation::Register(phys) => {
+                    if s.available_gprs.contains(phys) {
+                        s.allocated_gprs.insert(*phys, vreg);
+                    }
+                }
+                Allocation::Spill(off) => {
+                    s.stack_slots.insert(vreg, *off);
+                    if *off < min_spill {
+                        min_spill = *off;
+                    }
+                }
+            }
+        }
+        s.next_stack_slot = if min_spill == 0 {
+            -8
+        } else {
+            min_spill - 8
+        };
+        s
     }
 }
 
