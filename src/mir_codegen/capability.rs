@@ -32,6 +32,7 @@
 //! | FunctionCalls | ✅ | ✅ | ✅ | ✅ |
 //! | MemoryOperations | ✅ | ✅ | ⚠️ | ⚠️ |
 //! | SimdOperations | ✅ | ✅ | ❌ | ❌ |
+//! | DebugInfo | ✅ | ✅ | ✅ | ❌ |
 //!
 //! ⚠️ = Partial support (some types/operations may not work)
 //! ❌ = Not supported
@@ -216,9 +217,24 @@ impl CapabilitySet {
             CodegenCapability::SystemCalls,
             CodegenCapability::InlineAssembly,
             CodegenCapability::ForeignFunctionInterface,
+            CodegenCapability::DebugInfo,
         ]
         .into_iter()
         .collect()
+    }
+
+    /// Capability set advertised for a target architecture (used for gating flags such as debug assembly).
+    pub fn for_architecture(arch: lamina_platform::TargetArchitecture) -> Self {
+        use lamina_platform::TargetArchitecture;
+        match arch {
+            TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Riscv32
+            | TargetArchitecture::Riscv64 => Self::standard_native(),
+            #[cfg(feature = "nightly")]
+            TargetArchitecture::Riscv128 => Self::standard_native(),
+            TargetArchitecture::PowerPC64 => Self::standard_native(),
+            TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => Self::wasm(),
+            _ => Self::core(),
+        }
     }
 
     /// Extended native backend capabilities (includes SIMD).

@@ -36,7 +36,7 @@ use crate::mir_codegen::{
     capability::CapabilitySet,
 };
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
-use lamina_platform::TargetOperatingSystem;
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -310,6 +310,7 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), crate::error::LaminaError> {
+    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::PowerPC64)?;
     let abi = Ppc64Abi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;

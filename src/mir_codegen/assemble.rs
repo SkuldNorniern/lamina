@@ -43,6 +43,30 @@ pub fn assemble(
     additional_flags: &[String],
     verbose: bool,
 ) -> Result<AssembleResult, LaminaError> {
+    assemble_with_ras_object_options(
+        input_path,
+        output_path,
+        target_arch,
+        target_os,
+        backend,
+        additional_flags,
+        verbose,
+        ras::ObjectWriteOptions::default(),
+    )
+}
+
+/// Like [`assemble`], but passes [`ras::ObjectWriteOptions`] when the backend is Ras (ignored for gas/lld/wat2wasm).
+#[allow(clippy::too_many_arguments)]
+pub fn assemble_with_ras_object_options(
+    input_path: &Path,
+    output_path: &Path,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    backend: Option<AssemblerBackend>,
+    additional_flags: &[String],
+    verbose: bool,
+    ras_object_write_options: ras::ObjectWriteOptions,
+) -> Result<AssembleResult, LaminaError> {
     if !input_path.exists() {
         return Err(LaminaError::ValidationError(format!(
             "Input file does not exist: {}",
@@ -62,6 +86,7 @@ pub fn assemble(
             backend,
             additional_flags,
             verbose,
+            ras_object_write_options,
         ),
     }
 }
@@ -119,6 +144,7 @@ fn assemble_wasm(
 }
 
 /// Assemble native assembly to object file
+#[allow(clippy::too_many_arguments)]
 fn assemble_native(
     input_path: &Path,
     output_path: &Path,
@@ -127,6 +153,7 @@ fn assemble_native(
     backend: Option<AssemblerBackend>,
     additional_flags: &[String],
     verbose: bool,
+    ras_object_write_options: ras::ObjectWriteOptions,
 ) -> Result<AssembleResult, LaminaError> {
     let backend = backend.unwrap_or_else(|| detect_assembler_backend(target_arch, target_os));
 
@@ -147,7 +174,12 @@ fn assemble_native(
                 output_path.display()
             );
         }
-        let mut ras = ras::Ras::new(target_arch, target_os).map_err(|e| {
+        let mut ras = ras::Ras::with_object_write_options(
+            target_arch,
+            target_os,
+            ras_object_write_options,
+        )
+        .map_err(|e| {
             LaminaError::ValidationError(format!("Failed to create ras assembler: {}", e))
         })?;
         ras.assemble_file(input_path, output_path)

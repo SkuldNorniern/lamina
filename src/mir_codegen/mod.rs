@@ -4,8 +4,10 @@ pub mod abi;
 pub mod assemble;
 pub mod capability;
 pub mod common;
+pub mod limits;
 pub mod link;
 pub mod regalloc;
+pub mod settings;
 
 pub mod arm;
 pub mod powerpc;
@@ -15,6 +17,8 @@ pub mod x86_64;
 
 pub use abi::Abi;
 pub use capability::{CapabilitySet, CodegenCapability};
+pub use limits::{validate_module_call_parameters, MAX_MIR_CALL_PARAMETERS};
+pub use settings::{MirCodegenSettings, RegallocStrategy};
 
 use std::collections::HashMap;
 use std::fmt;
@@ -32,16 +36,76 @@ pub fn generate_mir_to_target<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
 ) -> std::result::Result<(), LaminaError> {
+    generate_mir_to_target_with_settings(
+        module,
+        writer,
+        target_arch,
+        target_os,
+        codegen_units,
+        &MirCodegenSettings::default(),
+    )
+}
+
+/// Like [`generate_mir_to_target`], but honors [`MirCodegenSettings`] for register allocation
+/// and optional assembly debug directives.
+pub fn generate_mir_to_target_with_settings<W: Write>(
+    module: &crate::mir::Module,
+    writer: &mut W,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+    settings: &MirCodegenSettings,
+) -> std::result::Result<(), LaminaError> {
+    if settings.emit_asm_debug_lines
+        && !CapabilitySet::for_architecture(target_arch).supports(&CodegenCapability::DebugInfo)
+    {
+        return Err(LaminaError::ValidationError(
+            "emit_asm_debug_lines requires DebugInfo capability on this target".to_string(),
+        ));
+    }
+    let global_regalloc_supported = matches!(
+        target_arch,
+        TargetArchitecture::X86_64
+            | TargetArchitecture::Aarch64
+            | TargetArchitecture::Riscv32
+            | TargetArchitecture::Riscv64
+            | TargetArchitecture::PowerPC64
+    ) || {
+        #[cfg(feature = "nightly")]
+        {
+            matches!(target_arch, TargetArchitecture::Riscv128)
+        }
+        #[cfg(not(feature = "nightly"))]
+        {
+            false
+        }
+    };
+
+    if settings.regalloc != RegallocStrategy::Incremental && !global_regalloc_supported {
+        return Err(LaminaError::ValidationError(
+            "global register allocation (LinearScanGlobal / GraphColorGlobal) is not implemented for this target"
+                .to_string(),
+        ));
+    }
+
     match target_arch {
         TargetArchitecture::Aarch64 => {
-            let mut backend = arm::aarch64::AArch64Codegen::new(target_os);
-            backend.set_module(module);
-            backend.emit_into(module, writer, codegen_units)?;
+            arm::aarch64::generate_mir_aarch64_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
         }
         TargetArchitecture::X86_64 => {
-            let mut codegen = x86_64::X86Codegen::new(target_os);
-            codegen.set_module(module);
-            codegen.emit_into(module, writer, codegen_units)?;
+            x86_64::generate_mir_x86_64_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
         }
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
             let mut codegen = wasm::WasmCodegen::new(target_os);
@@ -49,20 +113,32 @@ pub fn generate_mir_to_target<W: Write>(
             codegen.emit_into(module, writer, codegen_units)?;
         }
         TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
-            let mut codegen = riscv::RiscVCodegen::new(target_os);
-            codegen.set_module(module);
-            codegen.emit_into(module, writer, codegen_units)?;
+            riscv::generate_mir_riscv_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
         }
         TargetArchitecture::PowerPC64 => {
-            let mut codegen = powerpc::Ppc64Codegen::new(target_os);
-            codegen.set_module(module);
-            codegen.emit_into(module, writer, codegen_units)?;
+            powerpc::generate_mir_ppc64_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
         }
         #[cfg(feature = "nightly")]
         TargetArchitecture::Riscv128 => {
-            let mut codegen = riscv::RiscVCodegen::new(target_os);
-            codegen.set_module(module);
-            codegen.emit_into(module, writer, codegen_units)?;
+            riscv::generate_mir_riscv_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
         }
         _ => {
             return Err(LaminaError::ValidationError(format!(
@@ -233,6 +309,8 @@ impl fmt::Display for CodegenError {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
     use crate::mir::codegen;
     use crate::parser;
@@ -270,6 +348,31 @@ mod tests {
             asm.contains("add") || asm.contains("ADD"),
             "x86_64 output should contain add instruction"
         );
+    }
+
+    #[test]
+    fn test_x86_64_graph_color_and_asm_debug_lines() {
+        let module = create_simple_add_function();
+        let settings = MirCodegenSettings {
+            regalloc: RegallocStrategy::GraphColorGlobal,
+            emit_asm_debug_lines: true,
+            debug_file_tag: "add.lamina".to_string(),
+            ..Default::default()
+        };
+        let mut output = Vec::new();
+        generate_mir_to_target_with_settings(
+            &module,
+            &mut output,
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Linux,
+            1,
+            &settings,
+        )
+        .expect("graph-color + debug codegen");
+
+        let asm = String::from_utf8(output).expect("UTF-8");
+        assert!(asm.contains(".file 1 \"add.lamina\""), "expected .file: {asm}");
+        assert!(asm.contains(".loc 1"), "expected .loc directives: {asm}");
     }
 
     #[test]

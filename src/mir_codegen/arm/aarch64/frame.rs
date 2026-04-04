@@ -48,6 +48,22 @@ impl FrameMap {
         Self { slots, frame_size }
     }
 
+    pub fn recompute_frame_size_from_slots(&mut self) {
+        let mut min_off = 0i32;
+        for &o in self.slots.values() {
+            if o < min_off {
+                min_off = o;
+            }
+        }
+        let mut frame_size = if min_off == 0 {
+            0
+        } else {
+            (-min_off - 8).max(0)
+        };
+        frame_size = (frame_size + 15) & !15;
+        self.frame_size = frame_size;
+    }
+
     /// Returns the stack slot offset for a register, if it has one.
     pub fn slot_of(&self, r: &Register) -> Option<i32> {
         self.slots.get(r).copied()
