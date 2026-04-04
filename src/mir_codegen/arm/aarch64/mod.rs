@@ -15,12 +15,16 @@ use std::io::Write;
 use std::result::Result;
 use util::{emit_mov_imm64, imm_to_u64};
 
+use crate::mir::register::RegisterClass;
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions,
+    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet,
 };
-use lamina_platform::TargetOperatingSystem;
+use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
+use std::collections::HashMap;
+use std::sync::Arc;
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
 fn w_alias(xreg: &str) -> String {
@@ -44,6 +48,7 @@ fn compile_single_function_aarch64(
     func_name: &str,
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
+    settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
     use std::io::Write;
     let mut output = Vec::new();
@@ -58,6 +63,13 @@ fn compile_single_function_aarch64(
     writeln!(output, "{}:", label).map_err(|e| {
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
+
+    if settings.emit_asm_debug_lines {
+        let tag = settings.debug_file_tag.replace('\"', "'");
+        writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
 
     let mut ra_pro = A64RegAlloc::new();
     let s0 = ra_pro.alloc_scratch().unwrap_or("x19");
@@ -75,7 +87,38 @@ fn compile_single_function_aarch64(
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
-    let frame = FrameMap::from_function(func);
+    let mut frame = FrameMap::from_function(func);
+
+    let global_plan: Option<HashMap<crate::mir::VirtualReg, MirAllocation<&'static str>>> =
+        if settings.regalloc != RegallocStrategy::Incremental {
+            let pool = A64RegAlloc::gpr_pool_for_global_allocation();
+            let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
+                .into_iter()
+                .filter(|i| i.vreg.class == RegisterClass::Gpr)
+                .collect();
+            let plan = match settings.regalloc {
+                RegallocStrategy::LinearScanGlobal => {
+                    LinearScanAllocator::allocate(&intervals, pool.as_slice())
+                }
+                RegallocStrategy::GraphColorGlobal => {
+                    GraphColorAllocator::allocate(&intervals, pool.as_slice())
+                }
+                RegallocStrategy::Incremental => {
+                    return Err(crate::mir_codegen::CodegenError::InvalidCodegenOptions(
+                        "internal: incremental in global branch".to_string(),
+                    ));
+                }
+            };
+            for (v, a) in &plan {
+                if let MirAllocation::Spill(off) = a {
+                    frame.slots.insert(Register::Virtual(*v), *off);
+                }
+            }
+            frame.recompute_frame_size_from_slots();
+            Some(plan)
+        } else {
+            None
+        };
 
     let has_many_vars = func
         .blocks
@@ -147,47 +190,52 @@ fn compile_single_function_aarch64(
 
     let epilogue_label = format!(".Lret_{}", label.trim_start_matches('_'));
 
-    let mut ra = A64RegAlloc::new();
     let has_complex_function =
         func.blocks.len() > 50 || func.blocks.iter().any(|b| b.instructions.len() > 100);
-    if has_complex_function {
-        ra.set_conservative_mode();
-    }
 
-    if let Some(entry) = func.get_block(&func.entry) {
-        let mut ra_entry = A64RegAlloc::new();
+    let mut ra = if let Some(ref plan) = global_plan {
+        A64RegAlloc::from_global_plan(plan)
+    } else {
+        let mut r = A64RegAlloc::new();
         if has_complex_function {
-            ra_entry.set_conservative_mode();
+            r.set_conservative_mode();
         }
+        r
+    };
+
+    let entry_key = func.entry.clone();
+    let mut debug_line: u32 = 0;
+
+    if let Some(entry_block) = func.get_block(&entry_key) {
         emit_block(
-            entry.instructions.as_slice(),
+            entry_block.instructions.as_slice(),
             &mut output,
             &frame,
             &abi,
-            &mut ra_entry,
+            &mut ra,
             &epilogue_label,
+            settings,
+            &mut debug_line,
         )
         .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
     for b in &func.blocks {
-        if b.label != func.entry {
+        if b.label != entry_key {
             writeln!(output, "    .align 2").map_err(|e| {
                 crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
             })?;
             writeln!(output, "{}:", b.label).map_err(|e| {
                 crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
             })?;
-            let mut ra_block = A64RegAlloc::new();
-            if has_complex_function {
-                ra_block.set_conservative_mode();
-            }
             emit_block(
                 b.instructions.as_slice(),
                 &mut output,
                 &frame,
                 &abi,
-                &mut ra_block,
+                &mut ra,
                 &epilogue_label,
+                settings,
+                &mut debug_line,
             )
             .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
@@ -226,6 +274,23 @@ pub fn generate_mir_aarch64_with_units<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
 ) -> Result<(), crate::error::LaminaError> {
+    generate_mir_aarch64_with_units_and_settings(
+        module,
+        writer,
+        target_os,
+        codegen_units,
+        &MirCodegenSettings::default(),
+    )
+}
+
+pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+    settings: &MirCodegenSettings,
+) -> Result<(), crate::error::LaminaError> {
+    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
     emit_print_format_section(writer, target_os)?;
     writeln!(writer, ".text")?;
 
@@ -236,11 +301,17 @@ pub fn generate_mir_aarch64_with_units<W: Write>(
         writeln!(writer, ".extern {}", label)?;
     }
 
+    let settings_arc = Arc::new(settings.clone());
     let results = compile_functions_parallel(
         module,
         target_os,
         codegen_units,
-        compile_single_function_aarch64,
+        {
+            let settings_arc = settings_arc.clone();
+            move |name, func, os| {
+                compile_single_function_aarch64(name, func, os, settings_arc.as_ref())
+            }
+        },
     )
     .map_err(parallel_codegen_error)?;
 
@@ -252,6 +323,7 @@ pub fn generate_mir_aarch64_with_units<W: Write>(
 }
 
 /// Emit assembly for a sequence of MIR instructions.
+#[allow(clippy::too_many_arguments)]
 fn emit_block<W: Write>(
     insts: &[MirInst],
     w: &mut W,
@@ -259,8 +331,14 @@ fn emit_block<W: Write>(
     abi: &AArch64ABI,
     ra: &mut A64RegAlloc,
     epilogue_label: &str,
+    settings: &MirCodegenSettings,
+    debug_line: &mut u32,
 ) -> Result<(), crate::error::LaminaError> {
     for inst in insts {
+        if settings.emit_asm_debug_lines {
+            *debug_line = debug_line.saturating_add(1);
+            writeln!(w, "    .loc 1 {} 0", *debug_line)?;
+        }
         match inst {
             MirInst::IntBinary {
                 op,
@@ -866,6 +944,7 @@ fn emit_block<W: Write>(
                     let target_sym: String = abi
                         .call_stub(name)
                         .unwrap_or_else(|| abi.mangle_function_name(name));
+                    writeln!(w, "    mov x8, xzr")?;
                     writeln!(w, "    bl {}", target_sym)?;
 
                     if stack_space > 0 {
@@ -878,8 +957,19 @@ fn emit_block<W: Write>(
                 }
             }
             MirInst::TailCall { name, args } => {
-                for (i, a) in args.iter().enumerate().take(8) {
+                let num_reg_args = args.len().min(8);
+                for (i, a) in args.iter().enumerate().take(num_reg_args) {
                     emit_materialize_operand(w, a, &format!("x{}", i), frame, ra)?;
+                }
+                let num_stack_args = args.len().saturating_sub(8);
+                if num_stack_args > 0 {
+                    let scratch = ra.alloc_scratch().unwrap_or("x9");
+                    for (j, a) in args.iter().enumerate().skip(8) {
+                        let caller_offset = 16i32 + (j as i32 - 8) * 8;
+                        emit_materialize_operand(w, a, scratch, frame, ra)?;
+                        writeln!(w, "    str {}, [x29, #{}]", scratch, caller_offset)?;
+                    }
+                    ra.free_scratch(scratch);
                 }
                 let target_sym: String = abi
                     .call_stub(name)
@@ -972,8 +1062,18 @@ fn load_reg_to<W: Write>(
     ra: &mut A64RegAlloc,
 ) -> Result<(), crate::error::LaminaError> {
     match r {
-        Register::Virtual(_v) => {
-            // Always load from stack slot for correctness across blocks
+        Register::Virtual(v) => {
+            if let Some(preg) = ra.get_mapping_for(v) {
+                let src = if dest.starts_with('w') {
+                    w_alias(preg)
+                } else {
+                    x_alias(preg)
+                };
+                if src != dest {
+                    writeln!(w, "    mov {}, {}", dest, src)?;
+                }
+                return Ok(());
+            }
             if let Some(off) = frame.slot_of(r) {
                 // Use ldur with signed 9-bit offset when possible, otherwise compute address
                 if (-256..=255).contains(&off) {
@@ -1019,7 +1119,16 @@ fn store_result<W: Write>(
     ra: &mut A64RegAlloc,
 ) -> Result<(), crate::error::LaminaError> {
     match dst {
-        Register::Virtual(_v) => {
+        Register::Virtual(v) => {
+            if let Some(preg) = ra.get_mapping_for(v) {
+                let slot = if src_reg.starts_with('w') {
+                    w_alias(preg)
+                } else {
+                    x_alias(preg)
+                };
+                writeln!(w, "    mov {}, {}", slot, src_reg)?;
+                return Ok(());
+            }
             if let Some(off) = frame.slot_of(dst) {
                 if (-256..=255).contains(&off) {
                     writeln!(w, "    stur {}, [x29, #{}]", src_reg, off)?;
@@ -1187,7 +1296,13 @@ impl<'a> AArch64Codegen<'a> {
         writer: &mut W,
         codegen_units: usize,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_aarch64_with_units(module, writer, self.base.target_os, codegen_units)
+        generate_mir_aarch64_with_units_and_settings(
+            module,
+            writer,
+            self.base.target_os,
+            codegen_units,
+            &MirCodegenSettings::default(),
+        )
     }
 }
 

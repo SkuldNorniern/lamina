@@ -1718,6 +1718,8 @@ fn reg_class_for_type(ty: &crate::ir::types::Type<'_>) -> RegisterClass {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
     use crate::ir::builder::{i64 as ir_i64, string, var};
     use crate::ir::instruction::BinaryOp;

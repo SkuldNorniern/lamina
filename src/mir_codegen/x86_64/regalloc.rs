@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::mir::register::{Register, RegisterClass, VirtualReg};
 use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
+use lamina_codegen::Allocation;
 use lamina_platform::TargetOperatingSystem;
 
 /// x86_64 register allocator supporting System V AMD64 and Microsoft x64 ABIs.
@@ -96,6 +97,47 @@ impl X64RegAlloc {
             scratch_free,
             scratch_used: HashSet::new(),
         }
+    }
+
+    /// GPRs available for global allocation, in the same order as the initial `free_gprs` deque.
+    pub fn gpr_pool_for_global_allocation(
+        target_os: TargetOperatingSystem,
+        leaf: bool,
+    ) -> Vec<&'static str> {
+        let map_gprs = match (target_os, leaf) {
+            (TargetOperatingSystem::Windows, true) => WIN64_LEAF_MAP_GPRS,
+            (TargetOperatingSystem::Windows, false) => WIN64_MAP_GPRS,
+            (_, true) => SYSV_LEAF_MAP_GPRS,
+            (_, false) => SYSV_MAP_GPRS,
+        };
+        map_gprs.to_vec()
+    }
+
+    /// Rebuild allocator state from a precomputed GPR plan (global linear scan or graph coloring).
+    pub fn from_global_plan(
+        target_os: TargetOperatingSystem,
+        leaf: bool,
+        plan: &HashMap<VirtualReg, Allocation<&'static str>>,
+    ) -> Self {
+        let mut s = if leaf {
+            Self::new_leaf(target_os)
+        } else {
+            Self::new(target_os)
+        };
+        for (&vreg, alloc) in plan {
+            if vreg.class != RegisterClass::Gpr {
+                continue;
+            }
+            if let Allocation::Register(phys) = alloc
+                && s.vreg_to_preg.insert(vreg, *phys).is_none()
+            {
+                s.used_gprs.insert(*phys);
+                if let Some(pos) = s.free_gprs.iter().position(|&p| p == *phys) {
+                    let _ = s.free_gprs.remove(pos);
+                }
+            }
+        }
+        s
     }
 
     /// Sets conservative mode for complex functions, using fewer registers to reduce pressure.

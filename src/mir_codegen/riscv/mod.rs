@@ -13,12 +13,16 @@ use util::{
     load_register_to_register, store_fp_register_to_register, store_register_to_register,
 };
 
+use crate::mir::register::RegisterClass;
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions,
+    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet,
 };
-use lamina_platform::TargetOperatingSystem;
+use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::mir_codegen::common::CodegenBase;
 
@@ -51,7 +55,13 @@ impl<'a> RiscVCodegen<'a> {
         writer: &mut W,
         codegen_units: usize,
     ) -> Result<(), crate::error::LaminaError> {
-        generate_mir_riscv_with_units(module, writer, self.base.target_os, codegen_units)
+        generate_mir_riscv_with_units_and_settings(
+            module,
+            writer,
+            self.base.target_os,
+            codegen_units,
+            &MirCodegenSettings::default(),
+        )
     }
 }
 
@@ -100,7 +110,13 @@ impl<'a> Codegen for RiscVCodegen<'a> {
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
         self.base.emit_asm_base_with_units(
             |module, writer, target_os, codegen_units| {
-                generate_mir_riscv_with_units(module, writer, target_os, codegen_units)
+                generate_mir_riscv_with_units_and_settings(
+                    module,
+                    writer,
+                    target_os,
+                    codegen_units,
+                    &MirCodegenSettings::default(),
+                )
             },
             "RISC-V",
             self.base.codegen_units,
@@ -120,6 +136,7 @@ fn compile_single_function_riscv(
     func_name: &str,
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
+    settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
     use std::io::Write;
     let mut output = Vec::new();
@@ -130,26 +147,87 @@ fn compile_single_function_riscv(
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
-    let mut reg_alloc = RiscVRegAlloc::new(target_os);
-    let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
-        std::collections::HashMap::new();
-    let mut next_slot = 0;
+    if settings.emit_asm_debug_lines {
+        let tag = settings.debug_file_tag.replace('\"', "'");
+        writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
 
-    for block in &func.blocks {
-        for inst in &block.instructions {
-            if let Some(dst) = inst.def_reg()
-                && let Register::Virtual(vreg) = dst
-                && !stack_slots.contains_key(vreg)
-            {
-                stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
-                next_slot += 1;
+    let mut stack_slots: HashMap<crate::mir::VirtualReg, i32> = HashMap::new();
+    let mut reg_alloc = RiscVRegAlloc::new(target_os);
+
+    if settings.regalloc != RegallocStrategy::Incremental {
+        let mut def_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
+        let mut used_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(vreg) = dst
+                {
+                    def_regs.insert(*vreg);
+                }
+                for reg in inst.use_regs() {
+                    if let Register::Virtual(vreg) = reg {
+                        used_regs.insert(*vreg);
+                    }
+                }
             }
-            for reg in inst.use_regs() {
-                if let Register::Virtual(vreg) = reg
+        }
+        for vreg in &def_regs {
+            if !stack_slots.contains_key(vreg) {
+                let slot_index = stack_slots.len();
+                stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(slot_index));
+            }
+        }
+        for vreg in used_regs {
+            if !def_regs.contains(&vreg) && !stack_slots.contains_key(&vreg) {
+                let slot_index = stack_slots.len();
+                stack_slots.insert(vreg, RiscVFrame::calculate_stack_offset(slot_index));
+            }
+        }
+        let pool = RiscVRegAlloc::gpr_pool_for_global_allocation();
+        let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
+            .into_iter()
+            .filter(|i| i.vreg.class == RegisterClass::Gpr)
+            .collect();
+        let plan = match settings.regalloc {
+            RegallocStrategy::LinearScanGlobal => {
+                LinearScanAllocator::allocate(&intervals, pool.as_slice())
+            }
+            RegallocStrategy::GraphColorGlobal => {
+                GraphColorAllocator::allocate(&intervals, pool.as_slice())
+            }
+            RegallocStrategy::Incremental => {
+                return Err(crate::mir_codegen::CodegenError::InvalidCodegenOptions(
+                    "internal: incremental in global branch".to_string(),
+                ));
+            }
+        };
+        reg_alloc = RiscVRegAlloc::from_global_plan(target_os, &plan);
+        for (v, a) in &plan {
+            if let MirAllocation::Spill(off) = a {
+                stack_slots.insert(*v, *off);
+            }
+        }
+    } else {
+        let mut next_slot = 0usize;
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(vreg) = dst
                     && !stack_slots.contains_key(vreg)
                 {
                     stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
                     next_slot += 1;
+                }
+                for reg in inst.use_regs() {
+                    if let Register::Virtual(vreg) = reg
+                        && !stack_slots.contains_key(vreg)
+                    {
+                        stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
+                        next_slot += 1;
+                    }
                 }
             }
         }
@@ -159,16 +237,23 @@ fn compile_single_function_riscv(
     RiscVFrame::generate_prologue(&mut output, stack_size)
         .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
+    let mut debug_line: u32 = 0;
     for block in &func.blocks {
         writeln!(output, ".L_{}:", block.label).map_err(|e| {
             crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
 
         for inst in &block.instructions {
-            emit_instruction_riscv(inst, &mut output, &mut reg_alloc, &stack_slots, target_os)
-                .map_err(|e| {
-                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-                })?;
+            emit_instruction_riscv(
+                inst,
+                &mut output,
+                &mut reg_alloc,
+                &stack_slots,
+                target_os,
+                settings,
+                &mut debug_line,
+            )
+            .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
     }
 
@@ -189,6 +274,23 @@ pub fn generate_mir_riscv_with_units<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
 ) -> Result<(), crate::error::LaminaError> {
+    generate_mir_riscv_with_units_and_settings(
+        module,
+        writer,
+        target_os,
+        codegen_units,
+        &MirCodegenSettings::default(),
+    )
+}
+
+pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+    settings: &MirCodegenSettings,
+) -> Result<(), crate::error::LaminaError> {
+    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::Riscv64)?;
     let abi = RiscVAbi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;
@@ -201,11 +303,17 @@ pub fn generate_mir_riscv_with_units<W: Write>(
         writeln!(writer, ".extern {}", label)?;
     }
 
+    let settings_arc = Arc::new(settings.clone());
     let results = compile_functions_parallel(
         module,
         target_os,
         codegen_units,
-        compile_single_function_riscv,
+        {
+            let settings_arc = settings_arc.clone();
+            move |name, func, os| {
+                compile_single_function_riscv(name, func, os, settings_arc.as_ref())
+            }
+        },
     )
     .map_err(parallel_codegen_error)?;
 
@@ -222,7 +330,13 @@ fn emit_instruction_riscv<W: Write>(
     reg_alloc: &mut RiscVRegAlloc,
     stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
     target_os: TargetOperatingSystem,
+    settings: &MirCodegenSettings,
+    debug_line: &mut u32,
 ) -> Result<(), crate::error::LaminaError> {
+    if settings.emit_asm_debug_lines {
+        *debug_line = debug_line.saturating_add(1);
+        writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
+    }
     match inst {
         MirInst::IntBinary {
             op,
@@ -363,6 +477,41 @@ fn emit_instruction_riscv<W: Write>(
             {
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
+        }
+        MirInst::TailCall { name, args } => {
+            let abi = RiscVAbi::new(target_os);
+            if name == "print" {
+                return Err(crate::error::LaminaError::CodegenError(
+                    crate::mir_codegen::CodegenError::UnsupportedFeature(
+                        "RISC-V: TailCall to print is not supported".to_string(),
+                    ),
+                ));
+            }
+            let arg_regs = RiscVAbi::ARG_REGISTERS;
+            let num_reg_args = args.len().min(arg_regs.len());
+            let num_stack_args = args.len().saturating_sub(arg_regs.len());
+            for i in 0..num_reg_args {
+                let arg = &args[i];
+                let dest_reg = arg_regs[i];
+                load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
+            }
+            if num_stack_args > 0 {
+                for (j, arg) in args.iter().skip(num_reg_args).enumerate() {
+                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
+                    writeln!(writer, "    sd t0, {}(fp)", j * 8)?;
+                }
+            }
+            let stack_size = stack_slots.len() * 8;
+            let target_sym = if let Some(stub) = abi.call_stub(name) {
+                stub
+            } else {
+                abi.mangle_function_name(name)
+            };
+            RiscVFrame::generate_tail_epilogue(writer, stack_size, &target_sym).map_err(|e| {
+                crate::error::LaminaError::CodegenError(
+                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()),
+                )
+            })?;
         }
         MirInst::Load {
             dst,

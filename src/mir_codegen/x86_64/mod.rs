@@ -18,12 +18,15 @@ use std::result::Result;
 use util::*;
 
 use crate::error::LaminaError;
+use crate::mir::register::RegisterClass;
 use crate::mir::{Instruction as MirInst, MirType, Module as MirModule, Register};
 use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions,
+    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet,
 };
-use lamina_platform::TargetOperatingSystem;
+use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use std::sync::Arc;
 
 use crate::mir_codegen::common::CodegenBase;
 
@@ -127,6 +130,7 @@ fn compile_single_function_x86_64(
     func_name: &str,
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
+    settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
     use std::io::Write;
     let mut output = Vec::new();
@@ -139,6 +143,13 @@ fn compile_single_function_x86_64(
     writeln!(output, "{}:", label).map_err(|e| {
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
+
+    if settings.emit_asm_debug_lines {
+        let tag = settings.debug_file_tag.replace('\"', "'");
+        writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
+            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        })?;
+    }
 
     // Detect leaf function (no Call/TailCall instructions)
     let is_leaf = !func.blocks.iter().any(|b| {
@@ -188,6 +199,29 @@ fn compile_single_function_x86_64(
         }
     }
 
+    if settings.regalloc != RegallocStrategy::Incremental {
+        let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
+        let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
+            .into_iter()
+            .filter(|i| i.vreg.class == RegisterClass::Gpr)
+            .collect();
+        let plan = match settings.regalloc {
+            RegallocStrategy::LinearScanGlobal => {
+                LinearScanAllocator::allocate(&intervals, pool.as_slice())
+            }
+            RegallocStrategy::GraphColorGlobal => {
+                GraphColorAllocator::allocate(&intervals, pool.as_slice())
+            }
+            RegallocStrategy::Incremental => unreachable!(),
+        };
+        reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);
+        for (v, a) in &plan {
+            if let MirAllocation::Spill(off) = a {
+                stack_slots.insert(*v, *off);
+            }
+        }
+    }
+
     let stack_size = stack_slots.len() * 8;
     X86Frame::generate_prologue(&mut output, stack_size)
         .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -234,6 +268,7 @@ fn compile_single_function_x86_64(
         crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
+    let mut debug_line: u32 = 0;
     for block in &func.blocks {
         writeln!(output, ".L_{}_{}:", func_name, block.label).map_err(|e| {
             crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
@@ -249,6 +284,8 @@ fn compile_single_function_x86_64(
                 target_os,
                 func_name,
                 &def_regs,
+                settings,
+                &mut debug_line,
             )
             .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
@@ -271,6 +308,23 @@ pub fn generate_mir_x86_64_with_units<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
 ) -> Result<(), crate::error::LaminaError> {
+    generate_mir_x86_64_with_units_and_settings(
+        module,
+        writer,
+        target_os,
+        codegen_units,
+        &MirCodegenSettings::default(),
+    )
+}
+
+pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+    settings: &MirCodegenSettings,
+) -> Result<(), crate::error::LaminaError> {
+    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::X86_64)?;
     let abi = X86ABI::new(target_os);
 
     emit_print_format_section(writer, target_os)?;
@@ -284,11 +338,15 @@ pub fn generate_mir_x86_64_with_units<W: Write>(
     writeln!(writer, ".text")?;
     writeln!(writer, "{}", abi.get_main_global())?;
 
+    let settings_arc = Arc::new(settings.clone());
     let results = compile_functions_parallel(
         module,
         target_os,
         codegen_units,
-        compile_single_function_x86_64,
+        {
+            let settings_arc = settings_arc.clone();
+            move |name, func, os| compile_single_function_x86_64(name, func, os, settings_arc.as_ref())
+        },
     )
     .map_err(parallel_codegen_error)?;
 
@@ -331,7 +389,13 @@ fn emit_instruction_x86_64(
     target_os: TargetOperatingSystem,
     func_name: &str,
     def_regs: &std::collections::HashSet<crate::mir::VirtualReg>,
+    settings: &MirCodegenSettings,
+    debug_line: &mut u32,
 ) -> Result<(), crate::error::LaminaError> {
+    if settings.emit_asm_debug_lines {
+        *debug_line = debug_line.saturating_add(1);
+        writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
+    }
     match inst {
         MirInst::IntBinary { op, dst, lhs, rhs, ty: _ } => {
             // Get dst physical register if available
