@@ -4,12 +4,14 @@
 
 use crate::error::LaminaError;
 use crate::mir::Module as MirModule;
+use crate::mir_codegen::validate_module_call_parameters;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use ras::RasRuntime;
 use std::collections::HashMap;
 
 /// Runtime compiler for JIT compilation
 pub struct RuntimeCompiler {
+    target_arch: TargetArchitecture,
     #[allow(dead_code)] // Used when encoder feature is enabled
     runtime: RasRuntime,
     code_cache: HashMap<String, ras::ExecutableMemory>,
@@ -19,6 +21,7 @@ impl RuntimeCompiler {
     /// Create a new runtime compiler
     pub fn new(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Self {
         Self {
+            target_arch,
             runtime: RasRuntime::new(target_arch, target_os),
             code_cache: HashMap::new(),
         }
@@ -39,6 +42,7 @@ impl RuntimeCompiler {
         // Compile using ras runtime
         #[cfg(feature = "encoder")]
         {
+            validate_module_call_parameters(_module, self.target_arch)?;
             self.runtime.compile_to_memory(_module).map_err(|e| {
                 let error_msg = format!("{}", e);
                 if error_msg.contains("not yet implemented")

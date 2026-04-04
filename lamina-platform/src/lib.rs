@@ -29,6 +29,8 @@ pub use simd::{ArmSimdExtension, RiscvSimdExtension, SimdCapabilities, X86SimdEx
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
     use std::str::FromStr;
 
