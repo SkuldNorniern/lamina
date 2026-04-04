@@ -1636,10 +1636,10 @@ mod tests {
         let instr_switch = Instruction::Switch {
             ty: PrimitiveType::I32,
             value: Value::Variable("x"),
-            default: "default".into(),
+            default: "default",
             cases: vec![
-                (Literal::I32(0), "zero".into()),
-                (Literal::I32(1), "one".into()),
+                (Literal::I32(0), "zero"),
+                (Literal::I32(1), "one"),
             ],
         };
         assert_eq!(

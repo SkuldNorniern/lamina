@@ -1,5 +1,5 @@
 use lamina_mir::{Function, Instruction, Operand, Register, VirtualReg};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Opaque handle that allows dynamic dispatch over register allocators without
 /// leaking architecture-specific physical register types.
@@ -375,6 +375,85 @@ impl LinearScanAllocator {
     }
 }
 
+/// Interference check for live intervals: overlap on the global instruction index line.
+#[inline]
+pub fn intervals_interfere(a: &LiveInterval, b: &LiveInterval) -> bool {
+    a.start <= b.end && b.start <= a.end
+}
+
+/// Greedy graph-coloring register allocator (interference graph from live intervals).
+///
+/// Intervals that overlap cannot share a register. Nodes are colored in **descending
+/// degree** (Welsh–Powell order) to reduce spill pressure compared to arbitrary order.
+/// When no color is available among `available_regs`, the interval is spilled using the
+/// same slot layout as [`LinearScanAllocator::allocate`].
+pub struct GraphColorAllocator;
+
+impl GraphColorAllocator {
+    /// Color `intervals` using at most `available_regs.len()` registers.
+    ///
+    /// `intervals` may be in any order; internally sorted by interference degree.
+    pub fn allocate<R: Copy + Eq + std::hash::Hash>(
+        intervals: &[LiveInterval],
+        available_regs: &[R],
+    ) -> HashMap<VirtualReg, Allocation<R>> {
+        if intervals.is_empty() {
+            return HashMap::new();
+        }
+
+        let mut order: Vec<usize> = (0..intervals.len()).collect();
+        order.sort_by(|&i, &j| {
+            let deg_i = intervals
+                .iter()
+                .enumerate()
+                .filter(|(k, other)| *k != i && intervals_interfere(&intervals[i], other))
+                .count();
+            let deg_j = intervals
+                .iter()
+                .enumerate()
+                .filter(|(k, other)| *k != j && intervals_interfere(&intervals[j], other))
+                .count();
+            deg_j.cmp(&deg_i).then_with(|| i.cmp(&j))
+        });
+
+        let mut result: HashMap<VirtualReg, Allocation<R>> = HashMap::new();
+        let mut next_spill: i32 = -8;
+
+        for idx in order {
+            let interval = &intervals[idx];
+            let mut blocked: HashSet<R> = HashSet::new();
+            for (j, other) in intervals.iter().enumerate() {
+                if j == idx || !intervals_interfere(interval, other) {
+                    continue;
+                }
+                if let Some(Allocation::Register(r)) = result.get(&other.vreg) {
+                    blocked.insert(*r);
+                }
+            }
+
+            let mut picked: Option<R> = None;
+            for reg in available_regs {
+                if !blocked.contains(reg) {
+                    picked = Some(*reg);
+                    break;
+                }
+            }
+
+            match picked {
+                Some(r) => {
+                    result.insert(interval.vreg, Allocation::Register(r));
+                }
+                None => {
+                    result.insert(interval.vreg, Allocation::Spill(next_spill));
+                    next_spill -= 8;
+                }
+            }
+        }
+
+        result
+    }
+}
+
 impl<T> RegisterAllocatorDyn for T
 where
     T: RegisterAllocator,
@@ -453,9 +532,9 @@ mod tests {
         let i64_ty = MirType::Scalar(ScalarType::I64);
 
         FunctionBuilder::new("add")
-            .param(v0.clone(), i64_ty.clone())
-            .param(v1.clone(), i64_ty.clone())
-            .returns(i64_ty.clone())
+            .param(v0.clone(), i64_ty)
+            .param(v1.clone(), i64_ty)
+            .returns(i64_ty)
             .block("entry")
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
@@ -519,9 +598,7 @@ mod tests {
     fn test_allocate_spills_when_registers_exhausted() {
         // Build a function with more vregs than available registers.
         let i64_ty = MirType::Scalar(ScalarType::I64);
-        let mut func = FunctionBuilder::new("spill_test")
-            .returns(i64_ty.clone())
-            .build();
+        let mut func = FunctionBuilder::new("spill_test").returns(i64_ty).build();
         let mut block = Block::new("entry");
 
         // 8 vregs all live simultaneously: v0+v1 → v2, v3+v4 → v5, v6+v7 → v8
@@ -531,7 +608,7 @@ mod tests {
             let vd = Register::Virtual(VirtualReg::gpr(i + 2));
             block.push(Instruction::IntBinary {
                 op: IntBinOp::Add,
-                ty: i64_ty.clone(),
+                ty: i64_ty,
                 dst: vd,
                 lhs: Operand::Register(vi),
                 rhs: Operand::Register(vj),
@@ -555,5 +632,48 @@ mod tests {
                 assert_eq!(offset % 8, 0, "spill offset should be 8-byte aligned");
             }
         }
+    }
+
+    #[test]
+    fn graph_color_fits_three_vregs_without_spill() {
+        let func = make_add_function();
+        let intervals = LinearScanAllocator::compute_intervals(&func);
+        let regs = ["r12", "r13", "r14", "r15"];
+        let gc = GraphColorAllocator::allocate(&intervals, &regs);
+        for interval in &intervals {
+            let a = gc.get(&interval.vreg).expect("allocated");
+            assert!(
+                matches!(a, Allocation::Register(_)),
+                "graph color should keep simple add in registers, got {:?}",
+                a
+            );
+        }
+    }
+
+    #[test]
+    fn graph_color_spills_when_register_count_exhausted() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let mut func = FunctionBuilder::new("spill_gc").returns(i64_ty).build();
+        let mut block = Block::new("entry");
+        for i in 0u32..8 {
+            let vi = Register::Virtual(VirtualReg::gpr(i));
+            let vj = Register::Virtual(VirtualReg::gpr(i + 1));
+            let vd = Register::Virtual(VirtualReg::gpr(i + 2));
+            block.push(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: i64_ty,
+                dst: vd,
+                lhs: Operand::Register(vi),
+                rhs: Operand::Register(vj),
+            });
+        }
+        block.push(Instruction::Ret { value: None });
+        func.add_block(block);
+
+        let intervals = LinearScanAllocator::compute_intervals(&func);
+        let regs = ["r12", "r13"];
+        let gc = GraphColorAllocator::allocate(&intervals, &regs);
+        let has_spill = gc.values().any(|a| matches!(a, Allocation::Spill(_)));
+        assert!(has_spill, "graph color should spill when k=2 and pressure is high");
     }
 }

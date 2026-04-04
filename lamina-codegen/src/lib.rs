@@ -28,8 +28,8 @@ pub mod x86_64;
 // Re-exports for convenience
 pub use abi::Abi;
 pub use regalloc::{
-    Allocation, LinearScanAllocator, LiveInterval, PhysRegConvertible, PhysRegHandle,
-    RegisterAllocator,
+    Allocation, GraphColorAllocator, LinearScanAllocator, LiveInterval, PhysRegConvertible,
+    PhysRegHandle, RegisterAllocator, intervals_interfere,
 };
 pub use target_support::{
     is_assembly_supported, os_uses_coff, os_uses_elf, os_uses_macho,

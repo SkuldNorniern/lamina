@@ -205,12 +205,13 @@ pub fn handle_jit_compilation(
             }
 
             let mut intermediate = Vec::<u8>::new();
-            lamina::mir_codegen::generate_mir_to_target(
+            lamina::mir_codegen::generate_mir_to_target_with_settings(
                 &mir_mod,
                 &mut intermediate,
                 target.architecture,
                 target.operating_system,
                 codegen_units,
+                &options.mir_codegen_settings,
             )
             .map_err(|e| format!("JIT fallback: codegen failed: {}", e))?;
 
@@ -218,7 +219,7 @@ pub fn handle_jit_compilation(
 
             let (assembler_backend, linker_backend) =
                 toolchain_backends(&options.forced_compiler, &options.assembler);
-            let assemble_result = lamina::mir_codegen::assemble::assemble(
+            let assemble_result = lamina::mir_codegen::assemble::assemble_with_ras_object_options(
                 &intermediate_path,
                 &object_path,
                 target.architecture,
@@ -226,6 +227,7 @@ pub fn handle_jit_compilation(
                 assembler_backend,
                 &options.assembler_flags,
                 options.verbose,
+                options.ras_object_write_options(target.operating_system),
             )
             .map_err(|e| format!("JIT fallback: assembly failed: {}", e))?;
 

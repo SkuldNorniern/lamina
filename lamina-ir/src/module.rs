@@ -479,7 +479,7 @@ mod tests {
             GlobalDeclaration {
                 name: "PI",
                 ty: Type::Primitive(PrimitiveType::F32),
-                initializer: Some(Value::Constant(Literal::F32(3.14159))),
+                initializer: Some(Value::Constant(Literal::F32(std::f32::consts::PI))),
             },
         );
 
@@ -521,7 +521,10 @@ mod tests {
         module.functions.insert("add_one", func);
 
         // Match actual output - no indentation for function instructions
-        let expected_output = "type @Vec2 = struct { x: f32, y: f32 }\n\nglobal @PI: f32 = 3.14159\n\nfn @add_one(i32 %a) -> i32 {\nentry:\n  %res = add.i32 %a, 1\n  ret.i32 %res\n}\n";
+        let expected_output = format!(
+            "type @Vec2 = struct {{ x: f32, y: f32 }}\n\nglobal @PI: f32 = {}\n\nfn @add_one(i32 %a) -> i32 {{\nentry:\n  %res = add.i32 %a, 1\n  ret.i32 %res\n}}\n",
+            std::f32::consts::PI
+        );
 
         // Note: Hashmap iteration order isn't guaranteed, but Display impl sorts function keys.
         // Type/Global order isn't sorted, so this test might be fragile if more are added.
