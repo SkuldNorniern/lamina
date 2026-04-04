@@ -190,7 +190,7 @@ impl Sandbox {
             // SAFETY: `memory` is kept alive for the entire duration of the
             // execution below; the function pointer is only used within this scope.
             let fn_ptr: unsafe extern "C" fn() -> i64 = unsafe {
-                let raw = memory.as_function_ptr::<u8>();
+                let raw = memory.code_start();
                 if raw.is_null() {
                     return Err(LaminaError::ValidationError(
                         "Sandbox: compiled function pointer is null".to_string(),

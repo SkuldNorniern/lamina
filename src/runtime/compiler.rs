@@ -86,7 +86,7 @@ impl RuntimeCompiler {
     ) -> Result<unsafe extern "C" fn() -> T, LaminaError> {
         let memory = self.compile(module, Some(function_name))?;
         unsafe {
-            let ptr = memory.as_function_ptr::<u8>();
+            let ptr = memory.code_start();
             if ptr.is_null() {
                 return Err(LaminaError::ValidationError(
                     "ExecutableMemory has null ptr".to_string(),
