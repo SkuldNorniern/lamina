@@ -100,7 +100,7 @@ pub fn compile_to_runtime(
         })?;
 
         // Get function pointer, adjusting for function offset if specified
-        let base_ptr = unsafe { memory.as_function_ptr::<u8>() };
+        let base_ptr = memory.code_start();
         let function_ptr = if let Some(offset) = function_offset {
             // Ensure offset is 4-byte aligned for AArch64
             #[cfg(target_arch = "aarch64")]
