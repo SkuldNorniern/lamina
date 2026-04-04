@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use super::super::super::function::FunctionAnnotation;
     #[cfg(feature = "nightly")]

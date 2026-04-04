@@ -172,12 +172,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut out = Vec::<u8>::new();
             let target_os = target.operating_system;
 
-            lamina::mir_codegen::generate_mir_to_target(
+            lamina::mir_codegen::generate_mir_to_target_with_settings(
                 &mir_mod,
                 &mut out,
                 target.architecture,
                 target_os,
                 codegen_units,
+                &options.mir_codegen_settings,
             )
             .map_err(|e| format!("MIR→{} emission failed: {}", target.architecture, e))?;
 
@@ -252,12 +253,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         let mut intermediate_buffer = Vec::<u8>::new();
-        lamina::mir_codegen::generate_mir_to_target(
+        lamina::mir_codegen::generate_mir_to_target_with_settings(
             &mir_mod,
             &mut intermediate_buffer,
             target.architecture,
             target.operating_system,
             codegen_units,
+            &options.mir_codegen_settings,
         )
         .map_err(|e| format!("Code generation failed: {}", e))?;
 
@@ -323,7 +325,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let (assembler_backend, linker_backend) =
             toolchain_backends(&options.forced_compiler, &options.assembler);
-        let assemble_result = lamina::mir_codegen::assemble::assemble(
+        let assemble_result = lamina::mir_codegen::assemble::assemble_with_ras_object_options(
             &intermediate_path,
             &assembly_output_path,
             target.architecture,
@@ -331,6 +333,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             assembler_backend,
             &options.assembler_flags,
             options.verbose,
+            options.ras_object_write_options(target.operating_system),
         )
         .map_err(|e| format!("Assembly failed: {}", e))?;
 

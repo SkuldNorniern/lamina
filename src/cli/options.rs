@@ -18,6 +18,30 @@ pub struct CompileOptions {
     pub jit: bool,
     pub sandbox: bool,
     pub codegen_units: Option<usize>,
+    pub mir_codegen_settings: lamina::mir_codegen::MirCodegenSettings,
+}
+
+impl CompileOptions {
+    pub fn ras_object_write_options(
+        &self,
+        target_os: lamina_platform::TargetOperatingSystem,
+    ) -> ras::ObjectWriteOptions {
+        let mut o = ras::ObjectWriteOptions::default();
+        let elfish = matches!(
+            target_os,
+            lamina_platform::TargetOperatingSystem::Linux
+                | lamina_platform::TargetOperatingSystem::FreeBSD
+                | lamina_platform::TargetOperatingSystem::OpenBSD
+                | lamina_platform::TargetOperatingSystem::NetBSD
+                | lamina_platform::TargetOperatingSystem::DragonFly
+                | lamina_platform::TargetOperatingSystem::Redox
+        );
+        if self.mir_codegen_settings.emit_asm_debug_lines && elfish {
+            o.emit_minimal_dwarf_sections = true;
+            o.dwarf_decl_file_name = self.mir_codegen_settings.debug_file_tag.clone();
+        }
+        o
+    }
 }
 
 pub fn toolchain_backends(
@@ -88,6 +112,10 @@ pub fn print_usage() {
     eprintln!(
         "  -j, --jobs <n>          Number of parallel compilation threads (default: max - 2)"
     );
+    eprintln!("  -g                      Emit assembler .file/.loc and minimal ELF DWARF when using ras");
+    eprintln!(
+        "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: incremental)"
+    );
     eprintln!("  -h, --help              Display this help message");
 }
 
@@ -118,6 +146,7 @@ pub fn parse_args() -> Result<CompileOptions, String> {
         jit: false,
         sandbox: false,
         codegen_units: None,
+        mir_codegen_settings: lamina::mir_codegen::MirCodegenSettings::default(),
     };
 
     let mut i = 1;
@@ -192,6 +221,27 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                 options.opt_level = level;
                 i += 2;
             }
+            "-g" => {
+                options.mir_codegen_settings.emit_asm_debug_lines = true;
+                i += 1;
+            }
+            "--regalloc" => {
+                if i + 1 >= args.len() {
+                    return Err("Missing argument for --regalloc".to_string());
+                }
+                let m = args[i + 1].to_lowercase();
+                options.mir_codegen_settings.regalloc = match m.as_str() {
+                    "incremental" => lamina::mir_codegen::RegallocStrategy::Incremental,
+                    "linear" => lamina::mir_codegen::RegallocStrategy::LinearScanGlobal,
+                    "graph" => lamina::mir_codegen::RegallocStrategy::GraphColorGlobal,
+                    _ => {
+                        return Err(
+                            "--regalloc must be incremental, linear, or graph".to_string(),
+                        );
+                    }
+                };
+                i += 2;
+            }
             "--jit" => {
                 options.jit = true;
                 i += 1;
@@ -218,15 +268,15 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                 std::process::exit(0);
             }
             arg => {
-                if arg.starts_with("-Wl,") {
+                if let Some(rest) = arg.strip_prefix("-Wl,") {
                     options
                         .linker_flags
-                        .extend(arg[4..].split(',').map(|s| s.to_string()));
+                        .extend(rest.split(',').map(|s| s.to_string()));
                     i += 1;
-                } else if arg.starts_with("-Wa,") {
+                } else if let Some(rest) = arg.strip_prefix("-Wa,") {
                     options
                         .assembler_flags
-                        .extend(arg[4..].split(',').map(|s| s.to_string()));
+                        .extend(rest.split(',').map(|s| s.to_string()));
                     i += 1;
                 } else if arg == "-Wl" {
                     if i + 1 >= args.len() {

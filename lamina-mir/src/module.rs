@@ -3,6 +3,7 @@
 //! A module is a collection of functions and global data. Modules are the
 //! top-level unit of organization in LUMIR and can be compiled independently.
 use super::function::Function;
+use super::instruction::Instruction;
 use super::types::MirType;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -144,11 +145,41 @@ impl Module {
             }
         }
 
+        errors.extend(self.validate_internal_call_arities());
+
         if errors.is_empty() {
             Ok(())
         } else {
             Err(errors)
         }
+    }
+
+    /// [`Call`](Instruction::Call) / [`TailCall`](Instruction::TailCall) arity vs in-module callee signatures.
+    fn validate_internal_call_arities(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for (caller_name, caller) in &self.functions {
+            for block in &caller.blocks {
+                for inst in &block.instructions {
+                    let (op, callee_name, argc) = match inst {
+                        Instruction::Call { name, args, .. } => ("call", name.as_str(), args.len()),
+                        Instruction::TailCall { name, args } => {
+                            ("tailcall", name.as_str(), args.len())
+                        }
+                        _ => continue,
+                    };
+                    if let Some(callee) = self.functions.get(callee_name) {
+                        let expected = callee.sig.params.len();
+                        if argc != expected {
+                            out.push(format!(
+                                "Function '{}' {} '{}' with {} args but callee expects {}",
+                                caller_name, op, callee_name, argc, expected
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        out
     }
 }
 
@@ -198,7 +229,10 @@ impl ModuleBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::function::{Function, Signature};
+    use crate::block::Block;
+    use crate::function::{Function, Parameter, Signature};
+    use crate::instruction::{Instruction, Operand};
+    use crate::register::{Register, VirtualReg};
     use crate::types::{MirType, ScalarType};
     use super::*;
 
@@ -243,5 +277,41 @@ mod tests {
         assert_eq!(module.name, "my_module");
         assert_eq!(module.functions.len(), 1);
         assert_eq!(module.globals.len(), 1);
+    }
+
+    #[test]
+    fn test_validate_rejects_tailcall_arity_mismatch() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let mut sink = Function::new(Signature::new("sink").with_return(i64_ty.clone()));
+        let mut sink_entry = Block::new("entry");
+        sink_entry.push(Instruction::Ret {
+            value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(0)))),
+        });
+        sink.add_block(sink_entry);
+
+        let mut bad = Function::new(
+            Signature::new("bad")
+                .with_return(i64_ty.clone())
+                .with_params(vec![Parameter::new(
+                    Register::Virtual(VirtualReg::gpr(0)),
+                    i64_ty.clone(),
+                )]),
+        );
+        let mut bad_entry = Block::new("entry");
+        bad_entry.push(Instruction::TailCall {
+            name: "sink".to_string(),
+            args: vec![Operand::Register(Register::Virtual(VirtualReg::gpr(0)))],
+        });
+        bad.add_block(bad_entry);
+
+        let mut module = Module::new("m");
+        module.add_function(sink);
+        module.add_function(bad);
+
+        let errs = module.validate().expect_err("arity mismatch");
+        assert!(
+            errs.iter().any(|e| e.contains("tailcall") && e.contains("sink")),
+            "{errs:?}"
+        );
     }
 }

@@ -3,6 +3,7 @@
 //! Runtime code generation (JIT compilation) using ras,
 //! with optional sandboxing for secure execution.
 
+pub mod c_abi_dynamic;
 pub mod compiler;
 pub mod executor;
 #[cfg(feature = "encoder")]
@@ -40,6 +41,8 @@ pub fn compile_to_runtime(
     #[cfg(feature = "encoder")]
     {
         use ras::assembler::RasAssembler;
+
+        crate::mir_codegen::validate_module_call_parameters(_module, _target_arch)?;
 
         // Keep JIT output quiet by default (release-friendly). Enable with `LAMINA_JIT_DEBUG=1`.
         let jit_debug = std::env::var_os("LAMINA_JIT_DEBUG").is_some();
