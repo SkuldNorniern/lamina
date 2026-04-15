@@ -1,3 +1,6 @@
+[workspace]
+members = ["lamina-codegen", "lamina-ir", "lamina-mir", "lamina-platform", "ras", "weld"]
+
 [package]
 name = "lamina"
 version = "0.0.8"
@@ -12,14 +15,27 @@ keywords = ["compiler", "backend", "IR", "assembly", "codegen"]
 categories = ["compilers", "development-tools", "parsing"]
 exclude = [ "benchmarks/", "testcases/"]
 
+[[bin]]
+name = "lamina"
+path = "src/main.rs"
+
+[[bin]]
+name = "lamina-opt"
+path = "src/bin/lamina-opt.rs"
+
+[[bin]]
+name = "lamina-dis"
+path = "src/bin/lamina-dis.rs"
+
 [dependencies]
 ras = { path = "ras", features = ["encoder"] }
+lamina-ir = { path = "lamina-ir" }
 lamina-platform = { path = "lamina-platform" }
 lamina-mir = { path = "lamina-mir" }
 lamina-codegen = { path = "lamina-codegen" }
 
 [features]
-default = []
+default = ["encoder"]
 # Enable MIR binary encoding support for JIT creation (MIR → Binary)
 encoder = []
 # Enable the use of the mold linker instead of the default system linker (usually ld via gcc)
@@ -27,6 +43,7 @@ encoder = []
 # Enable experimental/nightly features (may change without notice)
 # When enabled, automatically enables nightly in all lamina-* dependencies
 nightly = [
+    "lamina-ir/nightly",
     "lamina-platform/nightly",
     "lamina-mir/nightly",
     "lamina-codegen/nightly",
