@@ -49,15 +49,12 @@ impl MirRegisterAllocator for WasmRegAlloc {
     type PhysReg = u32; // Stack position as "physical register"
 
     fn alloc_scratch(&mut self) -> Option<Self::PhysReg> {
-        // For WASM, we can always allocate more stack space
         let pos = self.next_stack_slot;
         self.next_stack_slot += 1;
         Some(pos)
     }
 
-    fn free_scratch(&mut self, _phys: Self::PhysReg) {
-        // WASM stack is managed differently, no explicit freeing needed
-    }
+    fn free_scratch(&mut self, _phys: Self::PhysReg) {}
 
     fn get_mapping(&self, vreg: &VirtualReg) -> Option<Self::PhysReg> {
         self.vreg_to_stack.get(vreg).copied()
@@ -73,26 +70,19 @@ impl MirRegisterAllocator for WasmRegAlloc {
     fn mapped_for_register(&self, reg: &Register) -> Option<Self::PhysReg> {
         match reg {
             Register::Virtual(v) => self.vreg_to_stack.get(v).copied(),
-            Register::Physical(_) => None, // WASM doesn't have physical registers
+            Register::Physical(_) => None,
         }
     }
 
-    fn occupy(&mut self, _phys: Self::PhysReg) {
-        // No-op for WASM
-    }
+    fn occupy(&mut self, _phys: Self::PhysReg) {}
 
-    fn release(&mut self, _phys: Self::PhysReg) {
-        // No-op for WASM
-    }
+    fn release(&mut self, _phys: Self::PhysReg) {}
 
     fn is_occupied(&self, _phys: Self::PhysReg) -> bool {
-        false // Stack positions are always available
+        false
     }
 }
 
-// RegisterAllocatorDyn is automatically implemented via the blanket impl in regalloc.rs
-
-// Implement PhysRegConvertible for u32 (stack position)
 impl PhysRegConvertible for u32 {
     fn into_handle(self) -> PhysRegHandle {
         PhysRegHandle::Named(format!("{}", self).leak())

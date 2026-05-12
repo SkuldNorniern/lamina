@@ -502,7 +502,6 @@ mod tests {
             .expect("Entry block not found");
         assert_eq!(entry.instructions.len(), 7); // alloc, getelementptr, load, alloc, getfieldptr, load, ret
 
-        // Check first instruction is alloc
         match &entry.instructions[0] {
             Instruction::Alloc {
                 result,
@@ -521,7 +520,6 @@ mod tests {
             _ => panic!("Expected alloc instruction"),
         }
 
-        // Check second instruction is getelementptr
         match &entry.instructions[1] {
             Instruction::GetElemPtr {
                 result,

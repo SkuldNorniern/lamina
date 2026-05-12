@@ -1042,8 +1042,7 @@ fn emit_block<W: Write>(
             | MirInst::Fence { .. } => {
                 return Err(crate::error::LaminaError::CodegenError(
                     CodegenError::UnsupportedFeature(
-                        "SIMD/Atomic instructions not yet supported by AArch64 backend"
-                            .to_string(),
+                        "SIMD/Atomic instructions not yet supported by AArch64 backend".to_string(),
                     ),
                 ));
             }

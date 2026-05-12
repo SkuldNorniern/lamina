@@ -59,7 +59,6 @@ impl WasmABI {
     pub fn get_wasm_type(&self, ty: &crate::mir::MirType) -> &'static str {
         match ty {
             crate::mir::MirType::Scalar(crate::mir::ScalarType::I64) => "i64",
-            // For now, everything is i64 in WASM
             _ => "i64",
         }
     }
@@ -83,8 +82,6 @@ impl Abi for WasmABI {
     fn mangle_function_name(&self, name: &str) -> String {
         WasmABI::mangle_function_name(self, name)
     }
-
-    // WASM doesn't need call_stub since it uses imports, so we use the default implementation
 }
 
 #[cfg(test)]
@@ -128,7 +125,6 @@ mod tests {
         use crate::mir::{MirType, ScalarType};
         let abi = WasmABI::new(TargetOperatingSystem::Linux);
         assert_eq!(abi.get_wasm_type(&MirType::Scalar(ScalarType::I64)), "i64");
-        // Currently everything maps to i64
         assert_eq!(abi.get_wasm_type(&MirType::Scalar(ScalarType::I32)), "i64");
     }
 

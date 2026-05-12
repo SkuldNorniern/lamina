@@ -15,7 +15,6 @@ mod tests {
     fn test_build_simple_function() {
         let mut builder = IRBuilder::new();
 
-        // Build a simple function that adds two integers
         builder
             .function("add", Type::Primitive(PrimitiveType::I32))
             .annotate(FunctionAnnotation::Inline)
@@ -30,10 +29,8 @@ mod tests {
 
         let module = builder.build();
 
-        // Assert that the module contains our function
         assert!(module.functions.contains_key("add"));
 
-        // Assert function properties
         let func = &module.functions["add"];
         assert_eq!(func.name, "add");
         assert_eq!(
@@ -43,12 +40,10 @@ mod tests {
         assert_eq!(func.annotations.len(), 1);
         assert!(matches!(func.annotations[0], FunctionAnnotation::Inline));
 
-        // Assert block properties
         assert!(func.basic_blocks.contains_key("entry"));
         let entry_block = &func.basic_blocks["entry"];
         assert_eq!(entry_block.instructions.len(), 2);
 
-        // Check first instruction is a binary add
         if let Instruction::Binary {
             op,
             result,
@@ -66,7 +61,6 @@ mod tests {
             panic!("Expected Binary instruction");
         }
 
-        // Check second instruction is a return
         if let Instruction::Ret { ty, value } = &entry_block.instructions[1] {
             assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
             assert_eq!(*value, Some(var("result")));
@@ -91,12 +85,10 @@ mod tests {
         let module = builder.build();
         let func = &module.functions["conditional"];
 
-        // Assert blocks exist
         assert!(func.basic_blocks.contains_key("entry"));
         assert!(func.basic_blocks.contains_key("then_block"));
         assert!(func.basic_blocks.contains_key("else_block"));
 
-        // Assert block contents
         let entry = &func.basic_blocks["entry"];
         let then_block = &func.basic_blocks["then_block"];
         let else_block = &func.basic_blocks["else_block"];
@@ -105,7 +97,6 @@ mod tests {
         assert_eq!(then_block.instructions.len(), 1);
         assert_eq!(else_block.instructions.len(), 1);
 
-        // Check that branches point to the right blocks
         if let Instruction::Br {
             true_label,
             false_label,
@@ -136,7 +127,6 @@ mod tests {
 
         assert_eq!(entry.instructions.len(), 4);
 
-        // Check alloc
         if let Instruction::Alloc {
             result,
             alloc_type,
@@ -150,7 +140,6 @@ mod tests {
             panic!("Expected Alloc instruction");
         }
 
-        // Check store
         if let Instruction::Store { ty, ptr, value } = &entry.instructions[1] {
             assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
             assert_eq!(*ptr, var("ptr"));
@@ -159,7 +148,6 @@ mod tests {
             panic!("Expected Store instruction");
         }
 
-        // Check load
         if let Instruction::Load { result, ty, ptr } = &entry.instructions[2] {
             assert_eq!(*result, "val");
             assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
@@ -174,7 +162,6 @@ mod tests {
     fn test_module_annotations() {
         let mut builder = IRBuilder::new();
 
-        // Add various module annotations
         builder
             .annotate_module(ModuleAnnotation::PositionIndependentCode)
             .annotate_module(ModuleAnnotation::OptimizeForSpeed)
@@ -183,7 +170,6 @@ mod tests {
                 "x86_64-unknown-linux-gnu".to_string(),
             ));
 
-        // Also test the convenience methods
         builder
             .pic()
             .pie()
@@ -193,10 +179,8 @@ mod tests {
 
         let module = builder.build();
 
-        // Check that all annotations were added
         assert_eq!(module.annotations.len(), 9);
 
-        // Check specific annotations
         assert!(
             module
                 .annotations

@@ -125,13 +125,8 @@ impl<'a> IRBuilder<'a> {
     ///
     /// Returns: A Module object containing all defined functions and blocks
     pub fn build(&mut self) -> Module<'a> {
-        // Finalize the module by converting all block instructions to basicblocks
-        // and all functions to their final representation
-
         for (func_name, block_map) in &mut self.function_blocks {
-            // Convert block instructions to BasicBlocks
             for (block_name, instructions) in self.block_instructions.iter() {
-                // Only process blocks for current function
                 if self.block_instructions.contains_key(block_name) {
                     block_map.insert(
                         block_name,
@@ -142,7 +137,6 @@ impl<'a> IRBuilder<'a> {
                 }
             }
 
-            // Create the function and add it to the module
             if let (Some(signature), Some(entry_block)) = (
                 self.function_signatures.get(func_name),
                 self.function_entry_blocks.get(func_name),
@@ -167,10 +161,6 @@ impl<'a> IRBuilder<'a> {
     }
 }
 
-// Include all the method implementations from submodules
-// Each module extends IRBuilder with its category of methods
-
-// External function support
 impl<'a> IRBuilder<'a> {
     /// Declares an external function (imported from another module)
     ///
@@ -197,8 +187,6 @@ impl<'a> IRBuilder<'a> {
         self.function_blocks.insert(name, HashMap::new());
         self.function_annotations
             .insert(name, vec![FunctionAnnotation::Extern]);
-        // External functions don't need an entry block, but build() requires it
-        // Create an empty entry block
         self.function_entry_blocks.insert(name, "entry");
         self.block_instructions.insert("entry", vec![]);
         self.current_function = Some(name);

@@ -33,7 +33,6 @@ impl WasmABI {
     pub fn get_wasm_type(&self, ty: &lamina_mir::MirType) -> &'static str {
         match ty {
             lamina_mir::MirType::Scalar(lamina_mir::ScalarType::I64) => "i64",
-            // For now, everything is i64 in WASM
             _ => "i64",
         }
     }
@@ -57,6 +56,4 @@ impl Abi for WasmABI {
     fn mangle_function_name(&self, name: &str) -> String {
         WasmABI::mangle_function_name(self, name)
     }
-
-    // WASM doesn't need call_stub since it uses imports, so we use the default implementation
 }
