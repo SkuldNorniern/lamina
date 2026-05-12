@@ -136,11 +136,7 @@ pub unsafe fn call_function_dynamic(
         }
     }
 
-    if returns_value {
-        Some(out)
-    } else {
-        None
-    }
+    if returns_value { Some(out) } else { None }
 }
 
 #[cfg(all(target_arch = "x86_64", not(target_os = "windows")))]
@@ -234,11 +230,7 @@ pub unsafe fn call_function_dynamic(
         );
     }
 
-    if returns_value {
-        Some(out)
-    } else {
-        None
-    }
+    if returns_value { Some(out) } else { None }
 }
 
 #[cfg(not(any(
@@ -282,8 +274,7 @@ unsafe fn transmute_dynamic_call(
         1 => {
             let a0 = args[0];
             if returns_value {
-                let callee: unsafe extern "C" fn(i64) -> i64 =
-                    std::mem::transmute(function_ptr);
+                let callee: unsafe extern "C" fn(i64) -> i64 = std::mem::transmute(function_ptr);
                 Some(callee(a0))
             } else {
                 let callee: unsafe extern "C" fn(i64) = std::mem::transmute(function_ptr);
@@ -313,8 +304,7 @@ unsafe fn transmute_dynamic_call(
                     std::mem::transmute(function_ptr);
                 Some(callee(a0, a1, a2))
             } else {
-                let callee: unsafe extern "C" fn(i64, i64, i64) =
-                    std::mem::transmute(function_ptr);
+                let callee: unsafe extern "C" fn(i64, i64, i64) = std::mem::transmute(function_ptr);
                 callee(a0, a1, a2);
                 None
             }
@@ -399,16 +389,8 @@ unsafe fn transmute_dynamic_call(
             let a6 = args[6];
             let a7 = args[7];
             if returns_value {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) -> i64 = std::mem::transmute(function_ptr);
+                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64) -> i64 =
+                    std::mem::transmute(function_ptr);
                 Some(callee(a0, a1, a2, a3, a4, a5, a6, a7))
             } else {
                 let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64) =
@@ -473,18 +455,8 @@ unsafe fn transmute_dynamic_call(
                 ) -> i64 = std::mem::transmute(function_ptr);
                 Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9))
             } else {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) = std::mem::transmute(function_ptr);
+                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) =
+                    std::mem::transmute(function_ptr);
                 callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9);
                 None
             }
@@ -631,9 +603,7 @@ unsafe fn transmute_dynamic_call(
                     i64,
                     i64,
                 ) = std::mem::transmute(function_ptr);
-                callee(
-                    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12,
-                );
+                callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12);
                 None
             }
         }
@@ -689,9 +659,7 @@ unsafe fn transmute_dynamic_call(
                     i64,
                     i64,
                 ) = std::mem::transmute(function_ptr);
-                callee(
-                    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13,
-                );
+                callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13);
                 None
             }
         }
@@ -797,9 +765,8 @@ mod call_dynamic_tests {
     #[test]
     fn aarch64_call_dynamic_reads_stack_arg8() {
         let args = [0i64, 0, 0, 0, 0, 0, 0, 0, 77];
-        let got = unsafe {
-            super::call_function_dynamic(c_abi_dyn_test_ninth as *const u8, &args, true)
-        };
+        let got =
+            unsafe { super::call_function_dynamic(c_abi_dyn_test_ninth as *const u8, &args, true) };
         assert_eq!(got, Some(77));
     }
 
@@ -807,9 +774,8 @@ mod call_dynamic_tests {
     #[test]
     fn aarch64_call_dynamic_reads_stack_arg9_heap_sp() {
         let args = [0i64, 0, 0, 0, 0, 0, 0, 0, 0, 88];
-        let got = unsafe {
-            super::call_function_dynamic(c_abi_dyn_test_tenth as *const u8, &args, true)
-        };
+        let got =
+            unsafe { super::call_function_dynamic(c_abi_dyn_test_tenth as *const u8, &args, true) };
         assert_eq!(got, Some(88));
     }
 
@@ -831,11 +797,7 @@ mod call_dynamic_tests {
     fn x86_64_call_dynamic_seventh_arg_on_stack() {
         let args = [1i64, 2, 3, 4, 5, 6, 7];
         let got = unsafe {
-            super::call_function_dynamic(
-                c_abi_dyn_test_seven_sum as *const u8,
-                &args,
-                true,
-            )
+            super::call_function_dynamic(c_abi_dyn_test_seven_sum as *const u8, &args, true)
         };
         assert_eq!(got, Some(28));
     }

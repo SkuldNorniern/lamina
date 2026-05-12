@@ -306,9 +306,6 @@ impl<'a> IRBuilder<'a> {
         vector_type: Type<'a>,
         scalar: Value<'a>,
     ) -> &mut Self {
-        // Splat is implemented as a special case of SimdUnary with Splat op
-        // Note: The actual implementation may need to use a different instruction
-        // For now, we'll use SimdUnary with Splat op
         self.inst(Instruction::SimdUnary {
             op: SimdOp::Splat,
             result: result.into(),

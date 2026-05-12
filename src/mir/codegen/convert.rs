@@ -155,8 +155,7 @@ fn convert_function<'a>(
                     }
                     for (_, case_label) in cases {
                         let case_str: &str = case_label;
-                        if !visited.contains(case_str) && f.basic_blocks.contains_key(case_str)
-                        {
+                        if !visited.contains(case_str) && f.basic_blocks.contains_key(case_str) {
                             visited.insert(case_str);
                             worklist.push_back(case_str);
                         }

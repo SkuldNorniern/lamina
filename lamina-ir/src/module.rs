@@ -420,7 +420,7 @@ mod tests {
     use super::*;
     use crate::function::{BasicBlock, Function, FunctionParameter, FunctionSignature};
     use crate::instruction::{BinaryOp, Instruction};
-    use crate::types::{Literal, PrimitiveType, Type, Value}; // Assuming crate root
+    use crate::types::{Literal, PrimitiveType, Type, Value};
     use std::collections::HashMap;
 
     #[test]
@@ -429,13 +429,11 @@ mod tests {
             name: "MyType",
             ty: Type::Struct(vec![]), // Empty struct
         };
-        // Expect two spaces for empty struct {  }
         assert_eq!(format!("{}", decl), "type @MyType = struct {  }");
     }
 
     #[test]
     fn test_display_global_declaration() {
-        // Initialized
         let decl1 = GlobalDeclaration {
             name: "count",
             ty: Type::Primitive(PrimitiveType::I32),
@@ -443,7 +441,6 @@ mod tests {
         };
         assert_eq!(format!("{}", decl1), "global @count: i32 = 0");
 
-        // Uninitialized (Extern)
         let decl2 = GlobalDeclaration {
             name: "external_data",
             ty: Type::Array {
@@ -459,7 +456,6 @@ mod tests {
     fn test_display_module() {
         let mut module = Module::new();
 
-        // Add type declaration
         module.type_declarations.insert(
             "Vec2",
             TypeDeclaration {
@@ -477,7 +473,6 @@ mod tests {
             },
         );
 
-        // Add global declaration
         module.global_declarations.insert(
             "PI",
             GlobalDeclaration {
@@ -487,7 +482,6 @@ mod tests {
             },
         );
 
-        // Add a simple function
         let func_sig = FunctionSignature {
             params: vec![FunctionParameter {
                 name: "a",
@@ -524,21 +518,18 @@ mod tests {
         };
         module.functions.insert("add_one", func);
 
-        // Match actual output - no indentation for function instructions
         let expected_output = format!(
             "type @Vec2 = struct {{ x: f32, y: f32 }}\n\nglobal @PI: f32 = {}\n\nfn @add_one(i32 %a) -> i32 {{\nentry:\n  %res = add.i32 %a, 1\n  ret.i32 %res\n}}\n",
             std::f32::consts::PI
         );
 
-        // Note: Hashmap iteration order isn't guaranteed, but Display impl sorts function keys.
-        // Type/Global order isn't sorted, so this test might be fragile if more are added.
-        // A more thorough test might parse the output or check for substrings.
+        // Display sorts functions, but type/global maps still depend on insertion order.
         assert_eq!(format!("{}", module), expected_output);
     }
 
     #[test]
     fn test_display_empty_module() {
         let module = Module::<'static>::new();
-        assert_eq!(format!("{}", module), ""); // Empty module should print nothing
+        assert_eq!(format!("{}", module), "");
     }
 }

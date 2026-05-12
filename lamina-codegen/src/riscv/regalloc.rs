@@ -15,15 +15,13 @@ use lamina_platform::TargetOperatingSystem;
 /// - x9-x15: s1-s7 (saved registers)
 /// - x16-x27: a0-a7 (argument registers), t0-t6 (temporaries)
 ///
-/// For simplicity, we'll use a subset of these registers.
+/// The allocator uses a conservative subset until prologue/epilogue support
+/// covers every saved register.
 pub struct RiscVRegAlloc {
     #[allow(dead_code)]
     target_os: TargetOperatingSystem,
-    // Available general-purpose registers for allocation
     available_gprs: Vec<&'static str>,
-    // Currently allocated registers
     allocated_gprs: std::collections::HashMap<&'static str, VirtualReg>,
-    // Stack slot assignments for spilled registers
     stack_slots: std::collections::HashMap<VirtualReg, i32>,
     next_stack_slot: i32,
 }
@@ -35,8 +33,6 @@ impl Default for RiscVRegAlloc {
 }
 
 impl RiscVRegAlloc {
-    // RISC-V general-purpose registers available for allocation
-    // We exclude: x0 (zero), x1 (ra), x2 (sp), x3 (gp), x4 (tp), x8 (fp)
     const AVAILABLE_REGISTERS: &'static [&'static str] = &[
         "x5", "x6", "x7", // t0-t2
         "x9", "x10", "x11", "x12", "x13", "x14", "x15", // s1-s7
@@ -51,13 +47,12 @@ impl RiscVRegAlloc {
             available_gprs: Self::AVAILABLE_REGISTERS.to_vec(),
             allocated_gprs: std::collections::HashMap::new(),
             stack_slots: std::collections::HashMap::new(),
-            next_stack_slot: -8, // Start below the saved registers
+            next_stack_slot: -8,
         }
     }
 
     /// Set conservative mode (limit to fewer registers)
     pub fn set_conservative_mode(&mut self) {
-        // Use only a subset of registers for conservative allocation
         self.available_gprs = vec![
             "x9", "x10", "x11", "x12", "x13", "x14", "x15", // s1-s7
             "x16", "x17", "x18", "x19", // a0-a3
@@ -74,13 +69,11 @@ impl MirRegisterAllocator for RiscVRegAlloc {
     type PhysReg = &'static str;
 
     fn alloc_scratch(&mut self) -> Option<Self::PhysReg> {
-        // Try to allocate a register first
         for &reg in &self.available_gprs {
             if !self.allocated_gprs.contains_key(reg) {
                 return Some(reg);
             }
         }
-        // If no registers available, return the first one (will cause spilling)
         self.available_gprs.first().copied()
     }
 
@@ -89,7 +82,6 @@ impl MirRegisterAllocator for RiscVRegAlloc {
     }
 
     fn get_mapping(&self, vreg: &VirtualReg) -> Option<Self::PhysReg> {
-        // Check if we have a direct register mapping
         for (reg, allocated_vreg) in &self.allocated_gprs {
             if allocated_vreg == vreg {
                 return Some(*reg);
@@ -103,21 +95,18 @@ impl MirRegisterAllocator for RiscVRegAlloc {
             return None;
         }
 
-        // Check if already mapped
         if let Some(phys) = self.get_mapping(&vreg) {
             return Some(phys);
         }
 
-        // Try to allocate a new register
         if let Some(phys) = self.alloc_scratch() {
             self.allocated_gprs.insert(phys, vreg);
             return Some(phys);
         }
 
-        // No registers available, assign to stack
         let stack_slot = self.next_stack_slot;
         self.stack_slots.insert(vreg, stack_slot);
-        self.next_stack_slot -= 8; // 8 bytes per slot
+        self.next_stack_slot -= 8;
         None // Return None to indicate stack allocation
     }
 
@@ -128,9 +117,7 @@ impl MirRegisterAllocator for RiscVRegAlloc {
         }
     }
 
-    fn occupy(&mut self, _phys: Self::PhysReg) {
-        // Mark register as occupied (though we don't use this in our simple allocator)
-    }
+    fn occupy(&mut self, _phys: Self::PhysReg) {}
 
     fn release(&mut self, phys: Self::PhysReg) {
         self.allocated_gprs.remove(phys);
@@ -140,5 +127,3 @@ impl MirRegisterAllocator for RiscVRegAlloc {
         self.allocated_gprs.contains_key(phys)
     }
 }
-
-// RegisterAllocatorDyn is automatically implemented via the blanket impl in regalloc.rs
