@@ -46,12 +46,10 @@ impl FromStr for Target {
     type Err = &'static str;
 
     fn from_str(target: &str) -> Result<Self, Self::Err> {
-        // Split from the right to handle architectures with underscores (e.g., "x86_64")
         let parts: Vec<&str> = target.rsplitn(2, '_').collect();
         if parts.len() != 2 {
             return Err("Invalid target format: expected 'architecture_os'");
         }
-        // parts[0] is the OS (rightmost part), parts[1] is the architecture (everything else)
         Ok(Self::new(
             TargetArchitecture::from_str(parts[1]).map_err(|_| "Invalid architecture")?,
             TargetOperatingSystem::from_str(parts[0]).map_err(|_| "Invalid operating system")?,
@@ -99,7 +97,6 @@ impl FromStr for TargetArchitecture {
             "wasm32" => Ok(Self::Wasm32),
             "wasm64" => Ok(Self::Wasm64),
             "wasm" => Ok(Self::Wasm32),
-            // default to 32-bit for backward compatibility
             "ppc64" | "powerpc64" | "ppc64le" => Ok(Self::PowerPC64),
             #[cfg(feature = "nightly")]
             "lisa" => Ok(Self::Lisa),
@@ -113,11 +110,20 @@ pub enum TargetOperatingSystem {
     Linux,
     MacOS,
     Windows,
+    Android,
+    IOS,
+    TvOS,
+    WatchOS,
+    VisionOS,
     FreeBSD,
     OpenBSD,
     NetBSD,
     DragonFly,
     Redox,
+    Horizon,
+    Psp,
+    Psx,
+    Vita,
     #[cfg(feature = "nightly")]
     Artery,
     Unknown,
@@ -131,16 +137,24 @@ impl FromStr for TargetOperatingSystem {
             "linux" => Ok(Self::Linux),
             "macos" => Ok(Self::MacOS),
             "windows" => Ok(Self::Windows),
+            "android" => Ok(Self::Android),
+            "ios" => Ok(Self::IOS),
+            "tvos" => Ok(Self::TvOS),
+            "watchos" => Ok(Self::WatchOS),
+            "visionos" => Ok(Self::VisionOS),
             "freebsd" => Ok(Self::FreeBSD),
             "openbsd" => Ok(Self::OpenBSD),
             "netbsd" => Ok(Self::NetBSD),
             "dragonfly" => Ok(Self::DragonFly),
             "redox" => Ok(Self::Redox),
+            "horizon" => Ok(Self::Horizon),
+            "psp" => Ok(Self::Psp),
+            "psx" => Ok(Self::Psx),
+            "vita" => Ok(Self::Vita),
             "unknown" => Ok(Self::Unknown),
             #[cfg(feature = "nightly")]
             "artery" => Ok(Self::Artery),
-            // Keep backward compatibility
-            "bsd" => Ok(Self::FreeBSD), // default to FreeBSD for generic "bsd"
+            "bsd" => Ok(Self::FreeBSD),
             _ => Err("Unknown operating system"),
         }
     }
@@ -174,11 +188,20 @@ impl fmt::Display for TargetOperatingSystem {
             Self::Linux => "linux",
             Self::MacOS => "macos",
             Self::Windows => "windows",
+            Self::Android => "android",
+            Self::IOS => "ios",
+            Self::TvOS => "tvos",
+            Self::WatchOS => "watchos",
+            Self::VisionOS => "visionos",
             Self::FreeBSD => "freebsd",
             Self::OpenBSD => "openbsd",
             Self::NetBSD => "netbsd",
             Self::DragonFly => "dragonfly",
             Self::Redox => "redox",
+            Self::Horizon => "horizon",
+            Self::Psp => "psp",
+            Self::Psx => "psx",
+            Self::Vita => "vita",
             #[cfg(feature = "nightly")]
             Self::Artery => "artery",
             Self::Unknown => "unknown",
@@ -192,10 +215,24 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "x86_64_linux",
     "x86_64_windows",
     "x86_64_macos",
+    "x86_64_android",
+    "x86_64_ios",
+    "x86_64_tvos",
+    "x86_64_watchos",
     "aarch64_unknown",
     "aarch64_macos",
     "aarch64_linux",
     "aarch64_windows",
+    "aarch64_android",
+    "aarch64_ios",
+    "aarch64_tvos",
+    "aarch64_watchos",
+    "aarch64_visionos",
+    "aarch64_horizon",
+    "arm32_android",
+    "arm32_ios",
+    "arm32_watchos",
+    "arm32_vita",
     "arx64_unknown",
     "wasm32_unknown",
     "wasm64_unknown",
@@ -204,3 +241,31 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     #[cfg(feature = "nightly")]
     "riscv128_unknown",
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_known_mobile_and_console_targets() {
+        assert_eq!(
+            Target::from_str("aarch64_ios").unwrap(),
+            Target::new(TargetArchitecture::Aarch64, TargetOperatingSystem::IOS)
+        );
+        assert_eq!(
+            Target::from_str("aarch64_horizon").unwrap(),
+            Target::new(TargetArchitecture::Aarch64, TargetOperatingSystem::Horizon)
+        );
+        assert_eq!(
+            Target::from_str("arm32_vita").unwrap(),
+            Target::new(TargetArchitecture::Arm32, TargetOperatingSystem::Vita)
+        );
+    }
+
+    #[test]
+    fn displays_known_mobile_and_console_os_names() {
+        assert_eq!(TargetOperatingSystem::VisionOS.to_string(), "visionos");
+        assert_eq!(TargetOperatingSystem::Psp.to_string(), "psp");
+        assert_eq!(TargetOperatingSystem::Psx.to_string(), "psx");
+    }
+}
