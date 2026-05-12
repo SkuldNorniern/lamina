@@ -1,6 +1,6 @@
 //! JIT compilation and execution pipeline.
 
-use super::options::{toolchain_backends, CompileOptions};
+use super::options::{CompileOptions, toolchain_backends};
 
 /// Handle JIT compilation and execution
 pub fn handle_jit_compilation(

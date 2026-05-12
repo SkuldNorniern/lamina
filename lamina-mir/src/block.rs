@@ -87,10 +87,10 @@ impl Block {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::instruction::{Immediate, Instruction, IntBinOp, Operand};
     use crate::register::{Register, VirtualReg};
     use crate::types::{MirType, ScalarType};
-    use super::*;
 
     #[test]
     fn test_basic_block_creation() {

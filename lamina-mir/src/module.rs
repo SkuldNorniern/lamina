@@ -229,12 +229,12 @@ impl ModuleBuilder {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::block::Block;
     use crate::function::{Function, Parameter, Signature};
     use crate::instruction::{Instruction, Operand};
     use crate::register::{Register, VirtualReg};
     use crate::types::{MirType, ScalarType};
-    use super::*;
 
     #[test]
     fn test_module_creation() {
@@ -310,7 +310,8 @@ mod tests {
 
         let errs = module.validate().expect_err("arity mismatch");
         assert!(
-            errs.iter().any(|e| e.contains("tailcall") && e.contains("sink")),
+            errs.iter()
+                .any(|e| e.contains("tailcall") && e.contains("sink")),
             "{errs:?}"
         );
     }

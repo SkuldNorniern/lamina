@@ -119,9 +119,7 @@ impl A64RegAlloc {
         MAP_GPRS.to_vec()
     }
 
-    pub fn from_global_plan(
-        plan: &HashMap<VirtualReg, Allocation<&'static str>>,
-    ) -> Self {
+    pub fn from_global_plan(plan: &HashMap<VirtualReg, Allocation<&'static str>>) -> Self {
         let mut s = Self::new();
         for (&vreg, alloc) in plan {
             if vreg.class != RegisterClass::Gpr {

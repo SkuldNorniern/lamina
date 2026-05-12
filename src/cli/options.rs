@@ -112,7 +112,9 @@ pub fn print_usage() {
     eprintln!(
         "  -j, --jobs <n>          Number of parallel compilation threads (default: max - 2)"
     );
-    eprintln!("  -g                      Emit assembler .file/.loc and minimal ELF DWARF when using ras");
+    eprintln!(
+        "  -g                      Emit assembler .file/.loc and minimal ELF DWARF when using ras"
+    );
     eprintln!(
         "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: incremental)"
     );
@@ -235,9 +237,7 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                     "linear" => lamina::mir_codegen::RegallocStrategy::LinearScanGlobal,
                     "graph" => lamina::mir_codegen::RegallocStrategy::GraphColorGlobal,
                     _ => {
-                        return Err(
-                            "--regalloc must be incremental, linear, or graph".to_string(),
-                        );
+                        return Err("--regalloc must be incremental, linear, or graph".to_string());
                     }
                 };
                 i += 2;
