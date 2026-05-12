@@ -74,18 +74,35 @@ const SYSCALL_SYMBOLS: &[&str] = &["syscall", "sysenter", "int80", "__syscall"];
 
 /// Common POSIX file-I/O symbols.
 const FILE_IO_SYMBOLS: &[&str] = &[
-    "open", "openat", "creat", "read", "write", "close", "fopen", "fclose",
-    "fread", "fwrite", "fseek", "ftell", "fflush", "rename", "unlink", "mkdir",
-    "rmdir", "stat", "fstat", "lstat", "access", "chmod", "chown", "truncate",
-    "readdir", "opendir", "closedir",
+    "open", "openat", "creat", "read", "write", "close", "fopen", "fclose", "fread", "fwrite",
+    "fseek", "ftell", "fflush", "rename", "unlink", "mkdir", "rmdir", "stat", "fstat", "lstat",
+    "access", "chmod", "chown", "truncate", "readdir", "opendir", "closedir",
 ];
 
 /// Common network symbols.
 const NETWORK_SYMBOLS: &[&str] = &[
-    "socket", "bind", "listen", "accept", "connect", "send", "recv",
-    "sendto", "recvfrom", "gethostbyname", "getaddrinfo", "freeaddrinfo",
-    "inet_addr", "inet_pton", "setsockopt", "getsockopt", "shutdown",
-    "poll", "select", "epoll_create", "epoll_ctl", "epoll_wait",
+    "socket",
+    "bind",
+    "listen",
+    "accept",
+    "connect",
+    "send",
+    "recv",
+    "sendto",
+    "recvfrom",
+    "gethostbyname",
+    "getaddrinfo",
+    "freeaddrinfo",
+    "inet_addr",
+    "inet_pton",
+    "setsockopt",
+    "getsockopt",
+    "shutdown",
+    "poll",
+    "select",
+    "epoll_create",
+    "epoll_ctl",
+    "epoll_wait",
 ];
 
 // ---------------------------------------------------------------------------

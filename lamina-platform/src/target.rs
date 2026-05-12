@@ -136,6 +136,7 @@ impl FromStr for TargetOperatingSystem {
             "netbsd" => Ok(Self::NetBSD),
             "dragonfly" => Ok(Self::DragonFly),
             "redox" => Ok(Self::Redox),
+            "unknown" => Ok(Self::Unknown),
             #[cfg(feature = "nightly")]
             "artery" => Ok(Self::Artery),
             // Keep backward compatibility
