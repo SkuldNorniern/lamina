@@ -1,6 +1,7 @@
 //! MIR-based code generation for multiple target architectures.
 
 pub mod abi;
+pub mod arx64;
 pub mod assemble;
 pub mod capability;
 pub mod common;
@@ -67,6 +68,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
         target_arch,
         TargetArchitecture::X86_64
             | TargetArchitecture::Aarch64
+            | TargetArchitecture::Arx64
             | TargetArchitecture::Riscv32
             | TargetArchitecture::Riscv64
             | TargetArchitecture::PowerPC64
@@ -91,6 +93,15 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     match target_arch {
         TargetArchitecture::Aarch64 => {
             arm::aarch64::generate_mir_aarch64_with_units_and_settings(
+                module,
+                writer,
+                target_os,
+                codegen_units,
+                settings,
+            )?;
+        }
+        TargetArchitecture::Arx64 => {
+            arx64::generate_mir_arx64_with_units_and_settings(
                 module,
                 writer,
                 target_os,
