@@ -110,6 +110,16 @@ impl DeadCodeElimination {
                                 current_live_out.extend(succ_live_in.iter().cloned());
                             }
                         }
+                        Instruction::Switch { cases, default, .. } => {
+                            if let Some(succ_live_in) = live_in.get(default) {
+                                current_live_out.extend(succ_live_in.iter().cloned());
+                            }
+                            for (_, case_target) in cases {
+                                if let Some(succ_live_in) = live_in.get(case_target) {
+                                    current_live_out.extend(succ_live_in.iter().cloned());
+                                }
+                            }
+                        }
                         _ => {} // Return or others have no successors within function
                     }
                 }

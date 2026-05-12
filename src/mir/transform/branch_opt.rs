@@ -134,6 +134,12 @@ impl BranchOptimization {
                     targets.push(true_target.clone());
                     targets.push(false_target.clone());
                 }
+                Instruction::Switch { cases, default, .. } => {
+                    targets.push(default.clone());
+                    for (_, case_target) in cases {
+                        targets.push(case_target.clone());
+                    }
+                }
                 _ => {}
             }
         }
