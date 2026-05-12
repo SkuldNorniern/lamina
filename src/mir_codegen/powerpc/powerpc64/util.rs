@@ -4,10 +4,7 @@ use crate::mir::register::{Register, VirtualReg};
 use crate::mir_codegen::regalloc::RegisterAllocator;
 
 /// Load a virtual register into GPR `r3` (the primary scratch/return reg).
-pub fn load_register_to_r3<
-    W: std::io::Write,
-    RA: RegisterAllocator<PhysReg = &'static str>,
->(
+pub fn load_register_to_r3<W: std::io::Write, RA: RegisterAllocator<PhysReg = &'static str>>(
     reg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
@@ -26,10 +23,7 @@ pub fn load_register_to_r3<
 }
 
 /// Store GPR `r3` into a virtual register's location.
-pub fn store_r3_to_register<
-    W: std::io::Write,
-    RA: RegisterAllocator<PhysReg = &'static str>,
->(
+pub fn store_r3_to_register<W: std::io::Write, RA: RegisterAllocator<PhysReg = &'static str>>(
     reg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
@@ -132,9 +126,20 @@ pub fn load_operand_to_register<
             } else {
                 // 64-bit: lis + ori + rldicr + oris + ori
                 writeln!(writer, "    lis {}, {}@highest", dest_reg, val >> 48)?;
-                writeln!(writer, "    ori {}, {}, {}@higher", dest_reg, dest_reg, (val >> 32) & 0xFFFF)?;
+                writeln!(
+                    writer,
+                    "    ori {}, {}, {}@higher",
+                    dest_reg,
+                    dest_reg,
+                    (val >> 32) & 0xFFFF
+                )?;
                 writeln!(writer, "    rldicr {0}, {0}, 32, 31", dest_reg)?;
-                writeln!(writer, "    oris {0}, {0}, {1}", dest_reg, (val >> 16) & 0xFFFF)?;
+                writeln!(
+                    writer,
+                    "    oris {0}, {0}, {1}",
+                    dest_reg,
+                    (val >> 16) & 0xFFFF
+                )?;
                 writeln!(writer, "    ori {0}, {0}, {1}", dest_reg, val & 0xFFFF)
             }
         }

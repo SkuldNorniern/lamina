@@ -39,7 +39,7 @@ impl Ppc64Frame {
     pub fn generate_prologue<W: Write>(writer: &mut W, local_bytes: usize) -> io::Result<()> {
         let frame_size = Self::aligned_frame_size(local_bytes);
         writeln!(writer, "    mflr 0")?;
-        writeln!(writer, "    std 0, 16(1)")?;        // Save LR to LR save slot
+        writeln!(writer, "    std 0, 16(1)")?; // Save LR to LR save slot
         writeln!(writer, "    stdu 1, -{}(1)", frame_size)?; // Allocate frame + store back-chain
         Ok(())
     }
@@ -48,7 +48,7 @@ impl Ppc64Frame {
     pub fn generate_epilogue<W: Write>(writer: &mut W, local_bytes: usize) -> io::Result<()> {
         let frame_size = Self::aligned_frame_size(local_bytes);
         writeln!(writer, "    addi 1, 1, {}", frame_size)?; // Deallocate frame
-        writeln!(writer, "    ld 0, 16(1)")?;               // Restore LR
+        writeln!(writer, "    ld 0, 16(1)")?; // Restore LR
         writeln!(writer, "    mtlr 0")?;
         writeln!(writer, "    blr")?;
         Ok(())

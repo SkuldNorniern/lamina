@@ -25,8 +25,7 @@ use regalloc::Ppc64RegAlloc;
 use std::io::Write;
 use std::result::Result;
 use util::{
-    load_operand_to_register, load_register_to_r3, load_register_to_register,
-    store_r3_to_register,
+    load_operand_to_register, load_register_to_r3, load_register_to_register, store_r3_to_register,
 };
 
 use crate::mir::register::RegisterClass;
@@ -251,9 +250,8 @@ fn compile_single_function_ppc64(
     }
 
     let local_bytes = stack_slots.len() * 8;
-    Ppc64Frame::generate_prologue(&mut output, local_bytes).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-    })?;
+    Ppc64Frame::generate_prologue(&mut output, local_bytes)
+        .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
@@ -271,9 +269,7 @@ fn compile_single_function_ppc64(
                 settings,
                 &mut debug_line,
             )
-            .map_err(|e| {
-                crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string())
-            })?;
+            .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
     }
 
@@ -324,17 +320,10 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     }
 
     let settings_arc = Arc::new(settings.clone());
-    let results = compile_functions_parallel(
-        module,
-        target_os,
-        codegen_units,
-        {
-            let settings_arc = settings_arc.clone();
-            move |name, func, os| {
-                compile_single_function_ppc64(name, func, os, settings_arc.as_ref())
-            }
-        },
-    )
+    let results = compile_functions_parallel(module, target_os, codegen_units, {
+        let settings_arc = settings_arc.clone();
+        move |name, func, os| compile_single_function_ppc64(name, func, os, settings_arc.as_ref())
+    })
     .map_err(parallel_codegen_error)?;
 
     for result in results {
@@ -415,8 +404,10 @@ fn emit_instruction_ppc64<W: Write>(
                 crate::mir::IntCmpOp::SGt => ("bgt", "ble"),
                 crate::mir::IntCmpOp::SGe => ("bge", "blt"),
                 // Unsigned: use cmplw/cmpld
-                crate::mir::IntCmpOp::ULt | crate::mir::IntCmpOp::ULe
-                | crate::mir::IntCmpOp::UGt | crate::mir::IntCmpOp::UGe => {
+                crate::mir::IntCmpOp::ULt
+                | crate::mir::IntCmpOp::ULe
+                | crate::mir::IntCmpOp::UGt
+                | crate::mir::IntCmpOp::UGe => {
                     // Redo with unsigned compare
                     writeln!(writer, "    cmpld 3, 4")?;
                     match op {
@@ -571,7 +562,9 @@ fn emit_instruction_ppc64<W: Write>(
                     }
                 }
 
-                let target_sym = abi.call_stub(name).unwrap_or_else(|| abi.mangle_function_name(name));
+                let target_sym = abi
+                    .call_stub(name)
+                    .unwrap_or_else(|| abi.mangle_function_name(name));
                 writeln!(writer, "    bl {}", target_sym)?;
                 writeln!(writer, "    nop")?;
 
@@ -608,10 +601,17 @@ fn emit_instruction_ppc64<W: Write>(
                     crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()),
                 )
             })?;
-            let target_sym = abi.call_stub(name).unwrap_or_else(|| abi.mangle_function_name(name));
+            let target_sym = abi
+                .call_stub(name)
+                .unwrap_or_else(|| abi.mangle_function_name(name));
             writeln!(writer, "    b {}", target_sym)?;
         }
-        MirInst::Load { dst, addr, ty, attrs: _ } => {
+        MirInst::Load {
+            dst,
+            addr,
+            ty,
+            attrs: _,
+        } => {
             let load_op = match ty {
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
                 | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "lbz",
@@ -624,7 +624,8 @@ fn emit_instruction_ppc64<W: Write>(
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
                         crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64 load: unsupported type {:?}", other
+                            "PowerPC64 load: unsupported type {:?}",
+                            other
                         )),
                     ));
                 }
@@ -651,7 +652,12 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             }
         }
-        MirInst::Store { addr, src, ty, attrs: _ } => {
+        MirInst::Store {
+            addr,
+            src,
+            ty,
+            attrs: _,
+        } => {
             let store_op = match ty {
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
                 | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "stb",
@@ -664,7 +670,8 @@ fn emit_instruction_ppc64<W: Write>(
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
                         crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64 store: unsupported type {:?}", other
+                            "PowerPC64 store: unsupported type {:?}",
+                            other
                         )),
                     ));
                 }
@@ -726,10 +733,11 @@ fn emit_instruction_ppc64<W: Write>(
                 load_operand_to_register(val, writer, reg_alloc, stack_slots, "3")?;
             }
             let local_bytes = stack_slots.len() * 8;
-            Ppc64Frame::generate_epilogue(writer, local_bytes)
-                .map_err(|e| crate::error::LaminaError::CodegenError(
+            Ppc64Frame::generate_epilogue(writer, local_bytes).map_err(|e| {
+                crate::error::LaminaError::CodegenError(
                     crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()),
-                ))?;
+                )
+            })?;
         }
         MirInst::Comment { text } => {
             writeln!(writer, "    # {}", text)?;
@@ -783,11 +791,14 @@ fn emit_load_fp_operand<W: Write>(
                 crate::mir::instruction::Immediate::F64(v) => v.to_bits() as i64,
                 crate::mir::instruction::Immediate::I32(v) => *v as i64,
                 crate::mir::instruction::Immediate::I64(v) => *v,
-                other => return Err(crate::error::LaminaError::CodegenError(
-                    crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
-                        "PowerPC64: float immediate {:?} not supported", other
-                    )),
-                )),
+                other => {
+                    return Err(crate::error::LaminaError::CodegenError(
+                        crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                            "PowerPC64: float immediate {:?} not supported",
+                            other
+                        )),
+                    ));
+                }
             };
             writeln!(writer, "    li 11, {}", bits)?;
             writeln!(writer, "    std 11, -8(1)")?;
@@ -884,11 +895,15 @@ mod tests {
             })
             .block("then")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(1))),
+                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(
+                    1,
+                ))),
             })
             .block("else")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(0))),
+                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(
+                    0,
+                ))),
             })
             .build();
         m.add_function(f);

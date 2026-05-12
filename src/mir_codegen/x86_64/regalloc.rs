@@ -27,7 +27,9 @@ const SYSV_SCRATCH_GPRS: &[&str] = &["r10", "r11"]; // keep as-is for non-leaf
 const SYSV_LEAF_SCRATCH_GPRS: &[&str] = &["rcx", "rdx"]; // for leaf functions
 
 const WIN64_MAP_GPRS: &[&str] = &["rbx", "rsi", "rdi", "r12", "r13", "r14", "r15"];
-const WIN64_LEAF_MAP_GPRS: &[&str] = &["rbx", "rsi", "rdi", "r12", "r13", "r14", "r15", "r10", "r11"];
+const WIN64_LEAF_MAP_GPRS: &[&str] = &[
+    "rbx", "rsi", "rdi", "r12", "r13", "r14", "r15", "r10", "r11",
+];
 const WIN64_SCRATCH_GPRS: &[&str] = &["r10", "r11"];
 const WIN64_LEAF_SCRATCH_GPRS: &[&str] = &["rcx", "rdx"];
 
