@@ -539,7 +539,6 @@ pub struct FunctionSignature<'a> {
 pub struct BasicBlock<'a> {
     /// Instructions in this block (must end with a terminator)
     pub instructions: Vec<Instruction<'a>>,
-    // Note: The last instruction MUST be a terminator (Br, Jmp, Ret)
 }
 
 /// A complete function definition.
@@ -586,7 +585,7 @@ pub struct Function<'a> {
     /// of blocks is implicitly defined by the control flow (branches and jumps).
     pub basic_blocks: HashMap<Label<'a>, BasicBlock<'a>>,
     /// Label of the first block to execute when the function is called
-    pub entry_block: Label<'a>, // Label of the first block to execute
+    pub entry_block: Label<'a>,
 }
 
 // ---------------------------------------------------------------------------
@@ -611,7 +610,6 @@ impl<'a> Function<'a> {
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors: Vec<String> = Vec::new();
 
-        // 1. Entry block must exist.
         if !self.basic_blocks.contains_key(self.entry_block) {
             errors.push(format!(
                 "entry block '{}' does not exist in function '@{}'",
@@ -620,7 +618,6 @@ impl<'a> Function<'a> {
         }
 
         for (label, block) in &self.basic_blocks {
-            // 2. Each block must end with a terminator.
             let last = block.instructions.last();
             let has_terminator = last.map(|i| i.is_terminator()).unwrap_or(false);
             if !has_terminator {
@@ -630,12 +627,10 @@ impl<'a> Function<'a> {
                 ));
             }
 
-            // 3. Validate each instruction.
             let mut defined: std::collections::HashSet<&str> =
                 self.signature.params.iter().map(|p| p.name).collect();
 
             for instr in &block.instructions {
-                // Check branch targets exist.
                 match instr {
                     Instruction::Br {
                         true_label,
@@ -679,7 +674,6 @@ impl<'a> Function<'a> {
                             }
                         }
                     }
-                    // 4. Return value/type consistency.
                     Instruction::Ret { ty, value } => {
                         let ret_is_void = matches!(ty, Type::Void);
                         let sig_is_void = matches!(self.signature.return_type, Type::Void);

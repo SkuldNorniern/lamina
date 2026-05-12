@@ -174,14 +174,11 @@ fn assemble_native(
                 output_path.display()
             );
         }
-        let mut ras = ras::Ras::with_object_write_options(
-            target_arch,
-            target_os,
-            ras_object_write_options,
-        )
-        .map_err(|e| {
-            LaminaError::ValidationError(format!("Failed to create ras assembler: {}", e))
-        })?;
+        let mut ras =
+            ras::Ras::with_object_write_options(target_arch, target_os, ras_object_write_options)
+                .map_err(|e| {
+                LaminaError::ValidationError(format!("Failed to create ras assembler: {}", e))
+            })?;
         ras.assemble_file(input_path, output_path)
             .map_err(|e| LaminaError::ValidationError(format!("ras assembly failed: {}", e)))?;
         return Ok(AssembleResult {

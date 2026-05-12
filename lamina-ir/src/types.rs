@@ -266,9 +266,9 @@ pub enum PrimitiveType {
     /// Boolean value (true or false)
     Bool,
     /// Single character (8-bit)
-    Char, // Single character (8-bit)
+    Char,
     /// Generic pointer type for memory addresses
-    Ptr, // Generic pointer type
+    Ptr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -280,8 +280,7 @@ pub struct StructField<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type<'a> {
     Primitive(PrimitiveType),
-    Named(Identifier<'a>), // Like "@Vec2"
-    // Using Box to avoid recursive type definition issues
+    Named(Identifier<'a>), // `@Vec2`
     Array {
         element_type: Box<Type<'a>>,
         size: u64,
@@ -295,7 +294,7 @@ pub enum Type<'a> {
     },
     Struct(Vec<StructField<'a>>),
     Tuple(Vec<Type<'a>>),
-    Void, // For functions that don't return a value
+    Void,
 }
 
 #[derive(Debug, Clone, PartialEq)] // Float comparison requires PartialEq only
@@ -313,20 +312,14 @@ pub enum Literal<'a> {
     Bool(bool),
     Char(char),
     String(&'a str),
-    // Null pointers or other constants might be needed later
 }
 
 #[derive(Debug, Clone, PartialEq)] // Removed Eq, Hash because f32 doesn't support them
 pub enum Value<'a> {
-    // SSA register/variable, like "%result"
     Variable(Identifier<'a>),
-    // Literal values used directly in instructions
     Constant(Literal<'a>),
-    // Reference to a global variable, like "@message"
     Global(Identifier<'a>),
 }
-
-// --- Display implementations for readability ---
 
 impl PrimitiveType {
     /// Returns all valid primitive type names as strings.
