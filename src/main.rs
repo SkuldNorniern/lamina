@@ -187,6 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 lamina_platform::TargetArchitecture::Wasm32
                 | lamina_platform::TargetArchitecture::Wasm64 => "WASM",
                 lamina_platform::TargetArchitecture::Aarch64 => "AArch64",
+                lamina_platform::TargetArchitecture::Arx64 => "ARX64",
                 lamina_platform::TargetArchitecture::Riscv32 => "RISC-V32",
                 lamina_platform::TargetArchitecture::Riscv64 => "RISC-V64",
                 #[cfg(feature = "nightly")]

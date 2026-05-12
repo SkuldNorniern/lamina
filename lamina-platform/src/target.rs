@@ -69,6 +69,7 @@ impl fmt::Display for Target {
 pub enum TargetArchitecture {
     X86_64,
     Aarch64,
+    Arx64,
     Arm32,
     Riscv32,
     Riscv64,
@@ -89,6 +90,7 @@ impl FromStr for TargetArchitecture {
         match s {
             "x86_64" => Ok(Self::X86_64),
             "aarch64" => Ok(Self::Aarch64),
+            "arx64" => Ok(Self::Arx64),
             "arm32" => Ok(Self::Arm32),
             "riscv32" => Ok(Self::Riscv32),
             "riscv64" => Ok(Self::Riscv64),
@@ -148,6 +150,7 @@ impl fmt::Display for TargetArchitecture {
         let s = match self {
             Self::X86_64 => "x86_64",
             Self::Aarch64 => "aarch64",
+            Self::Arx64 => "arx64",
             Self::Arm32 => "arm32",
             Self::Riscv32 => "riscv32",
             Self::Riscv64 => "riscv64",
@@ -192,6 +195,7 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "aarch64_macos",
     "aarch64_linux",
     "aarch64_windows",
+    "arx64_unknown",
     "wasm32_unknown",
     "wasm64_unknown",
     "riscv32_unknown",

@@ -227,7 +227,10 @@ impl CapabilitySet {
     pub fn for_architecture(arch: lamina_platform::TargetArchitecture) -> Self {
         use lamina_platform::TargetArchitecture;
         match arch {
-            TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Riscv32
+            TargetArchitecture::X86_64
+            | TargetArchitecture::Aarch64
+            | TargetArchitecture::Arx64
+            | TargetArchitecture::Riscv32
             | TargetArchitecture::Riscv64 => Self::standard_native(),
             #[cfg(feature = "nightly")]
             TargetArchitecture::Riscv128 => Self::standard_native(),

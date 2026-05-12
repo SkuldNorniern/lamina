@@ -513,6 +513,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     match target_obj.architecture {
         lamina_platform::TargetArchitecture::X86_64
         | lamina_platform::TargetArchitecture::Aarch64
+        | lamina_platform::TargetArchitecture::Arx64
         | lamina_platform::TargetArchitecture::Wasm32
         | lamina_platform::TargetArchitecture::Wasm64
         | lamina_platform::TargetArchitecture::Riscv32
