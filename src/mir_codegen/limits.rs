@@ -113,14 +113,11 @@ mod tests {
     fn accepts_boundary_arity() {
         let i64_ty = MirType::Scalar(ScalarType::I64);
         let params: Vec<Parameter> = (0..MAX_MIR_CALL_PARAMETERS)
-            .map(|i| {
-                Parameter::new(
-                    Register::Virtual(VirtualReg::gpr(i as u32)),
-                    i64_ty.clone(),
-                )
-            })
+            .map(|i| Parameter::new(Register::Virtual(VirtualReg::gpr(i as u32)), i64_ty.clone()))
             .collect();
-        let sig = Signature::new("big").with_params(params).with_return(i64_ty);
+        let sig = Signature::new("big")
+            .with_params(params)
+            .with_return(i64_ty);
         let mut f = Function::new(sig);
         let mut b = Block::new("entry");
         b.push(Instruction::Ret { value: None });

@@ -160,10 +160,10 @@ fn assemble_native(
     if backend == AssemblerBackend::Ras {
         if !matches!(
             target_arch,
-            TargetArchitecture::X86_64 | TargetArchitecture::Aarch64
+            TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
         ) {
             return Err(LaminaError::ValidationError(format!(
-                "Ras assembler supports x86_64 and AArch64 only, not {:?}",
+                "Ras assembler supports x86_64, AArch64, and ARX64 only, not {:?}",
                 target_arch
             )));
         }
@@ -313,7 +313,7 @@ pub fn detect_assembler_backend(
 ) -> AssemblerBackend {
     if matches!(
         target_arch,
-        TargetArchitecture::X86_64 | TargetArchitecture::Aarch64
+        TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
     ) && ras::is_object_file_supported(target_arch, target_os)
     {
         return AssemblerBackend::Ras;
