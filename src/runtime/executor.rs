@@ -3,8 +3,8 @@
 //! Functions to execute JIT-compiled functions with dynamic argument counts
 //! using the platform C ABI.
 
+use super::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
 use crate::mir::Signature;
-use super::c_abi_dynamic::{call_function_dynamic, MAX_JIT_ARGS};
 use std::collections::HashMap;
 
 fn evaluate_operand(
@@ -195,6 +195,22 @@ fn interpret_mir_function(
                 | Instruction::StackMap { .. }
                 | Instruction::PatchPoint { .. } => {
                     return Err("Interpreter: unsupported instruction".into());
+                }
+                #[cfg(feature = "nightly")]
+                Instruction::SimdBinary { .. }
+                | Instruction::SimdUnary { .. }
+                | Instruction::SimdTernary { .. }
+                | Instruction::SimdShuffle { .. }
+                | Instruction::SimdExtract { .. }
+                | Instruction::SimdInsert { .. }
+                | Instruction::SimdLoad { .. }
+                | Instruction::SimdStore { .. }
+                | Instruction::AtomicLoad { .. }
+                | Instruction::AtomicStore { .. }
+                | Instruction::AtomicBinary { .. }
+                | Instruction::AtomicCompareExchange { .. }
+                | Instruction::Fence { .. } => {
+                    return Err("Interpreter: SIMD/Atomic instructions not supported".into());
                 }
             }
         }
