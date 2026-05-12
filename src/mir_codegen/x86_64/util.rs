@@ -5,19 +5,14 @@ use crate::mir::types::MirType;
 
 /// Whether a MirType is a 32-bit float (`f32`).
 pub fn is_f32(ty: &MirType) -> bool {
-    matches!(
-        ty,
-        MirType::Scalar(crate::mir::types::ScalarType::F32)
-    )
+    matches!(ty, MirType::Scalar(crate::mir::types::ScalarType::F32))
 }
 
 /// Whether a MirType is a floating-point type (`f32` or `f64`).
 pub fn is_float(ty: &MirType) -> bool {
     matches!(
         ty,
-        MirType::Scalar(
-            crate::mir::types::ScalarType::F32 | crate::mir::types::ScalarType::F64
-        )
+        MirType::Scalar(crate::mir::types::ScalarType::F32 | crate::mir::types::ScalarType::F64)
     )
 }
 

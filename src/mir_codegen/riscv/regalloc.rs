@@ -102,11 +102,7 @@ impl RiscVRegAlloc {
                 }
             }
         }
-        s.next_stack_slot = if min_spill == 0 {
-            -8
-        } else {
-            min_spill - 8
-        };
+        s.next_stack_slot = if min_spill == 0 { -8 } else { min_spill - 8 };
         s
     }
 }
