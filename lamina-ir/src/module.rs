@@ -347,7 +347,11 @@ impl<'a> Module<'a> {
                 all_errors.extend(errs);
             }
         }
-        if all_errors.is_empty() { Ok(()) } else { Err(all_errors) }
+        if all_errors.is_empty() {
+            Ok(())
+        } else {
+            Err(all_errors)
+        }
     }
 }
 

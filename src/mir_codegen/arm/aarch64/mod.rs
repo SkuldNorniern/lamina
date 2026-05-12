@@ -22,9 +22,9 @@ use crate::mir_codegen::{
     capability::CapabilitySet,
 };
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
+use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::collections::HashMap;
 use std::sync::Arc;
-use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
 fn w_alias(xreg: &str) -> String {
@@ -302,17 +302,10 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     }
 
     let settings_arc = Arc::new(settings.clone());
-    let results = compile_functions_parallel(
-        module,
-        target_os,
-        codegen_units,
-        {
-            let settings_arc = settings_arc.clone();
-            move |name, func, os| {
-                compile_single_function_aarch64(name, func, os, settings_arc.as_ref())
-            }
-        },
-    )
+    let results = compile_functions_parallel(module, target_os, codegen_units, {
+        let settings_arc = settings_arc.clone();
+        move |name, func, os| compile_single_function_aarch64(name, func, os, settings_arc.as_ref())
+    })
     .map_err(parallel_codegen_error)?;
 
     for result in results {
@@ -1030,6 +1023,27 @@ fn emit_block<W: Write>(
                 return Err(crate::error::LaminaError::CodegenError(
                     CodegenError::UnsupportedFeature(
                         "VectorOp is not yet supported by the AArch64 backend".to_string(),
+                    ),
+                ));
+            }
+            #[cfg(feature = "nightly")]
+            MirInst::SimdBinary { .. }
+            | MirInst::SimdUnary { .. }
+            | MirInst::SimdTernary { .. }
+            | MirInst::SimdShuffle { .. }
+            | MirInst::SimdExtract { .. }
+            | MirInst::SimdInsert { .. }
+            | MirInst::SimdLoad { .. }
+            | MirInst::SimdStore { .. }
+            | MirInst::AtomicLoad { .. }
+            | MirInst::AtomicStore { .. }
+            | MirInst::AtomicBinary { .. }
+            | MirInst::AtomicCompareExchange { .. }
+            | MirInst::Fence { .. } => {
+                return Err(crate::error::LaminaError::CodegenError(
+                    CodegenError::UnsupportedFeature(
+                        "SIMD/Atomic instructions not yet supported by AArch64 backend"
+                            .to_string(),
                     ),
                 ));
             }

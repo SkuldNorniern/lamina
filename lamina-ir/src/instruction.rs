@@ -517,9 +517,7 @@ pub enum Instruction<'a> {
     ///
     /// # Preconditions
     /// - `target_label` must name a block in the same function.
-    Jmp {
-        target_label: Label<'a>,
-    },
+    Jmp { target_label: Label<'a> },
     /// Return from the current function.
     ///
     /// # Preconditions
@@ -956,7 +954,10 @@ impl<'a> Instruction<'a> {
     pub fn is_terminator(&self) -> bool {
         matches!(
             self,
-            Instruction::Ret { .. } | Instruction::Jmp { .. } | Instruction::Br { .. }
+            Instruction::Ret { .. }
+                | Instruction::Jmp { .. }
+                | Instruction::Br { .. }
+                | Instruction::Switch { .. }
         )
     }
 
@@ -1029,7 +1030,9 @@ impl<'a> Instruction<'a> {
                     push_value(arg, &mut vars);
                 }
             }
-            Instruction::GetElemPtr { array_ptr, index, .. } => {
+            Instruction::GetElemPtr {
+                array_ptr, index, ..
+            } => {
                 push_value(array_ptr, &mut vars);
                 push_value(index, &mut vars);
             }
@@ -1637,10 +1640,7 @@ mod tests {
             ty: PrimitiveType::I32,
             value: Value::Variable("x"),
             default: "default",
-            cases: vec![
-                (Literal::I32(0), "zero"),
-                (Literal::I32(1), "one"),
-            ],
+            cases: vec![(Literal::I32(0), "zero"), (Literal::I32(1), "one")],
         };
         assert_eq!(
             format!("{}", instr_switch),

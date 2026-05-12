@@ -387,16 +387,18 @@ impl Operand {
 
     /// Create a virtual GPR operand with the given id.
     pub fn v_gpr(id: u32) -> Self {
-        Operand::Register(Register::Virtual(
-            super::register::VirtualReg::new(id, super::register::RegisterClass::Gpr),
-        ))
+        Operand::Register(Register::Virtual(super::register::VirtualReg::new(
+            id,
+            super::register::RegisterClass::Gpr,
+        )))
     }
 
     /// Create a virtual FPR operand with the given id.
     pub fn v_fpr(id: u32) -> Self {
-        Operand::Register(Register::Virtual(
-            super::register::VirtualReg::new(id, super::register::RegisterClass::Fpr),
-        ))
+        Operand::Register(Register::Virtual(super::register::VirtualReg::new(
+            id,
+            super::register::RegisterClass::Fpr,
+        )))
     }
 
     /// Return `true` if this operand is an immediate value.
@@ -1255,9 +1257,9 @@ impl fmt::Display for Instruction {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::register::VirtualReg;
     use crate::types::ScalarType;
-    use super::*;
 
     #[test]
     fn test_instruction_def_reg() {
