@@ -14,9 +14,7 @@ use std::collections::HashMap;
 /// We exclude r1 (sp), r2 (TOC), r13 (thread pointer on Linux).
 /// We leave r3/r4 available since they are the primary return/arg pair
 /// but start our scratch pool at r5 to allow arg passing to use r3-r10.
-const AVAILABLE_GPRS: &[&str] = &[
-    "5", "6", "7", "8", "9", "10", "11", "12",
-];
+const AVAILABLE_GPRS: &[&str] = &["5", "6", "7", "8", "9", "10", "11", "12"];
 
 pub struct Ppc64RegAlloc {
     #[allow(dead_code)]

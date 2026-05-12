@@ -980,4 +980,3 @@ fn parse_primitive_from_ident(
         other => Err(state.error(format!("Invalid primitive type in conversion: {}", other))),
     }
 }
-

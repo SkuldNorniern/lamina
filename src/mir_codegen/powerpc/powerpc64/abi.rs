@@ -45,8 +45,7 @@ impl Ppc64Abi {
         ".L_mir_fmt_int: .string \"%lld\\n\""
     }
 
-    pub const ARG_REGISTERS: &'static [&'static str] =
-        &["3", "4", "5", "6", "7", "8", "9", "10"];
+    pub const ARG_REGISTERS: &'static [&'static str] = &["3", "4", "5", "6", "7", "8", "9", "10"];
 
     pub fn call_stub(&self, name: &str) -> Option<String> {
         common_call_stub(name, self.target_os)

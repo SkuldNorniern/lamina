@@ -50,10 +50,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let output_stem = if let Some(out_path) = &options.output_file {
         out_path.clone()
     } else {
-        let stem = input_path.file_stem().map_or_else(
-            || "a".into(),
-            PathBuf::from,
-        );
+        let stem = input_path
+            .file_stem()
+            .map_or_else(|| "a".into(), PathBuf::from);
         if target_for_extensions.operating_system == lamina_platform::TargetOperatingSystem::Windows
             && stem.extension().is_none()
         {
