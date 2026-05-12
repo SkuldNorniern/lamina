@@ -18,7 +18,7 @@ pub mod x86_64;
 
 pub use abi::Abi;
 pub use capability::{CapabilitySet, CodegenCapability};
-pub use limits::{validate_module_call_parameters, MAX_MIR_CALL_PARAMETERS};
+pub use limits::{MAX_MIR_CALL_PARAMETERS, validate_module_call_parameters};
 pub use settings::{MirCodegenSettings, RegallocStrategy};
 
 use std::collections::HashMap;
@@ -382,7 +382,10 @@ mod tests {
         .expect("graph-color + debug codegen");
 
         let asm = String::from_utf8(output).expect("UTF-8");
-        assert!(asm.contains(".file 1 \"add.lamina\""), "expected .file: {asm}");
+        assert!(
+            asm.contains(".file 1 \"add.lamina\""),
+            "expected .file: {asm}"
+        );
         assert!(asm.contains(".loc 1"), "expected .loc directives: {asm}");
     }
 
