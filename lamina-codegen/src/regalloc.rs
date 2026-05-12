@@ -674,6 +674,9 @@ mod tests {
         let regs = ["r12", "r13"];
         let gc = GraphColorAllocator::allocate(&intervals, &regs);
         let has_spill = gc.values().any(|a| matches!(a, Allocation::Spill(_)));
-        assert!(has_spill, "graph color should spill when k=2 and pressure is high");
+        assert!(
+            has_spill,
+            "graph color should spill when k=2 and pressure is high"
+        );
     }
 }

@@ -682,8 +682,7 @@ impl<'a> Function<'a> {
                     // 4. Return value/type consistency.
                     Instruction::Ret { ty, value } => {
                         let ret_is_void = matches!(ty, Type::Void);
-                        let sig_is_void =
-                            matches!(self.signature.return_type, Type::Void);
+                        let sig_is_void = matches!(self.signature.return_type, Type::Void);
                         if ret_is_void != sig_is_void {
                             errors.push(format!(
                                 "return in block '{}' of '@{}': return type '{}' does not match signature return type '{}'",
@@ -721,7 +720,11 @@ impl<'a> Function<'a> {
             }
         }
 
-        if errors.is_empty() { Ok(()) } else { Err(errors) }
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 }
 
@@ -1055,7 +1058,10 @@ mod tests {
     ) -> Function<'a> {
         Function {
             name: "test",
-            signature: FunctionSignature { params, return_type },
+            signature: FunctionSignature {
+                params,
+                return_type,
+            },
             annotations: vec![],
             basic_blocks: blocks,
             entry_block: entry,
@@ -1133,12 +1139,7 @@ mod tests {
                 }],
             },
         );
-        let f = simple_func(
-            vec![],
-            Type::Primitive(PrimitiveType::I32),
-            blocks,
-            "entry",
-        );
+        let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
         let errs = f.validate().unwrap_err();
         assert!(errs.iter().any(|e| e.contains("return type")));
     }
@@ -1190,12 +1191,7 @@ mod tests {
                 ],
             },
         );
-        let f = simple_func(
-            vec![],
-            Type::Primitive(PrimitiveType::I32),
-            blocks,
-            "entry",
-        );
+        let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
         assert!(f.validate().is_ok());
     }
 }

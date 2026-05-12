@@ -245,10 +245,10 @@ impl FunctionBuilder {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::instruction::{Instruction, IntBinOp, Operand};
     use crate::register::VirtualReg;
     use crate::types::ScalarType;
-    use super::*;
 
     #[test]
     fn test_signature_creation() {
