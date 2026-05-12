@@ -148,6 +148,20 @@ fn convert_function<'a>(
                         worklist.push_back(target_label);
                     }
                 }
+                IRInst::Switch { default, cases, .. } => {
+                    if !visited.contains(default) && f.basic_blocks.contains_key(default) {
+                        visited.insert(default);
+                        worklist.push_back(default);
+                    }
+                    for (_, case_label) in cases {
+                        let case_str: &str = case_label;
+                        if !visited.contains(case_str) && f.basic_blocks.contains_key(case_str)
+                        {
+                            visited.insert(case_str);
+                            worklist.push_back(case_str);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
