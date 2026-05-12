@@ -104,6 +104,18 @@ impl CfgSimplify {
                             .or_default()
                             .push(block.label.clone());
                     }
+                    Instruction::Switch { cases, default, .. } => {
+                        preds
+                            .entry(default.clone())
+                            .or_default()
+                            .push(block.label.clone());
+                        for (_, case_target) in cases {
+                            preds
+                                .entry(case_target.clone())
+                                .or_default()
+                                .push(block.label.clone());
+                        }
+                    }
                     _ => {}
                 }
             }

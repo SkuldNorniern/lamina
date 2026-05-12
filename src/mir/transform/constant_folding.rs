@@ -35,7 +35,10 @@ impl ConstantFolding {
 
         for block in &mut func.blocks {
             for instr in &mut block.instructions {
-                if self.try_fold_int(instr) || self.try_fold_float(instr) || self.try_fold_cmp(instr) {
+                if self.try_fold_int(instr)
+                    || self.try_fold_float(instr)
+                    || self.try_fold_cmp(instr)
+                {
                     changed = true;
                 }
             }
@@ -48,8 +51,7 @@ impl ConstantFolding {
         if let Instruction::IntBinary {
             op, dst, lhs, rhs, ..
         } = instr
-            && let (Some(lhs_val), Some(rhs_val)) =
-                (self.extract_i64(lhs), self.extract_i64(rhs))
+            && let (Some(lhs_val), Some(rhs_val)) = (self.extract_i64(lhs), self.extract_i64(rhs))
         {
             let result: i64 = match op {
                 crate::mir::IntBinOp::Add => match lhs_val.checked_add(rhs_val) {
@@ -115,7 +117,11 @@ impl ConstantFolding {
 
     fn try_fold_float(&self, instr: &mut Instruction) -> bool {
         if let Instruction::FloatBinary {
-            op, dst, lhs, rhs, ty,
+            op,
+            dst,
+            lhs,
+            rhs,
+            ty,
         } = instr
             && let (Some(l), Some(r)) = (self.extract_f64(lhs), self.extract_f64(rhs))
         {
@@ -201,9 +207,7 @@ impl ConstantFolding {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        Function, Immediate, IntBinOp, MirType, ScalarType, VirtualReg,
-    };
+    use crate::mir::{Function, Immediate, IntBinOp, MirType, ScalarType, VirtualReg};
 
     #[test]
     fn test_signed_division_overflow_prevention() {
@@ -335,7 +339,10 @@ mod tests {
         };
 
         let extract = |func: &Function| match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary { lhs: Operand::Immediate(Immediate::I64(v)), .. } => *v,
+            Instruction::IntBinary {
+                lhs: Operand::Immediate(Immediate::I64(v)),
+                ..
+            } => *v,
             _ => panic!("Expected folded IntBinary"),
         };
 
@@ -385,7 +392,10 @@ mod tests {
         };
 
         let extract = |func: &Function| match &func.blocks[0].instructions[0] {
-            Instruction::FloatBinary { lhs: Operand::Immediate(Immediate::F64(v)), .. } => *v,
+            Instruction::FloatBinary {
+                lhs: Operand::Immediate(Immediate::F64(v)),
+                ..
+            } => *v,
             _ => panic!("Expected folded FloatBinary"),
         };
 
@@ -422,7 +432,10 @@ mod tests {
         };
 
         let extract = |func: &Function| match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary { lhs: Operand::Immediate(Immediate::I64(v)), .. } => *v,
+            Instruction::IntBinary {
+                lhs: Operand::Immediate(Immediate::I64(v)),
+                ..
+            } => *v,
             _ => panic!("Expected folded to IntBinary"),
         };
 

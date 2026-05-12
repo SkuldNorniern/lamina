@@ -403,9 +403,10 @@ mod tests {
             .iter()
             .position(|i| {
                 if let Instruction::IntBinary { dst, .. } = i
-                    && let crate::mir::Register::Virtual(vreg) = dst {
-                        return vreg.id == 2;
-                    }
+                    && let crate::mir::Register::Virtual(vreg) = dst
+                {
+                    return vreg.id == 2;
+                }
                 false
             })
             .unwrap();
