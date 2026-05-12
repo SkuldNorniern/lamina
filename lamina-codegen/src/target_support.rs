@@ -13,6 +13,7 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
     match arch {
         TargetArchitecture::X86_64 => os_supported_for_x86_64(os),
         TargetArchitecture::Aarch64 => os_supported_for_aarch64(os),
+        TargetArchitecture::Arx64 => os_supported_for_arx64(os),
         TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => os_supported_for_riscv(os),
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
             matches!(
@@ -56,6 +57,11 @@ fn os_supported_for_aarch64(os: TargetOperatingSystem) -> bool {
     )
 }
 
+/// Returns true if the OS is supported for ARX64 code generation.
+fn os_supported_for_arx64(os: TargetOperatingSystem) -> bool {
+    matches!(os, TargetOperatingSystem::Unknown)
+}
+
 /// Returns true if the OS is supported for RISC-V code generation.
 fn os_supported_for_riscv(os: TargetOperatingSystem) -> bool {
     matches!(
@@ -71,7 +77,7 @@ fn os_supported_for_riscv(os: TargetOperatingSystem) -> bool {
 
 /// Returns a short description of supported targets for error messages.
 pub fn supported_assembly_targets_hint() -> &'static str {
-    "Supported: x86_64/aarch64/riscv32/riscv64/wasm32 on Linux, macOS, Windows, BSD, Redox. Use lamina_platform::Target for cross-compilation."
+    "Supported: x86_64/aarch64/riscv32/riscv64/wasm32 on Linux, macOS, Windows, BSD, Redox \n and for bare-metal. Use lamina_platform::Target for cross-compilation."
 }
 
 /// Returns true if the given OS uses ELF object format (Linux, BSD, Redox).
