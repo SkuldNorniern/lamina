@@ -10,8 +10,9 @@
 
 use crate::error::LaminaError;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::{env, fs};
 
 fn detect_compiler() -> Option<&'static str> {
     if Command::new("gcc").arg("--version").output().is_ok() {
@@ -58,6 +59,144 @@ fn get_crtn_files(target_os: TargetOperatingSystem) -> Vec<String> {
     };
 
     get_crt_file(compiler, "crtn.o").into_iter().collect()
+}
+
+fn windows_sdk_root() -> Option<PathBuf> {
+    env::var_os("WindowsSdkDir")
+        .or_else(|| env::var_os("UniversalCRTSdkDir"))
+        .map(PathBuf::from)
+        .or_else(|| {
+            env::var_os("ProgramFiles(x86)")
+                .map(PathBuf::from)
+                .map(|program_files_x86| program_files_x86.join("Windows Kits").join("10"))
+        })
+}
+
+fn windows_sdk_version(sdk_root: &Path) -> Option<String> {
+    env::var("WindowsSDKLibVersion")
+        .or_else(|_| env::var("UCRTVersion"))
+        .ok()
+        .map(|version| version.trim_matches(['\\', '/']).to_string())
+        .filter(|version| !version.is_empty())
+        .or_else(|| {
+            let mut versions = fs::read_dir(sdk_root.join("Lib"))
+                .ok()?
+                .filter_map(|entry| {
+                    let entry = entry.ok()?;
+                    if entry.file_type().ok()?.is_dir() {
+                        Some(entry.file_name().to_string_lossy().into_owned())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            versions.sort();
+            versions.pop()
+        })
+}
+
+fn msvc_library_arch(target_arch: TargetArchitecture) -> &'static str {
+    match target_arch {
+        TargetArchitecture::Aarch64 => "arm64",
+        _ => "x64",
+    }
+}
+
+fn build_msvc_library_paths(target_arch: TargetArchitecture) -> Vec<String> {
+    let Some(sdk_root) = windows_sdk_root() else {
+        return Vec::new();
+    };
+    let Some(sdk_version) = windows_sdk_version(&sdk_root) else {
+        return Vec::new();
+    };
+
+    let library_arch = msvc_library_arch(target_arch);
+    ["ucrt", "um"]
+        .into_iter()
+        .map(|library_family| {
+            sdk_root
+                .join("Lib")
+                .join(&sdk_version)
+                .join(library_family)
+                .join(library_arch)
+        })
+        .filter(|library_path| library_path.is_dir())
+        .map(|library_path| format!("/LIBPATH:{}", library_path.display()))
+        .collect()
+}
+
+fn latest_child_directory(parent: &Path) -> Option<PathBuf> {
+    let mut child_directories = fs::read_dir(parent)
+        .ok()?
+        .filter_map(|entry| {
+            let entry = entry.ok()?;
+            if entry.file_type().ok()?.is_dir() {
+                Some(entry.path())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    child_directories.sort();
+    child_directories.pop()
+}
+
+fn visual_studio_tool_roots() -> Vec<PathBuf> {
+    let mut tool_roots = Vec::new();
+
+    if let Some(tool_root) = env::var_os("VCToolsInstallDir").map(PathBuf::from) {
+        tool_roots.push(tool_root);
+    }
+
+    if let Some(vc_install_dir) = env::var_os("VCINSTALLDIR").map(PathBuf::from) {
+        let msvc_root = vc_install_dir.join("Tools").join("MSVC");
+        if let Some(tool_root) = latest_child_directory(&msvc_root) {
+            tool_roots.push(tool_root);
+        }
+    }
+
+    let editions = ["BuildTools", "Community", "Professional", "Enterprise"];
+    if let Some(program_files) = env::var_os("ProgramFiles").map(PathBuf::from) {
+        for edition in editions {
+            let msvc_root = program_files
+                .join("Microsoft Visual Studio")
+                .join("2022")
+                .join(edition)
+                .join("VC")
+                .join("Tools")
+                .join("MSVC");
+            if let Some(tool_root) = latest_child_directory(&msvc_root) {
+                tool_roots.push(tool_root);
+            }
+        }
+    }
+
+    if let Some(program_files_x86) = env::var_os("ProgramFiles(x86)").map(PathBuf::from) {
+        for edition in editions {
+            let msvc_root = program_files_x86
+                .join("Microsoft Visual Studio")
+                .join("2019")
+                .join(edition)
+                .join("VC")
+                .join("Tools")
+                .join("MSVC");
+            if let Some(tool_root) = latest_child_directory(&msvc_root) {
+                tool_roots.push(tool_root);
+            }
+        }
+    }
+
+    tool_roots
+}
+
+fn build_msvc_toolchain_library_paths(target_arch: TargetArchitecture) -> Vec<String> {
+    let library_arch = msvc_library_arch(target_arch);
+    visual_studio_tool_roots()
+        .into_iter()
+        .map(|tool_root| tool_root.join("lib").join(library_arch))
+        .filter(|library_path| library_path.is_dir())
+        .map(|library_path| format!("/LIBPATH:{}", library_path.display()))
+        .collect()
 }
 
 fn build_arch_emulation_flags(
@@ -186,6 +325,37 @@ fn build_unix_linker_args(
     args
 }
 
+fn clang_windows_target_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
+    match target_arch {
+        TargetArchitecture::X86_64 => Some("x86_64-pc-windows-msvc"),
+        TargetArchitecture::Aarch64 => Some("aarch64-pc-windows-msvc"),
+        _ => None,
+    }
+}
+
+fn build_clang_windows_linker_args(
+    input_path: &Path,
+    output_path: &Path,
+    target_arch: TargetArchitecture,
+    additional_flags: &[String],
+) -> Result<Vec<String>, LaminaError> {
+    let Some(target_triple) = clang_windows_target_triple(target_arch) else {
+        return Err(LaminaError::ValidationError(format!(
+            "Unsupported Windows target architecture for clang linker: {:?}",
+            target_arch
+        )));
+    };
+
+    let mut args = Vec::new();
+    args.push("-target".to_string());
+    args.push(target_triple.to_string());
+    args.push(input_path.to_string_lossy().to_string());
+    args.extend(additional_flags.iter().cloned());
+    args.push("-o".to_string());
+    args.push(output_path.to_string_lossy().to_string());
+    Ok(args)
+}
+
 /// Linker backend type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkerBackend {
@@ -243,6 +413,16 @@ pub fn link(
             ("ld", args)
         }
         LinkerBackend::Lld => {
+            if target_os == TargetOperatingSystem::Windows {
+                let args = build_clang_windows_linker_args(
+                    input_path,
+                    output_path,
+                    target_arch,
+                    additional_flags,
+                )?;
+                return run_linker("clang", args, verbose);
+            }
+
             let mut args = build_unix_linker_args(
                 input_path,
                 output_path,
@@ -292,10 +472,15 @@ pub fn link(
         LinkerBackend::Msvc => {
             let mut args = vec!["/nologo".to_string()];
             args.push("/subsystem:console".to_string());
+            args.push("/entry:main".to_string());
+            args.extend(build_msvc_library_paths(target_arch));
+            args.extend(build_msvc_toolchain_library_paths(target_arch));
             args.extend(additional_flags.iter().cloned());
             args.push(input_path.to_string_lossy().to_string());
-            args.push(format!("/Fe{}", output_path.display()));
-            args.push("/defaultlib:msvcrt".to_string());
+            args.push(format!("/OUT:{}", output_path.display()));
+            args.push("ucrt.lib".to_string());
+            args.push("legacy_stdio_definitions.lib".to_string());
+            args.push("kernel32.lib".to_string());
             ("link", args)
         }
         LinkerBackend::Custom(name) => {
@@ -330,9 +515,34 @@ pub fn link(
     Ok(())
 }
 
+fn run_linker(cmd: &str, args: Vec<String>, verbose: bool) -> Result<(), LaminaError> {
+    if verbose {
+        println!("[VERBOSE] Linking with {}: {:?}", cmd, args);
+    }
+
+    let output = Command::new(cmd).args(&args).output().map_err(|e| {
+        LaminaError::ValidationError(format!("Failed to spawn linker '{}': {}", cmd, e))
+    })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(LaminaError::ValidationError(format!(
+            "Linker '{}' failed:\nstdout: {}\nstderr: {}",
+            cmd, stdout, stderr
+        )));
+    }
+
+    Ok(())
+}
+
 /// Detect available linker backend.
 /// Weld supports -lc on Linux (ELF) and -lSystem on macOS (Mach-O).
 pub fn detect_linker_backend() -> LinkerBackend {
+    if cfg!(windows) && Command::new("clang").arg("--version").output().is_ok() {
+        return LinkerBackend::Lld;
+    }
+
     if cfg!(windows) && Command::new("link").arg("/?").output().is_ok() {
         return LinkerBackend::Msvc;
     }

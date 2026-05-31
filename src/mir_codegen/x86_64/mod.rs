@@ -682,6 +682,33 @@ fn emit_instruction_x86_64(
                             }
                         }
                     },
+                    crate::mir::IntBinOp::SDiv
+                    | crate::mir::IntBinOp::UDiv
+                    | crate::mir::IntBinOp::SRem
+                    | crate::mir::IntBinOp::URem => {
+                        load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
+                        match op {
+                            crate::mir::IntBinOp::SDiv => {
+                                writeln!(writer, "    cqto")?;
+                                writeln!(writer, "    idivq %rcx")?;
+                            }
+                            crate::mir::IntBinOp::UDiv => {
+                                writeln!(writer, "    xorq %rdx, %rdx")?;
+                                writeln!(writer, "    divq %rcx")?;
+                            }
+                            crate::mir::IntBinOp::SRem => {
+                                writeln!(writer, "    cqto")?;
+                                writeln!(writer, "    idivq %rcx")?;
+                                writeln!(writer, "    movq %rdx, %rax")?;
+                            }
+                            crate::mir::IntBinOp::URem => {
+                                writeln!(writer, "    xorq %rdx, %rdx")?;
+                                writeln!(writer, "    divq %rcx")?;
+                                writeln!(writer, "    movq %rdx, %rax")?;
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
                     _ => {
                         let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
                         load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
@@ -695,24 +722,6 @@ fn emit_instruction_x86_64(
                             }
                             crate::mir::IntBinOp::Mul => {
                                 writeln!(writer, "    imulq %{}, %rax", scratch)?
-                            }
-                            crate::mir::IntBinOp::SDiv => {
-                                writeln!(writer, "    cqto")?;
-                                writeln!(writer, "    idivq %{}", scratch)?;
-                            }
-                            crate::mir::IntBinOp::UDiv => {
-                                writeln!(writer, "    xorq %rdx, %rdx")?;
-                                writeln!(writer, "    divq %{}", scratch)?;
-                            }
-                            crate::mir::IntBinOp::SRem => {
-                                writeln!(writer, "    cqto")?;
-                                writeln!(writer, "    idivq %{}", scratch)?;
-                                writeln!(writer, "    movq %rdx, %rax")?;
-                            }
-                            crate::mir::IntBinOp::URem => {
-                                writeln!(writer, "    xorq %rdx, %rdx")?;
-                                writeln!(writer, "    divq %{}", scratch)?;
-                                writeln!(writer, "    movq %rdx, %rax")?;
                             }
                             crate::mir::IntBinOp::And => {
                                 writeln!(writer, "    andq %{}, %rax", scratch)?

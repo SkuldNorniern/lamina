@@ -11,7 +11,6 @@ fn run_lamina(opt: u8) -> String {
     let status = Command::new(&lamina_bin)
         .current_dir(repo_root)
         .args([
-            "--emit-mir-asm",
             "--verbose",
             &src,
             "--opt-level",
@@ -22,13 +21,13 @@ fn run_lamina(opt: u8) -> String {
     assert!(status.success(), "lamina failed at -O{}", opt);
 
     // Run produced executable
-    let exe = format!("{}/factorial", repo_root);
+    let exe = format!("{}/factorial{}", repo_root, std::env::consts::EXE_SUFFIX);
     let out = Command::new(&exe)
         .current_dir(repo_root)
         .output()
         .expect("failed to run produced executable");
     assert!(out.status.success(), "factorial run failed");
-    String::from_utf8_lossy(&out.stdout).to_string()
+    String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n")
 }
 
 fn expected_output() -> &'static str {
