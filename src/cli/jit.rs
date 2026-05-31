@@ -186,8 +186,10 @@ pub fn handle_jit_compilation(
             let tmp_dir = std::env::temp_dir().join(format!("lamina_jit_{}_{}", pid, nanos));
             std::fs::create_dir_all(&tmp_dir)?;
 
-            let intermediate_ext =
-                lamina::mir_codegen::assemble::get_intermediate_extension(target.architecture);
+            let intermediate_ext = lamina::mir_codegen::assemble::get_intermediate_extension(
+                target.architecture,
+                target.operating_system,
+            );
             let assembly_output_ext =
                 lamina::mir_codegen::assemble::get_assembly_output_extension(target.architecture);
             let final_ext = lamina::mir_codegen::link::get_output_extension(

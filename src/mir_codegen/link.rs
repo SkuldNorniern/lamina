@@ -207,8 +207,13 @@ fn build_arch_emulation_flags(
 
     match target_arch {
         TargetArchitecture::X86_64 => {
-            args.push("-m".to_string());
-            args.push("elf_x86_64".to_string());
+            if target_os == TargetOperatingSystem::MacOS {
+                args.push("-arch".to_string());
+                args.push("x86_64".to_string());
+            } else if target_os != TargetOperatingSystem::Windows {
+                args.push("-m".to_string());
+                args.push("elf_x86_64".to_string());
+            }
         }
         TargetArchitecture::Aarch64 => {
             if target_os == TargetOperatingSystem::MacOS {
@@ -399,10 +404,18 @@ pub fn link(
         )));
     }
 
-    let backend = backend.unwrap_or_else(detect_linker_backend);
+    let backend = backend
+        .unwrap_or_else(|| detect_linker_backend(target_arch, target_os));
+    let backend = validate_linker_backend_for_target(backend, target_arch, target_os)?;
 
     let (cmd, args) = match backend {
         LinkerBackend::Ld => {
+            if target_os == TargetOperatingSystem::Windows {
+                return Err(LaminaError::ValidationError(
+                    "GNU ld is not supported for Windows targets; use -c clang or -c msvc"
+                        .to_string(),
+                ));
+            }
             let args = build_unix_linker_args(
                 input_path,
                 output_path,
@@ -450,6 +463,11 @@ pub fn link(
             (cmd, args)
         }
         LinkerBackend::Mold => {
+            if target_os == TargetOperatingSystem::Windows {
+                return Err(LaminaError::ValidationError(
+                    "mold is not supported for Windows targets; use -c clang or -c msvc".to_string(),
+                ));
+            }
             let args = build_unix_linker_args(
                 input_path,
                 output_path,
@@ -460,6 +478,11 @@ pub fn link(
             ("mold", args)
         }
         LinkerBackend::Weld => {
+            if target_os == TargetOperatingSystem::Windows {
+                return Err(LaminaError::ValidationError(
+                    "weld is not supported for Windows targets; use -c clang or -c msvc".to_string(),
+                ));
+            }
             let args = build_unix_linker_args(
                 input_path,
                 output_path,
@@ -470,6 +493,12 @@ pub fn link(
             ("weld", args)
         }
         LinkerBackend::Msvc => {
+            if target_os != TargetOperatingSystem::Windows {
+                return Err(LaminaError::ValidationError(format!(
+                    "MSVC link is only supported for Windows targets, not {:?}",
+                    target_os
+                )));
+            }
             let mut args = vec!["/nologo".to_string()];
             args.push("/subsystem:console".to_string());
             args.push("/entry:main".to_string());
@@ -484,6 +513,12 @@ pub fn link(
             ("link", args)
         }
         LinkerBackend::Custom(name) => {
+            if target_os == TargetOperatingSystem::Windows {
+                return Err(LaminaError::ValidationError(format!(
+                    "Custom linker '{}' is not supported for Windows targets; use -c clang or -c msvc",
+                    name
+                )));
+            }
             let args = build_unix_linker_args(
                 input_path,
                 output_path,
@@ -536,50 +571,97 @@ fn run_linker(cmd: &str, args: Vec<String>, verbose: bool) -> Result<(), LaminaE
     Ok(())
 }
 
-/// Detect available linker backend.
-/// Weld supports -lc on Linux (ELF) and -lSystem on macOS (Mach-O).
-pub fn detect_linker_backend() -> LinkerBackend {
-    if cfg!(windows) && Command::new("clang").arg("--version").output().is_ok() {
-        return LinkerBackend::Lld;
+/// Detect available linker backend for the given target.
+/// Tool availability is checked on the host; routing uses target OS/arch.
+pub fn detect_linker_backend(
+    _target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> LinkerBackend {
+    match target_os {
+        TargetOperatingSystem::Windows => {
+            if Command::new("clang").arg("--version").output().is_ok() {
+                return LinkerBackend::Lld;
+            }
+            if Command::new("link").arg("/?").output().is_ok() {
+                return LinkerBackend::Msvc;
+            }
+            LinkerBackend::Msvc
+        }
+        TargetOperatingSystem::MacOS => {
+            if Command::new("weld").arg("--version").output().is_ok() {
+                return LinkerBackend::Weld;
+            }
+            if Command::new("mold").arg("--version").output().is_ok() {
+                return LinkerBackend::Mold;
+            }
+            if Command::new("ld").arg("-v").output().is_ok()
+                || Command::new("ld").arg("--version").output().is_ok()
+            {
+                return LinkerBackend::Ld;
+            }
+            if Command::new("ld64.lld").arg("-v").output().is_ok() {
+                return LinkerBackend::Lld;
+            }
+            LinkerBackend::Ld
+        }
+        _ => {
+            if Command::new("weld").arg("--version").output().is_ok() {
+                return LinkerBackend::Weld;
+            }
+            if Command::new("mold").arg("--version").output().is_ok() {
+                return LinkerBackend::Mold;
+            }
+            if Command::new("ld.lld").arg("-v").output().is_ok()
+                || Command::new("lld").arg("-v").output().is_ok()
+            {
+                return LinkerBackend::Lld;
+            }
+            if Command::new("ld").arg("--version").output().is_ok()
+                || Command::new("ld").arg("-v").output().is_ok()
+            {
+                return LinkerBackend::Ld;
+            }
+            LinkerBackend::Ld
+        }
     }
+}
 
-    if cfg!(windows) && Command::new("link").arg("/?").output().is_ok() {
-        return LinkerBackend::Msvc;
+fn validate_linker_backend_for_target(
+    backend: LinkerBackend,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> Result<LinkerBackend, LaminaError> {
+    match (backend, target_os) {
+        (LinkerBackend::Msvc, TargetOperatingSystem::Windows) => Ok(backend),
+        (LinkerBackend::Msvc, _) => Err(LaminaError::ValidationError(format!(
+            "MSVC link is only supported for Windows targets, not {:?}",
+            target_os
+        ))),
+        (
+            LinkerBackend::Ld | LinkerBackend::Mold | LinkerBackend::Weld,
+            TargetOperatingSystem::Windows,
+        ) => Err(LaminaError::ValidationError(format!(
+            "Linker backend {:?} is not supported for Windows targets; use -c clang or -c msvc",
+            backend
+        ))),
+        (LinkerBackend::Custom(_), TargetOperatingSystem::Windows) => {
+            Err(LaminaError::ValidationError(
+                "Custom linkers are not supported for Windows targets; use -c clang or -c msvc"
+                    .to_string(),
+            ))
+        }
+        (LinkerBackend::Lld, TargetOperatingSystem::Windows) => {
+            if clang_windows_target_triple(target_arch).is_some() {
+                Ok(backend)
+            } else {
+                Err(LaminaError::ValidationError(format!(
+                    "clang Windows linker does not support {:?}",
+                    target_arch
+                )))
+            }
+        }
+        _ => Ok(backend),
     }
-
-    if (cfg!(target_os = "linux") || cfg!(target_os = "macos"))
-        && Command::new("weld").arg("--version").output().is_ok()
-    {
-        return LinkerBackend::Weld;
-    }
-
-    if Command::new("mold").arg("--version").output().is_ok() {
-        return LinkerBackend::Mold;
-    }
-
-    if cfg!(target_os = "macos")
-        && (Command::new("ld").arg("-v").output().is_ok()
-            || Command::new("ld").arg("--version").output().is_ok())
-    {
-        return LinkerBackend::Ld;
-    }
-
-    if Command::new("ld64.lld").arg("-v").output().is_ok() {
-        return LinkerBackend::Lld;
-    }
-    if Command::new("ld.lld").arg("-v").output().is_ok()
-        || Command::new("lld").arg("-v").output().is_ok()
-    {
-        return LinkerBackend::Lld;
-    }
-
-    if Command::new("ld").arg("--version").output().is_ok()
-        || Command::new("ld").arg("-v").output().is_ok()
-    {
-        return LinkerBackend::Ld;
-    }
-
-    LinkerBackend::Ld
 }
 
 /// Get the appropriate file extension for final output
@@ -596,5 +678,98 @@ pub fn get_output_extension(
                 ""
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn macos_x86_64_link_args_use_arch_not_elf() {
+        let args = build_arch_emulation_flags(
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::MacOS,
+        );
+        assert!(args.contains(&"-arch".to_string()));
+        assert!(args.contains(&"x86_64".to_string()));
+        assert!(!args.contains(&"elf_x86_64".to_string()));
+    }
+
+    #[test]
+    fn linux_x86_64_link_args_use_elf_emulation() {
+        let args = build_arch_emulation_flags(
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Linux,
+        );
+        assert_eq!(args, vec!["-m".to_string(), "elf_x86_64".to_string()]);
+    }
+
+    #[test]
+    fn windows_x86_64_has_no_unix_emulation_flags() {
+        let args = build_arch_emulation_flags(
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Windows,
+        );
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn clang_windows_target_triple_x86_64() {
+        assert_eq!(
+            clang_windows_target_triple(TargetArchitecture::X86_64),
+            Some("x86_64-pc-windows-msvc")
+        );
+    }
+
+    #[test]
+    fn build_clang_windows_linker_args_includes_target_and_output() {
+        let input = Path::new("module.o");
+        let output = Path::new("module.exe");
+        let args = build_clang_windows_linker_args(
+            input,
+            output,
+            TargetArchitecture::X86_64,
+            &[],
+        )
+        .expect("x86_64 Windows should be supported");
+
+        assert_eq!(args[0], "-target");
+        assert_eq!(args[1], "x86_64-pc-windows-msvc");
+        assert!(args.contains(&input.to_string_lossy().to_string()));
+        assert!(args.contains(&"-o".to_string()));
+        assert!(args.contains(&output.to_string_lossy().to_string()));
+    }
+
+    #[test]
+    fn msvc_rejected_for_linux_target() {
+        let error = validate_linker_backend_for_target(
+            LinkerBackend::Msvc,
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Linux,
+        )
+        .expect_err("MSVC should be rejected for Linux targets");
+        assert!(error.to_string().contains("MSVC link"));
+    }
+
+    #[test]
+    fn weld_rejected_for_windows_target() {
+        let error = validate_linker_backend_for_target(
+            LinkerBackend::Weld,
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Windows,
+        )
+        .expect_err("weld should be rejected for Windows targets");
+        assert!(error.to_string().contains("Windows targets"));
+    }
+
+    #[test]
+    fn lld_accepted_for_windows_x86_64() {
+        validate_linker_backend_for_target(
+            LinkerBackend::Lld,
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Windows,
+        )
+        .expect("clang lld should be valid for Windows x86_64");
     }
 }
