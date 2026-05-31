@@ -617,9 +617,6 @@ pub fn detect_linker_backend(
             LinkerBackend::Msvc
         }
         TargetOperatingSystem::MacOS => {
-            if Command::new("weld").arg("--version").output().is_ok() {
-                return LinkerBackend::Weld;
-            }
             if Command::new("mold").arg("--version").output().is_ok() {
                 return LinkerBackend::Mold;
             }
@@ -631,12 +628,13 @@ pub fn detect_linker_backend(
             if Command::new("ld64.lld").arg("-v").output().is_ok() {
                 return LinkerBackend::Lld;
             }
-            LinkerBackend::Ld
-        }
-        _ => {
+            // weld is freestanding/no-libc only; use it as a last resort.
             if Command::new("weld").arg("--version").output().is_ok() {
                 return LinkerBackend::Weld;
             }
+            LinkerBackend::Ld
+        }
+        _ => {
             if Command::new("mold").arg("--version").output().is_ok() {
                 return LinkerBackend::Mold;
             }
@@ -649,6 +647,10 @@ pub fn detect_linker_backend(
                 || Command::new("ld").arg("-v").output().is_ok()
             {
                 return LinkerBackend::Ld;
+            }
+            // weld is freestanding/no-libc only; use it as a last resort.
+            if Command::new("weld").arg("--version").output().is_ok() {
+                return LinkerBackend::Weld;
             }
             LinkerBackend::Ld
         }
