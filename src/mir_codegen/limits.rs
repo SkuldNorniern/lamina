@@ -24,7 +24,7 @@ pub fn validate_module_call_parameters(
 ) -> Result<(), LaminaError> {
     let _ = target_arch;
     let max = MAX_MIR_CALL_PARAMETERS;
-    for (_, func) in &module.functions {
+    for func in module.functions.values() {
         if func.sig.params.len() > max {
             return Err(LaminaError::ValidationError(format!(
                 "Function '{}' has {} parameters (maximum is {})",

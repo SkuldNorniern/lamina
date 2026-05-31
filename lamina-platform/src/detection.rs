@@ -173,26 +173,31 @@ pub fn cpu_count() -> usize {
             unsafe extern "system" {
                 fn GetSystemInfo(lpSystemInfo: *mut SystemInfo);
             }
+            // Field order matches the Win32 SYSTEM_INFO layout (repr(C)); names
+            // are snake_case since only the layout is ABI-significant.
             #[repr(C)]
             struct SystemInfo {
-                wProcessorArchitecture: u16,
-                wReserved: u16,
-                dwPageSize: u32,
-                lpMinimumApplicationAddress: *mut std::ffi::c_void,
-                lpMaximumApplicationAddress: *mut std::ffi::c_void,
-                dwActiveProcessorMask: *mut u32,
-                dwNumberOfProcessors: u32,
-                dwProcessorType: u32,
-                dwAllocationGranularity: u32,
-                wProcessorLevel: u16,
-                wProcessorRevision: u16,
+                processor_architecture: u16,
+                reserved: u16,
+                page_size: u32,
+                minimum_application_address: *mut std::ffi::c_void,
+                maximum_application_address: *mut std::ffi::c_void,
+                active_processor_mask: *mut u32,
+                number_of_processors: u32,
+                processor_type: u32,
+                allocation_granularity: u32,
+                processor_level: u16,
+                processor_revision: u16,
             }
             let mut info = std::mem::zeroed::<SystemInfo>();
             GetSystemInfo(&mut info);
-            return info.dwNumberOfProcessors as usize;
+            info.number_of_processors as usize
         }
     }
 
     // Fallback for other platforms
-    1
+    #[cfg(not(target_os = "windows"))]
+    {
+        1
+    }
 }
