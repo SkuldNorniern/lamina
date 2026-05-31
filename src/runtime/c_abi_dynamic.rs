@@ -22,7 +22,7 @@
     all(target_arch = "x86_64", not(target_os = "windows")),
 ))]
 /// Upper bound for [`call_function_dynamic`] on AArch64 and SysV x86_64 (stack shim).
-pub const MAX_JIT_ARGS: usize = MAX_MIR_CALL_PARAMETERS;
+pub const MAX_JIT_ARGS: usize = crate::mir_codegen::MAX_MIR_CALL_PARAMETERS;
 
 #[cfg(not(any(
     target_arch = "aarch64",
