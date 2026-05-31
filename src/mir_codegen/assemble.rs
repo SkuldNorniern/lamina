@@ -295,7 +295,12 @@ fn assemble_native(
 }
 
 /// Detect available assembler backend for the given target.
-/// Uses ras (library) for x86_64 and AArch64 when ras can emit object files for that target (ELF; macOS/Windows use gas/clang until ras has Mach-O/COFF).
+///
+/// Prefers a system assembler (gas/clang) when one is installed, because ras
+/// cannot yet assemble programs that reference data symbols or external calls
+/// (e.g. `print`/printf). ras is used only as a fallback when no system
+/// assembler is present; select it explicitly with `--assembler ras` or
+/// `-c lamina` for the standalone, no-toolchain path.
 pub fn detect_assembler_backend(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
@@ -306,20 +311,20 @@ pub fn detect_assembler_backend(
         return AssemblerBackend::Lld;
     }
 
-    if matches!(
-        target_arch,
-        TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
-    ) && ras::is_object_file_supported(target_arch, target_os)
-    {
-        return AssemblerBackend::Ras;
-    }
-
     if Command::new("as").arg("--version").output().is_ok() {
         return AssemblerBackend::Gas;
     }
 
     if Command::new("clang").arg("--version").output().is_ok() {
         return AssemblerBackend::Lld;
+    }
+
+    if matches!(
+        target_arch,
+        TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
+    ) && ras::is_object_file_supported(target_arch, target_os)
+    {
+        return AssemblerBackend::Ras;
     }
 
     AssemblerBackend::Gas

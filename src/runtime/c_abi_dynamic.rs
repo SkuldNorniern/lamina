@@ -16,7 +16,6 @@
 //!
 //! Prefer packing parameters for hot paths; see [`JIT_ARG_SOFT_WARN_THRESHOLD`] for hints.
 
-use crate::mir_codegen::limits::MAX_MIR_CALL_PARAMETERS;
 
 #[cfg(any(
     target_arch = "aarch64",
@@ -241,7 +240,7 @@ pub unsafe fn call_function_dynamic(
     function_ptr: *const u8,
     args: &[i64],
     returns_value: bool,
-) -> Option<i64> {
+) -> Option<i64> { unsafe {
     if function_ptr.is_null() {
         return None;
     }
@@ -249,7 +248,7 @@ pub unsafe fn call_function_dynamic(
         return None;
     }
     transmute_dynamic_call(function_ptr, args, returns_value)
-}
+}}
 
 #[cfg(not(any(
     target_arch = "aarch64",
@@ -259,7 +258,7 @@ unsafe fn transmute_dynamic_call(
     function_ptr: *const u8,
     args: &[i64],
     returns_value: bool,
-) -> Option<i64> {
+) -> Option<i64> { unsafe {
     match args.len() {
         0 => {
             if returns_value {
@@ -726,7 +725,7 @@ unsafe fn transmute_dynamic_call(
         }
         _ => None,
     }
-}
+}}
 
 #[cfg(test)]
 mod call_dynamic_tests {
