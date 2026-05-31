@@ -150,6 +150,9 @@ pub unsafe fn call_function_dynamic(
     if args.len() > MAX_JIT_ARGS {
         return None;
     }
+    if args.len() <= 15 {
+        return unsafe { transmute_dynamic_call(function_ptr, args, returns_value) };
+    }
 
     let n = args.len();
     if n == 0 {
@@ -171,9 +174,6 @@ pub unsafe fn call_function_dynamic(
     regbuf[..reg_fill].copy_from_slice(&args[..reg_fill]);
 
     let stack_n = n.saturating_sub(6);
-    let stack_adj: usize = (stack_n * core::mem::size_of::<i64>() + 15) & !15;
-    let stack_adj_mem = stack_adj;
-    let stack_adj_ptr = &stack_adj_mem as *const usize;
     let stack_src: *const i64 = if stack_n > 0 {
         args.as_ptr().wrapping_add(6)
     } else {
@@ -182,51 +182,60 @@ pub unsafe fn call_function_dynamic(
 
     let rp = regbuf.as_ptr();
     let mut out: i64 = 0;
-    // `stack_adj_ptr` and `stack_n` are read again after `call`; keep them in callee-saved
-    // registers so a JIT callee cannot clobber the same `in(reg)` scratch the way it could
-    // for rdi–r11.
-    unsafe {
-        std::arch::asm!(
-            "mov r11, {fp}",
-            "mov r10, {rp}",
-            "mov rdi, [r10]",
-            "mov rsi, [r10 + 8]",
-            "mov rdx, [r10 + 16]",
-            "mov rcx, [r10 + 24]",
-            "mov r8, [r10 + 32]",
-            "mov r9, [r10 + 40]",
-            "mov rax, r14",
-            "test rax, rax",
-            "jz 2f",
-            "push r12",
-            "mov r12, [r13]",
-            "sub rsp, r12",
-            "xor rax, rax",
-            "4:",
-            "cmp rax, r14",
-            "jge 2f",
-            "mov r15, [{ss} + rax*8]",
-            "mov [rsp + rax*8], r15",
-            "inc rax",
-            "jmp 4b",
-            "2:",
-            "call r11",
-            "mov rax, r14",
-            "test rax, rax",
-            "jz 3f",
-            "mov r12, [r13]",
-            "add rsp, r12",
-            "pop r12",
-            "3:",
-            fp = in(reg) function_ptr,
-            rp = in(reg) rp,
-            ss = in(reg) stack_src,
-            in("r14") stack_n,
-            in("r13") stack_adj_ptr,
-            lateout("rax") out,
-            lateout("r15") _,
-            clobber_abi("C"),
-        );
+
+    if stack_n == 0 {
+        unsafe {
+            std::arch::asm!(
+                "mov r11, {fp}",
+                "mov r10, {rp}",
+                "mov rdi, [r10]",
+                "mov rsi, [r10 + 8]",
+                "mov rdx, [r10 + 16]",
+                "mov rcx, [r10 + 24]",
+                "mov r8, [r10 + 32]",
+                "mov r9, [r10 + 40]",
+                "call r11",
+                fp = in(reg) function_ptr,
+                rp = in(reg) rp,
+                lateout("rax") out,
+                clobber_abi("C"),
+            );
+        }
+    } else {
+        // Copy outgoing stack args into a heap buffer and point rsp at it for the
+        // call, then restore the host sp. Same rationale as the AArch64 path:
+        // adjusting rsp in asm alone can clobber Rust stack slots below the frame.
+        let byte_len = stack_n * core::mem::size_of::<i64>() + 16;
+        let backing = vec![0u8; byte_len];
+        let call_sp = (backing.as_ptr() as usize + 15) & !15;
+        let dst = call_sp as *mut i64;
+        unsafe {
+            core::ptr::copy_nonoverlapping(stack_src, dst, stack_n);
+        }
+        let mut saved_sp = 0usize;
+        let saved_sp_ptr = &mut saved_sp as *mut usize;
+        unsafe {
+            std::arch::asm!(
+                "mov [{sp}], rsp",
+                "mov rsp, {csp}",
+                "mov r11, {fp}",
+                "mov r10, {rp}",
+                "mov rdi, [r10]",
+                "mov rsi, [r10 + 8]",
+                "mov rdx, [r10 + 16]",
+                "mov rcx, [r10 + 24]",
+                "mov r8, [r10 + 32]",
+                "mov r9, [r10 + 40]",
+                "call r11",
+                "mov rsp, [{sp}]",
+                fp = in(reg) function_ptr,
+                rp = in(reg) rp,
+                csp = in(reg) call_sp,
+                sp = in(reg) saved_sp_ptr,
+                lateout("rax") out,
+                clobber_abi("C"),
+            );
+        }
     }
 
     if returns_value { Some(out) } else { None }
@@ -250,10 +259,6 @@ pub unsafe fn call_function_dynamic(
     transmute_dynamic_call(function_ptr, args, returns_value)
 }}
 
-#[cfg(not(any(
-    target_arch = "aarch64",
-    all(target_arch = "x86_64", not(target_os = "windows")),
-)))]
 unsafe fn transmute_dynamic_call(
     function_ptr: *const u8,
     args: &[i64],
