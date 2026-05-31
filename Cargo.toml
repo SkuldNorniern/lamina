@@ -20,7 +20,7 @@ name = "lamina"
 path = "src/main.rs"
 
 [dependencies]
-ras = { path = "ras", features = ["encoder"] }
+ras = { package = "lamina-ras", path = "ras", features = ["encoder"] }
 lamina-ir = { path = "lamina-ir" }
 lamina-platform = { path = "lamina-platform" }
 lamina-mir = { path = "lamina-mir" }
