@@ -19,14 +19,6 @@ exclude = [ "benchmarks/", "testcases/"]
 name = "lamina"
 path = "src/main.rs"
 
-[[bin]]
-name = "lamina-opt"
-path = "src/bin/lamina-opt.rs"
-
-[[bin]]
-name = "lamina-dis"
-path = "src/bin/lamina-dis.rs"
-
 [dependencies]
 ras = { path = "ras", features = ["encoder"] }
 lamina-ir = { path = "lamina-ir" }

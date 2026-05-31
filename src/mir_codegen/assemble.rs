@@ -308,6 +308,12 @@ pub fn detect_assembler_backend(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
 ) -> AssemblerBackend {
+    if target_os == TargetOperatingSystem::Windows
+        && Command::new("clang").arg("--version").output().is_ok()
+    {
+        return AssemblerBackend::Lld;
+    }
+
     if matches!(
         target_arch,
         TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
