@@ -330,6 +330,25 @@ fn build_unix_linker_args(
     args
 }
 
+/// Build args for weld as a freestanding, no-libc linker. weld synthesizes its
+/// own `_start` and emits a static executable, so no C runtime objects, libc,
+/// or dynamic linker are passed. This is the toolchain path that needs no
+/// external assembler or linker.
+fn build_weld_linker_args(
+    input_path: &Path,
+    output_path: &Path,
+    target_os: TargetOperatingSystem,
+    additional_flags: &[String],
+) -> Vec<String> {
+    let mut args = Vec::new();
+    args.push(input_path.to_string_lossy().to_string());
+    args.extend(build_entry_point_arg(target_os));
+    args.extend(additional_flags.iter().cloned());
+    args.push("-o".to_string());
+    args.push(output_path.to_string_lossy().to_string());
+    args
+}
+
 fn clang_windows_target_triple(target_arch: TargetArchitecture) -> Option<&'static str> {
     match target_arch {
         TargetArchitecture::X86_64 => Some("x86_64-pc-windows-msvc"),
@@ -483,14 +502,9 @@ pub fn link(
                     "weld is not supported for Windows targets; use -c clang or -c msvc".to_string(),
                 ));
             }
-            let args = build_unix_linker_args(
-                input_path,
-                output_path,
-                target_arch,
-                target_os,
-                additional_flags,
-            );
-            ("weld", args)
+            let args =
+                build_weld_linker_args(input_path, output_path, target_os, additional_flags);
+            return run_linker(&resolve_sibling_command("weld"), args, verbose);
         }
         LinkerBackend::Msvc => {
             if target_os != TargetOperatingSystem::Windows {
@@ -548,6 +562,21 @@ pub fn link(
     }
 
     Ok(())
+}
+
+/// Prefer a binary sitting next to the current executable (the bundled lamina
+/// toolchain), falling back to the bare name resolved via PATH.
+fn resolve_sibling_command(name: &str) -> String {
+    if let Ok(current_exe) = env::current_exe()
+        && let Some(dir) = current_exe.parent()
+    {
+        let suffix = if cfg!(windows) { ".exe" } else { "" };
+        let candidate = dir.join(format!("{}{}", name, suffix));
+        if candidate.is_file() {
+            return candidate.to_string_lossy().to_string();
+        }
+    }
+    name.to_string()
 }
 
 fn run_linker(cmd: &str, args: Vec<String>, verbose: bool) -> Result<(), LaminaError> {
@@ -761,6 +790,20 @@ mod tests {
         )
         .expect_err("weld should be rejected for Windows targets");
         assert!(error.to_string().contains("Windows targets"));
+    }
+
+    #[test]
+    fn weld_args_are_freestanding_no_libc() {
+        let input = Path::new("module.o");
+        let output = Path::new("module");
+        let args = build_weld_linker_args(input, output, TargetOperatingSystem::Linux, &[]);
+
+        assert!(args.contains(&"-e".to_string()));
+        assert!(args.contains(&"_start".to_string()));
+        assert!(args.contains(&"-o".to_string()));
+        assert!(!args.iter().any(|a| a == "-lc"));
+        assert!(!args.iter().any(|a| a == "--dynamic-linker"));
+        assert!(!args.iter().any(|a| a.contains("crt1.o")));
     }
 
     #[test]
