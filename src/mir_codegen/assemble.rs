@@ -156,17 +156,9 @@ fn assemble_native(
     ras_object_write_options: ras::ObjectWriteOptions,
 ) -> Result<AssembleResult, LaminaError> {
     let backend = backend.unwrap_or_else(|| detect_assembler_backend(target_arch, target_os));
+    let backend = validate_assembler_backend_for_target(backend, target_arch, target_os)?;
 
     if backend == AssemblerBackend::Ras {
-        if !matches!(
-            target_arch,
-            TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
-        ) {
-            return Err(LaminaError::ValidationError(format!(
-                "Ras assembler supports x86_64, AArch64, and ARX64 only, not {:?}",
-                target_arch
-            )));
-        }
         if verbose {
             println!(
                 "[VERBOSE] Assembling with ras (as/GAS alternative): {} -> {}",
@@ -341,13 +333,128 @@ pub fn get_assembly_output_extension(target_arch: TargetArchitecture) -> &'stati
     }
 }
 
-/// Get the appropriate file extension for intermediate format (assembly/WAT)
-pub fn get_intermediate_extension(target_arch: TargetArchitecture) -> &'static str {
+/// Intermediate assembly/WAT file extension for the given target.
+pub fn get_intermediate_extension(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> &'static str {
     match target_arch {
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "wat",
         _ => {
-            // Assembly file extension
-            if cfg!(windows) { "asm" } else { "s" }
+            if target_os == TargetOperatingSystem::Windows {
+                "asm"
+            } else {
+                "s"
+            }
         }
+    }
+}
+
+fn validate_assembler_backend_for_target(
+    backend: AssemblerBackend,
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> Result<AssemblerBackend, LaminaError> {
+    match backend {
+        AssemblerBackend::Wat2Wasm => {
+            if matches!(
+                target_arch,
+                TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
+            ) {
+                Ok(backend)
+            } else {
+                Err(LaminaError::ValidationError(
+                    "wat2wasm assembler is only valid for WASM targets".to_string(),
+                ))
+            }
+        }
+        AssemblerBackend::Ras => {
+            if !matches!(
+                target_arch,
+                TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
+            ) {
+                return Err(LaminaError::ValidationError(format!(
+                    "Ras assembler supports x86_64, AArch64, and ARX64 only, not {:?}",
+                    target_arch
+                )));
+            }
+            if !ras::is_object_file_supported(target_arch, target_os) {
+                return Err(LaminaError::ValidationError(format!(
+                    "Ras assembler does not support object output for {:?} {:?}",
+                    target_arch, target_os
+                )));
+            }
+            Ok(backend)
+        }
+        AssemblerBackend::Gas => {
+            if target_os == TargetOperatingSystem::Windows {
+                return Err(LaminaError::ValidationError(
+                    "GNU as/gas is not supported for Windows targets; use --assembler clang"
+                        .to_string(),
+                ));
+            }
+            Ok(backend)
+        }
+        AssemblerBackend::Lld | AssemblerBackend::Custom(_) => Ok(backend),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn intermediate_extension_windows_uses_asm() {
+        assert_eq!(
+            get_intermediate_extension(
+                TargetArchitecture::X86_64,
+                TargetOperatingSystem::Windows
+            ),
+            "asm"
+        );
+    }
+
+    #[test]
+    fn intermediate_extension_linux_uses_s() {
+        assert_eq!(
+            get_intermediate_extension(
+                TargetArchitecture::X86_64,
+                TargetOperatingSystem::Linux
+            ),
+            "s"
+        );
+    }
+
+    #[test]
+    fn intermediate_extension_macos_uses_s() {
+        assert_eq!(
+            get_intermediate_extension(
+                TargetArchitecture::Aarch64,
+                TargetOperatingSystem::MacOS
+            ),
+            "s"
+        );
+    }
+
+    #[test]
+    fn intermediate_extension_wasm_uses_wat() {
+        assert_eq!(
+            get_intermediate_extension(
+                TargetArchitecture::Wasm32,
+                TargetOperatingSystem::Linux
+            ),
+            "wat"
+        );
+    }
+
+    #[test]
+    fn gas_rejected_for_windows_target() {
+        let error = validate_assembler_backend_for_target(
+            AssemblerBackend::Gas,
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Windows,
+        )
+        .expect_err("gas should be rejected on Windows targets");
+        assert!(error.to_string().contains("GNU as/gas"));
     }
 }

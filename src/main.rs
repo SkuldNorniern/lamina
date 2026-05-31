@@ -263,8 +263,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .map_err(|e| format!("Code generation failed: {}", e))?;
 
-        let intermediate_ext =
-            lamina::mir_codegen::assemble::get_intermediate_extension(target.architecture);
+        let intermediate_ext = lamina::mir_codegen::assemble::get_intermediate_extension(
+            target.architecture,
+            target.operating_system,
+        );
         let mut intermediate_path = output_stem.clone();
         intermediate_path.set_extension(intermediate_ext);
 
