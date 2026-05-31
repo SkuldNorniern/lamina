@@ -9,7 +9,7 @@ keywords = ["compiler", "mir", "ir", "intermediate-representation"]
 categories = ["compilers", "development-tools"]
 
 [dependencies]
-lamina-platform = { path = "../lamina-platform" }
+lamina-platform = { path = "../lamina-platform", version = "0.1.0" }
 
 [features]
 default = []
