@@ -199,15 +199,17 @@ fn build_msvc_toolchain_library_paths(target_arch: TargetArchitecture) -> Vec<St
         .collect()
 }
 
-/// Check whether the MSVC `link.exe` linker is actually available.
+/// Return the full path to MSVC `link.exe`, or `None` if unavailable.
 ///
-/// `Command::new("link").arg("/?")` can succeed on machines that have a
-/// non-MSVC `link` on PATH (e.g. a Unix-style symlink from Git tools). We
-/// verify by looking for `link.exe` inside known VS tool-root `bin` directories
-/// before falling back to the bare PATH probe.
-/// Return the full path to the MSVC `link.exe`, or `None` if not found.
-/// Prefers VS tool-root paths over bare PATH to avoid picking up non-MSVC
-/// tools named `link` (e.g. Unix-style `link.exe` from Git or MSYS2).
+/// Searches VS tool-root `bin/Host<host_arch>/<target_arch>/link.exe` first so
+/// the correct binary is found even when no Developer Command Prompt has been
+/// activated (i.e. `link.exe` is not on PATH). All known host-architecture
+/// subdirectories (`HostX64`, `HostARM64`, `HostX86`) are tried, making the
+/// lookup host-architecture-agnostic.
+///
+/// Falls back to a bare `link /?` PATH probe only when the output contains the
+/// word `"Microsoft"`, ensuring non-MSVC tools also named `link` (e.g. the
+/// Unix-style symlink bundled with Git for Windows or MSYS2) are rejected.
 fn resolve_msvc_link_cmd(target_arch: TargetArchitecture) -> Option<String> {
     let target_binary_arch = msvc_library_arch(target_arch);
     // The `Host*` subdirectory is the **host** machine architecture, not the
