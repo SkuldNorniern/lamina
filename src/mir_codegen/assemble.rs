@@ -376,7 +376,9 @@ fn validate_assembler_backend_for_target(
         AssemblerBackend::Ras => {
             if !matches!(
                 target_arch,
-                TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
+                TargetArchitecture::X86_64
+                    | TargetArchitecture::Aarch64
+                    | TargetArchitecture::Arx64
             ) {
                 return Err(LaminaError::ValidationError(format!(
                     "Ras assembler supports x86_64, AArch64, and ARX64 only, not {:?}",
@@ -411,10 +413,7 @@ mod tests {
     #[test]
     fn intermediate_extension_windows_uses_asm() {
         assert_eq!(
-            get_intermediate_extension(
-                TargetArchitecture::X86_64,
-                TargetOperatingSystem::Windows
-            ),
+            get_intermediate_extension(TargetArchitecture::X86_64, TargetOperatingSystem::Windows),
             "asm"
         );
     }
@@ -422,10 +421,7 @@ mod tests {
     #[test]
     fn intermediate_extension_linux_uses_s() {
         assert_eq!(
-            get_intermediate_extension(
-                TargetArchitecture::X86_64,
-                TargetOperatingSystem::Linux
-            ),
+            get_intermediate_extension(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
             "s"
         );
     }
@@ -433,10 +429,7 @@ mod tests {
     #[test]
     fn intermediate_extension_macos_uses_s() {
         assert_eq!(
-            get_intermediate_extension(
-                TargetArchitecture::Aarch64,
-                TargetOperatingSystem::MacOS
-            ),
+            get_intermediate_extension(TargetArchitecture::Aarch64, TargetOperatingSystem::MacOS),
             "s"
         );
     }
@@ -444,10 +437,7 @@ mod tests {
     #[test]
     fn intermediate_extension_wasm_uses_wat() {
         assert_eq!(
-            get_intermediate_extension(
-                TargetArchitecture::Wasm32,
-                TargetOperatingSystem::Linux
-            ),
+            get_intermediate_extension(TargetArchitecture::Wasm32, TargetOperatingSystem::Linux),
             "wat"
         );
     }
