@@ -350,10 +350,7 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
     }
 }
 
-fn collect_regs_from_instruction(
-    instr: &Instruction,
-    used_regs: &mut HashSet<VirtualReg>,
-) {
+fn collect_regs_from_instruction(instr: &Instruction, used_regs: &mut HashSet<VirtualReg>) {
     match instr {
         Instruction::IntBinary { lhs, rhs, .. } => {
             collect_regs_from_operand(lhs, used_regs);

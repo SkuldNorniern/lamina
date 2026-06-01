@@ -93,11 +93,7 @@ impl<'a> CodegenBase<'a> {
 
     pub fn emit_asm_base<F>(&mut self, emit_fn: F, backend_name: &str) -> Result<(), CodegenError>
     where
-        F: FnOnce(
-            &MirModule,
-            &mut Vec<u8>,
-            TargetOperatingSystem,
-        ) -> Result<(), LaminaError>,
+        F: FnOnce(&MirModule, &mut Vec<u8>, TargetOperatingSystem) -> Result<(), LaminaError>,
     {
         if !self.prepared {
             return Err(CodegenError::InvalidCodegenOptions(format!(
@@ -370,9 +366,7 @@ pub fn lamina_to_codegen_error(err: LaminaError) -> CodegenError {
         LaminaError::InternalError(msg) => {
             CodegenError::InvalidCodegenOptions(format!("Internal error: {}", msg))
         }
-        LaminaError::CodegenError(inner) => {
-            CodegenError::InvalidCodegenOptions(inner.to_string())
-        }
+        LaminaError::CodegenError(inner) => CodegenError::InvalidCodegenOptions(inner.to_string()),
         LaminaError::ParsingError(msg)
         | LaminaError::ValidationError(msg)
         | LaminaError::MirError(msg)
