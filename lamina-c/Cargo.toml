@@ -1,0 +1,20 @@
+[package]
+name = "lamina-c"
+version = "0.1.0"
+edition = "2024"
+authors = ["Eira <eira@nornity.com>"]
+description = "Stable C API for the Lamina compiler"
+license = "Apache-2.0"
+repository = "https://github.com/SkuldNorniern/lamina"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+lamina = { path = "..", version = "0.0.10", features = ["encoder"] }
+lamina-ir = { path = "../lamina-ir", version = "0.1.0" }
+lamina-platform = { version = "0.1.0" }
+
+[features]
+default = []
+nightly = ["lamina/nightly", "lamina-ir/nightly"]
