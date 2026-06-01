@@ -80,9 +80,9 @@ impl<'a> Codegen for RiscVCodegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &std::collections::HashMap<String, crate::mir::MirType>,
-        globals: &std::collections::HashMap<String, crate::mir::Global>,
-        funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        types: &HashMap<String, crate::mir::MirType>,
+        globals: &HashMap<String, crate::mir::Global>,
+        funcs: &HashMap<String, crate::mir::Signature>,
         codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],
@@ -137,20 +137,20 @@ fn compile_single_function_riscv(
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
-) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
+) -> Result<Vec<u8>, CodegenError> {
     use std::io::Write;
     let mut output = Vec::new();
     let abi = RiscVAbi::new(target_os);
 
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{}:", label).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
         writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
 
@@ -199,7 +199,7 @@ fn compile_single_function_riscv(
                 GraphColorAllocator::allocate(&intervals, pool.as_slice())
             }
             RegallocStrategy::Incremental => {
-                return Err(crate::mir_codegen::CodegenError::InvalidCodegenOptions(
+                return Err(CodegenError::InvalidCodegenOptions(
                     "internal: incremental in global branch".to_string(),
                 ));
             }
@@ -235,12 +235,12 @@ fn compile_single_function_riscv(
 
     let stack_size = stack_slots.len() * 8;
     RiscVFrame::generate_prologue(&mut output, stack_size)
-        .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
         writeln!(output, ".L_{}:", block.label).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
 
         for inst in &block.instructions {
@@ -253,7 +253,7 @@ fn compile_single_function_riscv(
                 settings,
                 &mut debug_line,
             )
-            .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
     }
 
@@ -321,7 +321,7 @@ fn emit_instruction_riscv<W: Write>(
     inst: &MirInst,
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
@@ -475,7 +475,7 @@ fn emit_instruction_riscv<W: Write>(
             let abi = RiscVAbi::new(target_os);
             if name == "print" {
                 return Err(crate::error::LaminaError::CodegenError(
-                    crate::mir_codegen::CodegenError::UnsupportedFeature(
+                    CodegenError::UnsupportedFeature(
                         "RISC-V: TailCall to print is not supported".to_string(),
                     ),
                 ));
@@ -502,7 +502,7 @@ fn emit_instruction_riscv<W: Write>(
             };
             RiscVFrame::generate_tail_epilogue(writer, stack_size, &target_sym).map_err(|e| {
                 crate::error::LaminaError::CodegenError(
-                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()),
+                    CodegenError::InvalidCodegenOptions(e.to_string()),
                 )
             })?;
         }
@@ -523,7 +523,7 @@ fn emit_instruction_riscv<W: Write>(
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "fld",
                 crate::mir::MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
-                        crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                        CodegenError::UnsupportedFeature(format!(
                             "RISC-V load unsupported for type {:?}. \
                              Vector types are not yet implemented for RISC-V.",
                             ty
@@ -575,7 +575,7 @@ fn emit_instruction_riscv<W: Write>(
                 }
                 _ => {
                     return Err(crate::error::LaminaError::CodegenError(
-                        crate::mir_codegen::CodegenError::UnsupportedFeature(
+                        CodegenError::UnsupportedFeature(
                             "RISC-V load supports only base+offset addressing. \
                              Complex addressing modes (BaseIndexScale) are not yet implemented."
                                 .to_string(),
@@ -601,7 +601,7 @@ fn emit_instruction_riscv<W: Write>(
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "fsd",
                 crate::mir::MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
-                        crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                        CodegenError::UnsupportedFeature(format!(
                             "RISC-V store unsupported for type {:?}. \
                              Vector types are not yet implemented for RISC-V.",
                             ty
@@ -640,7 +640,7 @@ fn emit_instruction_riscv<W: Write>(
                 }
                 _ => {
                     return Err(crate::error::LaminaError::CodegenError(
-                        crate::mir_codegen::CodegenError::UnsupportedFeature(
+                        CodegenError::UnsupportedFeature(
                             "RISC-V store supports only base+offset addressing. \
                              Complex addressing modes (BaseIndexScale) are not yet implemented."
                                 .to_string(),
@@ -818,14 +818,14 @@ fn emit_instruction_riscv<W: Write>(
         }
         MirInst::VectorOp { .. } => {
             return Err(crate::error::LaminaError::CodegenError(
-                crate::mir_codegen::CodegenError::UnsupportedFeature(
+                CodegenError::UnsupportedFeature(
                     "VectorOp is not yet supported by the RISC-V backend".to_string(),
                 ),
             ));
         }
         other => {
             return Err(crate::error::LaminaError::CodegenError(
-                crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                CodegenError::UnsupportedFeature(format!(
                     "RISC-V backend: instruction not yet supported: {}",
                     other
                 )),

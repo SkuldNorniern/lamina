@@ -472,7 +472,7 @@ pub fn compile_lamina_ir_to_assembly<W: Write>(
     input_ir: &str,
     output_asm: &mut W,
     codegen_units: usize,
-) -> std::result::Result<(), LaminaError> {
+) -> Result<(), LaminaError> {
     let target = lamina_platform::Target::detect_host().to_str();
     compile_lamina_ir_to_target_assembly(input_ir, output_asm, &target, codegen_units)
 }
@@ -492,7 +492,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     output_asm: &mut W,
     target: &str,
     codegen_units: usize,
-) -> std::result::Result<(), LaminaError> {
+) -> Result<(), LaminaError> {
     let module = parser::parse_module(input_ir)?;
 
     use std::str::FromStr;
@@ -518,7 +518,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         | lamina_platform::TargetArchitecture::Wasm64
         | lamina_platform::TargetArchitecture::Riscv32
         | lamina_platform::TargetArchitecture::Riscv64 => {
-            mir_codegen::generate_mir_to_target(
+            generate_mir_to_target(
                 &mir_module,
                 output_asm,
                 target_obj.architecture,
