@@ -20,74 +20,74 @@
 #include "lamina.h"
 
 static void die(const char *where) {
-    const char *err = lamina_last_error();
+    const char *err = lia_last_error();
     fprintf(stderr, "%s failed: %s\n", where, err ? err : "(no error message)");
     exit(1);
 }
 
 int main(void) {
-    printf("lamina version : %s\n", lamina_version());
-    printf("host target    : %s\n", lamina_host_target());
+    printf("lamina version : %s\n", lia_version());
+    printf("host target    : %s\n", lia_host_target());
 
     /* --- Create builder ------------------------------------------------- */
-    lamina_builder_t *b = lamina_builder_create();
-    if (!b) { fprintf(stderr, "lamina_builder_create returned NULL\n"); return 1; }
+    lia_builder_t *b = lia_builder_create();
+    if (!b) { fprintf(stderr, "lia_builder_create returned NULL\n"); return 1; }
 
     /* --- Define add(i64 %a, i64 %b) -> i64 ------------------------------ */
-    lamina_type_t *i64 = lamina_type_i64();
+    lia_type_t *i64 = lia_type_i64();
 
-    lamina_param_t params[2];
+    lia_param_t params[2];
     params[0].name = "a";
     params[0].ty   = i64;
     params[1].name = "b";
     params[1].ty   = i64;
 
-    if (lamina_builder_function(b, "add", params, 2, i64) != LAMINA_OK)
-        die("lamina_builder_function");
+    if (lia_builder_function(b, "add", params, 2, i64) != LIA_OK)
+        die("lia_builder_function");
 
     /* entry block is created automatically */
 
     /* %result = add.i64 %a, %b */
-    lamina_value_t *va = lamina_value_var("a");
-    lamina_value_t *vb = lamina_value_var("b");
-    if (lamina_builder_binary(b, LAMINA_BIN_ADD, "result", i64, va, vb) != LAMINA_OK)
-        die("lamina_builder_binary");
+    lia_value_t *va = lia_value_var("a");
+    lia_value_t *vb = lia_value_var("b");
+    if (lia_builder_binary(b, LIA_BIN_ADD, "result", i64, va, vb) != LIA_OK)
+        die("lia_builder_binary");
 
     /* ret.i64 %result */
-    lamina_value_t *vr = lamina_value_var("result");
-    if (lamina_builder_return(b, i64, vr) != LAMINA_OK)
-        die("lamina_builder_return");
+    lia_value_t *vr = lia_value_var("result");
+    if (lia_builder_return(b, i64, vr) != LIA_OK)
+        die("lia_builder_return");
 
     /* --- Free temporaries (safe to do before finish) -------------------- */
-    lamina_value_free(va);
-    lamina_value_free(vb);
-    lamina_value_free(vr);
-    lamina_type_free(i64);
+    lia_value_free(va);
+    lia_value_free(vb);
+    lia_value_free(vr);
+    lia_type_free(i64);
 
     /* --- Finish builder → module ---------------------------------------- */
-    lamina_module_t *mod = NULL;
-    if (lamina_builder_finish(b, &mod) != LAMINA_OK)
-        die("lamina_builder_finish");
-    lamina_builder_free(b);
+    lia_module_t *mod = NULL;
+    if (lia_builder_finish(b, &mod) != LIA_OK)
+        die("lia_builder_finish");
+    lia_builder_free(b);
 
     /* --- Emit IR text ---------------------------------------------------- */
-    lamina_buffer_t ir_buf = {0};
-    if (lamina_module_emit_ir(mod, &ir_buf) != LAMINA_OK)
-        die("lamina_module_emit_ir");
+    lia_buffer_t ir_buf = {0};
+    if (lia_module_emit_ir(mod, &ir_buf) != LIA_OK)
+        die("lia_module_emit_ir");
 
     printf("\n--- Generated Lamina IR ---\n%.*s\n", (int)ir_buf.len, (char *)ir_buf.data);
-    lamina_buffer_free(&ir_buf);
+    lia_buffer_free(&ir_buf);
 
     /* --- Compile to assembly (host target, defaults) -------------------- */
-    lamina_buffer_t asm_buf = {0};
-    if (lamina_module_compile_to_assembly(mod, NULL, &asm_buf) != LAMINA_OK)
-        die("lamina_module_compile_to_assembly");
+    lia_buffer_t asm_buf = {0};
+    if (lia_module_compile_to_assembly(mod, NULL, &asm_buf) != LIA_OK)
+        die("lia_module_compile_to_assembly");
 
     printf("--- Assembly (%zu bytes) ---\n%.*s\n",
            asm_buf.len, (int)asm_buf.len, (char *)asm_buf.data);
 
-    lamina_buffer_free(&asm_buf);
-    lamina_module_free(mod);
+    lia_buffer_free(&asm_buf);
+    lia_module_free(mod);
 
     printf("Done.\n");
     return 0;

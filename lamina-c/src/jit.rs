@@ -16,7 +16,7 @@ use lamina_platform::Target;
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_jit_compile_ir(
+pub unsafe extern "C" fn lia_jit_compile_ir(
     ir: *const c_char,
     function_name: *const c_char,
     jit_out: *mut *mut LaminaJit,
@@ -42,7 +42,7 @@ pub unsafe extern "C" fn lamina_jit_compile_ir(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_module_compile_jit(
+pub unsafe extern "C" fn lia_module_compile_jit(
     module: *const LaminaModule,
     function_name: *const c_char,
     jit_out: *mut *mut LaminaJit,
@@ -69,7 +69,7 @@ pub unsafe extern "C" fn lamina_module_compile_jit(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_jit_get_function(
+pub unsafe extern "C" fn lia_jit_get_function(
     jit: *const LaminaJit,
     function_out: *mut *const std::ffi::c_void,
 ) -> LaminaStatus {
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn lamina_jit_get_function(
 
 /// Frees JIT handle and its executable memory. Safe to call with NULL.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_jit_free(jit: *mut LaminaJit) {
+pub unsafe extern "C" fn lia_jit_free(jit: *mut LaminaJit) {
     if !jit.is_null() {
         unsafe { drop(Box::from_raw(jit)) };
     }
@@ -97,7 +97,7 @@ pub unsafe extern "C" fn lamina_jit_free(jit: *mut LaminaJit) {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_jit_call_i64_0(jit: *const LaminaJit, result: *mut i64) -> LaminaStatus {
+pub unsafe extern "C" fn lia_jit_call_i64_0(jit: *const LaminaJit, result: *mut i64) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         if jit.is_null() || result.is_null() {
             set_error("jit or result is null");
@@ -111,7 +111,7 @@ pub unsafe extern "C" fn lamina_jit_call_i64_0(jit: *const LaminaJit, result: *m
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_jit_call_i64_1(jit: *const LaminaJit, a: i64, result: *mut i64) -> LaminaStatus {
+pub unsafe extern "C" fn lia_jit_call_i64_1(jit: *const LaminaJit, a: i64, result: *mut i64) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         if jit.is_null() || result.is_null() {
             set_error("jit or result is null");
@@ -125,7 +125,7 @@ pub unsafe extern "C" fn lamina_jit_call_i64_1(jit: *const LaminaJit, a: i64, re
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_jit_call_i64_2(jit: *const LaminaJit, a: i64, b: i64, result: *mut i64) -> LaminaStatus {
+pub unsafe extern "C" fn lia_jit_call_i64_2(jit: *const LaminaJit, a: i64, b: i64, result: *mut i64) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         if jit.is_null() || result.is_null() {
             set_error("jit or result is null");
