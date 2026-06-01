@@ -24,8 +24,8 @@ pub struct RiscVRegAlloc {
     #[allow(dead_code)]
     target_os: TargetOperatingSystem,
     available_gprs: Vec<&'static str>,
-    allocated_gprs: std::collections::HashMap<&'static str, VirtualReg>,
-    stack_slots: std::collections::HashMap<VirtualReg, i32>,
+    allocated_gprs: HashMap<&'static str, VirtualReg>,
+    stack_slots: HashMap<VirtualReg, i32>,
     next_stack_slot: i32,
 }
 
@@ -48,8 +48,8 @@ impl RiscVRegAlloc {
         Self {
             target_os,
             available_gprs: Self::AVAILABLE_REGISTERS.to_vec(),
-            allocated_gprs: std::collections::HashMap::new(),
-            stack_slots: std::collections::HashMap::new(),
+            allocated_gprs: HashMap::new(),
+            stack_slots: HashMap::new(),
             next_stack_slot: -8,
         }
     }

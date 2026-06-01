@@ -97,7 +97,7 @@ impl<'a> CodegenBase<'a> {
             &MirModule,
             &mut Vec<u8>,
             TargetOperatingSystem,
-        ) -> Result<(), crate::error::LaminaError>,
+        ) -> Result<(), LaminaError>,
     {
         if !self.prepared {
             return Err(CodegenError::InvalidCodegenOptions(format!(
@@ -129,7 +129,7 @@ impl<'a> CodegenBase<'a> {
             &mut Vec<u8>,
             TargetOperatingSystem,
             usize,
-        ) -> Result<(), crate::error::LaminaError>,
+        ) -> Result<(), LaminaError>,
     {
         if !self.prepared {
             return Err(CodegenError::InvalidCodegenOptions(format!(
@@ -342,7 +342,7 @@ where
 pub fn emit_print_format_section<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> std::result::Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     match target_os {
         TargetOperatingSystem::MacOS => {
             writeln!(writer, ".section __TEXT,__cstring,cstring_literals")?;
@@ -365,19 +365,19 @@ pub fn emit_print_format_section<W: Write>(
 }
 
 /// Convert LaminaError to CodegenError with consistent error type.
-pub fn lamina_to_codegen_error(err: crate::error::LaminaError) -> CodegenError {
+pub fn lamina_to_codegen_error(err: LaminaError) -> CodegenError {
     match err {
-        crate::error::LaminaError::InternalError(msg) => {
+        LaminaError::InternalError(msg) => {
             CodegenError::InvalidCodegenOptions(format!("Internal error: {}", msg))
         }
-        crate::error::LaminaError::CodegenError(inner) => {
+        LaminaError::CodegenError(inner) => {
             CodegenError::InvalidCodegenOptions(inner.to_string())
         }
-        crate::error::LaminaError::ParsingError(msg)
-        | crate::error::LaminaError::ValidationError(msg)
-        | crate::error::LaminaError::MirError(msg)
-        | crate::error::LaminaError::IoError(msg)
-        | crate::error::LaminaError::Utf8Error(msg) => CodegenError::InvalidCodegenOptions(msg),
+        LaminaError::ParsingError(msg)
+        | LaminaError::ValidationError(msg)
+        | LaminaError::MirError(msg)
+        | LaminaError::IoError(msg)
+        | LaminaError::Utf8Error(msg) => CodegenError::InvalidCodegenOptions(msg),
     }
 }
 

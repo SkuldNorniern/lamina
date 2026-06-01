@@ -384,7 +384,7 @@ mod tests {
             .add_transform(CfgSimplify)
             .add_transform(ConstantFolding);
         let stats = pipeline.apply_to_function(&mut func).unwrap();
-        assert!(stats.transforms_run == 2);
+        assert_eq!(stats.transforms_run, 2);
     }
 
     #[test]
@@ -414,7 +414,7 @@ mod tests {
             .add_transform(Peephole)
             .add_transform(DeadCodeElimination);
         let stats = pipeline.apply_to_function(&mut func).unwrap();
-        assert!(stats.transforms_run == 2);
+        assert_eq!(stats.transforms_run, 2);
     }
 
     #[test]

@@ -663,7 +663,7 @@ pub fn detect_linker_backend(
 ) -> LinkerBackend {
     // Check for weld in the same directory as the current executable (bundled toolchain).
     let weld_cmd = resolve_sibling_command("weld");
-    let has_weld = std::path::Path::new(&weld_cmd).is_file()
+    let has_weld = Path::new(&weld_cmd).is_file()
         || Command::new(&weld_cmd).arg("--version").output().is_ok();
 
     match target_os {

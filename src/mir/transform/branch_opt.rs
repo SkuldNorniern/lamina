@@ -25,7 +25,7 @@ impl Transform for BranchOptimization {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, String> {
         self.apply_internal(func)
     }
 }
@@ -92,7 +92,7 @@ impl BranchOptimization {
         Ok(changed)
     }
 
-    fn compute_reachable_blocks(&self, func: &Function) -> std::collections::HashSet<String> {
+    fn compute_reachable_blocks(&self, func: &Function) -> HashSet<String> {
         use std::collections::{HashSet, VecDeque};
 
         let mut reachable = HashSet::new();

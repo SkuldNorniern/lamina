@@ -23,7 +23,7 @@ use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 /// Runtime compilation result
 pub struct RuntimeResult {
     /// Executable memory containing compiled code
-    pub memory: ras::ExecutableMemory,
+    pub memory: ExecutableMemory,
     /// Function pointer (unsafe - caller must ensure signature matches)
     pub function_ptr: *const u8,
 }
@@ -85,7 +85,7 @@ pub fn compile_to_runtime(
         };
 
         // Allocate writable memory
-        let mut memory = ras::ExecutableMemory::allocate_writable(code.len()).map_err(|e| {
+        let mut memory = ExecutableMemory::allocate_writable(code.len()).map_err(|e| {
             LaminaError::ValidationError(format!("Memory allocation failed: {}", e))
         })?;
 

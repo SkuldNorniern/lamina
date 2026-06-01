@@ -156,25 +156,25 @@ fn compile_single_function_wasm(
     func_name: &str,
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
-) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
+) -> Result<Vec<u8>, CodegenError> {
     use std::io::Write;
     let mut output = Vec::new();
     let abi = WasmABI::new(target_os);
 
     let mangled_name = abi.mangle_function_name(func_name);
     writeln!(output, "  (func ${}", mangled_name).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
     for (i, _param) in func.sig.params.iter().enumerate() {
         writeln!(output, "    (param $p{} i64)", i).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
 
     if func.sig.ret_ty.is_some() {
         writeln!(output, "    (result i64)").map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
 
@@ -199,7 +199,7 @@ fn compile_single_function_wasm(
     for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
         vreg_to_local.insert(*vreg, local_idx);
         writeln!(output, "{}", abi.generate_local_decl(local_idx)).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
 
@@ -209,72 +209,72 @@ fn compile_single_function_wasm(
     }
 
     writeln!(output, "    (local $pc i64)").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
     writeln!(output, "    i64.const 0").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
     writeln!(output, "    local.set $pc").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
     writeln!(output, "    (loop $dispatch_loop").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
     let num_blocks = func.blocks.len();
     for i in (0..num_blocks).rev() {
         writeln!(output, "      (block $block_{}", i).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
 
     writeln!(output, "        local.get $pc").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
     writeln!(output, "        i32.wrap_i64").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
     write!(output, "        br_table").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
     for i in 0..num_blocks {
         write!(output, " {}", i).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
     writeln!(output, " 0").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
     for block in func.blocks.iter() {
         writeln!(output, "      )").map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
         writeln!(output, "      ;; Block: {}", block.label).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
         for inst in &block.instructions {
             emit_instruction_wasm(inst, &mut output, &vreg_to_local, &block_labels).map_err(
-                |e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()),
+                |e| CodegenError::InvalidCodegenOptions(e.to_string()),
             )?;
         }
         writeln!(output, "      br $dispatch_loop").map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
 
     writeln!(output, "    )").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
     if func.sig.ret_ty.is_some() {
         writeln!(output, "    i64.const 0").map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
 
     writeln!(output, "  )").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
     Ok(output)
@@ -827,7 +827,7 @@ fn emit_instruction_wasm(
         }
         other => {
             return Err(crate::error::LaminaError::CodegenError(
-                crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                CodegenError::UnsupportedFeature(format!(
                     "WASM backend: instruction not yet supported: {}",
                     other
                 )),

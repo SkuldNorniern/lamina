@@ -29,7 +29,7 @@ impl Transform for Peephole {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, String> {
         Ok(self.run_on_function(func))
     }
 }
@@ -545,7 +545,7 @@ fn decompose_multiplication(const_val: i64) -> Option<(u32, i64)> {
     }
     // We can support simple shifts + add/sub.
     // This is primarily useful if we can replace the MUL instruction with a sequence,
-    // which Peephole isn't well equipped for (1->N expansion).
+    // which Peephole isn't well-equipped for (1->N expansion).
     // So we return None for now unless it's a pure shift (handled above).
     None
 }
@@ -642,7 +642,7 @@ mod tests {
             .with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntCmp {
-            op: crate::mir::IntCmpOp::SLt,
+            op: IntCmpOp::SLt,
             ty: MirType::Scalar(ScalarType::I64),
             dst: Register::Virtual(VirtualReg::gpr(0)),
             lhs: Operand::Immediate(Immediate::I64(1)),
@@ -657,7 +657,7 @@ mod tests {
         let bb = &func.blocks[0];
         match &bb.instructions[0] {
             Instruction::IntBinary { op, lhs, rhs, .. } => {
-                assert_eq!(*op, crate::mir::IntBinOp::Add);
+                assert_eq!(*op, IntBinOp::Add);
                 assert_eq!(lhs, &Operand::Immediate(Immediate::I64(1))); // True result (1)
                 assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
             }
@@ -922,7 +922,7 @@ mod tests {
             .with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntCmp {
-            op: crate::mir::IntCmpOp::ULt,
+            op: IntCmpOp::ULt,
             ty: MirType::Scalar(ScalarType::I64),
             dst: Register::Virtual(VirtualReg::gpr(0)),
             lhs: Operand::Immediate(Immediate::I64(0)),
@@ -950,7 +950,7 @@ mod tests {
             .with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntCmp {
-            op: crate::mir::IntCmpOp::UGt,
+            op: IntCmpOp::UGt,
             ty: MirType::Scalar(ScalarType::I64),
             dst: Register::Virtual(VirtualReg::gpr(0)),
             lhs: Operand::Immediate(Immediate::I64(-1)), // u64::MAX
