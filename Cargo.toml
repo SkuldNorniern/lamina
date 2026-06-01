@@ -24,7 +24,7 @@ ras = { package = "lamina-ras", version = "0.1.0", features = ["encoder"] }
 lamina-ir = { path = "lamina-ir", version = "0.1.0" }
 lamina-platform = { version = "0.1.0" }
 lamina-mir = { version = "0.1.0" }
-lamina-codegen = { path = "lamina-codegen", version = "0.1.0" }
+lamina-codegen = { path = "lamina-codegen", version = "0.1.1" }
 
 [features]
 default = ["encoder"]
