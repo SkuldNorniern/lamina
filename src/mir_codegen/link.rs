@@ -342,9 +342,18 @@ fn build_weld_linker_args(
 ) -> Vec<String> {
     let mut args = Vec::new();
     args.push(input_path.to_string_lossy().to_string());
-    // Windows: weld detects PE from .exe suffix; no entry point arg needed (weld finds main).
-    if target_os != TargetOperatingSystem::Windows {
-        args.extend(build_entry_point_arg(target_os));
+    match target_os {
+        TargetOperatingSystem::Windows => {
+            // weld detects PE from .exe output suffix; no entry-point arg needed.
+        }
+        TargetOperatingSystem::MacOS => {
+            // macOS: link against libSystem (contains printf, fflush, etc.)
+            args.push("-lSystem".to_string());
+        }
+        _ => {
+            // Linux/BSD: link against libc for printf, fflush, etc.
+            args.push("-lc".to_string());
+        }
     }
     args.extend(additional_flags.iter().cloned());
     args.push("-o".to_string());
@@ -790,26 +799,25 @@ mod tests {
     }
 
     #[test]
-    fn weld_rejected_for_windows_target() {
-        let error = validate_linker_backend_for_target(
+    fn weld_accepted_for_windows_target() {
+        // weld now supports Windows PE linking (COFF→PE with import table).
+        validate_linker_backend_for_target(
             LinkerBackend::Weld,
             TargetArchitecture::X86_64,
             TargetOperatingSystem::Windows,
         )
-        .expect_err("weld should be rejected for Windows targets");
-        assert!(error.to_string().contains("Windows targets"));
+        .expect("weld should be accepted for Windows targets");
     }
 
     #[test]
-    fn weld_args_are_freestanding_no_libc() {
+    fn weld_args_include_libc_on_linux() {
         let input = Path::new("module.o");
         let output = Path::new("module");
         let args = build_weld_linker_args(input, output, TargetOperatingSystem::Linux, &[]);
-
-        assert!(args.contains(&"-e".to_string()));
-        assert!(args.contains(&"_start".to_string()));
+        // weld links against libc for printf/fflush access.
+        assert!(args.iter().any(|a| a == "-lc"), "expected -lc in args: {args:?}");
         assert!(args.contains(&"-o".to_string()));
-        assert!(!args.iter().any(|a| a == "-lc"));
+        // No CRT objects or dynamic-linker args — weld handles those itself.
         assert!(!args.iter().any(|a| a == "--dynamic-linker"));
         assert!(!args.iter().any(|a| a.contains("crt1.o")));
     }
