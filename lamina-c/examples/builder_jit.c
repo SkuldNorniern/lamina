@@ -23,63 +23,63 @@
 #include "lamina_nightly.h"
 
 static void die(const char *where) {
-    const char *err = lamina_last_error();
+    const char *err = lia_last_error();
     fprintf(stderr, "%s failed: %s\n", where, err ? err : "(no error message)");
     exit(1);
 }
 
 int main(void) {
-    printf("lamina version : %s\n", lamina_version());
-    printf("host target    : %s\n", lamina_host_target());
+    printf("lamina version : %s\n", lia_version());
+    printf("host target    : %s\n", lia_host_target());
 
     /* --- Build add(i64, i64) -> i64 ------------------------------------- */
-    lamina_builder_t *b = lamina_builder_create();
-    if (!b) { fprintf(stderr, "lamina_builder_create returned NULL\n"); return 1; }
+    lia_builder_t *b = lia_builder_create();
+    if (!b) { fprintf(stderr, "lia_builder_create returned NULL\n"); return 1; }
 
-    lamina_type_t *i64 = lamina_type_i64();
+    lia_type_t *i64 = lia_type_i64();
 
-    lamina_param_t params[2];
+    lia_param_t params[2];
     params[0].name = "a"; params[0].ty = i64;
     params[1].name = "b"; params[1].ty = i64;
 
-    if (lamina_builder_function(b, "add", params, 2, i64) != LAMINA_OK)
-        die("lamina_builder_function");
+    if (lia_builder_function(b, "add", params, 2, i64) != LIA_OK)
+        die("lia_builder_function");
 
-    lamina_value_t *va = lamina_value_var("a");
-    lamina_value_t *vb = lamina_value_var("b");
-    if (lamina_builder_binary(b, LAMINA_BIN_ADD, "result", i64, va, vb) != LAMINA_OK)
-        die("lamina_builder_binary");
+    lia_value_t *va = lia_value_var("a");
+    lia_value_t *vb = lia_value_var("b");
+    if (lia_builder_binary(b, LIA_BIN_ADD, "result", i64, va, vb) != LIA_OK)
+        die("lia_builder_binary");
 
-    lamina_value_t *vr = lamina_value_var("result");
-    if (lamina_builder_return(b, i64, vr) != LAMINA_OK)
-        die("lamina_builder_return");
+    lia_value_t *vr = lia_value_var("result");
+    if (lia_builder_return(b, i64, vr) != LIA_OK)
+        die("lia_builder_return");
 
-    lamina_value_free(va);
-    lamina_value_free(vb);
-    lamina_value_free(vr);
-    lamina_type_free(i64);
+    lia_value_free(va);
+    lia_value_free(vb);
+    lia_value_free(vr);
+    lia_type_free(i64);
 
-    lamina_module_t *mod = NULL;
-    if (lamina_builder_finish(b, &mod) != LAMINA_OK)
-        die("lamina_builder_finish");
-    lamina_builder_free(b);
+    lia_module_t *mod = NULL;
+    if (lia_builder_finish(b, &mod) != LIA_OK)
+        die("lia_builder_finish");
+    lia_builder_free(b);
 
     /* --- JIT compile ----------------------------------------------------- */
-    lamina_jit_t *jit = NULL;
-    if (lamina_module_compile_jit(mod, "add", &jit) != LAMINA_OK)
-        die("lamina_module_compile_jit");
-    lamina_module_free(mod);
+    lia_jit_t *jit = NULL;
+    if (lia_module_compile_jit(mod, "add", &jit) != LIA_OK)
+        die("lia_module_compile_jit");
+    lia_module_free(mod);
 
     /* --- Call the JIT function ------------------------------------------- */
     int64_t result = 0;
-    if (lamina_jit_call_i64_2(jit, 10, 32, &result) != LAMINA_OK)
-        die("lamina_jit_call_i64_2");
+    if (lia_jit_call_i64_2(jit, 10, 32, &result) != LIA_OK)
+        die("lia_jit_call_i64_2");
 
     printf("add(10, 32) = %lld\n", (long long)result);
     assert(result == 42);
 
     /* --- Cleanup --------------------------------------------------------- */
-    lamina_jit_free(jit);
+    lia_jit_free(jit);
     /* function pointer is now invalid — do not call after this point */
 
     printf("Done.\n");

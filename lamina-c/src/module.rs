@@ -26,7 +26,7 @@ pub struct LaminaCompileOptions {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_module_free(module: *mut LaminaModule) {
+pub unsafe extern "C" fn lia_module_free(module: *mut LaminaModule) {
     if !module.is_null() {
         unsafe { drop(Box::from_raw(module)) };
     }
@@ -37,7 +37,7 @@ pub unsafe extern "C" fn lamina_module_free(module: *mut LaminaModule) {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_module_emit_ir(
+pub unsafe extern "C" fn lia_module_emit_ir(
     module: *const LaminaModule,
     output: *mut LaminaBuffer,
 ) -> LaminaStatus {
@@ -62,7 +62,7 @@ pub unsafe extern "C" fn lamina_module_emit_ir(
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_compile_ir_to_assembly(
+pub unsafe extern "C" fn lia_compile_ir_to_assembly(
     ir: *const c_char,
     options: *const LaminaCompileOptions,
     output: *mut LaminaBuffer,
@@ -90,7 +90,7 @@ pub unsafe extern "C" fn lamina_compile_ir_to_assembly(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_module_compile_to_assembly(
+pub unsafe extern "C" fn lia_module_compile_to_assembly(
     module: *const LaminaModule,
     options: *const LaminaCompileOptions,
     output: *mut LaminaBuffer,
