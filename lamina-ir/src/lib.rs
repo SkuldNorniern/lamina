@@ -21,6 +21,7 @@ pub mod builder;
 pub mod function;
 pub mod instruction;
 pub mod module;
+pub mod owned;
 pub mod types;
 
 pub use builder::IRBuilder;
@@ -35,4 +36,5 @@ pub use instruction::{AtomicBinOp, MemoryOrdering, SimdOp};
 #[cfg(feature = "nightly")]
 pub use module::ModuleAnnotation;
 pub use module::{GlobalDeclaration, Module, TypeDeclaration};
+pub use owned::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
 pub use types::{Identifier, Literal, PrimitiveType, StructField, Type, Value};
