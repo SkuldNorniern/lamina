@@ -5,7 +5,7 @@ edition = "2024"
 authors = ["Eira <eira@nornity.com>"]
 description = "MIR (Machine Intermediate Representation) type definitions for Lamina"
 license = "Apache-2.0"
-keywords = ["compiler", "mir", "ir", "intermediate-representation"]
+keywords = ["compiler", "mir", "ir"]
 categories = ["compilers", "development-tools"]
 repository = "https://github.com/SkuldNorniern/lamina"
 
