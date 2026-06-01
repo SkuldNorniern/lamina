@@ -31,8 +31,8 @@ impl Transform for FunctionInlining {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
-        // Without access to the module we cannot inline callees.  However we can
+    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+        // Without access to the module we cannot inline callees.  However, we can
         // detect and remove trivially dead self-calls: a call to the same function
         // whose return value is never used and whose block already has a return.
         let func_name = func.sig.name.clone();
@@ -237,7 +237,7 @@ impl ModuleInlining {
 
             // ... existing logic ...
             if let Some(_caller_func) = module.functions.get(&call_site.caller) {
-                // If caller is huge, dont inline huge things?
+                // If caller is huge, don't inline huge things?
             }
 
             // Default: inline small functions

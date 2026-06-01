@@ -229,7 +229,7 @@ fn interpret_mir_function(
 /// Executes a JIT-compiled function using its signature to determine calling convention.
 ///
 /// Validates the function signature and calls it with the provided arguments.
-/// Currently handles only i64 parameters and i64 or void return types.
+/// Currently, handles only i64 parameters and i64 or void return types.
 ///
 /// # Arguments
 ///

@@ -98,7 +98,7 @@ fn convert_function<'a>(
     let mut mir_func = crate::mir::Function::new(mir_sig).with_entry(f.entry_block);
 
     // BFS traversal starting from entry block, guard with visited to avoid cycles
-    let mut visited: std::collections::HashSet<&'a str> = std::collections::HashSet::new();
+    let mut visited: HashSet<&'a str> = HashSet::new();
     let mut worklist: std::collections::VecDeque<&'a str> = std::collections::VecDeque::new();
 
     // Ensure entry exists
@@ -351,42 +351,42 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
 }
 
 fn collect_regs_from_instruction(
-    instr: &crate::mir::Instruction,
+    instr: &Instruction,
     used_regs: &mut HashSet<VirtualReg>,
 ) {
     match instr {
-        crate::mir::Instruction::IntBinary { lhs, rhs, .. } => {
+        Instruction::IntBinary { lhs, rhs, .. } => {
             collect_regs_from_operand(lhs, used_regs);
             collect_regs_from_operand(rhs, used_regs);
         }
-        crate::mir::Instruction::FloatBinary { lhs, rhs, .. } => {
+        Instruction::FloatBinary { lhs, rhs, .. } => {
             collect_regs_from_operand(lhs, used_regs);
             collect_regs_from_operand(rhs, used_regs);
         }
-        crate::mir::Instruction::IntCmp { lhs, rhs, .. } => {
+        Instruction::IntCmp { lhs, rhs, .. } => {
             collect_regs_from_operand(lhs, used_regs);
             collect_regs_from_operand(rhs, used_regs);
         }
-        crate::mir::Instruction::FloatCmp { lhs, rhs, .. } => {
+        Instruction::FloatCmp { lhs, rhs, .. } => {
             collect_regs_from_operand(lhs, used_regs);
             collect_regs_from_operand(rhs, used_regs);
         }
-        crate::mir::Instruction::Load { addr, .. } => {
+        Instruction::Load { addr, .. } => {
             collect_regs_from_address_mode(addr, used_regs);
         }
-        crate::mir::Instruction::Store { addr, src, .. } => {
+        Instruction::Store { addr, src, .. } => {
             collect_regs_from_address_mode(addr, used_regs);
             collect_regs_from_operand(src, used_regs);
         }
-        crate::mir::Instruction::Call { args, .. } => {
+        Instruction::Call { args, .. } => {
             for arg in args {
                 collect_regs_from_operand(arg, used_regs);
             }
         }
-        crate::mir::Instruction::Ret { value: Some(val) } => {
+        Instruction::Ret { value: Some(val) } => {
             collect_regs_from_operand(val, used_regs);
         }
-        crate::mir::Instruction::Jmp { .. } | crate::mir::Instruction::Br { .. } => {}
+        Instruction::Jmp { .. } | Instruction::Br { .. } => {}
         _ => {}
     }
 }

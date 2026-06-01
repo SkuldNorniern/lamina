@@ -91,9 +91,9 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &std::collections::HashMap<String, crate::mir::MirType>,
-        globals: &std::collections::HashMap<String, crate::mir::Global>,
-        funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        types: &HashMap<String, crate::mir::MirType>,
+        globals: &HashMap<String, crate::mir::Global>,
+        funcs: &HashMap<String, crate::mir::Signature>,
         codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],
@@ -154,19 +154,19 @@ fn compile_single_function_ppc64(
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
-) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
+) -> Result<Vec<u8>, CodegenError> {
     let mut output = Vec::new();
     let abi = Ppc64Abi::new(target_os);
 
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{}:", label).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e))
     })?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
         writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e))
         })?;
     }
 
@@ -215,7 +215,7 @@ fn compile_single_function_ppc64(
                 GraphColorAllocator::allocate(&intervals, pool.as_slice())
             }
             RegallocStrategy::Incremental => {
-                return Err(crate::mir_codegen::CodegenError::InvalidCodegenOptions(
+                return Err(CodegenError::InvalidCodegenOptions(
                     "internal: incremental in global branch".to_string(),
                 ));
             }
@@ -251,12 +251,12 @@ fn compile_single_function_ppc64(
 
     let local_bytes = stack_slots.len() * 8;
     Ppc64Frame::generate_prologue(&mut output, local_bytes)
-        .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
         writeln!(output, ".L_{}:", block.label).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e))
         })?;
 
         for inst in &block.instructions {
@@ -269,7 +269,7 @@ fn compile_single_function_ppc64(
                 settings,
                 &mut debug_line,
             )
-            .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
     }
 
@@ -338,7 +338,7 @@ fn emit_instruction_ppc64<W: Write>(
     inst: &MirInst,
     writer: &mut W,
     reg_alloc: &mut Ppc64RegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
@@ -598,7 +598,7 @@ fn emit_instruction_ppc64<W: Write>(
             }
             Ppc64Frame::generate_tail_epilogue(writer, local_bytes).map_err(|e| {
                 crate::error::LaminaError::CodegenError(
-                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()),
+                    CodegenError::InvalidCodegenOptions(e.to_string()),
                 )
             })?;
             let target_sym = abi
@@ -623,7 +623,7 @@ fn emit_instruction_ppc64<W: Write>(
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "lfd",
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
-                        crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                        CodegenError::UnsupportedFeature(format!(
                             "PowerPC64 load: unsupported type {:?}",
                             other
                         )),
@@ -645,7 +645,7 @@ fn emit_instruction_ppc64<W: Write>(
                 }
                 _ => {
                     return Err(crate::error::LaminaError::CodegenError(
-                        crate::mir_codegen::CodegenError::UnsupportedFeature(
+                        CodegenError::UnsupportedFeature(
                             "PowerPC64 load: only base+offset addressing supported".to_string(),
                         ),
                     ));
@@ -669,7 +669,7 @@ fn emit_instruction_ppc64<W: Write>(
                 crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "stfd",
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
-                        crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                        CodegenError::UnsupportedFeature(format!(
                             "PowerPC64 store: unsupported type {:?}",
                             other
                         )),
@@ -689,7 +689,7 @@ fn emit_instruction_ppc64<W: Write>(
                 }
                 _ => {
                     return Err(crate::error::LaminaError::CodegenError(
-                        crate::mir_codegen::CodegenError::UnsupportedFeature(
+                        CodegenError::UnsupportedFeature(
                             "PowerPC64 store: only base+offset addressing supported".to_string(),
                         ),
                     ));
@@ -735,7 +735,7 @@ fn emit_instruction_ppc64<W: Write>(
             let local_bytes = stack_slots.len() * 8;
             Ppc64Frame::generate_epilogue(writer, local_bytes).map_err(|e| {
                 crate::error::LaminaError::CodegenError(
-                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()),
+                    CodegenError::InvalidCodegenOptions(e.to_string()),
                 )
             })?;
         }
@@ -744,7 +744,7 @@ fn emit_instruction_ppc64<W: Write>(
         }
         other => {
             return Err(crate::error::LaminaError::CodegenError(
-                crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                CodegenError::UnsupportedFeature(format!(
                     "PowerPC64 backend: instruction not yet supported: {:?}",
                     other
                 )),
@@ -762,7 +762,7 @@ fn emit_load_fp_operand<W: Write>(
     operand: &crate::mir::Operand,
     writer: &mut W,
     reg_alloc: &mut Ppc64RegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
     fpr: &str,
     is_f32: bool,
 ) -> Result<(), crate::error::LaminaError> {
@@ -793,7 +793,7 @@ fn emit_load_fp_operand<W: Write>(
                 crate::mir::instruction::Immediate::I64(v) => *v,
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
-                        crate::mir_codegen::CodegenError::UnsupportedFeature(format!(
+                        CodegenError::UnsupportedFeature(format!(
                             "PowerPC64: float immediate {:?} not supported",
                             other
                         )),
@@ -814,7 +814,7 @@ fn emit_store_fp_result<W: Write>(
     vreg: &crate::mir::VirtualReg,
     writer: &mut W,
     reg_alloc: &Ppc64RegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
     is_f32: bool,
 ) -> Result<(), crate::error::LaminaError> {
     let store_fp = if is_f32 { "stfs" } else { "stfd" };

@@ -36,7 +36,7 @@ pub fn generate_mir_to_target<W: Write>(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
-) -> std::result::Result<(), LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_to_target_with_settings(
         module,
         writer,
@@ -56,7 +56,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
-) -> std::result::Result<(), LaminaError> {
+) -> Result<(), LaminaError> {
     if settings.emit_asm_debug_lines
         && !CapabilitySet::for_architecture(target_arch).supports(&CodegenCapability::DebugInfo)
     {
@@ -171,7 +171,7 @@ pub fn generate_mir_to_aarch64<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> std::result::Result<(), LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_to_target(module, writer, TargetArchitecture::Aarch64, target_os, 1)
 }
 
@@ -184,7 +184,7 @@ pub fn generate_mir_to_x86_64<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> std::result::Result<(), LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_to_target(module, writer, TargetArchitecture::X86_64, target_os, 1)
 }
 
@@ -197,7 +197,7 @@ pub fn generate_mir_to_wasm<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> std::result::Result<(), LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_to_target(module, writer, TargetArchitecture::Wasm32, target_os, 1)
 }
 
@@ -210,7 +210,7 @@ pub fn generate_mir_to_riscv<W: Write>(
     module: &crate::mir::Module,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> std::result::Result<(), LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_to_target(module, writer, TargetArchitecture::Riscv64, target_os, 1)
 }
 
