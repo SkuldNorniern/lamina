@@ -35,6 +35,13 @@ pub const MAX_JIT_ARGS: usize = 15;
 pub const JIT_ARG_SOFT_WARN_THRESHOLD: usize = 8;
 
 #[cfg(target_arch = "aarch64")]
+/// Call an arbitrary C-ABI function at `function_ptr` with up to [`MAX_JIT_ARGS`] `i64` args.
+///
+/// # Safety
+///
+/// - `function_ptr` must point to valid, executable code that follows AAPCS64.
+/// - `args` must be the exact set of arguments expected by the callee.
+/// - The callee must be safe to call from the current thread context.
 pub unsafe fn call_function_dynamic(
     function_ptr: *const u8,
     args: &[i64],
@@ -139,6 +146,13 @@ pub unsafe fn call_function_dynamic(
 }
 
 #[cfg(all(target_arch = "x86_64", not(target_os = "windows")))]
+/// Call an arbitrary C-ABI function at `function_ptr` with up to [`MAX_JIT_ARGS`] `i64` args.
+///
+/// # Safety
+///
+/// - `function_ptr` must point to valid, executable code that follows the System V AMD64 ABI.
+/// - `args` must be the exact set of arguments expected by the callee.
+/// - The callee must be safe to call from the current thread context.
 pub unsafe fn call_function_dynamic(
     function_ptr: *const u8,
     args: &[i64],
@@ -156,7 +170,7 @@ pub unsafe fn call_function_dynamic(
 
     let n = args.len();
     if n == 0 {
-        let mut out: i64 = 0;
+        let out: i64;
         unsafe {
             std::arch::asm!(
                 "mov r11, {fp}",
@@ -181,7 +195,7 @@ pub unsafe fn call_function_dynamic(
     };
 
     let rp = regbuf.as_ptr();
-    let mut out: i64 = 0;
+    let mut out: i64;
 
     if stack_n == 0 {
         unsafe {
