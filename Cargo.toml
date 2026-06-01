@@ -3,7 +3,7 @@ members = ["lamina-codegen", "lamina-ir", "lamina-mir", "lamina-platform", "ras"
 
 [package]
 name = "lamina"
-version = "0.0.8"
+version = "0.0.9"
 edition = "2024"
 authors = ["Eira <eira@nornity.com>"]
 description = "High-performance compiler backend for Lamina Intermediate Representation"

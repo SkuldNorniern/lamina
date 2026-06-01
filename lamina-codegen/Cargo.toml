@@ -7,6 +7,7 @@ description = "Codegen utilities for Lamina (register allocation, ABI, frame man
 license = "Apache-2.0"
 keywords = ["compiler", "codegen", "register-allocation", "abi"]
 categories = ["compilers", "development-tools"]
+repository = "https://github.com/SkuldNorniern/lamina"
 
 [dependencies]
 lamina-platform = { path = "../lamina-platform", version = "0.1.0" }

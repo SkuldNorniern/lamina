@@ -7,6 +7,7 @@ description = "MIR (Machine Intermediate Representation) type definitions for La
 license = "Apache-2.0"
 keywords = ["compiler", "mir", "ir", "intermediate-representation"]
 categories = ["compilers", "development-tools"]
+repository = "https://github.com/SkuldNorniern/lamina"
 
 [dependencies]
 lamina-platform = { path = "../lamina-platform", version = "0.1.0" }
