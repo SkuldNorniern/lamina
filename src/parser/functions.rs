@@ -166,7 +166,7 @@ pub fn parse_param_list<'a>(
     state: &mut ParserState<'a>,
 ) -> Result<Vec<FunctionParameter<'a>>, LaminaError> {
     let mut params = Vec::new();
-    let mut param_names = std::collections::HashSet::new();
+    let mut param_names = HashSet::new();
 
     loop {
         state.skip_whitespace_and_comments();

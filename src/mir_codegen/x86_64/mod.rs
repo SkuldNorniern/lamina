@@ -58,7 +58,7 @@ impl<'a> X86Codegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
         codegen_units: usize,
-    ) -> Result<(), crate::error::LaminaError> {
+    ) -> Result<(), LaminaError> {
         generate_mir_x86_64_with_units(module, writer, self.base.target_os, codegen_units)
     }
 }
@@ -78,7 +78,7 @@ impl<'a> Codegen for X86Codegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &std::collections::HashMap<String, crate::mir::MirType>,
+        types: &std::collections::HashMap<String, MirType>,
         globals: &std::collections::HashMap<String, crate::mir::Global>,
         funcs: &std::collections::HashMap<String, crate::mir::Signature>,
         codegen_units: usize,
@@ -131,23 +131,23 @@ fn compile_single_function_x86_64(
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
-) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
+) -> Result<Vec<u8>, CodegenError> {
     use std::io::Write;
     let mut output = Vec::new();
     let abi = X86ABI::new(target_os);
 
     ensure_signature_support(&func.sig)
-        .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{}:", label).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
         writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
     }
 
@@ -224,7 +224,7 @@ fn compile_single_function_x86_64(
 
     let stack_size = stack_slots.len() * 8;
     X86Frame::generate_prologue(&mut output, stack_size)
-        .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     if !func.sig.params.is_empty() {
         let abi_for_func = X86ABI::new(target_os);
@@ -238,7 +238,7 @@ fn compile_single_function_x86_64(
                     let phys_arg = arg_regs[index];
                     writeln!(output, "    movq %{}, {}(%rbp)", phys_arg, slot_off).map_err(
                         |e| {
-                            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
+                            CodegenError::InvalidCodegenOptions(format!(
                                 "IO error: {}",
                                 e
                             ))
@@ -248,13 +248,13 @@ fn compile_single_function_x86_64(
                     let stack_index = index - arg_regs.len();
                     let caller_off = 16 + (stack_index as i32) * 8;
                     writeln!(output, "    movq {}(%rbp), %rax", caller_off).map_err(|e| {
-                        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
+                        CodegenError::InvalidCodegenOptions(format!(
                             "IO error: {}",
                             e
                         ))
                     })?;
                     writeln!(output, "    movq %rax, {}(%rbp)", slot_off).map_err(|e| {
-                        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
+                        CodegenError::InvalidCodegenOptions(format!(
                             "IO error: {}",
                             e
                         ))
@@ -265,13 +265,13 @@ fn compile_single_function_x86_64(
     }
 
     writeln!(output, "    jmp .L_{}_{}", func_name, func.entry).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
     })?;
 
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
         writeln!(output, ".L_{}_{}:", func_name, block.label).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
         })?;
 
         for inst in &block.instructions {
@@ -287,7 +287,7 @@ fn compile_single_function_x86_64(
                 settings,
                 &mut debug_line,
             )
-            .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
     }
 
@@ -298,7 +298,7 @@ pub fn generate_mir_x86_64<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_x86_64_with_units(module, writer, target_os, 1)
 }
 
@@ -307,7 +307,7 @@ pub fn generate_mir_x86_64_with_units<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_x86_64_with_units_and_settings(
         module,
         writer,
@@ -323,7 +323,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::X86_64)?;
     let abi = X86ABI::new(target_os);
 
@@ -386,7 +386,7 @@ fn emit_instruction_x86_64(
     def_regs: &std::collections::HashSet<crate::mir::VirtualReg>,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;

@@ -11,7 +11,7 @@ pub fn emit_mov_imm64<W: Write>(
     w: &mut W,
     dest: &str,
     value: u64,
-) -> std::result::Result<(), LaminaError> {
+) -> Result<(), LaminaError> {
     if value <= 0xFFFF {
         writeln!(w, "    mov {}, #{}", dest, value)?;
         return Ok(());
