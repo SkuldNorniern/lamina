@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 authors = ["Eira <eira@nornity.com>"]
 description = "Lamina Intermediate Representation — high-level SSA IR for the Lamina compiler"
+license = "Apache-2.0"
 keywords = ["compiler", "IR", "SSA", "intermediate-representation"]
 categories = ["compilers", "development-tools"]
+repository = "https://github.com/SkuldNorniern/lamina"
 
 [dependencies]
 
