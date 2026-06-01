@@ -364,8 +364,8 @@ mod tests {
     #[test]
     fn test_validate_rejects_policy_violation() {
         let m = module_with_call("connect");
-        let arch = lamina_platform::TargetArchitecture::X86_64;
-        let os = lamina_platform::TargetOperatingSystem::Linux;
+        let arch = TargetArchitecture::X86_64;
+        let os = TargetOperatingSystem::Linux;
         let sandbox = Sandbox::new(arch, os, SandboxConfig::default());
         let result = sandbox.validate_module(&m);
         assert!(result.is_err());
@@ -374,8 +374,8 @@ mod tests {
     #[test]
     fn test_validate_accepts_clean_module() {
         let m = empty_module();
-        let arch = lamina_platform::TargetArchitecture::X86_64;
-        let os = lamina_platform::TargetOperatingSystem::Linux;
+        let arch = TargetArchitecture::X86_64;
+        let os = TargetOperatingSystem::Linux;
         let sandbox = Sandbox::new(arch, os, SandboxConfig::default());
         assert!(sandbox.validate_module(&m).is_ok());
     }
