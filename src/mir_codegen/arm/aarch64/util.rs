@@ -7,11 +7,7 @@ use crate::error::LaminaError;
 /// Emits instructions to materialize a 64-bit immediate into a destination register.
 ///
 /// Uses movz/movk sequence for values that don't fit in a single mov instruction.
-pub fn emit_mov_imm64<W: Write>(
-    w: &mut W,
-    dest: &str,
-    value: u64,
-) -> Result<(), LaminaError> {
+pub fn emit_mov_imm64<W: Write>(w: &mut W, dest: &str, value: u64) -> Result<(), LaminaError> {
     if value <= 0xFFFF {
         writeln!(w, "    mov {}, #{}", dest, value)?;
         return Ok(());

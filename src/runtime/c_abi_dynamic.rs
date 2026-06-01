@@ -16,7 +16,6 @@
 //!
 //! Prefer packing parameters for hot paths; see [`JIT_ARG_SOFT_WARN_THRESHOLD`] for hints.
 
-
 #[cfg(any(
     target_arch = "aarch64",
     all(target_arch = "x86_64", not(target_os = "windows")),
@@ -263,488 +262,512 @@ pub unsafe fn call_function_dynamic(
     function_ptr: *const u8,
     args: &[i64],
     returns_value: bool,
-) -> Option<i64> { unsafe {
-    if function_ptr.is_null() {
-        return None;
+) -> Option<i64> {
+    unsafe {
+        if function_ptr.is_null() {
+            return None;
+        }
+        if args.len() > MAX_JIT_ARGS {
+            return None;
+        }
+        transmute_dynamic_call(function_ptr, args, returns_value)
     }
-    if args.len() > MAX_JIT_ARGS {
-        return None;
-    }
-    transmute_dynamic_call(function_ptr, args, returns_value)
-}}
+}
 
 unsafe fn transmute_dynamic_call(
     function_ptr: *const u8,
     args: &[i64],
     returns_value: bool,
-) -> Option<i64> { unsafe {
-    match args.len() {
-        0 => {
-            if returns_value {
-                let callee: unsafe extern "C" fn() -> i64 = std::mem::transmute(function_ptr);
-                Some(callee())
-            } else {
-                let callee: unsafe extern "C" fn() = std::mem::transmute(function_ptr);
-                callee();
-                None
+) -> Option<i64> {
+    unsafe {
+        match args.len() {
+            0 => {
+                if returns_value {
+                    let callee: unsafe extern "C" fn() -> i64 = std::mem::transmute(function_ptr);
+                    Some(callee())
+                } else {
+                    let callee: unsafe extern "C" fn() = std::mem::transmute(function_ptr);
+                    callee();
+                    None
+                }
             }
-        }
-        1 => {
-            let a0 = args[0];
-            if returns_value {
-                let callee: unsafe extern "C" fn(i64) -> i64 = std::mem::transmute(function_ptr);
-                Some(callee(a0))
-            } else {
-                let callee: unsafe extern "C" fn(i64) = std::mem::transmute(function_ptr);
-                callee(a0);
-                None
+            1 => {
+                let a0 = args[0];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(i64) -> i64 =
+                        std::mem::transmute(function_ptr);
+                    Some(callee(a0))
+                } else {
+                    let callee: unsafe extern "C" fn(i64) = std::mem::transmute(function_ptr);
+                    callee(a0);
+                    None
+                }
             }
-        }
-        2 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            if returns_value {
-                let callee: unsafe extern "C" fn(i64, i64) -> i64 =
-                    std::mem::transmute(function_ptr);
-                Some(callee(a0, a1))
-            } else {
-                let callee: unsafe extern "C" fn(i64, i64) = std::mem::transmute(function_ptr);
-                callee(a0, a1);
-                None
+            2 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(i64, i64) -> i64 =
+                        std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1))
+                } else {
+                    let callee: unsafe extern "C" fn(i64, i64) = std::mem::transmute(function_ptr);
+                    callee(a0, a1);
+                    None
+                }
             }
-        }
-        3 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            if returns_value {
-                let callee: unsafe extern "C" fn(i64, i64, i64) -> i64 =
-                    std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2))
-            } else {
-                let callee: unsafe extern "C" fn(i64, i64, i64) = std::mem::transmute(function_ptr);
-                callee(a0, a1, a2);
-                None
+            3 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(i64, i64, i64) -> i64 =
+                        std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2))
+                } else {
+                    let callee: unsafe extern "C" fn(i64, i64, i64) =
+                        std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2);
+                    None
+                }
             }
-        }
-        4 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            if returns_value {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64) -> i64 =
-                    std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2, a3))
-            } else {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64) =
-                    std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3);
-                None
+            4 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64) -> i64 =
+                        std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2, a3))
+                } else {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64) =
+                        std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3);
+                    None
+                }
             }
-        }
-        5 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            if returns_value {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64) -> i64 =
-                    std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2, a3, a4))
-            } else {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64) =
-                    std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4);
-                None
+            5 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64) -> i64 =
+                        std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2, a3, a4))
+                } else {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64) =
+                        std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4);
+                    None
+                }
             }
-        }
-        6 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            if returns_value {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64) -> i64 =
-                    std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2, a3, a4, a5))
-            } else {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64) =
-                    std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4, a5);
-                None
+            6 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64) -> i64 =
+                        std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2, a3, a4, a5))
+                } else {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64) =
+                        std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4, a5);
+                    None
+                }
             }
-        }
-        7 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            let a6 = args[6];
-            if returns_value {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64) -> i64 =
-                    std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2, a3, a4, a5, a6))
-            } else {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64) =
-                    std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4, a5, a6);
-                None
+            7 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                let a6 = args[6];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64) -> i64 =
+                        std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2, a3, a4, a5, a6))
+                } else {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64) =
+                        std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4, a5, a6);
+                    None
+                }
             }
-        }
-        8 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            let a6 = args[6];
-            let a7 = args[7];
-            if returns_value {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64) -> i64 =
-                    std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2, a3, a4, a5, a6, a7))
-            } else {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64) =
-                    std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4, a5, a6, a7);
-                None
+            8 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                let a6 = args[6];
+                let a7 = args[7];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) -> i64 = std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2, a3, a4, a5, a6, a7))
+                } else {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64) =
+                        std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4, a5, a6, a7);
+                    None
+                }
             }
-        }
-        9 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            let a6 = args[6];
-            let a7 = args[7];
-            let a8 = args[8];
-            if returns_value {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) -> i64 = std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8))
-            } else {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64, i64) =
-                    std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4, a5, a6, a7, a8);
-                None
+            9 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                let a6 = args[6];
+                let a7 = args[7];
+                let a8 = args[8];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) -> i64 = std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8))
+                } else {
+                    let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64, i64) =
+                        std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4, a5, a6, a7, a8);
+                    None
+                }
             }
-        }
-        10 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            let a6 = args[6];
-            let a7 = args[7];
-            let a8 = args[8];
-            let a9 = args[9];
-            if returns_value {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) -> i64 = std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9))
-            } else {
-                let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64, i64, i64) =
-                    std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9);
-                None
+            10 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                let a6 = args[6];
+                let a7 = args[7];
+                let a8 = args[8];
+                let a9 = args[9];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) -> i64 = std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9))
+                } else {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) = std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9);
+                    None
+                }
             }
-        }
-        11 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            let a6 = args[6];
-            let a7 = args[7];
-            let a8 = args[8];
-            let a9 = args[9];
-            let a10 = args[10];
-            if returns_value {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) -> i64 = std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10))
-            } else {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) = std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
-                None
+            11 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                let a6 = args[6];
+                let a7 = args[7];
+                let a8 = args[8];
+                let a9 = args[9];
+                let a10 = args[10];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) -> i64 = std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10))
+                } else {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) = std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
+                    None
+                }
             }
-        }
-        12 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            let a6 = args[6];
-            let a7 = args[7];
-            let a8 = args[8];
-            let a9 = args[9];
-            let a10 = args[10];
-            let a11 = args[11];
-            if returns_value {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) -> i64 = std::mem::transmute(function_ptr);
-                Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11))
-            } else {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) = std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
-                None
+            12 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                let a6 = args[6];
+                let a7 = args[7];
+                let a8 = args[8];
+                let a9 = args[9];
+                let a10 = args[10];
+                let a11 = args[11];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) -> i64 = std::mem::transmute(function_ptr);
+                    Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11))
+                } else {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) = std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
+                    None
+                }
             }
-        }
-        13 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            let a6 = args[6];
-            let a7 = args[7];
-            let a8 = args[8];
-            let a9 = args[9];
-            let a10 = args[10];
-            let a11 = args[11];
-            let a12 = args[12];
-            if returns_value {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) -> i64 = std::mem::transmute(function_ptr);
-                Some(callee(
-                    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12,
-                ))
-            } else {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) = std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12);
-                None
+            13 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                let a6 = args[6];
+                let a7 = args[7];
+                let a8 = args[8];
+                let a9 = args[9];
+                let a10 = args[10];
+                let a11 = args[11];
+                let a12 = args[12];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) -> i64 = std::mem::transmute(function_ptr);
+                    Some(callee(
+                        a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12,
+                    ))
+                } else {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) = std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12);
+                    None
+                }
             }
-        }
-        14 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            let a6 = args[6];
-            let a7 = args[7];
-            let a8 = args[8];
-            let a9 = args[9];
-            let a10 = args[10];
-            let a11 = args[11];
-            let a12 = args[12];
-            let a13 = args[13];
-            if returns_value {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) -> i64 = std::mem::transmute(function_ptr);
-                Some(callee(
-                    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13,
-                ))
-            } else {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) = std::mem::transmute(function_ptr);
-                callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13);
-                None
+            14 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                let a6 = args[6];
+                let a7 = args[7];
+                let a8 = args[8];
+                let a9 = args[9];
+                let a10 = args[10];
+                let a11 = args[11];
+                let a12 = args[12];
+                let a13 = args[13];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) -> i64 = std::mem::transmute(function_ptr);
+                    Some(callee(
+                        a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13,
+                    ))
+                } else {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) = std::mem::transmute(function_ptr);
+                    callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13);
+                    None
+                }
             }
-        }
-        15 => {
-            let a0 = args[0];
-            let a1 = args[1];
-            let a2 = args[2];
-            let a3 = args[3];
-            let a4 = args[4];
-            let a5 = args[5];
-            let a6 = args[6];
-            let a7 = args[7];
-            let a8 = args[8];
-            let a9 = args[9];
-            let a10 = args[10];
-            let a11 = args[11];
-            let a12 = args[12];
-            let a13 = args[13];
-            let a14 = args[14];
-            if returns_value {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) -> i64 = std::mem::transmute(function_ptr);
-                Some(callee(
-                    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14,
-                ))
-            } else {
-                let callee: unsafe extern "C" fn(
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                    i64,
-                ) = std::mem::transmute(function_ptr);
-                callee(
-                    a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14,
-                );
-                None
+            15 => {
+                let a0 = args[0];
+                let a1 = args[1];
+                let a2 = args[2];
+                let a3 = args[3];
+                let a4 = args[4];
+                let a5 = args[5];
+                let a6 = args[6];
+                let a7 = args[7];
+                let a8 = args[8];
+                let a9 = args[9];
+                let a10 = args[10];
+                let a11 = args[11];
+                let a12 = args[12];
+                let a13 = args[13];
+                let a14 = args[14];
+                if returns_value {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) -> i64 = std::mem::transmute(function_ptr);
+                    Some(callee(
+                        a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14,
+                    ))
+                } else {
+                    let callee: unsafe extern "C" fn(
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                        i64,
+                    ) = std::mem::transmute(function_ptr);
+                    callee(
+                        a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14,
+                    );
+                    None
+                }
             }
+            _ => None,
         }
-        _ => None,
     }
-}}
+}
 
 #[cfg(test)]
 mod call_dynamic_tests {

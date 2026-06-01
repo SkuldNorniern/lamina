@@ -10,12 +10,7 @@ fn run_lamina(opt: u8) -> String {
     // Build lamina release if needed: recommend running `cargo build --release` before
     let status = Command::new(&lamina_bin)
         .current_dir(repo_root)
-        .args([
-            "--verbose",
-            &src,
-            "--opt-level",
-            &opt.to_string(),
-        ])
+        .args(["--verbose", &src, "--opt-level", &opt.to_string()])
         .status()
         .expect("failed to run lamina");
     assert!(status.success(), "lamina failed at -O{}", opt);
