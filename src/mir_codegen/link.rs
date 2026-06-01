@@ -342,7 +342,10 @@ fn build_weld_linker_args(
 ) -> Vec<String> {
     let mut args = Vec::new();
     args.push(input_path.to_string_lossy().to_string());
-    args.extend(build_entry_point_arg(target_os));
+    // Windows: weld detects PE from .exe suffix; no entry point arg needed (weld finds main).
+    if target_os != TargetOperatingSystem::Windows {
+        args.extend(build_entry_point_arg(target_os));
+    }
     args.extend(additional_flags.iter().cloned());
     args.push("-o".to_string());
     args.push(output_path.to_string_lossy().to_string());
@@ -497,11 +500,6 @@ pub fn link(
             ("mold", args)
         }
         LinkerBackend::Weld => {
-            if target_os == TargetOperatingSystem::Windows {
-                return Err(LaminaError::ValidationError(
-                    "weld is not supported for Windows targets; use -c clang or -c msvc".to_string(),
-                ));
-            }
             let args =
                 build_weld_linker_args(input_path, output_path, target_os, additional_flags);
             return run_linker(&resolve_sibling_command("weld"), args, verbose);
@@ -606,6 +604,11 @@ pub fn detect_linker_backend(
     _target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
 ) -> LinkerBackend {
+    // Check for weld in the same directory as the current executable (bundled toolchain).
+    let weld_cmd = resolve_sibling_command("weld");
+    let has_weld = std::path::Path::new(&weld_cmd).is_file()
+        || Command::new(&weld_cmd).arg("--version").output().is_ok();
+
     match target_os {
         TargetOperatingSystem::Windows => {
             if Command::new("clang").arg("--version").output().is_ok() {
@@ -614,7 +617,11 @@ pub fn detect_linker_backend(
             if Command::new("link").arg("/?").output().is_ok() {
                 return LinkerBackend::Msvc;
             }
-            LinkerBackend::Msvc
+            // Weld can link Windows COFF objects to PE executables.
+            if has_weld {
+                return LinkerBackend::Weld;
+            }
+            LinkerBackend::Msvc // Last resort — will fail gracefully if not found
         }
         TargetOperatingSystem::MacOS => {
             if Command::new("mold").arg("--version").output().is_ok() {
@@ -628,8 +635,7 @@ pub fn detect_linker_backend(
             if Command::new("ld64.lld").arg("-v").output().is_ok() {
                 return LinkerBackend::Lld;
             }
-            // weld is freestanding/no-libc only; use it as a last resort.
-            if Command::new("weld").arg("--version").output().is_ok() {
+            if has_weld {
                 return LinkerBackend::Weld;
             }
             LinkerBackend::Ld
@@ -648,8 +654,7 @@ pub fn detect_linker_backend(
             {
                 return LinkerBackend::Ld;
             }
-            // weld is freestanding/no-libc only; use it as a last resort.
-            if Command::new("weld").arg("--version").output().is_ok() {
+            if has_weld {
                 return LinkerBackend::Weld;
             }
             LinkerBackend::Ld
@@ -668,8 +673,9 @@ fn validate_linker_backend_for_target(
             "MSVC link is only supported for Windows targets, not {:?}",
             target_os
         ))),
+        (LinkerBackend::Weld, TargetOperatingSystem::Windows) => Ok(backend),
         (
-            LinkerBackend::Ld | LinkerBackend::Mold | LinkerBackend::Weld,
+            LinkerBackend::Ld | LinkerBackend::Mold,
             TargetOperatingSystem::Windows,
         ) => Err(LaminaError::ValidationError(format!(
             "Linker backend {:?} is not supported for Windows targets; use -c clang or -c msvc",
