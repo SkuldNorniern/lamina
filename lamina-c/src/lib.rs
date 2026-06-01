@@ -1,6 +1,6 @@
 // lamina-c — stable C API for the Lamina compiler.
 //
-// ABI rules enforced here:
+// ABI rules:
 //   - Every exported fn wrapped with catch_unwind; panics → LAMINA_ERROR_INTERNAL.
 //   - Null pointer arguments → LAMINA_ERROR_INVALID_ARGUMENT.
 //   - Incoming C strings copied on entry; no caller-owned pointer retained.
@@ -20,18 +20,26 @@ pub mod jit;
 use std::ffi::{CStr, c_char};
 
 // ---------------------------------------------------------------------------
-// Status codes (stable — no JIT variant; JIT is nightly only)
+// Status codes
 // ---------------------------------------------------------------------------
 
+/// Return status for every fallible Lamina C API call.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaminaStatus {
+    /// Operation succeeded.
     Ok = 0,
+    /// A required pointer argument was NULL or an enum value was out of range.
     ErrorInvalidArgument = 1,
+    /// IR text could not be parsed.
     ErrorParse = 2,
+    /// IR failed structural validation.
     ErrorValidation = 3,
+    /// Assembly or object code generation failed.
     ErrorCodegen = 4,
+    /// A file I/O operation failed.
     ErrorIo = 5,
+    /// An unexpected internal error occurred (e.g. Rust panic).
     ErrorInternal = 6,
 }
 
@@ -39,16 +47,18 @@ pub enum LaminaStatus {
 // Error API
 // ---------------------------------------------------------------------------
 
-/// Returns pointer to last error message on this thread.
-/// Valid until next Lamina C API call on this thread. NULL if no error.
+/// Returns a pointer to the last error message set on this thread.
+///
+/// Valid until the next Lamina C API call on this thread. Returns NULL if no
+/// error has been set.
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_last_error() -> *const c_char {
+pub extern "C" fn lia_last_error() -> *const c_char {
     error::last_error_ptr()
 }
 
-/// Clears last error state on this thread.
+/// Clears the last error state on this thread.
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_clear_error() {
+pub extern "C" fn lia_clear_error() {
     error::clear_error();
 }
 
@@ -57,23 +67,23 @@ pub extern "C" fn lamina_clear_error() {
 // ---------------------------------------------------------------------------
 
 // ABI version — bumped independently from the Rust crate version.
-// Increment when the public C ABI changes in a backwards-incompatible way.
-// The crate version (CARGO_PKG_VERSION) may advance for internal reasons
-// without changing this string.
 static ABI_VERSION: &str = "0.1.0\0";
 
 static HOST_TARGET: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock::new();
 
 /// Returns the lamina-c ABI version string (null-terminated, static lifetime).
-/// This is versioned independently from the Rust crate version.
+///
+/// Versioned independently from the Rust crate version.
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_version() -> *const c_char {
+pub extern "C" fn lia_version() -> *const c_char {
     ABI_VERSION.as_ptr() as *const c_char
 }
 
-/// Returns host target identifier (null-terminated, static lifetime).
+/// Returns the host target identifier (e.g. `"x86_64_linux"`).
+///
+/// Null-terminated, static lifetime.
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_host_target() -> *const c_char {
+pub extern "C" fn lia_host_target() -> *const c_char {
     HOST_TARGET
         .get_or_init(|| {
             let t = lamina_platform::Target::detect_host();
@@ -83,21 +93,20 @@ pub extern "C" fn lamina_host_target() -> *const c_char {
 }
 
 // ---------------------------------------------------------------------------
-// Buffer API
+// Buffer free
 // ---------------------------------------------------------------------------
 
-use types::LaminaBuffer;
-
-/// Frees a `lamina_buffer_t` returned by the API. Safe to call with null data.
+/// Frees a `lamina_buffer_t` returned by the API.
+///
+/// Safe to call when `buf->data` is NULL. Do not call twice on the same buffer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_buffer_free(buf: *mut LaminaBuffer) {
+pub unsafe extern "C" fn lia_buffer_free(buf: *mut types::LaminaBuffer) {
     if buf.is_null() {
         return;
     }
     unsafe {
         let buf = &mut *buf;
         if !buf.data.is_null() && buf.len > 0 {
-            // Buffers are allocated via Box<[u8]>, so reconstruct a slice and drop it.
             drop(Box::from_raw(std::slice::from_raw_parts_mut(buf.data, buf.len)));
         }
         buf.data = std::ptr::null_mut();
@@ -109,16 +118,13 @@ pub unsafe extern "C" fn lamina_buffer_free(buf: *mut LaminaBuffer) {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-/// Safely convert `*const c_char` to `&str`. Returns None for null or non-UTF-8.
 pub(crate) fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
         return None;
     }
-    // SAFETY: ptr is non-null; C callers must pass valid null-terminated strings.
     unsafe { CStr::from_ptr(ptr).to_str().ok() }
 }
 
-/// Run `f` catching panics; map panic → LAMINA_ERROR_INTERNAL.
 pub(crate) fn catch<F: FnOnce() -> LaminaStatus + std::panic::UnwindSafe>(f: F) -> LaminaStatus {
     match std::panic::catch_unwind(f) {
         Ok(status) => status,

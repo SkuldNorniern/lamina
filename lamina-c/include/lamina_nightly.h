@@ -6,12 +6,12 @@
  * WARNING: No stable ABI guarantee. These declarations may change between
  * releases without notice. Do not use in production code.
  *
- * Function pointers obtained from lamina_jit_get_function() become invalid
- * the moment lamina_jit_free() is called on the owning handle.
+ * Function pointers obtained from lia_jit_get_function() become invalid
+ * the moment lia_jit_free() is called on the owning handle.
  */
 
-#ifndef LAMINA_NIGHTLY_H
-#define LAMINA_NIGHTLY_H
+#ifndef LIA_NIGHTLY_H
+#define LIA_NIGHTLY_H
 
 #include "lamina.h"
 #include <stdint.h>
@@ -24,43 +24,43 @@ extern "C" {
  * JIT handle (nightly only)
  * ---------------------------------------------------------------------- */
 
-typedef struct lamina_jit lamina_jit_t;
+typedef struct lia_jit lia_jit_t;
 
 /* -------------------------------------------------------------------------
  * JIT compilation
  * ---------------------------------------------------------------------- */
 
-lamina_status_t lamina_jit_compile_ir(
+lia_status_t lia_jit_compile_ir(
     const char   *ir,
     const char   *function_name,
-    lamina_jit_t **jit_out);
+    lia_jit_t **jit_out);
 
-lamina_status_t lamina_module_compile_jit(
-    const lamina_module_t *module,
+lia_status_t lia_module_compile_jit(
+    const lia_module_t *module,
     const char            *function_name,
-    lamina_jit_t         **jit_out);
+    lia_jit_t         **jit_out);
 
-lamina_status_t lamina_jit_get_function(
-    const lamina_jit_t *jit,
+lia_status_t lia_jit_get_function(
+    const lia_jit_t *jit,
     void              **function_out);
 
-void lamina_jit_free(lamina_jit_t *jit);
+void lia_jit_free(lia_jit_t *jit);
 
 /* -------------------------------------------------------------------------
  * Typed call helpers
  * ---------------------------------------------------------------------- */
 
-lamina_status_t lamina_jit_call_i64_0(
-    lamina_jit_t *jit,
+lia_status_t lia_jit_call_i64_0(
+    lia_jit_t *jit,
     int64_t      *result);
 
-lamina_status_t lamina_jit_call_i64_1(
-    lamina_jit_t *jit,
+lia_status_t lia_jit_call_i64_1(
+    lia_jit_t *jit,
     int64_t       a,
     int64_t      *result);
 
-lamina_status_t lamina_jit_call_i64_2(
-    lamina_jit_t *jit,
+lia_status_t lia_jit_call_i64_2(
+    lia_jit_t *jit,
     int64_t       a,
     int64_t       b,
     int64_t      *result);
@@ -69,4 +69,4 @@ lamina_status_t lamina_jit_call_i64_2(
 }
 #endif
 
-#endif /* LAMINA_NIGHTLY_H */
+#endif /* LIA_NIGHTLY_H */

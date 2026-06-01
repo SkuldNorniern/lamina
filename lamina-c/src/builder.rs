@@ -52,7 +52,7 @@ macro_rules! require_str {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_builder_create() -> *mut LaminaBuilder {
+pub extern "C" fn lia_builder_create() -> *mut LaminaBuilder {
     match std::panic::catch_unwind(|| {
         Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new())))
     }) {
@@ -62,7 +62,7 @@ pub extern "C" fn lamina_builder_create() -> *mut LaminaBuilder {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_free(builder: *mut LaminaBuilder) {
+pub unsafe extern "C" fn lia_builder_free(builder: *mut LaminaBuilder) {
     if !builder.is_null() {
         unsafe { drop(Box::from_raw(builder)) };
     }
@@ -81,22 +81,22 @@ macro_rules! type_ctor {
     };
 }
 
-type_ctor!(lamina_type_void,  OwnedType::Void);
-type_ctor!(lamina_type_i8,    OwnedType::Primitive(PrimitiveType::I8));
-type_ctor!(lamina_type_i16,   OwnedType::Primitive(PrimitiveType::I16));
-type_ctor!(lamina_type_i32,   OwnedType::Primitive(PrimitiveType::I32));
-type_ctor!(lamina_type_i64,   OwnedType::Primitive(PrimitiveType::I64));
-type_ctor!(lamina_type_u8,    OwnedType::Primitive(PrimitiveType::U8));
-type_ctor!(lamina_type_u16,   OwnedType::Primitive(PrimitiveType::U16));
-type_ctor!(lamina_type_u32,   OwnedType::Primitive(PrimitiveType::U32));
-type_ctor!(lamina_type_u64,   OwnedType::Primitive(PrimitiveType::U64));
-type_ctor!(lamina_type_f32,   OwnedType::Primitive(PrimitiveType::F32));
-type_ctor!(lamina_type_f64,   OwnedType::Primitive(PrimitiveType::F64));
-type_ctor!(lamina_type_bool,  OwnedType::Primitive(PrimitiveType::Bool));
-type_ctor!(lamina_type_ptr,   OwnedType::Primitive(PrimitiveType::Ptr));
+type_ctor!(lia_type_void,  OwnedType::Void);
+type_ctor!(lia_type_i8,    OwnedType::Primitive(PrimitiveType::I8));
+type_ctor!(lia_type_i16,   OwnedType::Primitive(PrimitiveType::I16));
+type_ctor!(lia_type_i32,   OwnedType::Primitive(PrimitiveType::I32));
+type_ctor!(lia_type_i64,   OwnedType::Primitive(PrimitiveType::I64));
+type_ctor!(lia_type_u8,    OwnedType::Primitive(PrimitiveType::U8));
+type_ctor!(lia_type_u16,   OwnedType::Primitive(PrimitiveType::U16));
+type_ctor!(lia_type_u32,   OwnedType::Primitive(PrimitiveType::U32));
+type_ctor!(lia_type_u64,   OwnedType::Primitive(PrimitiveType::U64));
+type_ctor!(lia_type_f32,   OwnedType::Primitive(PrimitiveType::F32));
+type_ctor!(lia_type_f64,   OwnedType::Primitive(PrimitiveType::F64));
+type_ctor!(lia_type_bool,  OwnedType::Primitive(PrimitiveType::Bool));
+type_ctor!(lia_type_ptr,   OwnedType::Primitive(PrimitiveType::Ptr));
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_type_free(ty: *mut LaminaType) {
+pub unsafe extern "C" fn lia_type_free(ty: *mut LaminaType) {
     if !ty.is_null() {
         unsafe { drop(Box::from_raw(ty)) };
     }
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn lamina_type_free(ty: *mut LaminaType) {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_value_var(name: *const c_char) -> *mut LaminaValue {
+pub unsafe extern "C" fn lia_value_var(name: *const c_char) -> *mut LaminaValue {
     match cstr_to_str(name) {
         Some(s) => Box::into_raw(Box::new(LaminaValue(OwnedValue::Variable(s.to_string())))),
         None => std::ptr::null_mut(),
@@ -115,7 +115,7 @@ pub unsafe extern "C" fn lamina_value_var(name: *const c_char) -> *mut LaminaVal
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_value_global(name: *const c_char) -> *mut LaminaValue {
+pub unsafe extern "C" fn lia_value_global(name: *const c_char) -> *mut LaminaValue {
     match cstr_to_str(name) {
         Some(s) => Box::into_raw(Box::new(LaminaValue(OwnedValue::Global(s.to_string())))),
         None => std::ptr::null_mut(),
@@ -123,48 +123,48 @@ pub unsafe extern "C" fn lamina_value_global(name: *const c_char) -> *mut Lamina
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_i8(v: i8) -> *mut LaminaValue {
+pub extern "C" fn lia_value_i8(v: i8) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::I8(v))))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_i16(v: i16) -> *mut LaminaValue {
+pub extern "C" fn lia_value_i16(v: i16) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::I16(v))))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_i32(v: i32) -> *mut LaminaValue {
+pub extern "C" fn lia_value_i32(v: i32) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::I32(v))))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_i64(v: i64) -> *mut LaminaValue {
+pub extern "C" fn lia_value_i64(v: i64) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::I64(v))))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_u8(v: u8) -> *mut LaminaValue {
+pub extern "C" fn lia_value_u8(v: u8) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::U8(v))))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_u32(v: u32) -> *mut LaminaValue {
+pub extern "C" fn lia_value_u32(v: u32) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::U32(v))))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_u64(v: u64) -> *mut LaminaValue {
+pub extern "C" fn lia_value_u64(v: u64) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::U64(v))))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_f32(v: f32) -> *mut LaminaValue {
+pub extern "C" fn lia_value_f32(v: f32) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::F32(v))))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_f64(v: f64) -> *mut LaminaValue {
+pub extern "C" fn lia_value_f64(v: f64) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::F64(v))))
 }
 #[unsafe(no_mangle)]
-pub extern "C" fn lamina_value_bool(v: bool) -> *mut LaminaValue {
+pub extern "C" fn lia_value_bool(v: bool) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::Bool(v))))
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_value_string(s: *const c_char) -> *mut LaminaValue {
+pub unsafe extern "C" fn lia_value_string(s: *const c_char) -> *mut LaminaValue {
     match cstr_to_str(s) {
         Some(s) => Box::into_raw(Box::new(LaminaValue(OwnedValue::Str(s.to_string())))),
         None => std::ptr::null_mut(),
@@ -172,7 +172,7 @@ pub unsafe extern "C" fn lamina_value_string(s: *const c_char) -> *mut LaminaVal
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_value_free(val: *mut LaminaValue) {
+pub unsafe extern "C" fn lia_value_free(val: *mut LaminaValue) {
     if !val.is_null() {
         unsafe { drop(Box::from_raw(val)) };
     }
@@ -190,7 +190,7 @@ pub struct LaminaParam {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_function(
+pub unsafe extern "C" fn lia_builder_function(
     builder: *mut LaminaBuilder,
     name: *const c_char,
     params: *const LaminaParam,
@@ -212,7 +212,7 @@ pub unsafe extern "C" fn lamina_builder_function(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_external_function(
+pub unsafe extern "C" fn lia_builder_external_function(
     builder: *mut LaminaBuilder,
     name: *const c_char,
     params: *const LaminaParam,
@@ -234,7 +234,7 @@ pub unsafe extern "C" fn lamina_builder_external_function(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_block(
+pub unsafe extern "C" fn lia_builder_block(
     builder: *mut LaminaBuilder,
     name: *const c_char,
 ) -> LaminaStatus {
@@ -248,7 +248,7 @@ pub unsafe extern "C" fn lamina_builder_block(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_set_entry_block(
+pub unsafe extern "C" fn lia_builder_set_entry_block(
     builder: *mut LaminaBuilder,
     name: *const c_char,
 ) -> LaminaStatus {
@@ -264,7 +264,7 @@ pub unsafe extern "C" fn lamina_builder_set_entry_block(
 /// Finalises the builder and produces a module handle.
 /// Builder remains valid and reusable after this call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_finish(
+pub unsafe extern "C" fn lia_builder_finish(
     builder: *const LaminaBuilder,
     module_out: *mut *mut LaminaModule,
 ) -> LaminaStatus {
@@ -331,7 +331,7 @@ impl LaminaCmpOp {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_binary(
+pub unsafe extern "C" fn lia_builder_binary(
     builder: *mut LaminaBuilder,
     op: LaminaBinaryOp,
     result: *const c_char,
@@ -357,7 +357,7 @@ pub unsafe extern "C" fn lamina_builder_binary(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_cmp(
+pub unsafe extern "C" fn lia_builder_cmp(
     builder: *mut LaminaBuilder,
     op: LaminaCmpOp,
     result: *const c_char,
@@ -383,7 +383,7 @@ pub unsafe extern "C" fn lamina_builder_cmp(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_branch(
+pub unsafe extern "C" fn lia_builder_branch(
     builder: *mut LaminaBuilder,
     condition: *const LaminaValue,
     true_label: *const c_char,
@@ -401,7 +401,7 @@ pub unsafe extern "C" fn lamina_builder_branch(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_jump(
+pub unsafe extern "C" fn lia_builder_jump(
     builder: *mut LaminaBuilder,
     target: *const c_char,
 ) -> LaminaStatus {
@@ -416,7 +416,7 @@ pub unsafe extern "C" fn lamina_builder_jump(
 
 /// `result` may be NULL for void calls. `args` may be NULL when `arg_count` is 0.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_call(
+pub unsafe extern "C" fn lia_builder_call(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     func_name: *const c_char,
@@ -438,7 +438,7 @@ pub unsafe extern "C" fn lamina_builder_call(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_phi(
+pub unsafe extern "C" fn lia_builder_phi(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ty: *const LaminaType,
@@ -471,7 +471,7 @@ pub unsafe extern "C" fn lamina_builder_phi(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_return(
+pub unsafe extern "C" fn lia_builder_return(
     builder: *mut LaminaBuilder,
     ty: *const LaminaType,
     value: *const LaminaValue,
@@ -487,7 +487,7 @@ pub unsafe extern "C" fn lamina_builder_return(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_return_void(builder: *mut LaminaBuilder) -> LaminaStatus {
+pub unsafe extern "C" fn lia_builder_return_void(builder: *mut LaminaBuilder) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         let b = require_mut!(builder, "builder");
         b.0.ret_void();
@@ -497,7 +497,7 @@ pub unsafe extern "C" fn lamina_builder_return_void(builder: *mut LaminaBuilder)
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_alloc_stack(
+pub unsafe extern "C" fn lia_builder_alloc_stack(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ty: *const LaminaType,
@@ -513,7 +513,7 @@ pub unsafe extern "C" fn lamina_builder_alloc_stack(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_alloc_heap(
+pub unsafe extern "C" fn lia_builder_alloc_heap(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ty: *const LaminaType,
@@ -529,7 +529,7 @@ pub unsafe extern "C" fn lamina_builder_alloc_heap(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_load(
+pub unsafe extern "C" fn lia_builder_load(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ty: *const LaminaType,
@@ -547,7 +547,7 @@ pub unsafe extern "C" fn lamina_builder_load(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_store(
+pub unsafe extern "C" fn lia_builder_store(
     builder: *mut LaminaBuilder,
     ty: *const LaminaType,
     ptr: *const LaminaValue,
@@ -565,7 +565,7 @@ pub unsafe extern "C" fn lamina_builder_store(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_dealloc(
+pub unsafe extern "C" fn lia_builder_dealloc(
     builder: *mut LaminaBuilder,
     ptr: *const LaminaValue,
 ) -> LaminaStatus {
@@ -579,7 +579,7 @@ pub unsafe extern "C" fn lamina_builder_dealloc(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_getelementptr(
+pub unsafe extern "C" fn lia_builder_getelementptr(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     array_ptr: *const LaminaValue,
@@ -604,7 +604,7 @@ pub unsafe extern "C" fn lamina_builder_getelementptr(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_struct_gep(
+pub unsafe extern "C" fn lia_builder_struct_gep(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     struct_ptr: *const LaminaValue,
@@ -621,7 +621,7 @@ pub unsafe extern "C" fn lamina_builder_struct_gep(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_ptrtoint(
+pub unsafe extern "C" fn lia_builder_ptrtoint(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ptr_value: *const LaminaValue,
@@ -644,7 +644,7 @@ pub unsafe extern "C" fn lamina_builder_ptrtoint(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_inttoptr(
+pub unsafe extern "C" fn lia_builder_inttoptr(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     int_value: *const LaminaValue,
@@ -698,13 +698,13 @@ macro_rules! conv_inst {
     };
 }
 
-conv_inst!(lamina_builder_zext,    zext);
-conv_inst!(lamina_builder_sext,    sext);
-conv_inst!(lamina_builder_trunc,   trunc);
-conv_inst!(lamina_builder_bitcast, bitcast);
+conv_inst!(lia_builder_zext,    zext);
+conv_inst!(lia_builder_sext,    sext);
+conv_inst!(lia_builder_trunc,   trunc);
+conv_inst!(lia_builder_bitcast, bitcast);
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_select(
+pub unsafe extern "C" fn lia_builder_select(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ty: *const LaminaType,
@@ -726,7 +726,7 @@ pub unsafe extern "C" fn lamina_builder_select(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_write(
+pub unsafe extern "C" fn lia_builder_write(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     buffer: *const LaminaValue,
@@ -744,7 +744,7 @@ pub unsafe extern "C" fn lamina_builder_write(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_read(
+pub unsafe extern "C" fn lia_builder_read(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     buffer: *const LaminaValue,
@@ -762,7 +762,7 @@ pub unsafe extern "C" fn lamina_builder_read(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_write_byte(
+pub unsafe extern "C" fn lia_builder_write_byte(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     value: *const LaminaValue,
@@ -778,7 +778,7 @@ pub unsafe extern "C" fn lamina_builder_write_byte(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_read_byte(
+pub unsafe extern "C" fn lia_builder_read_byte(
     builder: *mut LaminaBuilder,
     result: *const c_char,
 ) -> LaminaStatus {
@@ -792,7 +792,7 @@ pub unsafe extern "C" fn lamina_builder_read_byte(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lamina_builder_write_ptr(
+pub unsafe extern "C" fn lia_builder_write_ptr(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ptr: *const LaminaValue,

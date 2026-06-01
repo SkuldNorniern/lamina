@@ -13,7 +13,7 @@
 #include "lamina.h"
 
 static void die(const char *where) {
-    const char *err = lamina_last_error();
+    const char *err = lia_last_error();
     fprintf(stderr, "%s failed: %s\n", where, err ? err : "(no error message)");
     exit(1);
 }
@@ -53,18 +53,18 @@ static void compile_and_print(const char *label, const char *ir) {
     printf("=== %s ===\n", label);
     printf("IR:\n%s\n", ir);
 
-    lamina_buffer_t asm_buf = {0};
-    if (lamina_compile_ir_to_assembly(ir, NULL, &asm_buf) != LAMINA_OK)
-        die("lamina_compile_ir_to_assembly");
+    lia_buffer_t asm_buf = {0};
+    if (lia_compile_ir_to_assembly(ir, NULL, &asm_buf) != LIA_OK)
+        die("lia_compile_ir_to_assembly");
 
     printf("Assembly (%zu bytes):\n%.*s\n",
            asm_buf.len, (int)asm_buf.len, (char *)asm_buf.data);
 
-    lamina_buffer_free(&asm_buf);
+    lia_buffer_free(&asm_buf);
 }
 
 int main(void) {
-    printf("lamina %s on %s\n\n", lamina_version(), lamina_host_target());
+    printf("lamina %s on %s\n\n", lia_version(), lia_host_target());
 
     compile_and_print("add(i64, i64) -> i64",        ADD_IR);
     compile_and_print("max(i64, i64) -> i64",        MAX_IR);
@@ -72,29 +72,29 @@ int main(void) {
 
     /* --- Error path: invalid IR ----------------------------------------- */
     printf("=== invalid IR (expect error) ===\n");
-    lamina_buffer_t bad_buf = {0};
-    lamina_status_t st = lamina_compile_ir_to_assembly("this is not valid IR", NULL, &bad_buf);
-    if (st != LAMINA_OK) {
-        printf("Got expected error: %s\n\n", lamina_last_error());
+    lia_buffer_t bad_buf = {0};
+    lia_status_t st = lia_compile_ir_to_assembly("this is not valid IR", NULL, &bad_buf);
+    if (st != LIA_OK) {
+        printf("Got expected error: %s\n\n", lia_last_error());
     } else {
-        fprintf(stderr, "Expected error for invalid IR but got LAMINA_OK\n");
-        lamina_buffer_free(&bad_buf);
+        fprintf(stderr, "Expected error for invalid IR but got LIA_OK\n");
+        lia_buffer_free(&bad_buf);
         return 1;
     }
 
     /* --- Target selection: explicit host target -------------------------- */
     printf("=== explicit target ===\n");
-    lamina_compile_options_t opts = {0};
-    opts.target        = lamina_host_target();
+    lia_compile_options_t opts = {0};
+    opts.target        = lia_host_target();
     opts.codegen_units = 1;
     opts.opt_level     = 0;
 
-    lamina_buffer_t explicit_buf = {0};
-    if (lamina_compile_ir_to_assembly(ADD_IR, &opts, &explicit_buf) != LAMINA_OK)
-        die("lamina_compile_ir_to_assembly (explicit target)");
+    lia_buffer_t explicit_buf = {0};
+    if (lia_compile_ir_to_assembly(ADD_IR, &opts, &explicit_buf) != LIA_OK)
+        die("lia_compile_ir_to_assembly (explicit target)");
 
     printf("Compiled %zu bytes for target '%s'\n", explicit_buf.len, opts.target);
-    lamina_buffer_free(&explicit_buf);
+    lia_buffer_free(&explicit_buf);
 
     printf("\nDone.\n");
     return 0;
