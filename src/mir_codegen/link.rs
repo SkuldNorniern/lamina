@@ -199,6 +199,48 @@ fn build_msvc_toolchain_library_paths(target_arch: TargetArchitecture) -> Vec<St
         .collect()
 }
 
+/// Check whether the MSVC `link.exe` linker is actually available.
+///
+/// `Command::new("link").arg("/?")` can succeed on machines that have a
+/// non-MSVC `link` on PATH (e.g. a Unix-style symlink from Git tools). We
+/// verify by looking for `link.exe` inside known VS tool-root `bin` directories
+/// before falling back to the bare PATH probe.
+/// Return the full path to the MSVC `link.exe`, or `None` if not found.
+/// Prefers VS tool-root paths over bare PATH to avoid picking up non-MSVC
+/// tools named `link` (e.g. Unix-style `link.exe` from Git or MSYS2).
+fn resolve_msvc_link_cmd(target_arch: TargetArchitecture) -> Option<String> {
+    let target_binary_arch = msvc_library_arch(target_arch);
+    // The `Host*` subdirectory is the **host** machine architecture, not the
+    // target. Try all known host archs so the correct path is found regardless
+    // of whether the host is x64, arm64, or x86.
+    let host_archs = ["x64", "arm64", "x86"];
+    for tool_root in visual_studio_tool_roots() {
+        for host_arch in host_archs {
+            let candidate = tool_root
+                .join("bin")
+                .join(format!("Host{}", host_arch.to_uppercase()))
+                .join(target_binary_arch)
+                .join("link.exe");
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().to_string());
+            }
+        }
+    }
+    // Fallback: probe PATH, but only accept if the binary self-identifies as
+    // the Microsoft linker (MSVC `link /?` prints a "Microsoft" header line).
+    if let Ok(out) = Command::new("link").arg("/?").output() {
+        let header = String::from_utf8_lossy(&out.stdout);
+        if header.contains("Microsoft") {
+            return Some("link".to_string());
+        }
+    }
+    None
+}
+
+fn has_msvc_link(target_arch: TargetArchitecture) -> bool {
+    resolve_msvc_link_cmd(target_arch).is_some()
+}
+
 fn build_arch_emulation_flags(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
@@ -520,6 +562,10 @@ pub fn link(
                     target_os
                 )));
             }
+            let link_cmd = resolve_msvc_link_cmd(target_arch)
+                .ok_or_else(|| LaminaError::ValidationError(
+                    "MSVC link.exe not found; install Visual Studio C++ tools or use -c weld".to_string()
+                ))?;
             let mut args = vec!["/nologo".to_string()];
             args.push("/subsystem:console".to_string());
             args.push("/entry:main".to_string());
@@ -531,7 +577,7 @@ pub fn link(
             args.push("ucrt.lib".to_string());
             args.push("legacy_stdio_definitions.lib".to_string());
             args.push("kernel32.lib".to_string());
-            ("link", args)
+            return run_linker(&link_cmd, args, verbose);
         }
         LinkerBackend::Custom(name) => {
             if target_os == TargetOperatingSystem::Windows {
@@ -623,7 +669,7 @@ pub fn detect_linker_backend(
             if Command::new("clang").arg("--version").output().is_ok() {
                 return LinkerBackend::Lld;
             }
-            if Command::new("link").arg("/?").output().is_ok() {
+            if has_msvc_link(_target_arch) {
                 return LinkerBackend::Msvc;
             }
             // Weld can link Windows COFF objects to PE executables.
