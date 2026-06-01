@@ -25,7 +25,7 @@ impl Transform for LoopInvariantCodeMotion {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, String> {
         self.apply_internal(func)
     }
 }
@@ -398,8 +398,8 @@ impl LoopInvariantCodeMotion {
         // If a register is defined more than once (e.g. accumulator %sum, induction
         // var %j), it cannot be safely hoisted — one of those assignments is a
         // loop-carried update that must execute every iteration.
-        let mut def_counts: std::collections::HashMap<Register, usize> =
-            std::collections::HashMap::new();
+        let mut def_counts: HashMap<Register, usize> =
+            HashMap::new();
         for block in &func.blocks {
             if !loop_info.blocks.contains(&block.label) {
                 continue;
@@ -446,7 +446,7 @@ impl LoopInvariantCodeMotion {
         &self,
         func: &Function,
         loop_info: &LoopInfo,
-        defs_in_loop: &std::collections::HashSet<crate::mir::Register>,
+        defs_in_loop: &HashSet<Register>,
         instr: &Instruction,
     ) -> bool {
         // An instruction is invariant if:
@@ -474,7 +474,7 @@ impl LoopInvariantCodeMotion {
         &self,
         _func: &Function,
         _loop_info: &LoopInfo,
-        defs_in_loop: &std::collections::HashSet<Register>,
+        defs_in_loop: &HashSet<Register>,
         reg: &Register,
     ) -> bool {
         match reg {
@@ -517,7 +517,7 @@ impl LoopInvariantCodeMotion {
             pre_header_label = format!("{}_pre_{}", loop_info.header, counter);
         }
 
-        let mut pre_header_block = crate::mir::Block {
+        let mut pre_header_block = Block {
             label: pre_header_label.clone(),
             instructions: Vec::new(),
         };
@@ -612,8 +612,8 @@ impl LoopInvariantCodeMotion {
         &self,
         func: &Function,
         loop_info: &LoopInfo,
-    ) -> std::collections::HashSet<Register> {
-        let mut defs = std::collections::HashSet::new();
+    ) -> HashSet<Register> {
+        let mut defs = HashSet::new();
         for block in &func.blocks {
             if !loop_info.blocks.contains(&block.label) {
                 continue;
@@ -663,7 +663,7 @@ impl Transform for LoopUnrolling {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, String> {
         self.apply_internal(func)
     }
 }
@@ -707,7 +707,7 @@ impl LoopUnrolling {
         // We look for back edges: Jmp/Br to an ancestor in the dominance tree (approx via block order)
 
         // Map label -> index
-        let label_to_idx: std::collections::HashMap<_, _> = func
+        let label_to_idx: HashMap<_, _> = func
             .blocks
             .iter()
             .enumerate()
@@ -793,23 +793,23 @@ impl LoopUnrolling {
             Instruction::Jmp { target } if target == header_label => {
                 // Unconditional latch. Check header for condition (while loop)
                 let header_block = func.get_block(header_label)?;
-                match header_block.instructions.last()? {
+                return match header_block.instructions.last()? {
                     Instruction::Br {
                         cond,
                         true_target,
                         false_target,
                         ..
                     } => {
-                        return self.analyze_bound_from_cond(
+                        self.analyze_bound_from_cond(
                             func,
                             header_block,
                             cond,
                             true_target,
                             false_target,
                             header_label,
-                        );
+                        )
                     }
-                    _ => return None,
+                    _ => None,
                 }
             }
             _ => return None,
@@ -880,7 +880,7 @@ impl LoopUnrolling {
                 // i++ loop.
                 // Standard "while (i < N)"
                 // If we are at latch (do-while logic effectively):
-                //   i starts at 0? We assume 0 for now as per previous task spec, or we only unroll safe small checks.
+                //   I start at 0? We assume 0 for now as per previous task spec, or we only unroll safe small checks.
                 //   If condition is "i < N", and we exit when False.
                 //   Then we run while i < N.
                 //   Count = N.
@@ -908,7 +908,7 @@ impl LoopUnrolling {
         // For unrolling, we need a topological sort or just a list of blocks part of the loop.
         // We will just do a simple reachability trace within strict limits.
 
-        let mut body = std::collections::HashSet::new();
+        let mut body = HashSet::new();
         let mut queue = vec![header.to_string()];
         body.insert(header.to_string());
 
@@ -941,7 +941,7 @@ impl LoopUnrolling {
         // Return sorted list
         let mut list: Vec<_> = body.into_iter().collect();
         // Sort by order in function to preserve approx topological order
-        let order: std::collections::HashMap<_, _> = func
+        let order: HashMap<_, _> = func
             .blocks
             .iter()
             .enumerate()
@@ -1065,7 +1065,7 @@ impl LoopUnrolling {
             }
         }
 
-        let old_body_set: std::collections::HashSet<_> = loop_info.body_blocks.iter().collect();
+        let old_body_set: HashSet<_> = loop_info.body_blocks.iter().collect();
         func.blocks.retain(|b| !old_body_set.contains(&b.label));
         func.blocks.extend(unrolled_blocks);
 
@@ -1400,7 +1400,7 @@ mod tests {
                 "exit".to_string()
             };
 
-            let mut block = crate::mir::Block::new(&label);
+            let mut block = Block::new(&label);
             block.push(Instruction::IntBinary {
                 op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
@@ -1412,7 +1412,7 @@ mod tests {
             func.add_block(block);
         }
 
-        let mut exit_block = crate::mir::Block::new("exit");
+        let mut exit_block = Block::new("exit");
         exit_block.push(Instruction::Ret { value: None });
         func.add_block(exit_block);
 
@@ -1438,7 +1438,7 @@ mod tests {
         // Add 100 independent blocks
         for i in 0..100 {
             let label = format!("dead_block_{}", i);
-            let mut block = crate::mir::Block::new(&label);
+            let mut block = Block::new(&label);
             block.push(Instruction::Ret { value: None });
             func.add_block(block);
         }

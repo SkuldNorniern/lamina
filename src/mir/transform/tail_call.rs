@@ -27,7 +27,7 @@ impl Transform for TailCallOptimization {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, String> {
         self.apply_internal(func)
     }
 }

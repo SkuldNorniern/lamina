@@ -1,9 +1,9 @@
 [workspace]
-members = ["lamina-codegen", "lamina-ir", "lamina-mir", "lamina-platform", "ras", "weld"]
+members = ["lamina-codegen", "lamina-ir", "lamina-mir", "lamina-platform"]
 
 [package]
 name = "lamina"
-version = "0.0.9"
+version = "0.0.10"
 edition = "2024"
 authors = ["Eira <eira@nornity.com>"]
 description = "High-performance compiler backend for Lamina Intermediate Representation"
@@ -20,11 +20,11 @@ name = "lamina"
 path = "src/main.rs"
 
 [dependencies]
-ras = { package = "lamina-ras", path = "ras", version = "0.1.0", features = ["encoder"] }
+ras = { package = "lamina-ras", version = "0.1.1", features = ["encoder"] }
 lamina-ir = { path = "lamina-ir", version = "0.1.0" }
-lamina-platform = { path = "lamina-platform", version = "0.1.0" }
-lamina-mir = { path = "lamina-mir", version = "0.1.0" }
-lamina-codegen = { path = "lamina-codegen", version = "0.1.0" }
+lamina-platform = { version = "0.1.0" }
+lamina-mir = { version = "0.1.0" }
+lamina-codegen = { path = "lamina-codegen", version = "0.1.1" }
 
 [features]
 default = ["encoder"]
