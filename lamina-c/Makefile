@@ -18,7 +18,7 @@ CFLAGS    ?= -Wall -Wextra -std=c11
 # Paths relative to this Makefile (lamina-c/)
 EXAMPLES_DIR  := examples
 INCLUDE_DIR   := include
-CARGO_TARGET  := ../target/$(PROFILE)
+CARGO_TARGET  := target/$(PROFILE)
 
 # Platform-specific library name and linker flags
 UNAME := $(shell uname -s)
@@ -53,16 +53,21 @@ NIGHTLY_BINS  := $(EXAMPLES_DIR)/builder_jit
 
 # -------------------------------------------------------------------------
 
+LIB_STAMP := $(CARGO_TARGET)/.lamina_c_stamp
+
 .PHONY: all lib nightly-lib nightly test test-nightly clean
 
-all: lib $(STABLE_BINS)
+all: $(STABLE_BINS)
 
-# lib is phony — cargo decides what needs rebuilding.
-# $(LIB_FILE) is a byproduct; examples depend on it for timestamp checks.
-lib:
+# lib runs cargo and touches a stamp file on success.
+# Examples depend on the stamp so they relink only when cargo produces new output.
+lib: $(LIB_STAMP)
+
+$(LIB_STAMP):
 	$(CARGO) build $(CARGO_PROFILE_FLAG)
+	touch $(LIB_STAMP)
 
-$(LIB_FILE): lib
+$(LIB_FILE): $(LIB_STAMP)
 
 # Pattern rule for stable examples
 $(EXAMPLES_DIR)/%: $(EXAMPLES_DIR)/%.c $(LIB_FILE)
@@ -102,4 +107,4 @@ test-nightly: nightly
 # -------------------------------------------------------------------------
 
 clean:
-	rm -f $(STABLE_BINS) $(NIGHTLY_BINS)
+	rm -f $(STABLE_BINS) $(NIGHTLY_BINS) $(LIB_STAMP)

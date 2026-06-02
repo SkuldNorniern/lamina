@@ -64,7 +64,7 @@ static void compile_and_print(const char *label, const char *ir) {
 }
 
 int main(void) {
-    printf("lamina %s on %s\n\n", lia_version(), lia_host_target());
+    printf("lamina-c ABI %s | lamina %s | %s\n\n", lia_version(), lia_compiler_version(), lia_host_target());
 
     compile_and_print("add(i64, i64) -> i64",        ADD_IR);
     compile_and_print("max(i64, i64) -> i64",        MAX_IR);

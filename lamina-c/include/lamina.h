@@ -64,6 +64,7 @@ typedef enum {
 } lia_cmp_op_t;
 
 const char *lia_version(void);
+const char *lia_compiler_version(void);
 const char *lia_host_target(void);
 const char *lia_last_error(void);
 void        lia_clear_error(void);

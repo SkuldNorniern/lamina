@@ -69,8 +69,11 @@ pub extern "C" fn lia_clear_error() {
 // Version / info
 // ---------------------------------------------------------------------------
 
-// ABI version — bumped independently from the Rust crate version.
-static ABI_VERSION: &str = "0.1.0\0";
+// C binding ABI version — tracks lamina-c crate version.
+static ABI_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
+
+// Lamina compiler version — injected by build.rs from the workspace Cargo.toml.
+static COMPILER_VERSION: &str = concat!(env!("LAMINA_COMPILER_VERSION"), "\0");
 
 static HOST_TARGET: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock::new();
 
@@ -80,6 +83,12 @@ static HOST_TARGET: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock
 #[unsafe(no_mangle)]
 pub extern "C" fn lia_version() -> *const c_char {
     ABI_VERSION.as_ptr() as *const c_char
+}
+
+/// Returns the Lamina compiler version string (null-terminated, static lifetime).
+#[unsafe(no_mangle)]
+pub extern "C" fn lia_compiler_version() -> *const c_char {
+    COMPILER_VERSION.as_ptr() as *const c_char
 }
 
 /// Returns the host target identifier (e.g. `"x86_64_linux"`).

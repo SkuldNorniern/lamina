@@ -97,6 +97,9 @@ jobs:
     name: "Update latest pre-release"
     needs: [build, c-sdk]
     runs-on: ubuntu-latest
+    concurrency:
+      group: pre-release-latest
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v4
