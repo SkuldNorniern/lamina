@@ -479,8 +479,7 @@ pub fn link(
         )));
     }
 
-    let backend = backend
-        .unwrap_or_else(|| detect_linker_backend(target_arch, target_os));
+    let backend = backend.unwrap_or_else(|| detect_linker_backend(target_arch, target_os));
     let backend = validate_linker_backend_for_target(backend, target_arch, target_os)?;
 
     let (cmd, args) = match backend {
@@ -540,7 +539,8 @@ pub fn link(
         LinkerBackend::Mold => {
             if target_os == TargetOperatingSystem::Windows {
                 return Err(LaminaError::ValidationError(
-                    "mold is not supported for Windows targets; use -c clang or -c msvc".to_string(),
+                    "mold is not supported for Windows targets; use -c clang or -c msvc"
+                        .to_string(),
                 ));
             }
             let args = build_unix_linker_args(
@@ -553,8 +553,7 @@ pub fn link(
             ("mold", args)
         }
         LinkerBackend::Weld => {
-            let args =
-                build_weld_linker_args(input_path, output_path, target_os, additional_flags);
+            let args = build_weld_linker_args(input_path, output_path, target_os, additional_flags);
             return run_linker(&resolve_sibling_command("weld"), args, verbose);
         }
         LinkerBackend::Msvc => {
@@ -564,10 +563,12 @@ pub fn link(
                     target_os
                 )));
             }
-            let link_cmd = resolve_msvc_link_cmd(target_arch)
-                .ok_or_else(|| LaminaError::ValidationError(
-                    "MSVC link.exe not found; install Visual Studio C++ tools or use -c weld".to_string()
-                ))?;
+            let link_cmd = resolve_msvc_link_cmd(target_arch).ok_or_else(|| {
+                LaminaError::ValidationError(
+                    "MSVC link.exe not found; install Visual Studio C++ tools or use -c weld"
+                        .to_string(),
+                )
+            })?;
             let mut args = vec!["/nologo".to_string()];
             args.push("/subsystem:console".to_string());
             args.push("/entry:main".to_string());
@@ -663,8 +664,8 @@ pub fn detect_linker_backend(
 ) -> LinkerBackend {
     // Check for weld in the same directory as the current executable (bundled toolchain).
     let weld_cmd = resolve_sibling_command("weld");
-    let has_weld = Path::new(&weld_cmd).is_file()
-        || Command::new(&weld_cmd).arg("--version").output().is_ok();
+    let has_weld =
+        Path::new(&weld_cmd).is_file() || Command::new(&weld_cmd).arg("--version").output().is_ok();
 
     match target_os {
         TargetOperatingSystem::Windows => {
@@ -731,13 +732,12 @@ fn validate_linker_backend_for_target(
             target_os
         ))),
         (LinkerBackend::Weld, TargetOperatingSystem::Windows) => Ok(backend),
-        (
-            LinkerBackend::Ld | LinkerBackend::Mold,
-            TargetOperatingSystem::Windows,
-        ) => Err(LaminaError::ValidationError(format!(
-            "Linker backend {:?} is not supported for Windows targets; use -c clang or -c msvc",
-            backend
-        ))),
+        (LinkerBackend::Ld | LinkerBackend::Mold, TargetOperatingSystem::Windows) => {
+            Err(LaminaError::ValidationError(format!(
+                "Linker backend {:?} is not supported for Windows targets; use -c clang or -c msvc",
+                backend
+            )))
+        }
         (LinkerBackend::Custom(_), TargetOperatingSystem::Windows) => {
             Err(LaminaError::ValidationError(
                 "Custom linkers are not supported for Windows targets; use -c clang or -c msvc"
@@ -781,10 +781,8 @@ mod tests {
 
     #[test]
     fn macos_x86_64_link_args_use_arch_not_elf() {
-        let args = build_arch_emulation_flags(
-            TargetArchitecture::X86_64,
-            TargetOperatingSystem::MacOS,
-        );
+        let args =
+            build_arch_emulation_flags(TargetArchitecture::X86_64, TargetOperatingSystem::MacOS);
         assert!(args.contains(&"-arch".to_string()));
         assert!(args.contains(&"x86_64".to_string()));
         assert!(!args.contains(&"elf_x86_64".to_string()));
@@ -792,19 +790,15 @@ mod tests {
 
     #[test]
     fn linux_x86_64_link_args_use_elf_emulation() {
-        let args = build_arch_emulation_flags(
-            TargetArchitecture::X86_64,
-            TargetOperatingSystem::Linux,
-        );
+        let args =
+            build_arch_emulation_flags(TargetArchitecture::X86_64, TargetOperatingSystem::Linux);
         assert_eq!(args, vec!["-m".to_string(), "elf_x86_64".to_string()]);
     }
 
     #[test]
     fn windows_x86_64_has_no_unix_emulation_flags() {
-        let args = build_arch_emulation_flags(
-            TargetArchitecture::X86_64,
-            TargetOperatingSystem::Windows,
-        );
+        let args =
+            build_arch_emulation_flags(TargetArchitecture::X86_64, TargetOperatingSystem::Windows);
         assert!(args.is_empty());
     }
 
@@ -820,13 +814,8 @@ mod tests {
     fn build_clang_windows_linker_args_includes_target_and_output() {
         let input = Path::new("module.o");
         let output = Path::new("module.exe");
-        let args = build_clang_windows_linker_args(
-            input,
-            output,
-            TargetArchitecture::X86_64,
-            &[],
-        )
-        .expect("x86_64 Windows should be supported");
+        let args = build_clang_windows_linker_args(input, output, TargetArchitecture::X86_64, &[])
+            .expect("x86_64 Windows should be supported");
 
         assert_eq!(args[0], "-target");
         assert_eq!(args[1], "x86_64-pc-windows-msvc");
@@ -863,7 +852,10 @@ mod tests {
         let output = Path::new("module");
         let args = build_weld_linker_args(input, output, TargetOperatingSystem::Linux, &[]);
         // weld links against libc for printf/fflush access.
-        assert!(args.iter().any(|a| a == "-lc"), "expected -lc in args: {args:?}");
+        assert!(
+            args.iter().any(|a| a == "-lc"),
+            "expected -lc in args: {args:?}"
+        );
         assert!(args.contains(&"-o".to_string()));
         // No CRT objects or dynamic-linker args — weld handles those itself.
         assert!(!args.iter().any(|a| a == "--dynamic-linker"));
