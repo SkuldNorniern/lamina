@@ -16,13 +16,15 @@ PROFILE=debug
 NIGHTLY=0
 OUT_DIR="$(pwd)/dist"
 
-for arg in "$@"; do
-    case "$arg" in
-        --release)  PROFILE=release ;;
-        --nightly)  NIGHTLY=1 ;;
-        --out)      shift; OUT_DIR="$1" ;;
-        --out=*)    OUT_DIR="${arg#*=}" ;;
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --release)   PROFILE=release ;;
+        --nightly)   NIGHTLY=1 ;;
+        --out=*)     OUT_DIR="${1#*=}" ;;
+        --out)       shift; OUT_DIR="$1" ;;
+        *)           echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
+    shift
 done
 
 CARGO_FLAGS=()
