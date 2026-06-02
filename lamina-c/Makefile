@@ -55,15 +55,14 @@ NIGHTLY_BINS  := $(EXAMPLES_DIR)/builder_jit
 
 .PHONY: all lib nightly-lib nightly test test-nightly clean
 
-# lib is phony so cargo rebuild fires on any Rust source change.
-# Make cannot track individual .rs files portably; let cargo decide.
-
 all: lib $(STABLE_BINS)
 
-lib: $(LIB_FILE)
-
-$(LIB_FILE):
+# lib is phony — cargo decides what needs rebuilding.
+# $(LIB_FILE) is a byproduct; examples depend on it for timestamp checks.
+lib:
 	$(CARGO) build $(CARGO_PROFILE_FLAG)
+
+$(LIB_FILE): lib
 
 # Pattern rule for stable examples
 $(EXAMPLES_DIR)/%: $(EXAMPLES_DIR)/%.c $(LIB_FILE)
