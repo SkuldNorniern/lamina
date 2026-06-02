@@ -27,9 +27,12 @@ pub enum OwnedType {
     Tuple(Vec<OwnedType>),
 }
 
+/// A named field inside an [`OwnedType::Struct`].
 #[derive(Debug, Clone)]
 pub struct OwnedStructField {
+    /// Field name.
     pub name: String,
+    /// Field type.
     pub ty: OwnedType,
 }
 
@@ -109,7 +112,9 @@ impl fmt::Display for OwnedValue {
 /// A function parameter with an owned name and type.
 #[derive(Debug, Clone)]
 pub struct OwnedParam {
+    /// Parameter name (without `%` prefix).
     pub name: String,
+    /// Parameter type.
     pub ty: OwnedType,
 }
 
@@ -152,6 +157,7 @@ impl Default for OwnedIRBuilder {
 }
 
 impl OwnedIRBuilder {
+    /// Creates an empty builder.
     pub fn new() -> Self {
         OwnedIRBuilder {
             functions: Vec::new(),
@@ -164,10 +170,12 @@ impl OwnedIRBuilder {
     // Function definition
     // -----------------------------------------------------------------------
 
+    /// Begins a new function with no parameters.
     pub fn function(&mut self, name: impl Into<String>, return_type: OwnedType) -> &mut Self {
         self.function_with_params(name, vec![], return_type)
     }
 
+    /// Begins a new function with the given parameters.
     pub fn function_with_params(
         &mut self,
         name: impl Into<String>,
@@ -190,6 +198,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Declares an external function (no body; emits `@extern` annotation).
     pub fn external_function(
         &mut self,
         name: impl Into<String>,
@@ -214,6 +223,7 @@ impl OwnedIRBuilder {
     // Block management
     // -----------------------------------------------------------------------
 
+    /// Adds a basic block to the current function and makes it current.
     pub fn block(&mut self, name: impl Into<String>) -> &mut Self {
         if let Some(fi) = self.current_function {
             let block_name = name.into();
@@ -225,6 +235,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Overrides the entry block for the current function.
     pub fn set_entry_block(&mut self, name: impl Into<String>) -> &mut Self {
         if let Some(fi) = self.current_function {
             self.functions[fi].entry_block = name.into();
@@ -246,6 +257,7 @@ impl OwnedIRBuilder {
     // Arithmetic & comparison
     // -----------------------------------------------------------------------
 
+    /// Appends a binary arithmetic instruction.
     pub fn binary(
         &mut self,
         op: BinaryOp,
@@ -259,6 +271,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a comparison instruction.
     pub fn cmp(
         &mut self,
         op: CmpOp,
@@ -276,6 +289,7 @@ impl OwnedIRBuilder {
     // Control flow
     // -----------------------------------------------------------------------
 
+    /// Appends a conditional branch.
     pub fn branch(
         &mut self,
         condition: &OwnedValue,
@@ -287,12 +301,14 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends an unconditional jump.
     pub fn jump(&mut self, target: impl AsRef<str>) -> &mut Self {
         let t = format!("jmp {}", target.as_ref());
         self.push(t);
         self
     }
 
+    /// Appends a function call.
     pub fn call(
         &mut self,
         result: Option<&str>,
@@ -313,17 +329,20 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a return with a value.
     pub fn ret(&mut self, ty: &OwnedType, value: &OwnedValue) -> &mut Self {
         let t = format!("ret.{} {}", ty, value);
         self.push(t);
         self
     }
 
+    /// Appends a void return.
     pub fn ret_void(&mut self) -> &mut Self {
         self.push("ret.void".to_string());
         self
     }
 
+    /// Appends a phi node.
     pub fn phi(
         &mut self,
         result: impl AsRef<str>,
@@ -344,30 +363,35 @@ impl OwnedIRBuilder {
     // Memory
     // -----------------------------------------------------------------------
 
+    /// Appends a stack allocation.
     pub fn alloc_stack(&mut self, result: impl AsRef<str>, ty: &OwnedType) -> &mut Self {
         let t = format!("%{} = alloc.ptr.stack {}", result.as_ref(), ty);
         self.push(t);
         self
     }
 
+    /// Appends a heap allocation.
     pub fn alloc_heap(&mut self, result: impl AsRef<str>, ty: &OwnedType) -> &mut Self {
         let t = format!("%{} = alloc.ptr.heap {}", result.as_ref(), ty);
         self.push(t);
         self
     }
 
+    /// Appends a load instruction.
     pub fn load(&mut self, result: impl AsRef<str>, ty: &OwnedType, ptr: &OwnedValue) -> &mut Self {
         let t = format!("%{} = load.{} {}", result.as_ref(), ty, ptr);
         self.push(t);
         self
     }
 
+    /// Appends a store instruction.
     pub fn store(&mut self, ty: &OwnedType, ptr: &OwnedValue, val: &OwnedValue) -> &mut Self {
         let t = format!("store.{} {}, {}", ty, ptr, val);
         self.push(t);
         self
     }
 
+    /// Appends a heap deallocation.
     pub fn dealloc(&mut self, ptr: &OwnedValue) -> &mut Self {
         let t = format!("dealloc.heap {}", ptr);
         self.push(t);
@@ -378,6 +402,7 @@ impl OwnedIRBuilder {
     // Pointer operations
     // -----------------------------------------------------------------------
 
+    /// Appends a getelementptr (array element pointer).
     pub fn getelementptr(
         &mut self,
         result: impl AsRef<str>,
@@ -396,6 +421,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a struct field pointer instruction.
     pub fn struct_gep(
         &mut self,
         result: impl AsRef<str>,
@@ -407,6 +433,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a pointer-to-integer cast.
     pub fn ptrtoint(
         &mut self,
         result: impl AsRef<str>,
@@ -418,6 +445,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends an integer-to-pointer cast.
     pub fn inttoptr(
         &mut self,
         result: impl AsRef<str>,
@@ -433,6 +461,7 @@ impl OwnedIRBuilder {
     // Type conversions
     // -----------------------------------------------------------------------
 
+    /// Appends a zero-extension instruction.
     pub fn zext(
         &mut self,
         result: impl AsRef<str>,
@@ -451,6 +480,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a sign-extension instruction.
     pub fn sext(
         &mut self,
         result: impl AsRef<str>,
@@ -469,6 +499,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends an integer truncation instruction.
     pub fn trunc(
         &mut self,
         result: impl AsRef<str>,
@@ -487,6 +518,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a bitcast instruction.
     pub fn bitcast(
         &mut self,
         result: impl AsRef<str>,
@@ -505,6 +537,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a conditional select instruction.
     pub fn select(
         &mut self,
         result: impl AsRef<str>,
@@ -529,6 +562,7 @@ impl OwnedIRBuilder {
     // I/O
     // -----------------------------------------------------------------------
 
+    /// Appends a buffer write syscall.
     pub fn write(
         &mut self,
         result: impl AsRef<str>,
@@ -540,6 +574,7 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a buffer read syscall.
     pub fn read(
         &mut self,
         result: impl AsRef<str>,
@@ -551,24 +586,28 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a single-byte write syscall.
     pub fn write_byte(&mut self, result: impl AsRef<str>, value: &OwnedValue) -> &mut Self {
         let t = format!("%{} = writebyte {}", result.as_ref(), value);
         self.push(t);
         self
     }
 
+    /// Appends a single-byte read syscall.
     pub fn read_byte(&mut self, result: impl AsRef<str>) -> &mut Self {
         let t = format!("%{} = readbyte", result.as_ref());
         self.push(t);
         self
     }
 
+    /// Appends a write-pointer-value syscall.
     pub fn write_ptr(&mut self, result: impl AsRef<str>, ptr: &OwnedValue) -> &mut Self {
         let t = format!("%{} = writeptr {}", result.as_ref(), ptr);
         self.push(t);
         self
     }
 
+    /// Appends a debug print instruction.
     pub fn print(&mut self, value: &OwnedValue) -> &mut Self {
         let t = format!("print {}", value);
         self.push(t);
