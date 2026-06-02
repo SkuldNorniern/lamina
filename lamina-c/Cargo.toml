@@ -8,12 +8,14 @@ license = "Apache-2.0"
 repository = "https://github.com/SkuldNorniern/lamina"
 
 [lib]
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [dependencies]
 lamina = { path = "..", version = "0.0.10", features = ["encoder"] }
 lamina-ir = { path = "../lamina-ir", version = "0.1.0" }
 lamina-platform = { version = "0.1.0" }
+
+[workspace]
 
 [features]
 default = []
