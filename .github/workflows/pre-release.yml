@@ -118,22 +118,29 @@ jobs:
           echo "date=$DATE"       >> "$GITHUB_OUTPUT"
 
       - name: Publish latest pre-release
+        id: auto_release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "latest"
+          prerelease: true
+          title: "Development Build (${{ steps.meta.outputs.date }})"
+          files: |
+            artifacts/lamina
+            artifacts/*.tar.gz
+            artifacts/*.sha256
+
+      - name: Append C SDK info to release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.meta.outputs.version }}
-          DATE=${{ steps.meta.outputs.date }}
-          SHA="${{ github.sha }}"
+          CURRENT=$(gh release view latest --json body --jq '.body')
           NOTES_FILE=$(mktemp)
           {
-            echo "Automated build from \`main\` — ${DATE}."
+            echo "$CURRENT"
             echo ""
-            echo "> ⚠️ Pre-release. Not for production use."
-            echo ""
-            echo "**Commit:** ${SHA}"
-            echo ""
-            echo "### Lamina binary"
-            echo '`lamina` — x86_64 Linux'
+            echo "---"
             echo ""
             echo "### C SDK ${VERSION}"
             echo "| Archive | Surface |"
@@ -142,31 +149,5 @@ jobs:
             echo "| \`lamina-c-${VERSION}-nightly-x86_64-linux.tar.gz\` | + JIT (\`lamina_nightly.h\`, no ABI guarantee) |"
             echo ""
             echo "Verify: \`sha256sum -c lamina-c-${VERSION}-stable-x86_64-linux.tar.gz.sha256\`"
-            echo ""
-            echo "See [docs/c-bindings.md](../../blob/main/docs/c-bindings.md)."
           } > "$NOTES_FILE"
-          # Try to update existing release in-place; create if it doesn't exist.
-          if gh release view latest &>/dev/null; then
-            gh release edit latest \
-              --prerelease \
-              --title "Development Build (${DATE})" \
-              --notes-file "$NOTES_FILE"
-            # Replace assets: delete old ones, upload new.
-            gh release view latest --json assets --jq '.assets[].name' \
-              | xargs -r -I{} gh release delete-asset latest {} --yes 2>/dev/null || true
-            gh release upload latest \
-              artifacts/lamina \
-              artifacts/*.tar.gz \
-              artifacts/*.sha256
-          else
-            gh release create latest \
-              --prerelease \
-              --title "Development Build (${DATE})" \
-              --notes-file "$NOTES_FILE" \
-              artifacts/lamina \
-              artifacts/*.tar.gz \
-              artifacts/*.sha256
-          fi
-          # Update tag to current commit only after assets are live.
-          git tag -f latest
-          git push origin latest --force
+          gh release edit latest --notes-file "$NOTES_FILE"
