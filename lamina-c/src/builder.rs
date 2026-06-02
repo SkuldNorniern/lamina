@@ -143,6 +143,10 @@ pub extern "C" fn lia_value_u8(v: u8) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::U8(v))))
 }
 #[unsafe(no_mangle)]
+pub extern "C" fn lia_value_u16(v: u16) -> *mut LaminaValue {
+    Box::into_raw(Box::new(LaminaValue(OwnedValue::U16(v))))
+}
+#[unsafe(no_mangle)]
 pub extern "C" fn lia_value_u32(v: u32) -> *mut LaminaValue {
     Box::into_raw(Box::new(LaminaValue(OwnedValue::U32(v))))
 }
@@ -450,6 +454,10 @@ pub unsafe extern "C" fn lia_builder_phi(
         let b = require_mut!(builder, "builder");
         let result = require_str!(result, "result");
         let t = require_ref!(ty, "ty");
+        if count > 0 && (values.is_null() || labels.is_null()) {
+            set_error("phi values/labels pointer is null");
+            return LaminaStatus::ErrorInvalidArgument;
+        }
         let mut incoming = Vec::with_capacity(count);
         for i in 0..count {
             let val_ptr = *values.add(i);
