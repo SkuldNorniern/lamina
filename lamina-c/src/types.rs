@@ -26,7 +26,10 @@ impl LaminaBuffer {
     }
 
     pub fn null() -> Self {
-        LaminaBuffer { data: std::ptr::null_mut(), len: 0 }
+        LaminaBuffer {
+            data: std::ptr::null_mut(),
+            len: 0,
+        }
     }
 }
 
