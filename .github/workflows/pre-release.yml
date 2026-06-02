@@ -114,23 +114,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "date=$DATE"       >> "$GITHUB_OUTPUT"
 
-      - name: Delete previous latest pre-release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release delete latest --yes 2>/dev/null || true
-          git push origin :refs/tags/latest 2>/dev/null || true
-
       - name: Publish latest pre-release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.meta.outputs.version }}
           DATE=${{ steps.meta.outputs.date }}
-          gh release create latest \
-            --prerelease \
-            --title "Development Build (${DATE})" \
-            --notes "Automated build from \`main\` — ${DATE}.
+          NOTES="Automated build from \`main\` — ${DATE}.
 
 > ⚠️ Pre-release. Not for production use.
 
@@ -147,7 +137,30 @@ jobs:
 
 Verify: \`sha256sum -c lamina-c-${VERSION}-stable-x86_64-linux.tar.gz.sha256\`
 
-See [docs/c-bindings.md](../../blob/main/docs/c-bindings.md)." \
-            artifacts/lamina \
-            artifacts/*.tar.gz \
-            artifacts/*.sha256
+See [docs/c-bindings.md](../../blob/main/docs/c-bindings.md)."
+
+          # Try to update existing release in-place; create if it doesn't exist.
+          if gh release view latest &>/dev/null; then
+            gh release edit latest \
+              --prerelease \
+              --title "Development Build (${DATE})" \
+              --notes "${NOTES}"
+            # Replace assets: delete old ones, upload new.
+            gh release view latest --json assets --jq '.assets[].name' \
+              | xargs -r -I{} gh release delete-asset latest {} --yes 2>/dev/null || true
+            gh release upload latest \
+              artifacts/lamina \
+              artifacts/*.tar.gz \
+              artifacts/*.sha256
+          else
+            gh release create latest \
+              --prerelease \
+              --title "Development Build (${DATE})" \
+              --notes "${NOTES}" \
+              artifacts/lamina \
+              artifacts/*.tar.gz \
+              artifacts/*.sha256
+          fi
+          # Update tag to current commit only after assets are live.
+          git tag -f latest
+          git push origin latest --force
