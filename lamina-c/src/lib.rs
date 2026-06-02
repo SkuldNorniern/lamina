@@ -7,9 +7,12 @@
 //   - Failing call stores a message; succeeding call clears stale error state.
 
 #![allow(clippy::missing_safety_doc)]
+// Nested `unsafe {}` inside `|| unsafe { ... }` closures are intentional —
+// each inner block marks the specific unsafe operation being performed.
+#![allow(unused_unsafe)]
 
 mod error;
-mod types;
+pub mod types;
 
 pub mod builder;
 pub mod module;

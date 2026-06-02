@@ -60,7 +60,7 @@ all: lib $(STABLE_BINS)
 lib: $(LIB_FILE)
 
 $(LIB_FILE):
-	$(CARGO) build -p lamina-c $(CARGO_PROFILE_FLAG)
+	$(CARGO) build $(CARGO_PROFILE_FLAG)
 
 # Pattern rule for stable examples
 $(EXAMPLES_DIR)/%: $(EXAMPLES_DIR)/%.c $(LIB_FILE)
@@ -73,7 +73,7 @@ $(EXAMPLES_DIR)/%: $(EXAMPLES_DIR)/%.c $(LIB_FILE)
 nightly: nightly-lib $(NIGHTLY_BINS)
 
 nightly-lib:
-	$(CARGO) build -p lamina-c --features nightly $(CARGO_PROFILE_FLAG)
+	$(CARGO) build --features nightly $(CARGO_PROFILE_FLAG)
 
 $(EXAMPLES_DIR)/builder_jit: $(EXAMPLES_DIR)/builder_jit.c nightly-lib
 	$(CC) $(CFLAGS) $< $(INCLUDE) $(LDFLAGS) -o $@
