@@ -79,11 +79,11 @@ pub unsafe extern "C" fn lia_compile_ir_to_assembly(
             set_error("output is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        if let Some(level) = unsafe { opt_level(options) } {
-            if level != 0 {
-                set_error("opt_level != 0 not yet supported; pass 0");
-                return LaminaStatus::ErrorInvalidArgument;
-            }
+        if let Some(level) = unsafe { opt_level(options) }
+            && level != 0
+        {
+            set_error("opt_level != 0 not yet supported; pass 0");
+            return LaminaStatus::ErrorInvalidArgument;
         }
         unsafe { compile_to_buf(ir_str, options, output) }
     }))
@@ -104,11 +104,11 @@ pub unsafe extern "C" fn lia_module_compile_to_assembly(
             set_error("output is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        if let Some(level) = unsafe { opt_level(options) } {
-            if level != 0 {
-                set_error("opt_level != 0 not yet supported; pass 0");
-                return LaminaStatus::ErrorInvalidArgument;
-            }
+        if let Some(level) = unsafe { opt_level(options) }
+            && level != 0
+        {
+            set_error("opt_level != 0 not yet supported; pass 0");
+            return LaminaStatus::ErrorInvalidArgument;
         }
         let ir_str = &(*module).0;
         unsafe { compile_to_buf(ir_str, options, output) }

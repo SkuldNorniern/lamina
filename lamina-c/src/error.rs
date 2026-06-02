@@ -12,7 +12,11 @@ thread_local! {
 pub fn set_error(msg: impl Into<String>) {
     let s = msg.into();
     // Replace embedded NULs so CString::new never fails on malformed messages.
-    let safe = if s.contains('\0') { s.replace('\0', "\\0") } else { s };
+    let safe = if s.contains('\0') {
+        s.replace('\0', "\\0")
+    } else {
+        s
+    };
     let cs = CString::new(safe)
         .unwrap_or_else(|_| CString::new("(error message encoding failed)").unwrap());
     LAST_ERROR.with(|e| *e.borrow_mut() = Some(cs));

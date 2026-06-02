@@ -24,19 +24,32 @@ pub unsafe extern "C" fn lia_jit_compile_ir(
     catch(AssertUnwindSafe(|| unsafe {
         let ir_str = match cstr_to_str(ir) {
             Some(s) => s,
-            None => { set_error("ir is null or invalid UTF-8"); return LaminaStatus::ErrorInvalidArgument; }
+            None => {
+                set_error("ir is null or invalid UTF-8");
+                return LaminaStatus::ErrorInvalidArgument;
+            }
         };
         let func_name = match cstr_to_str(function_name) {
             Some(s) => s,
-            None => { set_error("function_name is null or invalid UTF-8"); return LaminaStatus::ErrorInvalidArgument; }
+            None => {
+                set_error("function_name is null or invalid UTF-8");
+                return LaminaStatus::ErrorInvalidArgument;
+            }
         };
         if jit_out.is_null() {
             set_error("jit_out is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
         match compile_jit(ir_str, func_name) {
-            Ok(h) => { *jit_out = Box::into_raw(Box::new(h)); clear_error(); LaminaStatus::Ok }
-            Err(msg) => { set_error(msg); LaminaStatus::ErrorCodegen }
+            Ok(h) => {
+                *jit_out = Box::into_raw(Box::new(h));
+                clear_error();
+                LaminaStatus::Ok
+            }
+            Err(msg) => {
+                set_error(msg);
+                LaminaStatus::ErrorCodegen
+            }
         }
     }))
 }
@@ -54,7 +67,10 @@ pub unsafe extern "C" fn lia_module_compile_jit(
         }
         let func_name = match cstr_to_str(function_name) {
             Some(s) => s,
-            None => { set_error("function_name is null or invalid UTF-8"); return LaminaStatus::ErrorInvalidArgument; }
+            None => {
+                set_error("function_name is null or invalid UTF-8");
+                return LaminaStatus::ErrorInvalidArgument;
+            }
         };
         if jit_out.is_null() {
             set_error("jit_out is null");
@@ -62,8 +78,15 @@ pub unsafe extern "C" fn lia_module_compile_jit(
         }
         let ir_str = &(*module).0;
         match compile_jit(ir_str, func_name) {
-            Ok(h) => { *jit_out = Box::into_raw(Box::new(h)); clear_error(); LaminaStatus::Ok }
-            Err(msg) => { set_error(msg); LaminaStatus::ErrorCodegen }
+            Ok(h) => {
+                *jit_out = Box::into_raw(Box::new(h));
+                clear_error();
+                LaminaStatus::Ok
+            }
+            Err(msg) => {
+                set_error(msg);
+                LaminaStatus::ErrorCodegen
+            }
         }
     }))
 }
@@ -97,7 +120,10 @@ pub unsafe extern "C" fn lia_jit_free(jit: *mut LaminaJit) {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_jit_call_i64_0(jit: *const LaminaJit, result: *mut i64) -> LaminaStatus {
+pub unsafe extern "C" fn lia_jit_call_i64_0(
+    jit: *const LaminaJit,
+    result: *mut i64,
+) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         if jit.is_null() || result.is_null() {
             set_error("jit or result is null");
@@ -111,7 +137,11 @@ pub unsafe extern "C" fn lia_jit_call_i64_0(jit: *const LaminaJit, result: *mut 
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_jit_call_i64_1(jit: *const LaminaJit, a: i64, result: *mut i64) -> LaminaStatus {
+pub unsafe extern "C" fn lia_jit_call_i64_1(
+    jit: *const LaminaJit,
+    a: i64,
+    result: *mut i64,
+) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         if jit.is_null() || result.is_null() {
             set_error("jit or result is null");
@@ -125,7 +155,12 @@ pub unsafe extern "C" fn lia_jit_call_i64_1(jit: *const LaminaJit, a: i64, resul
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_jit_call_i64_2(jit: *const LaminaJit, a: i64, b: i64, result: *mut i64) -> LaminaStatus {
+pub unsafe extern "C" fn lia_jit_call_i64_2(
+    jit: *const LaminaJit,
+    a: i64,
+    b: i64,
+    result: *mut i64,
+) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         if jit.is_null() || result.is_null() {
             set_error("jit or result is null");
@@ -144,12 +179,19 @@ pub unsafe extern "C" fn lia_jit_call_i64_2(jit: *const LaminaJit, a: i64, b: i6
 
 fn compile_jit(ir_str: &str, func_name: &str) -> Result<LaminaJit, String> {
     let host = Target::detect_host();
-    let module = lamina::parser::parse_module(ir_str)
-        .map_err(|e| format!("parse error: {}", e))?;
+    let module = lamina::parser::parse_module(ir_str).map_err(|e| format!("parse error: {}", e))?;
     let mir_module = lamina::mir::codegen::from_ir(&module, "jit_c")
         .map_err(|e| format!("IR lowering error: {}", e))?;
     let lookup = func_name.strip_prefix('@').unwrap_or(func_name);
-    let result = compile_to_runtime(&mir_module, host.architecture, host.operating_system, Some(lookup))
-        .map_err(|e| format!("JIT compilation failed: {}", e))?;
-    Ok(LaminaJit { memory: result.memory, function_ptr: result.function_ptr })
+    let result = compile_to_runtime(
+        &mir_module,
+        host.architecture,
+        host.operating_system,
+        Some(lookup),
+    )
+    .map_err(|e| format!("JIT compilation failed: {}", e))?;
+    Ok(LaminaJit {
+        memory: result.memory,
+        function_ptr: result.function_ptr,
+    })
 }

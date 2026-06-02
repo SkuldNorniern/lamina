@@ -53,9 +53,8 @@ macro_rules! require_str {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn lia_builder_create() -> *mut LaminaBuilder {
-    match std::panic::catch_unwind(|| {
-        Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new())))
-    }) {
+    match std::panic::catch_unwind(|| Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new()))))
+    {
         Ok(ptr) => ptr,
         Err(_) => std::ptr::null_mut(),
     }
@@ -81,19 +80,19 @@ macro_rules! type_ctor {
     };
 }
 
-type_ctor!(lia_type_void,  OwnedType::Void);
-type_ctor!(lia_type_i8,    OwnedType::Primitive(PrimitiveType::I8));
-type_ctor!(lia_type_i16,   OwnedType::Primitive(PrimitiveType::I16));
-type_ctor!(lia_type_i32,   OwnedType::Primitive(PrimitiveType::I32));
-type_ctor!(lia_type_i64,   OwnedType::Primitive(PrimitiveType::I64));
-type_ctor!(lia_type_u8,    OwnedType::Primitive(PrimitiveType::U8));
-type_ctor!(lia_type_u16,   OwnedType::Primitive(PrimitiveType::U16));
-type_ctor!(lia_type_u32,   OwnedType::Primitive(PrimitiveType::U32));
-type_ctor!(lia_type_u64,   OwnedType::Primitive(PrimitiveType::U64));
-type_ctor!(lia_type_f32,   OwnedType::Primitive(PrimitiveType::F32));
-type_ctor!(lia_type_f64,   OwnedType::Primitive(PrimitiveType::F64));
-type_ctor!(lia_type_bool,  OwnedType::Primitive(PrimitiveType::Bool));
-type_ctor!(lia_type_ptr,   OwnedType::Primitive(PrimitiveType::Ptr));
+type_ctor!(lia_type_void, OwnedType::Void);
+type_ctor!(lia_type_i8, OwnedType::Primitive(PrimitiveType::I8));
+type_ctor!(lia_type_i16, OwnedType::Primitive(PrimitiveType::I16));
+type_ctor!(lia_type_i32, OwnedType::Primitive(PrimitiveType::I32));
+type_ctor!(lia_type_i64, OwnedType::Primitive(PrimitiveType::I64));
+type_ctor!(lia_type_u8, OwnedType::Primitive(PrimitiveType::U8));
+type_ctor!(lia_type_u16, OwnedType::Primitive(PrimitiveType::U16));
+type_ctor!(lia_type_u32, OwnedType::Primitive(PrimitiveType::U32));
+type_ctor!(lia_type_u64, OwnedType::Primitive(PrimitiveType::U64));
+type_ctor!(lia_type_f32, OwnedType::Primitive(PrimitiveType::F32));
+type_ctor!(lia_type_f64, OwnedType::Primitive(PrimitiveType::F64));
+type_ctor!(lia_type_bool, OwnedType::Primitive(PrimitiveType::Bool));
+type_ctor!(lia_type_ptr, OwnedType::Primitive(PrimitiveType::Ptr));
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_type_free(ty: *mut LaminaType) {
@@ -207,7 +206,10 @@ pub unsafe extern "C" fn lia_builder_function(
         let ret = require_ref!(return_type, "return_type").0.clone();
         let owned_params = match collect_params(params, param_count) {
             Ok(p) => p,
-            Err(msg) => { set_error(msg); return LaminaStatus::ErrorInvalidArgument; }
+            Err(msg) => {
+                set_error(msg);
+                return LaminaStatus::ErrorInvalidArgument;
+            }
         };
         b.0.function_with_params(name.to_string(), owned_params, ret);
         clear_error();
@@ -229,7 +231,10 @@ pub unsafe extern "C" fn lia_builder_external_function(
         let ret = require_ref!(return_type, "return_type").0.clone();
         let owned_params = match collect_params(params, param_count) {
             Ok(p) => p,
-            Err(msg) => { set_error(msg); return LaminaStatus::ErrorInvalidArgument; }
+            Err(msg) => {
+                set_error(msg);
+                return LaminaStatus::ErrorInvalidArgument;
+            }
         };
         b.0.external_function(name.to_string(), owned_params, ret);
         clear_error();
@@ -291,12 +296,20 @@ pub unsafe extern "C" fn lia_builder_finish(
 
 #[repr(C)]
 pub enum LaminaBinaryOp {
-    Add = 0, Sub = 1, Mul = 2, Div = 3, Rem = 4,
-    And = 5, Or = 6, Xor = 7, Shl = 8, Shr = 9,
+    Add = 0,
+    Sub = 1,
+    Mul = 2,
+    Div = 3,
+    Rem = 4,
+    And = 5,
+    Or = 6,
+    Xor = 7,
+    Shl = 8,
+    Shr = 9,
 }
 
 impl LaminaBinaryOp {
-    fn to_rust(self) -> BinaryOp {
+    fn into_rust(self) -> BinaryOp {
         match self {
             LaminaBinaryOp::Add => BinaryOp::Add,
             LaminaBinaryOp::Sub => BinaryOp::Sub,
@@ -304,7 +317,7 @@ impl LaminaBinaryOp {
             LaminaBinaryOp::Div => BinaryOp::Div,
             LaminaBinaryOp::Rem => BinaryOp::Rem,
             LaminaBinaryOp::And => BinaryOp::And,
-            LaminaBinaryOp::Or  => BinaryOp::Or,
+            LaminaBinaryOp::Or => BinaryOp::Or,
             LaminaBinaryOp::Xor => BinaryOp::Xor,
             LaminaBinaryOp::Shl => BinaryOp::Shl,
             LaminaBinaryOp::Shr => BinaryOp::Shr,
@@ -314,11 +327,16 @@ impl LaminaBinaryOp {
 
 #[repr(C)]
 pub enum LaminaCmpOp {
-    Eq = 0, Ne = 1, Gt = 2, Ge = 3, Lt = 4, Le = 5,
+    Eq = 0,
+    Ne = 1,
+    Gt = 2,
+    Ge = 3,
+    Lt = 4,
+    Le = 5,
 }
 
 impl LaminaCmpOp {
-    fn to_rust(self) -> CmpOp {
+    fn into_rust(self) -> CmpOp {
         match self {
             LaminaCmpOp::Eq => CmpOp::Eq,
             LaminaCmpOp::Ne => CmpOp::Ne,
@@ -350,7 +368,7 @@ pub unsafe extern "C" fn lia_builder_binary(
         let lhs_inner = require_ref!(lhs, "lhs");
         let rhs_inner = require_ref!(rhs, "rhs");
         if let OwnedType::Primitive(prim) = ty_inner.0 {
-            b.0.binary(op.to_rust(), result, prim, &lhs_inner.0, &rhs_inner.0);
+            b.0.binary(op.into_rust(), result, prim, &lhs_inner.0, &rhs_inner.0);
             clear_error();
             LaminaStatus::Ok
         } else {
@@ -376,7 +394,7 @@ pub unsafe extern "C" fn lia_builder_cmp(
         let lhs_inner = require_ref!(lhs, "lhs");
         let rhs_inner = require_ref!(rhs, "rhs");
         if let OwnedType::Primitive(prim) = ty_inner.0 {
-            b.0.cmp(op.to_rust(), result, prim, &lhs_inner.0, &rhs_inner.0);
+            b.0.cmp(op.into_rust(), result, prim, &lhs_inner.0, &rhs_inner.0);
             clear_error();
             LaminaStatus::Ok
         } else {
@@ -398,7 +416,7 @@ pub unsafe extern "C" fn lia_builder_branch(
         let cond = require_ref!(condition, "condition");
         let t = require_str!(true_label, "true_label");
         let f = require_str!(false_label, "false_label");
-        b.0.branch(&cond.0, t.to_string(), f.to_string());
+        b.0.branch(&cond.0, t, f);
         clear_error();
         LaminaStatus::Ok
     }))
@@ -412,7 +430,7 @@ pub unsafe extern "C" fn lia_builder_jump(
     catch(AssertUnwindSafe(|| unsafe {
         let b = require_mut!(builder, "builder");
         let t = require_str!(target, "target");
-        b.0.jump(t.to_string());
+        b.0.jump(t);
         clear_error();
         LaminaStatus::Ok
     }))
@@ -430,12 +448,19 @@ pub unsafe extern "C" fn lia_builder_call(
     catch(AssertUnwindSafe(|| unsafe {
         let b = require_mut!(builder, "builder");
         let fname = require_str!(func_name, "func_name");
-        let res = if result.is_null() { None } else { cstr_to_str(result) };
+        let res = if result.is_null() {
+            None
+        } else {
+            cstr_to_str(result)
+        };
         let owned_args = match collect_values(args, arg_count) {
             Ok(v) => v,
-            Err(msg) => { set_error(msg); return LaminaStatus::ErrorInvalidArgument; }
+            Err(msg) => {
+                set_error(msg);
+                return LaminaStatus::ErrorInvalidArgument;
+            }
         };
-        b.0.call(res, fname.to_string(), &owned_args);
+        b.0.call(res, fname, &owned_args);
         clear_error();
         LaminaStatus::Ok
     }))
@@ -464,11 +489,17 @@ pub unsafe extern "C" fn lia_builder_phi(
             let lbl_ptr = *labels.add(i);
             let val = match val_ptr.as_ref() {
                 Some(v) => v,
-                None => { set_error("phi value pointer is null"); return LaminaStatus::ErrorInvalidArgument; }
+                None => {
+                    set_error("phi value pointer is null");
+                    return LaminaStatus::ErrorInvalidArgument;
+                }
             };
             let lbl = match cstr_to_str(lbl_ptr) {
                 Some(s) => s,
-                None => { set_error("phi label pointer is null"); return LaminaStatus::ErrorInvalidArgument; }
+                None => {
+                    set_error("phi label pointer is null");
+                    return LaminaStatus::ErrorInvalidArgument;
+                }
             };
             incoming.push((val.0.clone(), lbl.to_string()));
         }
@@ -697,7 +728,10 @@ macro_rules! conv_inst {
                         LaminaStatus::Ok
                     }
                     _ => {
-                        set_error(concat!(stringify!($fn_name), " source and target must be primitive"));
+                        set_error(concat!(
+                            stringify!($fn_name),
+                            " source and target must be primitive"
+                        ));
                         LaminaStatus::ErrorInvalidArgument
                     }
                 }
@@ -706,9 +740,9 @@ macro_rules! conv_inst {
     };
 }
 
-conv_inst!(lia_builder_zext,    zext);
-conv_inst!(lia_builder_sext,    sext);
-conv_inst!(lia_builder_trunc,   trunc);
+conv_inst!(lia_builder_zext, zext);
+conv_inst!(lia_builder_sext, sext);
+conv_inst!(lia_builder_trunc, trunc);
 conv_inst!(lia_builder_bitcast, bitcast);
 
 #[unsafe(no_mangle)]
@@ -832,12 +866,14 @@ unsafe fn collect_params(
     }
     for i in 0..count {
         let p = unsafe { &*params.add(i) };
-        let name = cstr_to_str(p.name)
-            .ok_or("parameter name is null or invalid UTF-8")?;
+        let name = cstr_to_str(p.name).ok_or("parameter name is null or invalid UTF-8")?;
         let ty = unsafe { p.ty.as_ref() }
             .map(|t| t.0.clone())
             .ok_or("parameter type is null")?;
-        out.push(OwnedParam { name: name.to_string(), ty });
+        out.push(OwnedParam {
+            name: name.to_string(),
+            ty,
+        });
     }
     Ok(out)
 }
