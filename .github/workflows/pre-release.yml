@@ -123,31 +123,34 @@ jobs:
         run: |
           VERSION=${{ steps.meta.outputs.version }}
           DATE=${{ steps.meta.outputs.date }}
-          NOTES="Automated build from \`main\` — ${DATE}.
-
-> ⚠️ Pre-release. Not for production use.
-
-**Commit:** ${{ github.sha }}
-
-### Lamina binary
-\`lamina\` — x86_64 Linux
-
-### C SDK ${VERSION}
-| Archive | Surface |
-|---------|---------|
-| \`lamina-c-${VERSION}-stable-x86_64-linux.tar.gz\` | Stable AOT (\`lamina.h\`) |
-| \`lamina-c-${VERSION}-nightly-x86_64-linux.tar.gz\` | + JIT (\`lamina_nightly.h\`, no ABI guarantee) |
-
-Verify: \`sha256sum -c lamina-c-${VERSION}-stable-x86_64-linux.tar.gz.sha256\`
-
-See [docs/c-bindings.md](../../blob/main/docs/c-bindings.md)."
-
+          SHA="${{ github.sha }}"
+          NOTES_FILE=$(mktemp)
+          {
+            echo "Automated build from \`main\` — ${DATE}."
+            echo ""
+            echo "> ⚠️ Pre-release. Not for production use."
+            echo ""
+            echo "**Commit:** ${SHA}"
+            echo ""
+            echo "### Lamina binary"
+            echo '`lamina` — x86_64 Linux'
+            echo ""
+            echo "### C SDK ${VERSION}"
+            echo "| Archive | Surface |"
+            echo "|---------|---------|"
+            echo "| \`lamina-c-${VERSION}-stable-x86_64-linux.tar.gz\` | Stable AOT (\`lamina.h\`) |"
+            echo "| \`lamina-c-${VERSION}-nightly-x86_64-linux.tar.gz\` | + JIT (\`lamina_nightly.h\`, no ABI guarantee) |"
+            echo ""
+            echo "Verify: \`sha256sum -c lamina-c-${VERSION}-stable-x86_64-linux.tar.gz.sha256\`"
+            echo ""
+            echo "See [docs/c-bindings.md](../../blob/main/docs/c-bindings.md)."
+          } > "$NOTES_FILE"
           # Try to update existing release in-place; create if it doesn't exist.
           if gh release view latest &>/dev/null; then
             gh release edit latest \
               --prerelease \
               --title "Development Build (${DATE})" \
-              --notes "${NOTES}"
+              --notes-file "$NOTES_FILE"
             # Replace assets: delete old ones, upload new.
             gh release view latest --json assets --jq '.assets[].name' \
               | xargs -r -I{} gh release delete-asset latest {} --yes 2>/dev/null || true
@@ -159,7 +162,7 @@ See [docs/c-bindings.md](../../blob/main/docs/c-bindings.md)."
             gh release create latest \
               --prerelease \
               --title "Development Build (${DATE})" \
-              --notes "${NOTES}" \
+              --notes-file "$NOTES_FILE" \
               artifacts/lamina \
               artifacts/*.tar.gz \
               artifacts/*.sha256

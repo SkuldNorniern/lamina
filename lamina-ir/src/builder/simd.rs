@@ -24,7 +24,7 @@ impl<'a> IRBuilder<'a> {
     ) -> &mut Self {
         self.inst(Instruction::SimdBinary {
             op,
-            result: result.into(),
+            result,
             vector_type,
             lhs,
             rhs,
@@ -41,7 +41,7 @@ impl<'a> IRBuilder<'a> {
     ) -> &mut Self {
         self.inst(Instruction::SimdUnary {
             op,
-            result: result.into(),
+            result,
             vector_type,
             operand,
         })
@@ -59,7 +59,7 @@ impl<'a> IRBuilder<'a> {
     ) -> &mut Self {
         self.inst(Instruction::SimdTernary {
             op,
-            result: result.into(),
+            result,
             vector_type,
             lhs,
             rhs,
@@ -77,7 +77,7 @@ impl<'a> IRBuilder<'a> {
         mask: Value<'a>,
     ) -> &mut Self {
         self.inst(Instruction::SimdShuffle {
-            result: result.into(),
+            result,
             vector_type,
             lhs,
             rhs,
@@ -94,7 +94,7 @@ impl<'a> IRBuilder<'a> {
         lane_index: Value<'a>,
     ) -> &mut Self {
         self.inst(Instruction::SimdExtract {
-            result: result.into(),
+            result,
             scalar_type,
             vector,
             lane_index,
@@ -111,7 +111,7 @@ impl<'a> IRBuilder<'a> {
         lane_index: Value<'a>,
     ) -> &mut Self {
         self.inst(Instruction::SimdInsert {
-            result: result.into(),
+            result,
             vector_type,
             vector,
             scalar,
@@ -128,7 +128,7 @@ impl<'a> IRBuilder<'a> {
         alignment: Option<u32>,
     ) -> &mut Self {
         self.inst(Instruction::SimdLoad {
-            result: result.into(),
+            result,
             vector_type,
             ptr,
             alignment,
@@ -308,7 +308,7 @@ impl<'a> IRBuilder<'a> {
     ) -> &mut Self {
         self.inst(Instruction::SimdUnary {
             op: SimdOp::Splat,
-            result: result.into(),
+            result,
             vector_type,
             operand: scalar,
         })
