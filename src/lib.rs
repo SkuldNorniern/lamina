@@ -451,6 +451,9 @@ macro_rules! lamina {
 
 use std::io::Write;
 
+/// Lamina compiler version string (from `CARGO_PKG_VERSION`).
+pub const COMPILER_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 // Re-export core IR structures for easier access
 pub use error::LaminaError;
 pub use ir::{

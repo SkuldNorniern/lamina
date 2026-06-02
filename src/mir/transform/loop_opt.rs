@@ -398,8 +398,7 @@ impl LoopInvariantCodeMotion {
         // If a register is defined more than once (e.g. accumulator %sum, induction
         // var %j), it cannot be safely hoisted — one of those assignments is a
         // loop-carried update that must execute every iteration.
-        let mut def_counts: HashMap<Register, usize> =
-            HashMap::new();
+        let mut def_counts: HashMap<Register, usize> = HashMap::new();
         for block in &func.blocks {
             if !loop_info.blocks.contains(&block.label) {
                 continue;
@@ -523,8 +522,8 @@ impl LoopInvariantCodeMotion {
         };
 
         let mut sorted_invariant = invariant_instrs.to_vec();
-        sorted_invariant.sort_by(|a, b| b.1.cmp(&a.1));
-        sorted_invariant.sort_by(|a, b| b.0.cmp(&a.0));
+        sorted_invariant.sort_by_key(|t| std::cmp::Reverse(t.1));
+        sorted_invariant.sort_by_key(|t| std::cmp::Reverse(t.0));
 
         sorted_invariant.dedup();
         let mut instructions_to_move = Vec::new();
@@ -608,11 +607,7 @@ impl LoopInvariantCodeMotion {
         Ok(())
     }
 
-    fn collect_defs_in_loop(
-        &self,
-        func: &Function,
-        loop_info: &LoopInfo,
-    ) -> HashSet<Register> {
+    fn collect_defs_in_loop(&self, func: &Function, loop_info: &LoopInfo) -> HashSet<Register> {
         let mut defs = HashSet::new();
         for block in &func.blocks {
             if !loop_info.blocks.contains(&block.label) {
@@ -799,18 +794,16 @@ impl LoopUnrolling {
                         true_target,
                         false_target,
                         ..
-                    } => {
-                        self.analyze_bound_from_cond(
-                            func,
-                            header_block,
-                            cond,
-                            true_target,
-                            false_target,
-                            header_label,
-                        )
-                    }
+                    } => self.analyze_bound_from_cond(
+                        func,
+                        header_block,
+                        cond,
+                        true_target,
+                        false_target,
+                        header_label,
+                    ),
                     _ => None,
-                }
+                };
             }
             _ => return None,
         };

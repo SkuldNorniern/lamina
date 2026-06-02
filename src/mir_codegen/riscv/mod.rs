@@ -143,15 +143,13 @@ fn compile_single_function_riscv(
     let abi = RiscVAbi::new(target_os);
 
     let label = abi.mangle_function_name(func_name);
-    writeln!(output, "{}:", label).map_err(|e| {
-        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-    })?;
+    writeln!(output, "{}:", label)
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, "    .file 1 \"{}\"", tag)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     }
 
     let mut stack_slots: HashMap<crate::mir::VirtualReg, i32> = HashMap::new();
@@ -239,9 +237,8 @@ fn compile_single_function_riscv(
 
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
-        writeln!(output, ".L_{}:", block.label).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, ".L_{}:", block.label)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
 
         for inst in &block.instructions {
             emit_instruction_riscv(
@@ -501,9 +498,9 @@ fn emit_instruction_riscv<W: Write>(
                 abi.mangle_function_name(name)
             };
             RiscVFrame::generate_tail_epilogue(writer, stack_size, &target_sym).map_err(|e| {
-                crate::error::LaminaError::CodegenError(
-                    CodegenError::InvalidCodegenOptions(e.to_string()),
-                )
+                crate::error::LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(
+                    e.to_string(),
+                ))
             })?;
         }
         MirInst::Load {
