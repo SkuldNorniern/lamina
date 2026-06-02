@@ -29,7 +29,8 @@ static void die(const char *where) {
 }
 
 int main(void) {
-    printf("lamina version : %s\n", lia_version());
+    printf("lamina-c ABI  : %s\n", lia_version());
+    printf("lamina        : %s\n", lia_compiler_version());
     printf("host target    : %s\n", lia_host_target());
 
     /* --- Build add(i64, i64) -> i64 ------------------------------------- */
