@@ -113,17 +113,29 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Publish release (permanent — never deleted)
+        id: auto_release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
+          title: "Lamina ${{ github.ref_name }}"
+          files: |
+            artifacts/lamina
+            artifacts/*.tar.gz
+            artifacts/*.sha256
+
+      - name: Append C SDK info to release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.meta.outputs.version }}
           TAG=${GITHUB_REF_NAME}
+          CURRENT=$(gh release view "$TAG" --json body --jq '.body')
           NOTES_FILE=$(mktemp)
           {
-            echo "## Lamina ${TAG}"
+            echo "$CURRENT"
             echo ""
-            echo "### Lamina compiler"
-            echo '`lamina` — x86_64 Linux binary.'
+            echo "---"
             echo ""
             echo "### C SDK ${VERSION}"
             echo ""
@@ -142,12 +154,5 @@ jobs:
             echo '```'
             echo ""
             echo "Verify checksums: \`sha256sum -c lamina-c-${VERSION}-stable-x86_64-linux.tar.gz.sha256\`"
-            echo ""
-            echo "See [docs/c-bindings.md](../../blob/main/docs/c-bindings.md)."
           } > "$NOTES_FILE"
-          gh release create "$TAG" \
-            --title "Lamina ${TAG}" \
-            --notes-file "$NOTES_FILE" \
-            artifacts/lamina \
-            artifacts/*.tar.gz \
-            artifacts/*.sha256
+          gh release edit "$TAG" --notes-file "$NOTES_FILE"
