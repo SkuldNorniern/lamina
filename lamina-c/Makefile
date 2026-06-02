@@ -53,24 +53,19 @@ NIGHTLY_BINS  := $(EXAMPLES_DIR)/builder_jit
 
 # -------------------------------------------------------------------------
 
-LIB_STAMP := $(CARGO_TARGET)/.lamina_c_stamp
-
 .PHONY: all lib nightly-lib nightly test test-nightly clean
 
-all: $(STABLE_BINS)
+# lib is phony so cargo runs every time; it updates $(LIB_FILE) only when
+# Rust sources changed. Examples depend on $(LIB_FILE) for timestamp gating —
+# they relink only when cargo actually produced a newer shared object.
+# Order-only dep (| lib) ensures lib runs before examples are checked.
+all: lib $(STABLE_BINS)
 
-# lib runs cargo and touches a stamp file on success.
-# Examples depend on the stamp so they relink only when cargo produces new output.
-lib: $(LIB_STAMP)
-
-$(LIB_STAMP):
+lib:
 	$(CARGO) build $(CARGO_PROFILE_FLAG)
-	touch $(LIB_STAMP)
-
-$(LIB_FILE): $(LIB_STAMP)
 
 # Pattern rule for stable examples
-$(EXAMPLES_DIR)/%: $(EXAMPLES_DIR)/%.c $(LIB_FILE)
+$(EXAMPLES_DIR)/%: $(EXAMPLES_DIR)/%.c $(LIB_FILE) | lib
 	$(CC) $(CFLAGS) $< $(INCLUDE) $(LDFLAGS) -o $@
 
 # -------------------------------------------------------------------------
@@ -107,4 +102,4 @@ test-nightly: nightly
 # -------------------------------------------------------------------------
 
 clean:
-	rm -f $(STABLE_BINS) $(NIGHTLY_BINS) $(LIB_STAMP)
+	rm -f $(STABLE_BINS) $(NIGHTLY_BINS)
