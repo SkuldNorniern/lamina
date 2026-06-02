@@ -110,7 +110,9 @@ pub unsafe extern "C" fn lia_buffer_free(buf: *mut types::LaminaBuffer) {
     unsafe {
         let buf = &mut *buf;
         if !buf.data.is_null() && buf.len > 0 {
-            drop(Box::from_raw(std::slice::from_raw_parts_mut(buf.data, buf.len)));
+            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
+                buf.data, buf.len,
+            )));
         }
         buf.data = std::ptr::null_mut();
         buf.len = 0;
