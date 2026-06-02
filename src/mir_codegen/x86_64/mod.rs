@@ -140,15 +140,13 @@ fn compile_single_function_x86_64(
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     let label = abi.mangle_function_name(func_name);
-    writeln!(output, "{}:", label).map_err(|e| {
-        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-    })?;
+    writeln!(output, "{}:", label)
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, "    .file 1 \"{}\"", tag)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     }
 
     // Detect leaf function (no Call/TailCall instructions)
@@ -237,42 +235,29 @@ fn compile_single_function_x86_64(
                 if index < arg_regs.len() {
                     let phys_arg = arg_regs[index];
                     writeln!(output, "    movq %{}, {}(%rbp)", phys_arg, slot_off).map_err(
-                        |e| {
-                            CodegenError::InvalidCodegenOptions(format!(
-                                "IO error: {}",
-                                e
-                            ))
-                        },
+                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)),
                     )?;
                 } else {
                     let stack_index = index - arg_regs.len();
                     let caller_off = 16 + (stack_index as i32) * 8;
                     writeln!(output, "    movq {}(%rbp), %rax", caller_off).map_err(|e| {
-                        CodegenError::InvalidCodegenOptions(format!(
-                            "IO error: {}",
-                            e
-                        ))
+                        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
                     })?;
                     writeln!(output, "    movq %rax, {}(%rbp)", slot_off).map_err(|e| {
-                        CodegenError::InvalidCodegenOptions(format!(
-                            "IO error: {}",
-                            e
-                        ))
+                        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
                     })?;
                 }
             }
         }
     }
 
-    writeln!(output, "    jmp .L_{}_{}", func_name, func.entry).map_err(|e| {
-        CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-    })?;
+    writeln!(output, "    jmp .L_{}_{}", func_name, func.entry)
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
 
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
-        writeln!(output, ".L_{}_{}:", func_name, block.label).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, ".L_{}_{}:", func_name, block.label)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
 
         for inst in &block.instructions {
             emit_instruction_x86_64(
