@@ -104,7 +104,7 @@ impl fmt::Display for OwnedValue {
             OwnedValue::F32(v) => write!(f, "{}", v),
             OwnedValue::F64(v) => write!(f, "{}", v),
             OwnedValue::Bool(v) => write!(f, "{}", v),
-            OwnedValue::Str(s) => write!(f, "\"{}\"", s),
+            OwnedValue::Str(s) => write!(f, "{:?}", s),
         }
     }
 }
@@ -227,9 +227,12 @@ impl OwnedIRBuilder {
     pub fn block(&mut self, name: impl Into<String>) -> &mut Self {
         if let Some(fi) = self.current_function {
             let block_name = name.into();
-            self.functions[fi]
-                .blocks
-                .push((block_name, OwnedBlock { instructions: Vec::new() }));
+            self.functions[fi].blocks.push((
+                block_name,
+                OwnedBlock {
+                    instructions: Vec::new(),
+                },
+            ));
             self.current_block = Some(self.functions[fi].blocks.len() - 1);
         }
         self
@@ -266,7 +269,14 @@ impl OwnedIRBuilder {
         lhs: &OwnedValue,
         rhs: &OwnedValue,
     ) -> &mut Self {
-        let t = format!("%{} = {}.{} {}, {}", result.as_ref(), op, ty.as_str(), lhs, rhs);
+        let t = format!(
+            "%{} = {}.{} {}, {}",
+            result.as_ref(),
+            op,
+            ty.as_str(),
+            lhs,
+            rhs
+        );
         self.push(t);
         self
     }
@@ -280,7 +290,14 @@ impl OwnedIRBuilder {
         lhs: &OwnedValue,
         rhs: &OwnedValue,
     ) -> &mut Self {
-        let t = format!("%{} = {}.{} {}, {}", result.as_ref(), op, ty.as_str(), lhs, rhs);
+        let t = format!(
+            "%{} = {}.{} {}, {}",
+            result.as_ref(),
+            op,
+            ty.as_str(),
+            lhs,
+            rhs
+        );
         self.push(t);
         self
     }
@@ -296,7 +313,12 @@ impl OwnedIRBuilder {
         true_label: impl AsRef<str>,
         false_label: impl AsRef<str>,
     ) -> &mut Self {
-        let t = format!("br {}, {}, {}", condition, true_label.as_ref(), false_label.as_ref());
+        let t = format!(
+            "br {}, {}, {}",
+            condition,
+            true_label.as_ref(),
+            false_label.as_ref()
+        );
         self.push(t);
         self
     }
@@ -428,7 +450,12 @@ impl OwnedIRBuilder {
         struct_ptr: &OwnedValue,
         field_index: usize,
     ) -> &mut Self {
-        let t = format!("%{} = getfield.ptr {}, {}", result.as_ref(), struct_ptr, field_index);
+        let t = format!(
+            "%{} = getfield.ptr {}, {}",
+            result.as_ref(),
+            struct_ptr,
+            field_index
+        );
         self.push(t);
         self
     }
@@ -440,7 +467,12 @@ impl OwnedIRBuilder {
         ptr_value: &OwnedValue,
         target_type: PrimitiveType,
     ) -> &mut Self {
-        let t = format!("%{} = ptrtoint {}, {}", result.as_ref(), ptr_value, target_type.as_str());
+        let t = format!(
+            "%{} = ptrtoint {}, {}",
+            result.as_ref(),
+            ptr_value,
+            target_type.as_str()
+        );
         self.push(t);
         self
     }
@@ -452,7 +484,12 @@ impl OwnedIRBuilder {
         int_value: &OwnedValue,
         target_type: PrimitiveType,
     ) -> &mut Self {
-        let t = format!("%{} = inttoptr {}, {}", result.as_ref(), int_value, target_type.as_str());
+        let t = format!(
+            "%{} = inttoptr {}, {}",
+            result.as_ref(),
+            int_value,
+            target_type.as_str()
+        );
         self.push(t);
         self
     }
@@ -685,8 +722,14 @@ mod tests {
         b.function_with_params(
             "add",
             vec![
-                OwnedParam { name: "a".to_string(), ty: OwnedType::Primitive(PrimitiveType::I64) },
-                OwnedParam { name: "b".to_string(), ty: OwnedType::Primitive(PrimitiveType::I64) },
+                OwnedParam {
+                    name: "a".to_string(),
+                    ty: OwnedType::Primitive(PrimitiveType::I64),
+                },
+                OwnedParam {
+                    name: "b".to_string(),
+                    ty: OwnedType::Primitive(PrimitiveType::I64),
+                },
             ],
             OwnedType::Primitive(PrimitiveType::I64),
         )
