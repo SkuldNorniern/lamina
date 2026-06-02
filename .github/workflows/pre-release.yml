@@ -6,25 +6,148 @@ on:
     branches:
       - "main"
 
+permissions:
+  contents: write
+
 jobs:
-  pre-release:
-    name: "Pre Release"
-    runs-on: "ubuntu-latest"
+  build:
+    name: "Build & Test"
+    runs-on: ubuntu-latest
 
     steps:
-      # ...
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
 
       - name: Build
         run: cargo build --release --verbose
-      - name: Run tests
-        run: cargo test --verbose
-      - name: Run Clippy
-        run: cargo clippy --fix --allow-dirty --allow-staged --release --verbose
 
-      - uses: "marvinpinto/action-automatic-releases@latest"
+      - name: Test
+        run: cargo test --verbose
+
+      - name: Clippy
+        run: cargo clippy --release -- -D warnings
+
+      - name: Upload Rust binary
+        uses: actions/upload-artifact@v4
         with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: "latest"
-          prerelease: true
-          title: "Development Build"
+          name: lamina-binary
+          path: target/release/lamina
+          if-no-files-found: error
+
+  c-sdk:
+    name: "C SDK — nightly (${{ matrix.target }})"
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-linux
+            runner: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-sdk-${{ hashFiles('lamina-c/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-sdk-
+
+      - name: C SDK tests (stable + nightly)
+        working-directory: lamina-c
+        run: |
+          cargo test
+          cargo test --features nightly
+
+      - name: Build C SDK stable archive
+        working-directory: lamina-c
+        run: bash scripts/build-sdk.sh
+
+      - name: Build C SDK nightly archive
+        working-directory: lamina-c
+        run: bash scripts/build-sdk.sh --nightly
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: c-sdk-${{ matrix.target }}
+          path: lamina-c/dist/
+          if-no-files-found: error
+
+  release:
+    name: "Update latest pre-release"
+    needs: [build, c-sdk]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Metadata
+        id: meta
+        run: |
+          VERSION=$(grep '^version' lamina-c/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/')
+          DATE=$(date -u +%Y-%m-%d)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE"       >> "$GITHUB_OUTPUT"
+
+      - name: Delete previous latest pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+
+      - name: Publish latest pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.meta.outputs.version }}
+          DATE=${{ steps.meta.outputs.date }}
+          gh release create latest \
+            --prerelease \
+            --title "Development Build (${DATE})" \
+            --notes "Automated build from \`main\` — ${DATE}.
+
+> ⚠️ Pre-release. Not for production use.
+
+**Commit:** ${{ github.sha }}
+
+### Lamina binary
+\`lamina\` — x86_64 Linux
+
+### C SDK ${VERSION}
+| Archive | Surface |
+|---------|---------|
+| \`lamina-c-${VERSION}-stable-x86_64-linux.tar.gz\` | Stable AOT (\`lamina.h\`) |
+| \`lamina-c-${VERSION}-nightly-x86_64-linux.tar.gz\` | + JIT (\`lamina_nightly.h\`, no ABI guarantee) |
+
+Verify: \`sha256sum -c lamina-c-${VERSION}-stable-x86_64-linux.tar.gz.sha256\`
+
+See [docs/c-bindings.md](../../blob/main/docs/c-bindings.md)." \
+            artifacts/lamina \
+            artifacts/*.tar.gz \
+            artifacts/*.sha256
