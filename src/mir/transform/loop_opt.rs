@@ -522,8 +522,8 @@ impl LoopInvariantCodeMotion {
         };
 
         let mut sorted_invariant = invariant_instrs.to_vec();
-        sorted_invariant.sort_by(|a, b| b.1.cmp(&a.1));
-        sorted_invariant.sort_by(|a, b| b.0.cmp(&a.0));
+        sorted_invariant.sort_by_key(|t| std::cmp::Reverse(t.1));
+        sorted_invariant.sort_by_key(|t| std::cmp::Reverse(t.0));
 
         sorted_invariant.dedup();
         let mut instructions_to_move = Vec::new();

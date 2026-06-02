@@ -81,11 +81,11 @@ jobs:
 
       - name: Build C SDK stable archive
         working-directory: lamina-c
-        run: bash scripts/build-sdk.sh
+        run: bash scripts/build-sdk.sh --release
 
       - name: Build C SDK nightly archive
         working-directory: lamina-c
-        run: bash scripts/build-sdk.sh --nightly
+        run: bash scripts/build-sdk.sh --release --nightly
 
       - uses: actions/upload-artifact@v4
         with:
