@@ -134,10 +134,8 @@ impl CommonSubexpressionElimination {
                 Instruction::Br {
                     false_target: target,
                     ..
-                } => {
-                    if loop_headers.contains(target) {
-                        return true;
-                    }
+                } if loop_headers.contains(target) => {
+                    return true;
                 }
                 _ => {}
             }
