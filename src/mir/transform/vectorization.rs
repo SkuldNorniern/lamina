@@ -701,7 +701,6 @@ struct VectorizationPattern {
 mod tests {
     use super::*;
     use crate::ir;
-    use crate::ir::builder::IRBuilder;
     use crate::mir;
 
     #[test]
