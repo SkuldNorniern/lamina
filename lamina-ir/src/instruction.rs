@@ -410,7 +410,7 @@ pub enum Instruction<'a> {
     /// - For `Div` and `Rem`: `rhs` must not be zero. A zero divisor causes a
     ///   **trap**.
     /// - For `Shl` and `Shr`: the shift count must be in the range
-    ///   `[0, bit_width(ty))`. An out-of-range shift count produces **poison**.
+    ///   `[0, bit_width(ty)]`. An out-of-range shift count produces **poison**.
     /// - Signed integer overflow (wrap-around on Add/Sub/Mul) produces **poison**.
     Binary {
         op: BinaryOp,
