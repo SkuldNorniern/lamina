@@ -26,7 +26,7 @@ pub fn detect_host_architecture_only() -> &'static str {
 
 /// Detect the host system's operating system only.
 ///
-/// Returns a string representing the detected operating system: "linux", "macos", "windows", etc.
+/// Returns a string representing the detected operating system: "linux", "macOS", "windows", etc.
 ///
 /// Falls back to "unknown" if detection fails.
 pub fn detect_host_os() -> &'static str {
