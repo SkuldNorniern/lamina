@@ -322,7 +322,7 @@ pub unsafe fn execute_jit_function(
         .into());
     }
 
-    // Historical safety valve: the AArch64 encoder used to be incomplete and we interpreted MIR.
+    // Historical safety valve: the AArch64 encoder used to be incomplete, and we interpreted MIR.
     // Keep this behavior opt-in for debugging, but default to executing the generated code.
     if let Some(function) = function
         && std::env::var_os("LAMINA_JIT_INTERPRET").is_some()
