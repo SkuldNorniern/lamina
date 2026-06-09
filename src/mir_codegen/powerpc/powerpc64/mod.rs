@@ -821,13 +821,14 @@ fn emit_store_fp_result<W: Write>(
 mod tests {
     use super::*;
     use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
+    use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
 
     fn make_module_with_empty_func() -> MirModule {
         let mut m = MirModule::new("test_ppc64");
         let f = FunctionBuilder::new("test_fn")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
-            .instr(crate::mir::Instruction::Ret { value: None })
+            .instr(Instruction::Ret { value: None })
             .build();
         m.add_function(f);
         m
@@ -845,7 +846,6 @@ mod tests {
 
     #[test]
     fn test_generate_integer_add() {
-        use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
         let mut m = MirModule::new("test_ppc64_add");
         let v0 = VirtualReg::gpr(0);
         let v2 = VirtualReg::gpr(2);
@@ -872,7 +872,6 @@ mod tests {
 
     #[test]
     fn test_generate_jmp_br() {
-        use crate::mir::instruction::{Instruction, Operand};
         let mut m = MirModule::new("test_ppc64_cf");
         let cond = VirtualReg::gpr(0);
         let f = FunctionBuilder::new("cf_fn")
@@ -885,13 +884,13 @@ mod tests {
             })
             .block("then")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(
+                value: Some(Operand::Immediate(Immediate::I64(
                     1,
                 ))),
             })
             .block("else")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(
+                value: Some(Operand::Immediate(Immediate::I64(
                     0,
                 ))),
             })
