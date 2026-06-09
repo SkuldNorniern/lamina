@@ -11,7 +11,6 @@ use lamina_platform::TargetOperatingSystem;
 /// Uses platform-appropriate GPR pools for stable virtual-to-physical register mappings
 /// and separate scratch pools for short-lived temporaries.
 pub struct X64RegAlloc {
-    #[allow(dead_code)]
     target_os: TargetOperatingSystem,
     free_gprs: VecDeque<&'static str>,
     used_gprs: HashSet<&'static str>,

@@ -30,7 +30,6 @@ impl Default for A64RegAlloc {
     }
 }
 
-#[allow(dead_code)]
 impl A64RegAlloc {
     /// Creates a new register allocator with default register pools.
     pub fn new() -> Self {
