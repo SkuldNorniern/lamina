@@ -2,6 +2,7 @@
 name = "lamina-codegen"
 version = "0.1.1"
 edition = "2024"
+rust-version = "1.85"
 authors = ["Eira <eira@nornity.com>"]
 description = "Codegen utilities for Lamina (register allocation, ABI, frame management)"
 license = "Apache-2.0"
