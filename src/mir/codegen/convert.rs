@@ -9,16 +9,16 @@
 //! - Control flow graph construction
 //! - Type mapping and validation
 
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 use super::error::FromIRError;
 use super::mapping::{map_ir_prim, map_ir_type};
-use crate::ir::instruction::{BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst};
+use crate::ir::instruction::{BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst, AllocType};
 use crate::ir::types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
 use crate::mir::{
     AddressMode, Block, Immediate, Instruction, Instruction as MirInst, MemoryAttrs, MirType,
     Module, Operand, Parameter, Register, RegisterClass, ScalarType, Signature, VirtualReg,
-    VirtualRegAllocator,
+    VirtualRegAllocator, IntBinOp, FloatBinOp, FloatCmpOp, IntCmpOp, Function
 };
 
 #[cfg(feature = "nightly")]
@@ -28,7 +28,7 @@ use crate::mir::{MemoryOrdering, SimdOp};
 fn resolve_operand<'a>(
     v: &IRVal<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
-    var_to_reg: &mut std::collections::HashMap<&'a str, Register>,
+    var_to_reg: &mut HashMap<&'a str, Register>,
 ) -> Result<Operand, FromIRError> {
     match v {
         IRVal::Variable(id) => {
@@ -49,7 +49,7 @@ fn resolve_operand<'a>(
 fn resolve_or_alloc_gpr<'a>(
     result: &'a str,
     vreg_alloc: &mut VirtualRegAllocator,
-    var_to_reg: &mut std::collections::HashMap<&'a str, Register>,
+    var_to_reg: &mut HashMap<&'a str, Register>,
 ) -> Register {
     if let Some(existing) = var_to_reg.get(result) {
         existing.clone()
@@ -126,7 +126,7 @@ pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRE
 fn convert_function<'a>(
     name: &'a str,
     f: &crate::ir::function::Function<'a>,
-) -> Result<crate::mir::Function, FromIRError> {
+) -> Result<Function, FromIRError> {
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
 
@@ -138,8 +138,8 @@ fn convert_function<'a>(
         }
     }
 
-    let mut var_to_reg: std::collections::HashMap<&'a str, Register> =
-        std::collections::HashMap::new();
+    let mut var_to_reg: HashMap<&'a str, Register> =
+        HashMap::new();
 
     for param in &f.signature.params {
         let class = reg_class_for_type(&param.ty);
@@ -153,7 +153,7 @@ fn convert_function<'a>(
         var_to_reg.insert(param.name, v);
     }
 
-    let mut mir_func = crate::mir::Function::new(mir_sig).with_entry(f.entry_block);
+    let mut mir_func = Function::new(mir_sig).with_entry(f.entry_block);
 
     // BFS traversal starting from entry block, guard with visited to avoid cycles
     let mut visited: HashSet<&'a str> = HashSet::new();
@@ -226,8 +226,8 @@ fn convert_function<'a>(
     }
 
     {
-        let mut edge_moves: std::collections::HashMap<(String, String), Vec<Instruction>> =
-            std::collections::HashMap::new();
+        let mut edge_moves: HashMap<(String, String), Vec<Instruction>> =
+            HashMap::new();
 
         for (succ_label, ir_block) in &f.basic_blocks {
             for instr in &ir_block.instructions {
@@ -243,7 +243,7 @@ fn convert_function<'a>(
                             let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
                             // Encode a move using add with zero; the backend already handles it.
                             let mov_like = Instruction::IntBinary {
-                                op: crate::mir::IntBinOp::Add,
+                                op: IntBinOp::Add,
                                 ty: mir_ty,
                                 dst: dst_reg.clone(),
                                 lhs: src_op,
@@ -351,7 +351,7 @@ fn convert_function<'a>(
     Ok(mir_func)
 }
 
-fn add_missing_initializations(func: &mut crate::mir::Function) {
+fn add_missing_initializations(func: &mut Function) {
     // Collect all defined and used virtual registers
     let mut defined_regs = HashSet::new();
     let mut used_regs = HashSet::new();
@@ -389,7 +389,7 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
         for vreg in undefined_regs {
             // Initialize undefined registers to 0
             let init_instr = MirInst::IntBinary {
-                op: crate::mir::IntBinOp::Add,
+                op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: Register::Virtual(vreg),
                 lhs: Operand::Immediate(Immediate::I64(0)),
@@ -473,7 +473,7 @@ fn collect_regs_from_address_mode(addr: &AddressMode, used_regs: &mut HashSet<Vi
 fn convert_instruction<'a>(
     instr: &IRInst<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
-    var_to_reg: &mut std::collections::HashMap<&'a str, Register>,
+    var_to_reg: &mut HashMap<&'a str, Register>,
 ) -> Result<Vec<Instruction>, FromIRError> {
     #[cfg(feature = "nightly")]
     fn ir_address_mode_to_mir<'b>(
@@ -523,98 +523,98 @@ fn convert_instruction<'a>(
 
             let mir = match (op, *ty) {
                 (IRBin::Add, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: crate::mir::FloatBinOp::FAdd,
+                    op: FloatBinOp::FAdd,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Sub, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: crate::mir::FloatBinOp::FSub,
+                    op: FloatBinOp::FSub,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Mul, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: crate::mir::FloatBinOp::FMul,
+                    op: FloatBinOp::FMul,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Div, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: crate::mir::FloatBinOp::FDiv,
+                    op: FloatBinOp::FDiv,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Add, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Add,
+                    op: IntBinOp::Add,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Sub, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Sub,
+                    op: IntBinOp::Sub,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Mul, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Mul,
+                    op: IntBinOp::Mul,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Div, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::SDiv,
+                    op: IntBinOp::SDiv,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Rem, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::SRem,
+                    op: IntBinOp::SRem,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::And, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::And,
+                    op: IntBinOp::And,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Or, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Or,
+                    op: IntBinOp::Or,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Xor, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Xor,
+                    op: IntBinOp::Xor,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Shl, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Shl,
+                    op: IntBinOp::Shl,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRBin::Shr, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::AShr,
+                    op: IntBinOp::AShr,
                     ty: mir_ty,
                     dst: dst.clone(),
                     lhs: lhs_op,
@@ -653,42 +653,42 @@ fn convert_instruction<'a>(
             let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
             let mir = match (*ty, op) {
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Eq) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Eq,
+                    op: FloatCmpOp::Eq,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Ne) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Ne,
+                    op: FloatCmpOp::Ne,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Lt) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Lt,
+                    op: FloatCmpOp::Lt,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Le) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Le,
+                    op: FloatCmpOp::Le,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Gt) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Gt,
+                    op: FloatCmpOp::Gt,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Ge) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Ge,
+                    op: FloatCmpOp::Ge,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
@@ -696,7 +696,7 @@ fn convert_instruction<'a>(
                 },
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Eq) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::Eq,
+                        op: IntCmpOp::Eq,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -705,7 +705,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Ne) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::Ne,
+                        op: IntCmpOp::Ne,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -714,7 +714,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Lt) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::ULt,
+                        op: IntCmpOp::ULt,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -723,7 +723,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Le) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::ULe,
+                        op: IntCmpOp::ULe,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -732,7 +732,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Gt) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::UGt,
+                        op: IntCmpOp::UGt,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -741,7 +741,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Ge) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::UGe,
+                        op: IntCmpOp::UGe,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -749,42 +749,42 @@ fn convert_instruction<'a>(
                     }
                 }
                 (_, IRCmp::Eq) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::Eq,
+                    op: IntCmpOp::Eq,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Ne) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::Ne,
+                    op: IntCmpOp::Ne,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Lt) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::SLt,
+                    op: IntCmpOp::SLt,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Le) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::SLe,
+                    op: IntCmpOp::SLe,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Gt) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::SGt,
+                    op: IntCmpOp::SGt,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Ge) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::SGe,
+                    op: IntCmpOp::SGe,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
@@ -955,7 +955,7 @@ fn convert_instruction<'a>(
             let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
             let mask_op = Operand::Immediate(Immediate::I64(mask as i64));
             Ok(vec![Instruction::IntBinary {
-                op: crate::mir::IntBinOp::And,
+                op: IntBinOp::And,
                 ty: mir_ty,
                 dst,
                 lhs: val_op,
@@ -984,7 +984,7 @@ fn convert_instruction<'a>(
             let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
             let mask_op = Operand::Immediate(Immediate::I64(mask as i64));
             Ok(vec![Instruction::IntBinary {
-                op: crate::mir::IntBinOp::And,
+                op: IntBinOp::And,
                 ty: mir_ty,
                 dst,
                 lhs: val_op,
@@ -1017,7 +1017,7 @@ fn convert_instruction<'a>(
 
             let instrs = vec![
                 Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Shl,
+                    op: IntBinOp::Shl,
                     ty: mir_ty,
                     dst: temp_reg.clone(),
                     lhs: val_op,
@@ -1025,7 +1025,7 @@ fn convert_instruction<'a>(
                 },
                 // dst = temp >> shift (arithmetic shift right propagates sign)
                 Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::AShr,
+                    op: IntBinOp::AShr,
                     ty: mir_ty,
                     dst,
                     lhs: Operand::Register(temp_reg),
@@ -1074,7 +1074,7 @@ fn convert_instruction<'a>(
                     };
 
                     Ok(vec![Instruction::IntBinary {
-                        op: crate::mir::IntBinOp::Add,
+                        op: IntBinOp::Add,
                         ty: mir_ty,
                         dst,
                         lhs: Operand::Immediate(imm),
@@ -1124,7 +1124,7 @@ fn convert_instruction<'a>(
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
+                op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst,
                 lhs: val_op,
@@ -1140,7 +1140,7 @@ fn convert_instruction<'a>(
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
+                op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst,
                 lhs: val_op,
@@ -1251,7 +1251,7 @@ fn convert_instruction<'a>(
                 let instrs = vec![
                     // Instruction 1: temp_scaled = index * elem_size
                     Instruction::IntBinary {
-                        op: crate::mir::IntBinOp::Mul,
+                        op: IntBinOp::Mul,
                         ty: MirType::Scalar(ScalarType::I64),
                         dst: temp_scaled.clone(),
                         lhs: index_op,
@@ -1259,7 +1259,7 @@ fn convert_instruction<'a>(
                     },
                     // Instruction 2: result = base + temp_scaled
                     Instruction::IntBinary {
-                        op: crate::mir::IntBinOp::Add,
+                        op: IntBinOp::Add,
                         ty: MirType::Scalar(ScalarType::I64),
                         dst: dst.clone(),
                         lhs: Operand::Register(base),
@@ -1347,7 +1347,7 @@ fn convert_instruction<'a>(
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             match alloc_type {
-                crate::ir::instruction::AllocType::Stack => {
+                AllocType::Stack => {
                     let storage = Register::Virtual(vreg_alloc.allocate_gpr());
                     if let Some(sz) = sizeof_ir_type(allocated_ty) {
                         let slots_needed = sz.div_ceil(8) as usize;
@@ -1362,7 +1362,7 @@ fn convert_instruction<'a>(
                         offset: 0,
                     }])
                 }
-                crate::ir::instruction::AllocType::Heap => {
+                AllocType::Heap => {
                     if let Some(sz) = sizeof_ir_type(allocated_ty) {
                         Ok(vec![Instruction::Call {
                             name: "malloc".to_string(),
@@ -1590,7 +1590,7 @@ mod tests {
                 lhs,
                 rhs,
             } => {
-                assert!(matches!(op, crate::mir::IntBinOp::Add));
+                assert!(matches!(op, IntBinOp::Add));
                 assert!(matches!(ty, MirType::Scalar(ScalarType::I64)));
                 assert!(matches!(lhs, Operand::Register(_)));
                 assert!(matches!(rhs, Operand::Register(_)));

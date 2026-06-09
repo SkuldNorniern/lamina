@@ -26,7 +26,7 @@ pub fn map_ir_prim(p: IRPrim) -> Result<MirType, FromIRError> {
 ///
 /// Currently only primitive types are supported. Composite types (structs,
 /// arrays, tuples) will return an error as they require additional lowering.
-pub fn map_ir_type(ty: &crate::ir::types::Type<'_>) -> Result<MirType, FromIRError> {
+pub fn map_ir_type(ty: &IRType<'_>) -> Result<MirType, FromIRError> {
     match ty {
         IRType::Primitive(p) => map_ir_prim(*p),
         _ => Err(FromIRError::UnsupportedType),
