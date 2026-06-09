@@ -1,7 +1,7 @@
 //! Instruction scheduling transform for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Register};
+use crate::mir::{Block, Function, Instruction, Register, IntBinOp};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
@@ -213,15 +213,15 @@ impl InstructionScheduling {
         match instr {
             Instruction::Load { .. } => 3,
             Instruction::IntBinary {
-                op: crate::mir::IntBinOp::SDiv,
+                op: IntBinOp::SDiv,
                 ..
             } => 4,
             Instruction::IntBinary {
-                op: crate::mir::IntBinOp::UDiv,
+                op: IntBinOp::UDiv,
                 ..
             } => 4,
             Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Mul,
+                op: IntBinOp::Mul,
                 ..
             } => 2,
             Instruction::FloatBinary { .. } => 3,
@@ -333,7 +333,7 @@ impl PartialOrd for ScheduledItem {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, IntBinOp, MirType, Operand, ScalarType, VirtualReg};
+    use crate::mir::{FunctionBuilder, IntBinOp, MirType, Operand, ScalarType, VirtualReg, Immediate};
 
     #[test]
     fn test_scheduling_latency_hiding() {
@@ -365,23 +365,23 @@ mod tests {
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(2).into(),
                 lhs: Operand::Register(VirtualReg::gpr(1).into()),
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(1)),
+                rhs: Operand::Immediate(Immediate::I64(1)),
             })
             // 2: Independent Add
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(3).into(),
-                lhs: Operand::Immediate(crate::mir::Immediate::I64(5)),
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(5)),
+                lhs: Operand::Immediate(Immediate::I64(5)),
+                rhs: Operand::Immediate(Immediate::I64(5)),
             })
             // 3: Independent Add
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(4).into(),
-                lhs: Operand::Immediate(crate::mir::Immediate::I64(6)),
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(6)),
+                lhs: Operand::Immediate(Immediate::I64(6)),
+                rhs: Operand::Immediate(Immediate::I64(6)),
             })
             .build();
 

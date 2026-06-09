@@ -1,11 +1,10 @@
 //! Peephole optimizations for MIR.
 
 use crate::mir::instruction::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
-use crate::mir::{Block, Function};
 use crate::mir::transform::compute_back_edge_headers;
+use crate::mir::{Block, Function};
 
 use super::{Transform, TransformCategory, TransformLevel};
-
 
 /// Peephole optimizations that do local rewrites.
 ///
