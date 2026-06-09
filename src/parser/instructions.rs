@@ -47,17 +47,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "writeptr" => parse_writeptr_assignment(state, result),
             _ => {
                 let valid_ops = super::get_assignment_opcode_names();
-                let mut suggestions = Vec::new();
-                const MAX_TYPO_DISTANCE: usize = 2;
-
-                for valid in valid_ops {
-                    let distance = super::edit_distance(opcode_str, valid, Some(MAX_TYPO_DISTANCE));
-                    if distance <= MAX_TYPO_DISTANCE {
-                        suggestions.push(*valid);
-                    }
-                }
-
-                suggestions.sort_by_key(|&s| super::edit_distance(opcode_str, s, None));
+                let suggestions = super::suggest_alternatives(opcode_str, valid_ops);
 
                 let hint = if !suggestions.is_empty() {
                     if suggestions.len() == 1 {
@@ -104,17 +94,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "memset" => parse_memset(state),
             _ => {
                 let valid_ops = super::get_non_assignment_opcode_names();
-                let mut suggestions = Vec::new();
-                const MAX_TYPO_DISTANCE: usize = 2;
-
-                for valid in valid_ops {
-                    let distance = super::edit_distance(opcode_str, valid, Some(MAX_TYPO_DISTANCE));
-                    if distance <= MAX_TYPO_DISTANCE {
-                        suggestions.push(*valid);
-                    }
-                }
-
-                suggestions.sort_by_key(|&s| super::edit_distance(opcode_str, s, None));
+                let suggestions = super::suggest_alternatives(opcode_str, valid_ops);
 
                 let hint = if !suggestions.is_empty() {
                     if suggestions.len() == 1 {
@@ -270,17 +250,7 @@ fn parse_alloc<'a>(
         "heap" => AllocType::Heap,
         _ => {
             let valid_types = super::get_alloc_type_names();
-            let mut suggestions = Vec::new();
-            const MAX_TYPO_DISTANCE: usize = 2;
-
-            for valid in valid_types {
-                let distance = super::edit_distance(alloc_type_str, valid, Some(MAX_TYPO_DISTANCE));
-                if distance <= MAX_TYPO_DISTANCE {
-                    suggestions.push(*valid);
-                }
-            }
-
-            suggestions.sort_by_key(|&s| super::edit_distance(alloc_type_str, s, None));
+            let suggestions = super::suggest_alternatives(alloc_type_str, valid_types);
 
             let hint = if !suggestions.is_empty() {
                 if suggestions.len() == 1 {
@@ -395,17 +365,7 @@ fn parse_getelem<'a>(
             "ptr" => PrimitiveType::Ptr,
             _ => {
                 let valid_types = super::get_primitive_type_names();
-                let mut suggestions = Vec::new();
-                const MAX_TYPO_DISTANCE: usize = 2;
-
-                for valid in valid_types {
-                    let distance = super::edit_distance(type_str, valid, Some(MAX_TYPO_DISTANCE));
-                    if distance <= MAX_TYPO_DISTANCE {
-                        suggestions.push(*valid);
-                    }
-                }
-
-                suggestions.sort_by_key(|&s| super::edit_distance(type_str, s, None));
+                let suggestions = super::suggest_alternatives(type_str, valid_types);
 
                 let hint = if !suggestions.is_empty() {
                     if suggestions.len() == 1 {
