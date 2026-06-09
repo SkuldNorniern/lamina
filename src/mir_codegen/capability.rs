@@ -37,6 +37,7 @@
 //! ⚠️ = Partial support (some types/operations may not work)
 //! ❌ = Not supported
 
+use std::collections::HashSet;
 use std::fmt;
 
 use lamina_platform::TargetArchitecture;
@@ -146,7 +147,7 @@ impl fmt::Display for CodegenCapability {
 /// A set of capabilities supported by a backend
 #[derive(Debug, Clone, Default)]
 pub struct CapabilitySet {
-    capabilities: std::collections::HashSet<CodegenCapability>,
+    capabilities: HashSet<CodegenCapability>,
 }
 
 impl CapabilitySet {

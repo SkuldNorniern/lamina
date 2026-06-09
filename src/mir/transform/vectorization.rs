@@ -9,7 +9,7 @@
 
 use crate::mir::transform::calculate_dominators;
 
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::Function;
 use crate::mir::instruction::{AddressMode, FloatBinOp, Instruction, IntBinOp, Operand, VectorOp};
 use crate::mir::register::{Register, VirtualReg};
