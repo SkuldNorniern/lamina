@@ -100,9 +100,8 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
         _ => {
             let found = state
                 .current_char()
-                .map(|c| format!("'{}'", c))
-                .unwrap_or_else(|| "end of input".to_string());
-            Err(state.error(format!("Expected a value, but found {}", found)))
+                .map_or_else(|| "end of input".to_string(), |c| format!("'{c}'"));
+            Err(state.error(format!("Expected a value, but found {found}")))
         }
     }
 }

@@ -20,7 +20,7 @@ impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}:", self.label)?;
         for instr in &self.instructions {
-            writeln!(f, "  {}", instr)?;
+            writeln!(f, "  {instr}")?;
         }
         Ok(())
     }
@@ -48,8 +48,7 @@ impl Block {
     /// Check if this block has a terminator
     pub fn has_terminator(&self) -> bool {
         self.terminator()
-            .map(|i| i.is_terminator())
-            .unwrap_or(false)
+            .is_some_and(super::instruction::Instruction::is_terminator)
     }
 
     /// Get all non-terminator instructions
