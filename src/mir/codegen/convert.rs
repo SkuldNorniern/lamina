@@ -647,7 +647,7 @@ fn convert_instruction<'a>(
             lhs,
             rhs,
         } => {
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_prim(*ty)?;
             let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg)?;
             let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
@@ -875,7 +875,7 @@ fn convert_instruction<'a>(
             Ok(vec![Instruction::Ret { value: op }])
         }
         crate::ir::instruction::Instruction::Load { result, ty, ptr } => {
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
                 IRVal::Variable(id) => var_to_reg
@@ -925,11 +925,7 @@ fn convert_instruction<'a>(
             for a in args {
                 mir_args.push(resolve_operand(a, vreg_alloc, var_to_reg)?);
             }
-            let ret = if let Some(res) = result {
-                Some(resolve_or_alloc_gpr(*res, vreg_alloc, var_to_reg))
-            } else {
-                None
-            };
+            let ret = result.map(|res| resolve_or_alloc_gpr(res, vreg_alloc, var_to_reg));
             Ok(vec![Instruction::Call {
                 name: (*func_name).to_string(),
                 args: mir_args,
@@ -942,7 +938,7 @@ fn convert_instruction<'a>(
             target_type,
             value,
         } => {
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             // Compute mask based on source type bit-width
             let (mask, mir_ty) = match (source_type, target_type) {
                 (IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char, _) => {
@@ -973,7 +969,7 @@ fn convert_instruction<'a>(
             value,
         } => {
             // Lower truncation as an AND with a mask of the target width.
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let (mask, mir_ty) = match target_type {
                 IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => {
                     (0xFFu64, map_ir_prim(*target_type)?)
@@ -1001,7 +997,7 @@ fn convert_instruction<'a>(
             target_type,
             value,
         } => {
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             let src_bits = int_bits_for_sext(source_type);
             let dst_bits = int_bits_for_sext(target_type);
@@ -1053,13 +1049,13 @@ fn convert_instruction<'a>(
                 IRVal::Variable(id) => {
                     // Reuse the same MIR register for the result; MIR is untyped and the
                     // backend will see the result type through later uses.
-                    let src_reg = resolve_or_alloc_gpr(*id, vreg_alloc, var_to_reg);
+                    let src_reg = resolve_or_alloc_gpr(id, vreg_alloc, var_to_reg);
                     var_to_reg.insert(*result, src_reg);
                     Ok(vec![])
                 }
                 IRVal::Constant(lit) => {
                     let mir_ty = map_ir_prim(*target_type)?;
-                    let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+                    let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
                     let imm = match (source_type, target_type, lit) {
                         (IRPrim::F32, IRPrim::I32, crate::ir::types::Literal::F32(v)) => {
@@ -1095,7 +1091,7 @@ fn convert_instruction<'a>(
             true_val,
             false_val,
         } => {
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             let mir_ty = map_ir_type(ty)?;
 
@@ -1125,7 +1121,7 @@ fn convert_instruction<'a>(
             target_type: _,
         } => {
             // On 64-bit, pointers are integers; lower to add with 0 to move value
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::IntBinary {
                 op: crate::mir::IntBinOp::Add,
@@ -1141,7 +1137,7 @@ fn convert_instruction<'a>(
             target_type: _,
         } => {
             // Treat as identity move via add with 0 (pointer-sized)
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::IntBinary {
                 op: crate::mir::IntBinOp::Add,
@@ -1200,7 +1196,7 @@ fn convert_instruction<'a>(
                     .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let offset = (*field_index as i32) * 8;
             Ok(vec![Instruction::Lea { dst, base, offset }])
         }
@@ -1234,7 +1230,7 @@ fn convert_instruction<'a>(
                 },
                 _ => None,
             };
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             if let Some(iv) = idx_const {
                 // Constant index: use simple LEA with offset
@@ -1296,7 +1292,7 @@ fn convert_instruction<'a>(
         } => {
             let buf = resolve_operand(buffer, vreg_alloc, var_to_reg)?;
             let sz = resolve_operand(size, vreg_alloc, var_to_reg)?;
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "write".to_string(),
                 args: vec![buf, sz],
@@ -1305,7 +1301,7 @@ fn convert_instruction<'a>(
         }
         crate::ir::instruction::Instruction::WriteByte { value, result } => {
             let v = resolve_operand(value, vreg_alloc, var_to_reg)?;
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "writebyte".to_string(),
                 args: vec![v],
@@ -1313,7 +1309,7 @@ fn convert_instruction<'a>(
             }])
         }
         crate::ir::instruction::Instruction::ReadByte { result } => {
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "readbyte".to_string(),
                 args: vec![],
@@ -1322,7 +1318,7 @@ fn convert_instruction<'a>(
         }
         crate::ir::instruction::Instruction::WritePtr { ptr, result } => {
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "writeptr".to_string(),
                 args: vec![p],
@@ -1336,7 +1332,7 @@ fn convert_instruction<'a>(
         } => {
             let buf = resolve_operand(buffer, vreg_alloc, var_to_reg)?;
             let sz = resolve_operand(size, vreg_alloc, var_to_reg)?;
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "read".to_string(),
                 args: vec![buf, sz],
@@ -1348,7 +1344,7 @@ fn convert_instruction<'a>(
             alloc_type,
             allocated_ty,
         } => {
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             match alloc_type {
                 crate::ir::instruction::AllocType::Stack => {
@@ -1462,7 +1458,7 @@ fn convert_instruction<'a>(
             ptr,
             ordering,
         } => {
-            let dst = resolve_or_alloc_gpr(*result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
             let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
             let mir_ordering = match ordering {
