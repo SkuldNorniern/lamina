@@ -31,10 +31,7 @@ impl X86ABI {
 
     /// Returns the global declaration directive for the main function.
     pub fn get_main_global(&self) -> &'static str {
-        match self.target_os {
-            TargetOperatingSystem::Windows => ".globl main",
-            _ => ".globl main",
-        }
+        ".globl main"
     }
 
     /// Returns the argument registers for the target OS ABI.

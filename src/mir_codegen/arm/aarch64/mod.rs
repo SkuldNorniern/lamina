@@ -29,7 +29,7 @@ use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 /// Convert an x-register name to its w-register alias (lower 32 bits).
 fn w_alias(xreg: &str) -> String {
     if let Some(rest) = xreg.strip_prefix('x') {
-        format!("w{}", rest)
+        format!("w{rest}")
     } else {
         xreg.to_string()
     }
@@ -38,7 +38,7 @@ fn w_alias(xreg: &str) -> String {
 /// Convert a w-register name to its x-register alias (full 64 bits).
 fn x_alias(reg: &str) -> String {
     if let Some(rest) = reg.strip_prefix('w') {
-        format!("x{}", rest)
+        format!("x{rest}")
     } else {
         reg.to_string()
     }
@@ -54,17 +54,17 @@ fn compile_single_function_aarch64(
     let abi = AArch64ABI::new(target_os);
 
     if let Some(globl) = abi.get_global_directive(func_name) {
-        writeln!(output, "{}", globl)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "{globl}")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
     let label = abi.mangle_function_name(func_name);
-    writeln!(output, "{}:", label)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+    writeln!(output, "{label}:")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{}\"", tag)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "    .file 1 \"{tag}\"")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     let mut ra_pro = A64RegAlloc::new();
@@ -72,13 +72,13 @@ fn compile_single_function_aarch64(
     let s1 = ra_pro.alloc_scratch().unwrap_or("x20");
     if s0 != "x29" || s1 != "x30" {
         writeln!(output, "    stp x29, x30, [sp, #-16]!")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     } else {
-        writeln!(output, "    stp {}, {}, [sp, #-16]!", s0, s1)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "    stp {s0}, {s1}, [sp, #-16]!")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
     writeln!(output, "    mov x29, sp")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     let mut frame = FrameMap::from_function(func);
 
@@ -127,31 +127,31 @@ fn compile_single_function_aarch64(
     };
 
     if adjusted_frame_size > 0 {
-        writeln!(output, "    sub sp, sp, #{}", adjusted_frame_size)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "    sub sp, sp, #{adjusted_frame_size}")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     for (i, p) in func.sig.params.iter().enumerate() {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().unwrap_or("x19");
             if off >= 0 {
-                writeln!(output, "    add {}, x29, #{}", addr, off)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+                writeln!(output, "    add {addr}, x29, #{off}")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
             } else {
                 writeln!(output, "    sub {}, x29, #{}", addr, -off)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
             }
 
             if i < 8 {
-                writeln!(output, "    str x{}, [{}]", i, addr)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+                writeln!(output, "    str x{i}, [{addr}]")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
             } else {
                 let caller_offset = 16 + (i - 8) * 8;
                 let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
-                writeln!(output, "    ldr {}, [x29, #{}]", val_reg, caller_offset)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
-                writeln!(output, "    str {}, [{}]", val_reg, addr)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+                writeln!(output, "    ldr {val_reg}, [x29, #{caller_offset}]")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                writeln!(output, "    str {val_reg}, [{addr}]")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 ra_pro.free_scratch(val_reg);
             }
             ra_pro.free_scratch(addr);
@@ -192,9 +192,9 @@ fn compile_single_function_aarch64(
     for b in &func.blocks {
         if b.label != entry_key {
             writeln!(output, "    .align 2")
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
             writeln!(output, "{}:", b.label)
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
             emit_block(
                 b.instructions.as_slice(),
                 &mut output,
@@ -209,16 +209,16 @@ fn compile_single_function_aarch64(
         }
     }
 
-    writeln!(output, "{}:", epilogue_label)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+    writeln!(output, "{epilogue_label}:")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     if adjusted_frame_size > 0 {
-        writeln!(output, "    add sp, sp, #{}", adjusted_frame_size)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "    add sp, sp, #{adjusted_frame_size}")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
     writeln!(output, "    ldp x29, x30, [sp], #16")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    ret")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     Ok(output)
 }
@@ -262,7 +262,7 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
 
     for func_name in &module.external_functions {
         let label = abi.mangle_function_name(func_name);
-        writeln!(writer, ".extern {}", label)?;
+        writeln!(writer, ".extern {label}")?;
     }
 
     let settings_arc = Arc::new(settings.clone());
@@ -316,89 +316,89 @@ fn emit_block<W: Write>(
                     crate::mir::IntBinOp::Add => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    add {}, {}, {}", dl, rl, rr)?;
+                        writeln!(w, "    add {dl}, {rl}, {rr}")?;
                     }
                     crate::mir::IntBinOp::Sub => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    sub {}, {}, {}", dl, rl, rr)?;
+                        writeln!(w, "    sub {dl}, {rl}, {rr}")?;
                     }
                     crate::mir::IntBinOp::Mul => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    mul {}, {}, {}", dl, rl, rr)?;
+                        writeln!(w, "    mul {dl}, {rl}, {rr}")?;
                     }
                     crate::mir::IntBinOp::UDiv => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    udiv {}, {}, {}", dl, rl, rr)?;
+                        writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
                     }
                     crate::mir::IntBinOp::SDiv => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    sdiv {}, {}, {}", dl, rl, rr)?;
+                        writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
                     }
                     crate::mir::IntBinOp::URem => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    udiv {}, {}, {}", dl, rl, rr)?;
-                        writeln!(w, "    msub {}, {}, {}, {}", dl, dl, rr, rl)?;
+                        writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
+                        writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
                     }
                     crate::mir::IntBinOp::SRem => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    sdiv {}, {}, {}", dl, rl, rr)?;
-                        writeln!(w, "    msub {}, {}, {}, {}", dl, dl, rr, rl)?;
+                        writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
+                        writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
                     }
                     crate::mir::IntBinOp::And => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    and {}, {}, {}", dl, rl, rr)?;
+                        writeln!(w, "    and {dl}, {rl}, {rr}")?;
                     }
                     crate::mir::IntBinOp::Or => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    orr {}, {}, {}", dl, rl, rr)?;
+                        writeln!(w, "    orr {dl}, {rl}, {rr}")?;
                     }
                     crate::mir::IntBinOp::Xor => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                        writeln!(w, "    eor {}, {}, {}", dl, rl, rr)?;
+                        writeln!(w, "    eor {dl}, {rl}, {rr}")?;
                     }
                     crate::mir::IntBinOp::Shl => match rhs {
                         crate::mir::Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
                             sh &= if is32 { 31 } else { 63 };
-                            writeln!(w, "    lsl {}, {}, #{}", dl, rl, sh)?;
+                            writeln!(w, "    lsl {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
                             emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                             let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                            writeln!(w, "    lslv {}, {}, {}", dl, rl, rr)?;
+                            writeln!(w, "    lslv {dl}, {rl}, {rr}")?;
                         }
                     },
                     crate::mir::IntBinOp::LShr => match rhs {
                         crate::mir::Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
                             sh &= if is32 { 31 } else { 63 };
-                            writeln!(w, "    lsr {}, {}, #{}", dl, rl, sh)?;
+                            writeln!(w, "    lsr {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
                             emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                             let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                            writeln!(w, "    lsrv {}, {}, {}", dl, rl, rr)?;
+                            writeln!(w, "    lsrv {dl}, {rl}, {rr}")?;
                         }
                     },
                     crate::mir::IntBinOp::AShr => match rhs {
                         crate::mir::Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
                             sh &= if is32 { 31 } else { 63 };
-                            writeln!(w, "    asr {}, {}, #{}", dl, rl, sh)?;
+                            writeln!(w, "    asr {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
                             emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                             let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
-                            writeln!(w, "    asrv {}, {}, {}", dl, rl, rr)?;
+                            writeln!(w, "    asrv {dl}, {rl}, {rr}")?;
                         }
                     },
                 }
@@ -433,16 +433,16 @@ fn emit_block<W: Write>(
 
                 match op {
                     crate::mir::FloatBinOp::FAdd => {
-                        writeln!(w, "    fadd {}0, {}0, {}1", suffix, suffix, suffix)?
+                        writeln!(w, "    fadd {suffix}0, {suffix}0, {suffix}1")?
                     }
                     crate::mir::FloatBinOp::FSub => {
-                        writeln!(w, "    fsub {}0, {}0, {}1", suffix, suffix, suffix)?
+                        writeln!(w, "    fsub {suffix}0, {suffix}0, {suffix}1")?
                     }
                     crate::mir::FloatBinOp::FMul => {
-                        writeln!(w, "    fmul {}0, {}0, {}1", suffix, suffix, suffix)?
+                        writeln!(w, "    fmul {suffix}0, {suffix}0, {suffix}1")?
                     }
                     crate::mir::FloatBinOp::FDiv => {
-                        writeln!(w, "    fdiv {}0, {}0, {}1", suffix, suffix, suffix)?
+                        writeln!(w, "    fdiv {suffix}0, {suffix}0, {suffix}1")?
                     }
                 }
 
@@ -472,12 +472,8 @@ fn emit_block<W: Write>(
                 }
 
                 match op {
-                    crate::mir::FloatUnOp::FNeg => {
-                        writeln!(w, "    fneg {}0, {}0", suffix, suffix)?
-                    }
-                    crate::mir::FloatUnOp::FSqrt => {
-                        writeln!(w, "    fsqrt {}0, {}0", suffix, suffix)?
-                    }
+                    crate::mir::FloatUnOp::FNeg => writeln!(w, "    fneg {suffix}0, {suffix}0")?,
+                    crate::mir::FloatUnOp::FSqrt => writeln!(w, "    fsqrt {suffix}0, {suffix}0")?,
                 }
 
                 if is32 {
@@ -642,12 +638,12 @@ fn emit_block<W: Write>(
                             // Compute address: x29 + slot_off + offset
                             let total = slot_off as i64 + (*offset as i64);
                             if (0..=4095).contains(&total) {
-                                writeln!(w, "    add {}, x29, #{}", t, total)?;
+                                writeln!(w, "    add {t}, x29, #{total}")?;
                             } else if total < 0 && -total <= 4095 {
                                 writeln!(w, "    sub {}, x29, #{}", t, -total)?;
                             } else {
                                 emit_mov_imm64(w, t, total as u64)?;
-                                writeln!(w, "    add {}, x29, {}", t, t)?;
+                                writeln!(w, "    add {t}, x29, {t}")?;
                             }
                         } else {
                             // No stack slot: load value from physical reg and add offset
@@ -655,13 +651,13 @@ fn emit_block<W: Write>(
                             if *offset != 0 {
                                 let off = *offset as i64;
                                 if (0..=4095).contains(&off) {
-                                    writeln!(w, "    add {}, {}, #{}", t, t, off)?;
+                                    writeln!(w, "    add {t}, {t}, #{off}")?;
                                 } else if off < 0 && -off <= 4095 {
                                     writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
                                 } else {
                                     let oreg = ra.alloc_scratch().unwrap_or("x20");
                                     emit_mov_imm64(w, oreg, off as u64)?;
-                                    writeln!(w, "    add {}, {}, {}", t, t, oreg)?;
+                                    writeln!(w, "    add {t}, {t}, {oreg}")?;
                                     ra.free_scratch(oreg);
                                 }
                             }
@@ -673,13 +669,13 @@ fn emit_block<W: Write>(
                         if *offset != 0 {
                             let off = *offset as i64;
                             if (0..=4095).contains(&off) {
-                                writeln!(w, "    add {}, {}, #{}", t, t, off)?;
+                                writeln!(w, "    add {t}, {t}, #{off}")?;
                             } else if off < 0 && -off <= 4095 {
                                 writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
                             } else {
                                 let oreg = ra.alloc_scratch().unwrap_or("x20");
                                 emit_mov_imm64(w, oreg, off as u64)?;
-                                writeln!(w, "    add {}, {}, {}", t, t, oreg)?;
+                                writeln!(w, "    add {t}, {t}, {oreg}")?;
                                 ra.free_scratch(oreg);
                             }
                         }
@@ -881,19 +877,19 @@ fn emit_block<W: Write>(
                     }
                 } else {
                     for (i, a) in args.iter().enumerate().take(8) {
-                        emit_materialize_operand(w, a, &format!("x{}", i), frame, ra)?;
+                        emit_materialize_operand(w, a, &format!("x{i}"), frame, ra)?;
                     }
 
                     let stack_args = if args.len() > 8 { &args[8..] } else { &[] };
                     let stack_space = (stack_args.len() * 8 + 15) & !15;
 
                     if stack_space > 0 {
-                        writeln!(w, "    sub sp, sp, #{}", stack_space)?;
+                        writeln!(w, "    sub sp, sp, #{stack_space}")?;
                         for (i, a) in stack_args.iter().enumerate() {
                             let offset = i * 8;
                             let scratch = ra.alloc_scratch().unwrap_or("x9");
                             emit_materialize_operand(w, a, scratch, frame, ra)?;
-                            writeln!(w, "    str {}, [sp, #{}]", scratch, offset)?;
+                            writeln!(w, "    str {scratch}, [sp, #{offset}]")?;
                             ra.free_scratch(scratch);
                         }
                     }
@@ -902,10 +898,10 @@ fn emit_block<W: Write>(
                         .call_stub(name)
                         .unwrap_or_else(|| abi.mangle_function_name(name));
                     writeln!(w, "    mov x8, xzr")?;
-                    writeln!(w, "    bl {}", target_sym)?;
+                    writeln!(w, "    bl {target_sym}")?;
 
                     if stack_space > 0 {
-                        writeln!(w, "    add sp, sp, #{}", stack_space)?;
+                        writeln!(w, "    add sp, sp, #{stack_space}")?;
                     }
 
                     if let Some(dst) = ret {
@@ -916,7 +912,7 @@ fn emit_block<W: Write>(
             MirInst::TailCall { name, args } => {
                 let num_reg_args = args.len().min(8);
                 for (i, a) in args.iter().enumerate().take(num_reg_args) {
-                    emit_materialize_operand(w, a, &format!("x{}", i), frame, ra)?;
+                    emit_materialize_operand(w, a, &format!("x{i}"), frame, ra)?;
                 }
                 let num_stack_args = args.len().saturating_sub(8);
                 if num_stack_args > 0 {
@@ -924,7 +920,7 @@ fn emit_block<W: Write>(
                     for (j, a) in args.iter().enumerate().skip(8) {
                         let caller_offset = 16i32 + (j as i32 - 8) * 8;
                         emit_materialize_operand(w, a, scratch, frame, ra)?;
-                        writeln!(w, "    str {}, [x29, #{}]", scratch, caller_offset)?;
+                        writeln!(w, "    str {scratch}, [x29, #{caller_offset}]")?;
                     }
                     ra.free_scratch(scratch);
                 }
@@ -935,16 +931,16 @@ fn emit_block<W: Write>(
                     writeln!(w, "    add sp, sp, #{}", frame.frame_size)?;
                 }
                 writeln!(w, "    ldp x29, x30, [sp], #16")?;
-                writeln!(w, "    b {}", target_sym)?;
+                writeln!(w, "    b {target_sym}")?;
             }
             MirInst::Ret { value } => {
                 if let Some(v) = value {
                     emit_materialize_operand(w, v, "x0", frame, ra)?;
                 }
-                writeln!(w, "    b {}", epilogue_label)?;
+                writeln!(w, "    b {epilogue_label}")?;
             }
             MirInst::Jmp { target } => {
-                writeln!(w, "    b {}", target)?;
+                writeln!(w, "    b {target}")?;
             }
             MirInst::Br {
                 cond,
@@ -954,8 +950,8 @@ fn emit_block<W: Write>(
                 let t = ra.alloc_scratch().unwrap_or("x19");
                 load_reg_to(w, cond, t, frame, ra)?;
                 writeln!(w, "    cmp {}, #0", x_alias(t))?;
-                writeln!(w, "    b.ne {}", true_target)?;
-                writeln!(w, "    b {}", false_target)?;
+                writeln!(w, "    b.ne {true_target}")?;
+                writeln!(w, "    b {false_target}")?;
                 ra.free_scratch(t);
             }
             MirInst::Switch {
@@ -966,15 +962,15 @@ fn emit_block<W: Write>(
                 let t = ra.alloc_scratch().unwrap_or("x19");
                 load_reg_to(w, value, t, frame, ra)?;
                 for (case_val, case_label) in cases {
-                    writeln!(w, "    mov x9, #{}", case_val)?;
+                    writeln!(w, "    mov x9, #{case_val}")?;
                     writeln!(w, "    cmp {}, x9", x_alias(t))?;
-                    writeln!(w, "    b.eq {}", case_label)?;
+                    writeln!(w, "    b.eq {case_label}")?;
                 }
-                writeln!(w, "    b {}", default)?;
+                writeln!(w, "    b {default}")?;
                 ra.free_scratch(t);
             }
             MirInst::Comment { text } => {
-                writeln!(w, "    // {}", text)?;
+                writeln!(w, "    // {text}")?;
             }
             MirInst::Unreachable => {
                 // Emit an undefined-instruction trap so the CPU halts immediately if reached.
@@ -1047,14 +1043,14 @@ fn load_reg_to<W: Write>(
                     x_alias(preg)
                 };
                 if src != dest {
-                    writeln!(w, "    mov {}, {}", dest, src)?;
+                    writeln!(w, "    mov {dest}, {src}")?;
                 }
                 return Ok(());
             }
             if let Some(off) = frame.slot_of(r) {
                 // Use ldur with signed 9-bit offset when possible, otherwise compute address
                 if (-256..=255).contains(&off) {
-                    writeln!(w, "    ldur {}, [x29, #{}]", dest, off)?;
+                    writeln!(w, "    ldur {dest}, [x29, #{off}]")?;
                 } else {
                     let mut addr = ra.alloc_scratch().unwrap_or("x12");
                     if addr == dest {
@@ -1065,17 +1061,17 @@ fn load_reg_to<W: Write>(
                         }
                     }
                     if off >= 0 {
-                        writeln!(w, "    add {}, x29, #{}", addr, off)?;
+                        writeln!(w, "    add {addr}, x29, #{off}")?;
                     } else {
                         writeln!(w, "    sub {}, x29, #{}", addr, -off)?;
                     }
-                    writeln!(w, "    ldr {}, [{}]", dest, addr)?;
+                    writeln!(w, "    ldr {dest}, [{addr}]")?;
                     if matches!(addr, "x9" | "x10" | "x11" | "x12") {
                         ra.free_scratch(addr);
                     }
                 }
             } else {
-                writeln!(w, "    // no slot for {}, leaving {} unchanged", r, dest)?;
+                writeln!(w, "    // no slot for {r}, leaving {dest} unchanged")?;
             }
         }
         Register::Physical(p) => {
@@ -1103,12 +1099,12 @@ fn store_result<W: Write>(
                 } else {
                     x_alias(preg)
                 };
-                writeln!(w, "    mov {}, {}", slot, src_reg)?;
+                writeln!(w, "    mov {slot}, {src_reg}")?;
                 return Ok(());
             }
             if let Some(off) = frame.slot_of(dst) {
                 if (-256..=255).contains(&off) {
-                    writeln!(w, "    stur {}, [x29, #{}]", src_reg, off)?;
+                    writeln!(w, "    stur {src_reg}, [x29, #{off}]")?;
                 } else {
                     let mut addr = ra.alloc_scratch().unwrap_or("x12");
                     if addr == src_reg {
@@ -1119,17 +1115,17 @@ fn store_result<W: Write>(
                         }
                     }
                     if off >= 0 {
-                        writeln!(w, "    add {}, x29, #{}", addr, off)?;
+                        writeln!(w, "    add {addr}, x29, #{off}")?;
                     } else {
                         writeln!(w, "    sub {}, x29, #{}", addr, -off)?;
                     }
-                    writeln!(w, "    str {}, [{}]", src_reg, addr)?;
+                    writeln!(w, "    str {src_reg}, [{addr}]")?;
                     if matches!(addr, "x9" | "x10" | "x11" | "x12") {
                         ra.free_scratch(addr);
                     }
                 }
             } else {
-                writeln!(w, "    // no slot for {}", dst)?;
+                writeln!(w, "    // no slot for {dst}")?;
             }
         }
         Register::Physical(p) => {
@@ -1157,7 +1153,7 @@ fn materialize_address<W: Write>(
                 let off_val = *offset as i64; // Sign-extend i16 to i64 for range checking
                 // AArch64 add/sub with immediate supports 12-bit signed immediates (-2048 to 2047)
                 if (0..=4095).contains(&off_val) {
-                    writeln!(w, "    add {}, {}, #{}", dest, dest, off_val)?;
+                    writeln!(w, "    add {dest}, {dest}, #{off_val}")?;
                 } else if off_val < 0 && -off_val <= 4095 {
                     writeln!(w, "    sub {}, {}, #{}", dest, dest, -off_val)?;
                 } else {
@@ -1168,17 +1164,17 @@ fn materialize_address<W: Write>(
                         if let Some(other) = ra.alloc_scratch() {
                             let temp = other;
                             emit_mov_imm64(w, temp, off_val as u64)?;
-                            writeln!(w, "    add {}, {}, {}", dest, dest, temp)?;
+                            writeln!(w, "    add {dest}, {dest}, {temp}")?;
                             ra.free_scratch(temp);
                         } else {
                             // Fallback: use x20 if dest is not x20
                             let temp = if dest != "x20" { "x20" } else { "x19" };
                             emit_mov_imm64(w, temp, off_val as u64)?;
-                            writeln!(w, "    add {}, {}, {}", dest, dest, temp)?;
+                            writeln!(w, "    add {dest}, {dest}, {temp}")?;
                         }
                     } else {
                         emit_mov_imm64(w, oreg, off_val as u64)?;
-                        writeln!(w, "    add {}, {}, {}", dest, dest, oreg)?;
+                        writeln!(w, "    add {dest}, {dest}, {oreg}")?;
                         ra.free_scratch(oreg);
                     }
                 }
@@ -1202,23 +1198,22 @@ fn materialize_address<W: Write>(
             }
             load_reg_to(w, index, idx, frame, ra)?; // idx = index
             let sh = match *scale {
-                1 => 0,
                 2 => 1,
                 4 => 2,
                 8 => 3,
                 _ => 0,
             };
             if sh > 0 {
-                writeln!(w, "    lsl {}, {}, #{}", idx, idx, sh)?;
+                writeln!(w, "    lsl {idx}, {idx}, #{sh}")?;
             }
-            writeln!(w, "    add {}, {}, {}", dest, dest, idx)?;
+            writeln!(w, "    add {dest}, {dest}, {idx}")?;
             ra.free_scratch(idx);
             if *offset != 0 {
                 let off_val = *offset as i64; // Sign-extend i8 to i64 for range checking
                 // AArch64 add/sub with immediate supports 12-bit signed immediates (-2048 to 2047)
                 // i8 is always within this range, but check for consistency
                 if (0..=4095).contains(&off_val) {
-                    writeln!(w, "    add {}, {}, #{}", dest, dest, off_val)?;
+                    writeln!(w, "    add {dest}, {dest}, #{off_val}")?;
                 } else if off_val < 0 && -off_val <= 4095 {
                     writeln!(w, "    sub {}, {}, #{}", dest, dest, -off_val)?;
                 } else {
@@ -1227,10 +1222,10 @@ fn materialize_address<W: Write>(
                     if oreg == dest {
                         let temp = if dest != "x20" { "x20" } else { "x19" };
                         emit_mov_imm64(w, temp, off_val as u64)?;
-                        writeln!(w, "    add {}, {}, {}", dest, dest, temp)?;
+                        writeln!(w, "    add {dest}, {dest}, {temp}")?;
                     } else {
                         emit_mov_imm64(w, oreg, off_val as u64)?;
-                        writeln!(w, "    add {}, {}, {}", dest, dest, oreg)?;
+                        writeln!(w, "    add {dest}, {dest}, {oreg}")?;
                         ra.free_scratch(oreg);
                     }
                 }

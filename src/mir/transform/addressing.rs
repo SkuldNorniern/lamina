@@ -85,15 +85,7 @@ impl AddressingCanonicalization {
 
                 // Phase 1: analyze immutably to compute potential new addressing mode
                 let new_addr_mode: Option<AddressMode> = match &block.instructions[i] {
-                    Instruction::Load { addr, .. } => {
-                        let mut addr_clone = addr.clone();
-                        if self.try_rewrite_addr(&mut addr_clone, &def_index, &block.instructions) {
-                            Some(addr_clone)
-                        } else {
-                            None
-                        }
-                    }
-                    Instruction::Store { addr, .. } => {
+                    Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
                         let mut addr_clone = addr.clone();
                         if self.try_rewrite_addr(&mut addr_clone, &def_index, &block.instructions) {
                             Some(addr_clone)
@@ -107,12 +99,7 @@ impl AddressingCanonicalization {
                 // Phase 2: apply mutation
                 if let Some(new_mode) = new_addr_mode {
                     match &mut block.instructions[i] {
-                        Instruction::Load { addr, .. } => {
-                            *addr = new_mode;
-                            changed = true;
-                            rewrites_this_block += 1;
-                        }
-                        Instruction::Store { addr, .. } => {
+                        Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
                             *addr = new_mode;
                             changed = true;
                             rewrites_this_block += 1;

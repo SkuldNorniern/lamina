@@ -112,10 +112,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
         // Write WAT to temporary file
         let temp_wat = std::env::temp_dir().join(format!("lamina_wasm_{}.wat", std::process::id()));
         fs::write(&temp_wat, &wat_content).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!(
-                "Failed to write temporary WAT file: {}",
-                e
-            ))
+            CodegenError::InvalidCodegenOptions(format!("Failed to write temporary WAT file: {e}"))
         })?;
 
         // Convert WAT to binary WASM using wat2wasm
@@ -131,12 +128,12 @@ impl<'a> Codegen for WasmCodegen<'a> {
             self.base.verbose,
         )
         .map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("Failed to assemble WASM: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("Failed to assemble WASM: {e}"))
         })?;
 
         // Read binary WASM back into output buffer
         let wasm_binary = fs::read(&temp_wasm).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("Failed to read WASM binary: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("Failed to read WASM binary: {e}"))
         })?;
 
         self.base.output = wasm_binary;
@@ -158,17 +155,17 @@ fn compile_single_function_wasm(
     let abi = WasmABI::new(target_os);
 
     let mangled_name = abi.mangle_function_name(func_name);
-    writeln!(output, "  (func ${}", mangled_name)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+    writeln!(output, "  (func ${mangled_name}")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     for (i, _param) in func.sig.params.iter().enumerate() {
-        writeln!(output, "    (param $p{} i64)", i)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "    (param $p{i} i64)")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     if func.sig.ret_ty.is_some() {
         writeln!(output, "    (result i64)")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     let mut local_vregs = std::collections::HashSet::new();
@@ -192,7 +189,7 @@ fn compile_single_function_wasm(
     for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
         vreg_to_local.insert(*vreg, local_idx);
         writeln!(output, "{}", abi.generate_local_decl(local_idx))
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     let mut block_labels: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
@@ -201,56 +198,56 @@ fn compile_single_function_wasm(
     }
 
     writeln!(output, "    (local $pc i64)")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    i64.const 0")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    local.set $pc")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    (loop $dispatch_loop")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     let num_blocks = func.blocks.len();
     for i in (0..num_blocks).rev() {
-        writeln!(output, "      (block $block_{}", i)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "      (block $block_{i}")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     writeln!(output, "        local.get $pc")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "        i32.wrap_i64")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     write!(output, "        br_table")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     for i in 0..num_blocks {
-        write!(output, " {}", i)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        write!(output, " {i}")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
     writeln!(output, " 0")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     for block in func.blocks.iter() {
         writeln!(output, "      )")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
         writeln!(output, "      ;; Block: {}", block.label)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
         for inst in &block.instructions {
             emit_instruction_wasm(inst, &mut output, &vreg_to_local, &block_labels)
                 .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
         writeln!(output, "      br $dispatch_loop")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     writeln!(output, "    )")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     if func.sig.ret_ty.is_some() {
         writeln!(output, "    i64.const 0")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     writeln!(output, "  )")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     Ok(output)
 }
@@ -282,8 +279,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
             let mangled_name = abi.mangle_function_name(func_name);
             write!(
                 writer,
-                "  (import \"env\" \"{}\" (func ${}",
-                func_name, mangled_name
+                "  (import \"env\" \"{func_name}\" (func ${mangled_name}"
             )?;
 
             // Parameters
@@ -398,7 +394,7 @@ fn emit_instruction_wasm(
                 }
 
                 // Call the function
-                writeln!(writer, "      call ${}", name)?;
+                writeln!(writer, "      call ${name}")?;
 
                 // Note: WebAssembly functions return values on the stack
                 // If there's a return value, it's already on the stack
@@ -496,10 +492,6 @@ fn emit_instruction_wasm(
                         }
                         crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
                             writeln!(writer, "      i64.load32_u")?;
-                        }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                        | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
-                            writeln!(writer, "      i64.load")?;
                         }
                         crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
                             writeln!(writer, "      f32.load")?;
@@ -620,13 +612,12 @@ fn emit_instruction_wasm(
         MirInst::Jmp { target } => {
             // Set PC to target block index and continue dispatch loop
             if let Some(&target_idx) = block_labels.get(target.as_str()) {
-                writeln!(writer, "        i64.const {}", target_idx)?;
+                writeln!(writer, "        i64.const {target_idx}")?;
                 writeln!(writer, "        local.set $pc")?;
                 writeln!(writer, "        br $dispatch_loop")?;
             } else {
                 return Err(crate::error::LaminaError::ValidationError(format!(
-                    "Unknown block label: {}",
-                    target
+                    "Unknown block label: {target}"
                 )));
             }
         }
@@ -641,23 +632,21 @@ fn emit_instruction_wasm(
             writeln!(writer, "        (if")?;
             writeln!(writer, "          (then")?;
             if let Some(&true_idx) = block_labels.get(true_target.as_str()) {
-                writeln!(writer, "            i64.const {}", true_idx)?;
+                writeln!(writer, "            i64.const {true_idx}")?;
                 writeln!(writer, "            local.set $pc")?;
             } else {
                 return Err(crate::error::LaminaError::ValidationError(format!(
-                    "Unknown block label: {}",
-                    true_target
+                    "Unknown block label: {true_target}"
                 )));
             }
             writeln!(writer, "          )")?;
             writeln!(writer, "          (else")?;
             if let Some(&false_idx) = block_labels.get(false_target.as_str()) {
-                writeln!(writer, "            i64.const {}", false_idx)?;
+                writeln!(writer, "            i64.const {false_idx}")?;
                 writeln!(writer, "            local.set $pc")?;
             } else {
                 return Err(crate::error::LaminaError::ValidationError(format!(
-                    "Unknown block label: {}",
-                    false_target
+                    "Unknown block label: {false_target}"
                 )));
             }
             writeln!(writer, "          )")?;
@@ -750,12 +739,12 @@ fn emit_instruction_wasm(
             load_register_wasm(value, writer, vreg_to_local)?;
             for (case_val, case_label) in cases {
                 if let Some(&target_idx) = block_labels.get(case_label.as_str()) {
-                    writeln!(writer, "        i64.const {}", case_val)?;
+                    writeln!(writer, "        i64.const {case_val}")?;
                     // Load value again for comparison (stack-machine needs two copies).
                     load_register_wasm(value, writer, vreg_to_local)?;
                     writeln!(writer, "        i64.eq")?;
                     writeln!(writer, "        (if (then")?;
-                    writeln!(writer, "          i64.const {}", target_idx)?;
+                    writeln!(writer, "          i64.const {target_idx}")?;
                     writeln!(writer, "          local.set $pc")?;
                     writeln!(writer, "          br $dispatch_loop")?;
                     writeln!(writer, "        ))")?;
@@ -763,20 +752,20 @@ fn emit_instruction_wasm(
             }
             // Fall through to default.
             if let Some(&default_idx) = block_labels.get(default.as_str()) {
-                writeln!(writer, "        i64.const {}", default_idx)?;
+                writeln!(writer, "        i64.const {default_idx}")?;
                 writeln!(writer, "        local.set $pc")?;
             }
             writeln!(writer, "        br $dispatch_loop")?;
         }
         MirInst::Comment { text } => {
-            writeln!(writer, "        ;; {}", text)?;
+            writeln!(writer, "        ;; {text}")?;
         }
         MirInst::Lea { dst, base, offset } => {
             // In WASM linear memory there are no general-purpose effective-address
             // computations on integers, so we materialise base + offset as i64.
             load_register_wasm(base, writer, vreg_to_local)?;
             if *offset != 0 {
-                writeln!(writer, "        i64.const {}", offset)?;
+                writeln!(writer, "        i64.const {offset}")?;
                 writeln!(writer, "        i64.add")?;
             }
             if let Register::Virtual(vreg) = dst {
@@ -791,7 +780,7 @@ fn emit_instruction_wasm(
                 let _ = i;
                 load_operand_wasm(arg, writer, vreg_to_local)?;
             }
-            writeln!(writer, "        call ${}", name)?;
+            writeln!(writer, "        call ${name}")?;
             writeln!(writer, "        return")?;
         }
         MirInst::Unreachable => {
@@ -803,8 +792,7 @@ fn emit_instruction_wasm(
         other => {
             return Err(crate::error::LaminaError::CodegenError(
                 CodegenError::UnsupportedFeature(format!(
-                    "WASM backend: instruction not yet supported: {}",
-                    other
+                    "WASM backend: instruction not yet supported: {other}"
                 )),
             ));
         }

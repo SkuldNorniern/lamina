@@ -403,19 +403,10 @@ fn add_missing_initializations(func: &mut Function) {
 
 fn collect_regs_from_instruction(instr: &Instruction, used_regs: &mut HashSet<VirtualReg>) {
     match instr {
-        Instruction::IntBinary { lhs, rhs, .. } => {
-            collect_regs_from_operand(lhs, used_regs);
-            collect_regs_from_operand(rhs, used_regs);
-        }
-        Instruction::FloatBinary { lhs, rhs, .. } => {
-            collect_regs_from_operand(lhs, used_regs);
-            collect_regs_from_operand(rhs, used_regs);
-        }
-        Instruction::IntCmp { lhs, rhs, .. } => {
-            collect_regs_from_operand(lhs, used_regs);
-            collect_regs_from_operand(rhs, used_regs);
-        }
-        Instruction::FloatCmp { lhs, rhs, .. } => {
+        Instruction::IntBinary { lhs, rhs, .. }
+        | Instruction::FloatBinary { lhs, rhs, .. }
+        | Instruction::IntCmp { lhs, rhs, .. }
+        | Instruction::FloatCmp { lhs, rhs, .. } => {
             collect_regs_from_operand(lhs, used_regs);
             collect_regs_from_operand(rhs, used_regs);
         }
@@ -434,7 +425,6 @@ fn collect_regs_from_instruction(instr: &Instruction, used_regs: &mut HashSet<Vi
         Instruction::Ret { value: Some(val) } => {
             collect_regs_from_operand(val, used_regs);
         }
-        Instruction::Jmp { .. } | Instruction::Br { .. } => {}
         _ => {}
     }
 }
@@ -944,10 +934,6 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::I16 | IRPrim::U16, _) => (0xFFFFu64, map_ir_prim(*target_type)?),
                 (IRPrim::I32 | IRPrim::U32, _) => (0xFFFF_FFFFu64, map_ir_prim(*target_type)?),
-                (
-                    IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr,
-                    IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr,
-                ) => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
                 _ => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
             };
             let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;

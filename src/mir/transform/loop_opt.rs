@@ -297,8 +297,7 @@ impl LoopInvariantCodeMotion {
 
     fn has_edge_to(&self, func: &Function, from: &str, to: &str) -> bool {
         func.get_block(from)
-            .map(|b| b.successors().iter().any(|s| s == to))
-            .unwrap_or(false)
+            .is_some_and(|b| b.successors().iter().any(|s| s == to))
     }
 
     fn optimize_loop(&self, func: &mut Function, loop_info: &LoopInfo) -> Result<bool, String> {
@@ -807,9 +806,8 @@ impl LoopUnrolling {
                 //   Count = N.
                 // Support bound up to 16-32.
                 let count = match op {
-                    IntCmpOp::SLt | IntCmpOp::ULt => limit,
+                    IntCmpOp::SLt | IntCmpOp::ULt | IntCmpOp::Ne => limit,
                     IntCmpOp::SLe | IntCmpOp::ULe => limit + 1,
-                    IntCmpOp::Ne => limit, // i != N
                     _ => return None,
                 };
 
@@ -910,7 +908,7 @@ impl LoopUnrolling {
                                 }
                             } else if loop_info.body_blocks.contains(target) {
                                 // Internal edge: Jump to same iteration's version
-                                *target = format!("{}_unroll_{}", target, i);
+                                *target = format!("{target}_unroll_{i}");
                             }
                             // Else: exit edge (break/return), keep as is
                         }
@@ -927,7 +925,7 @@ impl LoopUnrolling {
                                     *true_target = format!("{}_unroll_{}", loop_info.header, i + 1);
                                 }
                             } else if loop_info.body_blocks.contains(true_target) {
-                                *true_target = format!("{}_unroll_{}", true_target, i);
+                                *true_target = format!("{true_target}_unroll_{i}");
                             }
 
                             // Handle False target
@@ -939,7 +937,7 @@ impl LoopUnrolling {
                                         format!("{}_unroll_{}", loop_info.header, i + 1);
                                 }
                             } else if loop_info.body_blocks.contains(false_target) {
-                                *false_target = format!("{}_unroll_{}", false_target, i);
+                                *false_target = format!("{false_target}_unroll_{i}");
                             }
                         }
                         _ => {}

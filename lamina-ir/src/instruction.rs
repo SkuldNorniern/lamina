@@ -987,8 +987,8 @@ impl<'a> Instruction<'a> {
             | Instruction::Tuple { result, .. }
             | Instruction::ExtractTuple { result, .. }
             | Instruction::PtrToInt { result, .. }
-            | Instruction::IntToPtr { result, .. } => Some(result),
-            Instruction::Call {
+            | Instruction::IntToPtr { result, .. }
+            | Instruction::Call {
                 result: Some(result),
                 ..
             } => Some(result),
@@ -1018,13 +1018,19 @@ impl<'a> Instruction<'a> {
                 push_value(ptr, &mut vars);
                 push_value(value, &mut vars);
             }
-            Instruction::Load { ptr, .. } => push_value(ptr, &mut vars),
+            Instruction::Load { ptr, .. }
+            | Instruction::Dealloc { ptr, .. }
+            | Instruction::WritePtr { ptr, .. } => push_value(ptr, &mut vars),
             Instruction::Alloc { .. } => {}
-            Instruction::Dealloc { ptr, .. } => push_value(ptr, &mut vars),
             Instruction::Br { condition, .. } => push_value(condition, &mut vars),
             Instruction::Ret { value: Some(v), .. } => push_value(v, &mut vars),
             Instruction::Ret { value: None, .. } | Instruction::Jmp { .. } => {}
-            Instruction::Switch { value, .. } => push_value(value, &mut vars),
+            Instruction::Switch { value, .. }
+            | Instruction::WriteByte { value, .. }
+            | Instruction::ZeroExtend { value, .. }
+            | Instruction::SignExtend { value, .. }
+            | Instruction::Trunc { value, .. }
+            | Instruction::Bitcast { value, .. } => push_value(value, &mut vars),
             Instruction::Call { args, .. } => {
                 for arg in args {
                     push_value(arg, &mut vars);
@@ -1037,10 +1043,6 @@ impl<'a> Instruction<'a> {
                 push_value(index, &mut vars);
             }
             Instruction::GetFieldPtr { struct_ptr, .. } => push_value(struct_ptr, &mut vars),
-            Instruction::ZeroExtend { value, .. }
-            | Instruction::SignExtend { value, .. }
-            | Instruction::Trunc { value, .. }
-            | Instruction::Bitcast { value, .. } => push_value(value, &mut vars),
             Instruction::PtrToInt { ptr_value, .. } => push_value(ptr_value, &mut vars),
             Instruction::IntToPtr { int_value, .. } => push_value(int_value, &mut vars),
             Instruction::Select {
@@ -1053,10 +1055,9 @@ impl<'a> Instruction<'a> {
                 push_value(true_val, &mut vars);
                 push_value(false_val, &mut vars);
             }
-            Instruction::Write { buffer, .. } => push_value(buffer, &mut vars),
-            Instruction::Read { buffer, .. } => push_value(buffer, &mut vars),
-            Instruction::WriteByte { value, .. } => push_value(value, &mut vars),
-            Instruction::WritePtr { ptr, .. } => push_value(ptr, &mut vars),
+            Instruction::Write { buffer, .. } | Instruction::Read { buffer, .. } => {
+                push_value(buffer, &mut vars);
+            }
             Instruction::Phi { incoming, .. } => {
                 for (v, _) in incoming {
                     push_value(v, &mut vars);
@@ -1079,74 +1080,54 @@ impl fmt::Display for Instruction<'_> {
                 ty,
                 lhs,
                 rhs,
-            } => write!(f, "%{} = {}.{} {}, {}", result, op, ty, lhs, rhs),
+            } => write!(f, "%{result} = {op}.{ty} {lhs}, {rhs}"),
             Instruction::Cmp {
                 op,
                 result,
                 ty,
                 lhs,
                 rhs,
-            } => write!(f, "%{} = {}.{} {}, {}", result, op, ty, lhs, rhs),
+            } => write!(f, "%{result} = {op}.{ty} {lhs}, {rhs}"),
             Instruction::ZeroExtend {
                 result,
                 source_type,
                 target_type,
                 value,
-            } => write!(
-                f,
-                "%{} = zext.{}.{} {}",
-                result, source_type, target_type, value
-            ),
+            } => write!(f, "%{result} = zext.{source_type}.{target_type} {value}"),
             Instruction::Select {
                 result,
                 ty,
                 cond,
                 true_val,
                 false_val,
-            } => write!(
-                f,
-                "%{} = select.{} {}, {}, {}",
-                result, ty, cond, true_val, false_val
-            ),
+            } => write!(f, "%{result} = select.{ty} {cond}, {true_val}, {false_val}"),
             Instruction::Trunc {
                 result,
                 source_type,
                 target_type,
                 value,
-            } => write!(
-                f,
-                "%{} = trunc.{}.{} {}",
-                result, source_type, target_type, value
-            ),
+            } => write!(f, "%{result} = trunc.{source_type}.{target_type} {value}"),
             Instruction::SignExtend {
                 result,
                 source_type,
                 target_type,
                 value,
-            } => write!(
-                f,
-                "%{} = sext.{}.{} {}",
-                result, source_type, target_type, value
-            ),
+            } => write!(f, "%{result} = sext.{source_type}.{target_type} {value}"),
             Instruction::Bitcast {
                 result,
                 source_type,
                 target_type,
                 value,
-            } => write!(
-                f,
-                "%{} = bitcast.{}.{} {}",
-                result, source_type, target_type, value
-            ),
+            } => write!(f, "%{result} = bitcast.{source_type}.{target_type} {value}"),
             Instruction::Switch {
                 ty,
                 value,
                 default,
                 cases,
             } => {
-                write!(f, "switch.{} {}, {}", ty, value, default)?;
+                write!(f, "switch.{ty} {value}, {default}")?;
                 for (lit, label) in cases.iter() {
-                    write!(f, ", [{}, {}]", lit, label)?;
+                    write!(f, ", [{lit}, {label}]")?;
                 }
                 Ok(())
             }
@@ -1154,29 +1135,29 @@ impl fmt::Display for Instruction<'_> {
                 condition,
                 true_label,
                 false_label,
-            } => write!(f, "br {}, {}, {}", condition, true_label, false_label),
-            Instruction::Jmp { target_label } => write!(f, "jmp {}", target_label),
+            } => write!(f, "br {condition}, {true_label}, {false_label}"),
+            Instruction::Jmp { target_label } => write!(f, "jmp {target_label}"),
             Instruction::Ret { ty, value } => match value {
-                Some(v) => write!(f, "ret.{} {}", ty, v),
+                Some(v) => write!(f, "ret.{ty} {v}"),
                 None => write!(f, "ret.void"),
             },
             Instruction::Alloc {
                 result,
                 alloc_type,
                 allocated_ty,
-            } => write!(f, "%{} = alloc.ptr.{} {}", result, alloc_type, allocated_ty),
-            Instruction::Load { result, ty, ptr } => write!(f, "%{} = load.{} {}", result, ty, ptr),
-            Instruction::Store { ty, ptr, value } => write!(f, "store.{} {}, {}", ty, ptr, value),
+            } => write!(f, "%{result} = alloc.ptr.{alloc_type} {allocated_ty}"),
+            Instruction::Load { result, ty, ptr } => write!(f, "%{result} = load.{ty} {ptr}"),
+            Instruction::Store { ty, ptr, value } => write!(f, "store.{ty} {ptr}, {value}"),
             Instruction::MemCpy { dst, src, size } => {
-                write!(f, "memcpy {}, {}, {}", dst, src, size)
+                write!(f, "memcpy {dst}, {src}, {size}")
             }
             Instruction::MemMove { dst, src, size } => {
-                write!(f, "memmove {}, {}, {}", dst, src, size)
+                write!(f, "memmove {dst}, {src}, {size}")
             }
             Instruction::MemSet { dst, value, size } => {
-                write!(f, "memset {}, {}, {}", dst, value, size)
+                write!(f, "memset {dst}, {value}, {size}")
             }
-            Instruction::Dealloc { ptr } => write!(f, "dealloc.heap {}", ptr),
+            Instruction::Dealloc { ptr } => write!(f, "dealloc.heap {ptr}"),
             #[cfg(feature = "nightly")]
             Instruction::AtomicLoad {
                 result,
@@ -1302,11 +1283,7 @@ impl fmt::Display for Instruction<'_> {
                 result,
                 struct_ptr,
                 field_index,
-            } => write!(
-                f,
-                "%{} = getfield.ptr {}, {}",
-                result, struct_ptr, field_index
-            ),
+            } => write!(f, "%{result} = getfield.ptr {struct_ptr}, {field_index}"),
             Instruction::GetElemPtr {
                 result,
                 array_ptr,
@@ -1314,23 +1291,22 @@ impl fmt::Display for Instruction<'_> {
                 element_type,
             } => write!(
                 f,
-                "%{} = getelem.ptr {}, {}, {}",
-                result, array_ptr, index, element_type
+                "%{result} = getelem.ptr {array_ptr}, {index}, {element_type}"
             ),
             Instruction::PtrToInt {
                 result,
                 ptr_value,
                 target_type,
-            } => write!(f, "%{} = ptrtoint {}, {}", result, ptr_value, target_type),
+            } => write!(f, "%{result} = ptrtoint {ptr_value}, {target_type}"),
             Instruction::IntToPtr {
                 result,
                 int_value,
                 target_type,
-            } => write!(f, "%{} = inttoptr {}, {}", result, int_value, target_type),
+            } => write!(f, "%{result} = inttoptr {int_value}, {target_type}"),
             Instruction::Tuple { result, elements } => {
-                write!(f, "%{} = tuple", result)?;
+                write!(f, "%{result} = tuple")?;
                 for elem in elements {
-                    write!(f, ", {}", elem)?;
+                    write!(f, ", {elem}")?;
                 }
                 Ok(())
             }
@@ -1338,19 +1314,19 @@ impl fmt::Display for Instruction<'_> {
                 result,
                 tuple_val,
                 index,
-            } => write!(f, "%{} = extract.tuple {}, {}", result, tuple_val, index),
+            } => write!(f, "%{result} = extract.tuple {tuple_val}, {index}"),
             Instruction::Call {
                 result,
                 func_name,
                 args,
             } => {
                 if let Some(res) = result {
-                    write!(f, "%{} = call @{}(", res, func_name)?;
+                    write!(f, "%{res} = call @{func_name}(")?;
                 } else {
-                    write!(f, "call @{}(", func_name)?;
+                    write!(f, "call @{func_name}(")?;
                 }
                 for (i, arg) in args.iter().enumerate() {
-                    write!(f, "{}", arg)?;
+                    write!(f, "{arg}")?;
                     if i < args.len() - 1 {
                         write!(f, ", ")?;
                     }
@@ -1362,9 +1338,9 @@ impl fmt::Display for Instruction<'_> {
                 ty,
                 incoming,
             } => {
-                write!(f, "%{} = phi.{} ", result, ty)?;
+                write!(f, "%{result} = phi.{ty} ")?;
                 for (i, (val, label)) in incoming.iter().enumerate() {
-                    write!(f, "[{}, {}]", val, label)?;
+                    write!(f, "[{val}, {label}]")?;
                     if i < incoming.len() - 1 {
                         write!(f, ", ")?;
                     }
@@ -1375,18 +1351,18 @@ impl fmt::Display for Instruction<'_> {
                 buffer,
                 size,
                 result,
-            } => write!(f, "%{} = write {}, {}", result, buffer, size),
+            } => write!(f, "%{result} = write {buffer}, {size}"),
             Instruction::Read {
                 buffer,
                 size,
                 result,
-            } => write!(f, "%{} = read {}, {}", result, buffer, size),
+            } => write!(f, "%{result} = read {buffer}, {size}"),
             Instruction::WriteByte { value, result } => {
-                write!(f, "%{} = writebyte {}", result, value)
+                write!(f, "%{result} = writebyte {value}")
             }
-            Instruction::ReadByte { result } => write!(f, "%{} = readbyte", result),
-            Instruction::WritePtr { ptr, result } => write!(f, "%{} = writeptr {}", result, ptr),
-            Instruction::Print { value } => write!(f, "print {}", value),
+            Instruction::ReadByte { result } => write!(f, "%{result} = readbyte"),
+            Instruction::WritePtr { ptr, result } => write!(f, "%{result} = writeptr {ptr}"),
+            Instruction::Print { value } => write!(f, "print {value}"),
         }
     }
 }

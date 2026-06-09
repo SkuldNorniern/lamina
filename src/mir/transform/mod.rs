@@ -77,12 +77,12 @@ impl TransformLevel {
     /// - `-O2`: `Stable` + `Experimental` transforms
     /// - `-O3`: All transforms (including `Deprecated` for compatibility)
     pub fn is_enabled_at_opt_level(self, opt_level: u8) -> bool {
-        match (self, opt_level) {
-            (TransformLevel::Deprecated, 3..) => true, // Only at -O3+
-            (TransformLevel::Experimental, 2..) => true, // At -O2+
-            (TransformLevel::Stable, 1..) => true,     // At -O1+
-            _ => false,
-        }
+        matches!(
+            (self, opt_level),
+            (TransformLevel::Deprecated, 3..)
+                | (TransformLevel::Experimental, 2..)
+                | (TransformLevel::Stable, 1..)
+        )
     }
 }
 
@@ -177,8 +177,7 @@ impl TransformPipeline {
         const MAX_INSTRUCTIONS: usize = 100_000;
         if total_instructions > MAX_INSTRUCTIONS {
             return Err(format!(
-                "Function too large for transforms ({} instructions, max {})",
-                total_instructions, MAX_INSTRUCTIONS
+                "Function too large for transforms ({total_instructions} instructions, max {MAX_INSTRUCTIONS})"
             ));
         }
 
@@ -238,7 +237,7 @@ impl TransformPipeline {
                 "All functions failed transforms: {}",
                 failed_functions
                     .iter()
-                    .map(|(name, err)| format!("{}: {}", name, err))
+                    .map(|(name, err)| format!("{name}: {err}"))
                     .collect::<Vec<_>>()
                     .join(", ")
             ));
@@ -250,7 +249,7 @@ impl TransformPipeline {
                 failed_functions.len()
             );
             for (name, err) in &failed_functions {
-                eprintln!("  {}: {}", name, err);
+                eprintln!("  {name}: {err}");
             }
         }
 
