@@ -1,7 +1,7 @@
 //! Copy propagation transform for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, Operand, Register};
+use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, Operand, Register, AddressMode};
 use std::collections::HashMap;
 
 fn as_reg(operand: &Operand) -> Option<&Register> {
@@ -166,7 +166,7 @@ impl CopyPropagation {
                 changed |= self.replace_operand(false_val, value_map);
             }
             Instruction::Load { addr, .. } => {
-                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr
+                if let AddressMode::BaseOffset { base, offset: _ } = addr
                     && let Some(new_base) = value_map.get(base)
                     && let Operand::Register(new_reg) = new_base
                 {
@@ -176,7 +176,7 @@ impl CopyPropagation {
             }
             Instruction::Store { src, addr, .. } => {
                 changed |= self.replace_operand(src, value_map);
-                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr
+                if let AddressMode::BaseOffset { base, offset: _ } = addr
                     && let Some(new_base) = value_map.get(base)
                     && let Operand::Register(new_reg) = new_base
                 {
