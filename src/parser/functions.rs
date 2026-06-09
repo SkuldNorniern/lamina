@@ -29,19 +29,8 @@ pub fn parse_annotations(
                 "noinline" => FunctionAnnotation::NoInline,
                 "cold" => FunctionAnnotation::Cold,
                 _ => {
-                    let valid_annotations =
-                        ["inline", "export", "extern", "noreturn", "noinline", "cold"];
-                    let mut suggestions = Vec::new();
-                    const MAX_TYPO_DISTANCE: usize = 2;
-
-                    for valid in &valid_annotations {
-                        let distance = super::edit_distance(name, valid, Some(MAX_TYPO_DISTANCE));
-                        if distance <= MAX_TYPO_DISTANCE {
-                            suggestions.push(*valid);
-                        }
-                    }
-
-                    suggestions.sort_by_key(|&s| super::edit_distance(name, s, None));
+                    let valid = super::get_annotation_names();
+                    let suggestions = super::suggest_alternatives(name, valid);
 
                     let hint = if !suggestions.is_empty() {
                         if suggestions.len() == 1 {
@@ -50,7 +39,12 @@ pub fn parse_annotations(
                             format!("Did you mean @{}?", suggestions.join(" or @"))
                         }
                     } else {
-                        format!("Valid annotations are: {}", valid_annotations.join(", "))
+                        let list = valid
+                            .iter()
+                            .map(|s| format!("@{}", s))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("Valid annotations are: {}", list)
                     };
 
                     return Err(state.error(format!(

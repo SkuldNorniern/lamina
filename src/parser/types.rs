@@ -131,22 +131,8 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                         .copied()
                         .chain(std::iter::once("void"))
                         .collect();
-                    let mut suggestions = Vec::new();
-                    const MAX_TYPO_DISTANCE: usize = 2;
-
-                    for valid in &all_type_names {
-                        let distance = super::edit_distance(
-                            potential_primitive,
-                            valid,
-                            Some(MAX_TYPO_DISTANCE),
-                        );
-                        if distance <= MAX_TYPO_DISTANCE {
-                            suggestions.push(*valid);
-                        }
-                    }
-
-                    suggestions
-                        .sort_by_key(|&s| super::edit_distance(potential_primitive, s, None));
+                    let suggestions =
+                        super::suggest_alternatives(potential_primitive, &all_type_names);
 
                     let hint = if !suggestions.is_empty() {
                         if suggestions.len() == 1 {
