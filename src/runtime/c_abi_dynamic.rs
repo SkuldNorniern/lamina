@@ -33,6 +33,10 @@ pub const MAX_JIT_ARGS: usize = 15;
 /// Past this count, tooling may warn: extra arguments use the stack under the C ABI.
 pub const JIT_ARG_SOFT_WARN_THRESHOLD: usize = 8;
 
+fn call_args_valid(function_ptr: *const u8, args: &[i64]) -> bool {
+    !function_ptr.is_null() && args.len() <= MAX_JIT_ARGS
+}
+
 #[cfg(target_arch = "aarch64")]
 /// Call an arbitrary C-ABI function at `function_ptr` with up to [`MAX_JIT_ARGS`] `i64` args.
 ///
@@ -46,10 +50,7 @@ pub unsafe fn call_function_dynamic(
     args: &[i64],
     returns_value: bool,
 ) -> Option<i64> {
-    if function_ptr.is_null() {
-        return None;
-    }
-    if args.len() > MAX_JIT_ARGS {
+    if !call_args_valid(function_ptr, args) {
         return None;
     }
     if !(function_ptr as usize).is_multiple_of(4) {
@@ -157,10 +158,7 @@ pub unsafe fn call_function_dynamic(
     args: &[i64],
     returns_value: bool,
 ) -> Option<i64> {
-    if function_ptr.is_null() {
-        return None;
-    }
-    if args.len() > MAX_JIT_ARGS {
+    if !call_args_valid(function_ptr, args) {
         return None;
     }
     if args.len() <= 15 {
@@ -263,15 +261,10 @@ pub unsafe fn call_function_dynamic(
     args: &[i64],
     returns_value: bool,
 ) -> Option<i64> {
-    unsafe {
-        if function_ptr.is_null() {
-            return None;
-        }
-        if args.len() > MAX_JIT_ARGS {
-            return None;
-        }
-        transmute_dynamic_call(function_ptr, args, returns_value)
+    if !call_args_valid(function_ptr, args) {
+        return None;
     }
+    unsafe { transmute_dynamic_call(function_ptr, args, returns_value) }
 }
 
 unsafe fn transmute_dynamic_call(
