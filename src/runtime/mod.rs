@@ -20,6 +20,10 @@ use crate::error::LaminaError;
 use crate::mir::Module as MirModule;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
+// Re-export ras types for convenience
+use ras::assembler::RasAssembler;
+pub use ras::{ExecutableMemory, RasRuntime};
+
 /// Runtime compilation result
 pub struct RuntimeResult {
     /// Executable memory containing compiled code
@@ -27,9 +31,6 @@ pub struct RuntimeResult {
     /// Function pointer (unsafe - caller must ensure signature matches)
     pub function_ptr: *const u8,
 }
-
-// Re-export ras types for convenience
-pub use ras::{ExecutableMemory, RasRuntime};
 
 /// Compile MIR module to executable memory using runtime compilation
 pub fn compile_to_runtime(
@@ -40,8 +41,6 @@ pub fn compile_to_runtime(
 ) -> Result<RuntimeResult, LaminaError> {
     #[cfg(feature = "encoder")]
     {
-        use ras::assembler::RasAssembler;
-
         crate::mir_codegen::validate_module_call_parameters(_module, _target_arch)?;
 
         // Keep JIT output quiet by default (release-friendly). Enable with `LAMINA_JIT_DEBUG=1`.

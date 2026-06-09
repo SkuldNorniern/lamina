@@ -5,6 +5,8 @@ use crate::mir::{Block, Function};
 
 use super::{Transform, TransformCategory, TransformLevel};
 
+use std::collections::{HashMap, HashSet};
+
 /// Peephole optimizations that do local rewrites.
 ///
 /// Handles arithmetic identities, comparison optimizations, constant folding,
@@ -551,8 +553,7 @@ fn decompose_multiplication(const_val: i64) -> Option<(u32, i64)> {
 }
 
 /// Identify loop headers via simple back-edge detection using block order.
-fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<String> {
-    use std::collections::{HashMap, HashSet};
+fn compute_back_edge_headers(func: &Function) -> HashSet<String> {
     let mut label_index: HashMap<&str, usize> = HashMap::new();
     for (i, b) in func.blocks.iter().enumerate() {
         label_index.insert(&b.label, i);

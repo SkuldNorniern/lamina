@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread;
 
 use crate::error::LaminaError;
@@ -205,7 +205,6 @@ where
         return Ok(Vec::new());
     }
 
-    use std::sync::Arc;
     let compile_func_arc = Arc::new(compile_func);
 
     let num_workers = codegen_units.min(functions.len());

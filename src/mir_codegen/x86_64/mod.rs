@@ -19,11 +19,14 @@ use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet,
 };
+
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::sync::Arc;
 
-use crate::mir_codegen::common::CodegenBase;
+use crate::mir_codegen::common::{
+    CodegenBase, compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
+};
 
 /// MIR to x86_64 code generator implementing the `Codegen` trait.
 pub struct X86Codegen<'a> {
@@ -117,17 +120,12 @@ impl<'a> Codegen for X86Codegen<'a> {
     }
 }
 
-use crate::mir_codegen::common::{
-    compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
-};
-
 fn compile_single_function_x86_64(
     func_name: &str,
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
-    use std::io::Write;
     let mut output = Vec::new();
     let abi = X86ABI::new(target_os);
 

@@ -1,8 +1,9 @@
 //! Branch optimization transform for MIR.
 
+use std::collections::{HashSet, VecDeque};
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Function, Instruction};
-use std::collections::HashSet;
 
 /// Branch optimization that eliminates unreachable branches.
 #[derive(Default)]
@@ -93,8 +94,6 @@ impl BranchOptimization {
     }
 
     fn compute_reachable_blocks(&self, func: &Function) -> HashSet<String> {
-        use std::collections::{HashSet, VecDeque};
-
         let mut reachable = HashSet::new();
         let mut worklist = VecDeque::new();
         const MAX_ITERATIONS: usize = 10_000;

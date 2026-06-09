@@ -10,10 +10,12 @@ use util::{
 
 use crate::mir::register::RegisterClass;
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet,
 };
+
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::collections::{HashMap, HashSet};
@@ -125,15 +127,12 @@ impl<'a> Codegen for RiscVCodegen<'a> {
     }
 }
 
-use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
-
 fn compile_single_function_riscv(
     func_name: &str,
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
-    use std::io::Write;
     let mut output = Vec::new();
     let abi = RiscVAbi::new(target_os);
 

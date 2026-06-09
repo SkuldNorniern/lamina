@@ -8,7 +8,8 @@
 //! This helps on x86_64 which has native support for complex addressing modes.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{AddressMode, Function, Instruction, Operand, Register};
+use crate::mir::instruction::Immediate;
+use crate::mir::{AddressMode, Function, Instruction, IntBinOp, Operand, Register};
 
 /// Canonicalizes address formation patterns into BaseIndexScale addressing.
 #[derive(Default)]
@@ -174,9 +175,6 @@ impl AddressingCanonicalization {
         def_index: &std::collections::HashMap<Register, usize>,
         instructions: &[Instruction],
     ) -> Option<(Register, Register, u8)> {
-        use crate::mir::IntBinOp;
-        use crate::mir::instruction::Immediate;
-
         // Check if a register is defined by shift-left with small power-of-two scale
         fn scaled_from_shift(
             r: &Register,

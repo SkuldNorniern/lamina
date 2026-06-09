@@ -2,6 +2,9 @@
 
 use std::path::PathBuf;
 
+use lamina::mir_codegen::assemble::AssemblerBackend;
+use lamina::mir_codegen::link::LinkerBackend;
+
 pub struct CompileOptions {
     pub input_file: PathBuf,
     pub output_file: Option<PathBuf>,
@@ -47,13 +50,7 @@ impl CompileOptions {
 pub fn toolchain_backends(
     forced_compiler: &Option<String>,
     assembler_override: &Option<String>,
-) -> (
-    Option<lamina::mir_codegen::assemble::AssemblerBackend>,
-    Option<lamina::mir_codegen::link::LinkerBackend>,
-) {
-    use lamina::mir_codegen::assemble::AssemblerBackend;
-    use lamina::mir_codegen::link::LinkerBackend;
-
+) -> (Option<AssemblerBackend>, Option<LinkerBackend>) {
     let assem = assembler_override
         .as_deref()
         .and_then(|s| match s {
