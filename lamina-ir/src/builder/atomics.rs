@@ -22,7 +22,7 @@ impl<'a> IRBuilder<'a> {
         ordering: MemoryOrdering,
     ) -> &mut Self {
         self.inst(Instruction::AtomicLoad {
-            result: result.into(),
+            result,
             ty,
             ptr,
             ordering,
@@ -57,7 +57,7 @@ impl<'a> IRBuilder<'a> {
     ) -> &mut Self {
         self.inst(Instruction::AtomicBinary {
             op,
-            result: result.into(),
+            result,
             ty,
             ptr,
             value,
@@ -66,6 +66,7 @@ impl<'a> IRBuilder<'a> {
     }
 
     /// Performs an atomic compare-exchange operation.
+    #[allow(clippy::too_many_arguments)]
     pub fn atomic_compare_exchange(
         &mut self,
         result: &'a str,
@@ -78,8 +79,8 @@ impl<'a> IRBuilder<'a> {
         failure_ordering: MemoryOrdering,
     ) -> &mut Self {
         self.inst(Instruction::AtomicCompareExchange {
-            result: result.into(),
-            success: success.into(),
+            result,
+            success,
             ty,
             ptr,
             expected,

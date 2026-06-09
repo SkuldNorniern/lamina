@@ -777,10 +777,8 @@ impl ModuleInlining {
         caller_func.blocks.insert(call_block_idx + 1, split_block);
 
         // Insert inlined blocks
-        let mut insert_pos = call_block_idx + 1;
-        for block in inlined_blocks {
+        for (insert_pos, block) in (call_block_idx + 1..).zip(inlined_blocks) {
             caller_func.blocks.insert(insert_pos, block);
-            insert_pos += 1;
         }
 
         Ok(())

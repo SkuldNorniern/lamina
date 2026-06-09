@@ -46,15 +46,13 @@ pub fn validate_module_call_parameters(
                             )));
                         }
                     }
-                    Instruction::TailCall { name, args } => {
-                        if args.len() > max {
-                            return Err(LaminaError::ValidationError(format!(
-                                "TailCall to '{}' passes {} arguments (maximum is {})",
-                                name,
-                                args.len(),
-                                max
-                            )));
-                        }
+                    Instruction::TailCall { name, args } if args.len() > max => {
+                        return Err(LaminaError::ValidationError(format!(
+                            "TailCall to '{}' passes {} arguments (maximum is {})",
+                            name,
+                            args.len(),
+                            max
+                        )));
                     }
                     _ => {}
                 }

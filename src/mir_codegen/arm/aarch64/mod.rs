@@ -49,43 +49,37 @@ fn compile_single_function_aarch64(
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
-) -> Result<Vec<u8>, crate::mir_codegen::CodegenError> {
+) -> Result<Vec<u8>, CodegenError> {
     use std::io::Write;
     let mut output = Vec::new();
     let abi = AArch64ABI::new(target_os);
 
     if let Some(globl) = abi.get_global_directive(func_name) {
-        writeln!(output, "{}", globl).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, "{}", globl)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     }
     let label = abi.mangle_function_name(func_name);
-    writeln!(output, "{}:", label).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-    })?;
+    writeln!(output, "{}:", label)
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{}\"", tag).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, "    .file 1 \"{}\"", tag)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     }
 
     let mut ra_pro = A64RegAlloc::new();
     let s0 = ra_pro.alloc_scratch().unwrap_or("x19");
     let s1 = ra_pro.alloc_scratch().unwrap_or("x20");
     if s0 != "x29" || s1 != "x30" {
-        writeln!(output, "    stp x29, x30, [sp, #-16]!").map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, "    stp x29, x30, [sp, #-16]!")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     } else {
-        writeln!(output, "    stp {}, {}, [sp, #-16]!", s0, s1).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, "    stp {}, {}, [sp, #-16]!", s0, s1)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     }
-    writeln!(output, "    mov x29, sp").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-    })?;
+    writeln!(output, "    mov x29, sp")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
 
     let mut frame = FrameMap::from_function(func);
 
@@ -104,7 +98,7 @@ fn compile_single_function_aarch64(
                     GraphColorAllocator::allocate(&intervals, pool.as_slice())
                 }
                 RegallocStrategy::Incremental => {
-                    return Err(crate::mir_codegen::CodegenError::InvalidCodegenOptions(
+                    return Err(CodegenError::InvalidCodegenOptions(
                         "internal: incremental in global branch".to_string(),
                     ));
                 }
@@ -134,54 +128,31 @@ fn compile_single_function_aarch64(
     };
 
     if adjusted_frame_size > 0 {
-        writeln!(output, "    sub sp, sp, #{}", adjusted_frame_size).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, "    sub sp, sp, #{}", adjusted_frame_size)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     }
 
     for (i, p) in func.sig.params.iter().enumerate() {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().unwrap_or("x19");
             if off >= 0 {
-                writeln!(output, "    add {}, x29, #{}", addr, off).map_err(|e| {
-                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
-                        "IO error: {}",
-                        e
-                    ))
-                })?;
+                writeln!(output, "    add {}, x29, #{}", addr, off)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
             } else {
-                writeln!(output, "    sub {}, x29, #{}", addr, -off).map_err(|e| {
-                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
-                        "IO error: {}",
-                        e
-                    ))
-                })?;
+                writeln!(output, "    sub {}, x29, #{}", addr, -off)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
             }
 
             if i < 8 {
-                writeln!(output, "    str x{}, [{}]", i, addr).map_err(|e| {
-                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
-                        "IO error: {}",
-                        e
-                    ))
-                })?;
+                writeln!(output, "    str x{}, [{}]", i, addr)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
             } else {
                 let caller_offset = 16 + (i - 8) * 8;
                 let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
-                writeln!(output, "    ldr {}, [x29, #{}]", val_reg, caller_offset).map_err(
-                    |e| {
-                        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
-                            "IO error: {}",
-                            e
-                        ))
-                    },
-                )?;
-                writeln!(output, "    str {}, [{}]", val_reg, addr).map_err(|e| {
-                    crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!(
-                        "IO error: {}",
-                        e
-                    ))
-                })?;
+                writeln!(output, "    ldr {}, [x29, #{}]", val_reg, caller_offset)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+                writeln!(output, "    str {}, [{}]", val_reg, addr)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
                 ra_pro.free_scratch(val_reg);
             }
             ra_pro.free_scratch(addr);
@@ -217,16 +188,14 @@ fn compile_single_function_aarch64(
             settings,
             &mut debug_line,
         )
-        .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
     for b in &func.blocks {
         if b.label != entry_key {
-            writeln!(output, "    .align 2").map_err(|e| {
-                crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-            })?;
-            writeln!(output, "{}:", b.label).map_err(|e| {
-                crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-            })?;
+            writeln!(output, "    .align 2")
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            writeln!(output, "{}:", b.label)
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
             emit_block(
                 b.instructions.as_slice(),
                 &mut output,
@@ -237,24 +206,20 @@ fn compile_single_function_aarch64(
                 settings,
                 &mut debug_line,
             )
-            .map_err(|e| crate::mir_codegen::CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
     }
 
-    writeln!(output, "{}:", epilogue_label).map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-    })?;
+    writeln!(output, "{}:", epilogue_label)
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     if adjusted_frame_size > 0 {
-        writeln!(output, "    add sp, sp, #{}", adjusted_frame_size).map_err(|e| {
-            crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-        })?;
+        writeln!(output, "    add sp, sp, #{}", adjusted_frame_size)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     }
-    writeln!(output, "    ldp x29, x30, [sp], #16").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-    })?;
-    writeln!(output, "    ret").map_err(|e| {
-        crate::mir_codegen::CodegenError::InvalidCodegenOptions(format!("IO error: {}", e))
-    })?;
+    writeln!(output, "    ldp x29, x30, [sp], #16")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+    writeln!(output, "    ret")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
 
     Ok(output)
 }
@@ -1334,9 +1299,9 @@ impl<'a> Codegen for AArch64Codegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &std::collections::HashMap<String, crate::mir::MirType>,
-        globals: &std::collections::HashMap<String, crate::mir::Global>,
-        funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        types: &HashMap<String, crate::mir::MirType>,
+        globals: &HashMap<String, crate::mir::Global>,
+        funcs: &HashMap<String, crate::mir::Signature>,
         codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],

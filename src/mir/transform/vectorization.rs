@@ -74,29 +74,25 @@ impl AutoVectorization {
                     ..
                 } = instr
                 {
-                    if self.is_back_edge(&dominators, &block.label, true_target) {
-                        if let Some(loop_info) =
+                    if self.is_back_edge(&dominators, &block.label, true_target)
+                        && let Some(loop_info) =
                             self.analyze_loop(func, true_target, &block.label, &dominators)
-                        {
-                            loops.push(loop_info);
-                        }
+                    {
+                        loops.push(loop_info);
                     }
-                    if self.is_back_edge(&dominators, &block.label, false_target) {
-                        if let Some(loop_info) =
+                    if self.is_back_edge(&dominators, &block.label, false_target)
+                        && let Some(loop_info) =
                             self.analyze_loop(func, false_target, &block.label, &dominators)
-                        {
-                            loops.push(loop_info);
-                        }
+                    {
+                        loops.push(loop_info);
                     }
                 }
-                if let Instruction::Jmp { target } = instr {
-                    if self.is_back_edge(&dominators, &block.label, target) {
-                        if let Some(loop_info) =
-                            self.analyze_loop(func, target, &block.label, &dominators)
-                        {
-                            loops.push(loop_info);
-                        }
-                    }
+                if let Instruction::Jmp { target } = instr
+                    && self.is_back_edge(&dominators, &block.label, target)
+                    && let Some(loop_info) =
+                        self.analyze_loop(func, target, &block.label, &dominators)
+                {
+                    loops.push(loop_info);
                 }
             }
         }
@@ -327,23 +323,20 @@ impl AutoVectorization {
                         },
                     ) = (&instructions[i], &instructions[i + 1], &instructions[i + 2])
                     {
-                        // Check if this is a vectorizable pattern
                         if self.is_vectorizable_type(ty)
                             && self.is_sequential_access(addr, store_addr)
                             && self.is_vectorizable_op(*op)
                             && self.matches_load_store(dst, src)
+                            && let Some(scalar_ty) = self.extract_scalar_type(ty)
                         {
-                            if let Some(scalar_ty) = self.extract_scalar_type(ty) {
-                                patterns.push(VectorizationPattern {
-                                    block: block_label.clone(),
-                                    load_idx: i,
-                                    compute_idx: i + 1,
-                                    store_idx: i + 2,
-                                    element_type: scalar_ty,
-                                    operation: *op,
-                                    is_float: false,
-                                });
-                            }
+                            patterns.push(VectorizationPattern {
+                                block: block_label.clone(),
+                                load_idx: i,
+                                compute_idx: i + 1,
+                                store_idx: i + 2,
+                                element_type: scalar_ty,
+                                operation: *op,
+                            });
                         }
                     }
                 }
@@ -364,25 +357,22 @@ impl AutoVectorization {
                             && self.is_sequential_access(addr, store_addr)
                             && self.is_vectorizable_float_op(*op)
                             && self.matches_load_store(dst, src)
+                            && let Some(scalar_ty) = self.extract_scalar_type(ty)
                         {
-                            if let Some(scalar_ty) = self.extract_scalar_type(ty) {
-                                // Map float ops to int ops for pattern (we'll handle conversion)
-                                let int_op = match op {
-                                    FloatBinOp::FAdd => IntBinOp::Add,
-                                    FloatBinOp::FSub => IntBinOp::Sub,
-                                    FloatBinOp::FMul => IntBinOp::Mul,
-                                    FloatBinOp::FDiv => IntBinOp::SDiv, // Approximate
-                                };
-                                patterns.push(VectorizationPattern {
-                                    block: block_label.clone(),
-                                    load_idx: i,
-                                    compute_idx: i + 1,
-                                    store_idx: i + 2,
-                                    element_type: scalar_ty,
-                                    operation: int_op,
-                                    is_float: true,
-                                });
-                            }
+                            let int_op = match op {
+                                FloatBinOp::FAdd => IntBinOp::Add,
+                                FloatBinOp::FSub => IntBinOp::Sub,
+                                FloatBinOp::FMul => IntBinOp::Mul,
+                                FloatBinOp::FDiv => IntBinOp::SDiv,
+                            };
+                            patterns.push(VectorizationPattern {
+                                block: block_label.clone(),
+                                load_idx: i,
+                                compute_idx: i + 1,
+                                store_idx: i + 2,
+                                element_type: scalar_ty,
+                                operation: int_op,
+                            });
                         }
                     }
                 }
@@ -405,23 +395,20 @@ impl AutoVectorization {
                         &instructions[i + 2],
                         &instructions[i + 3],
                     ) {
-                        // Vectorize the first operation if both are vectorizable
                         if self.is_vectorizable_type(ty)
                             && self.is_sequential_access(addr, store_addr)
                             && self.is_vectorizable_op(*op1)
                             && self.matches_load_store(dst, src)
+                            && let Some(scalar_ty) = self.extract_scalar_type(ty)
                         {
-                            if let Some(scalar_ty) = self.extract_scalar_type(ty) {
-                                patterns.push(VectorizationPattern {
-                                    block: block_label.clone(),
-                                    load_idx: i,
-                                    compute_idx: i + 1,
-                                    store_idx: i + 3,
-                                    element_type: scalar_ty,
-                                    operation: *op1,
-                                    is_float: false,
-                                });
-                            }
+                            patterns.push(VectorizationPattern {
+                                block: block_label.clone(),
+                                load_idx: i,
+                                compute_idx: i + 1,
+                                store_idx: i + 3,
+                                element_type: scalar_ty,
+                                operation: *op1,
+                            });
                         }
                     }
                 }
@@ -686,7 +673,7 @@ impl AutoVectorization {
         static mut COUNTER: u32 = 0;
         unsafe {
             COUNTER += 1;
-            Register::Virtual(VirtualReg::vec(COUNTER as u32))
+            Register::Virtual(VirtualReg::vec(COUNTER))
         }
     }
 }
@@ -707,7 +694,6 @@ struct VectorizationPattern {
     store_idx: usize,
     element_type: ScalarType,
     operation: IntBinOp,
-    is_float: bool,
 }
 
 #[cfg(test)]
@@ -715,7 +701,6 @@ struct VectorizationPattern {
 mod tests {
     use super::*;
     use crate::ir;
-    use crate::ir::builder::IRBuilder;
     use crate::mir;
 
     #[test]
