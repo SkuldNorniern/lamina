@@ -21,8 +21,8 @@ use crate::mir::{
     IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, Signature, VirtualReg,
 };
 use crate::mir_codegen::{
-    validate_module_call_parameters, Codegen, CodegenError, CodegenOptions, MirCodegenSettings,
-    RegallocStrategy, capability::CapabilitySet,
+    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
+    capability::CapabilitySet, validate_module_call_parameters,
 };
 
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
@@ -160,8 +160,7 @@ fn compile_single_function_x86_64(
         X64RegAlloc::new(target_os)
     };
 
-    let mut stack_slots: HashMap<VirtualReg, i32> =
-        HashMap::new();
+    let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
     let mut def_regs: HashSet<VirtualReg> = HashSet::new();
     let mut used_regs: HashSet<VirtualReg> = HashSet::new();
 
@@ -405,15 +404,9 @@ fn emit_instruction_x86_64(
                                     }
                                 };
                                 match op {
-                                    IntBinOp::Shl => {
-                                        writeln!(writer, "    shlq ${sv}, %{dp}")?
-                                    }
-                                    IntBinOp::AShr => {
-                                        writeln!(writer, "    sarq ${sv}, %{dp}")?
-                                    }
-                                    IntBinOp::LShr => {
-                                        writeln!(writer, "    shrq ${sv}, %{dp}")?
-                                    }
+                                    IntBinOp::Shl => writeln!(writer, "    shlq ${sv}, %{dp}")?,
+                                    IntBinOp::AShr => writeln!(writer, "    sarq ${sv}, %{dp}")?,
+                                    IntBinOp::LShr => writeln!(writer, "    shrq ${sv}, %{dp}")?,
                                     _ => unreachable!(),
                                 }
                             }
@@ -427,15 +420,9 @@ fn emit_instruction_x86_64(
                                     "rcx",
                                 )?;
                                 match op {
-                                    IntBinOp::Shl => {
-                                        writeln!(writer, "    shlq %cl, %{dp}")?
-                                    }
-                                    IntBinOp::AShr => {
-                                        writeln!(writer, "    sarq %cl, %{dp}")?
-                                    }
-                                    IntBinOp::LShr => {
-                                        writeln!(writer, "    shrq %cl, %{dp}")?
-                                    }
+                                    IntBinOp::Shl => writeln!(writer, "    shlq %cl, %{dp}")?,
+                                    IntBinOp::AShr => writeln!(writer, "    sarq %cl, %{dp}")?,
+                                    IntBinOp::LShr => writeln!(writer, "    shrq %cl, %{dp}")?,
                                     _ => unreachable!(),
                                 }
                             }
@@ -492,21 +479,11 @@ fn emit_instruction_x86_64(
                                 if v >= i32::MIN as i64 && v <= i32::MAX as i64 {
                                     // Fits in 32-bit sign-extended immediate
                                     match op {
-                                        IntBinOp::Add => {
-                                            writeln!(writer, "    addq ${v}, %{dp}")?
-                                        }
-                                        IntBinOp::Sub => {
-                                            writeln!(writer, "    subq ${v}, %{dp}")?
-                                        }
-                                        IntBinOp::And => {
-                                            writeln!(writer, "    andq ${v}, %{dp}")?
-                                        }
-                                        IntBinOp::Or => {
-                                            writeln!(writer, "    orq  ${v}, %{dp}")?
-                                        }
-                                        IntBinOp::Xor => {
-                                            writeln!(writer, "    xorq ${v}, %{dp}")?
-                                        }
+                                        IntBinOp::Add => writeln!(writer, "    addq ${v}, %{dp}")?,
+                                        IntBinOp::Sub => writeln!(writer, "    subq ${v}, %{dp}")?,
+                                        IntBinOp::And => writeln!(writer, "    andq ${v}, %{dp}")?,
+                                        IntBinOp::Or => writeln!(writer, "    orq  ${v}, %{dp}")?,
+                                        IntBinOp::Xor => writeln!(writer, "    xorq ${v}, %{dp}")?,
                                         IntBinOp::Mul => {
                                             writeln!(writer, "    imulq ${v}, %{dp}, %{dp}")?
                                         }
@@ -516,24 +493,12 @@ fn emit_instruction_x86_64(
                                     // Large immediate: load into rax as temp, then op
                                     writeln!(writer, "    movq ${v}, %rax")?;
                                     match op {
-                                        IntBinOp::Add => {
-                                            writeln!(writer, "    addq %rax, %{dp}")?
-                                        }
-                                        IntBinOp::Sub => {
-                                            writeln!(writer, "    subq %rax, %{dp}")?
-                                        }
-                                        IntBinOp::And => {
-                                            writeln!(writer, "    andq %rax, %{dp}")?
-                                        }
-                                        IntBinOp::Or => {
-                                            writeln!(writer, "    orq  %rax, %{dp}")?
-                                        }
-                                        IntBinOp::Xor => {
-                                            writeln!(writer, "    xorq %rax, %{dp}")?
-                                        }
-                                        IntBinOp::Mul => {
-                                            writeln!(writer, "    imulq %rax, %{dp}")?
-                                        }
+                                        IntBinOp::Add => writeln!(writer, "    addq %rax, %{dp}")?,
+                                        IntBinOp::Sub => writeln!(writer, "    subq %rax, %{dp}")?,
+                                        IntBinOp::And => writeln!(writer, "    andq %rax, %{dp}")?,
+                                        IntBinOp::Or => writeln!(writer, "    orq  %rax, %{dp}")?,
+                                        IntBinOp::Xor => writeln!(writer, "    xorq %rax, %{dp}")?,
+                                        IntBinOp::Mul => writeln!(writer, "    imulq %rax, %{dp}")?,
                                         _ => unreachable!(),
                                     }
                                 }
@@ -547,24 +512,14 @@ fn emit_instruction_x86_64(
                                 if let Some(rp) = rhs_phys {
                                     // Both in registers: direct op, no memory access
                                     match op {
-                                        IntBinOp::Add => {
-                                            writeln!(writer, "    addq %{rp}, %{dp}")?
-                                        }
-                                        IntBinOp::Sub => {
-                                            writeln!(writer, "    subq %{rp}, %{dp}")?
-                                        }
+                                        IntBinOp::Add => writeln!(writer, "    addq %{rp}, %{dp}")?,
+                                        IntBinOp::Sub => writeln!(writer, "    subq %{rp}, %{dp}")?,
                                         IntBinOp::Mul => {
                                             writeln!(writer, "    imulq %{rp}, %{dp}")?
                                         }
-                                        IntBinOp::And => {
-                                            writeln!(writer, "    andq %{rp}, %{dp}")?
-                                        }
-                                        IntBinOp::Or => {
-                                            writeln!(writer, "    orq  %{rp}, %{dp}")?
-                                        }
-                                        IntBinOp::Xor => {
-                                            writeln!(writer, "    xorq %{rp}, %{dp}")?
-                                        }
+                                        IntBinOp::And => writeln!(writer, "    andq %{rp}, %{dp}")?,
+                                        IntBinOp::Or => writeln!(writer, "    orq  %{rp}, %{dp}")?,
+                                        IntBinOp::Xor => writeln!(writer, "    xorq %{rp}, %{dp}")?,
                                         _ => unreachable!(),
                                     }
                                 } else {
@@ -577,24 +532,12 @@ fn emit_instruction_x86_64(
                                         "rax",
                                     )?;
                                     match op {
-                                        IntBinOp::Add => {
-                                            writeln!(writer, "    addq %rax, %{dp}")?
-                                        }
-                                        IntBinOp::Sub => {
-                                            writeln!(writer, "    subq %rax, %{dp}")?
-                                        }
-                                        IntBinOp::Mul => {
-                                            writeln!(writer, "    imulq %rax, %{dp}")?
-                                        }
-                                        IntBinOp::And => {
-                                            writeln!(writer, "    andq %rax, %{dp}")?
-                                        }
-                                        IntBinOp::Or => {
-                                            writeln!(writer, "    orq  %rax, %{dp}")?
-                                        }
-                                        IntBinOp::Xor => {
-                                            writeln!(writer, "    xorq %rax, %{dp}")?
-                                        }
+                                        IntBinOp::Add => writeln!(writer, "    addq %rax, %{dp}")?,
+                                        IntBinOp::Sub => writeln!(writer, "    subq %rax, %{dp}")?,
+                                        IntBinOp::Mul => writeln!(writer, "    imulq %rax, %{dp}")?,
+                                        IntBinOp::And => writeln!(writer, "    andq %rax, %{dp}")?,
+                                        IntBinOp::Or => writeln!(writer, "    orq  %rax, %{dp}")?,
+                                        IntBinOp::Xor => writeln!(writer, "    xorq %rax, %{dp}")?,
                                         _ => unreachable!(),
                                     }
                                 }
@@ -622,15 +565,9 @@ fn emit_instruction_x86_64(
                                 }
                             };
                             match op {
-                                IntBinOp::Shl => {
-                                    writeln!(writer, "    shlq ${shift_val}, %rax")?
-                                }
-                                IntBinOp::AShr => {
-                                    writeln!(writer, "    sarq ${shift_val}, %rax")?
-                                }
-                                IntBinOp::LShr => {
-                                    writeln!(writer, "    shrq ${shift_val}, %rax")?
-                                }
+                                IntBinOp::Shl => writeln!(writer, "    shlq ${shift_val}, %rax")?,
+                                IntBinOp::AShr => writeln!(writer, "    sarq ${shift_val}, %rax")?,
+                                IntBinOp::LShr => writeln!(writer, "    shrq ${shift_val}, %rax")?,
                                 _ => unreachable!(),
                             }
                         }
@@ -678,24 +615,12 @@ fn emit_instruction_x86_64(
                         load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
 
                         match op {
-                            IntBinOp::Add => {
-                                writeln!(writer, "    addq %{scratch}, %rax")?
-                            }
-                            IntBinOp::Sub => {
-                                writeln!(writer, "    subq %{scratch}, %rax")?
-                            }
-                            IntBinOp::Mul => {
-                                writeln!(writer, "    imulq %{scratch}, %rax")?
-                            }
-                            IntBinOp::And => {
-                                writeln!(writer, "    andq %{scratch}, %rax")?
-                            }
-                            IntBinOp::Or => {
-                                writeln!(writer, "    orq  %{scratch}, %rax")?
-                            }
-                            IntBinOp::Xor => {
-                                writeln!(writer, "    xorq %{scratch}, %rax")?
-                            }
+                            IntBinOp::Add => writeln!(writer, "    addq %{scratch}, %rax")?,
+                            IntBinOp::Sub => writeln!(writer, "    subq %{scratch}, %rax")?,
+                            IntBinOp::Mul => writeln!(writer, "    imulq %{scratch}, %rax")?,
+                            IntBinOp::And => writeln!(writer, "    andq %{scratch}, %rax")?,
+                            IntBinOp::Or => writeln!(writer, "    orq  %{scratch}, %rax")?,
+                            IntBinOp::Xor => writeln!(writer, "    xorq %{scratch}, %rax")?,
                             _ => unreachable!(),
                         }
 

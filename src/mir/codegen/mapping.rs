@@ -4,8 +4,8 @@
 //! The mapping process handles primitive type conversions and validates
 //! that only supported types are converted.
 
-use crate::mir::codegen::error::FromIRError;
 use crate::ir::types::{PrimitiveType as IRPrim, Type as IRType};
+use crate::mir::codegen::error::FromIRError;
 use crate::mir::types::{MirType, ScalarType};
 
 pub fn map_ir_prim(p: IRPrim) -> Result<MirType, FromIRError> {

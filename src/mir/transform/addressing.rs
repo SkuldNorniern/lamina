@@ -67,8 +67,7 @@ impl AddressingCanonicalization {
 
         for block in &mut func.blocks {
             // Build a simple def map for this block: reg -> (idx of instr)
-            let mut def_index: HashMap<Register, usize> =
-                HashMap::new();
+            let mut def_index: HashMap<Register, usize> = HashMap::new();
             for (i, instr) in block.instructions.iter().enumerate() {
                 if let Some(reg) = instr.def_reg() {
                     def_index.insert(reg.clone(), i);
