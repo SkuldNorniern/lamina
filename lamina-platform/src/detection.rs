@@ -92,7 +92,6 @@ pub fn detect_host_architecture() -> &'static str {
         _ => {
             // Fallback for unsupported combinations
             match arch {
-                "x86_64" => "x86_64_unknown",
                 "aarch64" => "aarch64_unknown",
                 _ => "x86_64_unknown",
             }

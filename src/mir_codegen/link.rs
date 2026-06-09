@@ -26,7 +26,7 @@ fn detect_compiler() -> Option<&'static str> {
 
 fn get_crt_file(compiler: &str, crt_name: &str) -> Option<String> {
     Command::new(compiler)
-        .arg(format!("--print-file-name={}", crt_name))
+        .arg(format!("--print-file-name={crt_name}"))
         .output()
         .ok()
         .and_then(|output| String::from_utf8(output.stdout).ok())
@@ -421,8 +421,7 @@ fn build_clang_windows_linker_args(
 ) -> Result<Vec<String>, LaminaError> {
     let Some(target_triple) = clang_windows_target_triple(target_arch) else {
         return Err(LaminaError::ValidationError(format!(
-            "Unsupported Windows target architecture for clang linker: {:?}",
-            target_arch
+            "Unsupported Windows target architecture for clang linker: {target_arch:?}"
         )));
     };
 
@@ -559,8 +558,7 @@ pub fn link(
         LinkerBackend::Msvc => {
             if target_os != TargetOperatingSystem::Windows {
                 return Err(LaminaError::ValidationError(format!(
-                    "MSVC link is only supported for Windows targets, not {:?}",
-                    target_os
+                    "MSVC link is only supported for Windows targets, not {target_os:?}"
                 )));
             }
             let link_cmd = resolve_msvc_link_cmd(target_arch).ok_or_else(|| {
@@ -585,8 +583,7 @@ pub fn link(
         LinkerBackend::Custom(name) => {
             if target_os == TargetOperatingSystem::Windows {
                 return Err(LaminaError::ValidationError(format!(
-                    "Custom linker '{}' is not supported for Windows targets; use -c clang or -c msvc",
-                    name
+                    "Custom linker '{name}' is not supported for Windows targets; use -c clang or -c msvc"
                 )));
             }
             let args = build_unix_linker_args(
@@ -601,19 +598,18 @@ pub fn link(
     };
 
     if verbose {
-        println!("[VERBOSE] Linking with {}: {:?}", cmd, args);
+        println!("[VERBOSE] Linking with {cmd}: {args:?}");
     }
 
     let output = Command::new(cmd).args(&args).output().map_err(|e| {
-        LaminaError::ValidationError(format!("Failed to spawn linker '{}': {}", cmd, e))
+        LaminaError::ValidationError(format!("Failed to spawn linker '{cmd}': {e}"))
     })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         return Err(LaminaError::ValidationError(format!(
-            "Linker '{}' failed:\nstdout: {}\nstderr: {}",
-            cmd, stdout, stderr
+            "Linker '{cmd}' failed:\nstdout: {stdout}\nstderr: {stderr}"
         )));
     }
 
@@ -627,7 +623,7 @@ fn resolve_sibling_command(name: &str) -> String {
         && let Some(dir) = current_exe.parent()
     {
         let suffix = if cfg!(windows) { ".exe" } else { "" };
-        let candidate = dir.join(format!("{}{}", name, suffix));
+        let candidate = dir.join(format!("{name}{suffix}"));
         if candidate.is_file() {
             return candidate.to_string_lossy().to_string();
         }
@@ -637,19 +633,18 @@ fn resolve_sibling_command(name: &str) -> String {
 
 fn run_linker(cmd: &str, args: Vec<String>, verbose: bool) -> Result<(), LaminaError> {
     if verbose {
-        println!("[VERBOSE] Linking with {}: {:?}", cmd, args);
+        println!("[VERBOSE] Linking with {cmd}: {args:?}");
     }
 
     let output = Command::new(cmd).args(&args).output().map_err(|e| {
-        LaminaError::ValidationError(format!("Failed to spawn linker '{}': {}", cmd, e))
+        LaminaError::ValidationError(format!("Failed to spawn linker '{cmd}': {e}"))
     })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         return Err(LaminaError::ValidationError(format!(
-            "Linker '{}' failed:\nstdout: {}\nstderr: {}",
-            cmd, stdout, stderr
+            "Linker '{cmd}' failed:\nstdout: {stdout}\nstderr: {stderr}"
         )));
     }
 
@@ -726,16 +721,13 @@ fn validate_linker_backend_for_target(
     target_os: TargetOperatingSystem,
 ) -> Result<LinkerBackend, LaminaError> {
     match (backend, target_os) {
-        (LinkerBackend::Msvc, TargetOperatingSystem::Windows) => Ok(backend),
+        (LinkerBackend::Msvc | LinkerBackend::Weld, TargetOperatingSystem::Windows) => Ok(backend),
         (LinkerBackend::Msvc, _) => Err(LaminaError::ValidationError(format!(
-            "MSVC link is only supported for Windows targets, not {:?}",
-            target_os
+            "MSVC link is only supported for Windows targets, not {target_os:?}"
         ))),
-        (LinkerBackend::Weld, TargetOperatingSystem::Windows) => Ok(backend),
         (LinkerBackend::Ld | LinkerBackend::Mold, TargetOperatingSystem::Windows) => {
             Err(LaminaError::ValidationError(format!(
-                "Linker backend {:?} is not supported for Windows targets; use -c clang or -c msvc",
-                backend
+                "Linker backend {backend:?} is not supported for Windows targets; use -c clang or -c msvc"
             )))
         }
         (LinkerBackend::Custom(_), TargetOperatingSystem::Windows) => {
@@ -749,8 +741,7 @@ fn validate_linker_backend_for_target(
                 Ok(backend)
             } else {
                 Err(LaminaError::ValidationError(format!(
-                    "clang Windows linker does not support {:?}",
-                    target_arch
+                    "clang Windows linker does not support {target_arch:?}"
                 )))
             }
         }
