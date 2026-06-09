@@ -92,30 +92,6 @@ pub fn load_operand_to_register<W: std::io::Write>(
     }
 }
 
-/// Emit RISC-V instruction for integer binary operations
-#[allow(dead_code)]
-pub fn emit_int_binary_op<W: std::io::Write>(
-    op: &crate::mir::IntBinOp,
-    writer: &mut W,
-) -> Result<(), std::io::Error> {
-    match op {
-        crate::mir::IntBinOp::Add => writeln!(writer, "    add")?,
-        crate::mir::IntBinOp::Sub => writeln!(writer, "    sub")?,
-        crate::mir::IntBinOp::Mul => writeln!(writer, "    mul")?,
-        crate::mir::IntBinOp::SDiv => writeln!(writer, "    div")?,
-        crate::mir::IntBinOp::UDiv => writeln!(writer, "    divu")?,
-        crate::mir::IntBinOp::SRem => writeln!(writer, "    rem")?,
-        crate::mir::IntBinOp::URem => writeln!(writer, "    remu")?,
-        crate::mir::IntBinOp::And => writeln!(writer, "    and")?,
-        crate::mir::IntBinOp::Or => writeln!(writer, "    or")?,
-        crate::mir::IntBinOp::Xor => writeln!(writer, "    xor")?,
-        crate::mir::IntBinOp::Shl => writeln!(writer, "    sll")?,
-        crate::mir::IntBinOp::AShr => writeln!(writer, "    sra")?,
-        crate::mir::IntBinOp::LShr => writeln!(writer, "    srl")?,
-    }
-    Ok(())
-}
-
 /// Load a floating-point operand into a floating-point register
 /// For RISC-V F/D extensions, we use fa0/fa1 as scratch FP registers
 pub fn load_fp_operand_to_register<W: std::io::Write>(
