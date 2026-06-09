@@ -1,8 +1,39 @@
 //! Copy propagation transform for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Immediate, Instruction, Operand, Register};
+use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, Operand, Register};
 use std::collections::HashMap;
+
+fn as_reg(operand: &Operand) -> Option<&Register> {
+    if let Operand::Register(r) = operand {
+        Some(r)
+    } else {
+        None
+    }
+}
+
+fn is_imm(operand: &Operand, v: i64) -> bool {
+    matches!(operand, Operand::Immediate(Immediate::I64(x)) if *x == v)
+}
+
+fn identity_copy_source(instr: &Instruction) -> Option<(&Register, &Register)> {
+    let Instruction::IntBinary {
+        op, dst, lhs, rhs, ..
+    } = instr
+    else {
+        return None;
+    };
+    let src = match op {
+        IntBinOp::Add | IntBinOp::Sub | IntBinOp::Xor if is_imm(rhs, 0) => as_reg(lhs)?,
+        IntBinOp::Or if is_imm(rhs, 0) => as_reg(lhs)?,
+        IntBinOp::Or if is_imm(lhs, 0) => as_reg(rhs)?,
+        IntBinOp::Mul if is_imm(rhs, 1) => as_reg(lhs)?,
+        IntBinOp::Mul if is_imm(lhs, 1) => as_reg(rhs)?,
+        IntBinOp::And if is_imm(rhs, -1) => as_reg(lhs)?,
+        _ => return None,
+    };
+    Some((dst, src))
+}
 
 /// Copy propagation transform that replaces variable uses with their source values.
 #[derive(Default)]
@@ -96,102 +127,8 @@ impl CopyPropagation {
                 // would silently produce wrong code on non-SSA loops.
                 value_map.retain(|_, v| !matches!(v, Operand::Register(r) if r == def_reg));
             }
-            if let Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
-                dst,
-                lhs,
-                rhs,
-                ..
-            } = &new_instr
-                && let Operand::Immediate(Immediate::I64(0)) = rhs
-                && let Operand::Register(src_reg) = lhs
-            {
-                value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-            }
-            match &new_instr {
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Sub,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y - 0 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Mul,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y * 1 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(1)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                    // Check for x = 1 * y (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(1)) = lhs
-                        && let Operand::Register(src_reg) = rhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Or,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y | 0 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                    // Check for x = 0 | y (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = lhs
-                        && let Operand::Register(src_reg) = rhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::And,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y & -1 (copy pattern, since -1 is all bits set)
-                    if let Operand::Immediate(Immediate::I64(-1)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Xor,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y ^ 0 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                _ => {}
+            if let Some((dst, src)) = identity_copy_source(&new_instr) {
+                value_map.insert(dst.clone(), Operand::Register(src.clone()));
             }
 
             new_instructions.push(new_instr);
