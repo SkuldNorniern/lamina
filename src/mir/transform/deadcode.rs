@@ -1,7 +1,7 @@
 //! Dead code elimination transform for MIR.
 
-use crate::mir::{Block, Function, Instruction, Register};
 use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::{Block, Function, Instruction, Register};
 use std::collections::{HashMap, HashSet};
 
 /// Statistics about dead code elimination
