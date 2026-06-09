@@ -16,12 +16,12 @@
 
 use crate::target::{Target, TargetArchitecture};
 
-#[cfg(target_arch = "x86_64")]
-use std::arch::is_x86_feature_detected;
 #[cfg(target_arch = "aarch64")]
 use std::arch::is_aarch64_feature_detected;
 #[cfg(target_arch = "arm")]
 use std::arch::is_arm_feature_detected;
+#[cfg(target_arch = "x86_64")]
+use std::arch::is_x86_feature_detected;
 
 /// SIMD instruction set extensions for x86_64.
 #[cfg(feature = "nightly")]

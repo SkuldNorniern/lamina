@@ -9,7 +9,7 @@
 //! - A basic memory-budget check based on estimated code + stack size.
 
 use crate::error::LaminaError;
-use crate::mir::{Module as MirModule, Instruction};
+use crate::mir::{Instruction, Module as MirModule};
 use crate::runtime::compiler::RuntimeCompiler;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::time::Duration;

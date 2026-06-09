@@ -1,6 +1,6 @@
 //! Peephole optimizations for MIR.
 
-use crate::mir::instruction::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand, FloatUnOp};
+use crate::mir::instruction::{FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
 use crate::mir::transform::compute_back_edge_headers;
 use crate::mir::{Block, Function};
 
@@ -457,11 +457,7 @@ impl Peephole {
         false
     }
 
-    fn try_fold_float_unary(
-        &self,
-        op: &mut FloatUnOp,
-        src: &mut Operand,
-    ) -> bool {
+    fn try_fold_float_unary(&self, op: &mut FloatUnOp, src: &mut Operand) -> bool {
         let src_imm = extract_float_constant(src);
 
         if let Some(c) = src_imm {
@@ -561,8 +557,7 @@ mod tests {
 
     #[test]
     fn fold_add_zero_right() {
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::Add,
@@ -580,8 +575,7 @@ mod tests {
 
     #[test]
     fn fold_mul_one_left() {
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::Mul,
@@ -599,8 +593,7 @@ mod tests {
 
     #[test]
     fn fold_int_cmp_true() {
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntCmp {
             op: IntCmpOp::SLt,
@@ -628,8 +621,7 @@ mod tests {
 
     #[test]
     fn test_peephole_empty_function() {
-        let mut func = Function::new(Signature::new("empty"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("empty")).with_entry("entry".to_string());
         let bb = Block::new("entry");
         func.add_block(bb);
 
@@ -642,8 +634,7 @@ mod tests {
     fn test_peephole_no_canonicalization_loop() {
         // Test that canonicalization doesn't cause infinite swap loop
         // imm + reg should become reg + imm and stay that way
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::Add,
@@ -674,8 +665,7 @@ mod tests {
     #[test]
     fn test_peephole_division_by_zero_not_folded() {
         // Division by zero should not be constant-folded
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::SDiv,
@@ -703,8 +693,7 @@ mod tests {
     #[test]
     fn test_peephole_i64_min_div_neg_one() {
         // i64::MIN / -1 would overflow, should not be folded
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::SDiv,
@@ -725,8 +714,7 @@ mod tests {
     #[test]
     fn test_peephole_overflow_add_not_folded() {
         // Overflow in constant folding should be skipped
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::Add,
@@ -747,8 +735,7 @@ mod tests {
     #[test]
     fn test_peephole_mul_zero_result() {
         // x * 0 = 0 is a valid transformation
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::Mul,
@@ -777,8 +764,7 @@ mod tests {
     #[test]
     fn test_peephole_xor_self_is_zero() {
         // x ^ x = 0
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         let reg = Register::Virtual(VirtualReg::gpr(1));
         bb.push(Instruction::IntBinary {
@@ -806,8 +792,7 @@ mod tests {
     #[test]
     fn test_peephole_and_zero_is_zero() {
         // x & 0 = 0
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::And,
@@ -834,8 +819,7 @@ mod tests {
     #[test]
     fn test_peephole_shift_bounds() {
         // Shift by >= 64 should not be folded (undefined behavior)
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::Shl,
@@ -855,8 +839,7 @@ mod tests {
 
     #[test]
     fn test_peephole_stress_many_instructions() {
-        let mut func = Function::new(Signature::new("stress"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("stress")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
 
         for i in 0..1000 {
@@ -879,8 +862,7 @@ mod tests {
     #[test]
     fn test_peephole_unsigned_cmp_folding() {
         // ULt: 0 < 1 is true for unsigned
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntCmp {
             op: IntCmpOp::ULt,
@@ -907,8 +889,7 @@ mod tests {
     #[test]
     fn test_peephole_negative_unsigned_cmp() {
         // -1 as unsigned is MAX, so -1 > 0 (unsigned) is true
-        let mut func = Function::new(Signature::new("f"))
-            .with_entry("entry".to_string());
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntCmp {
             op: IntCmpOp::UGt,
