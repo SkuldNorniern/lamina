@@ -109,6 +109,19 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
     prev_row[short_len]
 }
 
+/// Collect close matches from `valid` for `input` (Levenshtein distance ≤ 2),
+/// sorted nearest-first.
+pub fn suggest_alternatives<'a>(input: &str, valid: &[&'a str]) -> Vec<&'a str> {
+    const MAX_TYPO_DISTANCE: usize = 2;
+    let mut suggestions: Vec<&str> = valid
+        .iter()
+        .copied()
+        .filter(|&s| edit_distance(input, s, Some(MAX_TYPO_DISTANCE)) <= MAX_TYPO_DISTANCE)
+        .collect();
+    suggestions.sort_by_key(|&s| edit_distance(input, s, None));
+    suggestions
+}
+
 /// Returns all valid primitive type names as strings.
 ///
 /// This function delegates to the IR module so parser error messages
@@ -123,6 +136,13 @@ pub fn get_primitive_type_names() -> &'static [&'static str] {
 /// stay in sync with the actual type system.
 pub fn get_alloc_type_names() -> &'static [&'static str] {
     crate::ir::AllocType::all_names()
+}
+
+/// Returns all function annotation keywords recognized by the parser.
+///
+/// Update this list when adding new annotations to the parser match arm.
+pub fn get_annotation_names() -> &'static [&'static str] {
+    &["inline", "export", "extern", "noreturn", "noinline", "cold"]
 }
 
 /// Returns all valid instruction opcodes that can appear after an assignment.
