@@ -275,6 +275,8 @@ impl Default for TransformPipeline {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::mir::instruction::{Instruction, IntBinOp, Operand};
+    use crate::mir::register::Register;
     use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
     #[test]
@@ -360,9 +362,6 @@ mod tests {
 
     #[test]
     fn test_phase_ordering_cfg_then_constant_folding() {
-        use crate::mir::instruction::{Instruction, IntBinOp, Operand};
-        use crate::mir::register::Register;
-
         let func = FunctionBuilder::new("test")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
@@ -389,10 +388,6 @@ mod tests {
 
     #[test]
     fn test_phase_ordering_dce_after_optimizations() {
-        // Test that DCE after other optimizations works correctly
-        use crate::mir::instruction::{Instruction, IntBinOp, Operand};
-        use crate::mir::register::Register;
-
         let func = FunctionBuilder::new("test")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
