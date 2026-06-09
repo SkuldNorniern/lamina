@@ -5,7 +5,14 @@
 //! the actual CPU supports, not just what the architecture typically supports.
 
 use crate::simd::{SimdCapabilities, X86SimdExtension, ArmSimdExtension, RiscvSimdExtension};
-use crate::target::TargetArchitecture;
+use crate::target::{Target, TargetArchitecture};
+
+#[cfg(all(feature = "nightly", target_arch = "x86_64"))]
+use std::arch::is_x86_feature_detected;
+#[cfg(all(feature = "nightly", target_arch = "aarch64"))]
+use std::arch::is_aarch64_feature_detected;
+#[cfg(all(feature = "nightly", target_arch = "arm"))]
+use std::arch::is_arm_feature_detected;
 
 #[cfg(feature = "nightly")]
 impl SimdCapabilities {
@@ -40,8 +47,6 @@ impl SimdCapabilities {
         }
         #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "arm")))]
         {
-            // For other architectures, fall back to static detection
-            use crate::target::Target;
             let target = Target::detect_host();
             Self::detect(&target)
         }
@@ -53,11 +58,8 @@ impl SimdCapabilities {
         let mut caps = Self::default();
         caps.supported = true;
 
-        // Use Rust's standard library feature detection
         #[cfg(feature = "nightly")]
         {
-            use std::arch::is_x86_feature_detected;
-
             // Check MMX
             if is_x86_feature_detected!("mmx") {
                 caps.x86_extensions.push(X86SimdExtension::Mmx);
@@ -199,8 +201,6 @@ impl SimdCapabilities {
 
         #[cfg(feature = "nightly")]
         {
-            use std::arch::is_aarch64_feature_detected;
-
             // NEON is always available on AArch64
             caps.arm_extensions.push(ArmSimdExtension::Neon);
 
@@ -239,8 +239,6 @@ impl SimdCapabilities {
 
         #[cfg(feature = "nightly")]
         {
-            use std::arch::is_arm_feature_detected;
-
             // Check for NEON
             if is_arm_feature_detected!("neon") {
                 caps.supported = true;
@@ -299,6 +297,7 @@ impl SimdCapabilities {
 #[cfg(feature = "nightly")]
 mod tests {
     use super::*;
+    use crate::target::TargetOperatingSystem;
 
     #[test]
     fn test_runtime_detection() {
@@ -328,7 +327,6 @@ mod tests {
 
     #[test]
     fn test_update_with_runtime_detection() {
-        use crate::target::{Target, TargetArchitecture, TargetOperatingSystem};
         let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux);
         let mut caps = SimdCapabilities::detect(&target);
         caps.update_with_runtime_detection();
