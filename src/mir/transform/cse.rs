@@ -2,7 +2,7 @@
 
 use crate::mir::transform::compute_back_edge_headers;
 
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{
     Block, FloatBinOp, Function, Immediate, Instruction, IntBinOp, MirType, Operand, Register,
     ScalarType,

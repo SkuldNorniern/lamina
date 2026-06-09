@@ -7,8 +7,10 @@
 //!
 //! This helps on x86_64 which has native support for complex addressing modes.
 
-use super::{Transform, TransformCategory, TransformLevel};
+use std::collections::HashMap;
+
 use crate::mir::instruction::Immediate;
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{AddressMode, Function, Instruction, IntBinOp, Operand, Register};
 
 /// Canonicalizes address formation patterns into BaseIndexScale addressing.
@@ -65,8 +67,8 @@ impl AddressingCanonicalization {
 
         for block in &mut func.blocks {
             // Build a simple def map for this block: reg -> (idx of instr)
-            let mut def_index: std::collections::HashMap<Register, usize> =
-                std::collections::HashMap::new();
+            let mut def_index: HashMap<Register, usize> =
+                HashMap::new();
             for (i, instr) in block.instructions.iter().enumerate() {
                 if let Some(reg) = instr.def_reg() {
                     def_index.insert(reg.clone(), i);
@@ -116,7 +118,7 @@ impl AddressingCanonicalization {
     fn try_rewrite_addr(
         &self,
         addr: &mut AddressMode,
-        def_index: &std::collections::HashMap<Register, usize>,
+        def_index: &HashMap<Register, usize>,
         instructions: &[Instruction],
     ) -> bool {
         match addr {
@@ -159,13 +161,13 @@ impl AddressingCanonicalization {
     fn match_add_scaled_index(
         &self,
         def_instr: &Instruction,
-        def_index: &std::collections::HashMap<Register, usize>,
+        def_index: &HashMap<Register, usize>,
         instructions: &[Instruction],
     ) -> Option<(Register, Register, u8)> {
         // Check if a register is defined by shift-left with small power-of-two scale
         fn scaled_from_shift(
             r: &Register,
-            def_index: &std::collections::HashMap<Register, usize>,
+            def_index: &HashMap<Register, usize>,
             instructions: &[Instruction],
         ) -> Option<(Register, u8)> {
             if let Some(&pos) = def_index.get(r)
@@ -187,7 +189,7 @@ impl AddressingCanonicalization {
         // Check if a register is defined by mul-by-const in {1,2,4,8}
         fn scaled_from_mul(
             r: &Register,
-            def_index: &std::collections::HashMap<Register, usize>,
+            def_index: &HashMap<Register, usize>,
             instructions: &[Instruction],
         ) -> Option<(Register, u8)> {
             if let Some(&pos) = def_index.get(r)
@@ -212,7 +214,7 @@ impl AddressingCanonicalization {
         fn try_base_plus_scaled(
             base_op: &Operand,
             other_op: &Operand,
-            def_index: &std::collections::HashMap<Register, usize>,
+            def_index: &HashMap<Register, usize>,
             instructions: &[Instruction],
         ) -> Option<(Register, Register, u8)> {
             if let Operand::Register(base_reg) = base_op

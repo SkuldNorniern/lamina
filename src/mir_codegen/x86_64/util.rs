@@ -1,5 +1,8 @@
 //! Utility functions for x86_64 code generation.
 
+use std::collections::HashMap;
+use std::io::{Error, Write};
+
 use crate::mir::Operand;
 use crate::mir::instruction::Immediate;
 use crate::mir::register::{Register, VirtualReg};
@@ -19,16 +22,16 @@ pub fn is_float(ty: &MirType) -> bool {
 ///
 /// Strategy: integers hold float bit patterns via `movd` (f32) or `movq` (f64) into xmm.
 pub fn load_float_operand_to_xmm<
-    W: std::io::Write,
+    W: Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
     operand: &Operand,
     writer: &mut W,
     reg_alloc: &RA,
-    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     xmm: &str,
     ty: &MirType,
-) -> Result<(), std::io::Error> {
+) -> Result<(), Error> {
     let mov_to_xmm = if is_f32(ty) { "movd" } else { "movq" };
     match operand {
         Operand::Register(_) => {
@@ -57,16 +60,16 @@ pub fn load_float_operand_to_xmm<
 
 /// Store the float result from an XMM register back into a virtual register (as integer bits).
 pub fn store_xmm_to_register<
-    W: std::io::Write,
+    W: Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
     xmm: &str,
     reg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
-    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     ty: &MirType,
-) -> Result<(), std::io::Error> {
+) -> Result<(), Error> {
     let mov_from_xmm = if is_f32(ty) { "movd" } else { "movq" };
     writeln!(writer, "    {mov_from_xmm} %{xmm}, %rax")?;
     store_rax_to_register(reg, writer, reg_alloc, stack_slots)
@@ -74,14 +77,14 @@ pub fn store_xmm_to_register<
 
 /// Load a virtual register into RAX
 pub fn load_register_to_rax<
-    W: std::io::Write,
+    W: Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
     reg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
-    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
-) -> Result<(), std::io::Error> {
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), Error> {
     if let Some(phys) = reg_alloc.get_mapping(reg) {
         writeln!(writer, "    movq %{phys}, %rax")?;
     } else if let Some(offset) = stack_slots.get(reg) {
@@ -97,14 +100,14 @@ pub fn load_register_to_rax<
 
 /// Store RAX to a virtual register
 pub fn store_rax_to_register<
-    W: std::io::Write,
+    W: Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
     reg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
-    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
-) -> Result<(), std::io::Error> {
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), Error> {
     if let Some(phys) = reg_alloc.get_mapping(reg) {
         writeln!(writer, "    movq %rax, %{phys}")?;
     } else if let Some(offset) = stack_slots.get(reg) {
@@ -120,15 +123,15 @@ pub fn store_rax_to_register<
 
 /// Load a register to another register
 pub fn load_register_to_register<
-    W: std::io::Write,
+    W: Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
     src: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
-    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     target_reg: &str,
-) -> Result<(), std::io::Error> {
+) -> Result<(), Error> {
     if let Some(phys) = reg_alloc.get_mapping(src) {
         writeln!(writer, "    movq %{phys}, %{target_reg}")?;
     } else if let Some(offset) = stack_slots.get(src) {
@@ -144,14 +147,14 @@ pub fn load_register_to_register<
 
 /// Load an operand into RAX
 pub fn load_operand_to_rax<
-    W: std::io::Write,
+    W: Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
     operand: &Operand,
     writer: &mut W,
     reg_alloc: &RA,
-    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
-) -> Result<(), std::io::Error> {
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), Error> {
     match operand {
         Operand::Register(reg) => match reg {
             Register::Virtual(v) => load_register_to_rax(v, writer, reg_alloc, stack_slots),
@@ -185,15 +188,15 @@ pub fn load_operand_to_rax<
 
 /// Load an operand into a specific register
 pub fn load_operand_to_register<
-    W: std::io::Write,
+    W: Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
     operand: &Operand,
     writer: &mut W,
     reg_alloc: &RA,
-    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     target_reg: &str,
-) -> Result<(), std::io::Error> {
+) -> Result<(), Error> {
     match operand {
         Operand::Register(reg) => match reg {
             Register::Virtual(v) => {
