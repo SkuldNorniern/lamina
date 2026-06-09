@@ -9,16 +9,16 @@
 //! - Control flow graph construction
 //! - Type mapping and validation
 
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
 use super::error::FromIRError;
 use super::mapping::{map_ir_prim, map_ir_type};
-use crate::ir::instruction::{BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst, AllocType};
+use crate::ir::instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst};
 use crate::ir::types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
 use crate::mir::{
-    AddressMode, Block, Immediate, Instruction, Instruction as MirInst, MemoryAttrs, MirType,
-    Module, Operand, Parameter, Register, RegisterClass, ScalarType, Signature, VirtualReg,
-    VirtualRegAllocator, IntBinOp, FloatBinOp, FloatCmpOp, IntCmpOp, Function
+    AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction,
+    Instruction as MirInst, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter,
+    Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
 };
 
 #[cfg(feature = "nightly")]
@@ -138,8 +138,7 @@ fn convert_function<'a>(
         }
     }
 
-    let mut var_to_reg: HashMap<&'a str, Register> =
-        HashMap::new();
+    let mut var_to_reg: HashMap<&'a str, Register> = HashMap::new();
 
     for param in &f.signature.params {
         let class = reg_class_for_type(&param.ty);
@@ -226,8 +225,7 @@ fn convert_function<'a>(
     }
 
     {
-        let mut edge_moves: HashMap<(String, String), Vec<Instruction>> =
-            HashMap::new();
+        let mut edge_moves: HashMap<(String, String), Vec<Instruction>> = HashMap::new();
 
         for (succ_label, ir_block) in &f.basic_blocks {
             for instr in &ir_block.instructions {
@@ -1064,12 +1062,8 @@ fn convert_instruction<'a>(
                         (IRPrim::F64, IRPrim::I64, IRLit::F64(v)) => {
                             Immediate::I64(v.to_bits() as i64)
                         }
-                        (IRPrim::I32, IRPrim::F32, IRLit::I32(v)) => {
-                            Immediate::I32(*v)
-                        }
-                        (IRPrim::I64, IRPrim::F64, IRLit::I64(v)) => {
-                            Immediate::I64(*v)
-                        }
+                        (IRPrim::I32, IRPrim::F32, IRLit::I32(v)) => Immediate::I32(*v),
+                        (IRPrim::I64, IRPrim::F64, IRLit::I64(v)) => Immediate::I64(*v),
                         _ => return Err(FromIRError::UnsupportedInstruction),
                     };
 
@@ -1272,10 +1266,7 @@ fn convert_instruction<'a>(
         }
         // Debug and I/O operations: lower to calls with conventional names
         IRInst::Print { value } => {
-            if matches!(
-                value,
-                IRVal::Constant(IRLit::String(_))
-            ) {
+            if matches!(value, IRVal::Constant(IRLit::String(_))) {
                 return Err(FromIRError::PrintStringLiteralUnsupported);
             }
             let arg = resolve_operand(value, vreg_alloc, var_to_reg)?;

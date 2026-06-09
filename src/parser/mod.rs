@@ -248,13 +248,13 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
 #[cfg(test)]
 mod tests {
     use super::parse_module;
+    use crate::ir::IRBuilder;
+    use crate::ir::builder::i32 as ir_i32;
     use crate::{
         AllocType, BinaryOp, CmpOp, Instruction, LaminaError, Literal, Module, PrimitiveType, Type,
         Value,
     };
     use std::fs;
-    use crate::ir::IRBuilder;
-    use crate::ir::builder::i32 as ir_i32;
 
     #[test]
     fn test_parse_simple_add_function() {
