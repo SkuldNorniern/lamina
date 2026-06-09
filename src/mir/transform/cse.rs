@@ -1,5 +1,7 @@
 //! Common Subexpression Elimination (CSE) transform for MIR.
 
+use crate::mir::transform::compute_back_edge_headers;
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Immediate, Instruction, MirType, Operand, Register, ScalarType};
 use std::collections::{HashMap, HashSet};
@@ -285,46 +287,6 @@ impl CommonSubexpressionElimination {
         }
         Some(parts.join("|"))
     }
-}
-
-/// Identify loop headers via simple back-edge detection using block order.
-fn compute_back_edge_headers(func: &Function) -> HashSet<String> {
-    let mut label_index: HashMap<&str, usize> = HashMap::new();
-    for (i, b) in func.blocks.iter().enumerate() {
-        label_index.insert(&b.label, i);
-    }
-    let mut headers: HashSet<String> = HashSet::new();
-    for (i, b) in func.blocks.iter().enumerate() {
-        if let Some(term) = b.instructions.last() {
-            match term {
-                Instruction::Jmp { target } => {
-                    if let Some(&tidx) = label_index.get(target.as_str())
-                        && tidx <= i
-                    {
-                        headers.insert(target.clone());
-                    }
-                }
-                Instruction::Br {
-                    true_target,
-                    false_target,
-                    ..
-                } => {
-                    if let Some(&tidx) = label_index.get(true_target.as_str())
-                        && tidx <= i
-                    {
-                        headers.insert(true_target.clone());
-                    }
-                    if let Some(&fidx) = label_index.get(false_target.as_str())
-                        && fidx <= i
-                    {
-                        headers.insert(false_target.clone());
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    headers
 }
 
 #[cfg(test)]
