@@ -257,16 +257,16 @@ impl CommonSubexpressionElimination {
     fn expr_key(&self, instr: &Instruction) -> Option<String> {
         match instr {
             Instruction::IntBinary { op, lhs, rhs, .. } => {
-                Some(format!("IntBinary_{:?}_{:?}_{:?}", op, lhs, rhs))
+                Some(format!("IntBinary_{op:?}_{lhs:?}_{rhs:?}"))
             }
             Instruction::FloatBinary { op, lhs, rhs, .. } => {
-                Some(format!("FloatBinary_{:?}_{:?}_{:?}", op, lhs, rhs))
+                Some(format!("FloatBinary_{op:?}_{lhs:?}_{rhs:?}"))
             }
             Instruction::IntCmp { op, lhs, rhs, .. } => {
-                Some(format!("IntCmp_{:?}_{:?}_{:?}", op, lhs, rhs))
+                Some(format!("IntCmp_{op:?}_{lhs:?}_{rhs:?}"))
             }
             Instruction::FloatCmp { op, lhs, rhs, .. } => {
-                Some(format!("FloatCmp_{:?}_{:?}_{:?}", op, lhs, rhs))
+                Some(format!("FloatCmp_{op:?}_{lhs:?}_{rhs:?}"))
             }
             _ => None,
         }
@@ -283,7 +283,7 @@ impl CommonSubexpressionElimination {
         let mut parts = vec![base];
         for reg in instr.use_regs() {
             let ver = def_version.get(reg).copied().unwrap_or(0);
-            parts.push(format!("{}@{}", reg, ver));
+            parts.push(format!("{reg}@{ver}"));
         }
         Some(parts.join("|"))
     }

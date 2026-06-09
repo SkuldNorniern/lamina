@@ -270,12 +270,12 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                 if let Some(rest) = arg.strip_prefix("-Wl,") {
                     options
                         .linker_flags
-                        .extend(rest.split(',').map(|s| s.to_string()));
+                        .extend(rest.split(',').map(std::string::ToString::to_string));
                     i += 1;
                 } else if let Some(rest) = arg.strip_prefix("-Wa,") {
                     options
                         .assembler_flags
-                        .extend(rest.split(',').map(|s| s.to_string()));
+                        .extend(rest.split(',').map(std::string::ToString::to_string));
                     i += 1;
                 } else if arg == "-Wl" {
                     if i + 1 >= args.len() {
@@ -283,7 +283,7 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                     }
                     options
                         .linker_flags
-                        .extend(args[i + 1].split(',').map(|s| s.to_string()));
+                        .extend(args[i + 1].split(',').map(std::string::ToString::to_string));
                     i += 2;
                 } else if arg == "-Wa" {
                     if i + 1 >= args.len() {
@@ -291,14 +291,14 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                     }
                     options
                         .assembler_flags
-                        .extend(args[i + 1].split(',').map(|s| s.to_string()));
+                        .extend(args[i + 1].split(',').map(std::string::ToString::to_string));
                     i += 2;
                 } else if options.input_file.as_os_str().is_empty() {
                     // First non-flag argument is the input file, regardless of position.
                     options.input_file = PathBuf::from(arg);
                     i += 1;
                 } else {
-                    return Err(format!("Unknown argument: {}", arg));
+                    return Err(format!("Unknown argument: {arg}"));
                 }
             }
         }

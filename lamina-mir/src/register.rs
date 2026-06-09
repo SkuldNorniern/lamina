@@ -105,8 +105,8 @@ impl Register {
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Register::Virtual(v) => write!(f, "{}", v),
-            Register::Physical(p) => write!(f, "{}", p),
+            Register::Virtual(v) => write!(f, "{v}"),
+            Register::Physical(p) => write!(f, "{p}"),
         }
     }
 }

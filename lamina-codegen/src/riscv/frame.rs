@@ -15,7 +15,7 @@ impl RiscVFrame {
 
         // Allocate stack space for local variables if needed
         if stack_size > 0 {
-            writeln!(writer, "    addi sp, sp, -{}", stack_size)?;
+            writeln!(writer, "    addi sp, sp, -{stack_size}")?;
         }
         Ok(())
     }
@@ -27,7 +27,7 @@ impl RiscVFrame {
     ) -> Result<(), std::io::Error> {
         // Deallocate stack space for local variables if needed
         if stack_size > 0 {
-            writeln!(writer, "    addi sp, sp, {}", stack_size)?;
+            writeln!(writer, "    addi sp, sp, {stack_size}")?;
         }
 
         // Restore return address and frame pointer
@@ -45,12 +45,12 @@ impl RiscVFrame {
         target_sym: &str,
     ) -> Result<(), std::io::Error> {
         if stack_size > 0 {
-            writeln!(writer, "    addi sp, sp, {}", stack_size)?;
+            writeln!(writer, "    addi sp, sp, {stack_size}")?;
         }
         writeln!(writer, "    ld ra, -8(fp)")?;
         writeln!(writer, "    ld fp, -16(fp)")?;
         writeln!(writer, "    addi sp, sp, 16")?;
-        writeln!(writer, "    j {}", target_sym)?;
+        writeln!(writer, "    j {target_sym}")?;
         Ok(())
     }
 

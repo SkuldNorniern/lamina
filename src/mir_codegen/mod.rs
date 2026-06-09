@@ -150,8 +150,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
         }
         _ => {
             return Err(LaminaError::ValidationError(format!(
-                "Unsupported target architecture: {:?}",
-                target_arch
+                "Unsupported target architecture: {target_arch:?}"
             )));
         }
     }
@@ -292,25 +291,25 @@ impl fmt::Display for CodegenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CodegenError::UnsupportedFeature(message) => {
-                write!(f, "Unsupported feature: {}", message)
+                write!(f, "Unsupported feature: {message}")
             }
             CodegenError::InvalidCodegenOptions(message) => {
-                write!(f, "Invalid codegen options: {}", message)
+                write!(f, "Invalid codegen options: {message}")
             }
-            CodegenError::InvalidTargetOs(message) => write!(f, "Invalid target OS: {}", message),
+            CodegenError::InvalidTargetOs(message) => write!(f, "Invalid target OS: {message}"),
             CodegenError::InvalidMaxBitWidth(width) => {
-                write!(f, "Invalid max bit width: {}", width)
+                write!(f, "Invalid max bit width: {width}")
             }
             CodegenError::InvalidInputName(message) => {
-                write!(f, "Invalid input name: {}", message)
+                write!(f, "Invalid input name: {message}")
             }
-            CodegenError::InvalidVerbose(value) => write!(f, "Invalid verbose flag: {}", value),
+            CodegenError::InvalidVerbose(value) => write!(f, "Invalid verbose flag: {value}"),
             CodegenError::InvalidOptions(options) => {
-                write!(f, "Invalid options: {:?}", options)
+                write!(f, "Invalid options: {options:?}")
             }
-            CodegenError::InvalidTypes(types) => write!(f, "Invalid types: {:?}", types),
-            CodegenError::InvalidGlobals(globals) => write!(f, "Invalid globals: {:?}", globals),
-            CodegenError::InvalidFuncs(funcs) => write!(f, "Invalid functions: {:?}", funcs),
+            CodegenError::InvalidTypes(types) => write!(f, "Invalid types: {types:?}"),
+            CodegenError::InvalidGlobals(globals) => write!(f, "Invalid globals: {globals:?}"),
+            CodegenError::InvalidFuncs(funcs) => write!(f, "Invalid functions: {funcs:?}"),
         }
     }
 }

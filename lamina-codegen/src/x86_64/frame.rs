@@ -12,7 +12,7 @@ impl X86Frame {
         writeln!(writer, "    pushq %rbp")?;
         writeln!(writer, "    movq %rsp, %rbp")?;
         if stack_size > 0 {
-            writeln!(writer, "    subq ${}, %rsp", stack_size)?;
+            writeln!(writer, "    subq ${stack_size}, %rsp")?;
         }
         Ok(())
     }
@@ -23,7 +23,7 @@ impl X86Frame {
         stack_size: usize,
     ) -> Result<(), std::io::Error> {
         if stack_size > 0 {
-            writeln!(writer, "    addq ${}, %rsp", stack_size)?;
+            writeln!(writer, "    addq ${stack_size}, %rsp")?;
         }
         writeln!(writer, "    popq %rbp")?;
         writeln!(writer, "    ret")?;

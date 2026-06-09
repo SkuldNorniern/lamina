@@ -373,7 +373,7 @@ impl fmt::Display for GlobalDeclaration<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "global @{}: {}", self.name, self.ty)?;
         if let Some(init) = &self.initializer {
-            write!(f, " = {}", init)?;
+            write!(f, " = {init}")?;
         }
         Ok(())
     }
@@ -383,7 +383,7 @@ impl fmt::Display for Module<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Print type declarations first
         for decl in self.type_declarations.values() {
-            writeln!(f, "{}", decl)?;
+            writeln!(f, "{decl}")?;
         }
         if !self.type_declarations.is_empty() {
             writeln!(f)?;
@@ -391,7 +391,7 @@ impl fmt::Display for Module<'_> {
 
         // Print global declarations
         for decl in self.global_declarations.values() {
-            writeln!(f, "{}", decl)?;
+            writeln!(f, "{decl}")?;
         }
         if !self.global_declarations.is_empty() {
             writeln!(f)?;
@@ -404,7 +404,7 @@ impl fmt::Display for Module<'_> {
         for (i, name) in function_names.iter().enumerate() {
             // Dereference name twice (&&str -> &str) to match the key type for lookup
             if let Some(func) = self.functions.get(*name) {
-                write!(f, "{}", func)?;
+                write!(f, "{func}")?;
                 if i < function_names.len() - 1 {
                     writeln!(f)?;
                 }

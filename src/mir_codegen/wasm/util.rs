@@ -25,13 +25,13 @@ pub fn load_operand_wasm<W: Write>(
                 writeln!(writer, "      i64.const {}", *val as i64)?;
             }
             Immediate::I64(val) => {
-                writeln!(writer, "      i64.const {}", val)?;
+                writeln!(writer, "      i64.const {val}")?;
             }
             Immediate::F32(val) => {
-                writeln!(writer, "      f32.const {}", val)?;
+                writeln!(writer, "      f32.const {val}")?;
             }
             Immediate::F64(val) => {
-                writeln!(writer, "      f64.const {}", val)?;
+                writeln!(writer, "      f64.const {val}")?;
             }
         },
         #[allow(unreachable_patterns)]
@@ -58,11 +58,10 @@ pub fn load_register_wasm<W: Write>(
         }
         Register::Virtual(v) => {
             if let Some(local_idx) = vreg_to_local.get(v) {
-                writeln!(writer, "      local.get $l{}", local_idx)?;
+                writeln!(writer, "      local.get $l{local_idx}")?;
             } else {
                 return Err(LaminaError::ValidationError(format!(
-                    "WASM: No mapping found for virtual register {:?}. This indicates a register allocation error.",
-                    v
+                    "WASM: No mapping found for virtual register {v:?}. This indicates a register allocation error."
                 )));
             }
         }
@@ -84,11 +83,10 @@ pub fn store_to_register_wasm<W: Write>(
         }
         Register::Virtual(v) => {
             if let Some(local_idx) = vreg_to_local.get(v) {
-                writeln!(writer, "      local.set $l{}", local_idx)?;
+                writeln!(writer, "      local.set $l{local_idx}")?;
             } else {
                 return Err(LaminaError::ValidationError(format!(
-                    "WASM: No mapping found for virtual register {:?}. This indicates a register allocation error.",
-                    v
+                    "WASM: No mapping found for virtual register {v:?}. This indicates a register allocation error."
                 )));
             }
         }
@@ -161,10 +159,10 @@ pub fn load_fp_operand_wasm<W: Write>(
         }
         Operand::Immediate(imm) => match imm {
             Immediate::F32(val) => {
-                writeln!(writer, "      f32.const {}", val)?;
+                writeln!(writer, "      f32.const {val}")?;
             }
             Immediate::F64(val) => {
-                writeln!(writer, "      f64.const {}", val)?;
+                writeln!(writer, "      f64.const {val}")?;
             }
             _ => {
                 return Err(LaminaError::ValidationError(
@@ -199,11 +197,10 @@ pub fn store_fp_to_register_wasm<W: Write>(
     }
 
     if let Some(local_idx) = vreg_to_local.get(vreg) {
-        writeln!(writer, "      local.set $l{}", local_idx)?;
+        writeln!(writer, "      local.set $l{local_idx}")?;
     } else {
         return Err(LaminaError::ValidationError(format!(
-            "WASM: No mapping found for virtual register {:?}",
-            vreg
+            "WASM: No mapping found for virtual register {vreg:?}"
         )));
     }
     Ok(())
@@ -217,10 +214,10 @@ pub fn emit_float_binary_op<W: Write>(
 ) -> Result<(), LaminaError> {
     let suffix = if is_f32 { "f32" } else { "f64" };
     match op {
-        crate::mir::FloatBinOp::FAdd => writeln!(writer, "      {}.add", suffix)?,
-        crate::mir::FloatBinOp::FSub => writeln!(writer, "      {}.sub", suffix)?,
-        crate::mir::FloatBinOp::FMul => writeln!(writer, "      {}.mul", suffix)?,
-        crate::mir::FloatBinOp::FDiv => writeln!(writer, "      {}.div", suffix)?,
+        crate::mir::FloatBinOp::FAdd => writeln!(writer, "      {suffix}.add")?,
+        crate::mir::FloatBinOp::FSub => writeln!(writer, "      {suffix}.sub")?,
+        crate::mir::FloatBinOp::FMul => writeln!(writer, "      {suffix}.mul")?,
+        crate::mir::FloatBinOp::FDiv => writeln!(writer, "      {suffix}.div")?,
     }
     Ok(())
 }
@@ -233,8 +230,8 @@ pub fn emit_float_unary_op<W: Write>(
 ) -> Result<(), LaminaError> {
     let suffix = if is_f32 { "f32" } else { "f64" };
     match op {
-        crate::mir::FloatUnOp::FNeg => writeln!(writer, "      {}.neg", suffix)?,
-        crate::mir::FloatUnOp::FSqrt => writeln!(writer, "      {}.sqrt", suffix)?,
+        crate::mir::FloatUnOp::FNeg => writeln!(writer, "      {suffix}.neg")?,
+        crate::mir::FloatUnOp::FSqrt => writeln!(writer, "      {suffix}.sqrt")?,
     }
     Ok(())
 }
@@ -247,12 +244,12 @@ pub fn emit_float_cmp_op<W: Write>(
 ) -> Result<(), LaminaError> {
     let suffix = if is_f32 { "f32" } else { "f64" };
     match op {
-        crate::mir::FloatCmpOp::Eq => writeln!(writer, "      {}.eq", suffix)?,
-        crate::mir::FloatCmpOp::Ne => writeln!(writer, "      {}.ne", suffix)?,
-        crate::mir::FloatCmpOp::Lt => writeln!(writer, "      {}.lt", suffix)?,
-        crate::mir::FloatCmpOp::Le => writeln!(writer, "      {}.le", suffix)?,
-        crate::mir::FloatCmpOp::Gt => writeln!(writer, "      {}.gt", suffix)?,
-        crate::mir::FloatCmpOp::Ge => writeln!(writer, "      {}.ge", suffix)?,
+        crate::mir::FloatCmpOp::Eq => writeln!(writer, "      {suffix}.eq")?,
+        crate::mir::FloatCmpOp::Ne => writeln!(writer, "      {suffix}.ne")?,
+        crate::mir::FloatCmpOp::Lt => writeln!(writer, "      {suffix}.lt")?,
+        crate::mir::FloatCmpOp::Le => writeln!(writer, "      {suffix}.le")?,
+        crate::mir::FloatCmpOp::Gt => writeln!(writer, "      {suffix}.gt")?,
+        crate::mir::FloatCmpOp::Ge => writeln!(writer, "      {suffix}.ge")?,
     }
     Ok(())
 }

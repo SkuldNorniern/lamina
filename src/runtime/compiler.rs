@@ -44,19 +44,18 @@ impl RuntimeCompiler {
         {
             validate_module_call_parameters(_module, self.target_arch)?;
             self.runtime.compile_to_memory(_module).map_err(|e| {
-                let error_msg = format!("{}", e);
+                let error_msg = format!("{e}");
                 if error_msg.contains("not yet implemented")
                     || error_msg.contains("Unsupported target")
                 {
                     LaminaError::ValidationError(format!(
                         "JIT compilation is not supported for this target (or the MIR uses an unsupported construct).\n\
-                             Error: {}\n\
+                             Error: {error_msg}\n\
                              JIT machine code is emitted only for x86_64 and AArch64.\n\
-                             Consider AOT compilation instead (run without --jit).",
-                        error_msg
+                             Consider AOT compilation instead (run without --jit)."
                     ))
                 } else {
-                    LaminaError::ValidationError(format!("Runtime compilation failed: {}", e))
+                    LaminaError::ValidationError(format!("Runtime compilation failed: {e}"))
                 }
             })
         }

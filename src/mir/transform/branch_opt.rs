@@ -70,7 +70,7 @@ impl BranchOptimization {
             .blocks
             .iter()
             .filter(|b| !to_remove.contains(&b.label))
-            .flat_map(|b| b.successors())
+            .flat_map(lamina_mir::Block::successors)
             .collect();
 
         let safe_to_remove: HashSet<String> =

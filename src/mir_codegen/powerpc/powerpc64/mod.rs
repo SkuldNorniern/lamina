@@ -152,13 +152,13 @@ fn compile_single_function_ppc64(
     let abi = Ppc64Abi::new(target_os);
 
     let label = abi.mangle_function_name(func_name);
-    writeln!(output, "{}:", label)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e)))?;
+    writeln!(output, "{label}:")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{}\"", tag)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e)))?;
+        writeln!(output, "    .file 1 \"{tag}\"")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
     }
 
     let mut reg_alloc = Ppc64RegAlloc::new(target_os);
@@ -247,7 +247,7 @@ fn compile_single_function_ppc64(
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
         writeln!(output, ".L_{}:", block.label)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
 
         for inst in &block.instructions {
             emit_instruction_ppc64(
@@ -306,7 +306,7 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
 
     for func_name in &module.external_functions {
         let label = abi.mangle_function_name(func_name);
-        writeln!(writer, ".extern {}", label)?;
+        writeln!(writer, ".extern {label}")?;
     }
 
     let settings_arc = Arc::new(settings.clone());
@@ -408,12 +408,12 @@ fn emit_instruction_ppc64<W: Write>(
                     }
                 }
             };
-            writeln!(writer, "    {} .L_ppc_cmp_true_{:p}", set_true, lhs)?;
+            writeln!(writer, "    {set_true} .L_ppc_cmp_true_{lhs:p}")?;
             writeln!(writer, "    li 3, 0")?;
-            writeln!(writer, "    b .L_ppc_cmp_end_{:p}", lhs)?;
-            writeln!(writer, ".L_ppc_cmp_true_{:p}:", lhs)?;
+            writeln!(writer, "    b .L_ppc_cmp_end_{lhs:p}")?;
+            writeln!(writer, ".L_ppc_cmp_true_{lhs:p}:")?;
             writeln!(writer, "    li 3, 1")?;
-            writeln!(writer, ".L_ppc_cmp_end_{:p}:", lhs)?;
+            writeln!(writer, ".L_ppc_cmp_end_{lhs:p}:")?;
             let _ = set_false; // used in branch selection above
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -432,10 +432,10 @@ fn emit_instruction_ppc64<W: Write>(
             emit_load_fp_operand(lhs, writer, reg_alloc, stack_slots, "1", is_f32)?;
             emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32)?;
             match op {
-                crate::mir::FloatBinOp::FAdd => writeln!(writer, "    fadd{} 1, 1, 2", suffix)?,
-                crate::mir::FloatBinOp::FSub => writeln!(writer, "    fsub{} 1, 1, 2", suffix)?,
-                crate::mir::FloatBinOp::FMul => writeln!(writer, "    fmul{} 1, 1, 2", suffix)?,
-                crate::mir::FloatBinOp::FDiv => writeln!(writer, "    fdiv{} 1, 1, 2", suffix)?,
+                crate::mir::FloatBinOp::FAdd => writeln!(writer, "    fadd{suffix} 1, 1, 2")?,
+                crate::mir::FloatBinOp::FSub => writeln!(writer, "    fsub{suffix} 1, 1, 2")?,
+                crate::mir::FloatBinOp::FMul => writeln!(writer, "    fmul{suffix} 1, 1, 2")?,
+                crate::mir::FloatBinOp::FDiv => writeln!(writer, "    fdiv{suffix} 1, 1, 2")?,
             }
             if let Register::Virtual(vreg) = dst {
                 emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
@@ -446,8 +446,8 @@ fn emit_instruction_ppc64<W: Write>(
             let suffix = if is_f32 { "s" } else { "d" };
             emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32)?;
             match op {
-                crate::mir::FloatUnOp::FNeg => writeln!(writer, "    fneg{} 1, 1", suffix)?,
-                crate::mir::FloatUnOp::FSqrt => writeln!(writer, "    fsqrt{} 1, 1", suffix)?,
+                crate::mir::FloatUnOp::FNeg => writeln!(writer, "    fneg{suffix} 1, 1")?,
+                crate::mir::FloatUnOp::FSqrt => writeln!(writer, "    fsqrt{suffix} 1, 1")?,
             }
             if let Register::Virtual(vreg) = dst {
                 emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
@@ -472,12 +472,12 @@ fn emit_instruction_ppc64<W: Write>(
                 crate::mir::FloatCmpOp::Gt => "bgt",
                 crate::mir::FloatCmpOp::Ge => "bge",
             };
-            writeln!(writer, "    {} .L_ppc_fcmp_true_{:p}", branch, lhs)?;
+            writeln!(writer, "    {branch} .L_ppc_fcmp_true_{lhs:p}")?;
             writeln!(writer, "    li 3, 0")?;
-            writeln!(writer, "    b .L_ppc_fcmp_end_{:p}", lhs)?;
-            writeln!(writer, ".L_ppc_fcmp_true_{:p}:", lhs)?;
+            writeln!(writer, "    b .L_ppc_fcmp_end_{lhs:p}")?;
+            writeln!(writer, ".L_ppc_fcmp_true_{lhs:p}:")?;
             writeln!(writer, "    li 3, 1")?;
-            writeln!(writer, ".L_ppc_fcmp_end_{:p}:", lhs)?;
+            writeln!(writer, ".L_ppc_fcmp_end_{lhs:p}:")?;
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
@@ -518,10 +518,10 @@ fn emit_instruction_ppc64<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mr 3, {}", p.name)?,
             }
             for (case_val, case_label) in cases {
-                writeln!(writer, "    cmpdi 3, {}", case_val)?;
-                writeln!(writer, "    beq .L_{}", case_label)?;
+                writeln!(writer, "    cmpdi 3, {case_val}")?;
+                writeln!(writer, "    beq .L_{case_label}")?;
             }
-            writeln!(writer, "    b .L_{}", default)?;
+            writeln!(writer, "    b .L_{default}")?;
         }
         MirInst::Call { name, args, ret } => {
             let abi = Ppc64Abi::new(target_os);
@@ -545,7 +545,7 @@ fn emit_instruction_ppc64<W: Write>(
 
                 let stack_space = ((num_stack_args * 8) + 15) & !15;
                 if stack_space > 0 {
-                    writeln!(writer, "    addi 1, 1, -{}", stack_space)?;
+                    writeln!(writer, "    addi 1, 1, -{stack_space}")?;
                     for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
                         load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
                         writeln!(writer, "    std 11, {}(1)", i * 8)?;
@@ -555,11 +555,11 @@ fn emit_instruction_ppc64<W: Write>(
                 let target_sym = abi
                     .call_stub(name)
                     .unwrap_or_else(|| abi.mangle_function_name(name));
-                writeln!(writer, "    bl {}", target_sym)?;
+                writeln!(writer, "    bl {target_sym}")?;
                 writeln!(writer, "    nop")?;
 
                 if stack_space > 0 {
-                    writeln!(writer, "    addi 1, 1, {}", stack_space)?;
+                    writeln!(writer, "    addi 1, 1, {stack_space}")?;
                 }
             }
 
@@ -583,7 +583,7 @@ fn emit_instruction_ppc64<W: Write>(
                 for (j, arg) in args.iter().skip(num_reg_args).enumerate() {
                     let disp = frame_size as i32 + (j as i32) * 8;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
-                    writeln!(writer, "    std 11, {}(1)", disp)?;
+                    writeln!(writer, "    std 11, {disp}(1)")?;
                 }
             }
             Ppc64Frame::generate_tail_epilogue(writer, local_bytes).map_err(|e| {
@@ -594,7 +594,7 @@ fn emit_instruction_ppc64<W: Write>(
             let target_sym = abi
                 .call_stub(name)
                 .unwrap_or_else(|| abi.mangle_function_name(name));
-            writeln!(writer, "    b {}", target_sym)?;
+            writeln!(writer, "    b {target_sym}")?;
         }
         MirInst::Load {
             dst,
@@ -614,8 +614,7 @@ fn emit_instruction_ppc64<W: Write>(
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64 load: unsupported type {:?}",
-                            other
+                            "PowerPC64 load: unsupported type {other:?}"
                         )),
                     ));
                 }
@@ -628,7 +627,7 @@ fn emit_instruction_ppc64<W: Write>(
                         }
                         Register::Physical(p) => writeln!(writer, "    mr 5, {}", p.name)?,
                     }
-                    writeln!(writer, "    {} 3, {}(5)", load_op, offset)?;
+                    writeln!(writer, "    {load_op} 3, {offset}(5)")?;
                     if let Register::Virtual(vreg) = dst {
                         store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
                     }
@@ -660,8 +659,7 @@ fn emit_instruction_ppc64<W: Write>(
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64 store: unsupported type {:?}",
-                            other
+                            "PowerPC64 store: unsupported type {other:?}"
                         )),
                     ));
                 }
@@ -675,7 +673,7 @@ fn emit_instruction_ppc64<W: Write>(
                         }
                         Register::Physical(p) => writeln!(writer, "    mr 5, {}", p.name)?,
                     }
-                    writeln!(writer, "    {} 3, {}(5)", store_op, offset)?;
+                    writeln!(writer, "    {store_op} 3, {offset}(5)")?;
                 }
                 _ => {
                     return Err(crate::error::LaminaError::CodegenError(
@@ -694,14 +692,14 @@ fn emit_instruction_ppc64<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mr 3, {}", p.name)?,
             }
             if *offset != 0 {
-                writeln!(writer, "    addi 3, 3, {}", offset)?;
+                writeln!(writer, "    addi 3, 3, {offset}")?;
             }
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
         }
         MirInst::Jmp { target } => {
-            writeln!(writer, "    b .L_{}", target)?;
+            writeln!(writer, "    b .L_{target}")?;
         }
         MirInst::Br {
             cond,
@@ -715,8 +713,8 @@ fn emit_instruction_ppc64<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mr 3, {}", p.name)?,
             }
             writeln!(writer, "    cmpdi 3, 0")?;
-            writeln!(writer, "    bne .L_{}", true_target)?;
-            writeln!(writer, "    b .L_{}", false_target)?;
+            writeln!(writer, "    bne .L_{true_target}")?;
+            writeln!(writer, "    b .L_{false_target}")?;
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
@@ -730,13 +728,12 @@ fn emit_instruction_ppc64<W: Write>(
             })?;
         }
         MirInst::Comment { text } => {
-            writeln!(writer, "    # {}", text)?;
+            writeln!(writer, "    # {text}")?;
         }
         other => {
             return Err(crate::error::LaminaError::CodegenError(
                 CodegenError::UnsupportedFeature(format!(
-                    "PowerPC64 backend: instruction not yet supported: {:?}",
-                    other
+                    "PowerPC64 backend: instruction not yet supported: {other:?}"
                 )),
             ));
         }
@@ -762,16 +759,16 @@ fn emit_load_fp_operand<W: Write>(
             match reg {
                 Register::Virtual(v) => {
                     if let Some(offset) = stack_slots.get(v) {
-                        writeln!(writer, "    {} {}, {}(1)", load_fp, fpr, offset)?;
+                        writeln!(writer, "    {load_fp} {fpr}, {offset}(1)")?;
                     } else if let Some(phys) = reg_alloc.get_mapping_for(v) {
                         // Store to temp stack location then load as float
-                        writeln!(writer, "    std {}, -8(1)", phys)?;
-                        writeln!(writer, "    {} {}, -8(1)", load_fp, fpr)?;
+                        writeln!(writer, "    std {phys}, -8(1)")?;
+                        writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
                     }
                 }
                 Register::Physical(p) => {
                     writeln!(writer, "    std {}, -8(1)", p.name)?;
-                    writeln!(writer, "    {} {}, -8(1)", load_fp, fpr)?;
+                    writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
                 }
             }
         }
@@ -784,15 +781,14 @@ fn emit_load_fp_operand<W: Write>(
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64: float immediate {:?} not supported",
-                            other
+                            "PowerPC64: float immediate {other:?} not supported"
                         )),
                     ));
                 }
             };
-            writeln!(writer, "    li 11, {}", bits)?;
+            writeln!(writer, "    li 11, {bits}")?;
             writeln!(writer, "    std 11, -8(1)")?;
-            writeln!(writer, "    {} {}, -8(1)", load_fp, fpr)?;
+            writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
         }
     }
     Ok(())
@@ -809,10 +805,10 @@ fn emit_store_fp_result<W: Write>(
 ) -> Result<(), crate::error::LaminaError> {
     let store_fp = if is_f32 { "stfs" } else { "stfd" };
     if let Some(offset) = stack_slots.get(vreg) {
-        writeln!(writer, "    {} {}, {}(1)", store_fp, fpr, offset)?;
+        writeln!(writer, "    {store_fp} {fpr}, {offset}(1)")?;
     } else if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
-        writeln!(writer, "    {} {}, -8(1)", store_fp, fpr)?;
-        writeln!(writer, "    ld {}, -8(1)", phys)?;
+        writeln!(writer, "    {store_fp} {fpr}, -8(1)")?;
+        writeln!(writer, "    ld {phys}, -8(1)")?;
     }
     Ok(())
 }

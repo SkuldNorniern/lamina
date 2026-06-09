@@ -12,8 +12,7 @@ use lamina_platform::TargetOperatingSystem;
 
 pub fn parallel_codegen_error(error: impl std::fmt::Debug) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "Parallel compilation error: {:?}",
-        error
+        "Parallel compilation error: {error:?}"
     )))
 }
 
@@ -66,8 +65,7 @@ impl<'a> CodegenBase<'a> {
         }
         if codegen_units > MAX_CODEGEN_UNITS {
             return Err(CodegenError::InvalidCodegenOptions(format!(
-                "codegen_units exceeds maximum: {}",
-                MAX_CODEGEN_UNITS
+                "codegen_units exceeds maximum: {MAX_CODEGEN_UNITS}"
             )));
         }
         self.codegen_units = codegen_units;
@@ -97,19 +95,17 @@ impl<'a> CodegenBase<'a> {
     {
         if !self.prepared {
             return Err(CodegenError::InvalidCodegenOptions(format!(
-                "emit_asm called before prepare for {}",
-                backend_name
+                "emit_asm called before prepare for {backend_name}"
             )));
         }
         let module = self.module.ok_or_else(|| {
             CodegenError::InvalidCodegenOptions(format!(
-                "No module set for emission in {} backend",
-                backend_name
+                "No module set for emission in {backend_name} backend"
             ))
         })?;
         self.output.clear();
         emit_fn(module, &mut self.output, self.target_os).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("{} emission failed: {}", backend_name, e))
+            CodegenError::InvalidCodegenOptions(format!("{backend_name} emission failed: {e}"))
         })
     }
 
@@ -129,19 +125,17 @@ impl<'a> CodegenBase<'a> {
     {
         if !self.prepared {
             return Err(CodegenError::InvalidCodegenOptions(format!(
-                "emit_asm called before prepare for {}",
-                backend_name
+                "emit_asm called before prepare for {backend_name}"
             )));
         }
         let module = self.module.ok_or_else(|| {
             CodegenError::InvalidCodegenOptions(format!(
-                "No module set for emission in {} backend",
-                backend_name
+                "No module set for emission in {backend_name} backend"
             ))
         })?;
         self.output.clear();
         emit_fn(module, &mut self.output, self.target_os, codegen_units).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("{} emission failed: {}", backend_name, e))
+            CodegenError::InvalidCodegenOptions(format!("{backend_name} emission failed: {e}"))
         })
     }
 }
@@ -282,8 +276,7 @@ where
             }
             Err(e) => {
                 worker_errors.push(CodegenError::InvalidCodegenOptions(format!(
-                    "Worker thread {} panicked: {:?}",
-                    idx, e
+                    "Worker thread {idx} panicked: {e:?}"
                 )));
             }
         }
@@ -363,7 +356,7 @@ pub fn emit_print_format_section<W: Write>(
 pub fn lamina_to_codegen_error(err: LaminaError) -> CodegenError {
     match err {
         LaminaError::InternalError(msg) => {
-            CodegenError::InvalidCodegenOptions(format!("Internal error: {}", msg))
+            CodegenError::InvalidCodegenOptions(format!("Internal error: {msg}"))
         }
         LaminaError::CodegenError(inner) => CodegenError::InvalidCodegenOptions(inner.to_string()),
         LaminaError::ParsingError(msg)
