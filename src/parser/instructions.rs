@@ -1,8 +1,8 @@
 //! Instruction parsing for Lamina IR.
 
-use super::state::ParserState;
-use super::types::parse_type;
-use super::values::parse_value;
+use crate::parser::state::ParserState;
+use crate::parser::types::parse_type;
+use crate::parser::values::parse_value;
 use crate::{
     AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType, Type, Value,
 };

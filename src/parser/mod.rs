@@ -10,6 +10,8 @@ pub mod state;
 mod types;
 mod values;
 
+use std::collections::HashSet;
+
 use self::functions::parse_function_def;
 use self::globals::parse_global_declaration;
 use self::state::ParserState;
@@ -168,7 +170,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     let mut state = ParserState::new(input);
     let mut module = Module::new();
 
-    let mut seen_names = std::collections::HashSet::new();
+    let mut seen_names = HashSet::new();
 
     loop {
         state.skip_whitespace_and_comments();

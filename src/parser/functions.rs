@@ -1,8 +1,8 @@
 //! Function parsing for Lamina IR.
 
-use super::instructions::parse_instruction;
-use super::state::ParserState;
-use super::types::parse_type;
+use crate::parser::instructions::parse_instruction;
+use crate::parser::state::ParserState;
+use crate::parser::types::parse_type;
 use crate::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, Label,
     LaminaError,

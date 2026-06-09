@@ -2,7 +2,7 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::Function;
 
 /// Branch optimization that eliminates unreachable branches.

@@ -9,10 +9,10 @@
 //! - Control flow graph construction
 //! - Type mapping and validation
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
-use super::error::FromIRError;
-use super::mapping::{map_ir_prim, map_ir_type};
+use crate::mir::codegen::error::FromIRError;
+use crate::mir::codegen::mapping::{map_ir_prim, map_ir_type};
 use crate::ir::instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst};
 use crate::ir::types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
 use crate::mir::{
@@ -156,7 +156,7 @@ fn convert_function<'a>(
 
     // BFS traversal starting from entry block, guard with visited to avoid cycles
     let mut visited: HashSet<&'a str> = HashSet::new();
-    let mut worklist: std::collections::VecDeque<&'a str> = std::collections::VecDeque::new();
+    let mut worklist: VecDeque<&'a str> = VecDeque::new();
 
     // Ensure entry exists
     if !f.basic_blocks.contains_key(f.entry_block) {
@@ -467,7 +467,7 @@ fn convert_instruction<'a>(
     fn ir_address_mode_to_mir<'b>(
         ptr: &IRVal<'b>,
         vreg_alloc: &mut VirtualRegAllocator,
-        var_to_reg: &mut std::collections::HashMap<&'b str, Register>,
+        var_to_reg: &mut HashMap<&'b str, Register>,
     ) -> Result<AddressMode, FromIRError> {
         match ptr {
             IRVal::Variable(id) => {
