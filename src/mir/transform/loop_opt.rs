@@ -2,8 +2,9 @@
 
 use crate::mir::transform::calculate_dominators;
 
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register};
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 /// Loop invariant code motion that moves loop-invariant computations outside loops.
@@ -204,10 +205,10 @@ impl LoopInvariantCodeMotion {
 
         for loop_info in loops {
             match merged_loops.entry(loop_info.header) {
-                std::collections::hash_map::Entry::Vacant(e) => {
+                Entry::Vacant(e) => {
                     e.insert(loop_info.blocks);
                 }
-                std::collections::hash_map::Entry::Occupied(mut e) => {
+                Entry::Occupied(mut e) => {
                     e.get_mut().extend(loop_info.blocks);
                 }
             }

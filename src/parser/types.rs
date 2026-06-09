@@ -1,6 +1,8 @@
 //! Type parsing for Lamina IR.
 
-use super::state::ParserState;
+use std::collections::HashSet;
+
+use crate::parser::state::ParserState;
 use crate::{LaminaError, PrimitiveType, StructField, Type, TypeDeclaration};
 
 /// Parses a type declaration.
@@ -22,7 +24,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
         state.consume_keyword("struct")?;
         state.expect_char('{')?;
         let mut fields = Vec::new();
-        let mut field_names = std::collections::HashSet::new();
+        let mut field_names = HashSet::new();
 
         loop {
             state.skip_whitespace_and_comments();

@@ -1,12 +1,16 @@
 pub mod util;
 
+use std::collections::{HashMap, HashSet};
 use std::fs;
+
 use std::io::Write;
+
+use crate::error::LaminaError;
 use std::result::Result;
 
 use crate::mir::{
-    AddressMode, Instruction as MirInst, MirType, Module as MirModule, Register, ScalarType,
-    VirtualReg,
+    AddressMode, Global, Instruction as MirInst, MirType, Module as MirModule, Register,
+    ScalarType, Signature, VirtualReg,
 };
 use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
@@ -49,7 +53,7 @@ impl<'a> WasmCodegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
         codegen_units: usize,
-    ) -> Result<(), crate::error::LaminaError> {
+    ) -> Result<(), LaminaError> {
         generate_mir_wasm_with_units(module, writer, self.base.target_os, codegen_units)
     }
 }
@@ -69,9 +73,9 @@ impl<'a> Codegen for WasmCodegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &std::collections::HashMap<String, MirType>,
-        globals: &std::collections::HashMap<String, crate::mir::Global>,
-        funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        types: &HashMap<String, MirType>,
+        globals: &HashMap<String, Global>,
+        funcs: &HashMap<String, Signature>,
         codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],
@@ -170,7 +174,7 @@ fn compile_single_function_wasm(
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
-    let mut local_vregs = std::collections::HashSet::new();
+    let mut local_vregs = HashSet::new();
     for block in &func.blocks {
         for inst in &block.instructions {
             if let Some(dst) = inst.def_reg()
@@ -186,15 +190,15 @@ fn compile_single_function_wasm(
         }
     }
 
-    let mut vreg_to_local: std::collections::HashMap<VirtualReg, usize> =
-        std::collections::HashMap::new();
+    let mut vreg_to_local: HashMap<VirtualReg, usize> =
+        HashMap::new();
     for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
         vreg_to_local.insert(*vreg, local_idx);
         writeln!(output, "{}", abi.generate_local_decl(local_idx))
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
-    let mut block_labels: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut block_labels: HashMap<&str, usize> = HashMap::new();
     for (idx, block) in func.blocks.iter().enumerate() {
         block_labels.insert(&block.label, idx);
     }
@@ -258,7 +262,7 @@ pub fn generate_mir_wasm<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_wasm_with_units(module, writer, target_os, 1)
 }
 
@@ -267,7 +271,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::Wasm64)?;
     let abi = WasmABI::new(target_os);
 
@@ -342,9 +346,9 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 fn emit_instruction_wasm(
     inst: &MirInst,
     writer: &mut impl Write,
-    vreg_to_local: &std::collections::HashMap<VirtualReg, usize>,
-    block_labels: &std::collections::HashMap<&str, usize>,
-) -> Result<(), crate::error::LaminaError> {
+    vreg_to_local: &HashMap<VirtualReg, usize>,
+    block_labels: &HashMap<&str, usize>,
+) -> Result<(), LaminaError> {
     match inst {
         MirInst::IntBinary {
             op,
@@ -616,7 +620,7 @@ fn emit_instruction_wasm(
                 writeln!(writer, "        local.set $pc")?;
                 writeln!(writer, "        br $dispatch_loop")?;
             } else {
-                return Err(crate::error::LaminaError::ValidationError(format!(
+                return Err(LaminaError::ValidationError(format!(
                     "Unknown block label: {target}"
                 )));
             }
@@ -635,7 +639,7 @@ fn emit_instruction_wasm(
                 writeln!(writer, "            i64.const {true_idx}")?;
                 writeln!(writer, "            local.set $pc")?;
             } else {
-                return Err(crate::error::LaminaError::ValidationError(format!(
+                return Err(LaminaError::ValidationError(format!(
                     "Unknown block label: {true_target}"
                 )));
             }
@@ -645,7 +649,7 @@ fn emit_instruction_wasm(
                 writeln!(writer, "            i64.const {false_idx}")?;
                 writeln!(writer, "            local.set $pc")?;
             } else {
-                return Err(crate::error::LaminaError::ValidationError(format!(
+                return Err(LaminaError::ValidationError(format!(
                     "Unknown block label: {false_target}"
                 )));
             }
@@ -790,7 +794,7 @@ fn emit_instruction_wasm(
             // No-op in AOT/WASM path.
         }
         other => {
-            return Err(crate::error::LaminaError::CodegenError(
+            return Err(LaminaError::CodegenError(
                 CodegenError::UnsupportedFeature(format!(
                     "WASM backend: instruction not yet supported: {other}"
                 )),
