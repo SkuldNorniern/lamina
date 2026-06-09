@@ -1,6 +1,6 @@
 //! Constant folding transform for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{
     FloatBinOp, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, ScalarType,
 };

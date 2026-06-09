@@ -4,7 +4,7 @@
 //! The mapping process handles primitive type conversions and validates
 //! that only supported types are converted.
 
-use super::error::FromIRError;
+use crate::mir::codegen::error::FromIRError;
 use crate::ir::types::{PrimitiveType as IRPrim, Type as IRType};
 use crate::mir::types::{MirType, ScalarType};
 

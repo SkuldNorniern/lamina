@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Write;
 use std::result::Result;
 
@@ -10,7 +11,7 @@ use crate::mir::{
 pub fn load_operand_wasm<W: Write>(
     operand: &Operand,
     writer: &mut W,
-    vreg_to_local: &std::collections::HashMap<VirtualReg, usize>,
+    vreg_to_local: &HashMap<VirtualReg, usize>,
 ) -> Result<(), LaminaError> {
     match operand {
         Operand::Register(reg) => {
@@ -50,7 +51,7 @@ pub fn load_operand_wasm<W: Write>(
 pub fn load_register_wasm<W: Write>(
     reg: &Register,
     writer: &mut W,
-    vreg_to_local: &std::collections::HashMap<VirtualReg, usize>,
+    vreg_to_local: &HashMap<VirtualReg, usize>,
 ) -> Result<(), LaminaError> {
     match reg {
         Register::Physical(_) => {
@@ -75,7 +76,7 @@ pub fn load_register_wasm<W: Write>(
 pub fn store_to_register_wasm<W: Write>(
     reg: &Register,
     writer: &mut W,
-    vreg_to_local: &std::collections::HashMap<VirtualReg, usize>,
+    vreg_to_local: &HashMap<VirtualReg, usize>,
 ) -> Result<(), LaminaError> {
     match reg {
         Register::Physical(_) => {
@@ -138,7 +139,7 @@ pub fn emit_int_cmp_op<W: Write>(op: &IntCmpOp, writer: &mut W) -> Result<(), La
 pub fn load_fp_operand_wasm<W: Write>(
     operand: &Operand,
     writer: &mut W,
-    vreg_to_local: &std::collections::HashMap<VirtualReg, usize>,
+    vreg_to_local: &HashMap<VirtualReg, usize>,
     is_f32: bool,
 ) -> Result<(), LaminaError> {
     match operand {
@@ -180,7 +181,7 @@ pub fn load_fp_operand_wasm<W: Write>(
 /// WASM stores all values as i64, so we reinterpret from float
 pub fn store_fp_to_register_wasm<W: Write>(
     writer: &mut W,
-    vreg_to_local: &std::collections::HashMap<VirtualReg, usize>,
+    vreg_to_local: &HashMap<VirtualReg, usize>,
     vreg: &VirtualReg,
     is_f32: bool,
 ) -> Result<(), LaminaError> {
