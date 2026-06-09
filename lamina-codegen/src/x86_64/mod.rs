@@ -7,7 +7,6 @@ pub mod abi;
 pub mod constants;
 pub mod frame;
 pub mod regalloc;
-pub mod util;
 
 pub use abi::X86ABI;
 pub use frame::X86Frame;

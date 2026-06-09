@@ -64,30 +64,6 @@ pub fn load_register_to_register<
     }
 }
 
-/// Store a physical register into a virtual register location.
-#[allow(dead_code)]
-pub fn store_register_to_register<
-    W: std::io::Write,
-    RA: RegisterAllocator<PhysReg = &'static str>,
->(
-    src_phys: &str,
-    dst: &VirtualReg,
-    writer: &mut W,
-    reg_alloc: &RA,
-    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
-) -> Result<(), std::io::Error> {
-    if let Some(phys) = reg_alloc.get_mapping(dst) {
-        writeln!(writer, "    mr {}, {}", phys, src_phys)
-    } else if let Some(offset) = stack_slots.get(dst) {
-        writeln!(writer, "    std {}, {}(1)", src_phys, offset)
-    } else {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!("Virtual register {:?} has no mapping or stack slot", dst),
-        ))
-    }
-}
-
 /// Load a MIR operand into GPR `dest_reg`.
 pub fn load_operand_to_register<
     W: std::io::Write,
