@@ -8,7 +8,7 @@ use super::error::FromIRError;
 use crate::ir::types::{PrimitiveType as IRPrim, Type as IRType};
 use crate::mir::types::{MirType, ScalarType};
 
-pub fn map_ir_prim(p: crate::ir::types::PrimitiveType) -> Result<MirType, FromIRError> {
+pub fn map_ir_prim(p: IRPrim) -> Result<MirType, FromIRError> {
     let scalar = match p {
         IRPrim::I8 | IRPrim::U8 | IRPrim::Char => ScalarType::I8,
         IRPrim::I16 | IRPrim::U16 => ScalarType::I16,
