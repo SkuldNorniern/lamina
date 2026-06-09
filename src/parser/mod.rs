@@ -248,6 +248,8 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
 #[cfg(test)]
 mod tests {
     use super::parse_module;
+    use crate::ir::IRBuilder;
+    use crate::ir::builder::i32 as ir_i32;
     use crate::{
         AllocType, BinaryOp, CmpOp, Instruction, LaminaError, Literal, Module, PrimitiveType, Type,
         Value,
@@ -1062,8 +1064,6 @@ fn @test_instructions() -> i64 {
 
     #[test]
     fn test_parse_minimal_programs() -> Result<(), LaminaError> {
-        use crate::ir::IRBuilder;
-        use crate::ir::builder::i32 as ir_i32;
         use crate::ir::types::{PrimitiveType, Type};
 
         // Test very simple programs that should parse correctly and produce correct IR
@@ -1120,8 +1120,6 @@ fn @empty() -> i64 {
 
     #[test]
     fn test_parse_whitespace_tolerance() -> Result<(), LaminaError> {
-        use crate::ir::IRBuilder;
-        use crate::ir::builder::i32 as ir_i32;
         use crate::ir::types::{PrimitiveType, Type};
 
         // Expected IR structure for all test cases

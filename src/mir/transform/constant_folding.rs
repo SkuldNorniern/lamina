@@ -1,7 +1,9 @@
 //! Constant folding transform for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{FloatBinOp, Function, Immediate, Instruction, IntCmpOp, Operand};
+use crate::mir::{
+    FloatBinOp, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, ScalarType,
+};
 
 /// Constant folding that evaluates constant expressions at compile time.
 #[derive(Default)]
@@ -54,47 +56,43 @@ impl ConstantFolding {
             && let (Some(lhs_val), Some(rhs_val)) = (self.extract_i64(lhs), self.extract_i64(rhs))
         {
             let result: i64 = match op {
-                crate::mir::IntBinOp::Add => match lhs_val.checked_add(rhs_val) {
+                IntBinOp::Add => match lhs_val.checked_add(rhs_val) {
                     Some(r) => r,
                     None => return false,
                 },
-                crate::mir::IntBinOp::Sub => match lhs_val.checked_sub(rhs_val) {
+                IntBinOp::Sub => match lhs_val.checked_sub(rhs_val) {
                     Some(r) => r,
                     None => return false,
                 },
-                crate::mir::IntBinOp::Mul => match lhs_val.checked_mul(rhs_val) {
+                IntBinOp::Mul => match lhs_val.checked_mul(rhs_val) {
                     Some(r) => r,
                     None => return false,
                 },
-                crate::mir::IntBinOp::UDiv if rhs_val != 0 => {
-                    ((lhs_val as u64) / (rhs_val as u64)) as i64
-                }
-                crate::mir::IntBinOp::SDiv if rhs_val != 0 => {
+                IntBinOp::UDiv if rhs_val != 0 => ((lhs_val as u64) / (rhs_val as u64)) as i64,
+                IntBinOp::SDiv if rhs_val != 0 => {
                     if lhs_val == i64::MIN && rhs_val == -1 {
                         return false;
                     }
                     lhs_val / rhs_val
                 }
-                crate::mir::IntBinOp::URem if rhs_val != 0 => {
-                    ((lhs_val as u64) % (rhs_val as u64)) as i64
-                }
-                crate::mir::IntBinOp::SRem if rhs_val != 0 => lhs_val % rhs_val,
-                crate::mir::IntBinOp::And => lhs_val & rhs_val,
-                crate::mir::IntBinOp::Or => lhs_val | rhs_val,
-                crate::mir::IntBinOp::Xor => lhs_val ^ rhs_val,
-                crate::mir::IntBinOp::Shl => {
+                IntBinOp::URem if rhs_val != 0 => ((lhs_val as u64) % (rhs_val as u64)) as i64,
+                IntBinOp::SRem if rhs_val != 0 => lhs_val % rhs_val,
+                IntBinOp::And => lhs_val & rhs_val,
+                IntBinOp::Or => lhs_val | rhs_val,
+                IntBinOp::Xor => lhs_val ^ rhs_val,
+                IntBinOp::Shl => {
                     if !(0..64).contains(&rhs_val) {
                         return false;
                     }
                     lhs_val << rhs_val
                 }
-                crate::mir::IntBinOp::LShr => {
+                IntBinOp::LShr => {
                     if !(0..64).contains(&rhs_val) {
                         return false;
                     }
                     ((lhs_val as u64) >> rhs_val) as i64
                 }
-                crate::mir::IntBinOp::AShr => {
+                IntBinOp::AShr => {
                     if !(0..64).contains(&rhs_val) {
                         return false;
                     }
@@ -104,9 +102,9 @@ impl ConstantFolding {
             };
 
             *instr = Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
+                op: IntBinOp::Add,
                 dst: dst.clone(),
-                ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                ty: MirType::Scalar(ScalarType::I64),
                 lhs: Operand::Immediate(Immediate::I64(result)),
                 rhs: Operand::Immediate(Immediate::I64(0)),
             };
@@ -173,9 +171,9 @@ impl ConstantFolding {
             };
             let saved_dst = dst.clone();
             *instr = Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
+                op: IntBinOp::Add,
                 dst: saved_dst,
-                ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I1),
+                ty: MirType::Scalar(ScalarType::I1),
                 lhs: Operand::Immediate(Immediate::I64(result as i64)),
                 rhs: Operand::Immediate(Immediate::I64(0)),
             };
@@ -207,18 +205,18 @@ impl ConstantFolding {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{Function, Immediate, IntBinOp, MirType, ScalarType, VirtualReg};
+    use crate::mir::function::Signature;
+    use crate::mir::{Block, Register, VirtualReg};
 
     #[test]
     fn test_signed_division_overflow_prevention() {
         // Test that i64::MIN / -1 is prevented (would overflow)
-        let mut func = Function::new(crate::mir::function::Signature::new("f"))
-            .with_entry("entry".to_string());
-        let mut bb = crate::mir::Block::new("entry");
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::SDiv,
             ty: MirType::Scalar(ScalarType::I64),
-            dst: crate::mir::Register::Virtual(VirtualReg::gpr(0)),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
             lhs: Operand::Immediate(Immediate::I64(i64::MIN)),
             rhs: Operand::Immediate(Immediate::I64(-1)),
         });
@@ -233,13 +231,12 @@ mod tests {
     #[test]
     fn test_constant_folding_division_by_zero() {
         // Division by zero should not be folded
-        let mut func = Function::new(crate::mir::function::Signature::new("f"))
-            .with_entry("entry".to_string());
-        let mut bb = crate::mir::Block::new("entry");
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::UDiv,
             ty: MirType::Scalar(ScalarType::I64),
-            dst: crate::mir::Register::Virtual(VirtualReg::gpr(0)),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
             lhs: Operand::Immediate(Immediate::I64(100)),
             rhs: Operand::Immediate(Immediate::I64(0)),
         });
@@ -253,13 +250,12 @@ mod tests {
     #[test]
     fn test_constant_folding_overflow_sub() {
         // Subtraction overflow should not be folded
-        let mut func = Function::new(crate::mir::function::Signature::new("f"))
-            .with_entry("entry".to_string());
-        let mut bb = crate::mir::Block::new("entry");
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::Sub,
             ty: MirType::Scalar(ScalarType::I64),
-            dst: crate::mir::Register::Virtual(VirtualReg::gpr(0)),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
             lhs: Operand::Immediate(Immediate::I64(i64::MIN)),
             rhs: Operand::Immediate(Immediate::I64(1)),
         });
@@ -273,13 +269,12 @@ mod tests {
     #[test]
     fn test_constant_folding_overflow_mul() {
         // Multiplication overflow should not be folded
-        let mut func = Function::new(crate::mir::function::Signature::new("f"))
-            .with_entry("entry".to_string());
-        let mut bb = crate::mir::Block::new("entry");
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::Mul,
             ty: MirType::Scalar(ScalarType::I64),
-            dst: crate::mir::Register::Virtual(VirtualReg::gpr(0)),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
             lhs: Operand::Immediate(Immediate::I64(i64::MAX)),
             rhs: Operand::Immediate(Immediate::I64(2)),
         });
@@ -293,13 +288,12 @@ mod tests {
     #[test]
     fn test_constant_folding_unsigned_division() {
         // Unsigned division: large positive / 2 should fold correctly
-        let mut func = Function::new(crate::mir::function::Signature::new("f"))
-            .with_entry("entry".to_string());
-        let mut bb = crate::mir::Block::new("entry");
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
             op: IntBinOp::UDiv,
             ty: MirType::Scalar(ScalarType::I64),
-            dst: crate::mir::Register::Virtual(VirtualReg::gpr(0)),
+            dst: Register::Virtual(VirtualReg::gpr(0)),
             lhs: Operand::Immediate(Immediate::I64(-2)), // Interpreted as u64::MAX - 1
             rhs: Operand::Immediate(Immediate::I64(2)),
         });
@@ -324,13 +318,12 @@ mod tests {
         let cf = ConstantFolding;
 
         let mk = |op: IntBinOp, l: i64, r: i64| {
-            let mut func = Function::new(crate::mir::function::Signature::new("f"))
-                .with_entry("entry".to_string());
-            let mut bb = crate::mir::Block::new("entry");
+            let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
+            let mut bb = Block::new("entry");
             bb.push(Instruction::IntBinary {
                 op,
                 ty: MirType::Scalar(ScalarType::I64),
-                dst: crate::mir::Register::Virtual(VirtualReg::gpr(0)),
+                dst: Register::Virtual(VirtualReg::gpr(0)),
                 lhs: Operand::Immediate(Immediate::I64(l)),
                 rhs: Operand::Immediate(Immediate::I64(r)),
             });
@@ -376,13 +369,12 @@ mod tests {
         let cf = ConstantFolding;
 
         let mk = |op: FloatBinOp, l: f64, r: f64| {
-            let mut func = Function::new(crate::mir::function::Signature::new("f"))
-                .with_entry("entry".to_string());
-            let mut bb = crate::mir::Block::new("entry");
+            let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
+            let mut bb = Block::new("entry");
             bb.push(Instruction::FloatBinary {
                 op,
                 ty: MirType::Scalar(ScalarType::F64),
-                dst: crate::mir::Register::Virtual(VirtualReg::gpr(0)),
+                dst: Register::Virtual(VirtualReg::gpr(0)),
                 lhs: Operand::Immediate(Immediate::F64(l)),
                 rhs: Operand::Immediate(Immediate::F64(r)),
             });
@@ -415,13 +407,12 @@ mod tests {
         let cf = ConstantFolding;
 
         let mk = |op: IntCmpOp, l: i64, r: i64| {
-            let mut func = Function::new(crate::mir::function::Signature::new("f"))
-                .with_entry("entry".to_string());
-            let mut bb = crate::mir::Block::new("entry");
+            let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
+            let mut bb = Block::new("entry");
             bb.push(Instruction::IntCmp {
                 op,
                 ty: MirType::Scalar(ScalarType::I1),
-                dst: crate::mir::Register::Virtual(VirtualReg::gpr(0)),
+                dst: Register::Virtual(VirtualReg::gpr(0)),
                 lhs: Operand::Immediate(Immediate::I64(l)),
                 rhs: Operand::Immediate(Immediate::I64(r)),
             });
