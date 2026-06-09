@@ -6,7 +6,8 @@
 //! - **JumpThreading**: Bypasses trivial jump-only blocks
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Function, Instruction, Operand};
+use crate::mir::instruction::Immediate;
+use crate::mir::{Function, Instruction, IntBinOp, Operand};
 use std::collections::{HashMap, HashSet};
 
 /// Identify loop headers via back-edge detection (target block index ≤ source block index).
@@ -141,11 +142,11 @@ impl CfgSimplify {
                         false_val,
                     } if true_val == false_val => {
                         let replacement = Instruction::IntBinary {
-                            op: crate::mir::IntBinOp::Add,
+                            op: IntBinOp::Add,
                             ty: *ty,
                             dst: dst.clone(),
                             lhs: true_val.clone(),
-                            rhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(0)),
+                            rhs: Operand::Immediate(Immediate::I64(0)),
                         };
                         *instr = replacement;
                         changed = true;

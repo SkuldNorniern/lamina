@@ -9,7 +9,7 @@
 //! - A basic memory-budget check based on estimated code + stack size.
 
 use crate::error::LaminaError;
-use crate::mir::Module as MirModule;
+use crate::mir::{Instruction, Module as MirModule};
 use crate::runtime::compiler::RuntimeCompiler;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::time::Duration;
@@ -118,8 +118,8 @@ fn analyse_module(module: &MirModule, config: &SandboxConfig) -> Vec<String> {
         for block in &func.blocks {
             for inst in &block.instructions {
                 let callee = match inst {
-                    crate::mir::Instruction::Call { name, .. } => Some(name.as_str()),
-                    crate::mir::Instruction::TailCall { name, .. } => Some(name.as_str()),
+                    Instruction::Call { name, .. } => Some(name.as_str()),
+                    Instruction::TailCall { name, .. } => Some(name.as_str()),
                     _ => None,
                 };
                 let Some(name) = callee else { continue };
@@ -292,7 +292,7 @@ impl Sandbox {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, MirType, Module as MirModule, ScalarType};
+    use crate::mir::{FunctionBuilder, MirType, ScalarType};
 
     fn empty_module() -> MirModule {
         MirModule::new("sandbox_test")
@@ -303,12 +303,12 @@ mod tests {
         let f = FunctionBuilder::new("main_fn")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
-            .instr(crate::mir::Instruction::Call {
+            .instr(Instruction::Call {
                 name: callee.to_string(),
                 args: vec![],
                 ret: None,
             })
-            .instr(crate::mir::Instruction::Ret { value: None })
+            .instr(Instruction::Ret { value: None })
             .build();
         m.add_function(f);
         m

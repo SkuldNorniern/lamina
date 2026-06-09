@@ -172,7 +172,7 @@ pub fn cpu_count() -> usize {
     {
         unsafe {
             unsafe extern "system" {
-                fn GetSystemInfo(lpSystemInfo: *mut SystemInfo);
+                fn GetSystemInfo(lp_system_info: *mut SystemInfo);
             }
             // Field order matches the Win32 SYSTEM_INFO layout (repr(C)); names
             // are snake_case since only the layout is ABI-significant.
