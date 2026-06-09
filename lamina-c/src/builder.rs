@@ -53,11 +53,7 @@ macro_rules! require_str {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn lia_builder_create() -> *mut LaminaBuilder {
-    match std::panic::catch_unwind(|| Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new()))))
-    {
-        Ok(ptr) => ptr,
-        Err(_) => std::ptr::null_mut(),
-    }
+    std::panic::catch_unwind(|| Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new())))).unwrap_or_else(|_| std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]

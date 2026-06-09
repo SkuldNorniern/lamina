@@ -140,11 +140,8 @@ pub(crate) fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 }
 
 pub(crate) fn catch<F: FnOnce() -> LaminaStatus + std::panic::UnwindSafe>(f: F) -> LaminaStatus {
-    match std::panic::catch_unwind(f) {
-        Ok(status) => status,
-        Err(_) => {
-            error::set_error("internal panic in Lamina C API");
-            LaminaStatus::ErrorInternal
-        }
-    }
+    std::panic::catch_unwind(f).unwrap_or_else(|_| {
+        error::set_error("internal panic in Lamina C API");
+        LaminaStatus::ErrorInternal
+    })
 }
