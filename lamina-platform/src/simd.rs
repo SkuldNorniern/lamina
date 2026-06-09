@@ -16,6 +16,13 @@
 
 use crate::target::{Target, TargetArchitecture};
 
+#[cfg(target_arch = "x86_64")]
+use std::arch::is_x86_feature_detected;
+#[cfg(target_arch = "aarch64")]
+use std::arch::is_aarch64_feature_detected;
+#[cfg(target_arch = "arm")]
+use std::arch::is_arm_feature_detected;
+
 /// SIMD instruction set extensions for x86_64.
 #[cfg(feature = "nightly")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -441,9 +448,6 @@ impl SimdCapabilities {
         let mut caps = Self::default();
         caps.supported = true;
 
-        // Use Rust's standard library feature detection
-        use std::arch::is_x86_feature_detected;
-
         // Check MMX
         if is_x86_feature_detected!("mmx") {
             caps.x86_extensions.push(X86SimdExtension::Mmx);
@@ -582,8 +586,6 @@ impl SimdCapabilities {
         caps.fp16_supported = true; // NEON supports FP16
         caps.max_vector_width = 128;
 
-        use std::arch::is_aarch64_feature_detected;
-
         // NEON is always available on AArch64
         caps.arm_extensions.push(ArmSimdExtension::Neon);
 
@@ -620,8 +622,6 @@ impl SimdCapabilities {
     #[cfg(target_arch = "arm")]
     fn detect_arm32_runtime() -> Self {
         let mut caps = Self::default();
-
-        use std::arch::is_arm_feature_detected;
 
         // Check for NEON
         if is_arm_feature_detected!("neon") {
