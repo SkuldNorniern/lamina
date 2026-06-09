@@ -232,7 +232,7 @@ impl SimdCapabilities {
             supported: true,
             max_vector_width: 2048, // SVE can go up to 2048 bits, but 128 is baseline
             v128_supported: true,   // NEON is baseline for AArch64
-            v256_supported: false,  // NEON doesn't support 256-bit, SVE would but it's optional
+            v256_supported: false,  // NEON doesn't support 256-bit, SVE would, but it's optional
             v512_supported: false,  // SVE can support this but requires runtime detection
             float_simd_supported: true,
             integer_simd_supported: true,
