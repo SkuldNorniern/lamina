@@ -6,6 +6,8 @@
 use super::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
 use crate::mir::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register, Signature};
 use std::collections::HashMap;
+#[cfg(target_arch = "aarch64")]
+use std::arch::asm;
 
 fn evaluate_operand(
     operand: &Operand,
@@ -292,7 +294,6 @@ pub unsafe fn execute_jit_function(
 
     #[cfg(target_arch = "aarch64")]
     {
-        use std::arch::asm;
         let sp: usize;
         unsafe {
             asm!("mov {}, sp", out(reg) sp);
