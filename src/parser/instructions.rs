@@ -58,7 +58,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                             suggestions
                                 .iter()
                                 .take(3)
-                                .map(|s| format!("'{}'", s))
+                                .map(|s| format!("'{s}'"))
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         )
@@ -68,8 +68,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 };
 
                 Err(state.error(format!(
-                    "Unknown instruction opcode '{}' after assignment\n  Hint: {}",
-                    opcode_str, hint
+                    "Unknown instruction opcode '{opcode_str}' after assignment\n  Hint: {hint}"
                 )))
             }
         }
@@ -105,7 +104,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                             suggestions
                                 .iter()
                                 .take(3)
-                                .map(|s| format!("'{}'", s))
+                                .map(|s| format!("'{s}'"))
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         )
@@ -115,8 +114,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 };
 
                 Err(state.error(format!(
-                    "Unknown instruction opcode '{}'\n  Hint: {}",
-                    opcode_str, hint
+                    "Unknown instruction opcode '{opcode_str}'\n  Hint: {hint}"
                 )))
             }
         }
@@ -144,8 +142,7 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
         _ => {
             let valid_types = "i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr";
             Err(state.error(format!(
-                "Expected primitive type suffix, found '.{}'\n  Hint: Valid type suffixes are: {}",
-                type_str, valid_types
+                "Expected primitive type suffix, found '.{type_str}'\n  Hint: Valid type suffixes are: {valid_types}"
             )))
         }
     }
@@ -260,7 +257,7 @@ fn parse_alloc<'a>(
                         "Did you mean one of: {}?",
                         suggestions
                             .iter()
-                            .map(|s| format!("'{}'", s))
+                            .map(|s| format!("'{s}'"))
                             .collect::<Vec<_>>()
                             .join(", ")
                     )
@@ -270,8 +267,7 @@ fn parse_alloc<'a>(
             };
 
             return Err(state.error(format!(
-                "Invalid allocation type: '{}'\n  Hint: {}",
-                alloc_type_str, hint
+                "Invalid allocation type: '{alloc_type_str}'\n  Hint: {hint}"
             )));
         }
     };
@@ -318,7 +314,7 @@ fn parse_getfield<'a>(
     let field_index_val = state.parse_integer()?;
 
     if field_index_val < 0 {
-        return Err(state.error(format!("Invalid field index: {}", field_index_val)));
+        return Err(state.error(format!("Invalid field index: {field_index_val}")));
     }
 
     let field_index = field_index_val as usize;
@@ -376,7 +372,7 @@ fn parse_getelem<'a>(
                             suggestions
                                 .iter()
                                 .take(3)
-                                .map(|s| format!("'{}'", s))
+                                .map(|s| format!("'{s}'"))
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         )
@@ -386,8 +382,7 @@ fn parse_getelem<'a>(
                 };
 
                 return Err(state.error(format!(
-                    "Expected primitive type, found '{}'\n  Hint: {}",
-                    type_str, hint
+                    "Expected primitive type, found '{type_str}'\n  Hint: {hint}"
                 )));
             }
         }
@@ -495,7 +490,7 @@ fn parse_extract_tuple<'a>(
     let index_val = state.parse_integer()?;
 
     if index_val < 0 {
-        return Err(state.error(format!("Invalid tuple index: {}", index_val)));
+        return Err(state.error(format!("Invalid tuple index: {index_val}")));
     }
 
     let index = index_val as usize;
@@ -759,7 +754,7 @@ fn parse_zext<'a>(
         "f64" => PrimitiveType::F64,
         "bool" => PrimitiveType::Bool,
         "char" => PrimitiveType::Char,
-        _ => return Err(state.error(format!("Invalid source type for zext: {}", source_type_str))),
+        _ => return Err(state.error(format!("Invalid source type for zext: {source_type_str}"))),
     };
 
     state.expect_char('.')?;
@@ -777,13 +772,12 @@ fn parse_zext<'a>(
         "f64" => PrimitiveType::F64,
         "bool" => PrimitiveType::Bool,
         "char" => PrimitiveType::Char,
-        _ => return Err(state.error(format!("Invalid target type for zext: {}", target_type_str))),
+        _ => return Err(state.error(format!("Invalid target type for zext: {target_type_str}"))),
     };
 
     if source_type == target_type {
         return Err(state.error(format!(
-            "Source and target types must be different for conversion: {}",
-            source_type_str
+            "Source and target types must be different for conversion: {source_type_str}"
         )));
     }
 
@@ -937,6 +931,6 @@ fn parse_primitive_from_ident(
         "bool" => Ok(PrimitiveType::Bool),
         "char" => Ok(PrimitiveType::Char),
         "ptr" => Ok(PrimitiveType::Ptr),
-        other => Err(state.error(format!("Invalid primitive type in conversion: {}", other))),
+        other => Err(state.error(format!("Invalid primitive type in conversion: {other}"))),
     }
 }

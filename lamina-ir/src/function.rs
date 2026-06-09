@@ -619,7 +619,7 @@ impl<'a> Function<'a> {
 
         for (label, block) in &self.basic_blocks {
             let last = block.instructions.last();
-            let has_terminator = last.map(|i| i.is_terminator()).unwrap_or(false);
+            let has_terminator = last.is_some_and(super::instruction::Instruction::is_terminator);
             if !has_terminator {
                 errors.push(format!(
                     "block '{}' in '@{}' has no terminator instruction",
@@ -748,12 +748,12 @@ impl fmt::Display for FunctionAnnotation {
             FunctionAnnotation::CCpreserveAll => write!(f, "@cc_preserve_all"),
             FunctionAnnotation::CCswift => write!(f, "@cc_swift"),
             FunctionAnnotation::CCtail => write!(f, "@cc_tail"),
-            FunctionAnnotation::CallingConvention(cc) => write!(f, "@calling_convention({})", cc),
-            FunctionAnnotation::Section(section) => write!(f, "@section({})", section),
-            FunctionAnnotation::Align(alignment) => write!(f, "@align({})", alignment),
+            FunctionAnnotation::CallingConvention(cc) => write!(f, "@calling_convention({cc})"),
+            FunctionAnnotation::Section(section) => write!(f, "@section({section})"),
+            FunctionAnnotation::Align(alignment) => write!(f, "@align({alignment})"),
             FunctionAnnotation::Unsafe => write!(f, "@unsafe"),
             FunctionAnnotation::Deprecated(None) => write!(f, "@deprecated"),
-            FunctionAnnotation::Deprecated(Some(msg)) => write!(f, "@deprecated({})", msg),
+            FunctionAnnotation::Deprecated(Some(msg)) => write!(f, "@deprecated({msg})"),
         }
     }
 }
@@ -764,9 +764,9 @@ impl fmt::Display for VariableAnnotation {
             VariableAnnotation::NonNull => write!(f, "nonnull"),
             VariableAnnotation::ReadOnly => write!(f, "readonly"),
             VariableAnnotation::WriteOnly => write!(f, "writeonly"),
-            VariableAnnotation::Align(alignment) => write!(f, "align({})", alignment),
+            VariableAnnotation::Align(alignment) => write!(f, "align({alignment})"),
             VariableAnnotation::Sensitive => write!(f, "sensitive"),
-            VariableAnnotation::Register(reg) => write!(f, "register({})", reg),
+            VariableAnnotation::Register(reg) => write!(f, "register({reg})"),
             VariableAnnotation::Unused => write!(f, "unused"),
         }
     }
@@ -782,7 +782,7 @@ impl fmt::Display for FunctionParameter<'_> {
                 if i > 0 {
                     write!(f, " ")?;
                 }
-                write!(f, "{}", annotation)?;
+                write!(f, "{annotation}")?;
             }
             write!(f, " %{}", self.name)
         }
@@ -793,7 +793,7 @@ impl fmt::Display for FunctionSignature<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "(")?;
         for (i, param) in self.params.iter().enumerate() {
-            write!(f, "{}", param)?;
+            write!(f, "{param}")?;
             if i < self.params.len() - 1 {
                 write!(f, ", ")?;
             }
@@ -805,7 +805,7 @@ impl fmt::Display for FunctionSignature<'_> {
 impl fmt::Display for BasicBlock<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for instr in &self.instructions {
-            writeln!(f, "  {}", instr)?;
+            writeln!(f, "  {instr}")?;
         }
         Ok(())
     }
@@ -814,21 +814,21 @@ impl fmt::Display for BasicBlock<'_> {
 impl fmt::Display for Function<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for annotation in &self.annotations {
-            writeln!(f, "{}", annotation)?;
+            writeln!(f, "{annotation}")?;
         }
         writeln!(f, "fn @{}{} {{", self.name, self.signature)?;
 
         // We need a consistent order for printing blocks. Let's try to print entry first.
         if let Some(entry) = self.basic_blocks.get(self.entry_block) {
             writeln!(f, "{}:", self.entry_block)?;
-            write!(f, "{}", entry)?;
+            write!(f, "{entry}")?;
         }
 
         // Print remaining blocks (order might not be source order, but good enough for display)
         for (label, block) in &self.basic_blocks {
             if *label != self.entry_block {
-                writeln!(f, "{}:", label)?;
-                write!(f, "{}", block)?;
+                writeln!(f, "{label}:")?;
+                write!(f, "{block}")?;
             }
         }
 

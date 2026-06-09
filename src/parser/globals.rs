@@ -57,13 +57,11 @@ pub fn parse_value_with_type_hint<'a>(
                         Ok(Value::Constant(Literal::String(string_value)))
                     }
                     _ => Err(state.error(format!(
-                        "String literal is not compatible with type hint: {:?}",
-                        type_hint
+                        "String literal is not compatible with type hint: {type_hint:?}"
                     ))),
                 },
                 _ => Err(state.error(format!(
-                    "String literal is not compatible with type hint: {:?}",
-                    type_hint
+                    "String literal is not compatible with type hint: {type_hint:?}"
                 ))),
             }
         }
@@ -76,8 +74,7 @@ pub fn parse_value_with_type_hint<'a>(
                         Ok(Value::Constant(Literal::Bool(true)))
                     }
                     _ => Err(state.error(format!(
-                        "Boolean literal not compatible with type hint: {:?}",
-                        type_hint
+                        "Boolean literal not compatible with type hint: {type_hint:?}"
                     ))),
                 }
             } else {
@@ -88,7 +85,7 @@ pub fn parse_value_with_type_hint<'a>(
                     "Expected 'true' boolean literal".to_string()
                 };
 
-                Err(state.error(format!("Expected 'true'\n  Hint: {}", hint)))
+                Err(state.error(format!("Expected 'true'\n  Hint: {hint}")))
             }
         }
         Some('f') => {
@@ -100,8 +97,7 @@ pub fn parse_value_with_type_hint<'a>(
                         Ok(Value::Constant(Literal::Bool(false)))
                     }
                     _ => Err(state.error(format!(
-                        "Boolean literal not compatible with type hint: {:?}",
-                        type_hint
+                        "Boolean literal not compatible with type hint: {type_hint:?}"
                     ))),
                 }
             } else {
@@ -112,7 +108,7 @@ pub fn parse_value_with_type_hint<'a>(
                     "Expected 'false' boolean literal".to_string()
                 };
 
-                Err(state.error(format!("Expected 'false'\n  Hint: {}", hint)))
+                Err(state.error(format!("Expected 'false'\n  Hint: {hint}")))
             }
         }
         Some(c) if c.is_ascii_digit() || c == '-' => {

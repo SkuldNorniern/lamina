@@ -78,13 +78,13 @@ pub enum LaminaError {
 impl fmt::Display for LaminaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LaminaError::ParsingError(msg) => write!(f, "Parsing Error: {}", msg),
-            LaminaError::CodegenError(msg) => write!(f, "Codegen Error: {}", msg),
-            LaminaError::MirError(msg) => write!(f, "MIR Error: {}", msg),
-            LaminaError::ValidationError(msg) => write!(f, "Validation Error: {}", msg),
-            LaminaError::IoError(msg) => write!(f, "IO Error: {}", msg),
-            LaminaError::Utf8Error(msg) => write!(f, "UTF8 Error: {}", msg),
-            LaminaError::InternalError(msg) => write!(f, "Internal Error: {}", msg),
+            LaminaError::ParsingError(msg) => write!(f, "Parsing Error: {msg}"),
+            LaminaError::CodegenError(msg) => write!(f, "Codegen Error: {msg}"),
+            LaminaError::MirError(msg) => write!(f, "MIR Error: {msg}"),
+            LaminaError::ValidationError(msg) => write!(f, "Validation Error: {msg}"),
+            LaminaError::IoError(msg) => write!(f, "IO Error: {msg}"),
+            LaminaError::Utf8Error(msg) => write!(f, "UTF8 Error: {msg}"),
+            LaminaError::InternalError(msg) => write!(f, "Internal Error: {msg}"),
         }
     }
 }
@@ -113,6 +113,6 @@ impl From<CodegenError> for LaminaError {
 /// Convert a FromIRError to LaminaError
 impl From<FromIRError> for LaminaError {
     fn from(err: FromIRError) -> Self {
-        LaminaError::MirError(format!("{}", err))
+        LaminaError::MirError(format!("{err}"))
     }
 }

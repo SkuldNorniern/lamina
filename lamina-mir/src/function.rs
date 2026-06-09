@@ -126,7 +126,7 @@ impl Function {
 
     /// Total number of instructions across all blocks
     pub fn instruction_count(&self) -> usize {
-        self.blocks.iter().map(|b| b.len()).sum()
+        self.blocks.iter().map(super::block::Block::len).sum()
     }
 
     /// Check if this function is well-formed
@@ -179,13 +179,13 @@ impl fmt::Display for Function {
         }
         write!(f, ")")?;
         if let Some(ret) = &self.sig.ret_ty {
-            write!(f, " -> {}", ret)?;
+            write!(f, " -> {ret}")?;
         }
         writeln!(f, " {{")?;
 
         // Emit blocks in order
         for block in &self.blocks {
-            writeln!(f, "{}", block)?;
+            writeln!(f, "{block}")?;
         }
 
         write!(f, "}}")

@@ -110,16 +110,14 @@ fn assemble_wasm(
             cmd.args(additional_flags);
             let output = cmd.output().map_err(|e| {
                 LaminaError::ValidationError(format!(
-                    "Failed to spawn wat2wasm: {}. Make sure wat2wasm is installed and in PATH.",
-                    e
+                    "Failed to spawn wat2wasm: {e}. Make sure wat2wasm is installed and in PATH."
                 ))
             })?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 return Err(LaminaError::ValidationError(format!(
-                    "wat2wasm failed: {}",
-                    stderr
+                    "wat2wasm failed: {stderr}"
                 )));
             }
 
@@ -137,8 +135,7 @@ fn assemble_wasm(
             })
         }
         _ => Err(LaminaError::ValidationError(format!(
-            "Unsupported assembler backend for WASM: {:?}",
-            backend
+            "Unsupported assembler backend for WASM: {backend:?}"
         ))),
     }
 }
@@ -169,10 +166,10 @@ fn assemble_native(
         let mut ras =
             ras::Ras::with_object_write_options(target_arch, target_os, ras_object_write_options)
                 .map_err(|e| {
-                LaminaError::ValidationError(format!("Failed to create ras assembler: {}", e))
+                LaminaError::ValidationError(format!("Failed to create ras assembler: {e}"))
             })?;
         ras.assemble_file(input_path, output_path)
-            .map_err(|e| LaminaError::ValidationError(format!("ras assembly failed: {}", e)))?;
+            .map_err(|e| LaminaError::ValidationError(format!("ras assembly failed: {e}")))?;
         return Ok(AssembleResult {
             output_path: output_path.to_path_buf(),
             needs_linking: true,
@@ -241,8 +238,7 @@ fn assemble_native(
                 }
                 _ => {
                     return Err(LaminaError::ValidationError(format!(
-                        "Unsupported target combination for clang assembler: {:?} {:?}",
-                        target_arch, target_os
+                        "Unsupported target combination for clang assembler: {target_arch:?} {target_os:?}"
                     )));
                 }
             };
@@ -272,19 +268,18 @@ fn assemble_native(
     };
 
     if verbose {
-        println!("[VERBOSE] Assembling with {}: {:?}", cmd, args);
+        println!("[VERBOSE] Assembling with {cmd}: {args:?}");
     }
 
     let output = Command::new(cmd).args(&args).output().map_err(|e| {
-        LaminaError::ValidationError(format!("Failed to spawn assembler '{}': {}", cmd, e))
+        LaminaError::ValidationError(format!("Failed to spawn assembler '{cmd}': {e}"))
     })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         return Err(LaminaError::ValidationError(format!(
-            "Assembler '{}' failed:\nstdout: {}\nstderr: {}",
-            cmd, stdout, stderr
+            "Assembler '{cmd}' failed:\nstdout: {stdout}\nstderr: {stderr}"
         )));
     }
 
@@ -381,14 +376,12 @@ fn validate_assembler_backend_for_target(
                     | TargetArchitecture::Arx64
             ) {
                 return Err(LaminaError::ValidationError(format!(
-                    "Ras assembler supports x86_64, AArch64, and ARX64 only, not {:?}",
-                    target_arch
+                    "Ras assembler supports x86_64, AArch64, and ARX64 only, not {target_arch:?}"
                 )));
             }
             if !ras::is_object_file_supported(target_arch, target_os) {
                 return Err(LaminaError::ValidationError(format!(
-                    "Ras assembler does not support object output for {:?} {:?}",
-                    target_arch, target_os
+                    "Ras assembler does not support object output for {target_arch:?} {target_os:?}"
                 )));
             }
             Ok(backend)

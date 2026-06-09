@@ -10,13 +10,13 @@ pub fn load_register_to_register<W: std::io::Write>(
     dest_reg: &str,
 ) -> Result<(), std::io::Error> {
     if let Some(phys) = reg_alloc.get_mapping(src) {
-        writeln!(writer, "    mv {}, {}", dest_reg, phys)?;
+        writeln!(writer, "    mv {dest_reg}, {phys}")?;
     } else if let Some(offset) = stack_slots.get(src) {
-        writeln!(writer, "    ld {}, {}(fp)", dest_reg, offset)?;
+        writeln!(writer, "    ld {dest_reg}, {offset}(fp)")?;
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("Virtual register {:?} has no mapping or stack slot", src),
+            format!("Virtual register {src:?} has no mapping or stack slot"),
         ));
     }
     Ok(())
@@ -31,13 +31,13 @@ pub fn store_register_to_register<W: std::io::Write>(
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
 ) -> Result<(), std::io::Error> {
     if let Some(phys) = reg_alloc.get_mapping(dst) {
-        writeln!(writer, "    mv {}, {}", phys, src_reg)?;
+        writeln!(writer, "    mv {phys}, {src_reg}")?;
     } else if let Some(offset) = stack_slots.get(dst) {
-        writeln!(writer, "    sd {}, {}(fp)", src_reg, offset)?;
+        writeln!(writer, "    sd {src_reg}, {offset}(fp)")?;
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("Virtual register {:?} has no mapping or stack slot", dst),
+            format!("Virtual register {dst:?} has no mapping or stack slot"),
         ));
     }
     Ok(())
@@ -74,9 +74,9 @@ pub fn load_operand_to_register<W: std::io::Write>(
                 }
                 crate::mir::instruction::Immediate::I64(v) => {
                     if *v == 0 {
-                        writeln!(writer, "    mv {}, zero", dest_reg)?;
+                        writeln!(writer, "    mv {dest_reg}, zero")?;
                     } else {
-                        writeln!(writer, "    li {}, {}", dest_reg, v)?;
+                        writeln!(writer, "    li {dest_reg}, {v}")?;
                     }
                 }
                 crate::mir::instruction::Immediate::F32(_)
@@ -108,21 +108,21 @@ pub fn load_fp_operand_to_register<W: std::io::Write>(
                 // Load from stack to integer register, then move to FP register
                 if let Some(offset) = stack_slots.get(v) {
                     if is_f32 {
-                        writeln!(writer, "    flw {}, {}(fp)", dest_fp_reg, offset)?;
+                        writeln!(writer, "    flw {dest_fp_reg}, {offset}(fp)")?;
                     } else {
-                        writeln!(writer, "    fld {}, {}(fp)", dest_fp_reg, offset)?;
+                        writeln!(writer, "    fld {dest_fp_reg}, {offset}(fp)")?;
                     }
                 } else if let Some(phys) = reg_alloc.get_mapping(v) {
                     // Move from integer register to FP register
                     if is_f32 {
-                        writeln!(writer, "    fmv.w.x {}, {}", dest_fp_reg, phys)?;
+                        writeln!(writer, "    fmv.w.x {dest_fp_reg}, {phys}")?;
                     } else {
-                        writeln!(writer, "    fmv.d.x {}, {}", dest_fp_reg, phys)?;
+                        writeln!(writer, "    fmv.d.x {dest_fp_reg}, {phys}")?;
                     }
                 } else {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("Virtual register {:?} has no mapping or stack slot", v),
+                        format!("Virtual register {v:?} has no mapping or stack slot"),
                     ));
                 }
             }
@@ -140,14 +140,14 @@ pub fn load_fp_operand_to_register<W: std::io::Write>(
                 crate::mir::instruction::Immediate::F32(v) => {
                     // Load F32 immediate via integer register
                     let bits = v.to_bits();
-                    writeln!(writer, "    li t0, {}", bits)?;
-                    writeln!(writer, "    fmv.w.x {}, t0", dest_fp_reg)?;
+                    writeln!(writer, "    li t0, {bits}")?;
+                    writeln!(writer, "    fmv.w.x {dest_fp_reg}, t0")?;
                 }
                 crate::mir::instruction::Immediate::F64(v) => {
                     // Load F64 immediate via integer register
                     let bits = v.to_bits();
-                    writeln!(writer, "    li t0, {}", bits)?;
-                    writeln!(writer, "    fmv.d.x {}, t0", dest_fp_reg)?;
+                    writeln!(writer, "    li t0, {bits}")?;
+                    writeln!(writer, "    fmv.d.x {dest_fp_reg}, t0")?;
                 }
                 _ => {
                     return Err(std::io::Error::new(
@@ -173,21 +173,21 @@ pub fn store_fp_register_to_register<W: std::io::Write>(
     if let Some(phys) = reg_alloc.get_mapping(dst) {
         // Move from FP register to integer register
         if is_f32 {
-            writeln!(writer, "    fmv.x.w {}, {}", phys, src_fp_reg)?;
+            writeln!(writer, "    fmv.x.w {phys}, {src_fp_reg}")?;
         } else {
-            writeln!(writer, "    fmv.x.d {}, {}", phys, src_fp_reg)?;
+            writeln!(writer, "    fmv.x.d {phys}, {src_fp_reg}")?;
         }
     } else if let Some(offset) = stack_slots.get(dst) {
         // Store directly from FP register to stack
         if is_f32 {
-            writeln!(writer, "    fsw {}, {}(fp)", src_fp_reg, offset)?;
+            writeln!(writer, "    fsw {src_fp_reg}, {offset}(fp)")?;
         } else {
-            writeln!(writer, "    fsd {}, {}(fp)", src_fp_reg, offset)?;
+            writeln!(writer, "    fsd {src_fp_reg}, {offset}(fp)")?;
         }
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("Virtual register {:?} has no mapping or stack slot", dst),
+            format!("Virtual register {dst:?} has no mapping or stack slot"),
         ));
     }
     Ok(())

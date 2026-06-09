@@ -30,7 +30,7 @@ impl FrameMap {
         }
 
         let mut reg_vec: Vec<Register> = regs.into_iter().collect();
-        reg_vec.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+        reg_vec.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
 
         let mut slots = HashMap::new();
         let mut offset: i32 = -8;

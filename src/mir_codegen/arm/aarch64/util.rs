@@ -9,7 +9,7 @@ use crate::error::LaminaError;
 /// Uses movz/movk sequence for values that don't fit in a single mov instruction.
 pub fn emit_mov_imm64<W: Write>(w: &mut W, dest: &str, value: u64) -> Result<(), LaminaError> {
     if value <= 0xFFFF {
-        writeln!(w, "    mov {}, #{}", dest, value)?;
+        writeln!(w, "    mov {dest}, #{value}")?;
         return Ok(());
     }
     let mut first = true;
@@ -17,10 +17,10 @@ pub fn emit_mov_imm64<W: Write>(w: &mut W, dest: &str, value: u64) -> Result<(),
         let part = ((value >> shift) & 0xFFFF) as u16;
         if part != 0 || first {
             if first {
-                writeln!(w, "    movz {}, #{}, lsl #{}", dest, part, shift)?;
+                writeln!(w, "    movz {dest}, #{part}, lsl #{shift}")?;
                 first = false;
             } else {
-                writeln!(w, "    movk {}, #{}, lsl #{}", dest, part, shift)?;
+                writeln!(w, "    movk {dest}, #{part}, lsl #{shift}")?;
             }
         }
     }

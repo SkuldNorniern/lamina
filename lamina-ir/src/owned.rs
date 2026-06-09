@@ -41,9 +41,9 @@ impl fmt::Display for OwnedType {
         match self {
             OwnedType::Primitive(p) => write!(f, "{}", p.as_str()),
             OwnedType::Void => write!(f, "void"),
-            OwnedType::Named(n) => write!(f, "@{}", n),
+            OwnedType::Named(n) => write!(f, "@{n}"),
             OwnedType::Array { element_type, size } => {
-                write!(f, "[{} x {}]", size, element_type)
+                write!(f, "[{size} x {element_type}]")
             }
             OwnedType::Struct(fields) => {
                 write!(f, "struct {{ ")?;
@@ -58,7 +58,7 @@ impl fmt::Display for OwnedType {
             OwnedType::Tuple(types) => {
                 write!(f, "tuple(")?;
                 for (i, ty) in types.iter().enumerate() {
-                    write!(f, "{}", ty)?;
+                    write!(f, "{ty}")?;
                     if i + 1 < types.len() {
                         write!(f, ", ")?;
                     }
@@ -91,20 +91,20 @@ pub enum OwnedValue {
 impl fmt::Display for OwnedValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            OwnedValue::Variable(n) => write!(f, "%{}", n),
-            OwnedValue::Global(n) => write!(f, "@{}", n),
-            OwnedValue::I8(v) => write!(f, "{}", v),
-            OwnedValue::I16(v) => write!(f, "{}", v),
-            OwnedValue::I32(v) => write!(f, "{}", v),
-            OwnedValue::I64(v) => write!(f, "{}", v),
-            OwnedValue::U8(v) => write!(f, "{}", v),
-            OwnedValue::U16(v) => write!(f, "{}", v),
-            OwnedValue::U32(v) => write!(f, "{}", v),
-            OwnedValue::U64(v) => write!(f, "{}", v),
-            OwnedValue::F32(v) => write!(f, "{}", v),
-            OwnedValue::F64(v) => write!(f, "{}", v),
-            OwnedValue::Bool(v) => write!(f, "{}", v),
-            OwnedValue::Str(s) => write!(f, "{:?}", s),
+            OwnedValue::Variable(n) => write!(f, "%{n}"),
+            OwnedValue::Global(n) => write!(f, "@{n}"),
+            OwnedValue::I8(v) => write!(f, "{v}"),
+            OwnedValue::I16(v) => write!(f, "{v}"),
+            OwnedValue::I32(v) => write!(f, "{v}"),
+            OwnedValue::I64(v) => write!(f, "{v}"),
+            OwnedValue::U8(v) => write!(f, "{v}"),
+            OwnedValue::U16(v) => write!(f, "{v}"),
+            OwnedValue::U32(v) => write!(f, "{v}"),
+            OwnedValue::U64(v) => write!(f, "{v}"),
+            OwnedValue::F32(v) => write!(f, "{v}"),
+            OwnedValue::F64(v) => write!(f, "{v}"),
+            OwnedValue::Bool(v) => write!(f, "{v}"),
+            OwnedValue::Str(s) => write!(f, "{s:?}"),
         }
     }
 }
@@ -339,7 +339,7 @@ impl OwnedIRBuilder {
     ) -> &mut Self {
         let args_str = args
             .iter()
-            .map(|a| format!("{}", a))
+            .map(|a| format!("{a}"))
             .collect::<Vec<_>>()
             .join(", ");
         let t = if let Some(r) = result {
@@ -353,7 +353,7 @@ impl OwnedIRBuilder {
 
     /// Appends a return with a value.
     pub fn ret(&mut self, ty: &OwnedType, value: &OwnedValue) -> &mut Self {
-        let t = format!("ret.{} {}", ty, value);
+        let t = format!("ret.{ty} {value}");
         self.push(t);
         self
     }
@@ -373,7 +373,7 @@ impl OwnedIRBuilder {
     ) -> &mut Self {
         let pairs = incoming
             .iter()
-            .map(|(v, l)| format!("[{}, {}]", v, l))
+            .map(|(v, l)| format!("[{v}, {l}]"))
             .collect::<Vec<_>>()
             .join(", ");
         let t = format!("%{} = phi.{} {}", result.as_ref(), ty, pairs);
@@ -408,14 +408,14 @@ impl OwnedIRBuilder {
 
     /// Appends a store instruction.
     pub fn store(&mut self, ty: &OwnedType, ptr: &OwnedValue, val: &OwnedValue) -> &mut Self {
-        let t = format!("store.{} {}, {}", ty, ptr, val);
+        let t = format!("store.{ty} {ptr}, {val}");
         self.push(t);
         self
     }
 
     /// Appends a heap deallocation.
     pub fn dealloc(&mut self, ptr: &OwnedValue) -> &mut Self {
-        let t = format!("dealloc.heap {}", ptr);
+        let t = format!("dealloc.heap {ptr}");
         self.push(t);
         self
     }
@@ -646,7 +646,7 @@ impl OwnedIRBuilder {
 
     /// Appends a debug print instruction.
     pub fn print(&mut self, value: &OwnedValue) -> &mut Self {
-        let t = format!("print {}", value);
+        let t = format!("print {value}");
         self.push(t);
         self
     }
@@ -686,18 +686,18 @@ impl OwnedIRBuilder {
         let entry = &func.entry_block;
         for (name, block) in &func.blocks {
             if name == entry {
-                out.push_str(&format!("{}:\n", name));
+                out.push_str(&format!("{name}:\n"));
                 for inst in &block.instructions {
-                    out.push_str(&format!("  {}\n", inst));
+                    out.push_str(&format!("  {inst}\n"));
                 }
                 break;
             }
         }
         for (name, block) in &func.blocks {
             if name != entry {
-                out.push_str(&format!("{}:\n", name));
+                out.push_str(&format!("{name}:\n"));
                 for inst in &block.instructions {
-                    out.push_str(&format!("  {}\n", inst));
+                    out.push_str(&format!("  {inst}\n"));
                 }
             }
         }
