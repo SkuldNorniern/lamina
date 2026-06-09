@@ -1,8 +1,8 @@
 //! Tail call optimization transform for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::types::{MirType, ScalarType};
 use crate::mir::{Block, Function, Instruction, Operand, Register};
-use crate::mir::types::{ScalarType, MirType};
 
 /// Tail call optimization that converts tail calls into jumps.
 ///
@@ -116,11 +116,6 @@ impl TailCallOptimization {
             (Some(Operand::Register(ret_reg)), Some(call_reg)) => ret_reg == call_reg,
             // No return value from both
             (None, None) => true,
-            // Call has no result but function returns something - not a tail call
-            (_, None) => false,
-            // Call has result but function returns nothing - not a tail call
-            (None, Some(_)) => false,
-            // Return value doesn't match call result
             _ => false,
         }
     }
@@ -190,10 +185,10 @@ impl TailCallOptimization {
                 // Check if immediate fits in the type
                 match (param_ty, imm) {
                     (MirType::Scalar(s), _) => match (s, imm) {
-                        (ScalarType::I64, crate::mir::Immediate::I64(_)) => true,
-                        (ScalarType::I32, crate::mir::Immediate::I32(_)) => true,
-                        (ScalarType::I16, crate::mir::Immediate::I16(_)) => true,
-                        (ScalarType::I8, crate::mir::Immediate::I8(_)) => true,
+                        (ScalarType::I64, crate::mir::Immediate::I64(_))
+                        | (ScalarType::I32, crate::mir::Immediate::I32(_))
+                        | (ScalarType::I16, crate::mir::Immediate::I16(_))
+                        | (ScalarType::I8, crate::mir::Immediate::I8(_)) => true,
                         // Allow smaller immediates to fit in larger types?
                         // Usually MIR expects exact type match for immediates
                         _ => false,

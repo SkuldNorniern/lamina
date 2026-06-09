@@ -24,8 +24,9 @@ fn identity_copy_source(instr: &Instruction) -> Option<(&Register, &Register)> {
         return None;
     };
     let src = match op {
-        IntBinOp::Add | IntBinOp::Sub | IntBinOp::Xor if is_imm(rhs, 0) => as_reg(lhs)?,
-        IntBinOp::Or if is_imm(rhs, 0) => as_reg(lhs)?,
+        IntBinOp::Add | IntBinOp::Sub | IntBinOp::Xor | IntBinOp::Or if is_imm(rhs, 0) => {
+            as_reg(lhs)?
+        }
         IntBinOp::Or if is_imm(lhs, 0) => as_reg(rhs)?,
         IntBinOp::Mul if is_imm(rhs, 1) => as_reg(lhs)?,
         IntBinOp::Mul if is_imm(lhs, 1) => as_reg(rhs)?,

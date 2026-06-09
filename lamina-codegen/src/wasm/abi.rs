@@ -31,20 +31,18 @@ impl WasmABI {
 
     /// Get the WASM type for MIR types (currently only i64).
     pub fn get_wasm_type(&self, ty: &lamina_mir::MirType) -> &'static str {
-        match ty {
-            lamina_mir::MirType::Scalar(lamina_mir::ScalarType::I64) => "i64",
-            _ => "i64",
-        }
+        let _ = ty;
+        "i64"
     }
 
     /// Generate WASM global variable declaration for virtual registers.
     pub fn generate_global_decl(&self, index: usize) -> String {
-        format!("  (global $vreg{} (mut i64) (i64.const 0))", index)
+        format!("  (global $vreg{index} (mut i64) (i64.const 0))")
     }
 
     /// Generate WASM local variable declaration.
     pub fn generate_local_decl(&self, index: usize) -> String {
-        format!("    (local $l{} i64)", index)
+        format!("    (local $l{index} i64)")
     }
 }
 

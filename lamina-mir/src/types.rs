@@ -52,14 +52,10 @@ impl MirType {
     pub fn size_bytes(&self) -> usize {
         match self {
             MirType::Scalar(s) => match s {
-                ScalarType::I1 => 1,
-                ScalarType::I8 => 1,
+                ScalarType::I1 | ScalarType::I8 => 1,
                 ScalarType::I16 => 2,
-                ScalarType::I32 => 4,
-                ScalarType::I64 => 8,
-                ScalarType::F32 => 4,
-                ScalarType::F64 => 8,
-                ScalarType::Ptr => 8, // Assume 64-bit pointers for now
+                ScalarType::I32 | ScalarType::F32 => 4,
+                ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr => 8,
             },
             MirType::Vector(v) => match v {
                 VectorType::V128(_) => 16,
@@ -171,8 +167,8 @@ impl fmt::Display for VectorLane {
 impl fmt::Display for VectorType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            VectorType::V128(lane) => write!(f, "v128<{}>", lane),
-            VectorType::V256(lane) => write!(f, "v256<{}>", lane),
+            VectorType::V128(lane) => write!(f, "v128<{lane}>"),
+            VectorType::V256(lane) => write!(f, "v256<{lane}>"),
         }
     }
 }
@@ -180,8 +176,8 @@ impl fmt::Display for VectorType {
 impl fmt::Display for MirType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MirType::Scalar(s) => write!(f, "{}", s),
-            MirType::Vector(v) => write!(f, "{}", v),
+            MirType::Scalar(s) => write!(f, "{s}"),
+            MirType::Vector(v) => write!(f, "{v}"),
         }
     }
 }

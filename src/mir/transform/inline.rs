@@ -103,8 +103,7 @@ impl ModuleInlining {
             .sum();
         if total_instructions > MAX_TOTAL_INSTRUCTIONS {
             return Err(format!(
-                "Module too large for inlining ({} instructions, max {})",
-                total_instructions, MAX_TOTAL_INSTRUCTIONS
+                "Module too large for inlining ({total_instructions} instructions, max {MAX_TOTAL_INSTRUCTIONS})"
             ));
         }
 
@@ -172,8 +171,7 @@ impl ModuleInlining {
 
         if iterations >= MAX_INLINE_ITERATIONS {
             return Err(format!(
-                "Inlining did not converge after {} iterations",
-                MAX_INLINE_ITERATIONS
+                "Inlining did not converge after {MAX_INLINE_ITERATIONS} iterations"
             ));
         }
 
@@ -481,12 +479,8 @@ impl ModuleInlining {
         F: FnMut(&Register) -> Register,
     {
         match instr {
-            Instruction::IntBinary { dst, lhs, rhs, .. } => {
-                *dst = map_reg(dst);
-                self.map_operand_register(lhs, map_reg);
-                self.map_operand_register(rhs, map_reg);
-            }
-            Instruction::FloatBinary { dst, lhs, rhs, .. } => {
+            Instruction::IntBinary { dst, lhs, rhs, .. }
+            | Instruction::FloatBinary { dst, lhs, rhs, .. } => {
                 *dst = map_reg(dst);
                 self.map_operand_register(lhs, map_reg);
                 self.map_operand_register(rhs, map_reg);
@@ -647,15 +641,15 @@ impl ModuleInlining {
                 // Rename jump targets to match the new block names
                 match &mut new_instr {
                     Instruction::Jmp { target } => {
-                        *target = format!("{}{}", target, suffix);
+                        *target = format!("{target}{suffix}");
                     }
                     Instruction::Br {
                         true_target,
                         false_target,
                         ..
                     } => {
-                        *true_target = format!("{}{}", true_target, suffix);
-                        *false_target = format!("{}{}", false_target, suffix);
+                        *true_target = format!("{true_target}{suffix}");
+                        *false_target = format!("{false_target}{suffix}");
                     }
                     _ => {}
                 }
@@ -683,8 +677,7 @@ impl ModuleInlining {
         let caller_max_reg = module
             .functions
             .get(&call_site.caller)
-            .map(|f| self.find_max_register_id(f))
-            .unwrap_or(0);
+            .map_or(0, |f| self.find_max_register_id(f));
 
         let mut inlined_blocks = self.clone_and_rename_blocks(
             &callee_func.blocks,
@@ -729,12 +722,11 @@ impl ModuleInlining {
 
         // 1. Wire Caller -> Callee Entry
         // Find the actual entry block by looking for "entry" (the standard entry block name in lamina)
-        let expected_entry = format!("entry{}", suffix);
+        let expected_entry = format!("entry{suffix}");
         let callee_entry_target = inlined_blocks
             .iter()
             .find(|b| b.label == expected_entry)
-            .map(|b| b.label.clone())
-            .unwrap_or_else(|| inlined_blocks[0].label.clone()); // Fallback to first block
+            .map_or_else(|| inlined_blocks[0].label.clone(), |b| b.label.clone());
         call_block.instructions.push(Instruction::Jmp {
             target: callee_entry_target,
         });

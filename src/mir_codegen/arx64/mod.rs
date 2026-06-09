@@ -50,8 +50,7 @@ pub fn generate_mir_arx64_with_units_and_settings<W: Write>(
 ) -> Result<(), LaminaError> {
     if target_os != TargetOperatingSystem::Unknown {
         return Err(LaminaError::ValidationError(format!(
-            "ARX64 currently supports only unknown/bare-metal target OS, not {:?}",
-            target_os
+            "ARX64 currently supports only unknown/bare-metal target OS, not {target_os:?}"
         )));
     }
 
@@ -76,8 +75,8 @@ fn emit_function<W: Write>(name: &str, func: &Function, writer: &mut W) -> Resul
     let mut stack = StackLayout::new(func);
     let frame_size = align_to(stack.bytes + 16, 16);
 
-    writeln!(writer, ".globl {}", name).map_err(io_error)?;
-    writeln!(writer, "{}:", name).map_err(io_error)?;
+    writeln!(writer, ".globl {name}").map_err(io_error)?;
+    writeln!(writer, "{name}:").map_err(io_error)?;
     emit_addi(writer, SP, SP, -(frame_size as i64))?;
     emit_store(writer, "sd", RA, frame_size as i64 - 8, SP)?;
     emit_store(writer, "sd", FP, frame_size as i64 - 16, SP)?;
@@ -120,7 +119,7 @@ fn emit_instruction<W: Write>(
     writer: &mut W,
 ) -> Result<(), LaminaError> {
     match inst {
-        Instruction::Comment { text } => writeln!(writer, "    # {}", text).map_err(io_error),
+        Instruction::Comment { text } => writeln!(writer, "    # {text}").map_err(io_error),
         Instruction::IntBinary {
             op,
             ty,
@@ -146,7 +145,7 @@ fn emit_instruction<W: Write>(
                 IntBinOp::LShr => "srl",
                 IntBinOp::AShr => "sra",
             };
-            writeln!(writer, "    {} {}, {}, {}", mnemonic, SCR2, SCR0, SCR1).map_err(io_error)?;
+            writeln!(writer, "    {mnemonic} {SCR2}, {SCR0}, {SCR1}").map_err(io_error)?;
             store_reg_to_dst(writer, SCR2, dst, stack)
         }
         Instruction::IntCmp {
@@ -161,16 +160,16 @@ fn emit_instruction<W: Write>(
             emit_operand_to_reg(writer, rhs, SCR1, stack)?;
             match op {
                 IntCmpOp::SLt => {
-                    writeln!(writer, "    slt {}, {}, {}", SCR2, SCR0, SCR1).map_err(io_error)?
+                    writeln!(writer, "    slt {SCR2}, {SCR0}, {SCR1}").map_err(io_error)?
                 }
                 IntCmpOp::ULt => {
-                    writeln!(writer, "    sltu {}, {}, {}", SCR2, SCR0, SCR1).map_err(io_error)?
+                    writeln!(writer, "    sltu {SCR2}, {SCR0}, {SCR1}").map_err(io_error)?
                 }
                 IntCmpOp::SGt => {
-                    writeln!(writer, "    slt {}, {}, {}", SCR2, SCR1, SCR0).map_err(io_error)?
+                    writeln!(writer, "    slt {SCR2}, {SCR1}, {SCR0}").map_err(io_error)?
                 }
                 IntCmpOp::UGt => {
-                    writeln!(writer, "    sltu {}, {}, {}", SCR2, SCR1, SCR0).map_err(io_error)?
+                    writeln!(writer, "    sltu {SCR2}, {SCR1}, {SCR0}").map_err(io_error)?
                 }
                 IntCmpOp::Eq
                 | IntCmpOp::Ne
@@ -180,26 +179,24 @@ fn emit_instruction<W: Write>(
                 | IntCmpOp::UGe => {
                     let set = unique_local("cmp_set");
                     let done = unique_local("cmp_done");
-                    writeln!(writer, "    addi {}, r0, 0", SCR2).map_err(io_error)?;
+                    writeln!(writer, "    addi {SCR2}, r0, 0").map_err(io_error)?;
                     let branch = match op {
                         IntCmpOp::Eq => "beq",
                         IntCmpOp::Ne => "bne",
-                        IntCmpOp::SLe => "bge",
-                        IntCmpOp::ULe => "bgeu",
-                        IntCmpOp::SGe => "bge",
-                        IntCmpOp::UGe => "bgeu",
+                        IntCmpOp::SLe | IntCmpOp::SGe => "bge",
+                        IntCmpOp::ULe | IntCmpOp::UGe => "bgeu",
                         _ => unreachable!(),
                     };
                     let (lhs_reg, rhs_reg) = match op {
                         IntCmpOp::SLe | IntCmpOp::ULe => (SCR1, SCR0),
                         _ => (SCR0, SCR1),
                     };
-                    writeln!(writer, "    {} {}, {}, {}", branch, lhs_reg, rhs_reg, set)
+                    writeln!(writer, "    {branch} {lhs_reg}, {rhs_reg}, {set}")
                         .map_err(io_error)?;
-                    writeln!(writer, "    jal r0, {}", done).map_err(io_error)?;
-                    writeln!(writer, "{}:", set).map_err(io_error)?;
-                    writeln!(writer, "    addi {}, r0, 1", SCR2).map_err(io_error)?;
-                    writeln!(writer, "{}:", done).map_err(io_error)?;
+                    writeln!(writer, "    jal r0, {done}").map_err(io_error)?;
+                    writeln!(writer, "{set}:").map_err(io_error)?;
+                    writeln!(writer, "    addi {SCR2}, r0, 1").map_err(io_error)?;
+                    writeln!(writer, "{done}:").map_err(io_error)?;
                 }
             }
             store_reg_to_dst(writer, SCR2, dst, stack)
@@ -266,7 +263,7 @@ fn emit_instruction<W: Write>(
             if name == "writebyte" && args.len() == 1 {
                 emit_operand_to_reg(writer, &args[0], SCR0, stack)?;
                 emit_li(writer, SCR1, UART_BASE)?;
-                writeln!(writer, "    sb {}, 0({})", SCR0, SCR1).map_err(io_error)?;
+                writeln!(writer, "    sb {SCR0}, 0({SCR1})").map_err(io_error)?;
                 if let Some(dst) = ret {
                     emit_li(writer, RET, 1)?;
                     store_reg_to_dst(writer, RET, dst, stack)?;
@@ -296,7 +293,7 @@ fn emit_instruction<W: Write>(
             for (idx, arg) in args.iter().enumerate() {
                 emit_operand_to_reg(writer, arg, ARG_REGS[idx], stack)?;
             }
-            writeln!(writer, "    jal {}, {}", RA, name).map_err(io_error)?;
+            writeln!(writer, "    jal {RA}, {name}").map_err(io_error)?;
             if let Some(dst) = ret {
                 store_reg_to_dst(writer, RET, dst, stack)?;
             }
@@ -309,13 +306,13 @@ fn emit_instruction<W: Write>(
             emit_load(writer, "ld", RA, frame_size as i64 - 8, SP)?;
             emit_load(writer, "ld", FP, frame_size as i64 - 16, SP)?;
             emit_addi(writer, SP, SP, frame_size as i64)?;
-            writeln!(writer, "    jalr r0, 0({})", RA).map_err(io_error)
+            writeln!(writer, "    jalr r0, 0({RA})").map_err(io_error)
         }
         Instruction::Unreachable => writeln!(writer, "    ebreak").map_err(io_error),
         Instruction::SafePoint | Instruction::StackMap { .. } | Instruction::PatchPoint { .. } => {
             Ok(())
         }
-        other => unsupported(format!("ARX64 backend does not support MIR op {:?}", other)),
+        other => unsupported(format!("ARX64 backend does not support MIR op {other:?}")),
     }
 }
 
@@ -333,10 +330,10 @@ impl StackLayout {
         for block in &func.blocks {
             for inst in &block.instructions {
                 if let Some(reg) = inst.def_reg() {
-                    regs.insert(format!("{:?}", reg), reg.clone());
+                    regs.insert(format!("{reg:?}"), reg.clone());
                 }
                 for reg in inst.use_regs() {
-                    regs.insert(format!("{:?}", reg), reg.clone());
+                    regs.insert(format!("{reg:?}"), reg.clone());
                 }
             }
         }
@@ -360,8 +357,7 @@ impl StackLayout {
         match reg {
             Register::Virtual(_) => self.slots.get(reg).copied().ok_or_else(|| {
                 LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-                    "missing ARX64 stack slot for {:?}",
-                    reg
+                    "missing ARX64 stack slot for {reg:?}"
                 )))
             }),
             Register::Physical(_) => unsupported("physical destination stack slot unsupported"),
@@ -438,7 +434,7 @@ fn emit_li<W: Write>(writer: &mut W, target: &str, value: i64) -> Result<(), Lam
     }
     let hi = ((value + 0x800) >> 12) & 0x000f_ffff;
     let lo = value - (hi << 12);
-    writeln!(writer, "    lui {}, {}", target, hi).map_err(io_error)?;
+    writeln!(writer, "    lui {target}, {hi}").map_err(io_error)?;
     emit_addi(writer, target, target, lo)
 }
 
@@ -452,15 +448,15 @@ fn emit_addi_or_load_add<W: Write>(
         emit_addi(writer, dst, base, imm)
     } else {
         emit_li(writer, SCR1, imm)?;
-        writeln!(writer, "    add {}, {}, {}", dst, base, SCR1).map_err(io_error)
+        writeln!(writer, "    add {dst}, {base}, {SCR1}").map_err(io_error)
     }
 }
 
 fn emit_addi<W: Write>(writer: &mut W, dst: &str, src: &str, imm: i64) -> Result<(), LaminaError> {
     if !fits_i12(imm) {
-        return unsupported(format!("ARX64 addi immediate {} outside 12-bit range", imm));
+        return unsupported(format!("ARX64 addi immediate {imm} outside 12-bit range"));
     }
-    writeln!(writer, "    addi {}, {}, {}", dst, src, imm).map_err(io_error)
+    writeln!(writer, "    addi {dst}, {src}, {imm}").map_err(io_error)
 }
 
 fn emit_load<W: Write>(
@@ -471,9 +467,9 @@ fn emit_load<W: Write>(
     base: &str,
 ) -> Result<(), LaminaError> {
     if !fits_i12(offset) {
-        return unsupported(format!("ARX64 load offset {} outside 12-bit range", offset));
+        return unsupported(format!("ARX64 load offset {offset} outside 12-bit range"));
     }
-    writeln!(writer, "    {} {}, {}({})", mnemonic, dst, offset, base).map_err(io_error)
+    writeln!(writer, "    {mnemonic} {dst}, {offset}({base})").map_err(io_error)
 }
 
 fn emit_store<W: Write>(
@@ -484,12 +480,9 @@ fn emit_store<W: Write>(
     base: &str,
 ) -> Result<(), LaminaError> {
     if !fits_i12(offset) {
-        return unsupported(format!(
-            "ARX64 store offset {} outside 12-bit range",
-            offset
-        ));
+        return unsupported(format!("ARX64 store offset {offset} outside 12-bit range"));
     }
-    writeln!(writer, "    {} {}, {}({})", mnemonic, src, offset, base).map_err(io_error)
+    writeln!(writer, "    {mnemonic} {src}, {offset}({base})").map_err(io_error)
 }
 
 fn base_offset(addr: &AddressMode) -> Result<(&Register, i64), LaminaError> {
@@ -508,7 +501,7 @@ fn load_mnemonic(ty: &MirType) -> Result<&'static str, LaminaError> {
         MirType::Scalar(ScalarType::I32) => Ok("lw"),
         MirType::Scalar(ScalarType::I64 | ScalarType::Ptr) => Ok("ld"),
         MirType::Scalar(ScalarType::F32 | ScalarType::F64) | MirType::Vector(_) => {
-            unsupported(format!("ARX64 load unsupported type {}", ty))
+            unsupported(format!("ARX64 load unsupported type {ty}"))
         }
     }
 }
@@ -520,7 +513,7 @@ fn store_mnemonic(ty: &MirType) -> Result<&'static str, LaminaError> {
         MirType::Scalar(ScalarType::I32) => Ok("sw"),
         MirType::Scalar(ScalarType::I64 | ScalarType::Ptr) => Ok("sd"),
         MirType::Scalar(ScalarType::F32 | ScalarType::F64) | MirType::Vector(_) => {
-            unsupported(format!("ARX64 store unsupported type {}", ty))
+            unsupported(format!("ARX64 store unsupported type {ty}"))
         }
     }
 }
@@ -536,8 +529,7 @@ fn ensure_gpr_scalar(ty: &MirType) -> Result<(), LaminaError> {
             | ScalarType::Ptr,
         ) => Ok(()),
         _ => unsupported(format!(
-            "ARX64 backend supports integer scalar MIR only, got {}",
-            ty
+            "ARX64 backend supports integer scalar MIR only, got {ty}"
         )),
     }
 }
@@ -577,8 +569,7 @@ fn fits_i12(value: i64) -> bool {
 
 fn io_error(error: std::io::Error) -> LaminaError {
     LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(format!(
-        "ARX64 asm write failed: {}",
-        error
+        "ARX64 asm write failed: {error}"
     )))
 }
 
