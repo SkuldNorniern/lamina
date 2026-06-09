@@ -172,10 +172,7 @@ impl TransformPipeline {
         pipeline
     }
 
-    pub fn apply_to_function(
-        &self,
-        func: &mut Function,
-    ) -> Result<TransformStats, String> {
+    pub fn apply_to_function(&self, func: &mut Function) -> Result<TransformStats, String> {
         let total_instructions: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
         const MAX_INSTRUCTIONS: usize = 100_000;
         if total_instructions > MAX_INSTRUCTIONS {
@@ -279,7 +276,7 @@ impl Default for TransformPipeline {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::instruction::{Instruction, IntBinOp, Operand, Immediate};
+    use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
     use crate::mir::register::Register;
     use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 

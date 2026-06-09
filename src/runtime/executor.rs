@@ -4,7 +4,10 @@
 //! using the platform C ABI.
 
 use super::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
-use crate::mir::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register, Signature, Function, MirType, ScalarType};
+use crate::mir::{
+    Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register, ScalarType,
+    Signature,
+};
 #[cfg(target_arch = "aarch64")]
 use std::arch::asm;
 use std::collections::HashMap;
@@ -268,17 +271,12 @@ pub unsafe fn execute_jit_function(
         .into());
     }
 
-    let all_i64 = sig.params.iter().all(|p| {
-        matches!(
-            p.ty,
-            MirType::Scalar(ScalarType::I64)
-        )
-    });
+    let all_i64 = sig
+        .params
+        .iter()
+        .all(|p| matches!(p.ty, MirType::Scalar(ScalarType::I64)));
 
-    let returns_i64 = matches!(
-        sig.ret_ty.as_ref(),
-        Some(MirType::Scalar(ScalarType::I64))
-    );
+    let returns_i64 = matches!(sig.ret_ty.as_ref(), Some(MirType::Scalar(ScalarType::I64)));
     let returns_void = sig.ret_ty.is_none();
 
     if !all_i64 {

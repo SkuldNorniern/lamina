@@ -3,7 +3,10 @@
 use crate::mir::transform::compute_back_edge_headers;
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Immediate, Instruction, MirType, Operand, Register, ScalarType, IntBinOp, FloatBinOp};
+use crate::mir::{
+    Block, FloatBinOp, Function, Immediate, Instruction, IntBinOp, MirType, Operand, Register,
+    ScalarType,
+};
 use std::collections::{HashMap, HashSet};
 
 /// Common Subexpression Elimination (CSE)
@@ -141,20 +144,10 @@ impl CommonSubexpressionElimination {
         // Only allow simple arithmetic operations for CSE in loop bodies
         match instr {
             Instruction::IntBinary { op, .. } => {
-                matches!(
-                    op,
-                    IntBinOp::Add
-                        | IntBinOp::Sub
-                        | IntBinOp::Mul
-                )
+                matches!(op, IntBinOp::Add | IntBinOp::Sub | IntBinOp::Mul)
             }
             Instruction::FloatBinary { op, .. } => {
-                matches!(
-                    op,
-                    FloatBinOp::FAdd
-                        | FloatBinOp::FSub
-                        | FloatBinOp::FMul
-                )
+                matches!(op, FloatBinOp::FAdd | FloatBinOp::FSub | FloatBinOp::FMul)
             }
             _ => false, // Only simple arithmetic for loop CSE
         }
