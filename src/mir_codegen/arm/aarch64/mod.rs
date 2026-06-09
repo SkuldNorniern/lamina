@@ -13,7 +13,9 @@ use std::sync::Arc;
 use util::{emit_mov_imm64, imm_to_u64};
 
 use crate::mir::register::RegisterClass;
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir::{
+    AddressMode, Instruction as MirInst, IntBinOp, Module as MirModule, Operand, Register,
+};
 use crate::mir_codegen::common::{
     CodegenBase, compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
 };
@@ -311,62 +313,62 @@ fn emit_block<W: Write>(
                 let is32 = ty.size_bytes() == 4;
                 let dl = if is32 { w_alias(s_d) } else { x_alias(s_d) };
                 let rl = if is32 { w_alias(s_l) } else { x_alias(s_l) };
-                let _lhs_is_reg = matches!(lhs, crate::mir::Operand::Register(_));
+                let _lhs_is_reg = matches!(lhs, Operand::Register(_));
                 match op {
-                    crate::mir::IntBinOp::Add => {
+                    IntBinOp::Add => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    add {}, {}, {}", dl, rl, rr)?;
                     }
-                    crate::mir::IntBinOp::Sub => {
+                    IntBinOp::Sub => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sub {}, {}, {}", dl, rl, rr)?;
                     }
-                    crate::mir::IntBinOp::Mul => {
+                    IntBinOp::Mul => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    mul {}, {}, {}", dl, rl, rr)?;
                     }
-                    crate::mir::IntBinOp::UDiv => {
+                    IntBinOp::UDiv => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    udiv {}, {}, {}", dl, rl, rr)?;
                     }
-                    crate::mir::IntBinOp::SDiv => {
+                    IntBinOp::SDiv => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sdiv {}, {}, {}", dl, rl, rr)?;
                     }
-                    crate::mir::IntBinOp::URem => {
+                    IntBinOp::URem => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    udiv {}, {}, {}", dl, rl, rr)?;
                         writeln!(w, "    msub {}, {}, {}, {}", dl, dl, rr, rl)?;
                     }
-                    crate::mir::IntBinOp::SRem => {
+                    IntBinOp::SRem => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sdiv {}, {}, {}", dl, rl, rr)?;
                         writeln!(w, "    msub {}, {}, {}, {}", dl, dl, rr, rl)?;
                     }
-                    crate::mir::IntBinOp::And => {
+                    IntBinOp::And => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    and {}, {}, {}", dl, rl, rr)?;
                     }
-                    crate::mir::IntBinOp::Or => {
+                    IntBinOp::Or => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    orr {}, {}, {}", dl, rl, rr)?;
                     }
-                    crate::mir::IntBinOp::Xor => {
+                    IntBinOp::Xor => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    eor {}, {}, {}", dl, rl, rr)?;
                     }
-                    crate::mir::IntBinOp::Shl => match rhs {
-                        crate::mir::Operand::Immediate(imm) => {
+                    IntBinOp::Shl => match rhs {
+                        Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
                             sh &= if is32 { 31 } else { 63 };
                             writeln!(w, "    lsl {}, {}, #{}", dl, rl, sh)?;
@@ -377,8 +379,8 @@ fn emit_block<W: Write>(
                             writeln!(w, "    lslv {}, {}, {}", dl, rl, rr)?;
                         }
                     },
-                    crate::mir::IntBinOp::LShr => match rhs {
-                        crate::mir::Operand::Immediate(imm) => {
+                    IntBinOp::LShr => match rhs {
+                        Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
                             sh &= if is32 { 31 } else { 63 };
                             writeln!(w, "    lsr {}, {}, #{}", dl, rl, sh)?;
@@ -389,8 +391,8 @@ fn emit_block<W: Write>(
                             writeln!(w, "    lsrv {}, {}, {}", dl, rl, rr)?;
                         }
                     },
-                    crate::mir::IntBinOp::AShr => match rhs {
-                        crate::mir::Operand::Immediate(imm) => {
+                    IntBinOp::AShr => match rhs {
+                        Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
                             sh &= if is32 { 31 } else { 63 };
                             writeln!(w, "    asr {}, {}, #{}", dl, rl, sh)?;
@@ -1018,14 +1020,14 @@ fn emit_block<W: Write>(
 /// Materialize an operand into a register.
 fn emit_materialize_operand<W: Write>(
     w: &mut W,
-    op: &crate::mir::Operand,
+    op: &Operand,
     dest: &str,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
 ) -> Result<(), crate::error::LaminaError> {
     match op {
-        crate::mir::Operand::Immediate(imm) => emit_mov_imm64(w, dest, imm_to_u64(imm))?,
-        crate::mir::Operand::Register(r) => load_reg_to(w, r, dest, frame, ra)?,
+        Operand::Immediate(imm) => emit_mov_imm64(w, dest, imm_to_u64(imm))?,
+        Operand::Register(r) => load_reg_to(w, r, dest, frame, ra)?,
     }
     Ok(())
 }
@@ -1144,13 +1146,13 @@ fn store_result<W: Write>(
 /// Materialize an address operand into a register.
 fn materialize_address<W: Write>(
     w: &mut W,
-    addr: &crate::mir::AddressMode,
+    addr: &AddressMode,
     dest: &str,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
 ) -> Result<(), crate::error::LaminaError> {
     match addr {
-        crate::mir::AddressMode::BaseOffset { base, offset } => {
+        AddressMode::BaseOffset { base, offset } => {
             // Materialize base value (should be an address) into dest
             load_reg_to(w, base, dest, frame, ra)?;
             if *offset != 0 {
@@ -1184,7 +1186,7 @@ fn materialize_address<W: Write>(
                 }
             }
         }
-        crate::mir::AddressMode::BaseIndexScale {
+        AddressMode::BaseIndexScale {
             base,
             index,
             scale,

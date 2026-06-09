@@ -1,19 +1,18 @@
 //! Utility functions for x86_64 code generation.
 
+use crate::mir::Operand;
+use crate::mir::instruction::Immediate;
 use crate::mir::register::{Register, VirtualReg};
-use crate::mir::types::MirType;
+use crate::mir::types::{MirType, ScalarType};
 
 /// Whether a MirType is a 32-bit float (`f32`).
 pub fn is_f32(ty: &MirType) -> bool {
-    matches!(ty, MirType::Scalar(crate::mir::types::ScalarType::F32))
+    matches!(ty, MirType::Scalar(ScalarType::F32))
 }
 
 /// Whether a MirType is a floating-point type (`f32` or `f64`).
 pub fn is_float(ty: &MirType) -> bool {
-    matches!(
-        ty,
-        MirType::Scalar(crate::mir::types::ScalarType::F32 | crate::mir::types::ScalarType::F64)
-    )
+    matches!(ty, MirType::Scalar(ScalarType::F32 | ScalarType::F64))
 }
 
 /// Load a float operand (stored as integer bits in a GPR stack slot) into an XMM register.
@@ -23,7 +22,7 @@ pub fn load_float_operand_to_xmm<
     W: std::io::Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
-    operand: &crate::mir::Operand,
+    operand: &Operand,
     writer: &mut W,
     reg_alloc: &RA,
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
@@ -32,17 +31,17 @@ pub fn load_float_operand_to_xmm<
 ) -> Result<(), std::io::Error> {
     let mov_to_xmm = if is_f32(ty) { "movd" } else { "movq" };
     match operand {
-        crate::mir::Operand::Register(_) => {
+        Operand::Register(_) => {
             load_operand_to_rax(operand, writer, reg_alloc, stack_slots)?;
             writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
         }
-        crate::mir::Operand::Immediate(imm) => match imm {
-            crate::mir::instruction::Immediate::F32(v) => {
+        Operand::Immediate(imm) => match imm {
+            Immediate::F32(v) => {
                 let bits = v.to_bits() as i64;
                 writeln!(writer, "    movq ${}, %rax", bits)?;
                 writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
             }
-            crate::mir::instruction::Immediate::F64(v) => {
+            Immediate::F64(v) => {
                 let bits = v.to_bits() as i64;
                 writeln!(writer, "    movq ${}, %rax", bits)?;
                 writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
@@ -148,32 +147,31 @@ pub fn load_operand_to_rax<
     W: std::io::Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
-    operand: &crate::mir::Operand,
+    operand: &Operand,
     writer: &mut W,
     reg_alloc: &RA,
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
 ) -> Result<(), std::io::Error> {
     match operand {
-        crate::mir::Operand::Register(reg) => match reg {
+        Operand::Register(reg) => match reg {
             Register::Virtual(v) => load_register_to_rax(v, writer, reg_alloc, stack_slots),
             Register::Physical(p) => {
                 writeln!(writer, "    movq %{}, %rax", p.name)?;
                 Ok(())
             }
         },
-        crate::mir::Operand::Immediate(imm) => match imm {
-            crate::mir::instruction::Immediate::I8(v) => {
+        Operand::Immediate(imm) => match imm {
+            Immediate::I8(v) => {
                 writeln!(writer, "    movq ${}, %rax", *v as i64)
             }
-            crate::mir::instruction::Immediate::I16(v) => {
+            Immediate::I16(v) => {
                 writeln!(writer, "    movq ${}, %rax", *v as i64)
             }
-            crate::mir::instruction::Immediate::I32(v) => {
+            Immediate::I32(v) => {
                 writeln!(writer, "    movq ${}, %rax", *v as i64)
             }
-            crate::mir::instruction::Immediate::I64(v) => writeln!(writer, "    movq ${}, %rax", v),
-            crate::mir::instruction::Immediate::F32(_)
-            | crate::mir::instruction::Immediate::F64(_) => {
+            Immediate::I64(v) => writeln!(writer, "    movq ${}, %rax", v),
+            Immediate::F32(_) | Immediate::F64(_) => {
                 writeln!(
                     writer,
                     "    # Floating point immediates not yet implemented"
@@ -189,14 +187,14 @@ pub fn load_operand_to_register<
     W: std::io::Write,
     RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
 >(
-    operand: &crate::mir::Operand,
+    operand: &Operand,
     writer: &mut W,
     reg_alloc: &RA,
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
     target_reg: &str,
 ) -> Result<(), std::io::Error> {
     match operand {
-        crate::mir::Operand::Register(reg) => match reg {
+        Operand::Register(reg) => match reg {
             Register::Virtual(v) => {
                 load_register_to_register(v, writer, reg_alloc, stack_slots, target_reg)
             }
@@ -205,21 +203,20 @@ pub fn load_operand_to_register<
                 Ok(())
             }
         },
-        crate::mir::Operand::Immediate(imm) => match imm {
-            crate::mir::instruction::Immediate::I8(v) => {
+        Operand::Immediate(imm) => match imm {
+            Immediate::I8(v) => {
                 writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg)
             }
-            crate::mir::instruction::Immediate::I16(v) => {
+            Immediate::I16(v) => {
                 writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg)
             }
-            crate::mir::instruction::Immediate::I32(v) => {
+            Immediate::I32(v) => {
                 writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg)
             }
-            crate::mir::instruction::Immediate::I64(v) => {
+            Immediate::I64(v) => {
                 writeln!(writer, "    movq ${}, %{}", v, target_reg)
             }
-            crate::mir::instruction::Immediate::F32(_)
-            | crate::mir::instruction::Immediate::F64(_) => {
+            Immediate::F32(_) | Immediate::F64(_) => {
                 writeln!(
                     writer,
                     "    # Floating point immediates not yet implemented"

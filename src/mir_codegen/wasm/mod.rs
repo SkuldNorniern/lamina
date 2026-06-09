@@ -4,7 +4,11 @@ use std::fs;
 use std::io::Write;
 use std::result::Result;
 
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir::{
+    AddressMode, Instruction as MirInst, MirType, Module as MirModule, Register, ScalarType,
+    VirtualReg,
+};
+use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, assemble, capability::CapabilitySet,
 };
@@ -16,8 +20,6 @@ use util::{
     emit_int_cmp_op, load_fp_operand_wasm, load_operand_wasm, load_register_wasm,
     store_fp_to_register_wasm, store_to_register_wasm,
 };
-
-use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 
 /// Trait-backed MIR ⇒ WebAssembly code generator.
 pub struct WasmCodegen<'a> {
@@ -67,7 +69,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &std::collections::HashMap<String, crate::mir::MirType>,
+        types: &std::collections::HashMap<String, MirType>,
         globals: &std::collections::HashMap<String, crate::mir::Global>,
         funcs: &std::collections::HashMap<String, crate::mir::Signature>,
         codegen_units: usize,
@@ -187,7 +189,7 @@ fn compile_single_function_wasm(
         }
     }
 
-    let mut vreg_to_local: std::collections::HashMap<crate::mir::VirtualReg, usize> =
+    let mut vreg_to_local: std::collections::HashMap<VirtualReg, usize> =
         std::collections::HashMap::new();
     for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
         vreg_to_local.insert(*vreg, local_idx);
@@ -344,7 +346,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 fn emit_instruction_wasm(
     inst: &MirInst,
     writer: &mut impl Write,
-    vreg_to_local: &std::collections::HashMap<crate::mir::VirtualReg, usize>,
+    vreg_to_local: &std::collections::HashMap<VirtualReg, usize>,
     block_labels: &std::collections::HashMap<&str, usize>,
 ) -> Result<(), crate::error::LaminaError> {
     match inst {
@@ -419,7 +421,7 @@ fn emit_instruction_wasm(
         } => {
             // Compute address: base + offset
             match addr {
-                crate::mir::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     // Load base address onto stack
                     load_register_wasm(base, writer, vreg_to_local)?;
 
@@ -431,26 +433,25 @@ fn emit_instruction_wasm(
 
                     // Emit load instruction based on type
                     match ty {
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
+                        MirType::Scalar(ScalarType::I8) => {
                             writeln!(writer, "      i64.load8_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => {
+                        MirType::Scalar(ScalarType::I16) => {
                             writeln!(writer, "      i64.load16_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
+                        MirType::Scalar(ScalarType::I32) => {
                             writeln!(writer, "      i64.load32_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                        | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
+                        MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => {
                             writeln!(writer, "      i64.load")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
+                        MirType::Scalar(ScalarType::F32) => {
                             writeln!(writer, "      f32.load")?;
                             // Convert to i64 for storage (WebAssembly uses separate stacks)
                             writeln!(writer, "      i32.reinterpret_f32")?;
                             writeln!(writer, "      i64.extend_i32_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => {
+                        MirType::Scalar(ScalarType::F64) => {
                             writeln!(writer, "      f64.load")?;
                             // Convert to i64 for storage
                             writeln!(writer, "      i64.reinterpret_f64")?;
@@ -461,7 +462,7 @@ fn emit_instruction_wasm(
                         }
                     }
                 }
-                crate::mir::AddressMode::BaseIndexScale {
+                AddressMode::BaseIndexScale {
                     base,
                     index,
                     scale,
@@ -488,25 +489,24 @@ fn emit_instruction_wasm(
 
                     // Emit load instruction based on type (same as BaseOffset)
                     match ty {
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
+                        MirType::Scalar(ScalarType::I8) => {
                             writeln!(writer, "      i64.load8_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => {
+                        MirType::Scalar(ScalarType::I16) => {
                             writeln!(writer, "      i64.load16_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
+                        MirType::Scalar(ScalarType::I32) => {
                             writeln!(writer, "      i64.load32_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                        | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
+                        MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => {
                             writeln!(writer, "      i64.load")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
+                        MirType::Scalar(ScalarType::F32) => {
                             writeln!(writer, "      f32.load")?;
                             writeln!(writer, "      i32.reinterpret_f32")?;
                             writeln!(writer, "      i64.extend_i32_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => {
+                        MirType::Scalar(ScalarType::F64) => {
                             writeln!(writer, "      f64.load")?;
                             writeln!(writer, "      i64.reinterpret_f64")?;
                         }
@@ -533,7 +533,7 @@ fn emit_instruction_wasm(
 
             // Compute address: base + offset
             match addr {
-                crate::mir::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     // Load base address onto stack
                     load_register_wasm(base, writer, vreg_to_local)?;
 
@@ -543,7 +543,7 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.add")?;
                     }
                 }
-                crate::mir::AddressMode::BaseIndexScale {
+                AddressMode::BaseIndexScale {
                     base,
                     index,
                     scale,
@@ -576,26 +576,25 @@ fn emit_instruction_wasm(
             // Emit store instruction based on type
             // Stack now: address (bottom), value (top)
             match ty {
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
+                MirType::Scalar(ScalarType::I8) => {
                     writeln!(writer, "      i64.store8")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => {
+                MirType::Scalar(ScalarType::I16) => {
                     writeln!(writer, "      i64.store16")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
+                MirType::Scalar(ScalarType::I32) => {
                     writeln!(writer, "      i64.store32")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
+                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => {
                     writeln!(writer, "      i64.store")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
+                MirType::Scalar(ScalarType::F32) => {
                     // Convert i64 to f32
                     writeln!(writer, "      i32.wrap_i64")?;
                     writeln!(writer, "      f32.reinterpret_i32")?;
                     writeln!(writer, "      f32.store")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => {
+                MirType::Scalar(ScalarType::F64) => {
                     // Convert i64 to f64
                     writeln!(writer, "      f64.reinterpret_i64")?;
                     writeln!(writer, "      f64.store")?;
