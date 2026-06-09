@@ -2,6 +2,7 @@
 name = "lamina-platform"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 authors = ["Eira <eira@nornity.com>"]
 description = "Platform and target detection for Lamina compiler"
 license = "Apache-2.0"
