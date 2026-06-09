@@ -1,6 +1,6 @@
 //! JIT compilation and execution pipeline.
 
-use super::options::{CompileOptions, toolchain_backends};
+use crate::cli::options::{CompileOptions, toolchain_backends};
 
 use lamina::runtime::{Sandbox, SandboxConfig, compile_to_runtime};
 use lamina_platform::Target;
