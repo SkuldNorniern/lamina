@@ -373,7 +373,6 @@ mod tests {
 
     #[test]
     fn test_constant_folding_float() {
-        use crate::mir::FloatBinOp;
         let cf = ConstantFolding;
 
         let mk = |op: FloatBinOp, l: f64, r: f64| {
@@ -413,7 +412,6 @@ mod tests {
 
     #[test]
     fn test_constant_folding_cmp() {
-        use crate::mir::IntCmpOp;
         let cf = ConstantFolding;
 
         let mk = |op: IntCmpOp, l: i64, r: i64| {

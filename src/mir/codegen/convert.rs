@@ -26,12 +26,12 @@ use crate::mir::{MemoryOrdering, SimdOp};
 
 /// Resolve an IR value to a MIR operand, allocating a fresh GPR binding on first encounter.
 fn resolve_operand<'a>(
-    v: &crate::ir::types::Value<'a>,
+    v: &IRVal<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut std::collections::HashMap<&'a str, Register>,
 ) -> Result<Operand, FromIRError> {
     match v {
-        crate::ir::types::Value::Variable(id) => {
+        IRVal::Variable(id) => {
             if let Some(r) = var_to_reg.get(id) {
                 Ok(Operand::Register(r.clone()))
             } else {
@@ -40,8 +40,8 @@ fn resolve_operand<'a>(
                 Ok(Operand::Register(r))
             }
         }
-        crate::ir::types::Value::Constant(lit) => literal_to_immediate(lit).map(Operand::Immediate),
-        crate::ir::types::Value::Global(_) => Err(FromIRError::UnsupportedInstruction),
+        IRVal::Constant(lit) => literal_to_immediate(lit).map(Operand::Immediate),
+        IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
     }
 }
 
@@ -61,7 +61,7 @@ fn resolve_or_alloc_gpr<'a>(
 }
 
 /// Compute the byte size of an IR type; returns `None` for unsized/void types.
-fn sizeof_ir_type(ty: &crate::ir::types::Type<'_>) -> Option<u64> {
+fn sizeof_ir_type(ty: &IRType<'_>) -> Option<u64> {
     match ty {
         IRType::Primitive(p) => Some(match p {
             IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 1,
@@ -84,7 +84,7 @@ fn sizeof_ir_type(ty: &crate::ir::types::Type<'_>) -> Option<u64> {
 }
 
 /// Bit-width for sign-extension: returns 0 for float types (unsupported).
-fn int_bits_for_sext(ty: &crate::ir::types::PrimitiveType) -> u32 {
+fn int_bits_for_sext(ty: &IRPrim) -> u32 {
     match ty {
         IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
         IRPrim::I16 | IRPrim::U16 => 16,
@@ -95,7 +95,7 @@ fn int_bits_for_sext(ty: &crate::ir::types::PrimitiveType) -> u32 {
 }
 
 /// Bit-width for bitcast: F32 = 32 bits, F64 = 64 bits (valid bitcast widths).
-fn int_bits_for_bitcast(ty: &crate::ir::types::PrimitiveType) -> u32 {
+fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
     match ty {
         IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
         IRPrim::I16 | IRPrim::U16 => 16,
@@ -231,7 +231,7 @@ fn convert_function<'a>(
 
         for (succ_label, ir_block) in &f.basic_blocks {
             for instr in &ir_block.instructions {
-                if let crate::ir::instruction::Instruction::Phi {
+                if let IRInst::Phi {
                     result,
                     ty,
                     incoming,
@@ -471,7 +471,7 @@ fn collect_regs_from_address_mode(addr: &AddressMode, used_regs: &mut HashSet<Vi
 }
 
 fn convert_instruction<'a>(
-    instr: &crate::ir::instruction::Instruction<'a>,
+    instr: &IRInst<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut std::collections::HashMap<&'a str, Register>,
 ) -> Result<Vec<Instruction>, FromIRError> {
@@ -497,7 +497,7 @@ fn convert_instruction<'a>(
     }
 
     match instr {
-        crate::ir::instruction::Instruction::Binary {
+        IRInst::Binary {
             op,
             result,
             ty,
@@ -625,7 +625,7 @@ fn convert_instruction<'a>(
         }
         // SSA merge: create a binding for the phi result so subsequent uses resolve.
         // Semantics are not materialized here; a later SSA elimination pass should lower this.
-        crate::ir::instruction::Instruction::Phi {
+        IRInst::Phi {
             result,
             ty,
             incoming: _,
@@ -640,7 +640,7 @@ fn convert_instruction<'a>(
             var_to_reg.insert(*result, dst);
             Ok(vec![])
         }
-        crate::ir::instruction::Instruction::Cmp {
+        IRInst::Cmp {
             op,
             result,
             ty,
@@ -793,7 +793,7 @@ fn convert_instruction<'a>(
             };
             Ok(vec![mir])
         }
-        crate::ir::instruction::Instruction::Br {
+        IRInst::Br {
             condition,
             true_label,
             false_label,
@@ -811,7 +811,7 @@ fn convert_instruction<'a>(
                 false_target: (*false_label).to_string(),
             }])
         }
-        crate::ir::instruction::Instruction::Switch {
+        IRInst::Switch {
             ty: _,
             value,
             default,
@@ -861,10 +861,10 @@ fn convert_instruction<'a>(
                 default: (*default).to_string(),
             }])
         }
-        crate::ir::instruction::Instruction::Jmp { target_label } => Ok(vec![Instruction::Jmp {
+        IRInst::Jmp { target_label } => Ok(vec![Instruction::Jmp {
             target: (*target_label).to_string(),
         }]),
-        crate::ir::instruction::Instruction::Ret { ty, value } => {
+        IRInst::Ret { ty, value } => {
             if matches!(ty, IRType::Void) {
                 return Ok(vec![Instruction::Ret { value: None }]);
             }
@@ -874,7 +874,7 @@ fn convert_instruction<'a>(
             };
             Ok(vec![Instruction::Ret { value: op }])
         }
-        crate::ir::instruction::Instruction::Load { result, ty, ptr } => {
+        IRInst::Load { result, ty, ptr } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
@@ -895,7 +895,7 @@ fn convert_instruction<'a>(
                 },
             }])
         }
-        crate::ir::instruction::Instruction::Store { ty, ptr, value } => {
+        IRInst::Store { ty, ptr, value } => {
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
                 IRVal::Variable(id) => var_to_reg
@@ -916,7 +916,7 @@ fn convert_instruction<'a>(
                 },
             }])
         }
-        crate::ir::instruction::Instruction::Call {
+        IRInst::Call {
             result,
             func_name,
             args,
@@ -932,7 +932,7 @@ fn convert_instruction<'a>(
                 ret,
             }])
         }
-        crate::ir::instruction::Instruction::ZeroExtend {
+        IRInst::ZeroExtend {
             result,
             source_type,
             target_type,
@@ -962,7 +962,7 @@ fn convert_instruction<'a>(
                 rhs: mask_op,
             }])
         }
-        crate::ir::instruction::Instruction::Trunc {
+        IRInst::Trunc {
             result,
             source_type: _,
             target_type,
@@ -991,7 +991,7 @@ fn convert_instruction<'a>(
                 rhs: mask_op,
             }])
         }
-        crate::ir::instruction::Instruction::SignExtend {
+        IRInst::SignExtend {
             result,
             source_type,
             target_type,
@@ -1035,7 +1035,7 @@ fn convert_instruction<'a>(
 
             Ok(instrs)
         }
-        crate::ir::instruction::Instruction::Bitcast {
+        IRInst::Bitcast {
             result,
             source_type,
             target_type,
@@ -1058,16 +1058,16 @@ fn convert_instruction<'a>(
                     let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
                     let imm = match (source_type, target_type, lit) {
-                        (IRPrim::F32, IRPrim::I32, crate::ir::types::Literal::F32(v)) => {
+                        (IRPrim::F32, IRPrim::I32, IRLit::F32(v)) => {
                             Immediate::I32(v.to_bits() as i32)
                         }
-                        (IRPrim::F64, IRPrim::I64, crate::ir::types::Literal::F64(v)) => {
+                        (IRPrim::F64, IRPrim::I64, IRLit::F64(v)) => {
                             Immediate::I64(v.to_bits() as i64)
                         }
-                        (IRPrim::I32, IRPrim::F32, crate::ir::types::Literal::I32(v)) => {
+                        (IRPrim::I32, IRPrim::F32, IRLit::I32(v)) => {
                             Immediate::I32(*v)
                         }
-                        (IRPrim::I64, IRPrim::F64, crate::ir::types::Literal::I64(v)) => {
+                        (IRPrim::I64, IRPrim::F64, IRLit::I64(v)) => {
                             Immediate::I64(*v)
                         }
                         _ => return Err(FromIRError::UnsupportedInstruction),
@@ -1084,7 +1084,7 @@ fn convert_instruction<'a>(
                 IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
             }
         }
-        crate::ir::instruction::Instruction::Select {
+        IRInst::Select {
             result,
             ty,
             cond,
@@ -1115,7 +1115,7 @@ fn convert_instruction<'a>(
                 false_val: fv,
             }])
         }
-        crate::ir::instruction::Instruction::PtrToInt {
+        IRInst::PtrToInt {
             result,
             ptr_value,
             target_type: _,
@@ -1131,7 +1131,7 @@ fn convert_instruction<'a>(
                 rhs: Operand::Immediate(Immediate::I64(0)),
             }])
         }
-        crate::ir::instruction::Instruction::IntToPtr {
+        IRInst::IntToPtr {
             result,
             int_value,
             target_type: _,
@@ -1147,7 +1147,7 @@ fn convert_instruction<'a>(
                 rhs: Operand::Immediate(Immediate::I64(0)),
             }])
         }
-        crate::ir::instruction::Instruction::MemCpy { dst, src, size } => {
+        IRInst::MemCpy { dst, src, size } => {
             let args = vec![
                 resolve_operand(dst, vreg_alloc, var_to_reg)?,
                 resolve_operand(src, vreg_alloc, var_to_reg)?,
@@ -1159,7 +1159,7 @@ fn convert_instruction<'a>(
                 ret: None,
             }])
         }
-        crate::ir::instruction::Instruction::MemMove { dst, src, size } => {
+        IRInst::MemMove { dst, src, size } => {
             let args = vec![
                 resolve_operand(dst, vreg_alloc, var_to_reg)?,
                 resolve_operand(src, vreg_alloc, var_to_reg)?,
@@ -1171,7 +1171,7 @@ fn convert_instruction<'a>(
                 ret: None,
             }])
         }
-        crate::ir::instruction::Instruction::MemSet { dst, value, size } => {
+        IRInst::MemSet { dst, value, size } => {
             let args = vec![
                 resolve_operand(dst, vreg_alloc, var_to_reg)?,
                 resolve_operand(value, vreg_alloc, var_to_reg)?,
@@ -1183,7 +1183,7 @@ fn convert_instruction<'a>(
                 ret: None,
             }])
         }
-        crate::ir::instruction::Instruction::GetFieldPtr {
+        IRInst::GetFieldPtr {
             result,
             struct_ptr,
             field_index,
@@ -1200,7 +1200,7 @@ fn convert_instruction<'a>(
             let offset = (*field_index as i32) * 8;
             Ok(vec![Instruction::Lea { dst, base, offset }])
         }
-        crate::ir::instruction::Instruction::GetElemPtr {
+        IRInst::GetElemPtr {
             result,
             array_ptr,
             index,
@@ -1222,10 +1222,10 @@ fn convert_instruction<'a>(
             };
             let idx_const = match index {
                 IRVal::Constant(lit) => match lit {
-                    crate::ir::types::Literal::I64(v) => Some(*v),
-                    crate::ir::types::Literal::I32(v) => Some(*v as i64),
-                    crate::ir::types::Literal::U64(v) => Some(*v as i64),
-                    crate::ir::types::Literal::U32(v) => Some(*v as i64),
+                    IRLit::I64(v) => Some(*v),
+                    IRLit::I32(v) => Some(*v as i64),
+                    IRLit::U64(v) => Some(*v as i64),
+                    IRLit::U32(v) => Some(*v as i64),
                     _ => None,
                 },
                 _ => None,
@@ -1271,10 +1271,10 @@ fn convert_instruction<'a>(
             }
         }
         // Debug and I/O operations: lower to calls with conventional names
-        crate::ir::instruction::Instruction::Print { value } => {
+        IRInst::Print { value } => {
             if matches!(
                 value,
-                crate::ir::types::Value::Constant(crate::ir::types::Literal::String(_))
+                IRVal::Constant(IRLit::String(_))
             ) {
                 return Err(FromIRError::PrintStringLiteralUnsupported);
             }
@@ -1285,7 +1285,7 @@ fn convert_instruction<'a>(
                 ret: None,
             }])
         }
-        crate::ir::instruction::Instruction::Write {
+        IRInst::Write {
             buffer,
             size,
             result,
@@ -1299,7 +1299,7 @@ fn convert_instruction<'a>(
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::WriteByte { value, result } => {
+        IRInst::WriteByte { value, result } => {
             let v = resolve_operand(value, vreg_alloc, var_to_reg)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
@@ -1308,7 +1308,7 @@ fn convert_instruction<'a>(
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::ReadByte { result } => {
+        IRInst::ReadByte { result } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "readbyte".to_string(),
@@ -1316,7 +1316,7 @@ fn convert_instruction<'a>(
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::WritePtr { ptr, result } => {
+        IRInst::WritePtr { ptr, result } => {
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
@@ -1325,7 +1325,7 @@ fn convert_instruction<'a>(
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::Read {
+        IRInst::Read {
             buffer,
             size,
             result,
@@ -1339,7 +1339,7 @@ fn convert_instruction<'a>(
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::Alloc {
+        IRInst::Alloc {
             result,
             alloc_type,
             allocated_ty,
@@ -1375,7 +1375,7 @@ fn convert_instruction<'a>(
                 }
             }
         }
-        crate::ir::instruction::Instruction::Dealloc { ptr } => {
+        IRInst::Dealloc { ptr } => {
             // Lower heap dealloc to a conventional call that backends can map
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::Call {
@@ -1385,7 +1385,7 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::SimdBinary {
+        IRInst::SimdBinary {
             op,
             result,
             vector_type,
@@ -1423,7 +1423,7 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::SimdUnary {
+        IRInst::SimdUnary {
             op,
             result,
             vector_type,
@@ -1452,7 +1452,7 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::AtomicLoad {
+        IRInst::AtomicLoad {
             result,
             ty,
             ptr,
@@ -1476,7 +1476,7 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::AtomicStore {
+        IRInst::AtomicStore {
             ty,
             ptr,
             value,
@@ -1500,7 +1500,7 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::Fence { ordering } => {
+        IRInst::Fence { ordering } => {
             let mir_ordering = match ordering {
                 crate::ir::instruction::MemoryOrdering::Relaxed => MemoryOrdering::Relaxed,
                 crate::ir::instruction::MemoryOrdering::Acquire => MemoryOrdering::Acquire,
@@ -1516,7 +1516,7 @@ fn convert_instruction<'a>(
     }
 }
 
-fn literal_to_immediate(l: &crate::ir::types::Literal<'_>) -> Result<Immediate, FromIRError> {
+fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
     let imm = match l {
         IRLit::I8(v) => Immediate::I8(*v),
         IRLit::I16(v) => Immediate::I16(*v),
@@ -1535,7 +1535,7 @@ fn literal_to_immediate(l: &crate::ir::types::Literal<'_>) -> Result<Immediate, 
     Ok(imm)
 }
 
-fn reg_class_for_type(ty: &crate::ir::types::Type<'_>) -> RegisterClass {
+fn reg_class_for_type(ty: &IRType<'_>) -> RegisterClass {
     match ty {
         IRType::Primitive(IRPrim::F32) | IRType::Primitive(IRPrim::F64) => RegisterClass::Fpr,
         _ => RegisterClass::Gpr,
@@ -1551,7 +1551,6 @@ mod tests {
     use crate::ir::instruction::BinaryOp;
     use crate::ir::types::{PrimitiveType, Type};
     use crate::ir::{FunctionParameter, IRBuilder};
-    use crate::mir::MirType;
 
     #[test]
     fn test_from_ir_simple_add() {
