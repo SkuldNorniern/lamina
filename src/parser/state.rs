@@ -85,8 +85,7 @@ impl<'a> ParserState<'a> {
         } else {
             let found = self
                 .current_char()
-                .map(|c| format!("'{}'", c))
-                .unwrap_or_else(|| "end of input".to_string());
+                .map_or_else(|| "end of input".to_string(), |c| format!("'{c}'"));
 
             let hint = match expected {
                 '(' => "Did you forget an opening parenthesis?",
@@ -102,12 +101,9 @@ impl<'a> ParserState<'a> {
             };
 
             let msg = if hint.is_empty() {
-                format!("Expected character '{}', but found {}", expected, found)
+                format!("Expected character '{expected}', but found {found}")
             } else {
-                format!(
-                    "Expected character '{}', but found {}\n  Hint: {}",
-                    expected, found, hint
-                )
+                format!("Expected character '{expected}', but found {found}\n  Hint: {hint}")
             };
 
             Err(self.error(msg))
@@ -127,19 +123,18 @@ impl<'a> ParserState<'a> {
             } else {
                 let found = self.peek_slice(keyword.len() + 10).unwrap_or("");
                 Err(self.error(format!(
-                    "Expected keyword '{}', but found longer identifier '{}'\n  Hint: Keywords must be followed by whitespace or punctuation, not alphanumeric characters",
-                    keyword, found
+                    "Expected keyword '{keyword}', but found longer identifier '{found}'\n  Hint: Keywords must be followed by whitespace or punctuation, not alphanumeric characters"
                 )))
             }
         } else {
             let found = self.peek_slice(keyword.len().max(20)).unwrap_or("");
             let suggestion = if found.starts_with(&keyword[..keyword.len().min(found.len())]) {
-                format!("Did you mean '{}'? (check spelling)", keyword)
+                format!("Did you mean '{keyword}'? (check spelling)")
             } else {
-                format!("Expected keyword '{}'", keyword)
+                format!("Expected keyword '{keyword}'")
             };
 
-            Err(self.error(format!("{}, but found '{}'", suggestion, found)))
+            Err(self.error(format!("{suggestion}, but found '{found}'")))
         }
     }
 
@@ -160,8 +155,7 @@ impl<'a> ParserState<'a> {
                 "Identifiers must start with a letter (a-z, A-Z) or underscore (_)"
             };
             return Err(self.error(format!(
-                "Invalid identifier start: found '{}'\n  Hint: {}",
-                found_char, hint
+                "Invalid identifier start: found '{found_char}'\n  Hint: {hint}"
             )));
         }
         self.advance();
@@ -290,8 +284,7 @@ impl<'a> ParserState<'a> {
         value_str
             .parse::<f32>()
             .map_err(|e| self.error(format!(
-                "Failed to parse float: {}\n  Hint: Float literals must be valid numbers (e.g., 3.14, -0.5, 42.0). Check for overflow or invalid format",
-                e
+                "Failed to parse float: {e}\n  Hint: Float literals must be valid numbers (e.g., 3.14, -0.5, 42.0). Check for overflow or invalid format"
             )))
     }
 
@@ -337,7 +330,7 @@ impl<'a> ParserState<'a> {
         let context = self.get_error_context();
 
         let error_msg = if context.is_empty() {
-            format!("{} at line {}, column {}", message, line, column)
+            format!("{message} at line {line}, column {column}")
         } else {
             format!(
                 "{}\n  at line {}, column {}\n  {}\n  {}^",

@@ -65,7 +65,7 @@ pub(crate) fn calculate_dominators(func: &Function) -> HashMap<String, HashSet<S
             if block.label == func.entry {
                 continue;
             }
-            let preds = pred_map.get(&block.label).map(Vec::as_slice).unwrap_or(&[]);
+            let preds: &[String] = pred_map.get(&block.label).map_or(&[], Vec::as_slice);
             if preds.is_empty() {
                 continue;
             }
