@@ -1,7 +1,9 @@
 //! Copy propagation transform for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, Operand, Register, AddressMode};
+use crate::mir::{
+    AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
+};
 use std::collections::HashMap;
 
 fn as_reg(operand: &Operand) -> Option<&Register> {

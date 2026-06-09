@@ -1,9 +1,9 @@
 //! Tail call optimization transform for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::types::{MirType, ScalarType};
-use crate::mir::{Block, Function, Instruction, Operand, Register, Immediate};
 use crate::mir::function::Signature;
+use crate::mir::types::{MirType, ScalarType};
+use crate::mir::{Block, Function, Immediate, Instruction, Operand, Register};
 
 /// Tail call optimization that converts tail calls into jumps.
 ///
@@ -77,11 +77,7 @@ impl TailCallOptimization {
     }
 
     /// Optimize tail calls within a single block
-    fn optimize_block_tail_calls(
-        &self,
-        func_sig: &Signature,
-        block: &mut Block,
-    ) -> bool {
+    fn optimize_block_tail_calls(&self, func_sig: &Signature, block: &mut Block) -> bool {
         let mut changed = false;
 
         // Find the last instruction in the block

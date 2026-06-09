@@ -1,7 +1,10 @@
 //! Function inlining transforms for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Module, Operand, Register, RegisterClass, AddressMode, VirtualReg, IntBinOp, Immediate};
+use crate::mir::{
+    AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Module, Operand, Register,
+    RegisterClass, VirtualReg,
+};
 use std::cell::Cell;
 use std::collections::HashMap;
 
@@ -905,12 +908,10 @@ impl ModuleInlining {
         register_mapping: &HashMap<Register, Register>,
     ) -> Result<AddressMode, String> {
         match addr {
-            AddressMode::BaseOffset { base, offset } => {
-                Ok(AddressMode::BaseOffset {
-                    base: self.map_register(base, register_mapping)?,
-                    offset: *offset,
-                })
-            }
+            AddressMode::BaseOffset { base, offset } => Ok(AddressMode::BaseOffset {
+                base: self.map_register(base, register_mapping)?,
+                offset: *offset,
+            }),
             AddressMode::BaseIndexScale {
                 base,
                 index,

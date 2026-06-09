@@ -1,8 +1,8 @@
 //! Memory optimization transforms for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{AddressMode, Function, Instruction, Operand, Register, IntBinOp};
 use crate::mir::instruction::Immediate;
+use crate::mir::{AddressMode, Function, Instruction, IntBinOp, Operand, Register};
 use std::collections::HashMap;
 
 /// Memory optimization transform performing redundant load elimination.
@@ -88,9 +88,7 @@ impl MemoryOptimization {
                                     ty: *ty,
                                     dst: dst.clone(),
                                     lhs: stored_val.clone(),
-                                    rhs: Operand::Immediate(
-                                        Immediate::I64(0),
-                                    ),
+                                    rhs: Operand::Immediate(Immediate::I64(0)),
                                 });
                                 // record latest load destination
                                 last_load.insert(key, dst.clone());
@@ -101,9 +99,7 @@ impl MemoryOptimization {
                                     ty: *ty,
                                     dst: dst.clone(),
                                     lhs: Operand::Register(prev_reg.clone()),
-                                    rhs: Operand::Immediate(
-                                        Immediate::I64(0),
-                                    ),
+                                    rhs: Operand::Immediate(Immediate::I64(0)),
                                 });
                                 // record latest load destination
                                 last_load.insert(key, dst.clone());
