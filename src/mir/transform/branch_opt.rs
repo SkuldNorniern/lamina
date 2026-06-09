@@ -119,14 +119,15 @@ impl BranchOptimization {
 
         reachable
     }
-
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, Instruction, MirType, Operand, ScalarType, VirtualReg};
+    use crate::mir::{
+        Block, FunctionBuilder, Immediate, Instruction, MirType, Operand, ScalarType, VirtualReg,
+    };
 
     #[test]
     fn test_remove_unreachable_blocks() {
@@ -140,15 +141,15 @@ mod tests {
             })
             .block("block1")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(1))),
+                value: Some(Operand::Immediate(Immediate::I64(1))),
             })
             .block("block2")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(2))),
+                value: Some(Operand::Immediate(Immediate::I64(2))),
             })
             .block("unreachable")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(3))),
+                value: Some(Operand::Immediate(Immediate::I64(3))),
             })
             .build();
 
@@ -169,7 +170,7 @@ mod tests {
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(0))),
+                value: Some(Operand::Immediate(Immediate::I64(0))),
             })
             .build();
 
@@ -187,16 +188,16 @@ mod tests {
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(0))),
+                value: Some(Operand::Immediate(Immediate::I64(0))),
             })
             .build();
 
         // Add many blocks to exceed limit
         for i in 0..2000 {
             let label = format!("block{}", i);
-            let mut block = crate::mir::Block::new(&label);
+            let mut block = Block::new(&label);
             block.push(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(0))),
+                value: Some(Operand::Immediate(Immediate::I64(0))),
             });
             func.add_block(block);
         }
@@ -331,7 +332,7 @@ mod tests {
             .build();
 
         // Add unreachable block that could confuse algorithm
-        let mut dead = crate::mir::Block::new("dead");
+        let mut dead = Block::new("dead");
         dead.push(Instruction::Jmp {
             target: "entry".to_string(), // Points TO entry
         });
@@ -361,12 +362,12 @@ mod tests {
                 "exit".to_string()
             };
 
-            let mut block = crate::mir::Block::new(&label);
+            let mut block = Block::new(&label);
             block.push(Instruction::Jmp { target: next });
             func.add_block(block);
         }
 
-        let mut exit = crate::mir::Block::new("exit");
+        let mut exit = Block::new("exit");
         exit.push(Instruction::Ret { value: None });
         func.add_block(exit);
 

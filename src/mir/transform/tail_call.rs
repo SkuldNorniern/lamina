@@ -2,6 +2,7 @@
 
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Operand, Register};
+use crate::mir::types::{ScalarType, MirType};
 
 /// Tail call optimization that converts tail calls into jumps.
 ///
@@ -182,22 +183,22 @@ impl TailCallOptimization {
     }
 
     /// Check if an operand is compatible with a formal parameter type
-    fn is_compatible(&self, param_ty: crate::mir::types::MirType, arg: &Operand) -> bool {
+    fn is_compatible(&self, param_ty: MirType, arg: &Operand) -> bool {
         match arg {
             Operand::Register(_) => true, // Assume virtual registers match (optimistic)
             Operand::Immediate(imm) => {
                 // Check if immediate fits in the type
                 match (param_ty, imm) {
-                    (crate::mir::types::MirType::Scalar(s), _) => match (s, imm) {
-                        (crate::mir::types::ScalarType::I64, crate::mir::Immediate::I64(_)) => true,
-                        (crate::mir::types::ScalarType::I32, crate::mir::Immediate::I32(_)) => true,
-                        (crate::mir::types::ScalarType::I16, crate::mir::Immediate::I16(_)) => true,
-                        (crate::mir::types::ScalarType::I8, crate::mir::Immediate::I8(_)) => true,
+                    (MirType::Scalar(s), _) => match (s, imm) {
+                        (ScalarType::I64, crate::mir::Immediate::I64(_)) => true,
+                        (ScalarType::I32, crate::mir::Immediate::I32(_)) => true,
+                        (ScalarType::I16, crate::mir::Immediate::I16(_)) => true,
+                        (ScalarType::I8, crate::mir::Immediate::I8(_)) => true,
                         // Allow smaller immediates to fit in larger types?
                         // Usually MIR expects exact type match for immediates
                         _ => false,
                     },
-                    (crate::mir::types::MirType::Vector(_), _) => false, // Immediate vectors not fully supported yet in this check
+                    (MirType::Vector(_), _) => false, // Immediate vectors not fully supported yet in this check
                 }
             }
         }
