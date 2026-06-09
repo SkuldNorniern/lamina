@@ -1,5 +1,3 @@
-pub mod abi;
-pub mod regalloc;
 pub mod util;
 
 use std::fs;
@@ -10,7 +8,7 @@ use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, assemble, capability::CapabilitySet,
 };
-use abi::WasmABI;
+use lamina_codegen::wasm::WasmABI;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use util::{
     emit_float_binary_op, emit_float_cmp_op, emit_float_unary_op, emit_int_binary_op,

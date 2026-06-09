@@ -1,11 +1,11 @@
 use crate::mir::register::{Register, VirtualReg};
-use crate::mir_codegen::regalloc::RegisterAllocator;
+use lamina_codegen::LocalRegisterAllocator as RegisterAllocator;
 
 /// Load a virtual register into a destination register
 pub fn load_register_to_register<W: std::io::Write>(
     src: &VirtualReg,
     writer: &mut W,
-    reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    reg_alloc: &lamina_codegen::riscv::RiscVRegAlloc,
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
     dest_reg: &str,
 ) -> Result<(), std::io::Error> {
@@ -27,7 +27,7 @@ pub fn store_register_to_register<W: std::io::Write>(
     src_reg: &str,
     dst: &VirtualReg,
     writer: &mut W,
-    reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    reg_alloc: &lamina_codegen::riscv::RiscVRegAlloc,
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
 ) -> Result<(), std::io::Error> {
     if let Some(phys) = reg_alloc.get_mapping(dst) {
@@ -47,7 +47,7 @@ pub fn store_register_to_register<W: std::io::Write>(
 pub fn load_operand_to_register<W: std::io::Write>(
     operand: &crate::mir::Operand,
     writer: &mut W,
-    reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    reg_alloc: &lamina_codegen::riscv::RiscVRegAlloc,
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
     dest_reg: &str,
 ) -> Result<(), std::io::Error> {
@@ -121,7 +121,7 @@ pub fn emit_int_binary_op<W: std::io::Write>(
 pub fn load_fp_operand_to_register<W: std::io::Write>(
     operand: &crate::mir::Operand,
     writer: &mut W,
-    reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    reg_alloc: &lamina_codegen::riscv::RiscVRegAlloc,
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
     dest_fp_reg: &str,
     is_f32: bool,
@@ -190,7 +190,7 @@ pub fn store_fp_register_to_register<W: std::io::Write>(
     src_fp_reg: &str,
     dst: &VirtualReg,
     writer: &mut W,
-    reg_alloc: &crate::mir_codegen::riscv::regalloc::RiscVRegAlloc,
+    reg_alloc: &lamina_codegen::riscv::RiscVRegAlloc,
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
     is_f32: bool,
 ) -> Result<(), std::io::Error> {

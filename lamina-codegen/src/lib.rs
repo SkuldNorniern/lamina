@@ -21,15 +21,17 @@ pub mod regalloc;
 pub mod target_support;
 
 pub mod aarch64;
+pub mod powerpc;
 pub mod riscv;
 pub mod wasm;
 pub mod x86_64;
 
 // Re-exports for convenience
-pub use abi::Abi;
+pub use abi::{Abi, BuiltinLibrary};
 pub use regalloc::{
-    Allocation, GraphColorAllocator, LinearScanAllocator, LiveInterval, PhysRegConvertible,
-    PhysRegHandle, RegisterAllocator, intervals_interfere,
+    Allocation, GraphColorAllocator, LinearScanAllocator, LiveInterval, LocalRegisterAllocator,
+    LocalRegisterAllocatorDyn, PhysRegConvertible, PhysRegHandle, RegisterAllocator,
+    RegisterAllocatorDyn, intervals_interfere,
 };
 pub use target_support::{
     is_assembly_supported, os_uses_coff, os_uses_elf, os_uses_macho,
@@ -37,4 +39,8 @@ pub use target_support::{
 };
 
 // Architecture-specific re-exports
+pub use aarch64::{A64RegAlloc, AArch64ABI, FrameMap};
+pub use powerpc::{Ppc64Abi, Ppc64Frame, Ppc64RegAlloc};
+pub use riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc};
+pub use wasm::{WasmABI, WasmRegAlloc};
 pub use x86_64::{X64RegAlloc, X86ABI, X86Frame};

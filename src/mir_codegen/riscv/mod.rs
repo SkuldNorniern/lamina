@@ -1,11 +1,6 @@
-mod abi;
-mod frame;
-mod regalloc;
 mod util;
 
-use abi::RiscVAbi;
-use frame::RiscVFrame;
-use regalloc::RiscVRegAlloc;
+use lamina_codegen::riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc};
 use std::io::Write;
 use std::result::Result;
 use util::{
