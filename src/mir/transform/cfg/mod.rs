@@ -7,7 +7,84 @@
 
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Function, Instruction, Operand};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+/// Identify loop headers via back-edge detection (target block index ≤ source block index).
+pub(crate) fn compute_back_edge_headers(func: &Function) -> HashSet<String> {
+    let mut label_index: HashMap<&str, usize> = HashMap::new();
+    for (i, b) in func.blocks.iter().enumerate() {
+        label_index.insert(&b.label, i);
+    }
+    let mut headers: HashSet<String> = HashSet::new();
+    for (i, b) in func.blocks.iter().enumerate() {
+        for succ in b.successors() {
+            if let Some(&tidx) = label_index.get(succ.as_str())
+                && tidx <= i
+            {
+                headers.insert(succ);
+            }
+        }
+    }
+    headers
+}
+
+/// Compute dominator sets via iterative dataflow.
+///
+/// Returns a map from block label → set of block labels that dominate it (including itself).
+pub(crate) fn calculate_dominators(func: &Function) -> HashMap<String, HashSet<String>> {
+    let all_blocks: HashSet<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
+
+    let mut pred_map: HashMap<String, Vec<String>> = HashMap::new();
+    for label in &all_blocks {
+        pred_map.insert(label.clone(), Vec::new());
+    }
+    for block in &func.blocks {
+        for succ in block.successors() {
+            pred_map.entry(succ).or_default().push(block.label.clone());
+        }
+    }
+
+    let mut dominators: HashMap<String, HashSet<String>> = HashMap::new();
+    for block in &func.blocks {
+        if block.label == func.entry {
+            let mut set = HashSet::new();
+            set.insert(block.label.clone());
+            dominators.insert(block.label.clone(), set);
+        } else {
+            dominators.insert(block.label.clone(), all_blocks.clone());
+        }
+    }
+
+    let mut changed = true;
+    const MAX_ITERATIONS: usize = 1000;
+    let mut iterations = 0;
+    while changed && iterations < MAX_ITERATIONS {
+        changed = false;
+        iterations += 1;
+        for block in &func.blocks {
+            if block.label == func.entry {
+                continue;
+            }
+            let preds = pred_map.get(&block.label).map(Vec::as_slice).unwrap_or(&[]);
+            if preds.is_empty() {
+                continue;
+            }
+            let mut new_doms: HashSet<String> =
+                dominators.get(&preds[0]).cloned().unwrap_or_default();
+            for pred in &preds[1..] {
+                if let Some(pred_doms) = dominators.get(pred) {
+                    new_doms = new_doms.intersection(pred_doms).cloned().collect();
+                }
+            }
+            new_doms.insert(block.label.clone());
+            if dominators.get(&block.label) != Some(&new_doms) {
+                dominators.insert(block.label.clone(), new_doms);
+                changed = true;
+            }
+        }
+    }
+    dominators
+}
 
 /// Simple CFG simplifications:
 /// - br with identical true/false targets -> jmp

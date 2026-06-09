@@ -3,7 +3,7 @@
 use std::collections::{HashSet, VecDeque};
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Function, Instruction};
+use crate::mir::Function;
 
 /// Branch optimization that eliminates unreachable branches.
 #[derive(Default)]
@@ -70,7 +70,7 @@ impl BranchOptimization {
             .blocks
             .iter()
             .filter(|b| !to_remove.contains(&b.label))
-            .flat_map(Self::block_successors)
+            .flat_map(|b| b.successors())
             .collect();
 
         let safe_to_remove: HashSet<String> =
@@ -109,7 +109,7 @@ impl BranchOptimization {
             iterations += 1;
 
             if let Some(block) = func.get_block(&current_label) {
-                for succ in Self::block_successors(block) {
+                for succ in block.successors() {
                     if reachable.insert(succ.clone()) {
                         worklist.push_back(succ);
                     }
@@ -120,30 +120,6 @@ impl BranchOptimization {
         reachable
     }
 
-    fn block_successors(block: &crate::mir::Block) -> Vec<String> {
-        let mut targets = Vec::new();
-        for instr in &block.instructions {
-            match instr {
-                Instruction::Jmp { target } => targets.push(target.clone()),
-                Instruction::Br {
-                    true_target,
-                    false_target,
-                    ..
-                } => {
-                    targets.push(true_target.clone());
-                    targets.push(false_target.clone());
-                }
-                Instruction::Switch { cases, default, .. } => {
-                    targets.push(default.clone());
-                    for (_, case_target) in cases {
-                        targets.push(case_target.clone());
-                    }
-                }
-                _ => {}
-            }
-        }
-        targets
-    }
 }
 
 #[cfg(test)]

@@ -1,5 +1,7 @@
 //! Loop optimization transforms for MIR.
 
+use crate::mir::transform::calculate_dominators;
+
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, IntBinOp, IntCmpOp, Operand, Register};
 use std::collections::{HashMap, HashSet};
@@ -163,7 +165,7 @@ impl LoopInvariantCodeMotion {
     fn find_loops(&self, func: &Function) -> Vec<LoopInfo> {
         let mut loops = Vec::new();
 
-        let dominators = self.calculate_dominators(func);
+        let dominators = calculate_dominators(func);
 
         for block in &func.blocks {
             for instr in &block.instructions {
@@ -231,69 +233,6 @@ impl LoopInvariantCodeMotion {
         }
     }
 
-    fn calculate_dominators(&self, func: &Function) -> HashMap<String, HashSet<String>> {
-        let mut dominators: HashMap<String, HashSet<String>> = HashMap::new();
-        let all_blocks: HashSet<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
-
-        // Initialize: value for entry is {entry}, others are all blocks
-        for block in &func.blocks {
-            if block.label == func.entry {
-                let mut set = HashSet::new();
-                set.insert(block.label.clone());
-                dominators.insert(block.label.clone(), set);
-            } else {
-                dominators.insert(block.label.clone(), all_blocks.clone());
-            }
-        }
-
-        let mut changed = true;
-        while changed {
-            changed = false;
-
-            for block in &func.blocks {
-                if block.label == func.entry {
-                    continue;
-                }
-
-                // Intersection of dominators of all predecessors
-                let mut new_doms: Option<HashSet<String>> = None;
-
-                // Find predecessors
-                let preds: Vec<&Block> = func
-                    .blocks
-                    .iter()
-                    .filter(|pred| self.has_edge_to(func, &pred.label, &block.label))
-                    .collect();
-
-                if preds.is_empty() {
-                    continue;
-                }
-
-                for pred in preds {
-                    if let Some(pred_doms) = dominators.get(&pred.label) {
-                        if let Some(current_intersect) = &mut new_doms {
-                            current_intersect.retain(|d| pred_doms.contains(d));
-                        } else {
-                            new_doms = Some(pred_doms.clone());
-                        }
-                    }
-                }
-
-                let mut final_doms = new_doms.unwrap_or_default();
-                final_doms.insert(block.label.clone());
-
-                if let Some(current_doms) = dominators.get(&block.label)
-                    && final_doms != *current_doms
-                {
-                    dominators.insert(block.label.clone(), final_doms);
-                    changed = true;
-                }
-            }
-        }
-
-        dominators
-    }
-
     fn analyze_loop(
         &self,
         func: &Function,
@@ -357,20 +296,9 @@ impl LoopInvariantCodeMotion {
     }
 
     fn has_edge_to(&self, func: &Function, from: &str, to: &str) -> bool {
-        if let Some(block) = func.blocks.iter().find(|b| b.label == *from) {
-            for instr in &block.instructions {
-                match instr {
-                    Instruction::Jmp { target } if target == to => return true,
-                    Instruction::Br {
-                        true_target,
-                        false_target,
-                        ..
-                    } if true_target == to || false_target == to => return true,
-                    _ => {}
-                }
-            }
-        }
-        false
+        func.get_block(from)
+            .map(|b| b.successors().iter().any(|s| s == to))
+            .unwrap_or(false)
     }
 
     fn optimize_loop(&self, func: &mut Function, loop_info: &LoopInfo) -> Result<bool, String> {
