@@ -5,7 +5,7 @@
 
 mod util;
 
-use lamina_codegen::aarch64::{AArch64ABI, A64RegAlloc, FrameMap};
+use lamina_codegen::aarch64::{A64RegAlloc, AArch64ABI, FrameMap};
 use std::io::Write;
 use std::result::Result;
 use util::{emit_mov_imm64, imm_to_u64};
