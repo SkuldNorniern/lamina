@@ -23,12 +23,12 @@ use std::fmt;
 use std::io::Write;
 
 use crate::error::LaminaError;
-use crate::mir::{Global, MirType, Signature};
+use crate::mir::{Global, MirType, Module, Signature};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Generates assembly from MIR for the requested target architecture and OS.
 pub fn generate_mir_to_target<W: Write>(
-    module: &crate::mir::Module,
+    module: &Module,
     writer: &mut W,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
@@ -47,7 +47,7 @@ pub fn generate_mir_to_target<W: Write>(
 /// Like [`generate_mir_to_target`], but honors [`MirCodegenSettings`] for register allocation
 /// and optional assembly debug directives.
 pub fn generate_mir_to_target_with_settings<W: Write>(
-    module: &crate::mir::Module,
+    module: &Module,
     writer: &mut W,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
@@ -164,7 +164,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     note = "Use generate_mir_to_target with TargetArchitecture::Aarch64 instead"
 )]
 pub fn generate_mir_to_aarch64<W: Write>(
-    module: &crate::mir::Module,
+    module: &Module,
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> Result<(), LaminaError> {
@@ -177,7 +177,7 @@ pub fn generate_mir_to_aarch64<W: Write>(
     note = "Use generate_mir_to_target with TargetArchitecture::X86_64 instead"
 )]
 pub fn generate_mir_to_x86_64<W: Write>(
-    module: &crate::mir::Module,
+    module: &Module,
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> Result<(), LaminaError> {
@@ -190,7 +190,7 @@ pub fn generate_mir_to_x86_64<W: Write>(
     note = "Use generate_mir_to_target with TargetArchitecture::Wasm32/Wasm64 instead"
 )]
 pub fn generate_mir_to_wasm<W: Write>(
-    module: &crate::mir::Module,
+    module: &Module,
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> Result<(), LaminaError> {
@@ -203,7 +203,7 @@ pub fn generate_mir_to_wasm<W: Write>(
     note = "Use generate_mir_to_target with TargetArchitecture::Riscv32/Riscv64/Riscv128 instead"
 )]
 pub fn generate_mir_to_riscv<W: Write>(
-    module: &crate::mir::Module,
+    module: &Module,
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> Result<(), LaminaError> {
@@ -322,7 +322,7 @@ mod tests {
     use crate::mir::codegen;
     use crate::parser;
 
-    fn create_simple_add_function() -> crate::mir::Module {
+    fn create_simple_add_function() -> Module {
         let input = r#"
         fn @add(i64 %a, i64 %b) -> i64 {
             entry:

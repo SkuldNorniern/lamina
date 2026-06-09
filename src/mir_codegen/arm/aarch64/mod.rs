@@ -13,13 +13,17 @@ use std::sync::Arc;
 use util::{emit_mov_imm64, imm_to_u64};
 
 use crate::mir::register::RegisterClass;
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir::{
+    AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
+    IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, Signature, VirtualReg,
+};
 use crate::mir_codegen::common::{
     CodegenBase, compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
 };
+use crate::error::LaminaError;
 use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-    capability::CapabilitySet,
+    validate_module_call_parameters, Codegen, CodegenError, CodegenOptions, MirCodegenSettings,
+    RegallocStrategy, capability::CapabilitySet,
 };
 
 use lamina_codegen::aarch64::{A64RegAlloc, AArch64ABI, FrameMap};
@@ -46,7 +50,7 @@ fn x_alias(reg: &str) -> String {
 
 fn compile_single_function_aarch64(
     func_name: &str,
-    func: &crate::mir::Function,
+    func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
@@ -82,7 +86,7 @@ fn compile_single_function_aarch64(
 
     let mut frame = FrameMap::from_function(func);
 
-    let global_plan: Option<HashMap<crate::mir::VirtualReg, MirAllocation<&'static str>>> =
+    let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> =
         if settings.regalloc != RegallocStrategy::Incremental {
             let pool = A64RegAlloc::gpr_pool_for_global_allocation();
             let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
@@ -228,7 +232,7 @@ pub fn generate_mir_aarch64<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_aarch64_with_units(module, writer, target_os, 1)
 }
 
@@ -237,7 +241,7 @@ pub fn generate_mir_aarch64_with_units<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_aarch64_with_units_and_settings(
         module,
         writer,
@@ -253,8 +257,8 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
-) -> Result<(), crate::error::LaminaError> {
-    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
+) -> Result<(), LaminaError> {
+    validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
     emit_print_format_section(writer, target_os)?;
     writeln!(writer, ".text")?;
 
@@ -290,7 +294,7 @@ fn emit_block<W: Write>(
     epilogue_label: &str,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines {
             *debug_line = debug_line.saturating_add(1);
@@ -311,62 +315,62 @@ fn emit_block<W: Write>(
                 let is32 = ty.size_bytes() == 4;
                 let dl = if is32 { w_alias(s_d) } else { x_alias(s_d) };
                 let rl = if is32 { w_alias(s_l) } else { x_alias(s_l) };
-                let _lhs_is_reg = matches!(lhs, crate::mir::Operand::Register(_));
+                let _lhs_is_reg = matches!(lhs, Operand::Register(_));
                 match op {
-                    crate::mir::IntBinOp::Add => {
+                    IntBinOp::Add => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    add {dl}, {rl}, {rr}")?;
                     }
-                    crate::mir::IntBinOp::Sub => {
+                    IntBinOp::Sub => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sub {dl}, {rl}, {rr}")?;
                     }
-                    crate::mir::IntBinOp::Mul => {
+                    IntBinOp::Mul => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    mul {dl}, {rl}, {rr}")?;
                     }
-                    crate::mir::IntBinOp::UDiv => {
+                    IntBinOp::UDiv => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
                     }
-                    crate::mir::IntBinOp::SDiv => {
+                    IntBinOp::SDiv => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
                     }
-                    crate::mir::IntBinOp::URem => {
+                    IntBinOp::URem => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
                         writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
                     }
-                    crate::mir::IntBinOp::SRem => {
+                    IntBinOp::SRem => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
                         writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
                     }
-                    crate::mir::IntBinOp::And => {
+                    IntBinOp::And => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    and {dl}, {rl}, {rr}")?;
                     }
-                    crate::mir::IntBinOp::Or => {
+                    IntBinOp::Or => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    orr {dl}, {rl}, {rr}")?;
                     }
-                    crate::mir::IntBinOp::Xor => {
+                    IntBinOp::Xor => {
                         emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                         let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    eor {dl}, {rl}, {rr}")?;
                     }
-                    crate::mir::IntBinOp::Shl => match rhs {
-                        crate::mir::Operand::Immediate(imm) => {
+                    IntBinOp::Shl => match rhs {
+                        Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
                             sh &= if is32 { 31 } else { 63 };
                             writeln!(w, "    lsl {dl}, {rl}, #{sh}")?;
@@ -377,8 +381,8 @@ fn emit_block<W: Write>(
                             writeln!(w, "    lslv {dl}, {rl}, {rr}")?;
                         }
                     },
-                    crate::mir::IntBinOp::LShr => match rhs {
-                        crate::mir::Operand::Immediate(imm) => {
+                    IntBinOp::LShr => match rhs {
+                        Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
                             sh &= if is32 { 31 } else { 63 };
                             writeln!(w, "    lsr {dl}, {rl}, #{sh}")?;
@@ -389,8 +393,8 @@ fn emit_block<W: Write>(
                             writeln!(w, "    lsrv {dl}, {rl}, {rr}")?;
                         }
                     },
-                    crate::mir::IntBinOp::AShr => match rhs {
-                        crate::mir::Operand::Immediate(imm) => {
+                    IntBinOp::AShr => match rhs {
+                        Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
                             sh &= if is32 { 31 } else { 63 };
                             writeln!(w, "    asr {dl}, {rl}, #{sh}")?;
@@ -432,16 +436,16 @@ fn emit_block<W: Write>(
                 }
 
                 match op {
-                    crate::mir::FloatBinOp::FAdd => {
+                    FloatBinOp::FAdd => {
                         writeln!(w, "    fadd {suffix}0, {suffix}0, {suffix}1")?
                     }
-                    crate::mir::FloatBinOp::FSub => {
+                    FloatBinOp::FSub => {
                         writeln!(w, "    fsub {suffix}0, {suffix}0, {suffix}1")?
                     }
-                    crate::mir::FloatBinOp::FMul => {
+                    FloatBinOp::FMul => {
                         writeln!(w, "    fmul {suffix}0, {suffix}0, {suffix}1")?
                     }
-                    crate::mir::FloatBinOp::FDiv => {
+                    FloatBinOp::FDiv => {
                         writeln!(w, "    fdiv {suffix}0, {suffix}0, {suffix}1")?
                     }
                 }
@@ -472,8 +476,8 @@ fn emit_block<W: Write>(
                 }
 
                 match op {
-                    crate::mir::FloatUnOp::FNeg => writeln!(w, "    fneg {suffix}0, {suffix}0")?,
-                    crate::mir::FloatUnOp::FSqrt => writeln!(w, "    fsqrt {suffix}0, {suffix}0")?,
+                    FloatUnOp::FNeg => writeln!(w, "    fneg {suffix}0, {suffix}0")?,
+                    FloatUnOp::FSqrt => writeln!(w, "    fsqrt {suffix}0, {suffix}0")?,
                 }
 
                 if is32 {
@@ -504,16 +508,16 @@ fn emit_block<W: Write>(
                     writeln!(w, "    cmp {}, {}", x_alias(s_l), x_alias(s_r))?;
                 }
                 let cond = match op {
-                    crate::mir::IntCmpOp::Eq => "eq",
-                    crate::mir::IntCmpOp::Ne => "ne",
-                    crate::mir::IntCmpOp::SLt => "lt",
-                    crate::mir::IntCmpOp::SLe => "le",
-                    crate::mir::IntCmpOp::SGt => "gt",
-                    crate::mir::IntCmpOp::SGe => "ge",
-                    crate::mir::IntCmpOp::ULt => "lo",
-                    crate::mir::IntCmpOp::ULe => "ls",
-                    crate::mir::IntCmpOp::UGt => "hi",
-                    crate::mir::IntCmpOp::UGe => "hs",
+                    IntCmpOp::Eq => "eq",
+                    IntCmpOp::Ne => "ne",
+                    IntCmpOp::SLt => "lt",
+                    IntCmpOp::SLe => "le",
+                    IntCmpOp::SGt => "gt",
+                    IntCmpOp::SGe => "ge",
+                    IntCmpOp::ULt => "lo",
+                    IntCmpOp::ULe => "ls",
+                    IntCmpOp::UGt => "hi",
+                    IntCmpOp::UGe => "hs",
                 };
                 writeln!(w, "    cset {}, {}", x_alias(s_d), cond)?;
                 store_result(w, dst, &x_alias(s_d), frame, ra)?;
@@ -547,12 +551,12 @@ fn emit_block<W: Write>(
                 }
 
                 let cond = match op {
-                    crate::mir::FloatCmpOp::Eq => "eq",
-                    crate::mir::FloatCmpOp::Ne => "ne",
-                    crate::mir::FloatCmpOp::Lt => "mi",
-                    crate::mir::FloatCmpOp::Le => "ls",
-                    crate::mir::FloatCmpOp::Gt => "gt",
-                    crate::mir::FloatCmpOp::Ge => "ge",
+                    FloatCmpOp::Eq => "eq",
+                    FloatCmpOp::Ne => "ne",
+                    FloatCmpOp::Lt => "mi",
+                    FloatCmpOp::Le => "ls",
+                    FloatCmpOp::Gt => "gt",
+                    FloatCmpOp::Ge => "ge",
                 };
 
                 writeln!(w, "    cset {}, {}", x_alias(s_d), cond)?;
@@ -980,7 +984,7 @@ fn emit_block<W: Write>(
                 // No-op in AOT path — only meaningful for JIT/GC runtimes.
             }
             MirInst::VectorOp { .. } => {
-                return Err(crate::error::LaminaError::CodegenError(
+                return Err(LaminaError::CodegenError(
                     CodegenError::UnsupportedFeature(
                         "VectorOp is not yet supported by the AArch64 backend".to_string(),
                     ),
@@ -1000,7 +1004,7 @@ fn emit_block<W: Write>(
             | MirInst::AtomicBinary { .. }
             | MirInst::AtomicCompareExchange { .. }
             | MirInst::Fence { .. } => {
-                return Err(crate::error::LaminaError::CodegenError(
+                return Err(LaminaError::CodegenError(
                     CodegenError::UnsupportedFeature(
                         "SIMD/Atomic instructions not yet supported by AArch64 backend".to_string(),
                     ),
@@ -1014,14 +1018,14 @@ fn emit_block<W: Write>(
 /// Materialize an operand into a register.
 fn emit_materialize_operand<W: Write>(
     w: &mut W,
-    op: &crate::mir::Operand,
+    op: &Operand,
     dest: &str,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     match op {
-        crate::mir::Operand::Immediate(imm) => emit_mov_imm64(w, dest, imm_to_u64(imm))?,
-        crate::mir::Operand::Register(r) => load_reg_to(w, r, dest, frame, ra)?,
+        Operand::Immediate(imm) => emit_mov_imm64(w, dest, imm_to_u64(imm))?,
+        Operand::Register(r) => load_reg_to(w, r, dest, frame, ra)?,
     }
     Ok(())
 }
@@ -1033,7 +1037,7 @@ fn load_reg_to<W: Write>(
     dest: &str,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     match r {
         Register::Virtual(v) => {
             if let Some(preg) = ra.get_mapping_for(v) {
@@ -1090,7 +1094,7 @@ fn store_result<W: Write>(
     src_reg: &str,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     match dst {
         Register::Virtual(v) => {
             if let Some(preg) = ra.get_mapping_for(v) {
@@ -1140,13 +1144,13 @@ fn store_result<W: Write>(
 /// Materialize an address operand into a register.
 fn materialize_address<W: Write>(
     w: &mut W,
-    addr: &crate::mir::AddressMode,
+    addr: &AddressMode,
     dest: &str,
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     match addr {
-        crate::mir::AddressMode::BaseOffset { base, offset } => {
+        AddressMode::BaseOffset { base, offset } => {
             // Materialize base value (should be an address) into dest
             load_reg_to(w, base, dest, frame, ra)?;
             if *offset != 0 {
@@ -1180,7 +1184,7 @@ fn materialize_address<W: Write>(
                 }
             }
         }
-        crate::mir::AddressMode::BaseIndexScale {
+        AddressMode::BaseIndexScale {
             base,
             index,
             scale,
@@ -1263,7 +1267,7 @@ impl<'a> AArch64Codegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
         codegen_units: usize,
-    ) -> Result<(), crate::error::LaminaError> {
+    ) -> Result<(), LaminaError> {
         generate_mir_aarch64_with_units_and_settings(
             module,
             writer,
@@ -1289,9 +1293,9 @@ impl<'a> Codegen for AArch64Codegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &HashMap<String, crate::mir::MirType>,
-        globals: &HashMap<String, crate::mir::Global>,
-        funcs: &HashMap<String, crate::mir::Signature>,
+        types: &HashMap<String, MirType>,
+        globals: &HashMap<String, Global>,
+        funcs: &HashMap<String, Signature>,
         codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],
