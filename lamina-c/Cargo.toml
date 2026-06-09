@@ -14,7 +14,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [dependencies]
 lamina = { path = "..", version = "0.0.10", features = ["encoder"] }
 lamina-ir = { path = "../lamina-ir", version = "0.1.0" }
-lamina-platform = { version = "0.1.0" }
+lamina-platform = { path = "../lamina-platform", version = "0.1.1" }
 
 [workspace]
 
