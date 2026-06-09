@@ -2,10 +2,10 @@
 
 use crate::mir::instruction::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
 use crate::mir::{Block, Function};
+use crate::mir::transform::compute_back_edge_headers;
 
 use super::{Transform, TransformCategory, TransformLevel};
 
-use std::collections::{HashMap, HashSet};
 
 /// Peephole optimizations that do local rewrites.
 ///
@@ -550,46 +550,6 @@ fn decompose_multiplication(const_val: i64) -> Option<(u32, i64)> {
     // which Peephole isn't well-equipped for (1->N expansion).
     // So we return None for now unless it's a pure shift (handled above).
     None
-}
-
-/// Identify loop headers via simple back-edge detection using block order.
-fn compute_back_edge_headers(func: &Function) -> HashSet<String> {
-    let mut label_index: HashMap<&str, usize> = HashMap::new();
-    for (i, b) in func.blocks.iter().enumerate() {
-        label_index.insert(&b.label, i);
-    }
-    let mut headers: HashSet<String> = HashSet::new();
-    for (i, b) in func.blocks.iter().enumerate() {
-        if let Some(term) = b.instructions.last() {
-            match term {
-                Instruction::Jmp { target } => {
-                    if let Some(&tidx) = label_index.get(target.as_str())
-                        && tidx <= i
-                    {
-                        headers.insert(target.clone());
-                    }
-                }
-                Instruction::Br {
-                    true_target,
-                    false_target,
-                    ..
-                } => {
-                    if let Some(&tidx) = label_index.get(true_target.as_str())
-                        && tidx <= i
-                    {
-                        headers.insert(true_target.clone());
-                    }
-                    if let Some(&fidx) = label_index.get(false_target.as_str())
-                        && fidx <= i
-                    {
-                        headers.insert(false_target.clone());
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    headers
 }
 
 #[cfg(test)]

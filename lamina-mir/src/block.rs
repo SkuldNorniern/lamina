@@ -80,6 +80,11 @@ impl Block {
                 false_target,
                 ..
             }) => vec![true_target.clone(), false_target.clone()],
+            Some(Instruction::Switch { cases, default, .. }) => {
+                let mut targets = vec![default.clone()];
+                targets.extend(cases.iter().map(|(_, t)| t.clone()));
+                targets
+            }
             _ => vec![],
         }
     }

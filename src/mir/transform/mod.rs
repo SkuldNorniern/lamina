@@ -25,6 +25,7 @@ mod vectorization;
 pub use addressing::AddressingCanonicalization;
 pub use branch_opt::BranchOptimization;
 pub use cfg::{CfgSimplify, JumpThreading};
+pub(crate) use cfg::{calculate_dominators, compute_back_edge_headers};
 pub use constant_folding::ConstantFolding;
 pub use copy_propagation::CopyPropagation;
 pub use cse::CommonSubexpressionElimination;
