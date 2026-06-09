@@ -4,14 +4,13 @@
 //! using the platform C ABI.
 
 use super::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
-use crate::mir::Signature;
+use crate::mir::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register, Signature};
 use std::collections::HashMap;
 
 fn evaluate_operand(
-    operand: &crate::mir::Operand,
-    register_values: &HashMap<crate::mir::Register, i64>,
+    operand: &Operand,
+    register_values: &HashMap<Register, i64>,
 ) -> Result<i64, Box<dyn std::error::Error>> {
-    use crate::mir::{Immediate, Operand};
     match operand {
         Operand::Immediate(Immediate::I8(value)) => Ok(*value as i64),
         Operand::Immediate(Immediate::I16(value)) => Ok(*value as i64),
@@ -34,8 +33,6 @@ fn interpret_mir_function(
     function: &crate::mir::Function,
     args: &[i64],
 ) -> Result<Option<i64>, Box<dyn std::error::Error>> {
-    use crate::mir::{Instruction, IntBinOp, IntCmpOp, Register};
-
     if function.sig.params.len() != args.len() {
         return Err(format!(
             "Interpreter: expected {} arguments, got {}",

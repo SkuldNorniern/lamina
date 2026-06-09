@@ -8,6 +8,7 @@ use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, assemble, capability::CapabilitySet,
 };
+
 use lamina_codegen::wasm::WasmABI;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use util::{
@@ -16,7 +17,7 @@ use util::{
     store_fp_to_register_wasm, store_to_register_wasm,
 };
 
-use crate::mir_codegen::common::CodegenBase;
+use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 
 /// Trait-backed MIR ⇒ WebAssembly code generator.
 pub struct WasmCodegen<'a> {
@@ -148,14 +149,11 @@ impl<'a> Codegen for WasmCodegen<'a> {
     }
 }
 
-use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
-
 fn compile_single_function_wasm(
     func_name: &str,
     func: &crate::mir::Function,
     target_os: TargetOperatingSystem,
 ) -> Result<Vec<u8>, CodegenError> {
-    use std::io::Write;
     let mut output = Vec::new();
     let abi = WasmABI::new(target_os);
 

@@ -39,6 +39,8 @@
 
 use std::fmt;
 
+use lamina_platform::TargetArchitecture;
+
 /// Capabilities that a codegen backend may support
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CodegenCapability {
@@ -224,8 +226,7 @@ impl CapabilitySet {
     }
 
     /// Capability set advertised for a target architecture (used for gating flags such as debug assembly).
-    pub fn for_architecture(arch: lamina_platform::TargetArchitecture) -> Self {
-        use lamina_platform::TargetArchitecture;
+    pub fn for_architecture(arch: TargetArchitecture) -> Self {
         match arch {
             TargetArchitecture::X86_64
             | TargetArchitecture::Aarch64

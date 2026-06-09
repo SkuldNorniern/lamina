@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::io::Write;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::error::LaminaError;
 use crate::mir::{
@@ -558,7 +559,6 @@ fn sanitize(s: &str) -> String {
 }
 
 fn unique_local(prefix: &str) -> String {
-    use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     format!(
         ".L_arx64_{}_{}",

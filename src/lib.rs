@@ -450,6 +450,7 @@ macro_rules! lamina {
 }
 
 use std::io::Write;
+use std::str::FromStr;
 
 /// Lamina compiler version string (from `CARGO_PKG_VERSION`).
 pub const COMPILER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -498,7 +499,6 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 ) -> Result<(), LaminaError> {
     let module = parser::parse_module(input_ir)?;
 
-    use std::str::FromStr;
     let target_obj = lamina_platform::Target::from_str(target)
         .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{}': {}", target, e)))?;
 

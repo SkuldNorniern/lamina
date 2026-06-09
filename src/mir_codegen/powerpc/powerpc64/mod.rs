@@ -16,25 +16,25 @@
 
 mod util;
 
-use lamina_codegen::powerpc::{Ppc64Abi, Ppc64Frame, Ppc64RegAlloc};
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::result::Result;
+use std::sync::Arc;
 use util::{
     load_operand_to_register, load_register_to_r3, load_register_to_register, store_r3_to_register,
 };
 
 use crate::mir::register::RegisterClass;
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet,
 };
+
+use lamina_codegen::powerpc::{Ppc64Abi, Ppc64Frame, Ppc64RegAlloc};
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-
-use crate::mir_codegen::common::CodegenBase;
 
 pub struct Ppc64Codegen<'a> {
     base: CodegenBase<'a>,
@@ -135,8 +135,6 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
         ))
     }
 }
-
-use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
 
 fn ppc64_stack_offset_for_linear_spill(off: i32) -> i32 {
     let k = ((-off) / 8) as usize;
