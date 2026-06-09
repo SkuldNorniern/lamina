@@ -1,13 +1,28 @@
 use crate::regalloc::{
-    PhysRegConvertible, PhysRegHandle, RegisterAllocator as MirRegisterAllocator,
+    LocalRegisterAllocator as MirRegisterAllocator, PhysRegConvertible, PhysRegHandle,
 };
-use lamina_mir::register::{Register, RegisterClass, VirtualReg};
+use lamina_mir::{Register, RegisterClass, VirtualReg};
+
+/// Newtype over a WASM stack slot index, used as the "physical register" for WASM.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WasmStackSlot(pub u32);
+
+impl PhysRegConvertible for WasmStackSlot {
+    fn into_handle(self) -> PhysRegHandle {
+        PhysRegHandle::Named(format!("wasm_slot_{}", self.0).leak())
+    }
+
+    fn from_handle(handle: PhysRegHandle) -> Option<Self> {
+        match handle {
+            PhysRegHandle::Named(name) => name
+                .strip_prefix("wasm_slot_")
+                .and_then(|n| n.parse().ok())
+                .map(WasmStackSlot),
+        }
+    }
+}
 
 /// WASM "register allocator" for stack-based virtual machine.
-///
-/// WASM doesn't use physical registers like x86_64, but we still need to track
-/// virtual registers for stack operations. This is a simplified allocator
-/// that maps virtual registers to stack positions.
 pub struct WasmRegAlloc {
     vreg_to_stack: std::collections::HashMap<VirtualReg, u32>,
     next_stack_slot: u32,
@@ -27,12 +42,10 @@ impl WasmRegAlloc {
         }
     }
 
-    /// Get the stack position for a virtual register
     pub fn get_stack_position(&self, vreg: &VirtualReg) -> Option<u32> {
         self.vreg_to_stack.get(vreg).copied()
     }
 
-    /// Allocate a stack position for a virtual register
     pub fn allocate_stack(&mut self, vreg: VirtualReg) -> u32 {
         if let Some(pos) = self.vreg_to_stack.get(&vreg) {
             *pos
@@ -46,30 +59,30 @@ impl WasmRegAlloc {
 }
 
 impl MirRegisterAllocator for WasmRegAlloc {
-    type PhysReg = u32; // Stack position as "physical register"
+    type PhysReg = WasmStackSlot;
 
     fn alloc_scratch(&mut self) -> Option<Self::PhysReg> {
         let pos = self.next_stack_slot;
         self.next_stack_slot += 1;
-        Some(pos)
+        Some(WasmStackSlot(pos))
     }
 
     fn free_scratch(&mut self, _phys: Self::PhysReg) {}
 
     fn get_mapping(&self, vreg: &VirtualReg) -> Option<Self::PhysReg> {
-        self.vreg_to_stack.get(vreg).copied()
+        self.vreg_to_stack.get(vreg).copied().map(WasmStackSlot)
     }
 
     fn ensure_mapping(&mut self, vreg: VirtualReg) -> Option<Self::PhysReg> {
         if vreg.class != RegisterClass::Gpr {
             return None;
         }
-        Some(self.allocate_stack(vreg))
+        Some(WasmStackSlot(self.allocate_stack(vreg)))
     }
 
     fn mapped_for_register(&self, reg: &Register) -> Option<Self::PhysReg> {
         match reg {
-            Register::Virtual(v) => self.vreg_to_stack.get(v).copied(),
+            Register::Virtual(v) => self.vreg_to_stack.get(v).copied().map(WasmStackSlot),
             Register::Physical(_) => None,
         }
     }
@@ -80,17 +93,5 @@ impl MirRegisterAllocator for WasmRegAlloc {
 
     fn is_occupied(&self, _phys: Self::PhysReg) -> bool {
         false
-    }
-}
-
-impl PhysRegConvertible for u32 {
-    fn into_handle(self) -> PhysRegHandle {
-        PhysRegHandle::Named(format!("{}", self).leak())
-    }
-
-    fn from_handle(handle: PhysRegHandle) -> Option<Self> {
-        match handle {
-            PhysRegHandle::Named(name) => name.parse().ok(),
-        }
     }
 }

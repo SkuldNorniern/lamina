@@ -1,5 +1,7 @@
-use crate::regalloc::RegisterAllocator as MirRegisterAllocator;
-use lamina_mir::register::{Register, RegisterClass, VirtualReg};
+use std::collections::HashMap;
+
+use crate::regalloc::{Allocation, LocalRegisterAllocator as MirRegisterAllocator};
+use lamina_mir::{Register, RegisterClass, VirtualReg};
 use lamina_platform::TargetOperatingSystem;
 
 /// RISC-V register allocator with platform-aware register selection.
@@ -21,8 +23,8 @@ pub struct RiscVRegAlloc {
     #[allow(dead_code)]
     target_os: TargetOperatingSystem,
     available_gprs: Vec<&'static str>,
-    allocated_gprs: std::collections::HashMap<&'static str, VirtualReg>,
-    stack_slots: std::collections::HashMap<VirtualReg, i32>,
+    allocated_gprs: HashMap<&'static str, VirtualReg>,
+    stack_slots: HashMap<VirtualReg, i32>,
     next_stack_slot: i32,
 }
 
@@ -45,13 +47,14 @@ impl RiscVRegAlloc {
         Self {
             target_os,
             available_gprs: Self::AVAILABLE_REGISTERS.to_vec(),
-            allocated_gprs: std::collections::HashMap::new(),
-            stack_slots: std::collections::HashMap::new(),
+            allocated_gprs: HashMap::new(),
+            stack_slots: HashMap::new(),
             next_stack_slot: -8,
         }
     }
 
     /// Set conservative mode (limit to fewer registers)
+    #[allow(dead_code)]
     pub fn set_conservative_mode(&mut self) {
         self.available_gprs = vec![
             "x9", "x10", "x11", "x12", "x13", "x14", "x15", // s1-s7
@@ -60,8 +63,41 @@ impl RiscVRegAlloc {
     }
 
     /// Get stack slot for a virtual register
+    #[allow(dead_code)]
     pub fn get_stack_slot(&self, vreg: &VirtualReg) -> Option<i32> {
         self.stack_slots.get(vreg).copied()
+    }
+
+    pub fn gpr_pool_for_global_allocation() -> Vec<&'static str> {
+        Self::AVAILABLE_REGISTERS.to_vec()
+    }
+
+    pub fn from_global_plan(
+        target_os: TargetOperatingSystem,
+        plan: &HashMap<VirtualReg, Allocation<&'static str>>,
+    ) -> Self {
+        let mut s = Self::new(target_os);
+        let mut min_spill = 0i32;
+        for (&vreg, alloc) in plan {
+            if vreg.class != RegisterClass::Gpr {
+                continue;
+            }
+            match alloc {
+                Allocation::Register(phys) => {
+                    if s.available_gprs.contains(phys) {
+                        s.allocated_gprs.insert(*phys, vreg);
+                    }
+                }
+                Allocation::Spill(off) => {
+                    s.stack_slots.insert(vreg, *off);
+                    if *off < min_spill {
+                        min_spill = *off;
+                    }
+                }
+            }
+        }
+        s.next_stack_slot = if min_spill == 0 { -8 } else { min_spill - 8 };
+        s
     }
 }
 
@@ -107,7 +143,7 @@ impl MirRegisterAllocator for RiscVRegAlloc {
         let stack_slot = self.next_stack_slot;
         self.stack_slots.insert(vreg, stack_slot);
         self.next_stack_slot -= 8;
-        None // Return None to indicate stack allocation
+        None
     }
 
     fn mapped_for_register(&self, reg: &Register) -> Option<Self::PhysReg> {

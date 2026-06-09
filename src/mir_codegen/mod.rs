@@ -1,13 +1,11 @@
 //! MIR-based code generation for multiple target architectures.
 
-pub mod abi;
 pub mod arx64;
 pub mod assemble;
 pub mod capability;
 pub mod common;
 pub mod limits;
 pub mod link;
-pub mod regalloc;
 pub mod settings;
 
 pub mod arm;
@@ -16,7 +14,6 @@ pub mod riscv;
 pub mod wasm;
 pub mod x86_64;
 
-pub use abi::Abi;
 pub use capability::{CapabilitySet, CodegenCapability};
 pub use limits::{MAX_MIR_CALL_PARAMETERS, validate_module_call_parameters};
 pub use settings::{MirCodegenSettings, RegallocStrategy};

@@ -3,16 +3,11 @@
 //! Code generation from MIR to x86_64 assembly,
 //! supporting System V AMD64 and Microsoft x64 calling conventions.
 
-pub mod abi;
 pub mod constants;
-pub mod frame;
-pub mod regalloc;
 pub mod util;
 
-use abi::X86ABI;
 use constants::{fd, linux, macos, stack, windows};
-use frame::X86Frame;
-use regalloc::X64RegAlloc;
+use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame};
 use std::io::Write;
 use std::result::Result;
 use util::*;

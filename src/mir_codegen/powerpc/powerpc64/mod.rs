@@ -14,14 +14,9 @@
 //! - TOC: `r2` (never clobbered)
 //! - Link register saved/restored in prologue/epilogue
 
-mod abi;
-mod frame;
-mod regalloc;
 mod util;
 
-use abi::Ppc64Abi;
-use frame::Ppc64Frame;
-use regalloc::Ppc64RegAlloc;
+use lamina_codegen::powerpc::{Ppc64Abi, Ppc64Frame, Ppc64RegAlloc};
 use std::io::Write;
 use std::result::Result;
 use util::{
