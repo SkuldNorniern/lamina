@@ -1,5 +1,8 @@
 //! Host system detection functions.
 
+#[cfg(target_os = "macos")]
+use std::ffi::CString;
+
 /// Detect the host system's architecture only.
 ///
 /// Returns a string representing the detected architecture: "x86_64", "aarch64", etc.
@@ -138,7 +141,6 @@ pub fn cpu_count() -> usize {
 
     #[cfg(target_os = "macos")]
     {
-        use std::ffi::CString;
         unsafe {
             unsafe extern "C" {
                 fn sysctlbyname(

@@ -3,6 +3,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+use crate::detection::{detect_host_architecture_only, detect_host_os};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Target {
     pub architecture: TargetArchitecture,
@@ -31,8 +33,6 @@ impl Target {
     /// println!("Host target: {}", host);
     /// ```
     pub fn detect_host() -> Self {
-        use crate::detection::{detect_host_architecture_only, detect_host_os};
-        use std::str::FromStr;
         let arch = detect_host_architecture_only();
         let os = detect_host_os();
         Self::new(

@@ -821,6 +821,7 @@ fn emit_store_fp_result<W: Write>(
 mod tests {
     use super::*;
     use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
+    use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
 
     fn make_module_with_empty_func() -> MirModule {
         let mut m = MirModule::new("test_ppc64");
@@ -845,7 +846,6 @@ mod tests {
 
     #[test]
     fn test_generate_integer_add() {
-        use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
         let mut m = MirModule::new("test_ppc64_add");
         let v0 = VirtualReg::gpr(0);
         let v2 = VirtualReg::gpr(2);
@@ -872,7 +872,6 @@ mod tests {
 
     #[test]
     fn test_generate_jmp_br() {
-        use crate::mir::instruction::{Instruction, Operand};
         let mut m = MirModule::new("test_ppc64_cf");
         let cond = VirtualReg::gpr(0);
         let f = FunctionBuilder::new("cf_fn")
