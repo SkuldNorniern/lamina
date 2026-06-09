@@ -174,8 +174,7 @@ pub fn load_operand_to_rax<
                 writeln!(writer, "    movq ${}, %rax", *v as i64)
             }
             Immediate::I64(v) => writeln!(writer, "    movq ${v}, %rax"),
-            Immediate::F32(_)
-            | Immediate::F64(_) => {
+            Immediate::F32(_) | Immediate::F64(_) => {
                 writeln!(
                     writer,
                     "    # Floating point immediates not yet implemented"
