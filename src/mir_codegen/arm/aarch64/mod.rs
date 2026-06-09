@@ -5,21 +5,26 @@
 
 mod util;
 
-use lamina_codegen::aarch64::{A64RegAlloc, AArch64ABI, FrameMap};
+use std::collections::HashMap;
 use std::io::Write;
 use std::result::Result;
+use std::sync::Arc;
+
 use util::{emit_mov_imm64, imm_to_u64};
 
 use crate::mir::register::RegisterClass;
 use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir_codegen::common::{
+    CodegenBase, compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
+};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet,
 };
+
+use lamina_codegen::aarch64::{A64RegAlloc, AArch64ABI, FrameMap};
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::collections::HashMap;
-use std::sync::Arc;
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
 fn w_alias(xreg: &str) -> String {
@@ -45,7 +50,6 @@ fn compile_single_function_aarch64(
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
-    use std::io::Write;
     let mut output = Vec::new();
     let abi = AArch64ABI::new(target_os);
 
@@ -1235,10 +1239,6 @@ fn materialize_address<W: Write>(
     }
     Ok(())
 }
-
-use crate::mir_codegen::common::{
-    CodegenBase, compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
-};
 
 /// Trait-backed MIR ⇒ AArch64 code generator.
 pub struct AArch64Codegen<'a> {

@@ -2,7 +2,7 @@
 
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Immediate, Instruction, MirType, Operand, Register, ScalarType};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Common Subexpression Elimination (CSE)
 /// Eliminates redundant computations within basic blocks
@@ -92,11 +92,7 @@ impl CommonSubexpressionElimination {
         Ok(changed)
     }
 
-    fn eliminate_in_block_safe(
-        &self,
-        block: &mut Block,
-        loop_headers: &std::collections::HashSet<String>,
-    ) -> bool {
+    fn eliminate_in_block_safe(&self, block: &mut Block, loop_headers: &HashSet<String>) -> bool {
         // For blocks that are part of loops, be more conservative
         // Only apply CSE if the block is small and contains simple operations
         let is_in_loop_body = self.is_block_in_loop_body(block, loop_headers);
@@ -112,11 +108,7 @@ impl CommonSubexpressionElimination {
         self.eliminate_in_block_conservative(block, is_in_loop_body)
     }
 
-    fn is_block_in_loop_body(
-        &self,
-        block: &Block,
-        loop_headers: &std::collections::HashSet<String>,
-    ) -> bool {
+    fn is_block_in_loop_body(&self, block: &Block, loop_headers: &HashSet<String>) -> bool {
         // Check if this block can reach a loop header (simplified check)
         // This is a conservative approximation
         for instr in &block.instructions {
@@ -296,8 +288,7 @@ impl CommonSubexpressionElimination {
 }
 
 /// Identify loop headers via simple back-edge detection using block order.
-fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<String> {
-    use std::collections::{HashMap, HashSet};
+fn compute_back_edge_headers(func: &Function) -> HashSet<String> {
     let mut label_index: HashMap<&str, usize> = HashMap::new();
     for (i, b) in func.blocks.iter().enumerate() {
         label_index.insert(&b.label, i);

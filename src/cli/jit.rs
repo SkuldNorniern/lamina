@@ -2,17 +2,19 @@
 
 use super::options::{CompileOptions, toolchain_backends};
 
+use lamina::runtime::{Sandbox, SandboxConfig, compile_to_runtime};
+use lamina_platform::Target;
+
+use std::process::Command;
+use std::str::FromStr;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 /// Handle JIT compilation and execution
 pub fn handle_jit_compilation(
     ir_source: &str,
     input_path: &std::path::Path,
     options: &CompileOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use lamina_platform::Target;
-    use std::process::Command;
-    use std::str::FromStr;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     let target = if let Some(target_str) = &options.target_arch {
         Target::from_str(target_str)
             .map_err(|e| format!("Invalid target '{}': {}", target_str, e))?
@@ -51,8 +53,6 @@ pub fn handle_jit_compilation(
     }
 
     if options.sandbox {
-        use lamina::runtime::{Sandbox, SandboxConfig};
-
         let config = if options.verbose {
             SandboxConfig::default()
         } else {
@@ -88,8 +88,6 @@ pub fn handle_jit_compilation(
             std::process::exit(result as i32);
         }
     } else {
-        use lamina::runtime::compile_to_runtime;
-
         let codegen_units = options.codegen_units.unwrap_or_else(|| {
             let max_threads = lamina_platform::cpu_count();
             if max_threads > 2 { max_threads - 2 } else { 1 }

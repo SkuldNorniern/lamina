@@ -1,7 +1,7 @@
 //! Memory optimization transforms for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Function, Instruction, Operand, Register};
+use crate::mir::{AddressMode, Function, Instruction, Operand, Register};
 use std::collections::HashMap;
 
 /// Memory optimization transform performing redundant load elimination.
@@ -43,7 +43,6 @@ impl MemoryOptimization {
 
     /// Redundant load elimination and store-to-load forwarding within basic blocks.
     fn forward_redundant_loads(&self, func: &mut Function) -> bool {
-        use crate::mir::AddressMode;
         let mut changed = false;
 
         for block in &mut func.blocks {
