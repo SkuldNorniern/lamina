@@ -2,7 +2,8 @@
 
 use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::types::{MirType, ScalarType};
-use crate::mir::{Block, Function, Instruction, Operand, Register};
+use crate::mir::{Block, Function, Instruction, Operand, Register, Immediate};
+use crate::mir::function::Signature;
 
 /// Tail call optimization that converts tail calls into jumps.
 ///
@@ -78,7 +79,7 @@ impl TailCallOptimization {
     /// Optimize tail calls within a single block
     fn optimize_block_tail_calls(
         &self,
-        func_sig: &crate::mir::function::Signature,
+        func_sig: &Signature,
         block: &mut Block,
     ) -> bool {
         let mut changed = false;
@@ -153,7 +154,7 @@ impl TailCallOptimization {
     /// signature from the call instruction's arguments and return value.
     fn is_tail_call_safe(
         &self,
-        func_sig: &crate::mir::function::Signature,
+        func_sig: &Signature,
         _call_name: &str,
         call_args: &[Operand],
         call_ret: &Option<Register>,
@@ -190,10 +191,10 @@ impl TailCallOptimization {
                 // Check if immediate fits in the type
                 match (param_ty, imm) {
                     (MirType::Scalar(s), _) => match (s, imm) {
-                        (ScalarType::I64, crate::mir::Immediate::I64(_)) => true,
-                        (ScalarType::I32, crate::mir::Immediate::I32(_)) => true,
-                        (ScalarType::I16, crate::mir::Immediate::I16(_)) => true,
-                        (ScalarType::I8, crate::mir::Immediate::I8(_)) => true,
+                        (ScalarType::I64, Immediate::I64(_)) => true,
+                        (ScalarType::I32, Immediate::I32(_)) => true,
+                        (ScalarType::I16, Immediate::I16(_)) => true,
+                        (ScalarType::I8, Immediate::I8(_)) => true,
                         // Allow smaller immediates to fit in larger types?
                         // Usually MIR expects exact type match for immediates
                         _ => false,

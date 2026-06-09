@@ -3,7 +3,7 @@
 use crate::mir::transform::calculate_dominators;
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, IntBinOp, IntCmpOp, Operand, Register};
+use crate::mir::{Block, Function, Instruction, IntBinOp, IntCmpOp, Operand, Register, Immediate};
 use std::collections::{HashMap, HashSet};
 
 /// Loop invariant code motion that moves loop-invariant computations outside loops.
@@ -774,10 +774,10 @@ impl LoopUnrolling {
         if let Instruction::IntCmp { op, lhs, rhs, .. } = cond_def {
             // Expect induction variable vs Constant
             let (reg, limit) = match (lhs, rhs) {
-                (Operand::Register(r), Operand::Immediate(crate::mir::Immediate::I64(c))) => {
+                (Operand::Register(r), Operand::Immediate(Immediate::I64(c))) => {
                     (r, *c)
                 }
-                (Operand::Immediate(crate::mir::Immediate::I64(_c)), Operand::Register(_r)) => {
+                (Operand::Immediate(Immediate::I64(_c)), Operand::Register(_r)) => {
                     // Reverse op if needed?
                     return None; // Simplify
                 }
@@ -792,7 +792,7 @@ impl LoopUnrolling {
             if let Instruction::IntBinary {
                 op: IntBinOp::Add,
                 lhs: Operand::Register(src),
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(step)),
+                rhs: Operand::Immediate(Immediate::I64(step)),
                 ..
             } = inc_def
                 && src == reg

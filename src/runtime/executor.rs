@@ -4,7 +4,7 @@
 //! using the platform C ABI.
 
 use super::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
-use crate::mir::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register, Signature};
+use crate::mir::{Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register, Signature, Function, MirType, ScalarType};
 #[cfg(target_arch = "aarch64")]
 use std::arch::asm;
 use std::collections::HashMap;
@@ -32,7 +32,7 @@ fn evaluate_operand(
 }
 
 fn interpret_mir_function(
-    function: &crate::mir::Function,
+    function: &Function,
     args: &[i64],
 ) -> Result<Option<i64>, Box<dyn std::error::Error>> {
     if function.sig.params.len() != args.len() {
@@ -256,7 +256,7 @@ pub unsafe fn execute_jit_function(
     function_ptr: *const u8,
     args: Option<&[i64]>,
     verbose: bool,
-    function: Option<&crate::mir::Function>,
+    function: Option<&Function>,
 ) -> Result<Option<i64>, Box<dyn std::error::Error>> {
     let param_count = sig.params.len();
 
@@ -271,13 +271,13 @@ pub unsafe fn execute_jit_function(
     let all_i64 = sig.params.iter().all(|p| {
         matches!(
             p.ty,
-            crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
+            MirType::Scalar(ScalarType::I64)
         )
     });
 
     let returns_i64 = matches!(
         sig.ret_ty.as_ref(),
-        Some(crate::mir::MirType::Scalar(crate::mir::ScalarType::I64))
+        Some(MirType::Scalar(ScalarType::I64))
     );
     let returns_void = sig.ret_ty.is_none();
 
