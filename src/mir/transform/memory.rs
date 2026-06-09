@@ -1,7 +1,8 @@
 //! Memory optimization transforms for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{AddressMode, Function, Instruction, Operand, Register};
+use crate::mir::{AddressMode, Function, Instruction, Operand, Register, IntBinOp};
+use crate::mir::instruction::Immediate;
 use std::collections::HashMap;
 
 /// Memory optimization transform performing redundant load elimination.
@@ -83,12 +84,12 @@ impl MemoryOptimization {
                             if let Some(stored_val) = last_store.get(&key) {
                                 // store-to-load forwarding: replace load with a copy of stored_val
                                 replacement = Some(Instruction::IntBinary {
-                                    op: crate::mir::IntBinOp::Add,
+                                    op: IntBinOp::Add,
                                     ty: *ty,
                                     dst: dst.clone(),
                                     lhs: stored_val.clone(),
                                     rhs: Operand::Immediate(
-                                        crate::mir::instruction::Immediate::I64(0),
+                                        Immediate::I64(0),
                                     ),
                                 });
                                 // record latest load destination
@@ -96,12 +97,12 @@ impl MemoryOptimization {
                             } else if let Some(prev_reg) = last_load.get(&key) {
                                 // Redundant load: reuse previous loaded register
                                 replacement = Some(Instruction::IntBinary {
-                                    op: crate::mir::IntBinOp::Add,
+                                    op: IntBinOp::Add,
                                     ty: *ty,
                                     dst: dst.clone(),
                                     lhs: Operand::Register(prev_reg.clone()),
                                     rhs: Operand::Immediate(
-                                        crate::mir::instruction::Immediate::I64(0),
+                                        Immediate::I64(0),
                                     ),
                                 });
                                 // record latest load destination

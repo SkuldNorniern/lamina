@@ -1,7 +1,7 @@
 //! Function inlining transforms for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Module, Operand, Register};
+use crate::mir::{Block, Function, Instruction, Module, Operand, Register, RegisterClass, AddressMode, VirtualReg, IntBinOp, Immediate};
 use std::cell::Cell;
 use std::collections::HashMap;
 
@@ -362,11 +362,11 @@ impl ModuleInlining {
                     })?;
 
                     let mut assign_instr = Instruction::IntBinary {
-                        op: crate::mir::IntBinOp::Add,
+                        op: IntBinOp::Add,
                         dst: result_reg.clone(),
                         ty: return_type,
                         lhs: ret_val.clone(),
-                        rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                        rhs: Operand::Immediate(Immediate::I64(0)),
                     };
                     // Apply parameter substitution and renaming to the operand(s)
                     // Then restore destination to the intended call result register
@@ -440,7 +440,7 @@ impl ModuleInlining {
             }
 
             // Generate a new unique register name
-            let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(next_reg_id));
+            let new_reg = Register::Virtual(VirtualReg::gpr(next_reg_id));
             register_map.insert(reg.clone(), new_reg.clone());
             next_reg_id += 1;
             new_reg
@@ -459,13 +459,13 @@ impl ModuleInlining {
             for instr in &block.instructions {
                 if let Some(reg) = instr.def_reg()
                     && let Register::Virtual(vreg) = reg
-                    && vreg.class == crate::mir::RegisterClass::Gpr
+                    && vreg.class == RegisterClass::Gpr
                 {
                     max_id = max_id.max(vreg.id);
                 }
                 for use_reg in instr.use_regs() {
                     if let Register::Virtual(vreg) = use_reg
-                        && vreg.class == crate::mir::RegisterClass::Gpr
+                        && vreg.class == RegisterClass::Gpr
                     {
                         max_id = max_id.max(vreg.id);
                     }
@@ -519,20 +519,20 @@ impl ModuleInlining {
             }
             Instruction::Load { dst, addr, .. } => {
                 *dst = map_reg(dst);
-                if let crate::mir::AddressMode::BaseOffset { base, .. } = addr {
+                if let AddressMode::BaseOffset { base, .. } = addr {
                     *base = map_reg(base);
                 }
-                if let crate::mir::AddressMode::BaseIndexScale { base, index, .. } = addr {
+                if let AddressMode::BaseIndexScale { base, index, .. } = addr {
                     *base = map_reg(base);
                     *index = map_reg(index);
                 }
             }
             Instruction::Store { src, addr, .. } => {
                 self.map_operand_register(src, map_reg);
-                if let crate::mir::AddressMode::BaseOffset { base, .. } = addr {
+                if let AddressMode::BaseOffset { base, .. } = addr {
                     *base = map_reg(base);
                 }
-                if let crate::mir::AddressMode::BaseIndexScale { base, index, .. } = addr {
+                if let AddressMode::BaseIndexScale { base, index, .. } = addr {
                     *base = map_reg(base);
                     *index = map_reg(index);
                 }
@@ -608,7 +608,7 @@ impl ModuleInlining {
                     && !register_mapping.contains_key(dst)
                 {
                     // Generate a new virtual register for this destination
-                    let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(
+                    let new_reg = Register::Virtual(VirtualReg::gpr(
                         (base_reg_offset + register_mapping.len()) as u32,
                     ));
                     register_mapping.insert(dst.clone(), new_reg);
@@ -618,7 +618,7 @@ impl ModuleInlining {
                     if !register_mapping.contains_key(use_reg)
                         && !param_mapping.contains_key(use_reg)
                     {
-                        let new_reg = Register::Virtual(crate::mir::VirtualReg::gpr(
+                        let new_reg = Register::Virtual(VirtualReg::gpr(
                             (base_reg_offset + register_mapping.len()) as u32,
                         ));
                         register_mapping.insert(use_reg.clone(), new_reg);
@@ -748,11 +748,11 @@ impl ModuleInlining {
                     {
                         // Assign return value to call result register
                         block.instructions.push(Instruction::IntBinary {
-                            op: crate::mir::IntBinOp::Add,
+                            op: IntBinOp::Add,
                             ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
                             dst: dst.clone(),
                             lhs: val,
-                            rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                            rhs: Operand::Immediate(Immediate::I64(0)),
                         });
                     }
                     // Jump to split block
@@ -901,22 +901,22 @@ impl ModuleInlining {
 
     fn map_address_mode(
         &self,
-        addr: &crate::mir::AddressMode,
+        addr: &AddressMode,
         register_mapping: &HashMap<Register, Register>,
-    ) -> Result<crate::mir::AddressMode, String> {
+    ) -> Result<AddressMode, String> {
         match addr {
-            crate::mir::AddressMode::BaseOffset { base, offset } => {
-                Ok(crate::mir::AddressMode::BaseOffset {
+            AddressMode::BaseOffset { base, offset } => {
+                Ok(AddressMode::BaseOffset {
                     base: self.map_register(base, register_mapping)?,
                     offset: *offset,
                 })
             }
-            crate::mir::AddressMode::BaseIndexScale {
+            AddressMode::BaseIndexScale {
                 base,
                 index,
                 scale,
                 offset,
-            } => Ok(crate::mir::AddressMode::BaseIndexScale {
+            } => Ok(AddressMode::BaseIndexScale {
                 base: self.map_register(base, register_mapping)?,
                 index: self.map_register(index, register_mapping)?,
                 scale: *scale,

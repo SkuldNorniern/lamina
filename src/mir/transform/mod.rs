@@ -37,6 +37,9 @@ pub use peephole::Peephole;
 pub use scheduling::InstructionScheduling;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
+
+use crate::mir::Function;
+
 #[cfg(feature = "nightly")]
 pub use vectorization::AutoVectorization;
 
@@ -55,7 +58,7 @@ pub trait Transform {
     fn level(&self) -> TransformLevel;
 
     /// Apply this transform to a function. Returns true if any changes were made.
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String>;
+    fn apply(&self, func: &mut Function) -> Result<bool, String>;
 }
 
 /// Stability level of a transform.
@@ -171,7 +174,7 @@ impl TransformPipeline {
 
     pub fn apply_to_function(
         &self,
-        func: &mut crate::mir::Function,
+        func: &mut Function,
     ) -> Result<TransformStats, String> {
         let total_instructions: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
         const MAX_INSTRUCTIONS: usize = 100_000;
@@ -276,7 +279,7 @@ impl Default for TransformPipeline {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::instruction::{Instruction, IntBinOp, Operand};
+    use crate::mir::instruction::{Instruction, IntBinOp, Operand, Immediate};
     use crate::mir::register::Register;
     use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
@@ -371,8 +374,8 @@ mod tests {
                 op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: Register::Virtual(VirtualReg::gpr(1)),
-                lhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(5)),
-                rhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(3)),
+                lhs: Operand::Immediate(Immediate::I64(5)),
+                rhs: Operand::Immediate(Immediate::I64(3)),
             })
             .instr(Instruction::Ret {
                 value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(1)))),
@@ -398,7 +401,7 @@ mod tests {
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: Register::Virtual(VirtualReg::gpr(1)),
                 lhs: Operand::Register(Register::Virtual(VirtualReg::gpr(0))),
-                rhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(0)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
             })
             .instr(Instruction::Ret {
                 value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(0)))),
