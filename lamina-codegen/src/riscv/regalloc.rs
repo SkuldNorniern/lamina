@@ -54,7 +54,6 @@ impl RiscVRegAlloc {
     }
 
     /// Set conservative mode (limit to fewer registers)
-    #[allow(dead_code)]
     pub fn set_conservative_mode(&mut self) {
         self.available_gprs = vec![
             "x9", "x10", "x11", "x12", "x13", "x14", "x15", // s1-s7
@@ -63,7 +62,6 @@ impl RiscVRegAlloc {
     }
 
     /// Get stack slot for a virtual register
-    #[allow(dead_code)]
     pub fn get_stack_slot(&self, vreg: &VirtualReg) -> Option<i32> {
         self.stack_slots.get(vreg).copied()
     }
