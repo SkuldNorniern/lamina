@@ -820,8 +820,8 @@ fn emit_store_fp_result<W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
     use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
+    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
     fn make_module_with_empty_func() -> MirModule {
         let mut m = MirModule::new("test_ppc64");

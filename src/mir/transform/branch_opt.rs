@@ -119,7 +119,6 @@ impl BranchOptimization {
 
         reachable
     }
-
 }
 
 #[cfg(test)]
