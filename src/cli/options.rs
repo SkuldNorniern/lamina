@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use lamina::mir_codegen::assemble::AssemblerBackend;
 use lamina::mir_codegen::link::LinkerBackend;
+use lamina::mir_codegen::{MirCodegenSettings, RegallocStrategy};
+use lamina_platform::TargetOperatingSystem;
 
 pub struct CompileOptions {
     pub input_file: PathBuf,
@@ -21,23 +23,23 @@ pub struct CompileOptions {
     pub jit: bool,
     pub sandbox: bool,
     pub codegen_units: Option<usize>,
-    pub mir_codegen_settings: lamina::mir_codegen::MirCodegenSettings,
+    pub mir_codegen_settings: MirCodegenSettings,
 }
 
 impl CompileOptions {
     pub fn ras_object_write_options(
         &self,
-        target_os: lamina_platform::TargetOperatingSystem,
+        target_os: TargetOperatingSystem,
     ) -> ras::ObjectWriteOptions {
         let mut o = ras::ObjectWriteOptions::default();
         let elfish = matches!(
             target_os,
-            lamina_platform::TargetOperatingSystem::Linux
-                | lamina_platform::TargetOperatingSystem::FreeBSD
-                | lamina_platform::TargetOperatingSystem::OpenBSD
-                | lamina_platform::TargetOperatingSystem::NetBSD
-                | lamina_platform::TargetOperatingSystem::DragonFly
-                | lamina_platform::TargetOperatingSystem::Redox
+            TargetOperatingSystem::Linux
+                | TargetOperatingSystem::FreeBSD
+                | TargetOperatingSystem::OpenBSD
+                | TargetOperatingSystem::NetBSD
+                | TargetOperatingSystem::DragonFly
+                | TargetOperatingSystem::Redox
         );
         if self.mir_codegen_settings.emit_asm_debug_lines && elfish {
             o.emit_minimal_dwarf_sections = true;
@@ -145,7 +147,7 @@ pub fn parse_args() -> Result<CompileOptions, String> {
         jit: false,
         sandbox: false,
         codegen_units: None,
-        mir_codegen_settings: lamina::mir_codegen::MirCodegenSettings::default(),
+        mir_codegen_settings: MirCodegenSettings::default(),
     };
 
     let mut i = 1;
@@ -230,9 +232,9 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                 }
                 let m = args[i + 1].to_lowercase();
                 options.mir_codegen_settings.regalloc = match m.as_str() {
-                    "incremental" => lamina::mir_codegen::RegallocStrategy::Incremental,
-                    "linear" => lamina::mir_codegen::RegallocStrategy::LinearScanGlobal,
-                    "graph" => lamina::mir_codegen::RegallocStrategy::GraphColorGlobal,
+                    "incremental" => RegallocStrategy::Incremental,
+                    "linear" => RegallocStrategy::LinearScanGlobal,
+                    "graph" => RegallocStrategy::GraphColorGlobal,
                     _ => {
                         return Err("--regalloc must be incremental, linear, or graph".to_string());
                     }
