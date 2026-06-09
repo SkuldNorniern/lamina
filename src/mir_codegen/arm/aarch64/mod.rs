@@ -3,14 +3,9 @@
 //! Code generation from MIR to AArch64 assembly,
 //! following the AAPCS64 calling convention.
 
-mod abi;
-mod frame;
-mod regalloc;
 mod util;
 
-use abi::AArch64ABI;
-use frame::FrameMap;
-use regalloc::A64RegAlloc;
+use lamina_codegen::aarch64::{AArch64ABI, A64RegAlloc, FrameMap};
 use std::io::Write;
 use std::result::Result;
 use util::{emit_mov_imm64, imm_to_u64};

@@ -1,7 +1,7 @@
 //! Utility functions for PowerPC64 code generation.
 
 use crate::mir::register::{Register, VirtualReg};
-use crate::mir_codegen::regalloc::RegisterAllocator;
+use lamina_codegen::LocalRegisterAllocator as RegisterAllocator;
 
 /// Load a virtual register into GPR `r3` (the primary scratch/return reg).
 pub fn load_register_to_r3<W: std::io::Write, RA: RegisterAllocator<PhysReg = &'static str>>(

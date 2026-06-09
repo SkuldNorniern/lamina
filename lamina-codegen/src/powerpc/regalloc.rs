@@ -3,9 +3,8 @@
 //! Maps virtual registers to caller-saved GPRs in order.
 //! When exhausted, the caller should spill to a stack slot instead.
 
-use crate::mir::register::{Register, RegisterClass, VirtualReg};
-use crate::mir_codegen::regalloc::RegisterAllocator as MirRegisterAllocator;
-use lamina_codegen::Allocation;
+use crate::regalloc::{Allocation, LocalRegisterAllocator as MirRegisterAllocator};
+use lamina_mir::{Register, RegisterClass, VirtualReg};
 use lamina_platform::TargetOperatingSystem;
 use std::collections::HashMap;
 

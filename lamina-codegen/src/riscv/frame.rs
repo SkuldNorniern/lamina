@@ -38,6 +38,22 @@ impl RiscVFrame {
         Ok(())
     }
 
+    /// Like [`Self::generate_epilogue`], but jump to `target_sym` instead of `ret` (tail call).
+    pub fn generate_tail_epilogue<W: std::io::Write>(
+        writer: &mut W,
+        stack_size: usize,
+        target_sym: &str,
+    ) -> Result<(), std::io::Error> {
+        if stack_size > 0 {
+            writeln!(writer, "    addi sp, sp, {}", stack_size)?;
+        }
+        writeln!(writer, "    ld ra, -8(fp)")?;
+        writeln!(writer, "    ld fp, -16(fp)")?;
+        writeln!(writer, "    addi sp, sp, 16")?;
+        writeln!(writer, "    j {}", target_sym)?;
+        Ok(())
+    }
+
     /// Calculate stack slot offset from frame pointer (fp)
     pub fn calculate_stack_offset(slot_index: usize) -> i32 {
         -((slot_index as i32 + 1) * 8)

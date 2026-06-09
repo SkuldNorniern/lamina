@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::regalloc::RegisterAllocator as MirRegisterAllocator;
+use crate::regalloc::{Allocation, LocalRegisterAllocator as MirRegisterAllocator};
 use lamina_mir::{Register, RegisterClass, VirtualReg};
 use lamina_platform::TargetOperatingSystem;
 
@@ -11,6 +11,7 @@ use lamina_platform::TargetOperatingSystem;
 /// Uses platform-appropriate GPR pools for stable virtual-to-physical register mappings
 /// and separate scratch pools for short-lived temporaries.
 pub struct X64RegAlloc {
+    #[allow(dead_code)]
     target_os: TargetOperatingSystem,
     free_gprs: VecDeque<&'static str>,
     used_gprs: HashSet<&'static str>,
@@ -20,10 +21,16 @@ pub struct X64RegAlloc {
 }
 
 const SYSV_MAP_GPRS: &[&str] = &["r12", "r13", "r14", "r15", "rbx"];
-const SYSV_SCRATCH_GPRS: &[&str] = &["r10", "r11"];
+const SYSV_LEAF_MAP_GPRS: &[&str] = &["r12", "r13", "r14", "r15", "rbx", "r10", "r11"];
+const SYSV_SCRATCH_GPRS: &[&str] = &["r10", "r11"]; // keep as-is for non-leaf
+const SYSV_LEAF_SCRATCH_GPRS: &[&str] = &["rcx", "rdx"]; // for leaf functions
 
 const WIN64_MAP_GPRS: &[&str] = &["rbx", "rsi", "rdi", "r12", "r13", "r14", "r15"];
+const WIN64_LEAF_MAP_GPRS: &[&str] = &[
+    "rbx", "rsi", "rdi", "r12", "r13", "r14", "r15", "r10", "r11",
+];
 const WIN64_SCRATCH_GPRS: &[&str] = &["r10", "r11"];
+const WIN64_LEAF_SCRATCH_GPRS: &[&str] = &["rcx", "rdx"];
 
 impl Default for X64RegAlloc {
     fn default() -> Self {
@@ -66,6 +73,72 @@ impl X64RegAlloc {
             scratch_free,
             scratch_used: HashSet::new(),
         }
+    }
+
+    /// Creates a new register allocator for leaf functions (no calls), expanding the available
+    /// register pool by including r10/r11 as mappable GPRs since they won't be clobbered.
+    pub fn new_leaf(target_os: TargetOperatingSystem) -> Self {
+        let (map_gprs, scratch_gprs) = match target_os {
+            TargetOperatingSystem::Windows => (WIN64_LEAF_MAP_GPRS, WIN64_LEAF_SCRATCH_GPRS),
+            _ => (SYSV_LEAF_MAP_GPRS, SYSV_LEAF_SCRATCH_GPRS),
+        };
+        let mut free_gprs = VecDeque::new();
+        for &r in map_gprs {
+            free_gprs.push_back(r);
+        }
+        let mut scratch_free = VecDeque::new();
+        for &r in scratch_gprs {
+            scratch_free.push_back(r);
+        }
+        Self {
+            target_os,
+            free_gprs,
+            used_gprs: HashSet::new(),
+            vreg_to_preg: HashMap::new(),
+            scratch_free,
+            scratch_used: HashSet::new(),
+        }
+    }
+
+    /// GPRs available for global allocation, in the same order as the initial `free_gprs` deque.
+    pub fn gpr_pool_for_global_allocation(
+        target_os: TargetOperatingSystem,
+        leaf: bool,
+    ) -> Vec<&'static str> {
+        let map_gprs = match (target_os, leaf) {
+            (TargetOperatingSystem::Windows, true) => WIN64_LEAF_MAP_GPRS,
+            (TargetOperatingSystem::Windows, false) => WIN64_MAP_GPRS,
+            (_, true) => SYSV_LEAF_MAP_GPRS,
+            (_, false) => SYSV_MAP_GPRS,
+        };
+        map_gprs.to_vec()
+    }
+
+    /// Rebuild allocator state from a precomputed GPR plan (global linear scan or graph coloring).
+    pub fn from_global_plan(
+        target_os: TargetOperatingSystem,
+        leaf: bool,
+        plan: &HashMap<VirtualReg, Allocation<&'static str>>,
+    ) -> Self {
+        let mut s = if leaf {
+            Self::new_leaf(target_os)
+        } else {
+            Self::new(target_os)
+        };
+        for (&vreg, alloc) in plan {
+            if vreg.class != RegisterClass::Gpr {
+                continue;
+            }
+            if let Allocation::Register(phys) = alloc
+                && s.vreg_to_preg.insert(vreg, *phys).is_none()
+            {
+                s.used_gprs.insert(*phys);
+                if let Some(pos) = s.free_gprs.iter().position(|&p| p == *phys) {
+                    let _ = s.free_gprs.remove(pos);
+                }
+            }
+        }
+        s
     }
 
     /// Sets conservative mode for complex functions, using fewer registers to reduce pressure.
