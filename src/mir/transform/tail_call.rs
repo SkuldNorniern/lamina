@@ -1,8 +1,8 @@
 //! Tail call optimization transform for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::types::{MirType, ScalarType};
 use crate::mir::{Block, Function, Instruction, Operand, Register};
-use crate::mir::types::{ScalarType, MirType};
 
 /// Tail call optimization that converts tail calls into jumps.
 ///

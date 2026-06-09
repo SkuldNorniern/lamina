@@ -8,8 +8,12 @@ use util::{
     load_register_to_register, store_fp_register_to_register, store_register_to_register,
 };
 
+use crate::mir::instruction::AddressMode;
 use crate::mir::register::RegisterClass;
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir::{
+    FloatBinOp, FloatCmpOp, FloatUnOp, Instruction as MirInst, IntBinOp, MirType,
+    Module as MirModule, Register, ScalarType, VirtualReg,
+};
 use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
@@ -77,7 +81,7 @@ impl<'a> Codegen for RiscVCodegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &HashMap<String, crate::mir::MirType>,
+        types: &HashMap<String, MirType>,
         globals: &HashMap<String, crate::mir::Global>,
         funcs: &HashMap<String, crate::mir::Signature>,
         codegen_units: usize,
@@ -146,12 +150,12 @@ fn compile_single_function_riscv(
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
     }
 
-    let mut stack_slots: HashMap<crate::mir::VirtualReg, i32> = HashMap::new();
+    let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
     let mut reg_alloc = RiscVRegAlloc::new(target_os);
 
     if settings.regalloc != RegallocStrategy::Incremental {
-        let mut def_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
-        let mut used_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
+        let mut def_regs: HashSet<VirtualReg> = HashSet::new();
+        let mut used_regs: HashSet<VirtualReg> = HashSet::new();
         for block in &func.blocks {
             for inst in &block.instructions {
                 if let Some(dst) = inst.def_reg()
@@ -312,7 +316,7 @@ fn emit_instruction_riscv<W: Write>(
     inst: &MirInst,
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
-    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
@@ -337,19 +341,19 @@ fn emit_instruction_riscv<W: Write>(
 
             // Perform operation
             match op {
-                crate::mir::IntBinOp::Add => writeln!(writer, "    add a0, a0, a1")?,
-                crate::mir::IntBinOp::Sub => writeln!(writer, "    sub a0, a0, a1")?,
-                crate::mir::IntBinOp::Mul => writeln!(writer, "    mul a0, a0, a1")?,
-                crate::mir::IntBinOp::SDiv => writeln!(writer, "    div a0, a0, a1")?,
-                crate::mir::IntBinOp::UDiv => writeln!(writer, "    divu a0, a0, a1")?,
-                crate::mir::IntBinOp::SRem => writeln!(writer, "    rem a0, a0, a1")?,
-                crate::mir::IntBinOp::URem => writeln!(writer, "    remu a0, a0, a1")?,
-                crate::mir::IntBinOp::And => writeln!(writer, "    and a0, a0, a1")?,
-                crate::mir::IntBinOp::Or => writeln!(writer, "    or a0, a0, a1")?,
-                crate::mir::IntBinOp::Xor => writeln!(writer, "    xor a0, a0, a1")?,
-                crate::mir::IntBinOp::Shl => writeln!(writer, "    sll a0, a0, a1")?,
-                crate::mir::IntBinOp::AShr => writeln!(writer, "    sra a0, a0, a1")?,
-                crate::mir::IntBinOp::LShr => writeln!(writer, "    srl a0, a0, a1")?,
+                IntBinOp::Add => writeln!(writer, "    add a0, a0, a1")?,
+                IntBinOp::Sub => writeln!(writer, "    sub a0, a0, a1")?,
+                IntBinOp::Mul => writeln!(writer, "    mul a0, a0, a1")?,
+                IntBinOp::SDiv => writeln!(writer, "    div a0, a0, a1")?,
+                IntBinOp::UDiv => writeln!(writer, "    divu a0, a0, a1")?,
+                IntBinOp::SRem => writeln!(writer, "    rem a0, a0, a1")?,
+                IntBinOp::URem => writeln!(writer, "    remu a0, a0, a1")?,
+                IntBinOp::And => writeln!(writer, "    and a0, a0, a1")?,
+                IntBinOp::Or => writeln!(writer, "    or a0, a0, a1")?,
+                IntBinOp::Xor => writeln!(writer, "    xor a0, a0, a1")?,
+                IntBinOp::Shl => writeln!(writer, "    sll a0, a0, a1")?,
+                IntBinOp::AShr => writeln!(writer, "    sra a0, a0, a1")?,
+                IntBinOp::LShr => writeln!(writer, "    srl a0, a0, a1")?,
             }
 
             // Store result
@@ -504,15 +508,13 @@ fn emit_instruction_riscv<W: Write>(
             attrs: _,
         } => {
             let load_op = match ty {
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "lb",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => "lh",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "lw",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "ld",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => "flw",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "fld",
-                crate::mir::MirType::Vector(_) => {
+                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lb",
+                MirType::Scalar(ScalarType::I16) => "lh",
+                MirType::Scalar(ScalarType::I32) => "lw",
+                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "ld",
+                MirType::Scalar(ScalarType::F32) => "flw",
+                MirType::Scalar(ScalarType::F64) => "fld",
+                MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
                             "RISC-V load unsupported for type {:?}. \
@@ -525,12 +527,11 @@ fn emit_instruction_riscv<W: Write>(
 
             let is_float = matches!(
                 ty,
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
-                    | crate::mir::MirType::Scalar(crate::mir::ScalarType::F64)
+                MirType::Scalar(ScalarType::F32) | MirType::Scalar(ScalarType::F64)
             );
 
             match addr {
-                crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?
@@ -543,10 +544,7 @@ fn emit_instruction_riscv<W: Write>(
                         writeln!(writer, "    {} fa0, {}(t0)", load_op, offset)?;
 
                         if let Register::Virtual(vreg) = dst {
-                            let is_f32 = matches!(
-                                ty,
-                                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
-                            );
+                            let is_f32 = matches!(ty, MirType::Scalar(ScalarType::F32));
                             store_fp_register_to_register(
                                 "fa0",
                                 vreg,
@@ -582,15 +580,13 @@ fn emit_instruction_riscv<W: Write>(
             attrs: _,
         } => {
             let store_op = match ty {
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "sb",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => "sh",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "sw",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "sd",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => "fsw",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "fsd",
-                crate::mir::MirType::Vector(_) => {
+                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "sb",
+                MirType::Scalar(ScalarType::I16) => "sh",
+                MirType::Scalar(ScalarType::I32) => "sw",
+                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "sd",
+                MirType::Scalar(ScalarType::F32) => "fsw",
+                MirType::Scalar(ScalarType::F64) => "fsd",
+                MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
                             "RISC-V store unsupported for type {:?}. \
@@ -603,10 +599,9 @@ fn emit_instruction_riscv<W: Write>(
 
             let is_float = matches!(
                 ty,
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32)
-                    | crate::mir::MirType::Scalar(crate::mir::ScalarType::F64)
+                MirType::Scalar(ScalarType::F32) | MirType::Scalar(ScalarType::F64)
             );
-            let is_f32 = matches!(ty, crate::mir::MirType::Scalar(crate::mir::ScalarType::F32));
+            let is_f32 = matches!(ty, MirType::Scalar(ScalarType::F32));
 
             if is_float {
                 load_fp_operand_to_register(src, writer, reg_alloc, stack_slots, "fa0", is_f32)?;
@@ -615,7 +610,7 @@ fn emit_instruction_riscv<W: Write>(
             }
 
             match addr {
-                crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?
@@ -678,18 +673,10 @@ fn emit_instruction_riscv<W: Write>(
 
             // Perform floating-point operation
             match op {
-                crate::mir::FloatBinOp::FAdd => {
-                    writeln!(writer, "    fadd.{} fa0, fa0, fa1", suffix)?
-                }
-                crate::mir::FloatBinOp::FSub => {
-                    writeln!(writer, "    fsub.{} fa0, fa0, fa1", suffix)?
-                }
-                crate::mir::FloatBinOp::FMul => {
-                    writeln!(writer, "    fmul.{} fa0, fa0, fa1", suffix)?
-                }
-                crate::mir::FloatBinOp::FDiv => {
-                    writeln!(writer, "    fdiv.{} fa0, fa0, fa1", suffix)?
-                }
+                FloatBinOp::FAdd => writeln!(writer, "    fadd.{} fa0, fa0, fa1", suffix)?,
+                FloatBinOp::FSub => writeln!(writer, "    fsub.{} fa0, fa0, fa1", suffix)?,
+                FloatBinOp::FMul => writeln!(writer, "    fmul.{} fa0, fa0, fa1", suffix)?,
+                FloatBinOp::FDiv => writeln!(writer, "    fdiv.{} fa0, fa0, fa1", suffix)?,
             }
 
             // Store result
@@ -706,8 +693,8 @@ fn emit_instruction_riscv<W: Write>(
 
             // Perform floating-point unary operation
             match op {
-                crate::mir::FloatUnOp::FNeg => writeln!(writer, "    fneg.{} fa0, fa0", suffix)?,
-                crate::mir::FloatUnOp::FSqrt => writeln!(writer, "    fsqrt.{} fa0, fa0", suffix)?,
+                FloatUnOp::FNeg => writeln!(writer, "    fneg.{} fa0, fa0", suffix)?,
+                FloatUnOp::FSqrt => writeln!(writer, "    fsqrt.{} fa0, fa0", suffix)?,
             }
 
             // Store result
@@ -732,19 +719,19 @@ fn emit_instruction_riscv<W: Write>(
             // Perform floating-point comparison
             // Result goes into integer register a0
             match op {
-                crate::mir::FloatCmpOp::Eq => writeln!(writer, "    feq.{} a0, fa0, fa1", suffix)?,
-                crate::mir::FloatCmpOp::Ne => {
+                FloatCmpOp::Eq => writeln!(writer, "    feq.{} a0, fa0, fa1", suffix)?,
+                FloatCmpOp::Ne => {
                     // NE = !(a == b)
                     writeln!(writer, "    feq.{} a0, fa0, fa1", suffix)?;
                     writeln!(writer, "    xori a0, a0, 1")?;
                 }
-                crate::mir::FloatCmpOp::Lt => writeln!(writer, "    flt.{} a0, fa0, fa1", suffix)?,
-                crate::mir::FloatCmpOp::Le => writeln!(writer, "    fle.{} a0, fa0, fa1", suffix)?,
-                crate::mir::FloatCmpOp::Gt => {
+                FloatCmpOp::Lt => writeln!(writer, "    flt.{} a0, fa0, fa1", suffix)?,
+                FloatCmpOp::Le => writeln!(writer, "    fle.{} a0, fa0, fa1", suffix)?,
+                FloatCmpOp::Gt => {
                     // GT = b < a
                     writeln!(writer, "    flt.{} a0, fa1, fa0", suffix)?
                 }
-                crate::mir::FloatCmpOp::Ge => {
+                FloatCmpOp::Ge => {
                     // GE = b <= a
                     writeln!(writer, "    fle.{} a0, fa1, fa0", suffix)?
                 }

@@ -1,7 +1,7 @@
 //! Instruction scheduling transform for MIR.
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Register, IntBinOp};
+use crate::mir::{Block, Function, Instruction, IntBinOp, Register};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 
@@ -213,16 +213,13 @@ impl InstructionScheduling {
         match instr {
             Instruction::Load { .. } => 3,
             Instruction::IntBinary {
-                op: IntBinOp::SDiv,
-                ..
+                op: IntBinOp::SDiv, ..
             } => 4,
             Instruction::IntBinary {
-                op: IntBinOp::UDiv,
-                ..
+                op: IntBinOp::UDiv, ..
             } => 4,
             Instruction::IntBinary {
-                op: IntBinOp::Mul,
-                ..
+                op: IntBinOp::Mul, ..
             } => 2,
             Instruction::FloatBinary { .. } => 3,
             Instruction::Call { .. } => 5,
@@ -333,7 +330,9 @@ impl PartialOrd for ScheduledItem {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, IntBinOp, MirType, Operand, ScalarType, VirtualReg, Immediate};
+    use crate::mir::{
+        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
+    };
 
     #[test]
     fn test_scheduling_latency_hiding() {

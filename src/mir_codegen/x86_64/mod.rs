@@ -13,8 +13,12 @@ use std::result::Result;
 use util::*;
 
 use crate::error::LaminaError;
+use crate::mir::instruction::Immediate;
 use crate::mir::register::RegisterClass;
-use crate::mir::{Instruction as MirInst, MirType, Module as MirModule, Register};
+use crate::mir::{
+    AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Instruction as MirInst, IntBinOp, IntCmpOp,
+    MirType, Module as MirModule, Register, VirtualReg,
+};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet,
@@ -155,12 +159,10 @@ fn compile_single_function_x86_64(
         X64RegAlloc::new(target_os)
     };
 
-    let mut stack_slots: std::collections::HashMap<crate::mir::VirtualReg, i32> =
+    let mut stack_slots: std::collections::HashMap<VirtualReg, i32> =
         std::collections::HashMap::new();
-    let mut def_regs: std::collections::HashSet<crate::mir::VirtualReg> =
-        std::collections::HashSet::new();
-    let mut used_regs: std::collections::HashSet<crate::mir::VirtualReg> =
-        std::collections::HashSet::new();
+    let mut def_regs: std::collections::HashSet<VirtualReg> = std::collections::HashSet::new();
+    let mut used_regs: std::collections::HashSet<VirtualReg> = std::collections::HashSet::new();
 
     for block in &func.blocks {
         for inst in &block.instructions {
@@ -357,11 +359,11 @@ fn emit_instruction_x86_64(
     inst: &MirInst,
     writer: &mut impl Write,
     reg_alloc: &mut X64RegAlloc,
-    stack_slots: &std::collections::HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &std::collections::HashMap<VirtualReg, i32>,
     stack_size: usize,
     target_os: TargetOperatingSystem,
     func_name: &str,
-    def_regs: &std::collections::HashSet<crate::mir::VirtualReg>,
+    def_regs: &std::collections::HashSet<VirtualReg>,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
 ) -> Result<(), LaminaError> {
@@ -386,18 +388,16 @@ fn emit_instruction_x86_64(
             if let Some(dp) = dst_phys {
                 // Optimized path: emit directly into dp, avoiding rax bounce
                 match op {
-                    crate::mir::IntBinOp::Shl
-                    | crate::mir::IntBinOp::AShr
-                    | crate::mir::IntBinOp::LShr => {
+                    IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr => {
                         // Load lhs into dp
                         load_operand_to_register(lhs, writer, reg_alloc, stack_slots, dp)?;
                         match rhs {
                             crate::mir::Operand::Immediate(imm) => {
                                 let sv: u64 = match imm {
-                                    crate::mir::instruction::Immediate::I8(v) => *v as u64,
-                                    crate::mir::instruction::Immediate::I16(v) => *v as u64,
-                                    crate::mir::instruction::Immediate::I32(v) => *v as u64,
-                                    crate::mir::instruction::Immediate::I64(v) => *v as u64,
+                                    Immediate::I8(v) => *v as u64,
+                                    Immediate::I16(v) => *v as u64,
+                                    Immediate::I32(v) => *v as u64,
+                                    Immediate::I64(v) => *v as u64,
                                     _ => {
                                         return Err(LaminaError::ValidationError(
                                             "Shift count must be integer".to_string(),
@@ -405,13 +405,11 @@ fn emit_instruction_x86_64(
                                     }
                                 };
                                 match op {
-                                    crate::mir::IntBinOp::Shl => {
-                                        writeln!(writer, "    shlq ${}, %{}", sv, dp)?
-                                    }
-                                    crate::mir::IntBinOp::AShr => {
+                                    IntBinOp::Shl => writeln!(writer, "    shlq ${}, %{}", sv, dp)?,
+                                    IntBinOp::AShr => {
                                         writeln!(writer, "    sarq ${}, %{}", sv, dp)?
                                     }
-                                    crate::mir::IntBinOp::LShr => {
+                                    IntBinOp::LShr => {
                                         writeln!(writer, "    shrq ${}, %{}", sv, dp)?
                                     }
                                     _ => unreachable!(),
@@ -427,42 +425,33 @@ fn emit_instruction_x86_64(
                                     "rcx",
                                 )?;
                                 match op {
-                                    crate::mir::IntBinOp::Shl => {
-                                        writeln!(writer, "    shlq %cl, %{}", dp)?
-                                    }
-                                    crate::mir::IntBinOp::AShr => {
-                                        writeln!(writer, "    sarq %cl, %{}", dp)?
-                                    }
-                                    crate::mir::IntBinOp::LShr => {
-                                        writeln!(writer, "    shrq %cl, %{}", dp)?
-                                    }
+                                    IntBinOp::Shl => writeln!(writer, "    shlq %cl, %{}", dp)?,
+                                    IntBinOp::AShr => writeln!(writer, "    sarq %cl, %{}", dp)?,
+                                    IntBinOp::LShr => writeln!(writer, "    shrq %cl, %{}", dp)?,
                                     _ => unreachable!(),
                                 }
                             }
                         }
                     }
-                    crate::mir::IntBinOp::SDiv
-                    | crate::mir::IntBinOp::UDiv
-                    | crate::mir::IntBinOp::SRem
-                    | crate::mir::IntBinOp::URem => {
+                    IntBinOp::SDiv | IntBinOp::UDiv | IntBinOp::SRem | IntBinOp::URem => {
                         // Division always goes through rax/rdx; use rcx for divisor to avoid conflicts
                         load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "rax")?;
                         load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
                         match op {
-                            crate::mir::IntBinOp::SDiv => {
+                            IntBinOp::SDiv => {
                                 writeln!(writer, "    cqto")?;
                                 writeln!(writer, "    idivq %rcx")?;
                             }
-                            crate::mir::IntBinOp::UDiv => {
+                            IntBinOp::UDiv => {
                                 writeln!(writer, "    xorq %rdx, %rdx")?;
                                 writeln!(writer, "    divq %rcx")?;
                             }
-                            crate::mir::IntBinOp::SRem => {
+                            IntBinOp::SRem => {
                                 writeln!(writer, "    cqto")?;
                                 writeln!(writer, "    idivq %rcx")?;
                                 writeln!(writer, "    movq %rdx, %rax")?;
                             }
-                            crate::mir::IntBinOp::URem => {
+                            IntBinOp::URem => {
                                 writeln!(writer, "    xorq %rdx, %rdx")?;
                                 writeln!(writer, "    divq %rcx")?;
                                 writeln!(writer, "    movq %rdx, %rax")?;
@@ -482,10 +471,10 @@ fn emit_instruction_x86_64(
                         match rhs {
                             crate::mir::Operand::Immediate(imm) => {
                                 let v: i64 = match imm {
-                                    crate::mir::instruction::Immediate::I8(x) => *x as i64,
-                                    crate::mir::instruction::Immediate::I16(x) => *x as i64,
-                                    crate::mir::instruction::Immediate::I32(x) => *x as i64,
-                                    crate::mir::instruction::Immediate::I64(x) => *x,
+                                    Immediate::I8(x) => *x as i64,
+                                    Immediate::I16(x) => *x as i64,
+                                    Immediate::I32(x) => *x as i64,
+                                    Immediate::I64(x) => *x,
                                     _ => {
                                         return Err(LaminaError::ValidationError(
                                             "Float immediate in integer op".to_string(),
@@ -495,22 +484,22 @@ fn emit_instruction_x86_64(
                                 if v >= i32::MIN as i64 && v <= i32::MAX as i64 {
                                     // Fits in 32-bit sign-extended immediate
                                     match op {
-                                        crate::mir::IntBinOp::Add => {
+                                        IntBinOp::Add => {
                                             writeln!(writer, "    addq ${}, %{}", v, dp)?
                                         }
-                                        crate::mir::IntBinOp::Sub => {
+                                        IntBinOp::Sub => {
                                             writeln!(writer, "    subq ${}, %{}", v, dp)?
                                         }
-                                        crate::mir::IntBinOp::And => {
+                                        IntBinOp::And => {
                                             writeln!(writer, "    andq ${}, %{}", v, dp)?
                                         }
-                                        crate::mir::IntBinOp::Or => {
+                                        IntBinOp::Or => {
                                             writeln!(writer, "    orq  ${}, %{}", v, dp)?
                                         }
-                                        crate::mir::IntBinOp::Xor => {
+                                        IntBinOp::Xor => {
                                             writeln!(writer, "    xorq ${}, %{}", v, dp)?
                                         }
-                                        crate::mir::IntBinOp::Mul => {
+                                        IntBinOp::Mul => {
                                             writeln!(writer, "    imulq ${}, %{}, %{}", v, dp, dp)?
                                         }
                                         _ => unreachable!(),
@@ -519,22 +508,20 @@ fn emit_instruction_x86_64(
                                     // Large immediate: load into rax as temp, then op
                                     writeln!(writer, "    movq ${}, %rax", v)?;
                                     match op {
-                                        crate::mir::IntBinOp::Add => {
+                                        IntBinOp::Add => {
                                             writeln!(writer, "    addq %rax, %{}", dp)?
                                         }
-                                        crate::mir::IntBinOp::Sub => {
+                                        IntBinOp::Sub => {
                                             writeln!(writer, "    subq %rax, %{}", dp)?
                                         }
-                                        crate::mir::IntBinOp::And => {
+                                        IntBinOp::And => {
                                             writeln!(writer, "    andq %rax, %{}", dp)?
                                         }
-                                        crate::mir::IntBinOp::Or => {
-                                            writeln!(writer, "    orq  %rax, %{}", dp)?
-                                        }
-                                        crate::mir::IntBinOp::Xor => {
+                                        IntBinOp::Or => writeln!(writer, "    orq  %rax, %{}", dp)?,
+                                        IntBinOp::Xor => {
                                             writeln!(writer, "    xorq %rax, %{}", dp)?
                                         }
-                                        crate::mir::IntBinOp::Mul => {
+                                        IntBinOp::Mul => {
                                             writeln!(writer, "    imulq %rax, %{}", dp)?
                                         }
                                         _ => unreachable!(),
@@ -550,22 +537,22 @@ fn emit_instruction_x86_64(
                                 if let Some(rp) = rhs_phys {
                                     // Both in registers: direct op, no memory access
                                     match op {
-                                        crate::mir::IntBinOp::Add => {
+                                        IntBinOp::Add => {
                                             writeln!(writer, "    addq %{}, %{}", rp, dp)?
                                         }
-                                        crate::mir::IntBinOp::Sub => {
+                                        IntBinOp::Sub => {
                                             writeln!(writer, "    subq %{}, %{}", rp, dp)?
                                         }
-                                        crate::mir::IntBinOp::Mul => {
+                                        IntBinOp::Mul => {
                                             writeln!(writer, "    imulq %{}, %{}", rp, dp)?
                                         }
-                                        crate::mir::IntBinOp::And => {
+                                        IntBinOp::And => {
                                             writeln!(writer, "    andq %{}, %{}", rp, dp)?
                                         }
-                                        crate::mir::IntBinOp::Or => {
+                                        IntBinOp::Or => {
                                             writeln!(writer, "    orq  %{}, %{}", rp, dp)?
                                         }
-                                        crate::mir::IntBinOp::Xor => {
+                                        IntBinOp::Xor => {
                                             writeln!(writer, "    xorq %{}, %{}", rp, dp)?
                                         }
                                         _ => unreachable!(),
@@ -580,22 +567,20 @@ fn emit_instruction_x86_64(
                                         "rax",
                                     )?;
                                     match op {
-                                        crate::mir::IntBinOp::Add => {
+                                        IntBinOp::Add => {
                                             writeln!(writer, "    addq %rax, %{}", dp)?
                                         }
-                                        crate::mir::IntBinOp::Sub => {
+                                        IntBinOp::Sub => {
                                             writeln!(writer, "    subq %rax, %{}", dp)?
                                         }
-                                        crate::mir::IntBinOp::Mul => {
+                                        IntBinOp::Mul => {
                                             writeln!(writer, "    imulq %rax, %{}", dp)?
                                         }
-                                        crate::mir::IntBinOp::And => {
+                                        IntBinOp::And => {
                                             writeln!(writer, "    andq %rax, %{}", dp)?
                                         }
-                                        crate::mir::IntBinOp::Or => {
-                                            writeln!(writer, "    orq  %rax, %{}", dp)?
-                                        }
-                                        crate::mir::IntBinOp::Xor => {
+                                        IntBinOp::Or => writeln!(writer, "    orq  %rax, %{}", dp)?,
+                                        IntBinOp::Xor => {
                                             writeln!(writer, "    xorq %rax, %{}", dp)?
                                         }
                                         _ => unreachable!(),
@@ -611,15 +596,13 @@ fn emit_instruction_x86_64(
                 load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
 
                 match op {
-                    crate::mir::IntBinOp::Shl
-                    | crate::mir::IntBinOp::AShr
-                    | crate::mir::IntBinOp::LShr => match rhs {
+                    IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr => match rhs {
                         crate::mir::Operand::Immediate(imm) => {
                             let shift_val = match imm {
-                                crate::mir::instruction::Immediate::I8(v) => *v as u64,
-                                crate::mir::instruction::Immediate::I16(v) => *v as u64,
-                                crate::mir::instruction::Immediate::I32(v) => *v as u64,
-                                crate::mir::instruction::Immediate::I64(v) => *v as u64,
+                                Immediate::I8(v) => *v as u64,
+                                Immediate::I16(v) => *v as u64,
+                                Immediate::I32(v) => *v as u64,
+                                Immediate::I64(v) => *v as u64,
                                 _ => {
                                     return Err(LaminaError::ValidationError(
                                         "Shift count must be an integer immediate".to_string(),
@@ -627,13 +610,11 @@ fn emit_instruction_x86_64(
                                 }
                             };
                             match op {
-                                crate::mir::IntBinOp::Shl => {
-                                    writeln!(writer, "    shlq ${}, %rax", shift_val)?
-                                }
-                                crate::mir::IntBinOp::AShr => {
+                                IntBinOp::Shl => writeln!(writer, "    shlq ${}, %rax", shift_val)?,
+                                IntBinOp::AShr => {
                                     writeln!(writer, "    sarq ${}, %rax", shift_val)?
                                 }
-                                crate::mir::IntBinOp::LShr => {
+                                IntBinOp::LShr => {
                                     writeln!(writer, "    shrq ${}, %rax", shift_val)?
                                 }
                                 _ => unreachable!(),
@@ -644,15 +625,9 @@ fn emit_instruction_x86_64(
                             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
                             writeln!(writer, "    movq %{}, %rcx", scratch)?;
                             match op {
-                                crate::mir::IntBinOp::Shl => {
-                                    writeln!(writer, "    shlq %cl, %rax")?
-                                }
-                                crate::mir::IntBinOp::AShr => {
-                                    writeln!(writer, "    sarq %cl, %rax")?
-                                }
-                                crate::mir::IntBinOp::LShr => {
-                                    writeln!(writer, "    shrq %cl, %rax")?
-                                }
+                                IntBinOp::Shl => writeln!(writer, "    shlq %cl, %rax")?,
+                                IntBinOp::AShr => writeln!(writer, "    sarq %cl, %rax")?,
+                                IntBinOp::LShr => writeln!(writer, "    shrq %cl, %rax")?,
                                 _ => unreachable!(),
                             }
                             if scratch != "rbx" {
@@ -660,26 +635,23 @@ fn emit_instruction_x86_64(
                             }
                         }
                     },
-                    crate::mir::IntBinOp::SDiv
-                    | crate::mir::IntBinOp::UDiv
-                    | crate::mir::IntBinOp::SRem
-                    | crate::mir::IntBinOp::URem => {
+                    IntBinOp::SDiv | IntBinOp::UDiv | IntBinOp::SRem | IntBinOp::URem => {
                         load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
                         match op {
-                            crate::mir::IntBinOp::SDiv => {
+                            IntBinOp::SDiv => {
                                 writeln!(writer, "    cqto")?;
                                 writeln!(writer, "    idivq %rcx")?;
                             }
-                            crate::mir::IntBinOp::UDiv => {
+                            IntBinOp::UDiv => {
                                 writeln!(writer, "    xorq %rdx, %rdx")?;
                                 writeln!(writer, "    divq %rcx")?;
                             }
-                            crate::mir::IntBinOp::SRem => {
+                            IntBinOp::SRem => {
                                 writeln!(writer, "    cqto")?;
                                 writeln!(writer, "    idivq %rcx")?;
                                 writeln!(writer, "    movq %rdx, %rax")?;
                             }
-                            crate::mir::IntBinOp::URem => {
+                            IntBinOp::URem => {
                                 writeln!(writer, "    xorq %rdx, %rdx")?;
                                 writeln!(writer, "    divq %rcx")?;
                                 writeln!(writer, "    movq %rdx, %rax")?;
@@ -692,24 +664,12 @@ fn emit_instruction_x86_64(
                         load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
 
                         match op {
-                            crate::mir::IntBinOp::Add => {
-                                writeln!(writer, "    addq %{}, %rax", scratch)?
-                            }
-                            crate::mir::IntBinOp::Sub => {
-                                writeln!(writer, "    subq %{}, %rax", scratch)?
-                            }
-                            crate::mir::IntBinOp::Mul => {
-                                writeln!(writer, "    imulq %{}, %rax", scratch)?
-                            }
-                            crate::mir::IntBinOp::And => {
-                                writeln!(writer, "    andq %{}, %rax", scratch)?
-                            }
-                            crate::mir::IntBinOp::Or => {
-                                writeln!(writer, "    orq  %{}, %rax", scratch)?
-                            }
-                            crate::mir::IntBinOp::Xor => {
-                                writeln!(writer, "    xorq %{}, %rax", scratch)?
-                            }
+                            IntBinOp::Add => writeln!(writer, "    addq %{}, %rax", scratch)?,
+                            IntBinOp::Sub => writeln!(writer, "    subq %{}, %rax", scratch)?,
+                            IntBinOp::Mul => writeln!(writer, "    imulq %{}, %rax", scratch)?,
+                            IntBinOp::And => writeln!(writer, "    andq %{}, %rax", scratch)?,
+                            IntBinOp::Or => writeln!(writer, "    orq  %{}, %rax", scratch)?,
+                            IntBinOp::Xor => writeln!(writer, "    xorq %{}, %rax", scratch)?,
                             _ => unreachable!(),
                         }
 
@@ -737,16 +697,16 @@ fn emit_instruction_x86_64(
 
             writeln!(writer, "    cmpq %{}, %rax", scratch)?;
             match op {
-                crate::mir::IntCmpOp::Eq => writeln!(writer, "    sete %al")?,
-                crate::mir::IntCmpOp::Ne => writeln!(writer, "    setne %al")?,
-                crate::mir::IntCmpOp::SLt => writeln!(writer, "    setl %al")?,
-                crate::mir::IntCmpOp::SLe => writeln!(writer, "    setle %al")?,
-                crate::mir::IntCmpOp::SGt => writeln!(writer, "    setg %al")?,
-                crate::mir::IntCmpOp::SGe => writeln!(writer, "    setge %al")?,
-                crate::mir::IntCmpOp::ULt => writeln!(writer, "    setb %al")?,
-                crate::mir::IntCmpOp::ULe => writeln!(writer, "    setbe %al")?,
-                crate::mir::IntCmpOp::UGt => writeln!(writer, "    seta %al")?,
-                crate::mir::IntCmpOp::UGe => writeln!(writer, "    setae %al")?,
+                IntCmpOp::Eq => writeln!(writer, "    sete %al")?,
+                IntCmpOp::Ne => writeln!(writer, "    setne %al")?,
+                IntCmpOp::SLt => writeln!(writer, "    setl %al")?,
+                IntCmpOp::SLe => writeln!(writer, "    setle %al")?,
+                IntCmpOp::SGt => writeln!(writer, "    setg %al")?,
+                IntCmpOp::SGe => writeln!(writer, "    setge %al")?,
+                IntCmpOp::ULt => writeln!(writer, "    setb %al")?,
+                IntCmpOp::ULe => writeln!(writer, "    setbe %al")?,
+                IntCmpOp::UGt => writeln!(writer, "    seta %al")?,
+                IntCmpOp::UGe => writeln!(writer, "    setae %al")?,
                 #[allow(unreachable_patterns)]
                 other => {
                     return Err(LaminaError::ValidationError(format!(
@@ -902,7 +862,7 @@ fn emit_instruction_x86_64(
             ty: _,
             attrs: _,
         } => {
-            if let crate::mir::AddressMode::BaseOffset { base, offset: 0 } = addr {
+            if let AddressMode::BaseOffset { base, offset: 0 } = addr {
                 match base {
                     Register::Virtual(vreg) => {
                         load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
@@ -930,7 +890,7 @@ fn emit_instruction_x86_64(
         } => {
             // Simple direct store for now
             load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
-            if let crate::mir::AddressMode::BaseOffset { base, offset: 0 } = addr {
+            if let AddressMode::BaseOffset { base, offset: 0 } = addr {
                 let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
                 match base {
                     Register::Virtual(vreg) => {
@@ -1087,10 +1047,10 @@ fn emit_instruction_x86_64(
             load_float_operand_to_xmm(lhs, writer, reg_alloc, stack_slots, "xmm0", ty)?;
             load_float_operand_to_xmm(rhs, writer, reg_alloc, stack_slots, "xmm1", ty)?;
             let sse_op = match op {
-                crate::mir::FloatBinOp::FAdd => add,
-                crate::mir::FloatBinOp::FSub => sub,
-                crate::mir::FloatBinOp::FMul => mul,
-                crate::mir::FloatBinOp::FDiv => div,
+                FloatBinOp::FAdd => add,
+                FloatBinOp::FSub => sub,
+                FloatBinOp::FMul => mul,
+                FloatBinOp::FDiv => div,
             };
             writeln!(writer, "    {} %xmm1, %xmm0", sse_op)?;
             if let Register::Virtual(vreg) = dst {
@@ -1100,7 +1060,7 @@ fn emit_instruction_x86_64(
         MirInst::FloatUnary { op, ty, dst, src } => {
             load_float_operand_to_xmm(src, writer, reg_alloc, stack_slots, "xmm0", ty)?;
             match op {
-                crate::mir::FloatUnOp::FNeg => {
+                FloatUnOp::FNeg => {
                     if is_f32(ty) {
                         // XOR with the sign bit of f32
                         writeln!(writer, "    movq $0x80000000, %rax")?;
@@ -1113,7 +1073,7 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    xorpd %xmm1, %xmm0")?;
                     }
                 }
-                crate::mir::FloatUnOp::FSqrt => {
+                FloatUnOp::FSqrt => {
                     let sqrt = if is_f32(ty) { "sqrtss" } else { "sqrtsd" };
                     writeln!(writer, "    {} %xmm0, %xmm0", sqrt)?;
                 }
@@ -1134,12 +1094,12 @@ fn emit_instruction_x86_64(
             let ucomi = if is_f32(ty) { "ucomiss" } else { "ucomisd" };
             writeln!(writer, "    {} %xmm1, %xmm0", ucomi)?;
             match op {
-                crate::mir::FloatCmpOp::Eq => writeln!(writer, "    sete %al")?,
-                crate::mir::FloatCmpOp::Ne => writeln!(writer, "    setne %al")?,
-                crate::mir::FloatCmpOp::Lt => writeln!(writer, "    setb %al")?,
-                crate::mir::FloatCmpOp::Le => writeln!(writer, "    setbe %al")?,
-                crate::mir::FloatCmpOp::Gt => writeln!(writer, "    seta %al")?,
-                crate::mir::FloatCmpOp::Ge => writeln!(writer, "    setae %al")?,
+                FloatCmpOp::Eq => writeln!(writer, "    sete %al")?,
+                FloatCmpOp::Ne => writeln!(writer, "    setne %al")?,
+                FloatCmpOp::Lt => writeln!(writer, "    setb %al")?,
+                FloatCmpOp::Le => writeln!(writer, "    setbe %al")?,
+                FloatCmpOp::Gt => writeln!(writer, "    seta %al")?,
+                FloatCmpOp::Ge => writeln!(writer, "    setae %al")?,
             }
             writeln!(writer, "    movzbq %al, %rax")?;
             if let Register::Virtual(vreg) = dst {

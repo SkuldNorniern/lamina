@@ -2,7 +2,9 @@ use std::io::Write;
 use std::result::Result;
 
 use crate::error::LaminaError;
-use crate::mir::{Immediate, Operand, Register, VirtualReg};
+use crate::mir::{
+    FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, IntBinOp, IntCmpOp, Operand, Register, VirtualReg,
+};
 
 /// Load an operand into the WASM stack
 pub fn load_operand_wasm<W: Write>(
@@ -97,44 +99,38 @@ pub fn store_to_register_wasm<W: Write>(
 }
 
 /// Emit WASM instruction for integer binary operations
-pub fn emit_int_binary_op<W: Write>(
-    op: &crate::mir::IntBinOp,
-    writer: &mut W,
-) -> Result<(), LaminaError> {
+pub fn emit_int_binary_op<W: Write>(op: &IntBinOp, writer: &mut W) -> Result<(), LaminaError> {
     match op {
-        crate::mir::IntBinOp::Add => writeln!(writer, "      i64.add")?,
-        crate::mir::IntBinOp::Sub => writeln!(writer, "      i64.sub")?,
-        crate::mir::IntBinOp::Mul => writeln!(writer, "      i64.mul")?,
-        crate::mir::IntBinOp::SDiv => writeln!(writer, "      i64.div_s")?,
-        crate::mir::IntBinOp::UDiv => writeln!(writer, "      i64.div_u")?,
-        crate::mir::IntBinOp::SRem => writeln!(writer, "      i64.rem_s")?,
-        crate::mir::IntBinOp::URem => writeln!(writer, "      i64.rem_u")?,
-        crate::mir::IntBinOp::And => writeln!(writer, "      i64.and")?,
-        crate::mir::IntBinOp::Or => writeln!(writer, "      i64.or")?,
-        crate::mir::IntBinOp::Xor => writeln!(writer, "      i64.xor")?,
-        crate::mir::IntBinOp::Shl => writeln!(writer, "      i64.shl")?,
-        crate::mir::IntBinOp::AShr => writeln!(writer, "      i64.shr_s")?,
-        crate::mir::IntBinOp::LShr => writeln!(writer, "      i64.shr_u")?,
+        IntBinOp::Add => writeln!(writer, "      i64.add")?,
+        IntBinOp::Sub => writeln!(writer, "      i64.sub")?,
+        IntBinOp::Mul => writeln!(writer, "      i64.mul")?,
+        IntBinOp::SDiv => writeln!(writer, "      i64.div_s")?,
+        IntBinOp::UDiv => writeln!(writer, "      i64.div_u")?,
+        IntBinOp::SRem => writeln!(writer, "      i64.rem_s")?,
+        IntBinOp::URem => writeln!(writer, "      i64.rem_u")?,
+        IntBinOp::And => writeln!(writer, "      i64.and")?,
+        IntBinOp::Or => writeln!(writer, "      i64.or")?,
+        IntBinOp::Xor => writeln!(writer, "      i64.xor")?,
+        IntBinOp::Shl => writeln!(writer, "      i64.shl")?,
+        IntBinOp::AShr => writeln!(writer, "      i64.shr_s")?,
+        IntBinOp::LShr => writeln!(writer, "      i64.shr_u")?,
     }
     Ok(())
 }
 
 /// Emit WASM instruction for integer comparison operations
-pub fn emit_int_cmp_op<W: Write>(
-    op: &crate::mir::IntCmpOp,
-    writer: &mut W,
-) -> Result<(), LaminaError> {
+pub fn emit_int_cmp_op<W: Write>(op: &IntCmpOp, writer: &mut W) -> Result<(), LaminaError> {
     match op {
-        crate::mir::IntCmpOp::Eq => writeln!(writer, "      i64.eq")?,
-        crate::mir::IntCmpOp::Ne => writeln!(writer, "      i64.ne")?,
-        crate::mir::IntCmpOp::SLt => writeln!(writer, "      i64.lt_s")?,
-        crate::mir::IntCmpOp::SLe => writeln!(writer, "      i64.le_s")?,
-        crate::mir::IntCmpOp::SGt => writeln!(writer, "      i64.gt_s")?,
-        crate::mir::IntCmpOp::SGe => writeln!(writer, "      i64.ge_s")?,
-        crate::mir::IntCmpOp::ULt => writeln!(writer, "      i64.lt_u")?,
-        crate::mir::IntCmpOp::ULe => writeln!(writer, "      i64.le_u")?,
-        crate::mir::IntCmpOp::UGt => writeln!(writer, "      i64.gt_u")?,
-        crate::mir::IntCmpOp::UGe => writeln!(writer, "      i64.ge_u")?,
+        IntCmpOp::Eq => writeln!(writer, "      i64.eq")?,
+        IntCmpOp::Ne => writeln!(writer, "      i64.ne")?,
+        IntCmpOp::SLt => writeln!(writer, "      i64.lt_s")?,
+        IntCmpOp::SLe => writeln!(writer, "      i64.le_s")?,
+        IntCmpOp::SGt => writeln!(writer, "      i64.gt_s")?,
+        IntCmpOp::SGe => writeln!(writer, "      i64.ge_s")?,
+        IntCmpOp::ULt => writeln!(writer, "      i64.lt_u")?,
+        IntCmpOp::ULe => writeln!(writer, "      i64.le_u")?,
+        IntCmpOp::UGt => writeln!(writer, "      i64.gt_u")?,
+        IntCmpOp::UGe => writeln!(writer, "      i64.ge_u")?,
     }
     Ok(())
 }
@@ -211,48 +207,48 @@ pub fn store_fp_to_register_wasm<W: Write>(
 
 /// Emit WASM instruction for floating-point binary operations
 pub fn emit_float_binary_op<W: Write>(
-    op: &crate::mir::FloatBinOp,
+    op: &FloatBinOp,
     writer: &mut W,
     is_f32: bool,
 ) -> Result<(), LaminaError> {
     let suffix = if is_f32 { "f32" } else { "f64" };
     match op {
-        crate::mir::FloatBinOp::FAdd => writeln!(writer, "      {}.add", suffix)?,
-        crate::mir::FloatBinOp::FSub => writeln!(writer, "      {}.sub", suffix)?,
-        crate::mir::FloatBinOp::FMul => writeln!(writer, "      {}.mul", suffix)?,
-        crate::mir::FloatBinOp::FDiv => writeln!(writer, "      {}.div", suffix)?,
+        FloatBinOp::FAdd => writeln!(writer, "      {}.add", suffix)?,
+        FloatBinOp::FSub => writeln!(writer, "      {}.sub", suffix)?,
+        FloatBinOp::FMul => writeln!(writer, "      {}.mul", suffix)?,
+        FloatBinOp::FDiv => writeln!(writer, "      {}.div", suffix)?,
     }
     Ok(())
 }
 
 /// Emit WASM instruction for floating-point unary operations
 pub fn emit_float_unary_op<W: Write>(
-    op: &crate::mir::FloatUnOp,
+    op: &FloatUnOp,
     writer: &mut W,
     is_f32: bool,
 ) -> Result<(), LaminaError> {
     let suffix = if is_f32 { "f32" } else { "f64" };
     match op {
-        crate::mir::FloatUnOp::FNeg => writeln!(writer, "      {}.neg", suffix)?,
-        crate::mir::FloatUnOp::FSqrt => writeln!(writer, "      {}.sqrt", suffix)?,
+        FloatUnOp::FNeg => writeln!(writer, "      {}.neg", suffix)?,
+        FloatUnOp::FSqrt => writeln!(writer, "      {}.sqrt", suffix)?,
     }
     Ok(())
 }
 
 /// Emit WASM instruction for floating-point comparison operations
 pub fn emit_float_cmp_op<W: Write>(
-    op: &crate::mir::FloatCmpOp,
+    op: &FloatCmpOp,
     writer: &mut W,
     is_f32: bool,
 ) -> Result<(), LaminaError> {
     let suffix = if is_f32 { "f32" } else { "f64" };
     match op {
-        crate::mir::FloatCmpOp::Eq => writeln!(writer, "      {}.eq", suffix)?,
-        crate::mir::FloatCmpOp::Ne => writeln!(writer, "      {}.ne", suffix)?,
-        crate::mir::FloatCmpOp::Lt => writeln!(writer, "      {}.lt", suffix)?,
-        crate::mir::FloatCmpOp::Le => writeln!(writer, "      {}.le", suffix)?,
-        crate::mir::FloatCmpOp::Gt => writeln!(writer, "      {}.gt", suffix)?,
-        crate::mir::FloatCmpOp::Ge => writeln!(writer, "      {}.ge", suffix)?,
+        FloatCmpOp::Eq => writeln!(writer, "      {}.eq", suffix)?,
+        FloatCmpOp::Ne => writeln!(writer, "      {}.ne", suffix)?,
+        FloatCmpOp::Lt => writeln!(writer, "      {}.lt", suffix)?,
+        FloatCmpOp::Le => writeln!(writer, "      {}.le", suffix)?,
+        FloatCmpOp::Gt => writeln!(writer, "      {}.gt", suffix)?,
+        FloatCmpOp::Ge => writeln!(writer, "      {}.ge", suffix)?,
     }
     Ok(())
 }

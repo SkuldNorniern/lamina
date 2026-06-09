@@ -6,7 +6,7 @@ use std::sync::{Arc, mpsc};
 use std::thread;
 
 use crate::error::LaminaError;
-use crate::mir::{Global, MirType, Module as MirModule, Signature};
+use crate::mir::{Function, Global, MirType, Module as MirModule, Signature};
 use crate::mir_codegen::{CodegenError, CodegenOptions};
 use lamina_platform::TargetOperatingSystem;
 
@@ -149,7 +149,7 @@ impl<'a> CodegenBase<'a> {
 /// Compilation task for parallel execution.
 pub struct CompilationTask {
     pub func_name: String,
-    pub func: crate::mir::Function,
+    pub func: Function,
     pub func_index: usize,
 }
 
@@ -172,7 +172,7 @@ pub fn compile_functions_parallel<F>(
     compile_func: F,
 ) -> Result<Vec<CompilationResult>, CodegenError>
 where
-    F: Fn(&str, &crate::mir::Function, TargetOperatingSystem) -> Result<Vec<u8>, CodegenError>
+    F: Fn(&str, &Function, TargetOperatingSystem) -> Result<Vec<u8>, CodegenError>
         + Send
         + Sync
         + 'static,
@@ -181,7 +181,7 @@ where
         return compile_functions_sequential(module, target_os, compile_func);
     }
 
-    let mut functions: Vec<(String, crate::mir::Function)> = module
+    let mut functions: Vec<(String, Function)> = module
         .functions
         .iter()
         .filter_map(|(name, func)| {
@@ -195,7 +195,7 @@ where
 
     functions.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let functions: Vec<(String, crate::mir::Function, usize)> = functions
+    let functions: Vec<(String, Function, usize)> = functions
         .into_iter()
         .enumerate()
         .map(|(idx, (name, func))| (name, func, idx))
@@ -304,9 +304,9 @@ fn compile_functions_sequential<F>(
     compile_func: F,
 ) -> Result<Vec<CompilationResult>, CodegenError>
 where
-    F: Fn(&str, &crate::mir::Function, TargetOperatingSystem) -> Result<Vec<u8>, CodegenError>,
+    F: Fn(&str, &Function, TargetOperatingSystem) -> Result<Vec<u8>, CodegenError>,
 {
-    let mut functions: Vec<(&str, &crate::mir::Function)> = module
+    let mut functions: Vec<(&str, &Function)> = module
         .functions
         .iter()
         .filter_map(|(name, func)| {
