@@ -3,7 +3,10 @@
 use crate::mir::transform::compute_back_edge_headers;
 
 use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Immediate, Instruction, MirType, Operand, Register, ScalarType};
+use crate::mir::{
+    Block, FloatBinOp, Function, Immediate, Instruction, IntBinOp, MirType, Operand, Register,
+    ScalarType,
+};
 use std::collections::{HashMap, HashSet};
 
 /// Common Subexpression Elimination (CSE)
@@ -141,20 +144,10 @@ impl CommonSubexpressionElimination {
         // Only allow simple arithmetic operations for CSE in loop bodies
         match instr {
             Instruction::IntBinary { op, .. } => {
-                matches!(
-                    op,
-                    crate::mir::IntBinOp::Add
-                        | crate::mir::IntBinOp::Sub
-                        | crate::mir::IntBinOp::Mul
-                )
+                matches!(op, IntBinOp::Add | IntBinOp::Sub | IntBinOp::Mul)
             }
             Instruction::FloatBinary { op, .. } => {
-                matches!(
-                    op,
-                    crate::mir::FloatBinOp::FAdd
-                        | crate::mir::FloatBinOp::FSub
-                        | crate::mir::FloatBinOp::FMul
-                )
+                matches!(op, FloatBinOp::FAdd | FloatBinOp::FSub | FloatBinOp::FMul)
             }
             _ => false, // Only simple arithmetic for loop CSE
         }
@@ -202,7 +195,7 @@ impl CommonSubexpressionElimination {
                                             _ => unreachable!(),
                                         };
                                         Instruction::FloatBinary {
-                                            op: crate::mir::FloatBinOp::FAdd,
+                                            op: FloatBinOp::FAdd,
                                             dst: dst.clone(),
                                             ty: instr_type,
                                             lhs: Operand::Register(existing_reg.clone()),
@@ -212,7 +205,7 @@ impl CommonSubexpressionElimination {
                                     _ => {
                                         // For integer types, use integer add with 0
                                         Instruction::IntBinary {
-                                            op: crate::mir::IntBinOp::Add,
+                                            op: IntBinOp::Add,
                                             dst: dst.clone(),
                                             ty: instr_type,
                                             lhs: Operand::Register(existing_reg.clone()),

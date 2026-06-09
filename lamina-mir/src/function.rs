@@ -5,7 +5,9 @@
 use super::block::Block;
 use super::register::Register;
 use super::types::MirType;
+use super::instruction::Instruction;
 use std::fmt;
+use std::collections::HashSet;
 
 /// Function parameter
 #[derive(Debug, Clone, PartialEq)]
@@ -137,7 +139,7 @@ impl Function {
         }
 
         // Check that all blocks have unique labels
-        let mut seen_labels = std::collections::HashSet::new();
+        let mut seen_labels = HashSet::new();
         for block in &self.blocks {
             if !seen_labels.insert(&block.label) {
                 return Err(format!("Duplicate block label: {}", block.label));
@@ -228,7 +230,7 @@ impl FunctionBuilder {
     }
 
     /// Add an instruction to the current block
-    pub fn instr(mut self, instr: super::instruction::Instruction) -> Self {
+    pub fn instr(mut self, instr: Instruction) -> Self {
         if let Some(ref label) = self.current_block
             && let Some(block) = self.function.get_block_mut(label)
         {

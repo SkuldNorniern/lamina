@@ -24,8 +24,12 @@ use util::{
     load_operand_to_register, load_register_to_r3, load_register_to_register, store_r3_to_register,
 };
 
+use crate::mir::instruction::{AddressMode, Immediate};
 use crate::mir::register::RegisterClass;
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir::{
+    FloatBinOp, FloatCmpOp, FloatUnOp, Instruction as MirInst, IntBinOp, IntCmpOp, MirType,
+    Module as MirModule, Operand, Register, ScalarType, VirtualReg,
+};
 use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
@@ -86,7 +90,7 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &HashMap<String, crate::mir::MirType>,
+        types: &HashMap<String, MirType>,
         globals: &HashMap<String, crate::mir::Global>,
         funcs: &HashMap<String, crate::mir::Signature>,
         codegen_units: usize,
@@ -162,11 +166,11 @@ fn compile_single_function_ppc64(
     }
 
     let mut reg_alloc = Ppc64RegAlloc::new(target_os);
-    let mut stack_slots: HashMap<crate::mir::VirtualReg, i32> = HashMap::new();
+    let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
 
     if settings.regalloc != RegallocStrategy::Incremental {
-        let mut def_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
-        let mut used_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
+        let mut def_regs: HashSet<VirtualReg> = HashSet::new();
+        let mut used_regs: HashSet<VirtualReg> = HashSet::new();
         for block in &func.blocks {
             for inst in &block.instructions {
                 if let Some(dst) = inst.def_reg()
@@ -328,7 +332,7 @@ fn emit_instruction_ppc64<W: Write>(
     inst: &MirInst,
     writer: &mut W,
     reg_alloc: &mut Ppc64RegAlloc,
-    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
@@ -348,28 +352,28 @@ fn emit_instruction_ppc64<W: Write>(
             load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "3")?;
             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "4")?;
             match op {
-                crate::mir::IntBinOp::Add => writeln!(writer, "    add 3, 3, 4")?,
-                crate::mir::IntBinOp::Sub => writeln!(writer, "    sub 3, 3, 4")?,
-                crate::mir::IntBinOp::Mul => writeln!(writer, "    mulld 3, 3, 4")?,
-                crate::mir::IntBinOp::SDiv => writeln!(writer, "    divd 3, 3, 4")?,
-                crate::mir::IntBinOp::UDiv => writeln!(writer, "    divdu 3, 3, 4")?,
-                crate::mir::IntBinOp::SRem => {
+                IntBinOp::Add => writeln!(writer, "    add 3, 3, 4")?,
+                IntBinOp::Sub => writeln!(writer, "    sub 3, 3, 4")?,
+                IntBinOp::Mul => writeln!(writer, "    mulld 3, 3, 4")?,
+                IntBinOp::SDiv => writeln!(writer, "    divd 3, 3, 4")?,
+                IntBinOp::UDiv => writeln!(writer, "    divdu 3, 3, 4")?,
+                IntBinOp::SRem => {
                     // rem = lhs - (lhs/rhs)*rhs
                     writeln!(writer, "    divd 5, 3, 4")?;
                     writeln!(writer, "    mulld 5, 5, 4")?;
                     writeln!(writer, "    sub 3, 3, 5")?;
                 }
-                crate::mir::IntBinOp::URem => {
+                IntBinOp::URem => {
                     writeln!(writer, "    divdu 5, 3, 4")?;
                     writeln!(writer, "    mulld 5, 5, 4")?;
                     writeln!(writer, "    sub 3, 3, 5")?;
                 }
-                crate::mir::IntBinOp::And => writeln!(writer, "    and 3, 3, 4")?,
-                crate::mir::IntBinOp::Or => writeln!(writer, "    or 3, 3, 4")?,
-                crate::mir::IntBinOp::Xor => writeln!(writer, "    xor 3, 3, 4")?,
-                crate::mir::IntBinOp::Shl => writeln!(writer, "    sld 3, 3, 4")?,
-                crate::mir::IntBinOp::AShr => writeln!(writer, "    srad 3, 3, 4")?,
-                crate::mir::IntBinOp::LShr => writeln!(writer, "    srd 3, 3, 4")?,
+                IntBinOp::And => writeln!(writer, "    and 3, 3, 4")?,
+                IntBinOp::Or => writeln!(writer, "    or 3, 3, 4")?,
+                IntBinOp::Xor => writeln!(writer, "    xor 3, 3, 4")?,
+                IntBinOp::Shl => writeln!(writer, "    sld 3, 3, 4")?,
+                IntBinOp::AShr => writeln!(writer, "    srad 3, 3, 4")?,
+                IntBinOp::LShr => writeln!(writer, "    srd 3, 3, 4")?,
             }
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -387,23 +391,20 @@ fn emit_instruction_ppc64<W: Write>(
             // cmpd sets CR0; use branch + li to materialise 0/1 into r3.
             writeln!(writer, "    cmpd 3, 4")?;
             let (set_true, set_false) = match op {
-                crate::mir::IntCmpOp::Eq => ("beq", "bne"),
-                crate::mir::IntCmpOp::Ne => ("bne", "beq"),
-                crate::mir::IntCmpOp::SLt => ("blt", "bge"),
-                crate::mir::IntCmpOp::SLe => ("ble", "bgt"),
-                crate::mir::IntCmpOp::SGt => ("bgt", "ble"),
-                crate::mir::IntCmpOp::SGe => ("bge", "blt"),
+                IntCmpOp::Eq => ("beq", "bne"),
+                IntCmpOp::Ne => ("bne", "beq"),
+                IntCmpOp::SLt => ("blt", "bge"),
+                IntCmpOp::SLe => ("ble", "bgt"),
+                IntCmpOp::SGt => ("bgt", "ble"),
+                IntCmpOp::SGe => ("bge", "blt"),
                 // Unsigned: use cmplw/cmpld
-                crate::mir::IntCmpOp::ULt
-                | crate::mir::IntCmpOp::ULe
-                | crate::mir::IntCmpOp::UGt
-                | crate::mir::IntCmpOp::UGe => {
+                IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe => {
                     // Redo with unsigned compare
                     writeln!(writer, "    cmpld 3, 4")?;
                     match op {
-                        crate::mir::IntCmpOp::ULt => ("blt", "bge"),
-                        crate::mir::IntCmpOp::ULe => ("ble", "bgt"),
-                        crate::mir::IntCmpOp::UGt => ("bgt", "ble"),
+                        IntCmpOp::ULt => ("blt", "bge"),
+                        IntCmpOp::ULe => ("ble", "bgt"),
+                        IntCmpOp::UGt => ("bgt", "ble"),
                         _ => ("bge", "blt"),
                     }
                 }
@@ -432,10 +433,10 @@ fn emit_instruction_ppc64<W: Write>(
             emit_load_fp_operand(lhs, writer, reg_alloc, stack_slots, "1", is_f32)?;
             emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32)?;
             match op {
-                crate::mir::FloatBinOp::FAdd => writeln!(writer, "    fadd{suffix} 1, 1, 2")?,
-                crate::mir::FloatBinOp::FSub => writeln!(writer, "    fsub{suffix} 1, 1, 2")?,
-                crate::mir::FloatBinOp::FMul => writeln!(writer, "    fmul{suffix} 1, 1, 2")?,
-                crate::mir::FloatBinOp::FDiv => writeln!(writer, "    fdiv{suffix} 1, 1, 2")?,
+                FloatBinOp::FAdd => writeln!(writer, "    fadd{suffix} 1, 1, 2")?,
+                FloatBinOp::FSub => writeln!(writer, "    fsub{suffix} 1, 1, 2")?,
+                FloatBinOp::FMul => writeln!(writer, "    fmul{suffix} 1, 1, 2")?,
+                FloatBinOp::FDiv => writeln!(writer, "    fdiv{suffix} 1, 1, 2")?,
             }
             if let Register::Virtual(vreg) = dst {
                 emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
@@ -446,8 +447,8 @@ fn emit_instruction_ppc64<W: Write>(
             let suffix = if is_f32 { "s" } else { "d" };
             emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32)?;
             match op {
-                crate::mir::FloatUnOp::FNeg => writeln!(writer, "    fneg{suffix} 1, 1")?,
-                crate::mir::FloatUnOp::FSqrt => writeln!(writer, "    fsqrt{suffix} 1, 1")?,
+                FloatUnOp::FNeg => writeln!(writer, "    fneg{suffix} 1, 1")?,
+                FloatUnOp::FSqrt => writeln!(writer, "    fsqrt{suffix} 1, 1")?,
             }
             if let Register::Virtual(vreg) = dst {
                 emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
@@ -465,12 +466,12 @@ fn emit_instruction_ppc64<W: Write>(
             emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32)?;
             writeln!(writer, "    fcmpu 0, 1, 2")?;
             let branch = match op {
-                crate::mir::FloatCmpOp::Eq => "beq",
-                crate::mir::FloatCmpOp::Ne => "bne",
-                crate::mir::FloatCmpOp::Lt => "blt",
-                crate::mir::FloatCmpOp::Le => "ble",
-                crate::mir::FloatCmpOp::Gt => "bgt",
-                crate::mir::FloatCmpOp::Ge => "bge",
+                FloatCmpOp::Eq => "beq",
+                FloatCmpOp::Ne => "bne",
+                FloatCmpOp::Lt => "blt",
+                FloatCmpOp::Le => "ble",
+                FloatCmpOp::Gt => "bgt",
+                FloatCmpOp::Ge => "bge",
             };
             writeln!(writer, "    {branch} .L_ppc_fcmp_true_{lhs:p}")?;
             writeln!(writer, "    li 3, 0")?;
@@ -603,14 +604,12 @@ fn emit_instruction_ppc64<W: Write>(
             attrs: _,
         } => {
             let load_op = match ty {
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "lbz",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => "lhz",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "lwz",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "ld",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => "lfs",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "lfd",
+                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lbz",
+                MirType::Scalar(ScalarType::I16) => "lhz",
+                MirType::Scalar(ScalarType::I32) => "lwz",
+                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "ld",
+                MirType::Scalar(ScalarType::F32) => "lfs",
+                MirType::Scalar(ScalarType::F64) => "lfd",
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
@@ -620,7 +619,7 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             };
             match addr {
-                crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "5")?;
@@ -648,14 +647,12 @@ fn emit_instruction_ppc64<W: Write>(
             attrs: _,
         } => {
             let store_op = match ty {
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "stb",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => "sth",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "stw",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "std",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => "stfs",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "stfd",
+                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "stb",
+                MirType::Scalar(ScalarType::I16) => "sth",
+                MirType::Scalar(ScalarType::I32) => "stw",
+                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "std",
+                MirType::Scalar(ScalarType::F32) => "stfs",
+                MirType::Scalar(ScalarType::F64) => "stfd",
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
@@ -666,7 +663,7 @@ fn emit_instruction_ppc64<W: Write>(
             };
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
             match addr {
-                crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "5")?;
@@ -746,16 +743,16 @@ fn emit_instruction_ppc64<W: Write>(
 /// Strategy: store the integer bits to a temp stack slot and then `lfs`/`lfd` them
 /// into the FPR, which reinterprets the bit pattern as a float.
 fn emit_load_fp_operand<W: Write>(
-    operand: &crate::mir::Operand,
+    operand: &Operand,
     writer: &mut W,
     reg_alloc: &mut Ppc64RegAlloc,
-    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     fpr: &str,
     is_f32: bool,
 ) -> Result<(), crate::error::LaminaError> {
     let load_fp = if is_f32 { "lfs" } else { "lfd" };
     match operand {
-        crate::mir::Operand::Register(reg) => {
+        Operand::Register(reg) => {
             match reg {
                 Register::Virtual(v) => {
                     if let Some(offset) = stack_slots.get(v) {
@@ -772,12 +769,12 @@ fn emit_load_fp_operand<W: Write>(
                 }
             }
         }
-        crate::mir::Operand::Immediate(imm) => {
+        Operand::Immediate(imm) => {
             let bits: i64 = match imm {
-                crate::mir::instruction::Immediate::F32(v) => v.to_bits() as i64,
-                crate::mir::instruction::Immediate::F64(v) => v.to_bits() as i64,
-                crate::mir::instruction::Immediate::I32(v) => *v as i64,
-                crate::mir::instruction::Immediate::I64(v) => *v,
+                Immediate::F32(v) => v.to_bits() as i64,
+                Immediate::F64(v) => v.to_bits() as i64,
+                Immediate::I32(v) => *v as i64,
+                Immediate::I64(v) => *v,
                 other => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
@@ -797,10 +794,10 @@ fn emit_load_fp_operand<W: Write>(
 /// Store FPR result back to a virtual register stack slot as integer bits.
 fn emit_store_fp_result<W: Write>(
     fpr: &str,
-    vreg: &crate::mir::VirtualReg,
+    vreg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &Ppc64RegAlloc,
-    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     is_f32: bool,
 ) -> Result<(), crate::error::LaminaError> {
     let store_fp = if is_f32 { "stfs" } else { "stfd" };
