@@ -828,7 +828,7 @@ mod tests {
         let f = FunctionBuilder::new("test_fn")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
-            .instr(crate::mir::Instruction::Ret { value: None })
+            .instr(Instruction::Ret { value: None })
             .build();
         m.add_function(f);
         m
@@ -884,15 +884,11 @@ mod tests {
             })
             .block("then")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(
-                    1,
-                ))),
+                value: Some(Operand::Immediate(Immediate::I64(1))),
             })
             .block("else")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(
-                    0,
-                ))),
+                value: Some(Operand::Immediate(Immediate::I64(0))),
             })
             .build();
         m.add_function(f);

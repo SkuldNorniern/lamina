@@ -272,7 +272,7 @@ impl JumpThreading {
         }
 
         fn resolve_target(map: &HashMap<String, String>, mut tgt: String) -> String {
-            let mut seen = std::collections::HashSet::new();
+            let mut seen = HashSet::new();
             const MAX_CHAIN: usize = 100;
             let mut i = 0;
             while let Some(next) = map.get(&tgt) {
