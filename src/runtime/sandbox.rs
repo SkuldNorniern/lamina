@@ -126,20 +126,17 @@ fn analyse_module(module: &MirModule, config: &SandboxConfig) -> Vec<String> {
 
                 if !config.allow_syscalls && SYSCALL_SYMBOLS.contains(&name) {
                     violations.push(format!(
-                        "function '{}': calls disallowed syscall intrinsic '{}'",
-                        func_name, name
+                        "function '{func_name}': calls disallowed syscall intrinsic '{name}'"
                     ));
                 }
                 if !config.allow_file_io && FILE_IO_SYMBOLS.contains(&name) {
                     violations.push(format!(
-                        "function '{}': calls disallowed file-I/O symbol '{}'",
-                        func_name, name
+                        "function '{func_name}': calls disallowed file-I/O symbol '{name}'"
                     ));
                 }
                 if !config.allow_network && NETWORK_SYMBOLS.contains(&name) {
                     violations.push(format!(
-                        "function '{}': calls disallowed network symbol '{}'",
-                        func_name, name
+                        "function '{func_name}': calls disallowed network symbol '{name}'"
                     ));
                 }
             }
@@ -201,7 +198,7 @@ impl Sandbox {
                 .compiler
                 .compile(module, Some(function_name))
                 .map_err(|e| {
-                    LaminaError::ValidationError(format!("Sandbox compilation failed: {}", e))
+                    LaminaError::ValidationError(format!("Sandbox compilation failed: {e}"))
                 })?;
 
             // SAFETY: `memory` is kept alive for the entire duration of the
@@ -241,8 +238,7 @@ impl Sandbox {
                     rx.recv_timeout(Duration::from_millis(timeout_ms))
                         .map_err(|_| {
                             LaminaError::ValidationError(format!(
-                                "Sandbox: execution timed out after {} ms",
-                                timeout_ms
+                                "Sandbox: execution timed out after {timeout_ms} ms"
                             ))
                         })?
                         .map_err(LaminaError::ValidationError)
@@ -274,8 +270,7 @@ impl Sandbox {
             let estimated = module.functions.len() * (4 * 1024 + 8 * 1024);
             if estimated > max_mem {
                 return Err(LaminaError::ValidationError(format!(
-                    "Sandbox: estimated memory {} B exceeds limit {} B",
-                    estimated, max_mem
+                    "Sandbox: estimated memory {estimated} B exceeds limit {max_mem} B"
                 )));
             }
         }

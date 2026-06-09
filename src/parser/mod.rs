@@ -183,14 +183,12 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let name = decl.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
-                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
-                    name
+                    "Duplicate name '{name}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals"
                 )));
             }
             if module.type_declarations.insert(name, decl).is_some() {
                 return Err(state.error(format!(
-                    "Duplicate type declaration: @{}\n  Hint: Each type can only be declared once",
-                    name
+                    "Duplicate type declaration: @{name}\n  Hint: Each type can only be declared once"
                 )));
             }
         } else if keyword_slice.starts_with("global") {
@@ -198,14 +196,12 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let name = decl.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
-                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
-                    name
+                    "Duplicate name '{name}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals"
                 )));
             }
             if module.global_declarations.insert(name, decl).is_some() {
                 return Err(state.error(format!(
-                    "Duplicate global declaration: @{}\n  Hint: Each global can only be declared once",
-                    name
+                    "Duplicate global declaration: @{name}\n  Hint: Each global can only be declared once"
                 )));
             }
         } else if keyword_slice.starts_with("fn") || keyword_slice.starts_with('@') {
@@ -213,14 +209,12 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             let name = func.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
-                    "Duplicate name '{}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals",
-                    name
+                    "Duplicate name '{name}': a type, function, or global with this name already exists\n  Hint: Each name must be unique across types, functions, and globals"
                 )));
             }
             if module.functions.insert(name, func).is_some() {
                 return Err(state.error(format!(
-                    "Duplicate function definition: @{}\n  Hint: Each function can only be defined once",
-                    name
+                    "Duplicate function definition: @{name}\n  Hint: Each function can only be defined once"
                 )));
             }
         } else {
@@ -236,8 +230,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             };
 
             return Err(state.error(format!(
-                "Unexpected token at top level: {:?}\n  Hint: {}",
-                token, suggestions
+                "Unexpected token at top level: {token:?}\n  Hint: {suggestions}"
             )));
         }
     }

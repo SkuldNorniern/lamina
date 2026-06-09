@@ -47,14 +47,14 @@ pub fn compile_to_runtime(
         let jit_debug = std::env::var_os("LAMINA_JIT_DEBUG").is_some();
 
         let mut assembler = RasAssembler::new(_target_arch, _target_os).map_err(|e| {
-            LaminaError::ValidationError(format!("Failed to create assembler: {}", e))
+            LaminaError::ValidationError(format!("Failed to create assembler: {e}"))
         })?;
 
         // Always compile all functions (needed for internal function calls)
         let (code, function_offsets) = assembler
             .compile_mir_to_binary_function(_module, None)
             .map_err(|e| {
-                LaminaError::ValidationError(format!("Runtime compilation failed: {}", e))
+                LaminaError::ValidationError(format!("Runtime compilation failed: {e}"))
             })?;
 
         // Find the function offset for the requested function
@@ -65,7 +65,7 @@ pub fn compile_to_runtime(
                     if let Some(stripped) = name.strip_prefix('@') {
                         function_offsets.get(stripped)
                     } else {
-                        function_offsets.get(&format!("@{}", name))
+                        function_offsets.get(&format!("@{name}"))
                     }
                 })
                 .copied();
@@ -84,18 +84,17 @@ pub fn compile_to_runtime(
         };
 
         // Allocate writable memory
-        let mut memory = ExecutableMemory::allocate_writable(code.len()).map_err(|e| {
-            LaminaError::ValidationError(format!("Memory allocation failed: {}", e))
-        })?;
+        let mut memory = ExecutableMemory::allocate_writable(code.len())
+            .map_err(|e| LaminaError::ValidationError(format!("Memory allocation failed: {e}")))?;
 
         // Write code
         memory
             .write_code(&code)
-            .map_err(|e| LaminaError::ValidationError(format!("Failed to write code: {}", e)))?;
+            .map_err(|e| LaminaError::ValidationError(format!("Failed to write code: {e}")))?;
 
         // Make executable
         memory.make_executable().map_err(|e| {
-            LaminaError::ValidationError(format!("Failed to make memory executable: {}", e))
+            LaminaError::ValidationError(format!("Failed to make memory executable: {e}"))
         })?;
 
         // Get function pointer, adjusting for function offset if specified
@@ -114,8 +113,7 @@ pub fn compile_to_runtime(
             let adjusted = (base_ptr as usize + offset) as *const u8;
             if jit_debug {
                 eprintln!(
-                    "[JIT-DEBUG] Function pointer: base={:p}, offset={}, adjusted={:p}",
-                    base_ptr, offset, adjusted
+                    "[JIT-DEBUG] Function pointer: base={base_ptr:p}, offset={offset}, adjusted={adjusted:p}"
                 );
             }
 
@@ -255,10 +253,7 @@ pub fn compile_to_runtime(
             adjusted
         } else {
             if jit_debug {
-                eprintln!(
-                    "[JIT-DEBUG] Function pointer: base={:p}, no offset",
-                    base_ptr
-                );
+                eprintln!("[JIT-DEBUG] Function pointer: base={base_ptr:p}, no offset");
             }
             base_ptr
         };

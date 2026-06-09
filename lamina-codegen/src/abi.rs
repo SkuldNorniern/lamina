@@ -192,7 +192,7 @@ pub fn mangle_macos_name(name: &str) -> String {
     if name == "main" {
         "_main".to_string()
     } else {
-        format!("_{}", name)
+        format!("_{name}")
     }
 }
 

@@ -25,8 +25,8 @@ impl AArch64ABI {
     /// Returns the global declaration directive for a function.
     pub fn get_global_directive(&self, func_name: &str) -> Option<String> {
         match self.target_os {
-            TargetOperatingSystem::MacOS => Some(format!(".globl _{}", func_name)),
-            _ => Some(format!(".globl {}", func_name)),
+            TargetOperatingSystem::MacOS => Some(format!(".globl _{func_name}")),
+            _ => Some(format!(".globl {func_name}")),
         }
     }
 

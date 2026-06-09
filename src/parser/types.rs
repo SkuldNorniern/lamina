@@ -38,8 +38,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
             // Check for duplicate field names
             if !field_names.insert(field_name) {
                 return Err(state.error(format!(
-                    "Duplicate struct field name: '{}'\n  Hint: Each field in a struct must have a unique name",
-                    field_name
+                    "Duplicate struct field name: '{field_name}'\n  Hint: Each field in a struct must have a unique name"
                 )));
             }
 
@@ -63,7 +62,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
         let size_val = state.parse_integer()?;
 
         if size_val < 0 {
-            return Err(state.error(format!("Invalid array size: {}", size_val)));
+            return Err(state.error(format!("Invalid array size: {size_val}")));
         }
 
         let size = size_val as u64;
@@ -77,8 +76,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
     } else {
         let found = state.peek_slice(20).unwrap_or("");
         Err(state.error(format!(
-            "Expected 'struct' or '[' for composite type, but found '{}'",
-            found
+            "Expected 'struct' or '[' for composite type, but found '{found}'"
         )))
     }
 }
@@ -143,7 +141,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                                 suggestions
                                     .iter()
                                     .take(3)
-                                    .map(|s| format!("'{}'", s))
+                                    .map(|s| format!("'{s}'"))
                                     .collect::<Vec<_>>()
                                     .join(", ")
                             )
@@ -156,8 +154,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                     };
 
                     Err(state.error(format!(
-                        "Unknown type identifier: '{}'\n  Hint: {}",
-                        potential_primitive, hint
+                        "Unknown type identifier: '{potential_primitive}'\n  Hint: {hint}"
                     )))
                 }
             }

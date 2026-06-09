@@ -137,13 +137,13 @@ fn compile_single_function_riscv(
     let abi = RiscVAbi::new(target_os);
 
     let label = abi.mangle_function_name(func_name);
-    writeln!(output, "{}:", label)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+    writeln!(output, "{label}:")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{}\"", tag)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "    .file 1 \"{tag}\"")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     let mut stack_slots: HashMap<crate::mir::VirtualReg, i32> = HashMap::new();
@@ -232,7 +232,7 @@ fn compile_single_function_riscv(
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
         writeln!(output, ".L_{}:", block.label)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
         for inst in &block.instructions {
             emit_instruction_riscv(
@@ -291,7 +291,7 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
 
     for func_name in &module.external_functions {
         let label = abi.mangle_function_name(func_name);
-        writeln!(writer, ".extern {}", label)?;
+        writeln!(writer, ".extern {label}")?;
     }
 
     let settings_arc = Arc::new(settings.clone());
@@ -400,7 +400,7 @@ fn emit_instruction_riscv<W: Write>(
                         TargetOperatingSystem::MacOS => "_printf".to_string(),
                         _ => "printf".to_string(),
                     });
-                    writeln!(writer, "    call {}", printf_name)?;
+                    writeln!(writer, "    call {printf_name}")?;
                 }
             } else {
                 // General function call implementation
@@ -427,7 +427,7 @@ fn emit_instruction_riscv<W: Write>(
 
                 if stack_space > 0 {
                     // Allocate stack space
-                    writeln!(writer, "    addi sp, sp, -{}", stack_space)?;
+                    writeln!(writer, "    addi sp, sp, -{stack_space}")?;
 
                     // Store arguments on stack (in order, starting at sp+0)
                     for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
@@ -435,7 +435,7 @@ fn emit_instruction_riscv<W: Write>(
                         // Load argument to a temporary register (use t0)
                         load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
                         // Store to stack
-                        writeln!(writer, "    sd t0, {}(sp)", offset)?;
+                        writeln!(writer, "    sd t0, {offset}(sp)")?;
                     }
                 }
 
@@ -447,11 +447,11 @@ fn emit_instruction_riscv<W: Write>(
                 };
 
                 // Emit call instruction
-                writeln!(writer, "    call {}", target_sym)?;
+                writeln!(writer, "    call {target_sym}")?;
 
                 // Clean up stack arguments
                 if stack_space > 0 {
-                    writeln!(writer, "    addi sp, sp, {}", stack_space)?;
+                    writeln!(writer, "    addi sp, sp, {stack_space}")?;
                 }
             }
 
@@ -515,9 +515,8 @@ fn emit_instruction_riscv<W: Write>(
                 crate::mir::MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
-                            "RISC-V load unsupported for type {:?}. \
-                             Vector types are not yet implemented for RISC-V.",
-                            ty
+                            "RISC-V load unsupported for type {ty:?}. \
+                             Vector types are not yet implemented for RISC-V."
                         )),
                     ));
                 }
@@ -540,7 +539,7 @@ fn emit_instruction_riscv<W: Write>(
 
                     if is_float {
                         // Load to floating-point register fa0
-                        writeln!(writer, "    {} fa0, {}(t0)", load_op, offset)?;
+                        writeln!(writer, "    {load_op} fa0, {offset}(t0)")?;
 
                         if let Register::Virtual(vreg) = dst {
                             let is_f32 = matches!(
@@ -557,7 +556,7 @@ fn emit_instruction_riscv<W: Write>(
                             )?;
                         }
                     } else {
-                        writeln!(writer, "    {} a0, {}(t0)", load_op, offset)?;
+                        writeln!(writer, "    {load_op} a0, {offset}(t0)")?;
 
                         if let Register::Virtual(vreg) = dst {
                             store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
@@ -593,9 +592,8 @@ fn emit_instruction_riscv<W: Write>(
                 crate::mir::MirType::Vector(_) => {
                     return Err(crate::error::LaminaError::CodegenError(
                         CodegenError::UnsupportedFeature(format!(
-                            "RISC-V store unsupported for type {:?}. \
-                             Vector types are not yet implemented for RISC-V.",
-                            ty
+                            "RISC-V store unsupported for type {ty:?}. \
+                             Vector types are not yet implemented for RISC-V."
                         )),
                     ));
                 }
@@ -624,9 +622,9 @@ fn emit_instruction_riscv<W: Write>(
                     }
 
                     if is_float {
-                        writeln!(writer, "    {} fa0, {}(t0)", store_op, offset)?;
+                        writeln!(writer, "    {store_op} fa0, {offset}(t0)")?;
                     } else {
-                        writeln!(writer, "    {} a0, {}(t0)", store_op, offset)?;
+                        writeln!(writer, "    {store_op} a0, {offset}(t0)")?;
                     }
                 }
                 _ => {
@@ -649,7 +647,7 @@ fn emit_instruction_riscv<W: Write>(
             RiscVFrame::generate_epilogue(writer, stack_size)?;
         }
         MirInst::Jmp { target } => {
-            writeln!(writer, "    j .L_{}", target)?;
+            writeln!(writer, "    j .L_{target}")?;
         }
         MirInst::Br {
             cond,
@@ -658,8 +656,8 @@ fn emit_instruction_riscv<W: Write>(
         } => {
             if let Register::Virtual(vreg) = cond {
                 load_register_to_register(vreg, writer, reg_alloc, stack_slots, "t0")?;
-                writeln!(writer, "    bnez t0, .L_{}", true_target)?;
-                writeln!(writer, "    j .L_{}", false_target)?;
+                writeln!(writer, "    bnez t0, .L_{true_target}")?;
+                writeln!(writer, "    j .L_{false_target}")?;
             }
         }
         MirInst::FloatBinary {
@@ -679,16 +677,16 @@ fn emit_instruction_riscv<W: Write>(
             // Perform floating-point operation
             match op {
                 crate::mir::FloatBinOp::FAdd => {
-                    writeln!(writer, "    fadd.{} fa0, fa0, fa1", suffix)?
+                    writeln!(writer, "    fadd.{suffix} fa0, fa0, fa1")?
                 }
                 crate::mir::FloatBinOp::FSub => {
-                    writeln!(writer, "    fsub.{} fa0, fa0, fa1", suffix)?
+                    writeln!(writer, "    fsub.{suffix} fa0, fa0, fa1")?
                 }
                 crate::mir::FloatBinOp::FMul => {
-                    writeln!(writer, "    fmul.{} fa0, fa0, fa1", suffix)?
+                    writeln!(writer, "    fmul.{suffix} fa0, fa0, fa1")?
                 }
                 crate::mir::FloatBinOp::FDiv => {
-                    writeln!(writer, "    fdiv.{} fa0, fa0, fa1", suffix)?
+                    writeln!(writer, "    fdiv.{suffix} fa0, fa0, fa1")?
                 }
             }
 
@@ -706,8 +704,8 @@ fn emit_instruction_riscv<W: Write>(
 
             // Perform floating-point unary operation
             match op {
-                crate::mir::FloatUnOp::FNeg => writeln!(writer, "    fneg.{} fa0, fa0", suffix)?,
-                crate::mir::FloatUnOp::FSqrt => writeln!(writer, "    fsqrt.{} fa0, fa0", suffix)?,
+                crate::mir::FloatUnOp::FNeg => writeln!(writer, "    fneg.{suffix} fa0, fa0")?,
+                crate::mir::FloatUnOp::FSqrt => writeln!(writer, "    fsqrt.{suffix} fa0, fa0")?,
             }
 
             // Store result
@@ -732,21 +730,21 @@ fn emit_instruction_riscv<W: Write>(
             // Perform floating-point comparison
             // Result goes into integer register a0
             match op {
-                crate::mir::FloatCmpOp::Eq => writeln!(writer, "    feq.{} a0, fa0, fa1", suffix)?,
+                crate::mir::FloatCmpOp::Eq => writeln!(writer, "    feq.{suffix} a0, fa0, fa1")?,
                 crate::mir::FloatCmpOp::Ne => {
                     // NE = !(a == b)
-                    writeln!(writer, "    feq.{} a0, fa0, fa1", suffix)?;
+                    writeln!(writer, "    feq.{suffix} a0, fa0, fa1")?;
                     writeln!(writer, "    xori a0, a0, 1")?;
                 }
-                crate::mir::FloatCmpOp::Lt => writeln!(writer, "    flt.{} a0, fa0, fa1", suffix)?,
-                crate::mir::FloatCmpOp::Le => writeln!(writer, "    fle.{} a0, fa0, fa1", suffix)?,
+                crate::mir::FloatCmpOp::Lt => writeln!(writer, "    flt.{suffix} a0, fa0, fa1")?,
+                crate::mir::FloatCmpOp::Le => writeln!(writer, "    fle.{suffix} a0, fa0, fa1")?,
                 crate::mir::FloatCmpOp::Gt => {
                     // GT = b < a
-                    writeln!(writer, "    flt.{} a0, fa1, fa0", suffix)?
+                    writeln!(writer, "    flt.{suffix} a0, fa1, fa0")?
                 }
                 crate::mir::FloatCmpOp::Ge => {
                     // GE = b <= a
-                    writeln!(writer, "    fle.{} a0, fa1, fa0", suffix)?
+                    writeln!(writer, "    fle.{suffix} a0, fa1, fa0")?
                 }
             }
 
@@ -772,9 +770,9 @@ fn emit_instruction_riscv<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
             }
             // If condition is zero (false), replace a0 with a1.
-            writeln!(writer, "    bnez t0, .L_riscv_sel_{:p}", cond)?;
+            writeln!(writer, "    bnez t0, .L_riscv_sel_{cond:p}")?;
             writeln!(writer, "    mv a0, a1")?;
-            writeln!(writer, ".L_riscv_sel_{:p}:", cond)?;
+            writeln!(writer, ".L_riscv_sel_{cond:p}:")?;
             if let Register::Virtual(vreg) = dst {
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
@@ -791,13 +789,13 @@ fn emit_instruction_riscv<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mv a0, {}", p.name)?,
             }
             for (case_val, case_label) in cases {
-                writeln!(writer, "    li t0, {}", case_val)?;
-                writeln!(writer, "    beq a0, t0, .L_{}", case_label)?;
+                writeln!(writer, "    li t0, {case_val}")?;
+                writeln!(writer, "    beq a0, t0, .L_{case_label}")?;
             }
-            writeln!(writer, "    j .L_{}", default)?;
+            writeln!(writer, "    j .L_{default}")?;
         }
         MirInst::Comment { text } => {
-            writeln!(writer, "    # {}", text)?;
+            writeln!(writer, "    # {text}")?;
         }
         MirInst::Unreachable => {
             // Emit an illegal instruction — RISC-V has no official trap mnemonic,
@@ -817,8 +815,7 @@ fn emit_instruction_riscv<W: Write>(
         other => {
             return Err(crate::error::LaminaError::CodegenError(
                 CodegenError::UnsupportedFeature(format!(
-                    "RISC-V backend: instruction not yet supported: {}",
-                    other
+                    "RISC-V backend: instruction not yet supported: {other}"
                 )),
             ));
         }

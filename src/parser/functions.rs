@@ -41,21 +41,20 @@ pub fn parse_annotations(
                     } else {
                         let list = valid
                             .iter()
-                            .map(|s| format!("@{}", s))
+                            .map(|s| format!("@{s}"))
                             .collect::<Vec<_>>()
                             .join(", ");
-                        format!("Valid annotations are: {}", list)
+                        format!("Valid annotations are: {list}")
                     };
 
                     return Err(state.error(format!(
-                        "Unknown function annotation: @{}\n  Hint: {}",
-                        name, hint
+                        "Unknown function annotation: @{name}\n  Hint: {hint}"
                     )));
                 }
             };
 
             if !seen.insert(annotation.clone()) {
-                return Err(state.error(format!("Duplicate annotation: @{}", name)));
+                return Err(state.error(format!("Duplicate annotation: @{name}")));
             }
 
             if annotation == FunctionAnnotation::Inline
@@ -124,7 +123,7 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
         }
 
         if basic_blocks.insert(label, block).is_some() {
-            return Err(state.error(format!("Redefinition of basic block label: '{}'", label)));
+            return Err(state.error(format!("Redefinition of basic block label: '{label}'")));
         }
     }
 
@@ -172,7 +171,7 @@ pub fn parse_param_list<'a>(
         let param_name = state.parse_value_identifier()?;
 
         if !param_names.insert(param_name) {
-            return Err(state.error(format!("Duplicate parameter name: %{}", param_name)));
+            return Err(state.error(format!("Duplicate parameter name: %{param_name}")));
         }
 
         params.push(FunctionParameter {
@@ -225,8 +224,7 @@ pub fn parse_basic_block<'a>(
 
     if instructions.is_empty() || instructions.last().is_none_or(|last| !last.is_terminator()) {
         return Err(state.error(format!(
-            "Basic block '{}' must end with a terminator instruction (ret, jmp, br)",
-            label
+            "Basic block '{label}' must end with a terminator instruction (ret, jmp, br)"
         )));
     }
 

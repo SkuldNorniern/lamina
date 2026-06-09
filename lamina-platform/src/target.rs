@@ -182,7 +182,7 @@ impl fmt::Display for TargetArchitecture {
             Self::Lisa => "lisa",
             Self::Unknown => "unknown",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -212,7 +212,7 @@ impl fmt::Display for TargetOperatingSystem {
             Self::Artery => "artery",
             Self::Unknown => "unknown",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 

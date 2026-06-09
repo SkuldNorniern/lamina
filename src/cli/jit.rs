@@ -16,8 +16,7 @@ pub fn handle_jit_compilation(
     options: &CompileOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let target = if let Some(target_str) = &options.target_arch {
-        Target::from_str(target_str)
-            .map_err(|e| format!("Invalid target '{}': {}", target_str, e))?
+        Target::from_str(target_str).map_err(|e| format!("Invalid target '{target_str}': {e}"))?
     } else {
         Target::detect_host()
     };
@@ -27,22 +26,22 @@ pub fn handle_jit_compilation(
             "[JIT] Compiling {} for runtime execution",
             input_path.display()
         );
-        println!("[JIT] Target: {}", target);
+        println!("[JIT] Target: {target}");
         if options.sandbox {
             println!("[JIT] Sandbox: enabled");
         }
     }
 
     let ir_mod =
-        lamina::parser::parse_module(ir_source).map_err(|e| format!("IR parse failed: {}", e))?;
+        lamina::parser::parse_module(ir_source).map_err(|e| format!("IR parse failed: {e}"))?;
     let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-        .map_err(|e| format!("MIR lowering failed: {}", e))?;
+        .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
     if options.opt_level > 0 {
         let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
         let transform_stats = pipeline
             .apply_to_module(&mut mir_mod)
-            .map_err(|e| format!("MIR optimization failed: {}", e))?;
+            .map_err(|e| format!("MIR optimization failed: {e}"))?;
 
         if options.verbose {
             println!(
@@ -73,15 +72,15 @@ pub fn handle_jit_compilation(
         };
 
         if options.verbose {
-            println!("[JIT] Executing function '{}' in sandbox", function_name);
+            println!("[JIT] Executing function '{function_name}' in sandbox");
         }
 
         let result: i64 = sandbox
             .execute_i64(&mir_mod, function_name)
-            .map_err(|e| format!("Sandbox execution failed: {}", e))?;
+            .map_err(|e| format!("Sandbox execution failed: {e}"))?;
 
         if options.verbose {
-            println!("[JIT] Execution completed successfully; return={}", result);
+            println!("[JIT] Execution completed successfully; return={result}");
         }
 
         if function_name == "main" {
@@ -100,8 +99,14 @@ pub fn handle_jit_compilation(
                 .functions
                 .keys()
                 .find(|name| name.contains("main") || name.contains("matmul"))
-                .map(|s| s.as_str())
-                .or_else(|| mir_mod.functions.keys().next().map(|s| s.as_str()))
+                .map(std::string::String::as_str)
+                .or_else(|| {
+                    mir_mod
+                        .functions
+                        .keys()
+                        .next()
+                        .map(std::string::String::as_str)
+                })
                 .ok_or("No functions found in module")?
         };
 
@@ -116,15 +121,14 @@ pub fn handle_jit_compilation(
             target.operating_system,
             Some(jit_function_name),
         )
-        .map_err(|e| format!("Runtime compilation failed: {}", e));
+        .map_err(|e| format!("Runtime compilation failed: {e}"));
 
         let runtime_result = match runtime_result {
             Ok(result) => Some(result),
             Err(err) => {
                 if options.verbose {
                     eprintln!(
-                        "[JIT] In-memory compilation failed; falling back to AOT execution.\n  Reason: {}",
-                        err
+                        "[JIT] In-memory compilation failed; falling back to AOT execution.\n  Reason: {err}"
                     );
                 }
                 None
@@ -135,7 +139,7 @@ pub fn handle_jit_compilation(
             if options.verbose {
                 println!("[JIT] Code compiled to executable memory");
                 println!("[JIT] Function pointer: {:p}", runtime_result.function_ptr);
-                println!("[JIT] Executing function '{}'", jit_function_name);
+                println!("[JIT] Executing function '{jit_function_name}'");
                 println!(
                     "[JIT] Signature: {} params, return type: {:?}",
                     func.sig.params.len(),
@@ -157,7 +161,7 @@ pub fn handle_jit_compilation(
                 )?;
                 if let Some(ret) = result {
                     if options.verbose {
-                        println!("[JIT] Function returned {}", ret);
+                        println!("[JIT] Function returned {ret}");
                     }
                     if jit_function_name == "main" {
                         std::process::exit(ret as i32);
@@ -181,7 +185,7 @@ pub fn handle_jit_compilation(
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos();
-            let tmp_dir = std::env::temp_dir().join(format!("lamina_jit_{}_{}", pid, nanos));
+            let tmp_dir = std::env::temp_dir().join(format!("lamina_jit_{pid}_{nanos}"));
             std::fs::create_dir_all(&tmp_dir)?;
 
             let intermediate_ext = lamina::mir_codegen::assemble::get_intermediate_extension(
@@ -213,7 +217,7 @@ pub fn handle_jit_compilation(
                 codegen_units,
                 &options.mir_codegen_settings,
             )
-            .map_err(|e| format!("JIT fallback: codegen failed: {}", e))?;
+            .map_err(|e| format!("JIT fallback: codegen failed: {e}"))?;
 
             std::fs::write(&intermediate_path, &intermediate)?;
 
@@ -229,7 +233,7 @@ pub fn handle_jit_compilation(
                 options.verbose,
                 options.ras_object_write_options(target.operating_system),
             )
-            .map_err(|e| format!("JIT fallback: assembly failed: {}", e))?;
+            .map_err(|e| format!("JIT fallback: assembly failed: {e}"))?;
 
             if assemble_result.needs_linking {
                 lamina::mir_codegen::link::link(
@@ -241,7 +245,7 @@ pub fn handle_jit_compilation(
                     &options.linker_flags,
                     options.verbose,
                 )
-                .map_err(|e| format!("JIT fallback: linking failed: {}", e))?;
+                .map_err(|e| format!("JIT fallback: linking failed: {e}"))?;
             } else {
                 exe_path = assemble_result.output_path;
             }
@@ -253,11 +257,11 @@ pub fn handle_jit_compilation(
             if !status.success() {
                 if let Some(code) = status.code() {
                     if options.verbose {
-                        eprintln!("[JIT] Program exited with status {}", code);
+                        eprintln!("[JIT] Program exited with status {code}");
                     }
                     std::process::exit(code);
                 }
-                return Err(format!("JIT fallback: program terminated: {}", status).into());
+                return Err(format!("JIT fallback: program terminated: {status}").into());
             }
 
             let _ = std::fs::remove_dir_all(&tmp_dir);

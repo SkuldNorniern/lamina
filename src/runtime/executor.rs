@@ -27,7 +27,7 @@ fn evaluate_operand(
         Operand::Register(register) => register_values
             .get(register)
             .copied()
-            .ok_or_else(|| format!("Interpreter: missing register value for {}", register).into()),
+            .ok_or_else(|| format!("Interpreter: missing register value for {register}").into()),
     }
 }
 
@@ -142,9 +142,10 @@ fn interpret_mir_function(
                     true_target,
                     false_target,
                 } => {
-                    let condition_value = register_values.get(cond).copied().ok_or_else(|| {
-                        format!("Interpreter: missing condition register {}", cond)
-                    })?;
+                    let condition_value = register_values
+                        .get(cond)
+                        .copied()
+                        .ok_or_else(|| format!("Interpreter: missing condition register {cond}"))?;
                     let target = if condition_value != 0 {
                         true_target.clone()
                     } else {
@@ -161,7 +162,7 @@ fn interpret_mir_function(
                     let switch_value = register_values
                         .get(value)
                         .copied()
-                        .ok_or_else(|| format!("Interpreter: missing switch register {}", value))?;
+                        .ok_or_else(|| format!("Interpreter: missing switch register {value}"))?;
                     let mut target = default.clone();
                     for (case_value, label) in cases {
                         if *case_value == switch_value {
@@ -218,7 +219,7 @@ fn interpret_mir_function(
             current_block_index = block_index_by_label
                 .get(&label)
                 .copied()
-                .ok_or_else(|| format!("Interpreter: unknown block label {}", label))?;
+                .ok_or_else(|| format!("Interpreter: unknown block label {label}"))?;
         } else {
             return Err(format!("Interpreter: block '{}' missing terminator", block.label).into());
         }
@@ -262,8 +263,7 @@ pub unsafe fn execute_jit_function(
 
     if param_count > MAX_JIT_ARGS {
         return Err(format!(
-            "JIT execution: Handles up to {} parameters, got {}",
-            MAX_JIT_ARGS, param_count
+            "JIT execution: Handles up to {MAX_JIT_ARGS} parameters, got {param_count}"
         )
         .into());
     }
@@ -347,7 +347,7 @@ pub unsafe fn execute_jit_function(
         if returns_i64 {
             if let Some(value) = result {
                 if verbose {
-                    println!("[JIT] Function returned: {}", value);
+                    println!("[JIT] Function returned: {value}");
                 }
                 Ok(Some(value))
             } else {

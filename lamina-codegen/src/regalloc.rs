@@ -465,7 +465,7 @@ where
     T: LocalRegisterAllocator,
 {
     fn alloc_scratch_dyn(&mut self) -> Option<PhysRegHandle> {
-        self.alloc_scratch().map(|reg| reg.into_handle())
+        self.alloc_scratch().map(PhysRegConvertible::into_handle)
     }
 
     fn free_scratch_dyn(&mut self, phys: PhysRegHandle) {
@@ -477,15 +477,17 @@ where
     }
 
     fn get_mapping_dyn(&self, vreg: &VirtualReg) -> Option<PhysRegHandle> {
-        self.get_mapping(vreg).map(|reg| reg.into_handle())
+        self.get_mapping(vreg).map(PhysRegConvertible::into_handle)
     }
 
     fn ensure_mapping_dyn(&mut self, vreg: VirtualReg) -> Option<PhysRegHandle> {
-        self.ensure_mapping(vreg).map(|reg| reg.into_handle())
+        self.ensure_mapping(vreg)
+            .map(PhysRegConvertible::into_handle)
     }
 
     fn mapped_for_register_dyn(&self, reg: &Register) -> Option<PhysRegHandle> {
-        self.mapped_for_register(reg).map(|r| r.into_handle())
+        self.mapped_for_register(reg)
+            .map(PhysRegConvertible::into_handle)
     }
 
     fn occupy_dyn(&mut self, phys: PhysRegHandle) {

@@ -34,23 +34,23 @@ pub fn load_float_operand_to_xmm<
     match operand {
         crate::mir::Operand::Register(_) => {
             load_operand_to_rax(operand, writer, reg_alloc, stack_slots)?;
-            writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
+            writeln!(writer, "    {mov_to_xmm} %rax, %{xmm}")
         }
         crate::mir::Operand::Immediate(imm) => match imm {
             crate::mir::instruction::Immediate::F32(v) => {
                 let bits = v.to_bits() as i64;
-                writeln!(writer, "    movq ${}, %rax", bits)?;
-                writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
+                writeln!(writer, "    movq ${bits}, %rax")?;
+                writeln!(writer, "    {mov_to_xmm} %rax, %{xmm}")
             }
             crate::mir::instruction::Immediate::F64(v) => {
                 let bits = v.to_bits() as i64;
-                writeln!(writer, "    movq ${}, %rax", bits)?;
-                writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
+                writeln!(writer, "    movq ${bits}, %rax")?;
+                writeln!(writer, "    {mov_to_xmm} %rax, %{xmm}")
             }
             _ => {
                 // Integer bits treated as float bits
                 load_operand_to_rax(operand, writer, reg_alloc, stack_slots)?;
-                writeln!(writer, "    {} %rax, %{}", mov_to_xmm, xmm)
+                writeln!(writer, "    {mov_to_xmm} %rax, %{xmm}")
             }
         },
     }
@@ -69,7 +69,7 @@ pub fn store_xmm_to_register<
     ty: &MirType,
 ) -> Result<(), std::io::Error> {
     let mov_from_xmm = if is_f32(ty) { "movd" } else { "movq" };
-    writeln!(writer, "    {} %{}, %rax", mov_from_xmm, xmm)?;
+    writeln!(writer, "    {mov_from_xmm} %{xmm}, %rax")?;
     store_rax_to_register(reg, writer, reg_alloc, stack_slots)
 }
 
@@ -84,13 +84,13 @@ pub fn load_register_to_rax<
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
 ) -> Result<(), std::io::Error> {
     if let Some(phys) = reg_alloc.get_mapping(reg) {
-        writeln!(writer, "    movq %{}, %rax", phys)?;
+        writeln!(writer, "    movq %{phys}, %rax")?;
     } else if let Some(offset) = stack_slots.get(reg) {
-        writeln!(writer, "    movq {}(%rbp), %rax", offset)?;
+        writeln!(writer, "    movq {offset}(%rbp), %rax")?;
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("Virtual register {:?} has no mapping or stack slot", reg),
+            format!("Virtual register {reg:?} has no mapping or stack slot"),
         ));
     }
     Ok(())
@@ -107,13 +107,13 @@ pub fn store_rax_to_register<
     stack_slots: &std::collections::HashMap<VirtualReg, i32>,
 ) -> Result<(), std::io::Error> {
     if let Some(phys) = reg_alloc.get_mapping(reg) {
-        writeln!(writer, "    movq %rax, %{}", phys)?;
+        writeln!(writer, "    movq %rax, %{phys}")?;
     } else if let Some(offset) = stack_slots.get(reg) {
-        writeln!(writer, "    movq %rax, {}(%rbp)", offset)?;
+        writeln!(writer, "    movq %rax, {offset}(%rbp)")?;
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("Virtual register {:?} has no mapping or stack slot", reg),
+            format!("Virtual register {reg:?} has no mapping or stack slot"),
         ));
     }
     Ok(())
@@ -131,13 +131,13 @@ pub fn load_register_to_register<
     target_reg: &str,
 ) -> Result<(), std::io::Error> {
     if let Some(phys) = reg_alloc.get_mapping(src) {
-        writeln!(writer, "    movq %{}, %{}", phys, target_reg)?;
+        writeln!(writer, "    movq %{phys}, %{target_reg}")?;
     } else if let Some(offset) = stack_slots.get(src) {
-        writeln!(writer, "    movq {}(%rbp), %{}", offset, target_reg)?;
+        writeln!(writer, "    movq {offset}(%rbp), %{target_reg}")?;
     } else {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("Virtual register {:?} has no mapping or stack slot", src),
+            format!("Virtual register {src:?} has no mapping or stack slot"),
         ));
     }
     Ok(())
@@ -171,7 +171,7 @@ pub fn load_operand_to_rax<
             crate::mir::instruction::Immediate::I32(v) => {
                 writeln!(writer, "    movq ${}, %rax", *v as i64)
             }
-            crate::mir::instruction::Immediate::I64(v) => writeln!(writer, "    movq ${}, %rax", v),
+            crate::mir::instruction::Immediate::I64(v) => writeln!(writer, "    movq ${v}, %rax"),
             crate::mir::instruction::Immediate::F32(_)
             | crate::mir::instruction::Immediate::F64(_) => {
                 writeln!(
@@ -216,7 +216,7 @@ pub fn load_operand_to_register<
                 writeln!(writer, "    movq ${}, %{}", *v as i64, target_reg)
             }
             crate::mir::instruction::Immediate::I64(v) => {
-                writeln!(writer, "    movq ${}, %{}", v, target_reg)
+                writeln!(writer, "    movq ${v}, %{target_reg}")
             }
             crate::mir::instruction::Immediate::F32(_)
             | crate::mir::instruction::Immediate::F64(_) => {
