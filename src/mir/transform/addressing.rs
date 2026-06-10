@@ -248,7 +248,7 @@ impl AddressingCanonicalization {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::{apply_pass, get_block};
+    use crate::mir::transform::test_utils::get_block;
     use crate::mir::{FunctionBuilder, Immediate, MemoryAttrs, MirType, ScalarType, VirtualReg};
 
     #[test]
