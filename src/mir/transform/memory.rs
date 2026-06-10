@@ -127,3 +127,153 @@ impl MemoryOptimization {
         changed
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{
+        AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
+        ScalarType, VirtualReg,
+    };
+    use crate::mir::transform::test_utils::apply_pass;
+
+    fn i64() -> MirType {
+        MirType::Scalar(ScalarType::I64)
+    }
+
+    fn base_offset(base: Register, offset: i16) -> AddressMode {
+        AddressMode::BaseOffset { base, offset }
+    }
+
+    fn non_volatile() -> MemoryAttrs {
+        MemoryAttrs { volatile: false, ..MemoryAttrs::default() }
+    }
+
+    fn volatile() -> MemoryAttrs {
+        MemoryAttrs { volatile: true, ..MemoryAttrs::default() }
+    }
+
+    #[test]
+    fn redundant_load_replaced_with_copy() {
+        let base: Register = VirtualReg::gpr(0).into();
+        let dst1: Register = VirtualReg::gpr(1).into();
+        let dst2: Register = VirtualReg::gpr(2).into();
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: dst1.clone(),
+                addr: base_offset(base.clone(), 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: dst2.clone(),
+                addr: base_offset(base, 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Ret { value: Some(Operand::Register(dst2)) })
+            .build();
+
+        let changed = apply_pass(&MemoryOptimization, &mut func);
+        assert!(changed, "second load should have been replaced");
+        let entry = func.get_block("entry").unwrap();
+        let second = &entry.instructions[1];
+        assert!(matches!(second, Instruction::IntBinary { op: IntBinOp::Add, .. }));
+    }
+
+    #[test]
+    fn store_to_load_forwarded() {
+        let base: Register = VirtualReg::gpr(0).into();
+        let src: Operand = Operand::Immediate(Immediate::I64(99));
+        let dst: Register = VirtualReg::gpr(1).into();
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Store {
+                ty: i64(),
+                src: src.clone(),
+                addr: base_offset(base.clone(), 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: dst.clone(),
+                addr: base_offset(base, 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Ret { value: Some(Operand::Register(dst)) })
+            .build();
+
+        let changed = apply_pass(&MemoryOptimization, &mut func);
+        assert!(changed, "load after store to same address should be forwarded");
+        let entry = func.get_block("entry").unwrap();
+        assert!(matches!(&entry.instructions[1], Instruction::IntBinary { op: IntBinOp::Add, .. }));
+    }
+
+    #[test]
+    fn volatile_load_not_forwarded() {
+        let base: Register = VirtualReg::gpr(0).into();
+        let dst1: Register = VirtualReg::gpr(1).into();
+        let dst2: Register = VirtualReg::gpr(2).into();
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: dst1,
+                addr: base_offset(base.clone(), 0),
+                attrs: volatile(),
+            })
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: dst2.clone(),
+                addr: base_offset(base, 0),
+                attrs: volatile(),
+            })
+            .instr(Instruction::Ret { value: Some(Operand::Register(dst2)) })
+            .build();
+
+        let changed = apply_pass(&MemoryOptimization, &mut func);
+        assert!(!changed, "volatile loads must not be eliminated");
+    }
+
+    #[test]
+    fn call_invalidates_store_forwarding() {
+        let base: Register = VirtualReg::gpr(0).into();
+        let dst: Register = VirtualReg::gpr(1).into();
+        let result: Register = VirtualReg::gpr(2).into();
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Store {
+                ty: i64(),
+                src: Operand::Immediate(Immediate::I64(7)),
+                addr: base_offset(base.clone(), 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Call {
+                ret: Some(result),
+                name: "side_effect".to_owned(),
+                args: vec![],
+            })
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: dst.clone(),
+                addr: base_offset(base, 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Ret { value: Some(Operand::Register(dst)) })
+            .build();
+
+        let changed = apply_pass(&MemoryOptimization, &mut func);
+        assert!(!changed, "call should have invalidated forwarding state");
+        let entry = func.get_block("entry").unwrap();
+        assert!(matches!(&entry.instructions[2], Instruction::Load { .. }));
+    }
+}
