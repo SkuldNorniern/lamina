@@ -123,15 +123,14 @@ pub fn parse_value_with_type_hint<'a>(
                     return Ok(Value::Constant(Literal::F32(i_val as f32)));
                 }
 
-                return Err(state.error("Expected float literal for F32 hint".to_string()));
+                return Err(state.error("Expected float literal for F32 hint"));
             }
 
             match type_hint {
                 Type::Primitive(PrimitiveType::I8) => {
                     let peek_string = state.peek_slice(20).unwrap_or("");
                     if peek_string.contains('.') {
-                        return Err(state
-                            .error("Float literal cannot be used with I8 type hint".to_string()));
+                        return Err(state.error("Float literal cannot be used with I8 type hint"));
                     }
 
                     let i_val = state.parse_integer()?;
@@ -148,8 +147,7 @@ pub fn parse_value_with_type_hint<'a>(
                 Type::Primitive(PrimitiveType::I32) => {
                     let peek_string = state.peek_slice(20).unwrap_or("");
                     if peek_string.contains('.') {
-                        return Err(state
-                            .error("Float literal cannot be used with I32 type hint".to_string()));
+                        return Err(state.error("Float literal cannot be used with I32 type hint"));
                     }
 
                     let i_val = state.parse_integer()?;
@@ -166,8 +164,7 @@ pub fn parse_value_with_type_hint<'a>(
                 Type::Primitive(PrimitiveType::I64) => {
                     let peek_string = state.peek_slice(20).unwrap_or("");
                     if peek_string.contains('.') {
-                        return Err(state
-                            .error("Float literal cannot be used with I64 type hint".to_string()));
+                        return Err(state.error("Float literal cannot be used with I64 type hint"));
                     }
 
                     let i_val = state.parse_integer()?;
@@ -188,10 +185,10 @@ pub fn parse_value_with_type_hint<'a>(
                         return Ok(Value::Constant(Literal::F32(f_val)));
                     }
 
-                    Err(state.error("Expected a numeric literal".to_string()))
+                    Err(state.error("Expected a numeric literal"))
                 }
             }
         }
-        _ => Err(state.error("Expected value (%, @, literal)".to_string())),
+        _ => Err(state.error("Expected value (%, @, literal)")),
     }
 }

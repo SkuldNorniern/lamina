@@ -62,7 +62,7 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
                 return Ok(Value::Constant(Literal::F32(f_val)));
             }
 
-            Err(state.error("Expected a numeric literal".to_string()))
+            Err(state.error("Expected a numeric literal"))
         }
         Some('t') => {
             if state.peek_slice(4) == Some("true") {

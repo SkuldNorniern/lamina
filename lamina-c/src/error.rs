@@ -17,6 +17,7 @@ pub fn set_error(msg: impl Into<String>) {
     } else {
         s
     };
+    // SAFETY: fallback literal contains no NUL bytes, so CString::new cannot fail.
     let cs = CString::new(safe)
         .unwrap_or_else(|_| CString::new("(error message encoding failed)").unwrap());
     LAST_ERROR.with(|e| *e.borrow_mut() = Some(cs));

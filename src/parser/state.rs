@@ -146,7 +146,7 @@ impl<'a> ParserState<'a> {
         let first_byte = *self
             .bytes
             .get(start)
-            .ok_or_else(|| self.error("Unexpected end of input while parsing identifier\n  Hint: Identifiers must start with a letter (a-z, A-Z) or underscore (_)".to_string()))?;
+            .ok_or_else(|| self.error("Unexpected end of input while parsing identifier\n  Hint: Identifiers must start with a letter (a-z, A-Z) or underscore (_)"))?;
         if !(first_byte.is_ascii_alphabetic() || first_byte == b'_') {
             let found_char = first_byte as char;
             let hint = if found_char.is_ascii_digit() {
@@ -205,7 +205,7 @@ impl<'a> ParserState<'a> {
         }
 
         if start == self.position || (negative && start + 1 == self.position) {
-            Err(self.error("Expected an integer literal\n  Hint: Integer literals can be positive (e.g., 42) or negative (e.g., -42)".to_string()))
+            Err(self.error("Expected an integer literal\n  Hint: Integer literals can be positive (e.g., 42) or negative (e.g., -42)"))
         } else {
             let digits = &self.input[if negative { start + 1 } else { start }..self.position];
 
@@ -277,7 +277,7 @@ impl<'a> ParserState<'a> {
         }
 
         if !has_digit {
-            return Err(self.error("Expected a floating-point literal\n  Hint: Float literals must contain at least one digit (e.g., 3.14, -0.5, 42.0)".to_string()));
+            return Err(self.error("Expected a floating-point literal\n  Hint: Float literals must contain at least one digit (e.g., 3.14, -0.5, 42.0)"));
         }
 
         let value_str = &self.input[start..self.position];
@@ -316,7 +316,7 @@ impl<'a> ParserState<'a> {
         }
 
         if self.is_eof() {
-            return Err(self.error("Unclosed string literal\n  Hint: String literals must be closed with a double quote (\")".to_string()));
+            return Err(self.error("Unclosed string literal\n  Hint: String literals must be closed with a double quote (\")"));
         }
 
         let end = self.position;
@@ -325,7 +325,8 @@ impl<'a> ParserState<'a> {
     }
 
     /// Creates a parsing error with the given message, including line and column information.
-    pub fn error(&self, message: String) -> LaminaError {
+    pub fn error(&self, message: impl AsRef<str>) -> LaminaError {
+        let message = message.as_ref();
         let (line, column) = self.get_line_column();
         let context = self.get_error_context();
 
