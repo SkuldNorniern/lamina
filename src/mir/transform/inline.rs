@@ -1,6 +1,6 @@
 //! Function inlining transforms for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{
     AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Module, Operand, Register,
     RegisterClass, VirtualReg,

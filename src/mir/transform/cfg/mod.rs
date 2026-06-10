@@ -5,7 +5,7 @@
 //! - **CfgSimplify**: Simplifies trivial branches and selects
 //! - **JumpThreading**: Bypasses trivial jump-only blocks
 
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::instruction::Immediate;
 use crate::mir::{Function, Instruction, IntBinOp, Operand};
 use std::collections::{HashMap, HashSet};

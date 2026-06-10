@@ -1,6 +1,6 @@
 //! Copy propagation transform for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{
     AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
 };
