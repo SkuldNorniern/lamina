@@ -1,6 +1,8 @@
 //! Loop optimization transforms for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators};
+use crate::mir::transform::{
+    Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators,
+};
 use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -297,7 +299,11 @@ impl LoopInvariantCodeMotion {
             .is_some_and(|b| b.successors().contains(&to))
     }
 
-    fn optimize_loop(&self, func: &mut Function, loop_info: &LoopInfo) -> Result<bool, TransformError> {
+    fn optimize_loop(
+        &self,
+        func: &mut Function,
+        loop_info: &LoopInfo,
+    ) -> Result<bool, TransformError> {
         let mut changed = false;
 
         let invariant_instrs = self.find_invariant_instructions(func, loop_info)?;
@@ -856,7 +862,11 @@ impl LoopUnrolling {
         list
     }
 
-    fn unroll_loop(&self, func: &mut Function, loop_info: &UnrollableLoop) -> Result<bool, TransformError> {
+    fn unroll_loop(
+        &self,
+        func: &mut Function,
+        loop_info: &UnrollableLoop,
+    ) -> Result<bool, TransformError> {
         // 1. Locate blocks
         let mut body_indices = Vec::new();
         for lbl in &loop_info.body_blocks {

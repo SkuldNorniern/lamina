@@ -547,7 +547,9 @@ impl AutoVectorization {
             ScalarType::I64 => Ok(VectorLane::I64),
             ScalarType::F32 => Ok(VectorLane::F32),
             ScalarType::F64 => Ok(VectorLane::F64),
-            _ => Err(TransformError::Unsupported(format!("cannot vectorize type {scalar:?}"))),
+            _ => Err(TransformError::Unsupported(format!(
+                "cannot vectorize type {scalar:?}"
+            ))),
         }
     }
 
@@ -558,7 +560,9 @@ impl AutoVectorization {
             IntBinOp::Mul => Ok(VectorOp::VMul),
             IntBinOp::And => Ok(VectorOp::VAnd),
             IntBinOp::Or => Ok(VectorOp::VOr),
-            _ => Err(TransformError::Unsupported(format!("cannot vectorize operation {op:?}"))),
+            _ => Err(TransformError::Unsupported(format!(
+                "cannot vectorize operation {op:?}"
+            ))),
         }
     }
 

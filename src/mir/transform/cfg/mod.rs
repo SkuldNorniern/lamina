@@ -41,7 +41,10 @@ pub(crate) fn calculate_dominators(func: &Function) -> HashMap<String, HashSet<S
     }
     for block in &func.blocks {
         for succ in block.successors() {
-            pred_map.entry(succ.to_owned()).or_default().push(block.label.clone());
+            pred_map
+                .entry(succ.to_owned())
+                .or_default()
+                .push(block.label.clone());
         }
     }
 

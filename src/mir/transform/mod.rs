@@ -47,8 +47,16 @@ pub use vectorization::AutoVectorization;
 /// Error returned by transform passes.
 #[derive(Debug)]
 pub enum TransformError {
-    FunctionTooLarge { pass: &'static str, count: usize, limit: usize },
-    BlockTooLarge { label: String, count: usize, limit: usize },
+    FunctionTooLarge {
+        pass: &'static str,
+        count: usize,
+        limit: usize,
+    },
+    BlockTooLarge {
+        label: String,
+        count: usize,
+        limit: usize,
+    },
     WouldDestroyFunction,
     ConvergenceFailed,
     Unsupported(String),
@@ -59,10 +67,20 @@ impl fmt::Display for TransformError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::FunctionTooLarge { pass, count, limit } => {
-                write!(f, "Function too large for {pass} ({count} blocks, max {limit})")
+                write!(
+                    f,
+                    "Function too large for {pass} ({count} blocks, max {limit})"
+                )
             }
-            Self::BlockTooLarge { label, count, limit } => {
-                write!(f, "Block '{label}' too large ({count} instructions, max {limit})")
+            Self::BlockTooLarge {
+                label,
+                count,
+                limit,
+            } => {
+                write!(
+                    f,
+                    "Block '{label}' too large ({count} instructions, max {limit})"
+                )
             }
             Self::WouldDestroyFunction => write!(f, "transform would remove all blocks"),
             Self::ConvergenceFailed => write!(f, "liveness analysis failed to converge"),
