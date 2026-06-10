@@ -848,4 +848,3 @@ mod call_dynamic_tests {
         assert_eq!(got, Some(28));
     }
 }
-
