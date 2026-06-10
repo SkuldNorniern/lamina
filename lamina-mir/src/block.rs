@@ -47,8 +47,7 @@ impl Block {
 
     /// Check if this block has a terminator
     pub fn has_terminator(&self) -> bool {
-        self.terminator()
-            .is_some_and(super::instruction::Instruction::is_terminator)
+        self.terminator().is_some_and(Instruction::is_terminator)
     }
 
     /// Get all non-terminator instructions
