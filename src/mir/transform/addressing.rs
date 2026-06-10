@@ -249,9 +249,7 @@ impl AddressingCanonicalization {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::{FunctionBuilder, Immediate, MemoryAttrs, MirType, ScalarType, VirtualReg};
 
     #[test]
     fn test_addressing_empty_function() {
