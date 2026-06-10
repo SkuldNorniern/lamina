@@ -3,7 +3,7 @@
 use std::collections::{HashSet, VecDeque};
 
 use crate::mir::Function;
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 
 /// Branch optimization that eliminates unreachable branches.
 #[derive(Default)]
@@ -26,20 +26,20 @@ impl Transform for BranchOptimization {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl BranchOptimization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         const MAX_BLOCKS: usize = 1_000;
         if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for branch optimization ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
+            return Err(TransformError::FunctionTooLarge {
+                pass: "branch_optimization",
+                count: func.blocks.len(),
+                limit: MAX_BLOCKS,
+            });
         }
 
         if func.blocks.len() <= 1 {
@@ -85,7 +85,7 @@ impl BranchOptimization {
         func.blocks.retain(|b| !safe_to_remove.contains(&b.label));
 
         if func.blocks.is_empty() {
-            return Err("Branch optimization would remove all blocks".to_string());
+            return Err(TransformError::WouldDestroyFunction);
         }
 
         if func.blocks.len() != original_count {

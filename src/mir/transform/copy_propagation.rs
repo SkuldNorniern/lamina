@@ -1,6 +1,6 @@
 //! Copy propagation transform for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{
     AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
 };
@@ -59,32 +59,31 @@ impl Transform for CopyPropagation {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl CopyPropagation {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
 
         if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for copy propagation ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
+            return Err(TransformError::FunctionTooLarge {
+                pass: "copy_propagation",
+                count: func.blocks.len(),
+                limit: MAX_BLOCKS,
+            });
         }
 
         for block in &func.blocks {
             if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
-                return Err(format!(
-                    "Block '{}' too large for copy propagation ({} instructions, max {})",
-                    block.label,
-                    block.instructions.len(),
-                    MAX_INSTRUCTIONS_PER_BLOCK
-                ));
+                return Err(TransformError::BlockTooLarge {
+                    label: block.label.clone(),
+                    count: block.instructions.len(),
+                    limit: MAX_INSTRUCTIONS_PER_BLOCK,
+                });
             }
         }
 
