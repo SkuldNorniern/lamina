@@ -14,7 +14,7 @@ use crate::mir::{
     AddressMode, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType,
     Module as MirModule, Operand, Register, ScalarType,
 };
-use crate::mir_codegen::{CodegenError, MirCodegenSettings};
+use crate::mir_codegen::{CodegenError, MirCodegenSettings, validate_module_call_parameters};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 const RA: &str = "r1";
@@ -54,7 +54,7 @@ pub fn generate_mir_arx64_with_units_and_settings<W: Write>(
         )));
     }
 
-    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::Arx64)?;
+    validate_module_call_parameters(module, TargetArchitecture::Arx64)?;
 
     writeln!(writer, ".section .text").map_err(io_error)?;
     let mut functions: Vec<_> = module

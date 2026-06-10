@@ -5,6 +5,7 @@
 use crate::error::LaminaError;
 use crate::mir::codegen::from_ir;
 use crate::parser::parse_module;
+use crate::runtime::{RuntimeResult, compile_to_runtime};
 use lamina_platform::Target;
 
 /// Compiles Lamina IR code at runtime and returns the runtime result.
@@ -27,7 +28,7 @@ pub fn compile_lir_internal(
     ir_code: &str,
     function_name: &str,
     _codegen_units: usize,
-) -> Result<crate::runtime::RuntimeResult, LaminaError> {
+) -> Result<RuntimeResult, LaminaError> {
     let host = Target::detect_host();
     let target_arch = host.architecture;
     let target_os = host.operating_system;
@@ -38,7 +39,7 @@ pub fn compile_lir_internal(
     // MIR stores function names without @ prefix, so strip it if present
     let lookup_name = function_name.strip_prefix('@').unwrap_or(function_name);
 
-    crate::runtime::compile_to_runtime(&mir_module, target_arch, target_os, Some(lookup_name))
+    compile_to_runtime(&mir_module, target_arch, target_os, Some(lookup_name))
 }
 
 /// Extracts the function name from Lamina IR code string.
