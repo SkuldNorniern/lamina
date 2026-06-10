@@ -3,10 +3,8 @@
 use super::instructions::parse_instruction;
 use super::state::ParserState;
 use super::types::parse_type;
-use crate::{
-    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, Label,
-    LaminaError,
-};
+use crate::ir::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature};
+use crate::{Label, LaminaError};
 use std::collections::{HashMap, HashSet};
 
 /// Parses function annotations.
