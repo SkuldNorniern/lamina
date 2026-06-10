@@ -286,7 +286,6 @@ impl MirRegisterAllocator for X64RegAlloc {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lamina_platform::TargetOperatingSystem;
 
     #[test]
     fn new_linux_has_sysv_pool() {
@@ -360,7 +359,6 @@ mod tests {
 
     #[test]
     fn non_gpr_vreg_returns_none() {
-        use lamina_mir::RegisterClass;
         let mut ra = X64RegAlloc::new_default();
         let fp_vreg = VirtualReg {
             id: 99,
