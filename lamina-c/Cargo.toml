@@ -18,6 +18,10 @@ lamina-platform = { path = "../lamina-platform", version = "0.1.1" }
 
 [workspace]
 
+[patch.crates-io]
+lamina-platform = { path = "../lamina-platform" }
+lamina-mir = { path = "../lamina-mir" }
+
 [features]
 default = []
 nightly = ["lamina/nightly", "lamina-ir/nightly"]

@@ -174,6 +174,47 @@ pub unsafe extern "C" fn lia_jit_call_i64_2(
     }))
 }
 
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_jit_call_i64_3(
+    jit: *const LaminaJit,
+    a: i64,
+    b: i64,
+    c: i64,
+    result: *mut i64,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        if jit.is_null() || result.is_null() {
+            set_error("jit or result is null");
+            return LaminaStatus::ErrorInvalidArgument;
+        }
+        let f: extern "C" fn(i64, i64, i64) -> i64 = mem::transmute((*jit).function_ptr);
+        *result = f(a, b, c);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_jit_call_i64_4(
+    jit: *const LaminaJit,
+    a: i64,
+    b: i64,
+    c: i64,
+    d: i64,
+    result: *mut i64,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        if jit.is_null() || result.is_null() {
+            set_error("jit or result is null");
+            return LaminaStatus::ErrorInvalidArgument;
+        }
+        let f: extern "C" fn(i64, i64, i64, i64) -> i64 = mem::transmute((*jit).function_ptr);
+        *result = f(a, b, c, d);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
 // ---------------------------------------------------------------------------
 // Internal
 // ---------------------------------------------------------------------------
