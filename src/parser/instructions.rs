@@ -3,9 +3,8 @@
 use super::state::ParserState;
 use super::types::parse_type;
 use super::values::parse_value;
-use crate::{
-    AllocType, BinaryOp, CmpOp, Identifier, Instruction, LaminaError, PrimitiveType, Type, Value,
-};
+use crate::LaminaError;
+use crate::ir::{AllocType, BinaryOp, CmpOp, Identifier, Instruction, PrimitiveType, Type, Value};
 
 /// Parses a single instruction from the input.
 pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
