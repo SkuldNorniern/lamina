@@ -22,6 +22,18 @@ use std::mem;
     target_arch = "aarch64",
     all(target_arch = "x86_64", not(target_os = "windows")),
 ))]
+use std::arch::asm;
+
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", not(target_os = "windows")),
+))]
+use crate::mir_codegen::MAX_MIR_CALL_PARAMETERS;
+
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", not(target_os = "windows")),
+))]
 /// Upper bound for [`call_function_dynamic`] on AArch64 and SysV x86_64 (stack shim).
 pub const MAX_JIT_ARGS: usize = MAX_MIR_CALL_PARAMETERS;
 
@@ -836,3 +848,4 @@ mod call_dynamic_tests {
         assert_eq!(got, Some(28));
     }
 }
+
