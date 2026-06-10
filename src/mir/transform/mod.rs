@@ -38,7 +38,7 @@ pub use scheduling::InstructionScheduling;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
 
-use crate::mir::Function;
+use crate::mir::{Function, Module};
 
 #[cfg(feature = "nightly")]
 pub use vectorization::AutoVectorization;
@@ -212,10 +212,7 @@ impl TransformPipeline {
         Ok(stats)
     }
 
-    pub fn apply_to_module(
-        &self,
-        module: &mut crate::mir::Module,
-    ) -> Result<TransformStats, String> {
+    pub fn apply_to_module(&self, module: &mut Module) -> Result<TransformStats, String> {
         let mut total_stats = TransformStats::default();
         let mut failed_functions = Vec::new();
 
@@ -312,7 +309,7 @@ mod tests {
 
     #[test]
     fn test_transform_pipeline_apply_to_module() {
-        let mut module = crate::mir::Module::new("test");
+        let mut module = Module::new("test");
         let pipeline = TransformPipeline::new().add_transform(Peephole);
         let stats = pipeline.apply_to_module(&mut module).unwrap();
         assert_eq!(stats.transforms_run, 0);

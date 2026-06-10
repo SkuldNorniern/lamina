@@ -9,7 +9,7 @@ mod tests {
     use crate::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
     #[cfg(feature = "nightly")]
     use crate::module::ModuleAnnotation;
-    use crate::types::{Literal, PrimitiveType, Type};
+    use crate::types::{Literal, PrimitiveType, StructField, Type};
 
     #[test]
     fn test_build_simple_function() {
@@ -512,11 +512,11 @@ mod tests {
             .alloc_stack(
                 "point",
                 Type::Struct(vec![
-                    crate::types::StructField {
+                    StructField {
                         name: "x",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },
-                    crate::types::StructField {
+                    StructField {
                         name: "y",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },

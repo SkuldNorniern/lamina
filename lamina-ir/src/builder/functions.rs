@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use crate::builder::IRBuilder;
-use crate::function::{FunctionParameter, FunctionSignature};
+use crate::function::{FunctionParameter, FunctionSignature, VariableAnnotation};
 use crate::types::Type;
 
 impl<'a> IRBuilder<'a> {
@@ -58,7 +58,7 @@ impl<'a> IRBuilder<'a> {
         &mut self,
         name: &'a str,
         ty: Type<'a>,
-        annotations: Vec<crate::function::VariableAnnotation>,
+        annotations: Vec<VariableAnnotation>,
     ) -> FunctionParameter<'a> {
         FunctionParameter {
             name,

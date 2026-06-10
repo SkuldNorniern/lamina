@@ -24,16 +24,17 @@ use util::{
     load_operand_to_register, load_register_to_r3, load_register_to_register, store_r3_to_register,
 };
 
+use crate::error::LaminaError;
 use crate::mir::instruction::{AddressMode, Immediate};
 use crate::mir::register::RegisterClass;
 use crate::mir::{
-    FloatBinOp, FloatCmpOp, FloatUnOp, Function, Instruction as MirInst, IntBinOp, IntCmpOp,
-    MirType, Module as MirModule, Operand, Register, ScalarType, VirtualReg,
+    FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp,
+    IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
 };
 use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-    capability::CapabilitySet,
+    capability::CapabilitySet, validate_module_call_parameters,
 };
 
 use lamina_codegen::powerpc::{Ppc64Abi, Ppc64Frame, Ppc64RegAlloc};
@@ -64,7 +65,7 @@ impl<'a> Ppc64Codegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
         codegen_units: usize,
-    ) -> Result<(), crate::error::LaminaError> {
+    ) -> Result<(), LaminaError> {
         generate_mir_ppc64_with_units_and_settings(
             module,
             writer,
@@ -91,8 +92,8 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
     fn prepare(
         &mut self,
         types: &HashMap<String, MirType>,
-        globals: &HashMap<String, crate::mir::Global>,
-        funcs: &HashMap<String, crate::mir::Signature>,
+        globals: &HashMap<String, Global>,
+        funcs: &HashMap<String, Signature>,
         codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],
@@ -274,7 +275,7 @@ pub fn generate_mir_ppc64<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_ppc64_with_units(module, writer, target_os, 1)
 }
 
@@ -283,7 +284,7 @@ pub fn generate_mir_ppc64_with_units<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_ppc64_with_units_and_settings(
         module,
         writer,
@@ -299,8 +300,8 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
-) -> Result<(), crate::error::LaminaError> {
-    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::PowerPC64)?;
+) -> Result<(), LaminaError> {
+    validate_module_call_parameters(module, TargetArchitecture::PowerPC64)?;
     let abi = Ppc64Abi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;
@@ -336,7 +337,7 @@ fn emit_instruction_ppc64<W: Write>(
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
@@ -588,9 +589,7 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             }
             Ppc64Frame::generate_tail_epilogue(writer, local_bytes).map_err(|e| {
-                crate::error::LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(
-                    e.to_string(),
-                ))
+                LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
             })?;
             let target_sym = abi
                 .call_stub(name)
@@ -611,11 +610,9 @@ fn emit_instruction_ppc64<W: Write>(
                 MirType::Scalar(ScalarType::F32) => "lfs",
                 MirType::Scalar(ScalarType::F64) => "lfd",
                 other => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64 load: unsupported type {other:?}"
-                        )),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!("PowerPC64 load: unsupported type {other:?}"),
+                    )));
                 }
             };
             match addr {
@@ -632,11 +629,9 @@ fn emit_instruction_ppc64<W: Write>(
                     }
                 }
                 _ => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(
-                            "PowerPC64 load: only base+offset addressing supported".to_string(),
-                        ),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        "PowerPC64 load: only base+offset addressing supported".to_string(),
+                    )));
                 }
             }
         }
@@ -654,11 +649,9 @@ fn emit_instruction_ppc64<W: Write>(
                 MirType::Scalar(ScalarType::F32) => "stfs",
                 MirType::Scalar(ScalarType::F64) => "stfd",
                 other => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64 store: unsupported type {other:?}"
-                        )),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!("PowerPC64 store: unsupported type {other:?}"),
+                    )));
                 }
             };
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
@@ -673,11 +666,9 @@ fn emit_instruction_ppc64<W: Write>(
                     writeln!(writer, "    {store_op} 3, {offset}(5)")?;
                 }
                 _ => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(
-                            "PowerPC64 store: only base+offset addressing supported".to_string(),
-                        ),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        "PowerPC64 store: only base+offset addressing supported".to_string(),
+                    )));
                 }
             }
         }
@@ -719,20 +710,16 @@ fn emit_instruction_ppc64<W: Write>(
             }
             let local_bytes = stack_slots.len() * 8;
             Ppc64Frame::generate_epilogue(writer, local_bytes).map_err(|e| {
-                crate::error::LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(
-                    e.to_string(),
-                ))
+                LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
             })?;
         }
         MirInst::Comment { text } => {
             writeln!(writer, "    # {text}")?;
         }
         other => {
-            return Err(crate::error::LaminaError::CodegenError(
-                CodegenError::UnsupportedFeature(format!(
-                    "PowerPC64 backend: instruction not yet supported: {other:?}"
-                )),
-            ));
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!("PowerPC64 backend: instruction not yet supported: {other:?}"),
+            )));
         }
     }
     Ok(())
@@ -749,7 +736,7 @@ fn emit_load_fp_operand<W: Write>(
     stack_slots: &HashMap<VirtualReg, i32>,
     fpr: &str,
     is_f32: bool,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     let load_fp = if is_f32 { "lfs" } else { "lfd" };
     match operand {
         Operand::Register(reg) => {
@@ -776,11 +763,9 @@ fn emit_load_fp_operand<W: Write>(
                 Immediate::I32(v) => *v as i64,
                 Immediate::I64(v) => *v,
                 other => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64: float immediate {other:?} not supported"
-                        )),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!("PowerPC64: float immediate {other:?} not supported"),
+                    )));
                 }
             };
             writeln!(writer, "    li 11, {bits}")?;
@@ -799,7 +784,7 @@ fn emit_store_fp_result<W: Write>(
     reg_alloc: &Ppc64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     is_f32: bool,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     let store_fp = if is_f32 { "stfs" } else { "stfd" };
     if let Some(offset) = stack_slots.get(vreg) {
         writeln!(writer, "    {store_fp} {fpr}, {offset}(1)")?;
