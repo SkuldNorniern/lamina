@@ -619,7 +619,7 @@ impl<'a> Function<'a> {
 
         for (label, block) in &self.basic_blocks {
             let last = block.instructions.last();
-            let has_terminator = last.is_some_and(super::instruction::Instruction::is_terminator);
+            let has_terminator = last.is_some_and(Instruction::is_terminator);
             if !has_terminator {
                 errors.push(format!(
                     "block '{}' in '@{}' has no terminator instruction",
