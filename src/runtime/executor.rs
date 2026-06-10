@@ -3,11 +3,11 @@
 //! Functions to execute JIT-compiled functions with dynamic argument counts
 //! using the platform C ABI.
 
-use crate::runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
 use crate::mir::{
     Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register, ScalarType,
     Signature,
 };
+use crate::runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
 #[cfg(target_arch = "aarch64")]
 use std::arch::asm;
 use std::collections::HashMap;
