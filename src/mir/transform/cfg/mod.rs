@@ -374,7 +374,9 @@ mod tests {
         FunctionBuilder::new("f")
             .returns(i64())
             .block("entry")
-            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
             .build()
     }
 
@@ -384,7 +386,9 @@ mod tests {
             .param(VirtualReg::gpr(0).into(), i64())
             .returns(i64())
             .block("entry")
-            .instr(Instruction::Jmp { target: "loop_header".to_owned() })
+            .instr(Instruction::Jmp {
+                target: "loop_header".to_owned(),
+            })
             .block("loop_header")
             .instr(Instruction::Br {
                 cond: cond_reg(),
@@ -392,7 +396,9 @@ mod tests {
                 false_target: "exit".to_owned(),
             })
             .block("exit")
-            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
             .build()
     }
 
@@ -442,15 +448,15 @@ mod tests {
                 false_target: "exit".to_owned(),
             })
             .block("exit")
-            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
             .build();
 
         let changed = apply_pass(&CfgSimplify, &mut func);
         assert!(changed);
         let entry = func.get_block("entry").unwrap();
-        assert!(
-            matches!(&entry.instructions[0], Instruction::Jmp { target } if target == "exit")
-        );
+        assert!(matches!(&entry.instructions[0], Instruction::Jmp { target } if target == "exit"));
     }
 
     #[test]
@@ -468,7 +474,9 @@ mod tests {
                 true_val: val.clone(),
                 false_val: val,
             })
-            .instr(Instruction::Ret { value: Some(Operand::Register(dst)) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
             .build();
 
         let changed = apply_pass(&CfgSimplify, &mut func);
@@ -476,7 +484,10 @@ mod tests {
         let entry = func.get_block("entry").unwrap();
         assert!(matches!(
             &entry.instructions[0],
-            Instruction::IntBinary { op: IntBinOp::Add, .. }
+            Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ..
+            }
         ));
     }
 
@@ -492,19 +503,23 @@ mod tests {
         let mut func = FunctionBuilder::new("f")
             .returns(i64())
             .block("entry")
-            .instr(Instruction::Jmp { target: "trampoline".to_owned() })
+            .instr(Instruction::Jmp {
+                target: "trampoline".to_owned(),
+            })
             .block("trampoline")
-            .instr(Instruction::Jmp { target: "exit".to_owned() })
+            .instr(Instruction::Jmp {
+                target: "exit".to_owned(),
+            })
             .block("exit")
-            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
             .build();
 
         let changed = apply_pass(&JumpThreading, &mut func);
         assert!(changed);
         let entry = func.get_block("entry").unwrap();
-        assert!(
-            matches!(&entry.instructions[0], Instruction::Jmp { target } if target == "exit")
-        );
+        assert!(matches!(&entry.instructions[0], Instruction::Jmp { target } if target == "exit"));
     }
 
     #[test]
@@ -526,9 +541,13 @@ mod tests {
                 false_target: "exit".to_owned(),
             })
             .block("trampoline")
-            .instr(Instruction::Jmp { target: "exit".to_owned() })
+            .instr(Instruction::Jmp {
+                target: "exit".to_owned(),
+            })
             .block("exit")
-            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
             .build();
 
         let changed = apply_pass(&JumpThreading, &mut func);
