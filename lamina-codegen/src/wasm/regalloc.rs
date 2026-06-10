@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::regalloc::{
     LocalRegisterAllocator as MirRegisterAllocator, PhysRegConvertible, PhysRegHandle,
 };
@@ -24,7 +26,7 @@ impl PhysRegConvertible for WasmStackSlot {
 
 /// WASM "register allocator" for stack-based virtual machine.
 pub struct WasmRegAlloc {
-    vreg_to_stack: std::collections::HashMap<VirtualReg, u32>,
+    vreg_to_stack: HashMap<VirtualReg, u32>,
     next_stack_slot: u32,
 }
 
@@ -37,7 +39,7 @@ impl Default for WasmRegAlloc {
 impl WasmRegAlloc {
     pub fn new() -> Self {
         Self {
-            vreg_to_stack: std::collections::HashMap::new(),
+            vreg_to_stack: HashMap::new(),
             next_stack_slot: 0,
         }
     }

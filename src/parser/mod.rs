@@ -11,6 +11,7 @@ mod types;
 mod values;
 
 use std::collections::HashSet;
+use std::mem;
 
 use self::functions::parse_function_def;
 use self::globals::parse_global_declaration;
@@ -105,7 +106,7 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
         }
 
         // Swap rows for next iteration
-        std::mem::swap(&mut prev_row, &mut curr_row);
+        mem::swap(&mut prev_row, &mut curr_row);
     }
 
     prev_row[short_len]

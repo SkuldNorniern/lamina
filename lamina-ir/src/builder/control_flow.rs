@@ -3,7 +3,7 @@
 //! This module provides methods for branching, jumping, and function return
 //! operations in the IR builder API.
 
-use super::IRBuilder;
+use crate::builder::IRBuilder;
 use crate::instruction::Instruction;
 use crate::types::{Literal, PrimitiveType, Type, Value};
 

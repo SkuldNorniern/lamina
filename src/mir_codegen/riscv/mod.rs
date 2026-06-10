@@ -12,13 +12,13 @@ use crate::error::LaminaError;
 use crate::mir::instruction::AddressMode;
 use crate::mir::register::RegisterClass;
 use crate::mir::{
-    FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp,
-    MirType, Module as MirModule, Register, ScalarType, Signature, VirtualReg,
+    FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp, MirType,
+    Module as MirModule, Register, ScalarType, Signature, VirtualReg,
 };
 use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
-    validate_module_call_parameters, Codegen, CodegenError, CodegenOptions, MirCodegenSettings,
-    RegallocStrategy, capability::CapabilitySet,
+    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
+    capability::CapabilitySet, validate_module_call_parameters,
 };
 
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
@@ -470,11 +470,9 @@ fn emit_instruction_riscv<W: Write>(
         MirInst::TailCall { name, args } => {
             let abi = RiscVAbi::new(target_os);
             if name == "print" {
-                return Err(LaminaError::CodegenError(
-                    CodegenError::UnsupportedFeature(
-                        "RISC-V: TailCall to print is not supported".to_string(),
-                    ),
-                ));
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "RISC-V: TailCall to print is not supported".to_string(),
+                )));
             }
             let arg_regs = RiscVAbi::ARG_REGISTERS;
             let num_reg_args = args.len().min(arg_regs.len());
@@ -497,9 +495,7 @@ fn emit_instruction_riscv<W: Write>(
                 abi.mangle_function_name(name)
             };
             RiscVFrame::generate_tail_epilogue(writer, stack_size, &target_sym).map_err(|e| {
-                LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(
-                    e.to_string(),
-                ))
+                LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
             })?;
         }
         MirInst::Load {
@@ -516,12 +512,12 @@ fn emit_instruction_riscv<W: Write>(
                 MirType::Scalar(ScalarType::F32) => "flw",
                 MirType::Scalar(ScalarType::F64) => "fld",
                 MirType::Vector(_) => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(format!(
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!(
                             "RISC-V load unsupported for type {ty:?}. \
                              Vector types are not yet implemented for RISC-V."
-                        )),
-                    ));
+                        ),
+                    )));
                 }
             };
 
@@ -563,13 +559,11 @@ fn emit_instruction_riscv<W: Write>(
                     }
                 }
                 _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(
-                            "RISC-V load supports only base+offset addressing. \
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        "RISC-V load supports only base+offset addressing. \
                              Complex addressing modes (BaseIndexScale) are not yet implemented."
-                                .to_string(),
-                        ),
-                    ));
+                            .to_string(),
+                    )));
                 }
             }
         }
@@ -587,12 +581,12 @@ fn emit_instruction_riscv<W: Write>(
                 MirType::Scalar(ScalarType::F32) => "fsw",
                 MirType::Scalar(ScalarType::F64) => "fsd",
                 MirType::Vector(_) => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(format!(
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!(
                             "RISC-V store unsupported for type {ty:?}. \
                              Vector types are not yet implemented for RISC-V."
-                        )),
-                    ));
+                        ),
+                    )));
                 }
             };
 
@@ -624,13 +618,11 @@ fn emit_instruction_riscv<W: Write>(
                     }
                 }
                 _ => {
-                    return Err(LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(
-                            "RISC-V store supports only base+offset addressing. \
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        "RISC-V store supports only base+offset addressing. \
                              Complex addressing modes (BaseIndexScale) are not yet implemented."
-                                .to_string(),
-                        ),
-                    ));
+                            .to_string(),
+                    )));
                 }
             }
         }
@@ -672,18 +664,10 @@ fn emit_instruction_riscv<W: Write>(
 
             // Perform floating-point operation
             match op {
-                FloatBinOp::FAdd => {
-                    writeln!(writer, "    fadd.{suffix} fa0, fa0, fa1")?
-                }
-                FloatBinOp::FSub => {
-                    writeln!(writer, "    fsub.{suffix} fa0, fa0, fa1")?
-                }
-                FloatBinOp::FMul => {
-                    writeln!(writer, "    fmul.{suffix} fa0, fa0, fa1")?
-                }
-                FloatBinOp::FDiv => {
-                    writeln!(writer, "    fdiv.{suffix} fa0, fa0, fa1")?
-                }
+                FloatBinOp::FAdd => writeln!(writer, "    fadd.{suffix} fa0, fa0, fa1")?,
+                FloatBinOp::FSub => writeln!(writer, "    fsub.{suffix} fa0, fa0, fa1")?,
+                FloatBinOp::FMul => writeln!(writer, "    fmul.{suffix} fa0, fa0, fa1")?,
+                FloatBinOp::FDiv => writeln!(writer, "    fdiv.{suffix} fa0, fa0, fa1")?,
             }
 
             // Store result
@@ -802,18 +786,14 @@ fn emit_instruction_riscv<W: Write>(
             // No-op in AOT path.
         }
         MirInst::VectorOp { .. } => {
-            return Err(LaminaError::CodegenError(
-                CodegenError::UnsupportedFeature(
-                    "VectorOp is not yet supported by the RISC-V backend".to_string(),
-                ),
-            ));
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "VectorOp is not yet supported by the RISC-V backend".to_string(),
+            )));
         }
         other => {
-            return Err(LaminaError::CodegenError(
-                CodegenError::UnsupportedFeature(format!(
-                    "RISC-V backend: instruction not yet supported: {other}"
-                )),
-            ));
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!("RISC-V backend: instruction not yet supported: {other}"),
+            )));
         }
     }
 

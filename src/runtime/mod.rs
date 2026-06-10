@@ -16,6 +16,8 @@ pub use executor::execute_jit_function;
 pub use macro_helpers::compile_lir_internal;
 pub use sandbox::{Sandbox, SandboxConfig};
 
+use std::env;
+
 use crate::error::LaminaError;
 use crate::mir::Module as MirModule;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
@@ -44,7 +46,7 @@ pub fn compile_to_runtime(
         crate::mir_codegen::validate_module_call_parameters(_module, _target_arch)?;
 
         // Keep JIT output quiet by default (release-friendly). Enable with `LAMINA_JIT_DEBUG=1`.
-        let jit_debug = std::env::var_os("LAMINA_JIT_DEBUG").is_some();
+        let jit_debug = env::var_os("LAMINA_JIT_DEBUG").is_some();
 
         let mut assembler = RasAssembler::new(_target_arch, _target_os).map_err(|e| {
             LaminaError::ValidationError(format!("Failed to create assembler: {e}"))

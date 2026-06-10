@@ -2,12 +2,12 @@
 //!
 //! This module defines the structures for representing functions in LUMIR,
 //! including function signatures, parameters, and basic blocks.
-use super::block::Block;
-use super::register::Register;
-use super::types::MirType;
-use super::instruction::Instruction;
-use std::fmt;
+use crate::block::Block;
+use crate::instruction::Instruction;
+use crate::register::Register;
+use crate::types::MirType;
 use std::collections::HashSet;
+use std::fmt;
 
 /// Function parameter
 #[derive(Debug, Clone, PartialEq)]

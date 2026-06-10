@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use util::{emit_mov_imm64, imm_to_u64};
 
+use crate::error::LaminaError;
 use crate::mir::register::RegisterClass;
 use crate::mir::{
     AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
@@ -20,10 +21,9 @@ use crate::mir::{
 use crate::mir_codegen::common::{
     CodegenBase, compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
 };
-use crate::error::LaminaError;
 use crate::mir_codegen::{
-    validate_module_call_parameters, Codegen, CodegenError, CodegenOptions, MirCodegenSettings,
-    RegallocStrategy, capability::CapabilitySet,
+    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
+    capability::CapabilitySet, validate_module_call_parameters,
 };
 
 use lamina_codegen::aarch64::{A64RegAlloc, AArch64ABI, FrameMap};
@@ -436,18 +436,10 @@ fn emit_block<W: Write>(
                 }
 
                 match op {
-                    FloatBinOp::FAdd => {
-                        writeln!(w, "    fadd {suffix}0, {suffix}0, {suffix}1")?
-                    }
-                    FloatBinOp::FSub => {
-                        writeln!(w, "    fsub {suffix}0, {suffix}0, {suffix}1")?
-                    }
-                    FloatBinOp::FMul => {
-                        writeln!(w, "    fmul {suffix}0, {suffix}0, {suffix}1")?
-                    }
-                    FloatBinOp::FDiv => {
-                        writeln!(w, "    fdiv {suffix}0, {suffix}0, {suffix}1")?
-                    }
+                    FloatBinOp::FAdd => writeln!(w, "    fadd {suffix}0, {suffix}0, {suffix}1")?,
+                    FloatBinOp::FSub => writeln!(w, "    fsub {suffix}0, {suffix}0, {suffix}1")?,
+                    FloatBinOp::FMul => writeln!(w, "    fmul {suffix}0, {suffix}0, {suffix}1")?,
+                    FloatBinOp::FDiv => writeln!(w, "    fdiv {suffix}0, {suffix}0, {suffix}1")?,
                 }
 
                 if is32 {
@@ -984,11 +976,9 @@ fn emit_block<W: Write>(
                 // No-op in AOT path — only meaningful for JIT/GC runtimes.
             }
             MirInst::VectorOp { .. } => {
-                return Err(LaminaError::CodegenError(
-                    CodegenError::UnsupportedFeature(
-                        "VectorOp is not yet supported by the AArch64 backend".to_string(),
-                    ),
-                ));
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "VectorOp is not yet supported by the AArch64 backend".to_string(),
+                )));
             }
             #[cfg(feature = "nightly")]
             MirInst::SimdBinary { .. }
@@ -1004,11 +994,9 @@ fn emit_block<W: Write>(
             | MirInst::AtomicBinary { .. }
             | MirInst::AtomicCompareExchange { .. }
             | MirInst::Fence { .. } => {
-                return Err(LaminaError::CodegenError(
-                    CodegenError::UnsupportedFeature(
-                        "SIMD/Atomic instructions not yet supported by AArch64 backend".to_string(),
-                    ),
-                ));
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "SIMD/Atomic instructions not yet supported by AArch64 backend".to_string(),
+                )));
             }
         }
     }

@@ -1,7 +1,7 @@
 //! Tail call optimization transform for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::function::Signature;
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::types::{MirType, ScalarType};
 use crate::mir::{Block, Function, Immediate, Instruction, Operand, Register};
 
@@ -201,7 +201,9 @@ impl TailCallOptimization {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, Immediate, MirType, Operand, ScalarType, VirtualReg};
+    use crate::mir::{
+        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
+    };
 
     #[test]
     fn test_tail_call_detection() {
@@ -289,7 +291,7 @@ mod tests {
             })
             // Do something with the result
             .instr(Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
+                op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(1).into(),
                 lhs: Operand::Register(VirtualReg::gpr(0).into()),

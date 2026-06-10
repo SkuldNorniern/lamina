@@ -27,8 +27,8 @@ use util::{
 use crate::mir::instruction::{AddressMode, Immediate};
 use crate::mir::register::RegisterClass;
 use crate::mir::{
-    FloatBinOp, FloatCmpOp, FloatUnOp, Instruction as MirInst, IntBinOp, IntCmpOp, MirType,
-    Module as MirModule, Operand, Register, ScalarType, VirtualReg,
+    FloatBinOp, FloatCmpOp, FloatUnOp, Function, Instruction as MirInst, IntBinOp, IntCmpOp,
+    MirType, Module as MirModule, Operand, Register, ScalarType, VirtualReg,
 };
 use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
@@ -148,7 +148,7 @@ fn ppc64_stack_offset_for_linear_spill(off: i32) -> i32 {
 
 fn compile_single_function_ppc64(
     func_name: &str,
-    func: &crate::mir::Function,
+    func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {

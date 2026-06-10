@@ -1,5 +1,8 @@
 //! Host system detection functions.
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+use std::mem;
+
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
 
@@ -154,7 +157,7 @@ pub fn cpu_count() -> usize {
             #[allow(clippy::unwrap_used)]
             let name = CString::new("hw.ncpu").unwrap();
             let mut count: u32 = 0;
-            let mut size = std::mem::size_of::<u32>();
+            let mut size = mem::size_of::<u32>();
             if sysctlbyname(
                 name.as_ptr(),
                 &mut count as *mut _ as *mut std::ffi::c_void,
@@ -190,7 +193,7 @@ pub fn cpu_count() -> usize {
                 processor_level: u16,
                 processor_revision: u16,
             }
-            let mut info = std::mem::zeroed::<SystemInfo>();
+            let mut info = mem::zeroed::<SystemInfo>();
             GetSystemInfo(&mut info);
             info.number_of_processors as usize
         }

@@ -10,8 +10,7 @@ use crate::mir::{Function, Instruction};
 
 /// Validate that all branch and jump targets reference existing blocks.
 pub fn validate_cfg(func: &Function) -> Result<(), String> {
-    let labels: HashSet<_> =
-        func.blocks.iter().map(|b| b.label.clone()).collect();
+    let labels: HashSet<_> = func.blocks.iter().map(|b| b.label.clone()).collect();
     for block in &func.blocks {
         for inst in &block.instructions {
             match inst {

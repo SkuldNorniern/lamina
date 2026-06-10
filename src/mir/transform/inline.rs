@@ -2,8 +2,8 @@
 
 use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{
-    AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Module, Operand, Register,
-    RegisterClass, VirtualReg,
+    AddressMode, Block, Function, Immediate, Instruction, IntBinOp, MirType, Module, Operand,
+    Register, RegisterClass, ScalarType, VirtualReg,
 };
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -744,7 +744,7 @@ impl ModuleInlining {
                         // Assign return value to call result register
                         block.instructions.push(Instruction::IntBinary {
                             op: IntBinOp::Add,
-                            ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                            ty: MirType::Scalar(ScalarType::I64),
                             dst: dst.clone(),
                             lhs: val,
                             rhs: Operand::Immediate(Immediate::I64(0)),

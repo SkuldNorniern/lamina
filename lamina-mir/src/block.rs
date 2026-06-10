@@ -3,7 +3,7 @@
 //! A basic block is a sequence of instructions with a single entry point and
 //! a single exit point (terminator instruction). Basic blocks are the fundamental
 //! unit of control flow in LUMIR.
-use super::instruction::Instruction;
+use crate::instruction::Instruction;
 use std::fmt;
 
 /// Block in LUMIR
