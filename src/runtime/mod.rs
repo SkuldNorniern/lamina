@@ -20,6 +20,8 @@ use std::env;
 
 use crate::error::LaminaError;
 use crate::mir::Module as MirModule;
+#[cfg(feature = "encoder")]
+use crate::mir_codegen::validate_module_call_parameters;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 // Re-export ras types for convenience
@@ -43,7 +45,7 @@ pub fn compile_to_runtime(
 ) -> Result<RuntimeResult, LaminaError> {
     #[cfg(feature = "encoder")]
     {
-        crate::mir_codegen::validate_module_call_parameters(_module, _target_arch)?;
+        validate_module_call_parameters(_module, _target_arch)?;
 
         // Keep JIT output quiet by default (release-friendly). Enable with `LAMINA_JIT_DEBUG=1`.
         let jit_debug = env::var_os("LAMINA_JIT_DEBUG").is_some();

@@ -1,6 +1,6 @@
 //! Parser state management for Lamina IR parsing.
 
-use crate::LaminaError;
+use crate::{Identifier, Label, LaminaError};
 use std::result::Result;
 
 /// Parser state tracking position and input.
@@ -173,19 +173,19 @@ impl<'a> ParserState<'a> {
     }
 
     /// Parses a type identifier (starts with '@').
-    pub fn parse_type_identifier(&mut self) -> Result<crate::Identifier<'a>, LaminaError> {
+    pub fn parse_type_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
         self.expect_char('@')?;
         self.parse_identifier_str()
     }
 
     /// Parses a value identifier (starts with '%').
-    pub fn parse_value_identifier(&mut self) -> Result<crate::Identifier<'a>, LaminaError> {
+    pub fn parse_value_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
         self.expect_char('%')?;
         self.parse_identifier_str()
     }
 
     /// Parses a label identifier.
-    pub fn parse_label_identifier(&mut self) -> Result<crate::Label<'a>, LaminaError> {
+    pub fn parse_label_identifier(&mut self) -> Result<Label<'a>, LaminaError> {
         self.parse_identifier_str()
     }
 

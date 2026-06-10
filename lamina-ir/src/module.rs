@@ -420,7 +420,7 @@ mod tests {
     use super::*;
     use crate::function::{BasicBlock, Function, FunctionParameter, FunctionSignature};
     use crate::instruction::{BinaryOp, Instruction};
-    use crate::types::{Literal, PrimitiveType, Type, Value};
+    use crate::types::{Literal, PrimitiveType, StructField, Type, Value};
     use std::collections::HashMap;
 
     #[test]
@@ -461,11 +461,11 @@ mod tests {
             TypeDeclaration {
                 name: "Vec2",
                 ty: Type::Struct(vec![
-                    crate::types::StructField {
+                    StructField {
                         name: "x",
                         ty: Type::Primitive(PrimitiveType::F32),
                     },
-                    crate::types::StructField {
+                    StructField {
                         name: "y",
                         ty: Type::Primitive(PrimitiveType::F32),
                     },

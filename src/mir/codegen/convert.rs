@@ -24,6 +24,8 @@ use crate::mir::{
 };
 
 #[cfg(feature = "nightly")]
+use crate::ir::instruction::{MemoryOrdering as IRMemOrd, SimdOp as IRSimdOp};
+#[cfg(feature = "nightly")]
 use crate::mir::{MemoryOrdering, SimdOp};
 
 /// Resolve an IR value to a MIR operand, allocating a fresh GPR binding on first encounter.
@@ -1376,15 +1378,15 @@ fn convert_instruction<'a>(
             let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg)?;
             let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
             let mir_op = match op {
-                crate::ir::instruction::SimdOp::Add => SimdOp::Add,
-                crate::ir::instruction::SimdOp::Sub => SimdOp::Sub,
-                crate::ir::instruction::SimdOp::Mul => SimdOp::Mul,
-                crate::ir::instruction::SimdOp::Div => SimdOp::Div,
-                crate::ir::instruction::SimdOp::Min => SimdOp::Min,
-                crate::ir::instruction::SimdOp::Max => SimdOp::Max,
-                crate::ir::instruction::SimdOp::Abs => SimdOp::Abs,
-                crate::ir::instruction::SimdOp::Neg => SimdOp::Neg,
-                crate::ir::instruction::SimdOp::Sqrt => SimdOp::Sqrt,
+                IRSimdOp::Add => SimdOp::Add,
+                IRSimdOp::Sub => SimdOp::Sub,
+                IRSimdOp::Mul => SimdOp::Mul,
+                IRSimdOp::Div => SimdOp::Div,
+                IRSimdOp::Min => SimdOp::Min,
+                IRSimdOp::Max => SimdOp::Max,
+                IRSimdOp::Abs => SimdOp::Abs,
+                IRSimdOp::Neg => SimdOp::Neg,
+                IRSimdOp::Sqrt => SimdOp::Sqrt,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             Ok(vec![Instruction::SimdBinary {
@@ -1412,9 +1414,9 @@ fn convert_instruction<'a>(
             let mir_ty = map_ir_type(vector_type)?;
             let src_op = resolve_operand(operand, vreg_alloc, var_to_reg)?;
             let mir_op = match op {
-                crate::ir::instruction::SimdOp::Abs => SimdOp::Abs,
-                crate::ir::instruction::SimdOp::Neg => SimdOp::Neg,
-                crate::ir::instruction::SimdOp::Sqrt => SimdOp::Sqrt,
+                IRSimdOp::Abs => SimdOp::Abs,
+                IRSimdOp::Neg => SimdOp::Neg,
+                IRSimdOp::Sqrt => SimdOp::Sqrt,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             Ok(vec![Instruction::SimdUnary {

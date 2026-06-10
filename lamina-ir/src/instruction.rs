@@ -50,7 +50,7 @@
 
 use std::fmt;
 
-use crate::types::{Identifier, Label, PrimitiveType, Type, Value};
+use crate::types::{Identifier, Label, Literal, PrimitiveType, Type, Value};
 
 /// Memory ordering constraints for atomic operations.
 ///
@@ -498,7 +498,7 @@ pub enum Instruction<'a> {
         /// Default target label when no case matches.
         default: Label<'a>,
         /// Case list as pairs of (literal, target_label).
-        cases: Vec<(crate::types::Literal<'a>, Label<'a>)>,
+        cases: Vec<(Literal<'a>, Label<'a>)>,
     },
     /// Conditional branch to one of two target blocks.
     ///
