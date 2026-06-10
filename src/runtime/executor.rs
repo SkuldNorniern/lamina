@@ -3,6 +3,7 @@
 //! Functions to execute JIT-compiled functions with dynamic argument counts
 //! using the platform C ABI.
 
+use crate::error::LaminaError;
 use crate::mir::{
     Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register, ScalarType,
     Signature,
@@ -12,41 +13,37 @@ use crate::runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
 use std::arch::asm;
 use std::collections::HashMap;
 use std::env;
-use std::error::Error;
 
 fn evaluate_operand(
     operand: &Operand,
     register_values: &HashMap<Register, i64>,
-) -> Result<i64, Box<dyn Error>> {
+) -> Result<i64, LaminaError> {
     match operand {
         Operand::Immediate(Immediate::I8(value)) => Ok(*value as i64),
         Operand::Immediate(Immediate::I16(value)) => Ok(*value as i64),
         Operand::Immediate(Immediate::I32(value)) => Ok(*value as i64),
         Operand::Immediate(Immediate::I64(value)) => Ok(*value),
-        Operand::Immediate(Immediate::F32(_)) => {
-            Err("Interpreter: f32 immediate not supported".into())
-        }
-        Operand::Immediate(Immediate::F64(_)) => {
-            Err("Interpreter: f64 immediate not supported".into())
-        }
-        Operand::Register(register) => register_values
-            .get(register)
-            .copied()
-            .ok_or_else(|| format!("Interpreter: missing register value for {register}").into()),
+        Operand::Immediate(Immediate::F32(_)) => Err(LaminaError::RuntimeError(
+            "Interpreter: f32 immediate not supported".to_owned(),
+        )),
+        Operand::Immediate(Immediate::F64(_)) => Err(LaminaError::RuntimeError(
+            "Interpreter: f64 immediate not supported".to_owned(),
+        )),
+        Operand::Register(register) => register_values.get(register).copied().ok_or_else(|| {
+            LaminaError::RuntimeError(format!(
+                "Interpreter: missing register value for {register}"
+            ))
+        }),
     }
 }
 
-fn interpret_mir_function(
-    function: &Function,
-    args: &[i64],
-) -> Result<Option<i64>, Box<dyn Error>> {
+fn interpret_mir_function(function: &Function, args: &[i64]) -> Result<Option<i64>, LaminaError> {
     if function.sig.params.len() != args.len() {
-        return Err(format!(
+        return Err(LaminaError::RuntimeError(format!(
             "Interpreter: expected {} arguments, got {}",
             function.sig.params.len(),
             args.len()
-        )
-        .into());
+        )));
     }
 
     let mut register_values: HashMap<Register, i64> = HashMap::new();
@@ -62,7 +59,12 @@ fn interpret_mir_function(
     let mut current_block_index = block_index_by_label
         .get(&function.entry)
         .copied()
-        .ok_or_else(|| format!("Interpreter: entry block '{}' not found", function.entry))?;
+        .ok_or_else(|| {
+            LaminaError::RuntimeError(format!(
+                "Interpreter: entry block '{}' not found",
+                function.entry
+            ))
+        })?;
 
     loop {
         let block = &function.blocks[current_block_index];
@@ -81,25 +83,33 @@ fn interpret_mir_function(
                         IntBinOp::Mul => left_value.wrapping_mul(right_value),
                         IntBinOp::UDiv => {
                             if right_value == 0 {
-                                return Err("Interpreter: division by zero".into());
+                                return Err(LaminaError::RuntimeError(
+                                    "Interpreter: division by zero".to_owned(),
+                                ));
                             }
                             (left_value as u64 / right_value as u64) as i64
                         }
                         IntBinOp::SDiv => {
                             if right_value == 0 {
-                                return Err("Interpreter: division by zero".into());
+                                return Err(LaminaError::RuntimeError(
+                                    "Interpreter: division by zero".to_owned(),
+                                ));
                             }
                             left_value.wrapping_div(right_value)
                         }
                         IntBinOp::URem => {
                             if right_value == 0 {
-                                return Err("Interpreter: remainder by zero".into());
+                                return Err(LaminaError::RuntimeError(
+                                    "Interpreter: remainder by zero".to_owned(),
+                                ));
                             }
                             (left_value as u64 % right_value as u64) as i64
                         }
                         IntBinOp::SRem => {
                             if right_value == 0 {
-                                return Err("Interpreter: remainder by zero".into());
+                                return Err(LaminaError::RuntimeError(
+                                    "Interpreter: remainder by zero".to_owned(),
+                                ));
                             }
                             left_value.wrapping_rem(right_value)
                         }
@@ -147,10 +157,11 @@ fn interpret_mir_function(
                     true_target,
                     false_target,
                 } => {
-                    let condition_value = register_values
-                        .get(cond)
-                        .copied()
-                        .ok_or_else(|| format!("Interpreter: missing condition register {cond}"))?;
+                    let condition_value = register_values.get(cond).copied().ok_or_else(|| {
+                        LaminaError::RuntimeError(format!(
+                            "Interpreter: missing condition register {cond}"
+                        ))
+                    })?;
                     let target = if condition_value != 0 {
                         true_target.clone()
                     } else {
@@ -164,10 +175,11 @@ fn interpret_mir_function(
                     cases,
                     default,
                 } => {
-                    let switch_value = register_values
-                        .get(value)
-                        .copied()
-                        .ok_or_else(|| format!("Interpreter: missing switch register {value}"))?;
+                    let switch_value = register_values.get(value).copied().ok_or_else(|| {
+                        LaminaError::RuntimeError(format!(
+                            "Interpreter: missing switch register {value}"
+                        ))
+                    })?;
                     let mut target = default.clone();
                     for (case_value, label) in cases {
                         if *case_value == switch_value {
@@ -179,13 +191,19 @@ fn interpret_mir_function(
                     break;
                 }
                 Instruction::Unreachable => {
-                    return Err("Interpreter: unreachable executed".into());
+                    return Err(LaminaError::RuntimeError(
+                        "Interpreter: unreachable executed".to_owned(),
+                    ));
                 }
                 Instruction::Call { .. } => {
-                    return Err("Interpreter: call not supported".into());
+                    return Err(LaminaError::RuntimeError(
+                        "Interpreter: call not supported".to_owned(),
+                    ));
                 }
                 Instruction::TailCall { .. } => {
-                    return Err("Interpreter: tail call not supported".into());
+                    return Err(LaminaError::RuntimeError(
+                        "Interpreter: tail call not supported".to_owned(),
+                    ));
                 }
                 Instruction::Comment { .. } => {}
                 Instruction::Load { .. }
@@ -199,7 +217,9 @@ fn interpret_mir_function(
                 | Instruction::SafePoint
                 | Instruction::StackMap { .. }
                 | Instruction::PatchPoint { .. } => {
-                    return Err("Interpreter: unsupported instruction".into());
+                    return Err(LaminaError::RuntimeError(
+                        "Interpreter: unsupported instruction".to_owned(),
+                    ));
                 }
                 #[cfg(feature = "nightly")]
                 Instruction::SimdBinary { .. }
@@ -215,18 +235,22 @@ fn interpret_mir_function(
                 | Instruction::AtomicBinary { .. }
                 | Instruction::AtomicCompareExchange { .. }
                 | Instruction::Fence { .. } => {
-                    return Err("Interpreter: SIMD/Atomic instructions not supported".into());
+                    return Err(LaminaError::RuntimeError(
+                        "Interpreter: SIMD/Atomic instructions not supported".to_owned(),
+                    ));
                 }
             }
         }
 
         if let Some(label) = next_label {
-            current_block_index = block_index_by_label
-                .get(&label)
-                .copied()
-                .ok_or_else(|| format!("Interpreter: unknown block label {label}"))?;
+            current_block_index = block_index_by_label.get(&label).copied().ok_or_else(|| {
+                LaminaError::RuntimeError(format!("Interpreter: unknown block label {label}"))
+            })?;
         } else {
-            return Err(format!("Interpreter: block '{}' missing terminator", block.label).into());
+            return Err(LaminaError::RuntimeError(format!(
+                "Interpreter: block '{}' missing terminator",
+                block.label
+            )));
         }
     }
 }
@@ -263,14 +287,13 @@ pub unsafe fn execute_jit_function(
     args: Option<&[i64]>,
     verbose: bool,
     function: Option<&Function>,
-) -> Result<Option<i64>, Box<dyn Error>> {
+) -> Result<Option<i64>, LaminaError> {
     let param_count = sig.params.len();
 
     if param_count > MAX_JIT_ARGS {
-        return Err(format!(
+        return Err(LaminaError::RuntimeError(format!(
             "JIT execution: Handles up to {MAX_JIT_ARGS} parameters, got {param_count}"
-        )
-        .into());
+        )));
     }
 
     let all_i64 = sig
@@ -282,14 +305,17 @@ pub unsafe fn execute_jit_function(
     let returns_void = sig.ret_ty.is_none();
 
     if !all_i64 {
-        return Err(format!(
+        return Err(LaminaError::RuntimeError(format!(
             "JIT execution: Function has non-i64 parameters, not yet supported. Parameter types: {:?}",
             sig.params.iter().map(|p| &p.ty).collect::<Vec<_>>()
-        ).into());
+        )));
     }
 
     if !returns_i64 && !returns_void {
-        return Err(format!("JIT execution: Unsupported return type: {:?}", sig.ret_ty).into());
+        return Err(LaminaError::RuntimeError(format!(
+            "JIT execution: Unsupported return type: {:?}",
+            sig.ret_ty
+        )));
     }
 
     #[cfg(target_arch = "aarch64")]
@@ -312,12 +338,11 @@ pub unsafe fn execute_jit_function(
     let args = args.unwrap_or(&default_args);
 
     if args.len() != param_count {
-        return Err(format!(
+        return Err(LaminaError::RuntimeError(format!(
             "JIT execution: Argument count mismatch. Expected {}, got {}",
             param_count,
             args.len()
-        )
-        .into());
+        )));
     }
 
     // Historical safety valve: the AArch64 encoder used to be incomplete, and we interpreted MIR.
@@ -351,7 +376,9 @@ pub unsafe fn execute_jit_function(
                 }
                 Ok(Some(value))
             } else {
-                Err("JIT execution: Function should have returned a value but didn't".into())
+                Err(LaminaError::RuntimeError(
+                    "JIT execution: Function should have returned a value but didn't".to_owned(),
+                ))
             }
         } else {
             if verbose {
