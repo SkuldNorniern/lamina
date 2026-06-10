@@ -1,8 +1,6 @@
 //! Loop optimization transforms for MIR.
 
-use crate::mir::transform::calculate_dominators;
-
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel, calculate_dominators};
 use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register};
 use std::collections::{HashMap, HashSet};
 

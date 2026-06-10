@@ -11,8 +11,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::error::FromIRError;
-use super::mapping::{map_ir_prim, map_ir_type};
+use crate::mir::codegen::error::FromIRError;
+use crate::mir::codegen::mapping::{map_ir_prim, map_ir_type};
 use crate::ir::instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst};
 use crate::ir::types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
 use crate::mir::{

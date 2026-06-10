@@ -1,6 +1,6 @@
 //! Value parsing for Lamina IR.
 
-use super::state::ParserState;
+use crate::parser::state::ParserState;
 use crate::LaminaError;
 use crate::ir::{Literal, Value};
 
