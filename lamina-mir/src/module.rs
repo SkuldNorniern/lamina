@@ -2,9 +2,9 @@
 //!
 //! A module is a collection of functions and global data. Modules are the
 //! top-level unit of organization in LUMIR and can be compiled independently.
-use super::function::Function;
-use super::instruction::Instruction;
-use super::types::MirType;
+use crate::function::Function;
+use crate::instruction::Instruction;
+use crate::types::MirType;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
