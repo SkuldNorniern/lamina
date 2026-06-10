@@ -294,7 +294,7 @@ impl LoopInvariantCodeMotion {
 
     fn has_edge_to(&self, func: &Function, from: &str, to: &str) -> bool {
         func.get_block(from)
-            .is_some_and(|b| b.successors().iter().any(|s| s == to))
+            .is_some_and(|b| b.successors().contains(&to))
     }
 
     fn optimize_loop(&self, func: &mut Function, loop_info: &LoopInfo) -> Result<bool, String> {
@@ -831,21 +831,12 @@ impl LoopUnrolling {
                 continue; // Latch is part of body but has no successors in loop (except header)
             }
             if let Some(block) = func.get_block(&current) {
-                let successors = block.successors();
-                for succ in successors {
+                for succ in block.successors() {
                     // To be in the loop, successor must eventually reach latch (or be latch)
                     // and not be the header (backedge handled elsewhere)
-                    if succ != header && !body.contains(&succ) {
-                        // Check if succ can reach latch?
-                        // This is expensive.
-                        // Simplified assumption: All successors of header that are not exit are in loop.
-                        // We already know exit_target from analyze_loop. But we don't have it here.
-                        // Actually, finding natural loop nodes is standard.
-                        // For this task, let's assume if we hit latch, stop.
-                        // If we are branching, we follow both.
-                        // This is heuristic.
-                        body.insert(succ.clone());
-                        queue.push(succ);
+                    if succ != header && !body.contains(succ) {
+                        body.insert(succ.to_owned());
+                        queue.push(succ.to_owned());
                     }
                 }
             }

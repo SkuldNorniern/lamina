@@ -139,9 +139,9 @@ impl Function {
         }
 
         // Check that all blocks have unique labels
-        let mut seen_labels = HashSet::new();
+        let mut seen_labels: HashSet<&str> = HashSet::new();
         for block in &self.blocks {
-            if !seen_labels.insert(&block.label) {
+            if !seen_labels.insert(block.label.as_str()) {
                 return Err(format!("Duplicate block label: {}", block.label));
             }
         }
@@ -156,7 +156,7 @@ impl Function {
         // Check that all branch/jump targets reference existing blocks
         for block in &self.blocks {
             for label in block.successors() {
-                if !seen_labels.contains(&label) {
+                if !seen_labels.contains(label) {
                     return Err(format!(
                         "Block '{}' references undefined target '{}'",
                         block.label, label

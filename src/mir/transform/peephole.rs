@@ -49,7 +49,7 @@ impl Peephole {
         let mut changed = false;
         let loop_headers = compute_back_edge_headers(func);
         for block in &mut func.blocks {
-            let in_loop_block = loop_headers.contains(&block.label);
+            let in_loop_block = loop_headers.contains(block.label.as_str());
             if self.run_on_block(block, in_loop_block) {
                 changed = true;
             }

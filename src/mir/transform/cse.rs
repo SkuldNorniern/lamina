@@ -84,7 +84,7 @@ impl CommonSubexpressionElimination {
         for block in &mut func.blocks {
             // Skip only loop header blocks to avoid complex control flow issues
             // Allow CSE within loop bodies where it's safe and beneficial
-            if loop_headers.contains(&block.label) {
+            if loop_headers.contains(block.label.as_str()) {
                 continue;
             }
 
@@ -123,7 +123,7 @@ impl CommonSubexpressionElimination {
                     true_target: target,
                     ..
                 } => {
-                    if loop_headers.contains(target) {
+                    if loop_headers.contains(target.as_str()) {
                         return true;
                     }
                 }
@@ -131,7 +131,7 @@ impl CommonSubexpressionElimination {
                 Instruction::Br {
                     false_target: target,
                     ..
-                } if loop_headers.contains(target) => {
+                } if loop_headers.contains(target.as_str()) => {
                     return true;
                 }
                 _ => {}
