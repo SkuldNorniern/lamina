@@ -197,8 +197,6 @@ unsafe fn opt_level(options: *const LaminaCompileOptions) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LaminaStatus;
-    use crate::types::LaminaBuffer;
     use std::ffi::CString;
     use std::ptr;
 
