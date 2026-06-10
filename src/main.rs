@@ -2,12 +2,14 @@ mod cli;
 
 use cli::jit::handle_jit_compilation;
 use cli::options::{parse_args, print_usage, toolchain_backends};
+use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::process;
 use std::str::FromStr;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let options = match parse_args() {
         Ok(opts) => opts,
         Err(e) => {
@@ -17,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 eprintln!("Error: {e}");
                 print_usage();
-                std::process::exit(1);
+                process::exit(1);
             }
         }
     };
@@ -28,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Error: Input file '{}' does not exist.",
             input_path.display()
         );
-        std::process::exit(1);
+        process::exit(1);
     }
 
     if input_path.extension().is_none_or(|ext| ext != "lamina") {
@@ -92,14 +94,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(file) => file,
         Err(e) => {
             eprintln!("[ERROR] Failed to open input file: {e}");
-            std::process::exit(1);
+            process::exit(1);
         }
     };
 
     let mut ir_source = String::new();
     if let Err(e) = input_file.read_to_string(&mut ir_source) {
         eprintln!("[ERROR] Failed to read input file: {e}");
-        std::process::exit(1);
+        process::exit(1);
     }
 
     if options.emit_mir || options.emit_mir_asm.is_some() {

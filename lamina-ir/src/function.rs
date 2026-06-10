@@ -220,11 +220,11 @@
 //! let module = builder.build();
 //! ```
 
-use std::collections::HashMap; // Using HashMap for basic blocks
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-use super::instruction::Instruction;
-use super::types::{Identifier, Label, Type};
+use crate::instruction::Instruction;
+use crate::types::{Identifier, Label, Type};
 
 /// Function annotations that provide metadata about function behavior.
 ///
@@ -627,8 +627,7 @@ impl<'a> Function<'a> {
                 ));
             }
 
-            let mut defined: std::collections::HashSet<&str> =
-                self.signature.params.iter().map(|p| p.name).collect();
+            let mut defined: HashSet<&str> = self.signature.params.iter().map(|p| p.name).collect();
 
             for instr in &block.instructions {
                 match instr {

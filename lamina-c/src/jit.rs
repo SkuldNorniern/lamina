@@ -2,6 +2,7 @@
 // Gated at the module level in lib.rs: #[cfg(feature = "nightly")].
 
 use std::ffi::c_char;
+use std::mem;
 use std::panic::AssertUnwindSafe;
 
 use crate::error::{clear_error, set_error};
@@ -129,7 +130,7 @@ pub unsafe extern "C" fn lia_jit_call_i64_0(
             set_error("jit or result is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        let f: extern "C" fn() -> i64 = std::mem::transmute((*jit).function_ptr);
+        let f: extern "C" fn() -> i64 = mem::transmute((*jit).function_ptr);
         *result = f();
         clear_error();
         LaminaStatus::Ok
@@ -147,7 +148,7 @@ pub unsafe extern "C" fn lia_jit_call_i64_1(
             set_error("jit or result is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        let f: extern "C" fn(i64) -> i64 = std::mem::transmute((*jit).function_ptr);
+        let f: extern "C" fn(i64) -> i64 = mem::transmute((*jit).function_ptr);
         *result = f(a);
         clear_error();
         LaminaStatus::Ok
@@ -166,7 +167,7 @@ pub unsafe extern "C" fn lia_jit_call_i64_2(
             set_error("jit or result is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        let f: extern "C" fn(i64, i64) -> i64 = std::mem::transmute((*jit).function_ptr);
+        let f: extern "C" fn(i64, i64) -> i64 = mem::transmute((*jit).function_ptr);
         *result = f(a, b);
         clear_error();
         LaminaStatus::Ok

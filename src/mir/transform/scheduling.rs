@@ -4,6 +4,7 @@ use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, IntBinOp, Register};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::mem;
 
 /// Instruction scheduling that reorders instructions to improve ILP.
 #[derive(Default)]
@@ -70,7 +71,7 @@ impl InstructionScheduling {
 
         // 4. Reorder Instructions
         if self.is_order_changed(&scheduled_indices) {
-            let old_instructions = std::mem::take(&mut block.instructions);
+            let old_instructions = mem::take(&mut block.instructions);
             let mut new_instructions = Vec::with_capacity(old_instructions.len());
             for &idx in &scheduled_indices {
                 new_instructions.push(old_instructions[idx].clone());
@@ -328,7 +329,8 @@ impl PartialOrd for ScheduledItem {
 mod tests {
     use super::*;
     use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
+        AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
+        ScalarType, VirtualReg,
     };
 
     #[test]
@@ -349,11 +351,11 @@ mod tests {
             .instr(Instruction::Load {
                 dst: VirtualReg::gpr(1).into(),
                 ty: MirType::Scalar(ScalarType::I64),
-                addr: crate::mir::AddressMode::BaseOffset {
+                addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(10).into(),
                     offset: 0,
                 },
-                attrs: crate::mir::instruction::MemoryAttrs::default(),
+                attrs: MemoryAttrs::default(),
             })
             // 1: Dependent Add
             .instr(Instruction::IntBinary {

@@ -8,6 +8,7 @@ use crate::mir_codegen::validate_module_call_parameters;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use ras::RasRuntime;
 use std::collections::HashMap;
+use std::mem;
 
 /// Runtime compiler for JIT compilation
 pub struct RuntimeCompiler {
@@ -91,7 +92,7 @@ impl RuntimeCompiler {
                     "ExecutableMemory has null ptr".to_string(),
                 ));
             }
-            let f: unsafe extern "C" fn() -> T = std::mem::transmute(ptr);
+            let f: unsafe extern "C" fn() -> T = mem::transmute(ptr);
             Ok(f)
         }
     }

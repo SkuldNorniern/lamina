@@ -5,7 +5,9 @@ use crate::cli::options::{CompileOptions, toolchain_backends};
 use lamina::runtime::{Sandbox, SandboxConfig, compile_to_runtime};
 use lamina_platform::Target;
 
-use std::process::Command;
+use std::env;
+use std::error::Error;
+use std::process::{self, Command};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,7 +16,7 @@ pub fn handle_jit_compilation(
     ir_source: &str,
     input_path: &std::path::Path,
     options: &CompileOptions,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn Error>> {
     let target = if let Some(target_str) = &options.target_arch {
         Target::from_str(target_str).map_err(|e| format!("Invalid target '{target_str}': {e}"))?
     } else {
@@ -84,7 +86,7 @@ pub fn handle_jit_compilation(
         }
 
         if function_name == "main" {
-            std::process::exit(result as i32);
+            process::exit(result as i32);
         }
     } else {
         let codegen_units = options.codegen_units.unwrap_or_else(|| {
@@ -164,10 +166,10 @@ pub fn handle_jit_compilation(
                         println!("[JIT] Function returned {ret}");
                     }
                     if jit_function_name == "main" {
-                        std::process::exit(ret as i32);
+                        process::exit(ret as i32);
                     }
                 } else if jit_function_name == "main" {
-                    std::process::exit(0);
+                    process::exit(0);
                 }
             }
         } else {
@@ -180,12 +182,12 @@ pub fn handle_jit_compilation(
                 return Err("JIT fallback: cannot execute WASM targets directly".into());
             }
 
-            let pid = std::process::id();
+            let pid = process::id();
             let nanos = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_nanos();
-            let tmp_dir = std::env::temp_dir().join(format!("lamina_jit_{pid}_{nanos}"));
+            let tmp_dir = env::temp_dir().join(format!("lamina_jit_{pid}_{nanos}"));
             std::fs::create_dir_all(&tmp_dir)?;
 
             let intermediate_ext = lamina::mir_codegen::assemble::get_intermediate_extension(
@@ -259,7 +261,7 @@ pub fn handle_jit_compilation(
                     if options.verbose {
                         eprintln!("[JIT] Program exited with status {code}");
                     }
-                    std::process::exit(code);
+                    process::exit(code);
                 }
                 return Err(format!("JIT fallback: program terminated: {status}").into());
             }
