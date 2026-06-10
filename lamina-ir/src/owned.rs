@@ -651,6 +651,24 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a multi-way switch instruction.
+    ///
+    /// `cases` is a slice of `(integer_value, target_label)` pairs.
+    pub fn switch(
+        &mut self,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+        default: impl AsRef<str>,
+        cases: &[(i64, &str)],
+    ) -> &mut Self {
+        let mut t = format!("switch.{} {}, {}", ty.as_str(), value, default.as_ref());
+        for (lit, label) in cases {
+            t.push_str(&format!(", [{lit}, {label}]"));
+        }
+        self.push(t);
+        self
+    }
+
     // -----------------------------------------------------------------------
     // Serialisation
     // -----------------------------------------------------------------------
