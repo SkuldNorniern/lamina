@@ -8,7 +8,7 @@ use crate::mir::transform::calculate_dominators;
 use crate::mir::Function;
 use crate::mir::instruction::{AddressMode, FloatBinOp, Instruction, IntBinOp, Operand, VectorOp};
 use crate::mir::register::{Register, VirtualReg};
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::types::{MirType, ScalarType, VectorLane, VectorType};
 use std::collections::{HashMap, HashSet};
 
@@ -36,13 +36,13 @@ impl Transform for AutoVectorization {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl AutoVectorization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
         // Find all loops in the function
@@ -172,7 +172,7 @@ impl AutoVectorization {
         &self,
         func: &mut Function,
         loop_info: &LoopInfo,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, TransformError> {
         // Find vectorizable patterns in the loop
         let patterns = self.find_vectorizable_patterns(func, loop_info);
 
@@ -400,7 +400,7 @@ impl AutoVectorization {
         &self,
         func: &mut Function,
         pattern: &VectorizationPattern,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, TransformError> {
         let block = func
             .get_block_mut(&pattern.block)
             .ok_or_else(|| format!("Block {} not found", pattern.block))?;
@@ -534,13 +534,12 @@ impl AutoVectorization {
     }
 
     /// Get vector type for a scalar type
-    fn get_vector_type_for_scalar(&self, scalar: ScalarType) -> Result<VectorType, String> {
+    fn get_vector_type_for_scalar(&self, scalar: ScalarType) -> Result<VectorType, TransformError> {
         let lane = self.scalar_to_vector_lane(scalar)?;
         Ok(VectorType::V128(lane))
     }
 
-    /// Convert scalar type to vector lane type
-    fn scalar_to_vector_lane(&self, scalar: ScalarType) -> Result<VectorLane, String> {
+    fn scalar_to_vector_lane(&self, scalar: ScalarType) -> Result<VectorLane, TransformError> {
         match scalar {
             ScalarType::I8 => Ok(VectorLane::I8),
             ScalarType::I16 => Ok(VectorLane::I16),
@@ -548,19 +547,18 @@ impl AutoVectorization {
             ScalarType::I64 => Ok(VectorLane::I64),
             ScalarType::F32 => Ok(VectorLane::F32),
             ScalarType::F64 => Ok(VectorLane::F64),
-            _ => Err(format!("Cannot vectorize type {:?}", scalar)),
+            _ => Err(TransformError::Unsupported(format!("cannot vectorize type {scalar:?}"))),
         }
     }
 
-    /// Convert integer binary operation to vector operation
-    fn int_binop_to_vector_op(&self, op: IntBinOp) -> Result<VectorOp, String> {
+    fn int_binop_to_vector_op(&self, op: IntBinOp) -> Result<VectorOp, TransformError> {
         match op {
             IntBinOp::Add => Ok(VectorOp::VAdd),
             IntBinOp::Sub => Ok(VectorOp::VSub),
             IntBinOp::Mul => Ok(VectorOp::VMul),
             IntBinOp::And => Ok(VectorOp::VAnd),
             IntBinOp::Or => Ok(VectorOp::VOr),
-            _ => Err(format!("Cannot vectorize operation {:?}", op)),
+            _ => Err(TransformError::Unsupported(format!("cannot vectorize operation {op:?}"))),
         }
     }
 

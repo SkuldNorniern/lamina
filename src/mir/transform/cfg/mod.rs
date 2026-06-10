@@ -6,7 +6,7 @@
 //! - **JumpThreading**: Bypasses trivial jump-only blocks
 
 use crate::mir::instruction::Immediate;
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{Function, Instruction, IntBinOp, Operand};
 use std::collections::{HashMap, HashSet};
 
@@ -111,13 +111,13 @@ impl Transform for CfgSimplify {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl CfgSimplify {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
         for block in &mut func.blocks {
@@ -255,13 +255,13 @@ impl Transform for JumpThreading {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl JumpThreading {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut simple_jumps: HashMap<String, String> = HashMap::new();
 
         for block in &func.blocks {

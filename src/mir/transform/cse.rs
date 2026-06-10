@@ -2,7 +2,7 @@
 
 use crate::mir::transform::compute_back_edge_headers;
 
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{
     Block, FloatBinOp, Function, Immediate, Instruction, IntBinOp, MirType, Operand, Register,
     ScalarType,
@@ -31,7 +31,7 @@ impl Transform for CommonSubexpressionElimination {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
@@ -55,26 +55,25 @@ impl CommonSubexpressionElimination {
         }
     }
 
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         const MAX_BLOCKS: usize = 500;
         const MAX_INSTRUCTIONS_PER_BLOCK: usize = 500;
 
         if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for CSE ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
+            return Err(TransformError::FunctionTooLarge {
+                pass: "common_subexpression_elimination",
+                count: func.blocks.len(),
+                limit: MAX_BLOCKS,
+            });
         }
 
         for block in &func.blocks {
             if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
-                return Err(format!(
-                    "Block '{}' too large for CSE ({} instructions, max {})",
-                    block.label,
-                    block.instructions.len(),
-                    MAX_INSTRUCTIONS_PER_BLOCK
-                ));
+                return Err(TransformError::BlockTooLarge {
+                    label: block.label.clone(),
+                    count: block.instructions.len(),
+                    limit: MAX_INSTRUCTIONS_PER_BLOCK,
+                });
             }
         }
 

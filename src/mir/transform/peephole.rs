@@ -4,7 +4,7 @@ use crate::mir::instruction::{FloatUnOp, Immediate, Instruction, IntBinOp, IntCm
 use crate::mir::{Block, Function, Register};
 
 use crate::mir::transform::{
-    Transform, TransformCategory, TransformLevel, compute_back_edge_headers,
+    Transform, TransformCategory, TransformError, TransformLevel, compute_back_edge_headers,
 };
 
 /// Peephole optimizations that do local rewrites.
@@ -31,7 +31,7 @@ impl Transform for Peephole {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         Ok(self.run_on_function(func))
     }
 }

@@ -39,9 +39,38 @@ pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
 
 use crate::mir::{Function, Module};
+use std::fmt;
 
 #[cfg(feature = "nightly")]
 pub use vectorization::AutoVectorization;
+
+/// Error returned by transform passes.
+#[derive(Debug)]
+pub enum TransformError {
+    FunctionTooLarge { pass: &'static str, count: usize, limit: usize },
+    BlockTooLarge { label: String, count: usize, limit: usize },
+    WouldDestroyFunction,
+    ConvergenceFailed,
+    Unsupported(String),
+    InvalidState(&'static str),
+}
+
+impl fmt::Display for TransformError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FunctionTooLarge { pass, count, limit } => {
+                write!(f, "Function too large for {pass} ({count} blocks, max {limit})")
+            }
+            Self::BlockTooLarge { label, count, limit } => {
+                write!(f, "Block '{label}' too large ({count} instructions, max {limit})")
+            }
+            Self::WouldDestroyFunction => write!(f, "transform would remove all blocks"),
+            Self::ConvergenceFailed => write!(f, "liveness analysis failed to converge"),
+            Self::Unsupported(msg) => write!(f, "unsupported: {msg}"),
+            Self::InvalidState(msg) => write!(f, "invalid state: {msg}"),
+        }
+    }
+}
 
 /// Trait for MIR transformation passes.
 pub trait Transform {
@@ -58,7 +87,7 @@ pub trait Transform {
     fn level(&self) -> TransformLevel;
 
     /// Apply this transform to a function. Returns true if any changes were made.
-    fn apply(&self, func: &mut Function) -> Result<bool, String>;
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError>;
 }
 
 /// Stability level of a transform.
@@ -201,7 +230,7 @@ impl TransformPipeline {
                     }
                 }
                 Err(e) => {
-                    return Err(format!("Transform '{}' failed: {}", transform.name(), e));
+                    return Err(format!("Transform '{}' failed: {e}", transform.name()));
                 }
             }
 

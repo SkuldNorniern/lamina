@@ -1,7 +1,7 @@
 //! Tail call optimization transform for MIR.
 
 use crate::mir::function::Signature;
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::types::{MirType, ScalarType};
 use crate::mir::{Block, Function, Immediate, Instruction, Operand, Register};
 
@@ -29,22 +29,21 @@ impl Transform for TailCallOptimization {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl TailCallOptimization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         const MAX_BLOCK_INSTRUCTIONS: usize = 1_000;
         for block in &func.blocks {
             if block.instructions.len() > MAX_BLOCK_INSTRUCTIONS {
-                return Err(format!(
-                    "Block '{}' too large for tail call optimization ({} instructions, max {})",
-                    block.label,
-                    block.instructions.len(),
-                    MAX_BLOCK_INSTRUCTIONS
-                ));
+                return Err(TransformError::BlockTooLarge {
+                    label: block.label.clone(),
+                    count: block.instructions.len(),
+                    limit: MAX_BLOCK_INSTRUCTIONS,
+                });
             }
         }
 
