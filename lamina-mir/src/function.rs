@@ -128,7 +128,7 @@ impl Function {
 
     /// Total number of instructions across all blocks
     pub fn instruction_count(&self) -> usize {
-        self.blocks.iter().map(super::block::Block::len).sum()
+        self.blocks.iter().map(Block::len).sum()
     }
 
     /// Check if this function is well-formed
