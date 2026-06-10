@@ -158,58 +158,6 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     Ok(())
 }
 
-/// Generates AArch64 assembly from MIR for the requested host OS.
-#[deprecated(
-    since = "0.0.9",
-    note = "Use generate_mir_to_target with TargetArchitecture::Aarch64 instead"
-)]
-pub fn generate_mir_to_aarch64<W: Write>(
-    module: &Module,
-    writer: &mut W,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::Aarch64, target_os, 1)
-}
-
-/// Generates x86_64 assembly from MIR for the requested host OS.
-#[deprecated(
-    since = "0.0.9",
-    note = "Use generate_mir_to_target with TargetArchitecture::X86_64 instead"
-)]
-pub fn generate_mir_to_x86_64<W: Write>(
-    module: &Module,
-    writer: &mut W,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::X86_64, target_os, 1)
-}
-
-/// Generates WASM from MIR for the requested host OS.
-#[deprecated(
-    since = "0.0.9",
-    note = "Use generate_mir_to_target with TargetArchitecture::Wasm32/Wasm64 instead"
-)]
-pub fn generate_mir_to_wasm<W: Write>(
-    module: &Module,
-    writer: &mut W,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::Wasm32, target_os, 1)
-}
-
-/// Generates RISC-V assembly from MIR for the requested host OS.
-#[deprecated(
-    since = "0.0.9",
-    note = "Use generate_mir_to_target with TargetArchitecture::Riscv32/Riscv64/Riscv128 instead"
-)]
-pub fn generate_mir_to_riscv<W: Write>(
-    module: &Module,
-    writer: &mut W,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::Riscv64, target_os, 1)
-}
-
 /// Code generation options.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CodegenOptions {
