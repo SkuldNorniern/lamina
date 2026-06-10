@@ -206,6 +206,7 @@ impl ConstantFolding {
 mod tests {
     use super::*;
     use crate::mir::function::Signature;
+    use crate::mir::transform::test_utils::{apply_pass, get_block};
     use crate::mir::{Block, Register, VirtualReg};
 
     #[test]
