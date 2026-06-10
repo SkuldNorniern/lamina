@@ -316,6 +316,25 @@ impl Default for TransformPipeline {
 }
 
 #[cfg(test)]
+pub(crate) mod test_utils {
+    use crate::mir::{Block, Function};
+
+    /// Retrieves a block by label, panicking with the label name if not found.
+    // SAFETY: test helper — label must exist in the function's block list.
+    pub fn get_block<'a>(func: &'a Function, label: &str) -> &'a Block {
+        func.get_block(label)
+            .unwrap_or_else(|| panic!("block '{label}' not found in function"))
+    }
+
+    /// Applies a transform pass, panicking on error, and returns whether anything changed.
+    // SAFETY: test helper — pass must be valid for the function's IR.
+    pub fn apply_pass(pass: &impl super::Transform, func: &mut Function) -> bool {
+        pass.apply(func)
+            .unwrap_or_else(|e| panic!("transform failed: {e}"))
+    }
+}
+
+#[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
