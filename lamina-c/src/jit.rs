@@ -237,3 +237,36 @@ fn compile_jit(ir_str: &str, func_name: &str) -> Result<LaminaJit, String> {
         function_ptr: result.function_ptr,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::LaminaStatus;
+    use std::ptr;
+
+    #[test]
+    fn jit_free_null_does_not_crash() {
+        unsafe { lia_jit_free(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn jit_call_i64_3_null_jit_returns_error() {
+        let mut result = 0i64;
+        let st = unsafe { lia_jit_call_i64_3(ptr::null(), 1, 2, 3, &mut result) };
+        assert_eq!(st, LaminaStatus::ErrorInvalidArgument);
+    }
+
+    #[test]
+    fn jit_call_i64_4_null_jit_returns_error() {
+        let mut result = 0i64;
+        let st = unsafe { lia_jit_call_i64_4(ptr::null(), 1, 2, 3, 4, &mut result) };
+        assert_eq!(st, LaminaStatus::ErrorInvalidArgument);
+    }
+
+    #[test]
+    fn jit_call_i64_3_null_result_returns_error() {
+        // result ptr is null — must be rejected before dereferencing.
+        let st = unsafe { lia_jit_call_i64_3(ptr::null(), 1, 2, 3, ptr::null_mut()) };
+        assert_eq!(st, LaminaStatus::ErrorInvalidArgument);
+    }
+}

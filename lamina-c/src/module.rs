@@ -193,3 +193,63 @@ unsafe fn opt_level(options: *const LaminaCompileOptions) -> Option<u8> {
         Some(unsafe { (*options).opt_level })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::LaminaStatus;
+    use crate::types::LaminaBuffer;
+    use std::ffi::CString;
+    use std::ptr;
+
+    fn cs(s: &str) -> CString {
+        // SAFETY: test strings contain no NUL bytes.
+        CString::new(s).unwrap()
+    }
+
+    const ADD_IR: &str =
+        "fn @add(i64 %a, i64 %b) -> i64 {\nentry:\n  %r = add.i64 %a, %b\n  ret.i64 %r\n}\n";
+
+    #[test]
+    fn null_output_rejected() {
+        let ir = cs(ADD_IR);
+        unsafe {
+            let st = lia_compile_ir_to_assembly(ir.as_ptr(), ptr::null(), ptr::null_mut());
+            assert_eq!(st, LaminaStatus::ErrorInvalidArgument);
+        }
+    }
+
+    #[test]
+    fn compile_with_opt_level_zero_succeeds() {
+        let ir = cs(ADD_IR);
+        let opts = LaminaCompileOptions {
+            target: ptr::null(),
+            codegen_units: 1,
+            opt_level: 0,
+        };
+        unsafe {
+            let mut buf = LaminaBuffer::null();
+            let st = lia_compile_ir_to_assembly(ir.as_ptr(), &opts, &mut buf);
+            assert_eq!(st, LaminaStatus::Ok);
+            assert!(buf.len > 0);
+            crate::lia_buffer_free(&mut buf);
+        }
+    }
+
+    #[test]
+    fn compile_with_opt_level_one_succeeds() {
+        let ir = cs(ADD_IR);
+        let opts = LaminaCompileOptions {
+            target: ptr::null(),
+            codegen_units: 1,
+            opt_level: 1,
+        };
+        unsafe {
+            let mut buf = LaminaBuffer::null();
+            let st = lia_compile_ir_to_assembly(ir.as_ptr(), &opts, &mut buf);
+            assert_eq!(st, LaminaStatus::Ok);
+            assert!(buf.len > 0);
+            crate::lia_buffer_free(&mut buf);
+        }
+    }
+}
