@@ -20,7 +20,7 @@ pub fn load_register_to_r3<W: Write, RA: RegisterAllocator<PhysReg = &'static st
     } else if let Some(offset) = stack_slots.get(reg) {
         writeln!(writer, "    ld 3, {offset}(1)")
     } else {
-        Err(std::io::Error::new(
+        Err(Error::new(
             std::io::ErrorKind::InvalidData,
             format!("Virtual register {reg:?} has no mapping or stack slot"),
         ))
@@ -39,7 +39,7 @@ pub fn store_r3_to_register<W: Write, RA: RegisterAllocator<PhysReg = &'static s
     } else if let Some(offset) = stack_slots.get(reg) {
         writeln!(writer, "    std 3, {offset}(1)")
     } else {
-        Err(std::io::Error::new(
+        Err(Error::new(
             std::io::ErrorKind::InvalidData,
             format!("Virtual register {reg:?} has no mapping or stack slot"),
         ))
@@ -59,7 +59,7 @@ pub fn load_register_to_register<W: Write, RA: RegisterAllocator<PhysReg = &'sta
     } else if let Some(offset) = stack_slots.get(src) {
         writeln!(writer, "    ld {dest_reg}, {offset}(1)")
     } else {
-        Err(std::io::Error::new(
+        Err(Error::new(
             std::io::ErrorKind::InvalidData,
             format!("Virtual register {src:?} has no mapping or stack slot"),
         ))

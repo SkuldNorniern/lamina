@@ -601,8 +601,7 @@ struct VectorizationPattern {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::ir;
-    use crate::mir;
+    use crate::{ir, mir};
 
     #[test]
     fn test_find_loops_simple() {

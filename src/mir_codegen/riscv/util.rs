@@ -20,8 +20,8 @@ pub fn load_register_to_register<W: std::io::Write>(
     } else if let Some(offset) = stack_slots.get(src) {
         writeln!(writer, "    ld {dest_reg}, {offset}(fp)")?;
     } else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
+        return Err(Error::new(
+            ErrorKind::InvalidData,
             format!("Virtual register {src:?} has no mapping or stack slot"),
         ));
     }
@@ -41,8 +41,8 @@ pub fn store_register_to_register<W: std::io::Write>(
     } else if let Some(offset) = stack_slots.get(dst) {
         writeln!(writer, "    sd {src_reg}, {offset}(fp)")?;
     } else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
+        return Err(Error::new(
+            ErrorKind::InvalidData,
             format!("Virtual register {dst:?} has no mapping or stack slot"),
         ));
     }
@@ -125,8 +125,8 @@ pub fn load_fp_operand_to_register<W: std::io::Write>(
                         writeln!(writer, "    fmv.d.x {dest_fp_reg}, {phys}")?;
                     }
                 } else {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
+                    return Err(Error::new(
+                        ErrorKind::InvalidData,
                         format!("Virtual register {v:?} has no mapping or stack slot"),
                     ));
                 }
@@ -190,8 +190,8 @@ pub fn store_fp_register_to_register<W: std::io::Write>(
             writeln!(writer, "    fsd {src_fp_reg}, {offset}(fp)")?;
         }
     } else {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
+        return Err(Error::new(
+            ErrorKind::InvalidData,
             format!("Virtual register {dst:?} has no mapping or stack slot"),
         ));
     }
