@@ -50,7 +50,7 @@
 
 use std::fmt;
 
-use super::types::{Identifier, Label, PrimitiveType, Type, Value};
+use crate::types::{Identifier, Label, PrimitiveType, Type, Value};
 
 /// Memory ordering constraints for atomic operations.
 ///
