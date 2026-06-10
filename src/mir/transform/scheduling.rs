@@ -1,6 +1,6 @@
 //! Instruction scheduling transform for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{Block, Function, Instruction, IntBinOp, Register};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap, HashSet};
