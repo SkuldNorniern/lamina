@@ -79,7 +79,7 @@ static HOST_TARGET: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock
 
 /// Returns the lamina-c ABI version string (null-terminated, static lifetime).
 ///
-/// Versioned independently from the Rust crate version.
+/// Versioned independently of the Rust crate version.
 #[unsafe(no_mangle)]
 pub extern "C" fn lia_version() -> *const c_char {
     ABI_VERSION.as_ptr() as *const c_char
