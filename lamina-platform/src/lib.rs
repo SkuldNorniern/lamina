@@ -20,10 +20,6 @@ pub mod simd;
 pub use detection::{cpu_count, detect_host_architecture_only, detect_host_os};
 pub use target::{HOST_ARCH_LIST, Target, TargetArchitecture, TargetOperatingSystem};
 
-// Backward compatibility: keep the deprecated helper available, but don't warn in this crate.
-#[allow(deprecated)]
-pub use detection::detect_host_architecture;
-
 #[cfg(feature = "nightly")]
 pub use simd::{ArmSimdExtension, RiscvSimdExtension, SimdCapabilities, X86SimdExtension};
 
