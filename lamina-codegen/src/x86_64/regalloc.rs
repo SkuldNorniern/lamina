@@ -282,3 +282,82 @@ impl MirRegisterAllocator for X64RegAlloc {
         self.used_gprs.contains(&phys)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lamina_platform::TargetOperatingSystem;
+
+    #[test]
+    fn new_linux_has_sysv_pool() {
+        let ra = X64RegAlloc::new(TargetOperatingSystem::Linux);
+        let pool = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
+        assert_eq!(ra.free_gprs.len(), pool.len());
+        for r in &pool {
+            assert!(ra.free_gprs.contains(r));
+        }
+    }
+
+    #[test]
+    fn new_windows_has_win64_pool() {
+        let ra = X64RegAlloc::new(TargetOperatingSystem::Windows);
+        let pool = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Windows, false);
+        assert_eq!(ra.free_gprs.len(), pool.len());
+    }
+
+    #[test]
+    fn ensure_mapping_returns_same_reg_for_same_vreg() {
+        let mut ra = X64RegAlloc::new_default();
+        let vreg = VirtualReg::gpr(0);
+        let first = ra.ensure_mapping(vreg);
+        let second = ra.ensure_mapping(vreg);
+        assert!(first.is_some());
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn alloc_and_free_scratch_cycle() {
+        let mut ra = X64RegAlloc::new_default();
+        let scratch = ra.alloc_scratch();
+        assert!(scratch.is_some(), "scratch should be available on fresh allocator");
+        let phys = scratch.unwrap();
+        assert!(ra.scratch_used.contains(phys));
+        ra.free_scratch(phys);
+        assert!(!ra.scratch_used.contains(phys));
+        assert!(ra.scratch_free.contains(&phys));
+    }
+
+    #[test]
+    fn conservative_mode_shrinks_pool() {
+        let mut ra = X64RegAlloc::new_default();
+        let full_size = ra.free_gprs.len();
+        ra.set_conservative_mode();
+        assert!(ra.free_gprs.len() < full_size);
+    }
+
+    #[test]
+    fn leaf_mode_expands_pool_vs_non_leaf() {
+        let non_leaf = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
+        let leaf = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, true);
+        assert!(leaf.len() > non_leaf.len());
+    }
+
+    #[test]
+    fn is_occupied_tracks_occupy_and_release() {
+        let mut ra = X64RegAlloc::new_default();
+        let phys = "rbx";
+        assert!(!ra.is_occupied(phys));
+        ra.occupy(phys);
+        assert!(ra.is_occupied(phys));
+        ra.release(phys);
+        assert!(!ra.is_occupied(phys));
+    }
+
+    #[test]
+    fn non_gpr_vreg_returns_none() {
+        use lamina_mir::RegisterClass;
+        let mut ra = X64RegAlloc::new_default();
+        let fp_vreg = VirtualReg { id: 99, class: RegisterClass::Fpr };
+        assert!(ra.ensure_mapping(fp_vreg).is_none());
+    }
+}
