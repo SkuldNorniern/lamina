@@ -101,7 +101,7 @@ pub enum RiscvSimdExtension {
 
 /// Comprehensive SIMD capabilities for a platform.
 #[cfg(feature = "nightly")]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SimdCapabilities {
     /// Whether SIMD operations are supported at all
     pub supported: bool,
@@ -132,27 +132,6 @@ pub struct SimdCapabilities {
     /// RISC-V specific extensions (empty for non-RISC-V)
     #[cfg(feature = "nightly")]
     pub riscv_extensions: Vec<RiscvSimdExtension>,
-}
-
-#[cfg(feature = "nightly")]
-impl Default for SimdCapabilities {
-    fn default() -> Self {
-        Self {
-            supported: false,
-            max_vector_width: 0,
-            v128_supported: false,
-            v256_supported: false,
-            v512_supported: false,
-            float_simd_supported: false,
-            integer_simd_supported: false,
-            fma_supported: false,
-            fp16_supported: false,
-            bf16_supported: false,
-            x86_extensions: Vec::new(),
-            arm_extensions: Vec::new(),
-            riscv_extensions: Vec::new(),
-        }
-    }
 }
 
 #[cfg(feature = "nightly")]
@@ -445,8 +424,10 @@ impl SimdCapabilities {
     /// Runtime detection for x86_64 using CPUID.
     #[cfg(target_arch = "x86_64")]
     fn detect_x86_64_runtime() -> Self {
-        let mut caps = Self::default();
-        caps.supported = true;
+        let mut caps = Self {
+            supported: true,
+            ..Self::default()
+        };
 
         // Check MMX
         if is_x86_feature_detected!("mmx") {
@@ -577,14 +558,16 @@ impl SimdCapabilities {
     /// Runtime detection for AArch64 using system registers.
     #[cfg(target_arch = "aarch64")]
     fn detect_aarch64_runtime() -> Self {
-        let mut caps = Self::default();
-        caps.supported = true;
-        caps.v128_supported = true; // NEON is mandatory on AArch64
-        caps.float_simd_supported = true;
-        caps.integer_simd_supported = true;
-        caps.fma_supported = true; // NEON includes FMA
-        caps.fp16_supported = true; // NEON supports FP16
-        caps.max_vector_width = 128;
+        let mut caps = Self {
+            supported: true,
+            v128_supported: true,
+            float_simd_supported: true,
+            integer_simd_supported: true,
+            fma_supported: true,
+            fp16_supported: true,
+            max_vector_width: 128,
+            ..Self::default()
+        };
 
         // NEON is always available on AArch64
         caps.arm_extensions.push(ArmSimdExtension::Neon);

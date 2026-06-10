@@ -54,9 +54,18 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
-    if settings.emit_asm_debug_lines
-        && !CapabilitySet::for_architecture(target_arch).supports(&CodegenCapability::DebugInfo)
-    {
+    let effective_caps = {
+        #[cfg(feature = "nightly")]
+        {
+            CapabilitySet::for_architecture_with_simd(target_arch, settings.simd.as_ref())
+        }
+        #[cfg(not(feature = "nightly"))]
+        {
+            CapabilitySet::for_architecture(target_arch)
+        }
+    };
+
+    if settings.emit_asm_debug_lines && !effective_caps.supports(&CodegenCapability::DebugInfo) {
         return Err(LaminaError::ValidationError(
             "emit_asm_debug_lines requires DebugInfo capability on this target".to_string(),
         ));
