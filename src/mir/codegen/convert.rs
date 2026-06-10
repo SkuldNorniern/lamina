@@ -11,10 +11,12 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::mir::codegen::error::FromIRError;
-use crate::mir::codegen::mapping::{map_ir_prim, map_ir_type};
+use crate::ir::Module as IRModule;
+use crate::ir::function::{Function as IRFunction, FunctionAnnotation};
 use crate::ir::instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst};
 use crate::ir::types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
+use crate::mir::codegen::error::FromIRError;
+use crate::mir::codegen::mapping::{map_ir_prim, map_ir_type};
 use crate::mir::{
     AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction,
     Instruction as MirInst, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter,
@@ -104,15 +106,12 @@ fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
     }
 }
 
-pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRError> {
+pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     let mut mir_module = Module::new(name);
 
     for (func_name, ir_func) in &ir.functions {
         // Check if function is external before converting
-        if ir_func
-            .annotations
-            .contains(&crate::ir::function::FunctionAnnotation::Extern)
-        {
+        if ir_func.annotations.contains(&FunctionAnnotation::Extern) {
             mir_module.mark_external(*func_name);
         }
 
@@ -123,10 +122,7 @@ pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRE
     Ok(mir_module)
 }
 
-fn convert_function<'a>(
-    name: &'a str,
-    f: &crate::ir::function::Function<'a>,
-) -> Result<Function, FromIRError> {
+fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, FromIRError> {
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
 

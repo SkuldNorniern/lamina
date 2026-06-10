@@ -12,6 +12,7 @@ use crate::error::LaminaError;
 use crate::mir::{Instruction, Module as MirModule};
 use crate::runtime::compiler::RuntimeCompiler;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use std::mem;
 use std::time::Duration;
 
 /// Configuration for the sandbox execution environment.
@@ -210,7 +211,7 @@ impl Sandbox {
                         "Sandbox: compiled function pointer is null".to_string(),
                     ));
                 }
-                std::mem::transmute(raw)
+                mem::transmute(raw)
             };
 
             match self.config.max_execution_time {
@@ -229,8 +230,7 @@ impl Sandbox {
                     // returns, which is before `memory` is dropped.
                     let fn_addr = fn_ptr as usize;
                     std::thread::spawn(move || {
-                        let f: unsafe extern "C" fn() -> i64 =
-                            unsafe { std::mem::transmute(fn_addr) };
+                        let f: unsafe extern "C" fn() -> i64 = unsafe { mem::transmute(fn_addr) };
                         let result = unsafe { f() };
                         let _ = tx.send(Ok(result));
                     });

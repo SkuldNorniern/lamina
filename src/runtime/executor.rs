@@ -3,19 +3,21 @@
 //! Functions to execute JIT-compiled functions with dynamic argument counts
 //! using the platform C ABI.
 
-use crate::runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
 use crate::mir::{
     Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register, ScalarType,
     Signature,
 };
+use crate::runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
 #[cfg(target_arch = "aarch64")]
 use std::arch::asm;
 use std::collections::HashMap;
+use std::env;
+use std::error::Error;
 
 fn evaluate_operand(
     operand: &Operand,
     register_values: &HashMap<Register, i64>,
-) -> Result<i64, Box<dyn std::error::Error>> {
+) -> Result<i64, Box<dyn Error>> {
     match operand {
         Operand::Immediate(Immediate::I8(value)) => Ok(*value as i64),
         Operand::Immediate(Immediate::I16(value)) => Ok(*value as i64),
@@ -37,7 +39,7 @@ fn evaluate_operand(
 fn interpret_mir_function(
     function: &Function,
     args: &[i64],
-) -> Result<Option<i64>, Box<dyn std::error::Error>> {
+) -> Result<Option<i64>, Box<dyn Error>> {
     if function.sig.params.len() != args.len() {
         return Err(format!(
             "Interpreter: expected {} arguments, got {}",
@@ -261,7 +263,7 @@ pub unsafe fn execute_jit_function(
     args: Option<&[i64]>,
     verbose: bool,
     function: Option<&Function>,
-) -> Result<Option<i64>, Box<dyn std::error::Error>> {
+) -> Result<Option<i64>, Box<dyn Error>> {
     let param_count = sig.params.len();
 
     if param_count > MAX_JIT_ARGS {
@@ -321,7 +323,7 @@ pub unsafe fn execute_jit_function(
     // Historical safety valve: the AArch64 encoder used to be incomplete, and we interpreted MIR.
     // Keep this behavior opt-in for debugging, but default to executing the generated code.
     if let Some(function) = function
-        && std::env::var_os("LAMINA_JIT_INTERPRET").is_some()
+        && env::var_os("LAMINA_JIT_INTERPRET").is_some()
     {
         if verbose {
             eprintln!(

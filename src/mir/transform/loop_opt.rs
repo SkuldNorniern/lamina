@@ -1045,7 +1045,8 @@ impl LoopUnrolling {
 mod tests {
     use super::*;
     use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
+        AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
+        ScalarType, VirtualReg,
     };
 
     #[test]
@@ -1196,11 +1197,11 @@ mod tests {
             .instr(Instruction::Store {
                 ty: MirType::Scalar(ScalarType::I64),
                 src: Operand::Immediate(Immediate::I64(42)),
-                addr: crate::mir::AddressMode::BaseOffset {
+                addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(0).into(),
                     offset: 0,
                 },
-                attrs: crate::mir::MemoryAttrs::default(),
+                attrs: MemoryAttrs::default(),
             })
             .instr(Instruction::Br {
                 cond: VirtualReg::gpr(0).into(),

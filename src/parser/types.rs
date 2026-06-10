@@ -1,6 +1,7 @@
 //! Type parsing for Lamina IR.
 
 use std::collections::HashSet;
+use std::iter;
 
 use crate::parser::state::ParserState;
 use crate::{LaminaError, PrimitiveType, StructField, Type, TypeDeclaration};
@@ -129,7 +130,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                     let all_type_names: Vec<&str> = primitive_types
                         .iter()
                         .copied()
-                        .chain(std::iter::once("void"))
+                        .chain(iter::once("void"))
                         .collect();
                     let suggestions =
                         super::suggest_alternatives(potential_primitive, &all_type_names);

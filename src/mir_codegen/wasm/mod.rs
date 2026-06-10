@@ -9,7 +9,7 @@ use crate::error::LaminaError;
 use std::result::Result;
 
 use crate::mir::{
-    AddressMode, Global, Instruction as MirInst, MirType, Module as MirModule, Register,
+    AddressMode, Function, Global, Instruction as MirInst, MirType, Module as MirModule, Register,
     ScalarType, Signature, VirtualReg,
 };
 use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
@@ -154,7 +154,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
 
 fn compile_single_function_wasm(
     func_name: &str,
-    func: &crate::mir::Function,
+    func: &Function,
     target_os: TargetOperatingSystem,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut output = Vec::new();
@@ -190,8 +190,7 @@ fn compile_single_function_wasm(
         }
     }
 
-    let mut vreg_to_local: HashMap<VirtualReg, usize> =
-        HashMap::new();
+    let mut vreg_to_local: HashMap<VirtualReg, usize> = HashMap::new();
     for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
         vreg_to_local.insert(*vreg, local_idx);
         writeln!(output, "{}", abi.generate_local_decl(local_idx))
@@ -794,11 +793,9 @@ fn emit_instruction_wasm(
             // No-op in AOT/WASM path.
         }
         other => {
-            return Err(LaminaError::CodegenError(
-                CodegenError::UnsupportedFeature(format!(
-                    "WASM backend: instruction not yet supported: {other}"
-                )),
-            ));
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!("WASM backend: instruction not yet supported: {other}"),
+            )));
         }
     }
 
