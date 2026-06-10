@@ -363,7 +363,8 @@ pub fn lamina_to_codegen_error(err: LaminaError) -> CodegenError {
         | LaminaError::ValidationError(msg)
         | LaminaError::MirError(msg)
         | LaminaError::IoError(msg)
-        | LaminaError::Utf8Error(msg) => CodegenError::InvalidCodegenOptions(msg),
+        | LaminaError::Utf8Error(msg)
+        | LaminaError::RuntimeError(msg) => CodegenError::InvalidCodegenOptions(msg),
     }
 }
 

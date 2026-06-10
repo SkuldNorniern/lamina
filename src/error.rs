@@ -73,6 +73,8 @@ pub enum LaminaError {
     Utf8Error(String),
     /// Internal compiler errors indicating bugs.
     InternalError(String),
+    /// Errors during runtime execution (interpreter or JIT).
+    RuntimeError(String),
 }
 
 impl fmt::Display for LaminaError {
@@ -85,6 +87,7 @@ impl fmt::Display for LaminaError {
             LaminaError::IoError(msg) => write!(f, "IO Error: {msg}"),
             LaminaError::Utf8Error(msg) => write!(f, "UTF8 Error: {msg}"),
             LaminaError::InternalError(msg) => write!(f, "Internal Error: {msg}"),
+            LaminaError::RuntimeError(msg) => write!(f, "Runtime Error: {msg}"),
         }
     }
 }
