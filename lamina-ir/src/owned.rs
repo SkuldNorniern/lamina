@@ -250,9 +250,12 @@ impl OwnedIRBuilder {
     // Internal instruction push
     // -----------------------------------------------------------------------
 
-    fn push(&mut self, text: String) {
+    fn push(&mut self, text: impl AsRef<str>) {
         if let (Some(fi), Some(bi)) = (self.current_function, self.current_block) {
-            self.functions[fi].blocks[bi].1.instructions.push(text);
+            self.functions[fi].blocks[bi]
+                .1
+                .instructions
+                .push(text.as_ref().to_owned());
         }
     }
 
@@ -360,7 +363,7 @@ impl OwnedIRBuilder {
 
     /// Appends a void return.
     pub fn ret_void(&mut self) -> &mut Self {
-        self.push("ret.void".to_string());
+        self.push("ret.void");
         self
     }
 

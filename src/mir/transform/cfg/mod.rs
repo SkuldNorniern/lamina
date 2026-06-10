@@ -275,26 +275,27 @@ impl JumpThreading {
             }
         }
 
-        fn resolve_target(map: &HashMap<String, String>, mut tgt: String) -> String {
+        fn resolve_target<'m>(map: &'m HashMap<String, String>, tgt: &'m str) -> &'m str {
+            let mut current = tgt;
             let mut seen = HashSet::new();
             const MAX_CHAIN: usize = 100;
             let mut i = 0;
-            while let Some(next) = map.get(&tgt) {
-                if i >= MAX_CHAIN || !seen.insert(tgt.clone()) {
+            while let Some(next) = map.get(current) {
+                if i >= MAX_CHAIN || !seen.insert(current) {
                     break;
                 }
-                tgt = next.clone();
+                current = next;
                 i += 1;
             }
-            tgt
+            current
         }
 
         // Map each trivial block to its non-trivial terminal, skipping cycles.
         let mut resolved_targets: HashMap<String, String> = HashMap::new();
         for k in simple_jumps.keys() {
-            let resolved = resolve_target(&simple_jumps, k.clone());
-            if resolved != *k && !simple_jumps.contains_key(&resolved) {
-                resolved_targets.insert(k.clone(), resolved);
+            let resolved = resolve_target(&simple_jumps, k);
+            if resolved != k.as_str() && !simple_jumps.contains_key(resolved) {
+                resolved_targets.insert(k.clone(), resolved.to_owned());
             }
         }
 

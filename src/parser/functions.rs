@@ -59,32 +59,28 @@ pub fn parse_annotations(
                 && seen.contains(&FunctionAnnotation::NoInline)
             {
                 return Err(state.error(
-                    "Conflicting annotations: @inline and @noinline cannot be used together"
-                        .to_string(),
+                    "Conflicting annotations: @inline and @noinline cannot be used together",
                 ));
             }
             if annotation == FunctionAnnotation::NoInline
                 && seen.contains(&FunctionAnnotation::Inline)
             {
                 return Err(state.error(
-                    "Conflicting annotations: @noinline and @inline cannot be used together"
-                        .to_string(),
+                    "Conflicting annotations: @noinline and @inline cannot be used together",
                 ));
             }
             if annotation == FunctionAnnotation::Extern
                 && seen.contains(&FunctionAnnotation::Export)
             {
                 return Err(state.error(
-                    "Conflicting annotations: @extern and @export cannot be used together"
-                        .to_string(),
+                    "Conflicting annotations: @extern and @export cannot be used together",
                 ));
             }
             if annotation == FunctionAnnotation::Export
                 && seen.contains(&FunctionAnnotation::Extern)
             {
                 return Err(state.error(
-                    "Conflicting annotations: @export and @extern cannot be used together"
-                        .to_string(),
+                    "Conflicting annotations: @export and @extern cannot be used together",
                 ));
             }
 
@@ -126,7 +122,7 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
     }
 
     let entry_block = entry_block_label
-        .ok_or_else(|| state.error("Function must have at least one basic block".to_string()))?;
+        .ok_or_else(|| state.error("Function must have at least one basic block"))?;
 
     Ok(Function {
         name,
