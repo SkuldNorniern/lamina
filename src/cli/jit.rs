@@ -267,3 +267,58 @@ pub fn handle_jit_compilation(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::options::CompileOptions;
+    use lamina::mir_codegen::MirCodegenSettings;
+    use std::path::Path;
+
+    fn minimal_options() -> CompileOptions {
+        CompileOptions {
+            input_file: "test.lir".into(),
+            output_file: None,
+            verbose: false,
+            forced_compiler: None,
+            assembler: None,
+            assembler_flags: Vec::new(),
+            linker_flags: Vec::new(),
+            emit_asm_only: false,
+            emit_mir: false,
+            emit_mir_asm: None,
+            target_arch: None,
+            opt_level: 0,
+            jit: true,
+            sandbox: false,
+            codegen_units: None,
+            mir_codegen_settings: MirCodegenSettings::default(),
+        }
+    }
+
+    const SIMPLE_ADD_IR: &str = r#"
+fn @add(i64 %a, i64 %b) -> i64 {
+entry:
+    %r = add.i64 %a, %b
+    ret.i64 %r
+}
+"#;
+
+    #[test]
+    fn invalid_target_returns_error() {
+        let mut opts = minimal_options();
+        opts.target_arch = Some("invalid_target_xyz".to_owned());
+        let result = handle_jit_compilation(SIMPLE_ADD_IR, Path::new("test.lir"), &opts);
+        assert!(matches!(result, Err(LaminaError::ValidationError(_))));
+    }
+
+    #[test]
+    fn malformed_ir_returns_parse_error() {
+        let result = handle_jit_compilation(
+            "this is not valid IR at all!!!",
+            Path::new("test.lir"),
+            &minimal_options(),
+        );
+        assert!(result.is_err());
+    }
+}
