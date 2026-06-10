@@ -90,7 +90,7 @@ pub fn load_register_to_rax<
     } else if let Some(offset) = stack_slots.get(reg) {
         writeln!(writer, "    movq {offset}(%rbp), %rax")?;
     } else {
-        return Err(std::io::Error::new(
+        return Err(Error::new(
             std::io::ErrorKind::InvalidData,
             format!("Virtual register {reg:?} has no mapping or stack slot"),
         ));
@@ -113,7 +113,7 @@ pub fn store_rax_to_register<
     } else if let Some(offset) = stack_slots.get(reg) {
         writeln!(writer, "    movq %rax, {offset}(%rbp)")?;
     } else {
-        return Err(std::io::Error::new(
+        return Err(Error::new(
             std::io::ErrorKind::InvalidData,
             format!("Virtual register {reg:?} has no mapping or stack slot"),
         ));
@@ -137,7 +137,7 @@ pub fn load_register_to_register<
     } else if let Some(offset) = stack_slots.get(src) {
         writeln!(writer, "    movq {offset}(%rbp), %{target_reg}")?;
     } else {
-        return Err(std::io::Error::new(
+        return Err(Error::new(
             std::io::ErrorKind::InvalidData,
             format!("Virtual register {src:?} has no mapping or stack slot"),
         ));
