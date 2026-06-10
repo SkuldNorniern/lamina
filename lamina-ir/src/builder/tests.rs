@@ -1084,8 +1084,6 @@ mod tests {
     fn test_simd_operations() {
         let mut builder = IRBuilder::new();
 
-        use crate::instruction::SimdOp;
-
         let vector_type = Type::Array {
             element_type: Box::new(Type::Primitive(PrimitiveType::F32)),
             size: 4,
