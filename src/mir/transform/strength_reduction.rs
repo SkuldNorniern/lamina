@@ -192,9 +192,7 @@ fn extract_constant(operand: &Operand) -> Option<i64> {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::{FunctionBuilder, Immediate, ScalarType, VirtualReg};
 
     #[test]
     fn test_multiplication_by_power_of_2() {
