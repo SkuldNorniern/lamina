@@ -159,11 +159,12 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
-        let block_labels: Vec<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
-        assert!(block_labels.contains(&"entry".to_string()));
-        assert!(block_labels.contains(&"block1".to_string()));
-        assert!(block_labels.contains(&"block2".to_string()));
-        assert!(!block_labels.contains(&"unreachable".to_string()));
+        let block_labels: std::collections::HashSet<&str> =
+            func.blocks.iter().map(|b| b.label.as_str()).collect();
+        assert!(block_labels.contains("entry"));
+        assert!(block_labels.contains("block1"));
+        assert!(block_labels.contains("block2"));
+        assert!(!block_labels.contains("unreachable"));
     }
 
     #[test]
@@ -180,8 +181,9 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed); // No unreachable blocks
 
-        let block_labels: Vec<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
-        assert!(block_labels.contains(&"entry".to_string()));
+        let block_labels: std::collections::HashSet<&str> =
+            func.blocks.iter().map(|b| b.label.as_str()).collect();
+        assert!(block_labels.contains("entry"));
     }
 
     #[test]

@@ -774,16 +774,16 @@ mod tests {
     fn macos_x86_64_link_args_use_arch_not_elf() {
         let args =
             build_arch_emulation_flags(TargetArchitecture::X86_64, TargetOperatingSystem::MacOS);
-        assert!(args.contains(&"-arch".to_string()));
-        assert!(args.contains(&"x86_64".to_string()));
-        assert!(!args.contains(&"elf_x86_64".to_string()));
+        assert!(args.iter().any(|a| a == "-arch"));
+        assert!(args.iter().any(|a| a == "x86_64"));
+        assert!(!args.iter().any(|a| a == "elf_x86_64"));
     }
 
     #[test]
     fn linux_x86_64_link_args_use_elf_emulation() {
         let args =
             build_arch_emulation_flags(TargetArchitecture::X86_64, TargetOperatingSystem::Linux);
-        assert_eq!(args, vec!["-m".to_string(), "elf_x86_64".to_string()]);
+        assert_eq!(args, ["-m", "elf_x86_64"]);
     }
 
     #[test]
@@ -810,9 +810,11 @@ mod tests {
 
         assert_eq!(args[0], "-target");
         assert_eq!(args[1], "x86_64-pc-windows-msvc");
-        assert!(args.contains(&input.to_string_lossy().to_string()));
-        assert!(args.contains(&"-o".to_string()));
-        assert!(args.contains(&output.to_string_lossy().to_string()));
+        let input_str = input.to_string_lossy();
+        let output_str = output.to_string_lossy();
+        assert!(args.iter().any(|a| a == input_str.as_ref()));
+        assert!(args.iter().any(|a| a == "-o"));
+        assert!(args.iter().any(|a| a == output_str.as_ref()));
     }
 
     #[test]
@@ -847,7 +849,7 @@ mod tests {
             args.iter().any(|a| a == "-lc"),
             "expected -lc in args: {args:?}"
         );
-        assert!(args.contains(&"-o".to_string()));
+        assert!(args.iter().any(|a| a == "-o"));
         // No CRT objects or dynamic-linker args — weld handles those itself.
         assert!(!args.iter().any(|a| a == "--dynamic-linker"));
         assert!(!args.iter().any(|a| a.contains("crt1.o")));
