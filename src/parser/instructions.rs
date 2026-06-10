@@ -1,10 +1,10 @@
 //! Instruction parsing for Lamina IR.
 
+use crate::LaminaError;
+use crate::ir::{AllocType, BinaryOp, CmpOp, Identifier, Instruction, PrimitiveType, Type, Value};
 use crate::parser::state::ParserState;
 use crate::parser::types::parse_type;
 use crate::parser::values::parse_value;
-use crate::LaminaError;
-use crate::ir::{AllocType, BinaryOp, CmpOp, Identifier, Instruction, PrimitiveType, Type, Value};
 
 /// Parses a single instruction from the input.
 pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
