@@ -3,7 +3,9 @@
 use crate::mir::instruction::{FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
 use crate::mir::{Block, Function, Register};
 
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel, compute_back_edge_headers};
+use crate::mir::transform::{
+    Transform, TransformCategory, TransformLevel, compute_back_edge_headers,
+};
 
 /// Peephole optimizations that do local rewrites.
 ///

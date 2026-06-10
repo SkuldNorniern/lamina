@@ -1,7 +1,7 @@
 //! Memory optimization transforms for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::instruction::Immediate;
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::{AddressMode, Function, Instruction, IntBinOp, Operand, Register};
 use std::collections::HashMap;
 

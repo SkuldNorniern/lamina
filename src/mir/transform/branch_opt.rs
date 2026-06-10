@@ -2,8 +2,8 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 use crate::mir::Function;
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
 
 /// Branch optimization that eliminates unreachable branches.
 #[derive(Default)]
