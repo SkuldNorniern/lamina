@@ -112,6 +112,8 @@ impl RuntimeCompiler {
 mod tests {
     use super::*;
     use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+    #[cfg(not(feature = "encoder"))]
+    use crate::mir::Module;
 
     fn make_compiler() -> RuntimeCompiler {
         RuntimeCompiler::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
@@ -132,7 +134,6 @@ mod tests {
     #[cfg(not(feature = "encoder"))]
     #[test]
     fn compile_without_encoder_returns_validation_error() {
-        use crate::mir::Module;
         let mut compiler = make_compiler();
         let module = Module::new("test");
         let result = compiler.compile(&module, None);
