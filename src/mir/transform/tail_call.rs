@@ -200,7 +200,6 @@ impl TailCallOptimization {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::{apply_pass, get_block};
     use crate::mir::{
         FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
     };

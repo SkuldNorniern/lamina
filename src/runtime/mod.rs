@@ -277,10 +277,6 @@ pub fn compile_to_runtime(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::mir::Module;
-    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-
     #[cfg(not(feature = "encoder"))]
     #[test]
     fn compile_to_runtime_without_encoder_returns_error() {
