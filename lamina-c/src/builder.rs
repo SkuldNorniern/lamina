@@ -1024,3 +1024,100 @@ unsafe fn collect_values(
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+    use std::ptr;
+
+    fn cs(s: &str) -> CString {
+        // SAFETY: test strings contain no NUL bytes.
+        CString::new(s).unwrap()
+    }
+
+    #[test]
+    fn builder_free_null_does_not_crash() {
+        unsafe { lia_builder_free(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn type_named_valid_name_is_non_null() {
+        unsafe {
+            let ty = lia_type_named(cs("MyStruct").as_ptr());
+            assert!(!ty.is_null());
+            lia_type_free(ty);
+        }
+    }
+
+    #[test]
+    fn type_named_null_returns_null() {
+        unsafe {
+            let ty = lia_type_named(ptr::null());
+            assert!(ty.is_null());
+        }
+    }
+
+    #[test]
+    fn type_array_returns_non_null() {
+        unsafe {
+            let elem = lia_type_i64();
+            let arr = lia_type_array(elem, 8);
+            assert!(!arr.is_null());
+            lia_type_free(elem);
+            lia_type_free(arr);
+        }
+    }
+
+    #[test]
+    fn type_array_null_element_returns_null() {
+        unsafe {
+            let arr = lia_type_array(ptr::null(), 4);
+            assert!(arr.is_null());
+        }
+    }
+
+    #[test]
+    fn type_struct_with_one_field_returns_non_null() {
+        unsafe {
+            let field_ty = lia_type_i64();
+            let field_name = cs("x");
+            let fields = [LaminaStructField {
+                name: field_name.as_ptr(),
+                ty: field_ty,
+            }];
+            let ty = lia_type_struct(fields.as_ptr(), 1);
+            assert!(!ty.is_null());
+            lia_type_free(field_ty);
+            lia_type_free(ty);
+        }
+    }
+
+    #[test]
+    fn type_tuple_empty_returns_non_null() {
+        unsafe {
+            let ty = lia_type_tuple(ptr::null(), 0);
+            assert!(!ty.is_null());
+            lia_type_free(ty);
+        }
+    }
+
+    #[test]
+    fn type_tuple_with_elements_returns_non_null() {
+        unsafe {
+            let t0 = lia_type_i64();
+            let t1 = lia_type_i32();
+            let ptrs: [*const LaminaType; 2] = [t0, t1];
+            let ty = lia_type_tuple(ptrs.as_ptr(), 2);
+            assert!(!ty.is_null());
+            lia_type_free(t0);
+            lia_type_free(t1);
+            lia_type_free(ty);
+        }
+    }
+
+    #[test]
+    fn type_free_null_does_not_crash() {
+        unsafe { lia_type_free(ptr::null_mut()) };
+    }
+}
