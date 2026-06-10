@@ -135,8 +135,8 @@
 use std::collections::HashMap; // Using HashMap for functions and types
 use std::fmt;
 
-use super::function::Function;
-use super::types::{Identifier, Type, Value};
+use crate::function::Function;
+use crate::types::{Identifier, Type, Value};
 
 /// A named type declaration (e.g., `type @Vec2 = struct { ... }`).
 ///

@@ -223,8 +223,8 @@
 use std::collections::HashMap; // Using HashMap for basic blocks
 use std::fmt;
 
-use super::instruction::Instruction;
-use super::types::{Identifier, Label, Type};
+use crate::instruction::Instruction;
+use crate::types::{Identifier, Label, Type};
 
 /// Function annotations that provide metadata about function behavior.
 ///

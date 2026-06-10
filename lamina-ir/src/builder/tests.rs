@@ -1,15 +1,15 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod tests {
-    use super::super::super::function::FunctionAnnotation;
+    use crate::function::FunctionAnnotation;
     #[cfg(feature = "nightly")]
-    use super::super::super::instruction::SimdOp;
-    use super::super::super::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
+    use crate::instruction::SimdOp;
+    use crate::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
     #[cfg(feature = "nightly")]
-    use super::super::super::module::ModuleAnnotation;
-    use super::super::super::types::{Literal, PrimitiveType, Type};
-    use super::super::IRBuilder;
-    use super::super::values::*;
+    use crate::module::ModuleAnnotation;
+    use crate::types::{Literal, PrimitiveType, Type};
+    use crate::builder::IRBuilder;
+    use crate::builder::values::*;
 
     #[test]
     fn test_build_simple_function() {

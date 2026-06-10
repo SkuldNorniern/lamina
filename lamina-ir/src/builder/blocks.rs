@@ -4,7 +4,7 @@
 //! within functions. Basic blocks are sequences of instructions with
 //! a single entry and exit point.
 
-use super::IRBuilder;
+use crate::builder::IRBuilder;
 
 impl<'a> IRBuilder<'a> {
     /// Creates a new basic block in the current function
