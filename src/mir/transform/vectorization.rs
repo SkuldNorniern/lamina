@@ -2,10 +2,6 @@
 //!
 //! This transform converts scalar operations in loops to SIMD vector
 //! operations. This is an O3 nightly/unstable feature.
-//!
-//! Requires `#[cfg(feature = "nightly")]` to compile.
-
-#![cfg(feature = "nightly")]
 
 use crate::mir::transform::calculate_dominators;
 
