@@ -582,11 +582,11 @@ fn unsupported<T>(message: impl Into<String>) -> Result<T, LaminaError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{Block, Function, Immediate, Module, Operand, Signature, VirtualReg};
+    use crate::mir::{Block, Signature, VirtualReg};
 
     #[test]
     fn emits_minimal_integer_return_function() {
-        let mut module = Module::new("arx64_test");
+        let mut module = MirModule::new("arx64_test");
         let mut func = Function::new(Signature::new("main").with_return(MirType::i64()));
         let mut entry = Block::new("entry");
         entry.push(Instruction::Ret {
@@ -607,7 +607,7 @@ mod tests {
 
     #[test]
     fn emits_arx64_writebyte_and_halt_builtins() {
-        let mut module = Module::new("arx64_io_test");
+        let mut module = MirModule::new("arx64_io_test");
         let mut func = Function::new(Signature::new("main").with_return(MirType::i64()));
         let mut entry = Block::new("entry");
         entry.push(Instruction::Call {
