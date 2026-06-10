@@ -553,7 +553,7 @@ fn parse_phi<'a>(
         state.expect_char(',')?;
     }
     if incoming.is_empty() {
-        return Err(state.error("phi instruction requires at least one incoming value".to_string()));
+        return Err(state.error("phi instruction requires at least one incoming value"));
     }
     Ok(Instruction::Phi {
         result,
@@ -874,9 +874,9 @@ fn parse_switch<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lami
         let lit = match lit_value {
             Value::Constant(l) => l,
             _ => {
-                return Err(state.error(
-                    "switch case expects a literal constant, found non-constant value".to_string(),
-                ));
+                return Err(
+                    state.error("switch case expects a literal constant, found non-constant value")
+                );
             }
         };
         state.expect_char(',')?;
