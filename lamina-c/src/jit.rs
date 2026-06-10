@@ -241,7 +241,6 @@ fn compile_jit(ir_str: &str, func_name: &str) -> Result<LaminaJit, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LaminaStatus;
     use std::ptr;
 
     #[test]
