@@ -101,14 +101,8 @@ pub fn handle_jit_compilation(
                 .functions
                 .keys()
                 .find(|name| name.contains("main") || name.contains("matmul"))
-                .map(std::string::String::as_str)
-                .or_else(|| {
-                    mir_mod
-                        .functions
-                        .keys()
-                        .next()
-                        .map(std::string::String::as_str)
-                })
+                .map(String::as_str)
+                .or_else(|| mir_mod.functions.keys().next().map(String::as_str))
                 .ok_or("No functions found in module")?
         };
 

@@ -1,7 +1,8 @@
 //! Value parsing for Lamina IR.
 
+use crate::LaminaError;
+use crate::ir::{Literal, Value};
 use crate::parser::state::ParserState;
-use crate::{LaminaError, Literal, Value};
 
 /// Parses a value: literal, variable (%name), or global (@name).
 pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaError> {
