@@ -388,3 +388,160 @@ pub unsafe fn execute_jit_function(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{
+        Block, Function, Immediate, Instruction, IntBinOp, MirType, Operand, Parameter, Register,
+        ScalarType, Signature, VirtualReg,
+    };
+
+    fn vreg(id: u32) -> Register {
+        Register::Virtual(VirtualReg::gpr(id))
+    }
+
+    #[test]
+    fn evaluate_operand_integer_immediates() {
+        let regs = HashMap::new();
+        assert_eq!(
+            evaluate_operand(&Operand::Immediate(Immediate::I8(5)), &regs).unwrap(),
+            5
+        );
+        assert_eq!(
+            evaluate_operand(&Operand::Immediate(Immediate::I16(-3)), &regs).unwrap(),
+            -3
+        );
+        assert_eq!(
+            evaluate_operand(&Operand::Immediate(Immediate::I32(100)), &regs).unwrap(),
+            100
+        );
+        assert_eq!(
+            evaluate_operand(&Operand::Immediate(Immediate::I64(i64::MAX)), &regs).unwrap(),
+            i64::MAX
+        );
+    }
+
+    #[test]
+    fn evaluate_operand_float_immediate_is_error() {
+        let regs = HashMap::new();
+        assert!(evaluate_operand(&Operand::Immediate(Immediate::F32(1.0)), &regs).is_err());
+        assert!(evaluate_operand(&Operand::Immediate(Immediate::F64(1.0)), &regs).is_err());
+    }
+
+    #[test]
+    fn evaluate_operand_register_found() {
+        let mut regs = HashMap::new();
+        let r0 = vreg(0);
+        regs.insert(r0.clone(), 42_i64);
+        assert_eq!(evaluate_operand(&Operand::Register(r0), &regs).unwrap(), 42);
+    }
+
+    #[test]
+    fn evaluate_operand_register_missing_is_error() {
+        let regs = HashMap::new();
+        assert!(evaluate_operand(&Operand::Register(vreg(0)), &regs).is_err());
+    }
+
+    fn make_const_return_func(value: i64) -> Function {
+        let sig = Signature::new("test_fn");
+        let mut func = Function::new(sig);
+        let mut block = Block::new("entry");
+        block.push(Instruction::Ret {
+            value: Some(Operand::Immediate(Immediate::I64(value))),
+        });
+        func.blocks.push(block);
+        func
+    }
+
+    #[test]
+    fn interpret_returns_constant() {
+        let func = make_const_return_func(99);
+        assert_eq!(interpret_mir_function(&func, &[]).unwrap(), Some(99));
+    }
+
+    #[test]
+    fn interpret_wrong_arg_count_is_error() {
+        let func = make_const_return_func(0);
+        assert!(interpret_mir_function(&func, &[1]).is_err());
+    }
+
+    #[test]
+    fn interpret_add_two_params() {
+        let sig = Signature::new("add_fn")
+            .with_params(vec![
+                Parameter::new(vreg(0), MirType::Scalar(ScalarType::I64)),
+                Parameter::new(vreg(1), MirType::Scalar(ScalarType::I64)),
+            ])
+            .with_return(MirType::Scalar(ScalarType::I64));
+        let dst = vreg(2);
+        let mut func = Function::new(sig);
+        let mut block = Block::new("entry");
+        block.push(Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: dst.clone(),
+            lhs: Operand::Register(vreg(0)),
+            rhs: Operand::Register(vreg(1)),
+        });
+        block.push(Instruction::Ret {
+            value: Some(Operand::Register(dst)),
+        });
+        func.blocks.push(block);
+        assert_eq!(interpret_mir_function(&func, &[10, 32]).unwrap(), Some(42));
+    }
+
+    #[test]
+    fn interpret_division_by_zero_is_error() {
+        let sig = Signature::new("div_fn")
+            .with_params(vec![Parameter::new(
+                vreg(0),
+                MirType::Scalar(ScalarType::I64),
+            )])
+            .with_return(MirType::Scalar(ScalarType::I64));
+        let dst = vreg(1);
+        let mut func = Function::new(sig);
+        let mut block = Block::new("entry");
+        block.push(Instruction::IntBinary {
+            op: IntBinOp::SDiv,
+            ty: MirType::Scalar(ScalarType::I64),
+            dst: dst.clone(),
+            lhs: Operand::Register(vreg(0)),
+            rhs: Operand::Immediate(Immediate::I64(0)),
+        });
+        block.push(Instruction::Ret {
+            value: Some(Operand::Register(dst)),
+        });
+        func.blocks.push(block);
+        assert!(interpret_mir_function(&func, &[10]).is_err());
+    }
+
+    #[test]
+    fn execute_jit_arg_count_mismatch_is_error() {
+        let sig = Signature::new("fn");
+        // SAFETY: error is triggered during argument validation before the pointer is called.
+        let result =
+            unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1, 2]), false, None) };
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn execute_jit_non_i64_param_is_error() {
+        let sig = Signature::new("fn").with_params(vec![Parameter::new(
+            vreg(0),
+            MirType::Scalar(ScalarType::F32),
+        )]);
+        // SAFETY: error is triggered during type validation before the pointer is called.
+        let result =
+            unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1]), false, None) };
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn execute_jit_unsupported_return_type_is_error() {
+        let sig = Signature::new("fn").with_return(MirType::Scalar(ScalarType::F64));
+        // SAFETY: error is triggered during return-type validation before the pointer is called.
+        let result = unsafe { execute_jit_function(&sig, std::ptr::null(), None, false, None) };
+        assert!(result.is_err());
+    }
+}

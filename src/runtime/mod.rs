@@ -274,3 +274,23 @@ pub fn compile_to_runtime(
         ))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::Module;
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+    #[cfg(not(feature = "encoder"))]
+    #[test]
+    fn compile_to_runtime_without_encoder_returns_error() {
+        let module = Module::new("test");
+        let result = compile_to_runtime(
+            &module,
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Linux,
+            None,
+        );
+        assert!(matches!(result, Err(LaminaError::ValidationError(_))));
+    }
+}
