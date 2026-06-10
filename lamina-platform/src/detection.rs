@@ -1,61 +1,18 @@
 //! Host system detection functions.
 
+#[cfg(target_os = "macos")]
+use std::ffi::CString;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::mem;
 
-#[cfg(target_os = "macos")]
-use std::ffi::CString;
-
-/// Detect the host system's architecture only.
-///
-/// Returns a string representing the detected architecture: "x86_64", "aarch64", etc.
-///
-/// Falls back to "x86_64" if detection fails.
+/// Returns the host architecture name: "x86_64", "aarch64", "riscv64", etc.
 pub fn detect_host_architecture_only() -> &'static str {
-    #[cfg(target_arch = "x86_64")]
-    return "x86_64";
-    #[cfg(target_arch = "aarch64")]
-    return "aarch64";
-    #[cfg(target_arch = "wasm32")]
-    return "wasm32";
-    #[cfg(target_arch = "wasm64")]
-    return "wasm64";
-    #[cfg(target_arch = "riscv32")]
-    return "riscv32";
-    #[cfg(target_arch = "riscv64")]
-    return "riscv64";
-
-    // Default fallback
-    #[allow(unreachable_code)]
-    "x86_64"
+    std::env::consts::ARCH
 }
 
-/// Detect the host system's operating system only.
-///
-/// Returns a string representing the detected operating system: "linux", "macOS", "windows", etc.
-///
-/// Falls back to "unknown" if detection fails.
+/// Returns the host OS name: "linux", "macos", "windows", "freebsd", etc.
 pub fn detect_host_os() -> &'static str {
-    #[cfg(target_os = "linux")]
-    return "linux";
-    #[cfg(target_os = "macos")]
-    return "macos";
-    #[cfg(target_os = "windows")]
-    return "windows";
-    #[cfg(target_os = "freebsd")]
-    return "freebsd";
-    #[cfg(target_os = "openbsd")]
-    return "openbsd";
-    #[cfg(target_os = "netbsd")]
-    return "netbsd";
-    #[cfg(target_os = "dragonfly")]
-    return "dragonfly";
-    #[cfg(target_os = "redox")]
-    return "redox";
-
-    // Default fallback
-    #[allow(unreachable_code)]
-    "unknown"
+    std::env::consts::OS
 }
 
 /// Get the number of available CPU cores.
