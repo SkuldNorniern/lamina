@@ -1,6 +1,6 @@
 //! Dead code elimination transform for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{Block, Function, Instruction, Register};
 use std::collections::{HashMap, HashSet};
 
@@ -34,7 +34,7 @@ impl Transform for DeadCodeElimination {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
             .map(|stats| stats.instructions_removed > 0)
     }
@@ -42,7 +42,7 @@ impl Transform for DeadCodeElimination {
 
 impl DeadCodeElimination {
     /// Apply dead code elimination to a function
-    pub fn apply_internal(&self, func: &mut Function) -> Result<DeadCodeStats, String> {
+    pub fn apply_internal(&self, func: &mut Function) -> Result<DeadCodeStats, TransformError> {
         let mut stats = DeadCodeStats::default();
 
         // 1. Compute liveness analysis (inter-block)
@@ -64,7 +64,7 @@ impl DeadCodeElimination {
     fn compute_liveness(
         &self,
         func: &Function,
-    ) -> Result<HashMap<String, HashSet<Register>>, String> {
+    ) -> Result<HashMap<String, HashSet<Register>>, TransformError> {
         let mut live_in: HashMap<String, HashSet<Register>> = HashMap::new();
         let mut live_out: HashMap<String, HashSet<Register>> = HashMap::new();
 
@@ -80,7 +80,7 @@ impl DeadCodeElimination {
 
         while changed {
             if iterations > MAX_ITERATIONS {
-                return Err("Liveness analysis failed to converge".to_string());
+                return Err(TransformError::ConvergenceFailed);
             }
             iterations += 1;
             changed = false;
@@ -126,8 +126,9 @@ impl DeadCodeElimination {
 
                 // Safe: live_out is initialized for all blocks at function start
                 // If this fails, it indicates a bug in the initialization logic
-                let prev_live_out = live_out.get(label)
-                    .ok_or_else(|| format!("Block '{label}' not found in live_out map - internal error in liveness analysis"))?;
+                let prev_live_out = live_out
+                    .get(label)
+                    .ok_or(TransformError::InvalidState("block missing from live_out map"))?;
                 if current_live_out != *prev_live_out {
                     live_out.insert(label.clone(), current_live_out.clone());
                     changed = true;
@@ -147,11 +148,9 @@ impl DeadCodeElimination {
 
                 // Safe: live_in is initialized for all blocks at function start
                 // If this fails, it indicates a bug in the initialization logic
-                let prev_live_in = live_in.get(label).ok_or_else(|| {
-                    format!(
-                        "Block '{label}' not found in live_in map - internal error in liveness analysis"
-                    )
-                })?;
+                let prev_live_in = live_in
+                    .get(label)
+                    .ok_or(TransformError::InvalidState("block missing from live_in map"))?;
                 if current_live_in != *prev_live_in {
                     live_in.insert(label.clone(), current_live_in);
                     changed = true;

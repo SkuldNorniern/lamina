@@ -1,6 +1,6 @@
 //! Loop optimization transforms for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel, calculate_dominators};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators};
 use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -26,7 +26,7 @@ impl Transform for LoopInvariantCodeMotion {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
@@ -129,7 +129,7 @@ mod tests_licm {
 }
 
 impl LoopInvariantCodeMotion {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
         let loops = self.find_loops(func);
@@ -297,7 +297,7 @@ impl LoopInvariantCodeMotion {
             .is_some_and(|b| b.successors().contains(&to))
     }
 
-    fn optimize_loop(&self, func: &mut Function, loop_info: &LoopInfo) -> Result<bool, String> {
+    fn optimize_loop(&self, func: &mut Function, loop_info: &LoopInfo) -> Result<bool, TransformError> {
         let mut changed = false;
 
         let invariant_instrs = self.find_invariant_instructions(func, loop_info)?;
@@ -314,7 +314,7 @@ impl LoopInvariantCodeMotion {
         &self,
         func: &Function,
         loop_info: &LoopInfo,
-    ) -> Result<Vec<(usize, usize)>, String> {
+    ) -> Result<Vec<(usize, usize)>, TransformError> {
         let mut invariant = Vec::new();
         let defs_in_loop = self.collect_defs_in_loop(func, loop_info);
 
@@ -421,7 +421,7 @@ impl LoopInvariantCodeMotion {
         func: &mut Function,
         loop_info: &LoopInfo,
         invariant_instrs: &[(usize, usize)],
-    ) -> Result<(), String> {
+    ) -> Result<(), TransformError> {
         if invariant_instrs.is_empty() {
             return Ok(());
         }
@@ -430,7 +430,7 @@ impl LoopInvariantCodeMotion {
             .blocks
             .iter()
             .position(|b| b.label == loop_info.header)
-            .ok_or_else(|| format!("Loop header '{}' not found", loop_info.header))?;
+            .ok_or(TransformError::InvalidState("loop header not found"))?;
 
         // Generate unique pre-header label to avoid conflicts
         let mut pre_header_label = format!("{}_pre", loop_info.header);
@@ -582,22 +582,22 @@ impl Transform for LoopUnrolling {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl LoopUnrolling {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         const MAX_BLOCKS: usize = 1000;
         const MAX_LOOPS_TO_UNROLL: usize = 10;
 
         if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for loop unrolling ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
+            return Err(TransformError::FunctionTooLarge {
+                pass: "loop_unrolling",
+                count: func.blocks.len(),
+                limit: MAX_BLOCKS,
+            });
         }
 
         let mut changed = false;
@@ -856,7 +856,7 @@ impl LoopUnrolling {
         list
     }
 
-    fn unroll_loop(&self, func: &mut Function, loop_info: &UnrollableLoop) -> Result<bool, String> {
+    fn unroll_loop(&self, func: &mut Function, loop_info: &UnrollableLoop) -> Result<bool, TransformError> {
         // 1. Locate blocks
         let mut body_indices = Vec::new();
         for lbl in &loop_info.body_blocks {

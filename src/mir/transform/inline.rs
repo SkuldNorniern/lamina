@@ -1,6 +1,6 @@
 //! Function inlining transforms for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{
     AddressMode, Block, Function, Immediate, Instruction, IntBinOp, MirType, Module, Operand,
     Register, RegisterClass, ScalarType, VirtualReg,
@@ -34,7 +34,7 @@ impl Transform for FunctionInlining {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         // Without access to the module we cannot inline callees.  However, we can
         // detect and remove trivially dead self-calls: a call to the same function
         // whose return value is never used and whose block already has a return.

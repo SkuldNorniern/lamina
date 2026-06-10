@@ -1,7 +1,7 @@
 //! Memory optimization transforms for MIR.
 
 use crate::mir::instruction::Immediate;
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{AddressMode, Function, Instruction, IntBinOp, Operand, Register};
 use std::collections::HashMap;
 
@@ -26,13 +26,13 @@ impl Transform for MemoryOptimization {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl MemoryOptimization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
         if self.forward_redundant_loads(func) {
