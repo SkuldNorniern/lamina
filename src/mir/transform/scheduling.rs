@@ -327,9 +327,7 @@ impl PartialOrd for ScheduledItem {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::{FunctionBuilder, Immediate, MirType, Operand, ScalarType, VirtualReg};
 
     #[test]
     fn test_scheduling_latency_hiding() {
