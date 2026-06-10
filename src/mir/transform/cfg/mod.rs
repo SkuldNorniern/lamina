@@ -264,7 +264,7 @@ impl Transform for JumpThreading {
 }
 
 impl JumpThreading {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
+    pub(crate) fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut simple_jumps: HashMap<String, String> = HashMap::new();
 
         for block in &func.blocks {
@@ -351,5 +351,193 @@ impl JumpThreading {
         }
 
         Ok(changed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::transform::test_utils::apply_pass;
+    use crate::mir::{
+        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, Register, ScalarType, VirtualReg,
+    };
+
+    fn i64() -> MirType {
+        MirType::Scalar(ScalarType::I64)
+    }
+
+    fn cond_reg() -> Register {
+        VirtualReg::gpr(0).into()
+    }
+
+    fn simple_linear_func() -> Function {
+        FunctionBuilder::new("f")
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .build()
+    }
+
+    fn loop_func() -> Function {
+        // entry -> loop_header -> loop_header (back edge)
+        FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Jmp { target: "loop_header".to_owned() })
+            .block("loop_header")
+            .instr(Instruction::Br {
+                cond: cond_reg(),
+                true_target: "loop_header".to_owned(),
+                false_target: "exit".to_owned(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .build()
+    }
+
+    #[test]
+    fn no_back_edges_in_linear_func() {
+        let func = simple_linear_func();
+        assert!(compute_back_edge_headers(&func).is_empty());
+    }
+
+    #[test]
+    fn self_loop_detected_as_back_edge() {
+        let func = loop_func();
+        let headers = compute_back_edge_headers(&func);
+        assert!(headers.contains("loop_header"));
+    }
+
+    #[test]
+    fn entry_dominates_all_blocks() {
+        let func = loop_func();
+        let doms = calculate_dominators(&func);
+        for block in &func.blocks {
+            assert!(
+                doms[&block.label].contains("entry"),
+                "entry should dominate '{}' but doms = {:?}",
+                block.label,
+                doms[&block.label]
+            );
+        }
+    }
+
+    #[test]
+    fn block_dominates_itself() {
+        let func = simple_linear_func();
+        let doms = calculate_dominators(&func);
+        assert!(doms["entry"].contains("entry"));
+    }
+
+    #[test]
+    fn cfg_simplify_collapses_identical_br_targets() {
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Br {
+                cond: cond_reg(),
+                true_target: "exit".to_owned(),
+                false_target: "exit".to_owned(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .build();
+
+        let changed = apply_pass(&CfgSimplify, &mut func);
+        assert!(changed);
+        let entry = func.get_block("entry").unwrap();
+        assert!(
+            matches!(&entry.instructions[0], Instruction::Jmp { target } if target == "exit")
+        );
+    }
+
+    #[test]
+    fn cfg_simplify_collapses_identical_select_values() {
+        let dst: Register = VirtualReg::gpr(1).into();
+        let val = Operand::Immediate(Immediate::I64(5));
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Select {
+                dst: dst.clone(),
+                ty: i64(),
+                cond: cond_reg(),
+                true_val: val.clone(),
+                false_val: val,
+            })
+            .instr(Instruction::Ret { value: Some(Operand::Register(dst)) })
+            .build();
+
+        let changed = apply_pass(&CfgSimplify, &mut func);
+        assert!(changed);
+        let entry = func.get_block("entry").unwrap();
+        assert!(matches!(
+            &entry.instructions[0],
+            Instruction::IntBinary { op: IntBinOp::Add, .. }
+        ));
+    }
+
+    #[test]
+    fn cfg_simplify_no_change_when_already_simple() {
+        let mut func = simple_linear_func();
+        let changed = apply_pass(&CfgSimplify, &mut func);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn jump_threading_bypasses_trivial_block() {
+        let mut func = FunctionBuilder::new("f")
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Jmp { target: "trampoline".to_owned() })
+            .block("trampoline")
+            .instr(Instruction::Jmp { target: "exit".to_owned() })
+            .block("exit")
+            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .build();
+
+        let changed = apply_pass(&JumpThreading, &mut func);
+        assert!(changed);
+        let entry = func.get_block("entry").unwrap();
+        assert!(
+            matches!(&entry.instructions[0], Instruction::Jmp { target } if target == "exit")
+        );
+    }
+
+    #[test]
+    fn jump_threading_no_change_without_trivial_blocks() {
+        let mut func = simple_linear_func();
+        let changed = apply_pass(&JumpThreading, &mut func);
+        assert!(!changed);
+    }
+
+    #[test]
+    fn jump_threading_handles_br_to_trivial_block() {
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Br {
+                cond: cond_reg(),
+                true_target: "trampoline".to_owned(),
+                false_target: "exit".to_owned(),
+            })
+            .block("trampoline")
+            .instr(Instruction::Jmp { target: "exit".to_owned() })
+            .block("exit")
+            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .build();
+
+        let changed = apply_pass(&JumpThreading, &mut func);
+        assert!(changed);
+        let entry = func.get_block("entry").unwrap();
+        if let Instruction::Br { true_target, .. } = &entry.instructions[0] {
+            assert_eq!(true_target, "exit");
+        } else {
+            panic!("expected Br in entry block");
+        }
     }
 }
