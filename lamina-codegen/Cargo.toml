@@ -12,7 +12,7 @@ repository = "https://github.com/SkuldNorniern/lamina"
 
 [dependencies]
 lamina-platform = { path = "../lamina-platform", version = "0.1.1" }
-lamina-mir = { version = "0.1.0" }
+lamina-mir = { path = "../lamina-mir", version = "0.1.0" }
 
 [features]
 default = []

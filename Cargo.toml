@@ -24,7 +24,7 @@ path = "src/main.rs"
 ras = { package = "lamina-ras", version = "0.1.2", features = ["encoder"] }
 lamina-ir = { path = "lamina-ir", version = "0.1.0" }
 lamina-platform = { path = "lamina-platform", version = "0.1.1" }
-lamina-mir = { version = "0.1.0" }
+lamina-mir = { path = "lamina-mir", version = "0.1.0" }
 lamina-codegen = { path = "lamina-codegen", version = "0.1.1" }
 
 [features]
@@ -44,6 +44,7 @@ nightly = [
 
 [patch.crates-io]
 lamina-platform = { path = "lamina-platform" }
+lamina-mir = { path = "lamina-mir" }
 
 [lints.clippy]
 unwrap_used = "warn"
