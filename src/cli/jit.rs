@@ -5,8 +5,8 @@ use crate::cli::options::{CompileOptions, toolchain_backends};
 use lamina::runtime::{Sandbox, SandboxConfig, compile_to_runtime};
 use lamina_platform::Target;
 
+use lamina::LaminaError;
 use std::env;
-use std::error::Error;
 use std::process::{self, Command};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,9 +16,11 @@ pub fn handle_jit_compilation(
     ir_source: &str,
     input_path: &std::path::Path,
     options: &CompileOptions,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), LaminaError> {
     let target = if let Some(target_str) = &options.target_arch {
-        Target::from_str(target_str).map_err(|e| format!("Invalid target '{target_str}': {e}"))?
+        Target::from_str(target_str).map_err(|e| {
+            LaminaError::ValidationError(format!("Invalid target '{target_str}': {e}"))
+        })?
     } else {
         Target::detect_host()
     };
@@ -34,16 +36,16 @@ pub fn handle_jit_compilation(
         }
     }
 
-    let ir_mod =
-        lamina::parser::parse_module(ir_source).map_err(|e| format!("IR parse failed: {e}"))?;
+    let ir_mod = lamina::parser::parse_module(ir_source)
+        .map_err(|e| LaminaError::ParsingError(format!("IR parse failed: {e}")))?;
     let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-        .map_err(|e| format!("MIR lowering failed: {e}"))?;
+        .map_err(|e| LaminaError::MirError(format!("MIR lowering failed: {e}")))?;
 
     if options.opt_level > 0 {
         let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
         let transform_stats = pipeline
             .apply_to_module(&mut mir_mod)
-            .map_err(|e| format!("MIR optimization failed: {e}"))?;
+            .map_err(|e| LaminaError::MirError(format!("MIR optimization failed: {e}")))?;
 
         if options.verbose {
             println!(
@@ -69,7 +71,9 @@ pub fn handle_jit_compilation(
                 .functions
                 .keys()
                 .next()
-                .ok_or("No functions found in module")?
+                .ok_or_else(|| {
+                    LaminaError::ValidationError("No functions found in module".to_owned())
+                })?
                 .as_str()
         };
 
@@ -77,9 +81,7 @@ pub fn handle_jit_compilation(
             println!("[JIT] Executing function '{function_name}' in sandbox");
         }
 
-        let result: i64 = sandbox
-            .execute_i64(&mir_mod, function_name)
-            .map_err(|e| format!("Sandbox execution failed: {e}"))?;
+        let result: i64 = sandbox.execute_i64(&mir_mod, function_name)?;
 
         if options.verbose {
             println!("[JIT] Execution completed successfully; return={result}");
@@ -103,23 +105,21 @@ pub fn handle_jit_compilation(
                 .find(|name| name.contains("main") || name.contains("matmul"))
                 .map(String::as_str)
                 .or_else(|| mir_mod.functions.keys().next().map(String::as_str))
-                .ok_or("No functions found in module")?
+                .ok_or_else(|| {
+                    LaminaError::ValidationError("No functions found in module".to_owned())
+                })?
         };
 
-        let func = mir_mod
-            .functions
-            .get(jit_function_name)
-            .ok_or("Function not found in module")?;
+        let func = mir_mod.functions.get(jit_function_name).ok_or_else(|| {
+            LaminaError::ValidationError("Function not found in module".to_owned())
+        })?;
 
-        let runtime_result = compile_to_runtime(
+        let runtime_result = match compile_to_runtime(
             &mir_mod,
             target.architecture,
             target.operating_system,
             Some(jit_function_name),
-        )
-        .map_err(|e| format!("Runtime compilation failed: {e}"));
-
-        let runtime_result = match runtime_result {
+        ) {
             Ok(result) => Some(result),
             Err(err) => {
                 if options.verbose {
@@ -173,7 +173,9 @@ pub fn handle_jit_compilation(
                 lamina_platform::TargetArchitecture::Wasm32
                     | lamina_platform::TargetArchitecture::Wasm64
             ) {
-                return Err("JIT fallback: cannot execute WASM targets directly".into());
+                return Err(LaminaError::ValidationError(
+                    "JIT fallback: cannot execute WASM targets directly".to_owned(),
+                ));
             }
 
             let pid = process::id();
@@ -212,8 +214,7 @@ pub fn handle_jit_compilation(
                 target.operating_system,
                 codegen_units,
                 &options.mir_codegen_settings,
-            )
-            .map_err(|e| format!("JIT fallback: codegen failed: {e}"))?;
+            )?;
 
             std::fs::write(&intermediate_path, &intermediate)?;
 
@@ -228,8 +229,7 @@ pub fn handle_jit_compilation(
                 &options.assembler_flags,
                 options.verbose,
                 options.ras_object_write_options(target.operating_system),
-            )
-            .map_err(|e| format!("JIT fallback: assembly failed: {e}"))?;
+            )?;
 
             if assemble_result.needs_linking {
                 lamina::mir_codegen::link::link(
@@ -240,8 +240,7 @@ pub fn handle_jit_compilation(
                     linker_backend,
                     &options.linker_flags,
                     options.verbose,
-                )
-                .map_err(|e| format!("JIT fallback: linking failed: {e}"))?;
+                )?;
             } else {
                 exe_path = assemble_result.output_path;
             }
@@ -257,7 +256,9 @@ pub fn handle_jit_compilation(
                     }
                     process::exit(code);
                 }
-                return Err(format!("JIT fallback: program terminated: {status}").into());
+                return Err(LaminaError::RuntimeError(format!(
+                    "JIT fallback: program terminated: {status}"
+                )));
             }
 
             let _ = std::fs::remove_dir_all(&tmp_dir);

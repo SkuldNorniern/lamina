@@ -211,7 +211,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     if options.jit {
-        return handle_jit_compilation(&ir_source, input_path, &options);
+        return Ok(handle_jit_compilation(&ir_source, input_path, &options)?);
     }
 
     if !options.emit_mir {
