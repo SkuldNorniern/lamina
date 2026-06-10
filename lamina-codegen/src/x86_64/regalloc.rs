@@ -301,7 +301,8 @@ mod tests {
     #[test]
     fn new_windows_has_win64_pool() {
         let ra = X64RegAlloc::new(TargetOperatingSystem::Windows);
-        let pool = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Windows, false);
+        let pool =
+            X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Windows, false);
         assert_eq!(ra.free_gprs.len(), pool.len());
     }
 
@@ -319,7 +320,10 @@ mod tests {
     fn alloc_and_free_scratch_cycle() {
         let mut ra = X64RegAlloc::new_default();
         let scratch = ra.alloc_scratch();
-        assert!(scratch.is_some(), "scratch should be available on fresh allocator");
+        assert!(
+            scratch.is_some(),
+            "scratch should be available on fresh allocator"
+        );
         let phys = scratch.unwrap();
         assert!(ra.scratch_used.contains(phys));
         ra.free_scratch(phys);
@@ -337,7 +341,8 @@ mod tests {
 
     #[test]
     fn leaf_mode_expands_pool_vs_non_leaf() {
-        let non_leaf = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
+        let non_leaf =
+            X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
         let leaf = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, true);
         assert!(leaf.len() > non_leaf.len());
     }
@@ -357,7 +362,10 @@ mod tests {
     fn non_gpr_vreg_returns_none() {
         use lamina_mir::RegisterClass;
         let mut ra = X64RegAlloc::new_default();
-        let fp_vreg = VirtualReg { id: 99, class: RegisterClass::Fpr };
+        let fp_vreg = VirtualReg {
+            id: 99,
+            class: RegisterClass::Fpr,
+        };
         assert!(ra.ensure_mapping(fp_vreg).is_none());
     }
 }

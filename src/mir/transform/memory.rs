@@ -131,11 +131,11 @@ impl MemoryOptimization {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mir::transform::test_utils::apply_pass;
     use crate::mir::{
         AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
         ScalarType, VirtualReg,
     };
-    use crate::mir::transform::test_utils::apply_pass;
 
     fn i64() -> MirType {
         MirType::Scalar(ScalarType::I64)
@@ -146,11 +146,17 @@ mod tests {
     }
 
     fn non_volatile() -> MemoryAttrs {
-        MemoryAttrs { volatile: false, ..MemoryAttrs::default() }
+        MemoryAttrs {
+            volatile: false,
+            ..MemoryAttrs::default()
+        }
     }
 
     fn volatile() -> MemoryAttrs {
-        MemoryAttrs { volatile: true, ..MemoryAttrs::default() }
+        MemoryAttrs {
+            volatile: true,
+            ..MemoryAttrs::default()
+        }
     }
 
     #[test]
@@ -174,14 +180,22 @@ mod tests {
                 addr: base_offset(base, 0),
                 attrs: non_volatile(),
             })
-            .instr(Instruction::Ret { value: Some(Operand::Register(dst2)) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst2)),
+            })
             .build();
 
         let changed = apply_pass(&MemoryOptimization, &mut func);
         assert!(changed, "second load should have been replaced");
         let entry = func.get_block("entry").unwrap();
         let second = &entry.instructions[1];
-        assert!(matches!(second, Instruction::IntBinary { op: IntBinOp::Add, .. }));
+        assert!(matches!(
+            second,
+            Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -205,13 +219,24 @@ mod tests {
                 addr: base_offset(base, 0),
                 attrs: non_volatile(),
             })
-            .instr(Instruction::Ret { value: Some(Operand::Register(dst)) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
             .build();
 
         let changed = apply_pass(&MemoryOptimization, &mut func);
-        assert!(changed, "load after store to same address should be forwarded");
+        assert!(
+            changed,
+            "load after store to same address should be forwarded"
+        );
         let entry = func.get_block("entry").unwrap();
-        assert!(matches!(&entry.instructions[1], Instruction::IntBinary { op: IntBinOp::Add, .. }));
+        assert!(matches!(
+            &entry.instructions[1],
+            Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -235,7 +260,9 @@ mod tests {
                 addr: base_offset(base, 0),
                 attrs: volatile(),
             })
-            .instr(Instruction::Ret { value: Some(Operand::Register(dst2)) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst2)),
+            })
             .build();
 
         let changed = apply_pass(&MemoryOptimization, &mut func);
@@ -268,7 +295,9 @@ mod tests {
                 addr: base_offset(base, 0),
                 attrs: non_volatile(),
             })
-            .instr(Instruction::Ret { value: Some(Operand::Register(dst)) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
             .build();
 
         let changed = apply_pass(&MemoryOptimization, &mut func);

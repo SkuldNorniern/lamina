@@ -401,9 +401,9 @@ impl AutoVectorization {
         func: &mut Function,
         pattern: &VectorizationPattern,
     ) -> Result<bool, TransformError> {
-        let block = func
-            .get_block_mut(&pattern.block)
-            .ok_or_else(|| TransformError::Unsupported(format!("Block {} not found", pattern.block)))?;
+        let block = func.get_block_mut(&pattern.block).ok_or_else(|| {
+            TransformError::Unsupported(format!("Block {} not found", pattern.block))
+        })?;
 
         if block.instructions.len() <= pattern.store_idx {
             return Ok(false);
