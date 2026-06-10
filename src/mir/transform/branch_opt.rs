@@ -49,15 +49,15 @@ impl BranchOptimization {
         let mut changed = false;
 
         let mut reachable_blocks = self.compute_reachable_blocks(func);
-        reachable_blocks.insert(func.entry.clone());
+        reachable_blocks.insert(&func.entry);
 
         let original_count = func.blocks.len();
 
-        let to_remove: HashSet<String> = func
+        let to_remove: HashSet<&str> = func
             .blocks
             .iter()
-            .filter(|b| b.label != func.entry && !reachable_blocks.contains(&b.label))
-            .map(|b| b.label.clone())
+            .filter(|b| b.label != func.entry && !reachable_blocks.contains(b.label.as_str()))
+            .map(|b| b.label.as_str())
             .collect();
 
         if to_remove.is_empty() {
@@ -66,15 +66,17 @@ impl BranchOptimization {
 
         // Only remove blocks that are not referenced by any surviving block.
         // This guards against BFS under-approximation leaving dangling edges.
-        let surviving_targets: HashSet<String> = func
+        let surviving_targets: HashSet<&str> = func
             .blocks
             .iter()
-            .filter(|b| !to_remove.contains(&b.label))
+            .filter(|b| !to_remove.contains(b.label.as_str()))
             .flat_map(lamina_mir::Block::successors)
             .collect();
 
-        let safe_to_remove: HashSet<String> =
-            to_remove.difference(&surviving_targets).cloned().collect();
+        let safe_to_remove: HashSet<String> = to_remove
+            .difference(&surviving_targets)
+            .map(|s| s.to_string())
+            .collect();
 
         if safe_to_remove.is_empty() {
             return Ok(false);
@@ -93,13 +95,13 @@ impl BranchOptimization {
         Ok(changed)
     }
 
-    fn compute_reachable_blocks(&self, func: &Function) -> HashSet<String> {
-        let mut reachable = HashSet::new();
-        let mut worklist = VecDeque::new();
+    fn compute_reachable_blocks<'a>(&self, func: &'a Function) -> HashSet<&'a str> {
+        let mut reachable: HashSet<&str> = HashSet::new();
+        let mut worklist: VecDeque<&str> = VecDeque::new();
         const MAX_ITERATIONS: usize = 10_000;
 
-        reachable.insert(func.entry.clone());
-        worklist.push_back(func.entry.clone());
+        reachable.insert(&func.entry);
+        worklist.push_back(&func.entry);
 
         let mut iterations = 0;
         while let Some(current_label) = worklist.pop_front() {
@@ -108,9 +110,9 @@ impl BranchOptimization {
             }
             iterations += 1;
 
-            if let Some(block) = func.get_block(&current_label) {
+            if let Some(block) = func.get_block(current_label) {
                 for succ in block.successors() {
-                    if reachable.insert(succ.clone()) {
+                    if reachable.insert(succ) {
                         worklist.push_back(succ);
                     }
                 }

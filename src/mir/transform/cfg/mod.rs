@@ -19,10 +19,10 @@ pub(crate) fn compute_back_edge_headers(func: &Function) -> HashSet<String> {
     let mut headers: HashSet<String> = HashSet::new();
     for (i, b) in func.blocks.iter().enumerate() {
         for succ in b.successors() {
-            if let Some(&tidx) = label_index.get(succ.as_str())
+            if let Some(&tidx) = label_index.get(succ)
                 && tidx <= i
             {
-                headers.insert(succ);
+                headers.insert(succ.to_owned());
             }
         }
     }
@@ -41,7 +41,7 @@ pub(crate) fn calculate_dominators(func: &Function) -> HashMap<String, HashSet<S
     }
     for block in &func.blocks {
         for succ in block.successors() {
-            pred_map.entry(succ).or_default().push(block.label.clone());
+            pred_map.entry(succ.to_owned()).or_default().push(block.label.clone());
         }
     }
 
