@@ -163,7 +163,7 @@ impl AutoVectorization {
 
     fn has_edge_to(&self, func: &Function, source: &str, target: &str) -> bool {
         func.get_block(source)
-            .map(|b| b.successors().iter().any(|s| s == target))
+            .map(|b| b.successors().contains(&target))
             .unwrap_or(false)
     }
 
@@ -403,7 +403,7 @@ impl AutoVectorization {
     ) -> Result<bool, TransformError> {
         let block = func
             .get_block_mut(&pattern.block)
-            .ok_or_else(|| format!("Block {} not found", pattern.block))?;
+            .ok_or_else(|| TransformError::Unsupported(format!("Block {} not found", pattern.block)))?;
 
         if block.instructions.len() <= pattern.store_idx {
             return Ok(false);

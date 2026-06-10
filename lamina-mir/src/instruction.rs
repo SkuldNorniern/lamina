@@ -1194,14 +1194,14 @@ impl fmt::Display for Instruction {
                 ty,
                 dst,
                 addr,
-                attrs,
+                attrs: _,
             } => write!(f, "{} = load_simd.{} {}", dst, ty, addr),
             #[cfg(feature = "nightly")]
             Instruction::SimdStore {
                 ty,
                 src,
                 addr,
-                attrs,
+                attrs: _,
             } => write!(f, "store_simd.{} {}, {}", ty, src, addr),
             #[cfg(feature = "nightly")]
             Instruction::AtomicLoad {
