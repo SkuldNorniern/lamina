@@ -107,3 +107,38 @@ impl RuntimeCompiler {
         self.code_cache.clear();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+    fn make_compiler() -> RuntimeCompiler {
+        RuntimeCompiler::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+    }
+
+    #[test]
+    fn invalidate_on_empty_cache_does_not_panic() {
+        let mut compiler = make_compiler();
+        compiler.invalidate("nonexistent");
+    }
+
+    #[test]
+    fn clear_cache_on_empty_does_not_panic() {
+        let mut compiler = make_compiler();
+        compiler.clear_cache();
+    }
+
+    #[cfg(not(feature = "encoder"))]
+    #[test]
+    fn compile_without_encoder_returns_validation_error() {
+        use crate::mir::Module;
+        let mut compiler = make_compiler();
+        let module = Module::new("test");
+        let result = compiler.compile(&module, None);
+        assert!(matches!(
+            result,
+            Err(crate::error::LaminaError::ValidationError(_))
+        ));
+    }
+}
