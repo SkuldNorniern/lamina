@@ -16,6 +16,8 @@
 //!
 //! Prefer packing parameters for hot paths; see [`JIT_ARG_SOFT_WARN_THRESHOLD`] for hints.
 
+use std::mem;
+
 #[cfg(any(
     target_arch = "aarch64",
     all(target_arch = "x86_64", not(target_os = "windows")),
