@@ -58,50 +58,6 @@ pub fn detect_host_os() -> &'static str {
     "unknown"
 }
 
-/// Detect the host system's architecture and operating system combination.
-///
-/// Returns a string representing the detected architecture and host system combination.
-///
-/// # Supported Targets
-/// - x86_64_unknown, x86_64_linux, x86_64_windows, x86_64_macos
-/// - aarch64_unknown, aarch64_macos, aarch64_linux, aarch64_windows
-/// - wasm32_unknown, wasm64_unknown
-/// - riscv32_unknown, riscv64_unknown
-/// - riscv128_unknown (nightly feature only)
-///
-/// Falls back to "x86_64_unknown" for unsupported combinations.
-///
-/// # Deprecated
-/// This function is deprecated. Use `detect_host().to_str()` instead for a more structured approach.
-#[deprecated(since = "0.0.8", note = "Use `detect_host().to_str()` instead")]
-pub fn detect_host_architecture() -> &'static str {
-    let arch = detect_host_architecture_only();
-    let os = detect_host_os();
-    // For backward compatibility, return the combined format
-    // This will be removed once the deprecation period is over
-    match (arch, os) {
-        ("x86_64", "linux") => "x86_64_linux",
-        ("x86_64", "macos") => "x86_64_macos",
-        ("x86_64", "windows") => "x86_64_windows",
-        ("aarch64", "linux") => "aarch64_linux",
-        ("aarch64", "macos") => "aarch64_macos",
-        ("aarch64", "windows") => "aarch64_windows",
-        ("wasm32", _) => "wasm32_unknown",
-        ("wasm64", _) => "wasm64_unknown",
-        ("riscv32", _) => "riscv32_unknown",
-        ("riscv64", _) => "riscv64_unknown",
-        #[cfg(feature = "nightly")]
-        ("riscv128", _) => "riscv128_unknown",
-        _ => {
-            // Fallback for unsupported combinations
-            match arch {
-                "aarch64" => "aarch64_unknown",
-                _ => "x86_64_unknown",
-            }
-        }
-    }
-}
-
 /// Get the number of available CPU cores.
 ///
 /// Returns the number of logical CPU cores available on the system.
