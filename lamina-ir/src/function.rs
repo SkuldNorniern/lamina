@@ -841,7 +841,6 @@ mod tests {
     use super::*;
     use crate::instruction::{AllocType, BinaryOp, Instruction};
     use crate::types::{Literal, PrimitiveType, Type, Value};
-    use std::collections::HashMap;
 
     #[test]
     fn test_display_function_annotation() {

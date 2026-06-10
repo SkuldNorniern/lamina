@@ -14,7 +14,10 @@ use self::functions::parse_function_def;
 use self::globals::parse_global_declaration;
 use self::state::ParserState;
 use self::types::parse_type_declaration;
-use crate::{LaminaError, Module};
+use crate::LaminaError;
+use crate::ir::{
+    AllocType, Module, PrimitiveType, assignment_opcode_names, non_assignment_opcode_names,
+};
 
 /// Calculates the Levenshtein edit distance between two strings.
 ///
@@ -127,7 +130,7 @@ pub fn suggest_alternatives<'a>(input: &str, valid: &[&'a str]) -> Vec<&'a str> 
 /// This function delegates to the IR module so parser error messages
 /// stay in sync with the actual type system.
 pub fn get_primitive_type_names() -> &'static [&'static str] {
-    crate::ir::PrimitiveType::all_names()
+    PrimitiveType::all_names()
 }
 
 /// Returns all valid allocation type names as strings.
@@ -135,7 +138,7 @@ pub fn get_primitive_type_names() -> &'static [&'static str] {
 /// This function delegates to the IR module so parser error messages
 /// stay in sync with the actual type system.
 pub fn get_alloc_type_names() -> &'static [&'static str] {
-    crate::ir::AllocType::all_names()
+    AllocType::all_names()
 }
 
 /// Returns all function annotation keywords recognized by the parser.
@@ -151,7 +154,7 @@ pub fn get_annotation_names() -> &'static [&'static str] {
 /// This function delegates to the IR module so parser error messages
 /// stay in sync with the actual instruction set.
 pub fn get_assignment_opcode_names() -> &'static [&'static str] {
-    crate::ir::assignment_opcode_names()
+    assignment_opcode_names()
 }
 
 /// Returns all valid instruction opcodes that don't require an assignment.
@@ -160,7 +163,7 @@ pub fn get_assignment_opcode_names() -> &'static [&'static str] {
 /// This function delegates to the IR module so parser error messages
 /// stay in sync with the actual instruction set.
 pub fn get_non_assignment_opcode_names() -> &'static [&'static str] {
-    crate::ir::non_assignment_opcode_names()
+    non_assignment_opcode_names()
 }
 
 /// Parses a string containing Lamina IR text into a Module.
@@ -240,13 +243,9 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_module;
-    use crate::ir::IRBuilder;
+    use super::*;
     use crate::ir::builder::i32 as ir_i32;
-    use crate::{
-        AllocType, BinaryOp, CmpOp, Instruction, LaminaError, Literal, Module, PrimitiveType, Type,
-        Value,
-    };
+    use crate::ir::{BinaryOp, CmpOp, IRBuilder, Instruction, Literal, Type, Value};
     use std::fs;
 
     #[test]
@@ -1057,8 +1056,6 @@ fn @test_instructions() -> i64 {
 
     #[test]
     fn test_parse_minimal_programs() -> Result<(), LaminaError> {
-        use crate::ir::types::{PrimitiveType, Type};
-
         // Test very simple programs that should parse correctly and produce correct IR
 
         // Single instruction function
@@ -1113,8 +1110,6 @@ fn @empty() -> i64 {
 
     #[test]
     fn test_parse_whitespace_tolerance() -> Result<(), LaminaError> {
-        use crate::ir::types::{PrimitiveType, Type};
-
         // Expected IR structure for all test cases
         let mut builder = IRBuilder::new();
         builder
