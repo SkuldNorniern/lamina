@@ -1521,8 +1521,6 @@ mod tests {
 
     use super::*;
     use crate::ir::builder::{i64 as ir_i64, string, var};
-    use crate::ir::instruction::BinaryOp;
-    use crate::ir::types::{PrimitiveType, Type};
     use crate::ir::{FunctionParameter, IRBuilder};
 
     #[test]
@@ -1534,19 +1532,19 @@ mod tests {
                 vec![
                     FunctionParameter {
                         name: "a",
-                        ty: Type::Primitive(PrimitiveType::I64),
+                        ty: IRType::Primitive(IRPrim::I64),
                         annotations: vec![],
                     },
                     FunctionParameter {
                         name: "b",
-                        ty: Type::Primitive(PrimitiveType::I64),
+                        ty: IRType::Primitive(IRPrim::I64),
                         annotations: vec![],
                     },
                 ],
-                Type::Primitive(PrimitiveType::I64),
+                IRType::Primitive(IRPrim::I64),
             )
-            .binary(BinaryOp::Add, "sum", PrimitiveType::I64, var("a"), var("b"))
-            .ret(Type::Primitive(PrimitiveType::I64), var("sum"));
+            .binary(IRBin::Add, "sum", IRPrim::I64, var("a"), var("b"))
+            .ret(IRType::Primitive(IRPrim::I64), var("sum"));
 
         let ir_module = builder.build();
         let mir_module = from_ir(&ir_module, "test").expect("from_ir should succeed");
@@ -1582,9 +1580,9 @@ mod tests {
     fn test_print_numeric_succeeds() {
         let mut builder = IRBuilder::new();
         builder
-            .function("main", Type::Primitive(PrimitiveType::I64))
+            .function("main", IRType::Primitive(IRPrim::I64))
             .print(ir_i64(42))
-            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
+            .ret(IRType::Primitive(IRPrim::I64), ir_i64(0));
 
         let ir_module = builder.build();
         let result = from_ir(&ir_module, "test");
@@ -1599,9 +1597,9 @@ mod tests {
     fn test_print_string_fails() {
         let mut builder = IRBuilder::new();
         builder
-            .function("main", Type::Primitive(PrimitiveType::I64))
+            .function("main", IRType::Primitive(IRPrim::I64))
             .print(string("hello"))
-            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
+            .ret(IRType::Primitive(IRPrim::I64), ir_i64(0));
 
         let ir_module = builder.build();
         let result = from_ir(&ir_module, "test");

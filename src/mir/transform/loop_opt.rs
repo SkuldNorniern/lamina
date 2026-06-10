@@ -1,8 +1,6 @@
 //! Loop optimization transforms for MIR.
 
-use crate::mir::transform::calculate_dominators;
-
-use crate::mir::transform::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformLevel, calculate_dominators};
 use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
@@ -37,9 +35,7 @@ impl Transform for LoopInvariantCodeMotion {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests_licm {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
     #[test]
     fn test_licm_basic() {

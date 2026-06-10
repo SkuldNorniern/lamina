@@ -3,7 +3,7 @@
 //! This module provides methods for memory allocation, access, and deallocation
 //! operations in the IR builder API.
 
-use super::IRBuilder;
+use crate::builder::IRBuilder;
 use crate::instruction::{AllocType, Instruction};
 use crate::types::{Type, Value};
 
