@@ -285,6 +285,7 @@ impl CommonSubexpressionElimination {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::mir::transform::test_utils::{apply_pass, get_block};
     use crate::mir::{FunctionBuilder, IntBinOp, ScalarType, VirtualReg};
 
     #[test]
@@ -407,7 +408,7 @@ mod tests {
         assert!(result.is_ok());
         // Function should still be valid (have blocks and instructions)
         assert!(!func.blocks.is_empty());
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         assert!(!entry.instructions.is_empty());
     }
 

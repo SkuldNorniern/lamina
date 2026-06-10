@@ -275,6 +275,7 @@ impl DeadCodeElimination {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::mir::transform::test_utils::{apply_pass, get_block};
     use crate::mir::{
         AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
         ScalarType, VirtualReg,
@@ -387,7 +388,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Jmp and Ret should still exist
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         assert!(matches!(
             entry.instructions.last(),
             Some(Instruction::Jmp { .. })
@@ -496,7 +497,7 @@ mod tests {
 
         // v1 is used in exit block, so entry's add should remain
         assert!(!changed);
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         assert_eq!(entry.instructions.len(), 2);
     }
 
@@ -535,7 +536,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Loop body should be preserved (v0 is used)
-        let loop_block = func.get_block("loop").unwrap();
+        let loop_block = get_block(&func, "loop");
         assert_eq!(loop_block.instructions.len(), 2);
     }
 

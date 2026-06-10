@@ -248,6 +248,7 @@ impl AddressingCanonicalization {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::mir::transform::test_utils::{apply_pass, get_block};
     use crate::mir::{FunctionBuilder, Immediate, MemoryAttrs, MirType, ScalarType, VirtualReg};
 
     #[test]
@@ -358,7 +359,7 @@ mod tests {
         assert!(changed);
 
         // Verify the addressing mode was changed to BaseIndexScale
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[2] {
             Instruction::Load { addr, .. } => {
                 assert!(
@@ -415,7 +416,7 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[2] {
             Instruction::Load { addr, .. } => {
                 assert!(
@@ -548,7 +549,7 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[2] {
             Instruction::Store { addr, .. } => {
                 assert!(

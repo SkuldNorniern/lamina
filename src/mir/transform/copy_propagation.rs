@@ -235,6 +235,7 @@ impl CopyPropagation {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::mir::transform::test_utils::{apply_pass, get_block};
     use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
     #[test]
@@ -425,7 +426,7 @@ mod tests {
         assert!(changed);
 
         // Second instruction should now use v0 directly
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[1] {
             Instruction::IntBinary { lhs, .. } => {
                 assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(0).into()));
@@ -546,7 +547,7 @@ mod tests {
         assert!(changed);
 
         // Final add should use v0 directly (all copies should chain)
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[3] {
             Instruction::IntBinary { lhs, .. } => {
                 // After propagation, should trace back to v0
