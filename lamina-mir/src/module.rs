@@ -113,7 +113,7 @@ impl Module {
     pub fn function_names(&self) -> Vec<&str> {
         self.functions
             .keys()
-            .map(std::string::String::as_str)
+            .map(String::as_str)
             .collect()
     }
 
@@ -121,7 +121,7 @@ impl Module {
     pub fn global_names(&self) -> Vec<&str> {
         self.globals
             .keys()
-            .map(std::string::String::as_str)
+            .map(String::as_str)
             .collect()
     }
 
@@ -129,7 +129,7 @@ impl Module {
     pub fn instruction_count(&self) -> usize {
         self.functions
             .values()
-            .map(super::function::Function::instruction_count)
+            .map(Function::instruction_count)
             .sum()
     }
 
