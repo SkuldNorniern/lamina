@@ -192,7 +192,6 @@ fn extract_constant(operand: &Operand) -> Option<i64> {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::get_block;
     use crate::mir::{FunctionBuilder, Immediate, ScalarType, VirtualReg};
 
     #[test]

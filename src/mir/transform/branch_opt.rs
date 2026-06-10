@@ -2,8 +2,8 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use crate::mir::Function;
 use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
+use crate::mir::Function;
 
 /// Branch optimization that eliminates unreachable branches.
 #[derive(Default)]
@@ -127,7 +127,6 @@ impl BranchOptimization {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::get_block;
     use crate::mir::{
         Block, FunctionBuilder, Immediate, Instruction, MirType, Operand, ScalarType, VirtualReg,
     };
