@@ -74,13 +74,41 @@ mod tests {
 
     #[test]
     fn display_includes_variant_prefix() {
-        assert!(LaminaError::ParsingError("x".into()).to_string().starts_with("Parsing Error:"));
-        assert!(LaminaError::MirError("x".into()).to_string().starts_with("MIR Error:"));
-        assert!(LaminaError::ValidationError("x".into()).to_string().starts_with("Validation Error:"));
-        assert!(LaminaError::IoError("x".into()).to_string().starts_with("IO Error:"));
-        assert!(LaminaError::Utf8Error("x".into()).to_string().starts_with("UTF8 Error:"));
-        assert!(LaminaError::InternalError("x".into()).to_string().starts_with("Internal Error:"));
-        assert!(LaminaError::RuntimeError("x".into()).to_string().starts_with("Runtime Error:"));
+        assert!(
+            LaminaError::ParsingError("x".into())
+                .to_string()
+                .starts_with("Parsing Error:")
+        );
+        assert!(
+            LaminaError::MirError("x".into())
+                .to_string()
+                .starts_with("MIR Error:")
+        );
+        assert!(
+            LaminaError::ValidationError("x".into())
+                .to_string()
+                .starts_with("Validation Error:")
+        );
+        assert!(
+            LaminaError::IoError("x".into())
+                .to_string()
+                .starts_with("IO Error:")
+        );
+        assert!(
+            LaminaError::Utf8Error("x".into())
+                .to_string()
+                .starts_with("UTF8 Error:")
+        );
+        assert!(
+            LaminaError::InternalError("x".into())
+                .to_string()
+                .starts_with("Internal Error:")
+        );
+        assert!(
+            LaminaError::RuntimeError("x".into())
+                .to_string()
+                .starts_with("Runtime Error:")
+        );
     }
 
     #[test]

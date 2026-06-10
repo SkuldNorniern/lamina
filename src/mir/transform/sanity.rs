@@ -50,7 +50,9 @@ pub fn validate_cfg(func: &Function) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, Immediate, Instruction, MirType, Operand, Register, ScalarType, VirtualReg};
+    use crate::mir::{
+        FunctionBuilder, Immediate, Instruction, MirType, Operand, Register, ScalarType, VirtualReg,
+    };
 
     fn i64() -> MirType {
         MirType::Scalar(ScalarType::I64)
@@ -60,7 +62,9 @@ mod tests {
         FunctionBuilder::new("f")
             .returns(i64())
             .block("entry")
-            .instr(Instruction::Jmp { target: target.to_owned() })
+            .instr(Instruction::Jmp {
+                target: target.to_owned(),
+            })
             .block("exit")
             .instr(Instruction::Ret {
                 value: Some(Operand::Immediate(Immediate::I64(0))),
@@ -93,9 +97,13 @@ mod tests {
                 false_target: "no".to_owned(),
             })
             .block("yes")
-            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(1))) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(1))),
+            })
             .block("no")
-            .instr(Instruction::Ret { value: Some(Operand::Immediate(Immediate::I64(0))) })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(0))),
+            })
             .build();
         assert!(validate_cfg(&func).is_ok());
     }
