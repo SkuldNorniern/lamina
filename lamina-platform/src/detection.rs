@@ -10,7 +10,7 @@ pub fn detect_host_architecture_only() -> &'static str {
     std::env::consts::ARCH
 }
 
-/// Returns the host OS name: "linux", "macos", "windows", "freebsd", etc.
+/// Returns the host OS name: "linux", "macOS", "windows", "freebsd", etc.
 pub fn detect_host_os() -> &'static str {
     std::env::consts::OS
 }
