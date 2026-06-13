@@ -4,6 +4,7 @@
 use std::ffi::CString;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::mem;
+use std::ffi::c_void;
 
 /// Returns the host architecture name: "x86_64", "aarch64", "riscv64", etc.
 pub fn detect_host_architecture_only() -> &'static str {
@@ -97,8 +98,8 @@ pub fn cpu_count() -> usize {
                 processor_architecture: u16,
                 reserved: u16,
                 page_size: u32,
-                minimum_application_address: *mut std::ffi::c_void,
-                maximum_application_address: *mut std::ffi::c_void,
+                minimum_application_address: *mut c_void,
+                maximum_application_address: *mut c_void,
                 active_processor_mask: *mut u32,
                 number_of_processors: u32,
                 processor_type: u32,
