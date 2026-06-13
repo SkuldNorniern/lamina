@@ -61,6 +61,50 @@ pub enum TransformError {
     ConvergenceFailed,
     Unsupported(String),
     InvalidState(&'static str),
+    /// Function exceeded the pipeline-wide instruction budget.
+    PipelineFunctionTooLarge {
+        count: usize,
+        limit: usize,
+    },
+    /// Pipeline ran too many iterations; a pass likely fails to converge.
+    PipelineStalled {
+        pass: &'static str,
+        limit: usize,
+    },
+    /// A named pass returned an error.
+    PassFailed {
+        pass: &'static str,
+        source: Box<TransformError>,
+    },
+    /// Every function in the module failed to transform.
+    AllFunctionsFailed {
+        failures: Vec<(String, TransformError)>,
+    },
+    /// A control-flow edge targets a block that does not exist.
+    InvalidCfg {
+        block: String,
+        target: String,
+        edge: &'static str,
+    },
+    /// Module exceeded the inliner's instruction budget.
+    InliningModuleTooLarge {
+        count: usize,
+        limit: usize,
+    },
+    /// Inlining did not reach a fixed point within the iteration limit.
+    InliningStalled {
+        limit: usize,
+    },
+    /// Call site argument count did not match the callee signature.
+    ParamCountMismatch {
+        expected: usize,
+        got: usize,
+    },
+    /// A referenced function or block was not present in the module.
+    NotFound {
+        kind: &'static str,
+        name: String,
+    },
 }
 
 impl fmt::Display for TransformError {
@@ -86,6 +130,55 @@ impl fmt::Display for TransformError {
             Self::ConvergenceFailed => write!(f, "liveness analysis failed to converge"),
             Self::Unsupported(msg) => write!(f, "unsupported: {msg}"),
             Self::InvalidState(msg) => write!(f, "invalid state: {msg}"),
+            Self::PipelineFunctionTooLarge { count, limit } => {
+                write!(
+                    f,
+                    "function too large for transforms ({count} instructions, max {limit})"
+                )
+            }
+            Self::PipelineStalled { pass, limit } => {
+                write!(
+                    f,
+                    "transform pipeline exceeded {limit} iterations, possible infinite loop in pass '{pass}'"
+                )
+            }
+            Self::PassFailed { pass, source } => write!(f, "transform '{pass}' failed: {source}"),
+            Self::AllFunctionsFailed { failures } => {
+                write!(f, "all functions failed transforms: ")?;
+                for (i, (name, err)) in failures.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {err}")?;
+                }
+                Ok(())
+            }
+            Self::InvalidCfg {
+                block,
+                target,
+                edge,
+            } => {
+                write!(
+                    f,
+                    "invalid CFG: block '{block}' {edge} targets missing block '{target}'"
+                )
+            }
+            Self::InliningModuleTooLarge { count, limit } => {
+                write!(
+                    f,
+                    "module too large for inlining ({count} instructions, max {limit})"
+                )
+            }
+            Self::InliningStalled { limit } => {
+                write!(f, "inlining did not converge after {limit} iterations")
+            }
+            Self::ParamCountMismatch { expected, got } => {
+                write!(
+                    f,
+                    "parameter count mismatch: expected {expected}, got {got}"
+                )
+            }
+            Self::NotFound { kind, name } => write!(f, "{kind} '{name}' not found"),
         }
     }
 }
@@ -219,13 +312,14 @@ impl TransformPipeline {
         pipeline
     }
 
-    pub fn apply_to_function(&self, func: &mut Function) -> Result<TransformStats, String> {
+    pub fn apply_to_function(&self, func: &mut Function) -> Result<TransformStats, TransformError> {
         let total_instructions: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
         const MAX_INSTRUCTIONS: usize = 100_000;
         if total_instructions > MAX_INSTRUCTIONS {
-            return Err(format!(
-                "Function too large for transforms ({total_instructions} instructions, max {MAX_INSTRUCTIONS})"
-            ));
+            return Err(TransformError::PipelineFunctionTooLarge {
+                count: total_instructions,
+                limit: MAX_INSTRUCTIONS,
+            });
         }
 
         let mut stats = TransformStats::default();
@@ -233,23 +327,21 @@ impl TransformPipeline {
 
         for transform in &self.transforms {
             if total_iterations >= self.max_total_iterations {
-                return Err(format!(
-                    "Transform pipeline exceeded maximum iterations ({}), possible infinite loop in transform '{}'",
-                    self.max_total_iterations,
-                    transform.name()
-                ));
+                return Err(TransformError::PipelineStalled {
+                    pass: transform.name(),
+                    limit: self.max_total_iterations,
+                });
             }
 
             stats.transforms_run += 1;
-            match transform.apply(func) {
-                Ok(changed) => {
-                    if changed {
-                        stats.transforms_changed += 1;
-                    }
-                }
-                Err(e) => {
-                    return Err(format!("Transform '{}' failed: {e}", transform.name()));
-                }
+            let changed = transform
+                .apply(func)
+                .map_err(|e| TransformError::PassFailed {
+                    pass: transform.name(),
+                    source: Box::new(e),
+                })?;
+            if changed {
+                stats.transforms_changed += 1;
             }
 
             total_iterations += 1;
@@ -259,7 +351,7 @@ impl TransformPipeline {
         Ok(stats)
     }
 
-    pub fn apply_to_module(&self, module: &mut Module) -> Result<TransformStats, String> {
+    pub fn apply_to_module(&self, module: &mut Module) -> Result<TransformStats, TransformError> {
         let mut total_stats = TransformStats::default();
         let mut failed_functions = Vec::new();
 
@@ -277,14 +369,9 @@ impl TransformPipeline {
         }
 
         if !failed_functions.is_empty() && total_stats.transforms_run == 0 {
-            return Err(format!(
-                "All functions failed transforms: {}",
-                failed_functions
-                    .iter()
-                    .map(|(name, err)| format!("{name}: {err}"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
+            return Err(TransformError::AllFunctionsFailed {
+                failures: failed_functions,
+            });
         }
 
         if !failed_functions.is_empty() {

@@ -6,20 +6,23 @@
 
 use std::collections::HashSet;
 
+use crate::mir::transform::TransformError;
 use crate::mir::{Function, Instruction};
 
 /// Validate that all branch and jump targets reference existing blocks.
-pub fn validate_cfg(func: &Function) -> Result<(), String> {
-    let labels: HashSet<_> = func.blocks.iter().map(|b| b.label.clone()).collect();
+pub fn validate_cfg(func: &Function) -> Result<(), TransformError> {
+    let labels: HashSet<&str> = func.blocks.iter().map(|b| b.label.as_str()).collect();
     for block in &func.blocks {
+        let invalid_edge = |target: &str, edge: &'static str| TransformError::InvalidCfg {
+            block: block.label.clone(),
+            target: target.to_string(),
+            edge,
+        };
         for inst in &block.instructions {
             match inst {
                 Instruction::Jmp { target } => {
-                    if !labels.contains(target) {
-                        return Err(format!(
-                            "Invalid CFG: block '{}' jumps to missing target '{}'",
-                            block.label, target
-                        ));
+                    if !labels.contains(target.as_str()) {
+                        return Err(invalid_edge(target, "jumps to"));
                     }
                 }
                 Instruction::Br {
@@ -27,17 +30,11 @@ pub fn validate_cfg(func: &Function) -> Result<(), String> {
                     false_target,
                     ..
                 } => {
-                    if !labels.contains(true_target) {
-                        return Err(format!(
-                            "Invalid CFG: block '{}' branches to missing true_target '{}'",
-                            block.label, true_target
-                        ));
+                    if !labels.contains(true_target.as_str()) {
+                        return Err(invalid_edge(true_target, "true branch"));
                     }
-                    if !labels.contains(false_target) {
-                        return Err(format!(
-                            "Invalid CFG: block '{}' branches to missing false_target '{}'",
-                            block.label, false_target
-                        ));
+                    if !labels.contains(false_target.as_str()) {
+                        return Err(invalid_edge(false_target, "false branch"));
                     }
                 }
                 _ => {}
