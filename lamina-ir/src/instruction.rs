@@ -1164,14 +1164,14 @@ impl fmt::Display for Instruction<'_> {
                 ty,
                 ptr,
                 ordering,
-            } => write!(f, "%{} = atomic_load.{} {}, {}", result, ty, ptr, ordering),
+            } => write!(f, "%{result} = atomic_load.{ty} {ptr}, {ordering}"),
             #[cfg(feature = "nightly")]
             Instruction::AtomicStore {
                 ty,
                 ptr,
                 value,
                 ordering,
-            } => write!(f, "atomic_store.{} {}, {}, {}", ty, ptr, value, ordering),
+            } => write!(f, "atomic_store.{ty} {ptr}, {value}, {ordering}"),
             #[cfg(feature = "nightly")]
             Instruction::AtomicBinary {
                 op,
@@ -1180,11 +1180,7 @@ impl fmt::Display for Instruction<'_> {
                 ptr,
                 value,
                 ordering,
-            } => write!(
-                f,
-                "%{} = {}.{} {}, {}, {}",
-                result, op, ty, ptr, value, ordering
-            ),
+            } => write!(f, "%{result} = {op}.{ty} {ptr}, {value}, {ordering}"),
             #[cfg(feature = "nightly")]
             Instruction::AtomicCompareExchange {
                 result,
@@ -1197,11 +1193,10 @@ impl fmt::Display for Instruction<'_> {
                 failure_ordering,
             } => write!(
                 f,
-                "%{}, %{} = atomic_cmpxchg.{} {}, {}, {}, {}, {}",
-                result, success, ty, ptr, expected, desired, success_ordering, failure_ordering
+                "%{result}, %{success} = atomic_cmpxchg.{ty} {ptr}, {expected}, {desired}, {success_ordering}, {failure_ordering}"
             ),
             #[cfg(feature = "nightly")]
-            Instruction::Fence { ordering } => write!(f, "fence {}", ordering),
+            Instruction::Fence { ordering } => write!(f, "fence {ordering}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdBinary {
                 op,
@@ -1209,14 +1204,14 @@ impl fmt::Display for Instruction<'_> {
                 vector_type,
                 lhs,
                 rhs,
-            } => write!(f, "%{} = {}.{} {}, {}", result, op, vector_type, lhs, rhs),
+            } => write!(f, "%{result} = {op}.{vector_type} {lhs}, {rhs}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdUnary {
                 op,
                 result,
                 vector_type,
                 operand,
-            } => write!(f, "%{} = {}.{} {}", result, op, vector_type, operand),
+            } => write!(f, "%{result} = {op}.{vector_type} {operand}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdTernary {
                 op,
@@ -1225,11 +1220,7 @@ impl fmt::Display for Instruction<'_> {
                 lhs,
                 rhs,
                 acc,
-            } => write!(
-                f,
-                "%{} = {}.{} {}, {}, {}",
-                result, op, vector_type, lhs, rhs, acc
-            ),
+            } => write!(f, "%{result} = {op}.{vector_type} {lhs}, {rhs}, {acc}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdShuffle {
                 result,
@@ -1237,11 +1228,7 @@ impl fmt::Display for Instruction<'_> {
                 lhs,
                 rhs,
                 mask,
-            } => write!(
-                f,
-                "%{} = shuffle.{} {}, {}, {}",
-                result, vector_type, lhs, rhs, mask
-            ),
+            } => write!(f, "%{result} = shuffle.{vector_type} {lhs}, {rhs}, {mask}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdExtract {
                 result,
@@ -1250,8 +1237,7 @@ impl fmt::Display for Instruction<'_> {
                 lane_index,
             } => write!(
                 f,
-                "%{} = extract_lane.{} {}, {}",
-                result, scalar_type, vector, lane_index
+                "%{result} = extract_lane.{scalar_type} {vector}, {lane_index}"
             ),
             #[cfg(feature = "nightly")]
             Instruction::SimdInsert {
@@ -1262,8 +1248,7 @@ impl fmt::Display for Instruction<'_> {
                 lane_index,
             } => write!(
                 f,
-                "%{} = insert_lane.{} {}, {}, {}",
-                result, vector_type, vector, scalar, lane_index
+                "%{result} = insert_lane.{vector_type} {vector}, {scalar}, {lane_index}"
             ),
             #[cfg(feature = "nightly")]
             Instruction::SimdLoad {
@@ -1271,14 +1256,14 @@ impl fmt::Display for Instruction<'_> {
                 vector_type,
                 ptr,
                 alignment: _,
-            } => write!(f, "%{} = load_simd.{} {}", result, vector_type, ptr),
+            } => write!(f, "%{result} = load_simd.{vector_type} {ptr}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdStore {
                 vector_type,
                 ptr,
                 value,
                 alignment: _,
-            } => write!(f, "store_simd.{} {}, {}", vector_type, ptr, value),
+            } => write!(f, "store_simd.{vector_type} {ptr}, {value}"),
             Instruction::GetFieldPtr {
                 result,
                 struct_ptr,

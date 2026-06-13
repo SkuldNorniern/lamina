@@ -232,7 +232,7 @@ impl fmt::Display for SimdOp {
             SimdOp::InsertLane => "simd_insert_lane",
             SimdOp::Splat => "simd_splat",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -262,7 +262,7 @@ impl fmt::Display for MemoryOrdering {
             MemoryOrdering::AcqRel => "acqrel",
             MemoryOrdering::SeqCst => "seqcst",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -298,7 +298,7 @@ impl fmt::Display for AtomicBinOp {
             AtomicBinOp::Exchange => "atomic_exchange",
             AtomicBinOp::CompareExchange => "atomic_cmpxchg",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -1144,10 +1144,10 @@ impl fmt::Display for Instruction {
                 dst,
                 lhs,
                 rhs,
-            } => write!(f, "{} = {}.{} {}, {}", dst, op, ty, lhs, rhs),
+            } => write!(f, "{dst} = {op}.{ty} {lhs}, {rhs}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdUnary { op, ty, dst, src } => {
-                write!(f, "{} = {}.{} {}", dst, op, ty, src)
+                write!(f, "{dst} = {op}.{ty} {src}")
             }
             #[cfg(feature = "nightly")]
             Instruction::SimdTernary {
@@ -1157,7 +1157,7 @@ impl fmt::Display for Instruction {
                 lhs,
                 rhs,
                 acc,
-            } => write!(f, "{} = {}.{} {}, {}, {}", dst, op, ty, lhs, rhs, acc),
+            } => write!(f, "{dst} = {op}.{ty} {lhs}, {rhs}, {acc}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdShuffle {
                 ty,
@@ -1165,18 +1165,14 @@ impl fmt::Display for Instruction {
                 lhs,
                 rhs,
                 mask,
-            } => write!(f, "{} = {}.shuffle {} {}, {}", dst, ty, lhs, rhs, mask),
+            } => write!(f, "{dst} = {ty}.shuffle {lhs} {rhs}, {mask}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdExtract {
                 ty,
                 dst,
                 vector,
                 lane_index,
-            } => write!(
-                f,
-                "{} = extract_lane.{} {}, {}",
-                dst, ty, vector, lane_index
-            ),
+            } => write!(f, "{dst} = extract_lane.{ty} {vector}, {lane_index}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdInsert {
                 ty,
@@ -1186,8 +1182,7 @@ impl fmt::Display for Instruction {
                 lane_index,
             } => write!(
                 f,
-                "{} = insert_lane.{} {}, {}, {}",
-                dst, ty, vector, scalar, lane_index
+                "{dst} = insert_lane.{ty} {vector}, {scalar}, {lane_index}"
             ),
             #[cfg(feature = "nightly")]
             Instruction::SimdLoad {
@@ -1195,28 +1190,28 @@ impl fmt::Display for Instruction {
                 dst,
                 addr,
                 attrs: _,
-            } => write!(f, "{} = load_simd.{} {}", dst, ty, addr),
+            } => write!(f, "{dst} = load_simd.{ty} {addr}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdStore {
                 ty,
                 src,
                 addr,
                 attrs: _,
-            } => write!(f, "store_simd.{} {}, {}", ty, src, addr),
+            } => write!(f, "store_simd.{ty} {src}, {addr}"),
             #[cfg(feature = "nightly")]
             Instruction::AtomicLoad {
                 ty,
                 dst,
                 addr,
                 ordering,
-            } => write!(f, "{} = atomic_load.{} [{}] {}", dst, ty, addr, ordering),
+            } => write!(f, "{dst} = atomic_load.{ty} [{addr}] {ordering}"),
             #[cfg(feature = "nightly")]
             Instruction::AtomicStore {
                 ty,
                 src,
                 addr,
                 ordering,
-            } => write!(f, "atomic_store.{} {}, [{}] {}", ty, src, addr, ordering),
+            } => write!(f, "atomic_store.{ty} {src}, [{addr}] {ordering}"),
             #[cfg(feature = "nightly")]
             Instruction::AtomicBinary {
                 op,
@@ -1225,11 +1220,7 @@ impl fmt::Display for Instruction {
                 addr,
                 value,
                 ordering,
-            } => write!(
-                f,
-                "{} = {}.{} [{}] {}, {}",
-                dst, op, ty, addr, value, ordering
-            ),
+            } => write!(f, "{dst} = {op}.{ty} [{addr}] {value}, {ordering}"),
             #[cfg(feature = "nightly")]
             Instruction::AtomicCompareExchange {
                 ty,
@@ -1241,11 +1232,10 @@ impl fmt::Display for Instruction {
                 failure_ordering,
             } => write!(
                 f,
-                "{} = atomic_cmpxchg.{} [{}] {}, {}, {}, {}",
-                dst, ty, addr, expected, desired, success_ordering, failure_ordering
+                "{dst} = atomic_cmpxchg.{ty} [{addr}] {expected}, {desired}, {success_ordering}, {failure_ordering}"
             ),
             #[cfg(feature = "nightly")]
-            Instruction::Fence { ordering } => write!(f, "fence {}", ordering),
+            Instruction::Fence { ordering } => write!(f, "fence {ordering}"),
             Instruction::Comment { text } => write!(f, "; {text}"),
         }
     }
