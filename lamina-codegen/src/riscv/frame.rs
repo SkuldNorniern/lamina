@@ -1,12 +1,12 @@
 /// RISC-V stack frame management utilities
+use std::io::Error;
+use std::io::Write;
+
 pub struct RiscVFrame;
 
 impl RiscVFrame {
     /// Generate function prologue
-    pub fn generate_prologue<W: std::io::Write>(
-        writer: &mut W,
-        stack_size: usize,
-    ) -> Result<(), std::io::Error> {
+    pub fn generate_prologue<W: Write>(writer: &mut W, stack_size: usize) -> Result<(), Error> {
         // Save return address and frame pointer
         writeln!(writer, "    addi sp, sp, -16")?;
         writeln!(writer, "    sd ra, 8(sp)")?;
@@ -21,10 +21,7 @@ impl RiscVFrame {
     }
 
     /// Generate function epilogue
-    pub fn generate_epilogue<W: std::io::Write>(
-        writer: &mut W,
-        stack_size: usize,
-    ) -> Result<(), std::io::Error> {
+    pub fn generate_epilogue<W: Write>(writer: &mut W, stack_size: usize) -> Result<(), Error> {
         // Deallocate stack space for local variables if needed
         if stack_size > 0 {
             writeln!(writer, "    addi sp, sp, {stack_size}")?;
@@ -39,11 +36,11 @@ impl RiscVFrame {
     }
 
     /// Like [`Self::generate_epilogue`], but jump to `target_sym` instead of `ret` (tail call).
-    pub fn generate_tail_epilogue<W: std::io::Write>(
+    pub fn generate_tail_epilogue<W: Write>(
         writer: &mut W,
         stack_size: usize,
         target_sym: &str,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<(), Error> {
         if stack_size > 0 {
             writeln!(writer, "    addi sp, sp, {stack_size}")?;
         }
