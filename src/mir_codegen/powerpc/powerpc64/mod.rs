@@ -16,7 +16,7 @@
 
 mod util;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::io::Write;
 use std::result::Result;
 use std::sync::Arc;
@@ -31,7 +31,9 @@ use crate::mir::{
     FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp,
     IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
 };
-use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
+use crate::mir_codegen::common::{
+    CodegenBase, assign_stack_slots, compile_functions_parallel, parallel_codegen_error,
+};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet, validate_module_call_parameters,
@@ -170,34 +172,7 @@ fn compile_single_function_ppc64(
     let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
 
     if settings.regalloc != RegallocStrategy::Incremental {
-        let mut def_regs: HashSet<VirtualReg> = HashSet::new();
-        let mut used_regs: HashSet<VirtualReg> = HashSet::new();
-        for block in &func.blocks {
-            for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(vreg) = dst
-                {
-                    def_regs.insert(*vreg);
-                }
-                for reg in inst.use_regs() {
-                    if let Register::Virtual(vreg) = reg {
-                        used_regs.insert(*vreg);
-                    }
-                }
-            }
-        }
-        for vreg in &def_regs {
-            if !stack_slots.contains_key(vreg) {
-                let slot_index = stack_slots.len();
-                stack_slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(slot_index));
-            }
-        }
-        for vreg in used_regs {
-            if !def_regs.contains(&vreg) && !stack_slots.contains_key(&vreg) {
-                let slot_index = stack_slots.len();
-                stack_slots.insert(vreg, Ppc64Frame::calculate_stack_offset(slot_index));
-            }
-        }
+        (stack_slots, _) = assign_stack_slots(func, Ppc64Frame::calculate_stack_offset);
         let pool = Ppc64RegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()

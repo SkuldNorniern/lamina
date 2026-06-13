@@ -30,7 +30,8 @@ use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::sync::Arc;
 
 use crate::mir_codegen::common::{
-    CodegenBase, compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
+    CodegenBase, assign_stack_slots, compile_functions_parallel, emit_print_format_section,
+    parallel_codegen_error,
 };
 
 /// MIR to x86_64 code generator implementing the `Codegen` trait.
@@ -160,37 +161,7 @@ fn compile_single_function_x86_64(
         X64RegAlloc::new(target_os)
     };
 
-    let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
-    let mut def_regs: HashSet<VirtualReg> = HashSet::new();
-    let mut used_regs: HashSet<VirtualReg> = HashSet::new();
-
-    for block in &func.blocks {
-        for inst in &block.instructions {
-            if let Some(dst) = inst.def_reg()
-                && let Register::Virtual(vreg) = dst
-            {
-                def_regs.insert(*vreg);
-            }
-            for reg in inst.use_regs() {
-                if let Register::Virtual(vreg) = reg {
-                    used_regs.insert(*vreg);
-                }
-            }
-        }
-    }
-
-    for vreg in &def_regs {
-        if !stack_slots.contains_key(vreg) {
-            let slot_index = stack_slots.len();
-            stack_slots.insert(*vreg, X86Frame::calculate_stack_offset(slot_index));
-        }
-    }
-    for vreg in used_regs {
-        if !def_regs.contains(&vreg) && !stack_slots.contains_key(&vreg) {
-            let slot_index = stack_slots.len();
-            stack_slots.insert(vreg, X86Frame::calculate_stack_offset(slot_index));
-        }
-    }
+    let (mut stack_slots, def_regs) = assign_stack_slots(func, X86Frame::calculate_stack_offset);
 
     if settings.regalloc != RegallocStrategy::Incremental {
         let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
