@@ -183,6 +183,34 @@ impl fmt::Display for TransformError {
     }
 }
 
+/// Reject functions too large for a pass to process in reasonable time.
+///
+/// Pass `usize::MAX` for `max_instructions_per_block` to skip the per-block check.
+pub(crate) fn check_function_size(
+    func: &Function,
+    pass: &'static str,
+    max_blocks: usize,
+    max_instructions_per_block: usize,
+) -> Result<(), TransformError> {
+    if func.blocks.len() > max_blocks {
+        return Err(TransformError::FunctionTooLarge {
+            pass,
+            count: func.blocks.len(),
+            limit: max_blocks,
+        });
+    }
+    for block in &func.blocks {
+        if block.instructions.len() > max_instructions_per_block {
+            return Err(TransformError::BlockTooLarge {
+                label: block.label.clone(),
+                count: block.instructions.len(),
+                limit: max_instructions_per_block,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Trait for MIR transformation passes.
 pub trait Transform {
     /// Unique name for this transform
