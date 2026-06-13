@@ -4,6 +4,7 @@
 use std::ffi::c_char;
 use std::mem;
 use std::panic::AssertUnwindSafe;
+use std::ffi::c_void;
 
 use crate::error::{clear_error, set_error};
 use crate::types::{LaminaJit, LaminaModule};
@@ -95,14 +96,14 @@ pub unsafe extern "C" fn lia_module_compile_jit(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_jit_get_function(
     jit: *const LaminaJit,
-    function_out: *mut *const std::ffi::c_void,
+    function_out: *mut *const c_void,
 ) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         if jit.is_null() || function_out.is_null() {
             set_error("jit or function_out is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        *function_out = (*jit).function_ptr as *const std::ffi::c_void;
+        *function_out = (*jit).function_ptr as *const c_void;
         clear_error();
         LaminaStatus::Ok
     }))
