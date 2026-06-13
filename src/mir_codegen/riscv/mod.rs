@@ -15,7 +15,9 @@ use crate::mir::{
     FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp, MirType,
     Module as MirModule, Register, ScalarType, Signature, VirtualReg,
 };
-use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
+use crate::mir_codegen::common::{
+    assign_stack_slots, compile_functions_parallel, parallel_codegen_error,
+};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
     capability::CapabilitySet, validate_module_call_parameters,
@@ -23,7 +25,7 @@ use crate::mir_codegen::{
 
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::mir_codegen::common::CodegenBase;
@@ -155,34 +157,7 @@ fn compile_single_function_riscv(
     let mut reg_alloc = RiscVRegAlloc::new(target_os);
 
     if settings.regalloc != RegallocStrategy::Incremental {
-        let mut def_regs: HashSet<VirtualReg> = HashSet::new();
-        let mut used_regs: HashSet<VirtualReg> = HashSet::new();
-        for block in &func.blocks {
-            for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(vreg) = dst
-                {
-                    def_regs.insert(*vreg);
-                }
-                for reg in inst.use_regs() {
-                    if let Register::Virtual(vreg) = reg {
-                        used_regs.insert(*vreg);
-                    }
-                }
-            }
-        }
-        for vreg in &def_regs {
-            if !stack_slots.contains_key(vreg) {
-                let slot_index = stack_slots.len();
-                stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(slot_index));
-            }
-        }
-        for vreg in used_regs {
-            if !def_regs.contains(&vreg) && !stack_slots.contains_key(&vreg) {
-                let slot_index = stack_slots.len();
-                stack_slots.insert(vreg, RiscVFrame::calculate_stack_offset(slot_index));
-            }
-        }
+        (stack_slots, _) = assign_stack_slots(func, RiscVFrame::calculate_stack_offset);
         let pool = RiscVRegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()

@@ -1,12 +1,12 @@
 //! Common code for MIR codegen backends.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::sync::{Arc, mpsc};
 use std::thread;
 
 use crate::error::LaminaError;
-use crate::mir::{Function, Global, MirType, Module as MirModule, Signature};
+use crate::mir::{Function, Global, MirType, Module as MirModule, Register, Signature, VirtualReg};
 use crate::mir_codegen::{CodegenError, CodegenOptions};
 use lamina_platform::TargetOperatingSystem;
 
@@ -14,6 +14,48 @@ pub fn parallel_codegen_error(error: impl std::fmt::Debug) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
         "Parallel compilation error: {error:?}"
     )))
+}
+
+/// Assign one stack slot per virtual register defined or used in `func`.
+///
+/// Defined registers are laid out first, then used-only registers, so the slot
+/// indices match the order the per-backend code previously produced. The byte
+/// offset for each slot index is computed by the backend-specific `offset_for_slot`.
+/// Returns the slot map together with the set of defined registers, which some
+/// backends need when emitting instructions.
+pub fn assign_stack_slots(
+    func: &Function,
+    offset_for_slot: impl Fn(usize) -> i32,
+) -> (HashMap<VirtualReg, i32>, HashSet<VirtualReg>) {
+    let mut def_regs: HashSet<VirtualReg> = HashSet::new();
+    let mut used_regs: HashSet<VirtualReg> = HashSet::new();
+    for block in &func.blocks {
+        for inst in &block.instructions {
+            if let Some(Register::Virtual(vreg)) = inst.def_reg() {
+                def_regs.insert(*vreg);
+            }
+            for reg in inst.use_regs() {
+                if let Register::Virtual(vreg) = reg {
+                    used_regs.insert(*vreg);
+                }
+            }
+        }
+    }
+
+    let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
+    for vreg in &def_regs {
+        if !stack_slots.contains_key(vreg) {
+            let slot_index = stack_slots.len();
+            stack_slots.insert(*vreg, offset_for_slot(slot_index));
+        }
+    }
+    for vreg in &used_regs {
+        if !def_regs.contains(vreg) && !stack_slots.contains_key(vreg) {
+            let slot_index = stack_slots.len();
+            stack_slots.insert(*vreg, offset_for_slot(slot_index));
+        }
+    }
+    (stack_slots, def_regs)
 }
 
 /// Base structure for codegen backends with common fields.
