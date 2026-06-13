@@ -1,6 +1,6 @@
 //! Common code for MIR codegen backends.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
 use std::sync::{Arc, mpsc};
 use std::thread;
@@ -23,12 +23,16 @@ pub fn parallel_codegen_error(error: impl std::fmt::Debug) -> LaminaError {
 /// offset for each slot index is computed by the backend-specific `offset_for_slot`.
 /// Returns the slot map together with the set of defined registers, which some
 /// backends need when emitting instructions.
+///
+/// Registers are collected into `BTreeSet`s so slot indices — and therefore the
+/// emitted stack offsets — are a deterministic function of the register ids,
+/// keeping codegen reproducible across runs.
 pub fn assign_stack_slots(
     func: &Function,
     offset_for_slot: impl Fn(usize) -> i32,
-) -> (HashMap<VirtualReg, i32>, HashSet<VirtualReg>) {
-    let mut def_regs: HashSet<VirtualReg> = HashSet::new();
-    let mut used_regs: HashSet<VirtualReg> = HashSet::new();
+) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>) {
+    let mut def_regs: BTreeSet<VirtualReg> = BTreeSet::new();
+    let mut used_regs: BTreeSet<VirtualReg> = BTreeSet::new();
     for block in &func.blocks {
         for inst in &block.instructions {
             if let Some(Register::Virtual(vreg)) = inst.def_reg() {
