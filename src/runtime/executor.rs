@@ -13,7 +13,6 @@ use crate::runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
 use std::arch::asm;
 use std::collections::HashMap;
 use std::env;
-use std::ptr::null;
 
 fn evaluate_operand(
     operand: &Operand,
@@ -521,7 +520,7 @@ mod tests {
     fn execute_jit_arg_count_mismatch_is_error() {
         let sig = Signature::new("fn");
         // SAFETY: error is triggered during argument validation before the pointer is called.
-        let result = unsafe { execute_jit_function(&sig, null(), Some(&[1, 2]), false, None) };
+        let result = unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1, 2]), false, None) };
         assert!(result.is_err());
     }
 
@@ -532,7 +531,7 @@ mod tests {
             MirType::Scalar(ScalarType::F32),
         )]);
         // SAFETY: error is triggered during type validation before the pointer is called.
-        let result = unsafe { execute_jit_function(&sig, null(), Some(&[1]), false, None) };
+        let result = unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1]), false, None) };
         assert!(result.is_err());
     }
 
@@ -540,7 +539,7 @@ mod tests {
     fn execute_jit_unsupported_return_type_is_error() {
         let sig = Signature::new("fn").with_return(MirType::Scalar(ScalarType::F64));
         // SAFETY: error is triggered during return-type validation before the pointer is called.
-        let result = unsafe { execute_jit_function(&sig, null(), None, false, None) };
+        let result = unsafe { execute_jit_function(&sig, std::ptr::null(), None, false, None) };
         assert!(result.is_err());
     }
 }
