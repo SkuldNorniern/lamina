@@ -12,8 +12,11 @@ use crate::error::LaminaError;
 use crate::mir::{Instruction, Module as MirModule};
 use crate::runtime::compiler::RuntimeCompiler;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+#[cfg(feature = "encoder")]
 use std::mem;
+#[cfg(feature = "encoder")]
 use std::thread::spawn;
+#[cfg(feature = "encoder")]
 use std::time::Duration;
 
 /// Configuration for the sandbox execution environment.
@@ -154,6 +157,7 @@ fn analyse_module(module: &MirModule, config: &SandboxConfig) -> Vec<String> {
 
 /// Sandbox for safely executing JIT-compiled code.
 pub struct Sandbox {
+    #[cfg_attr(not(feature = "encoder"), allow(dead_code))] // Read when encoder feature is enabled
     compiler: RuntimeCompiler,
     config: SandboxConfig,
 }

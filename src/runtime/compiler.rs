@@ -4,6 +4,7 @@
 
 use crate::error::LaminaError;
 use crate::mir::Module as MirModule;
+#[cfg(feature = "encoder")]
 use crate::mir_codegen::validate_module_call_parameters;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use ras::RasRuntime;
@@ -12,6 +13,7 @@ use std::mem;
 
 /// Runtime compiler for JIT compilation
 pub struct RuntimeCompiler {
+    #[cfg_attr(not(feature = "encoder"), allow(dead_code))] // Read when encoder feature is enabled
     target_arch: TargetArchitecture,
     #[allow(dead_code)] // Used when encoder feature is enabled
     runtime: RasRuntime,

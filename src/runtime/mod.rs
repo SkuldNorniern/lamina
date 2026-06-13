@@ -16,6 +16,7 @@ pub use executor::execute_jit_function;
 pub use macro_helpers::compile_lir_internal;
 pub use sandbox::{Sandbox, SandboxConfig};
 
+#[cfg(feature = "encoder")]
 use std::env;
 
 use crate::error::LaminaError;
@@ -25,6 +26,7 @@ use crate::mir_codegen::validate_module_call_parameters;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 // Re-export ras types for convenience
+#[cfg(feature = "encoder")]
 use ras::assembler::RasAssembler;
 pub use ras::{ExecutableMemory, RasRuntime};
 
