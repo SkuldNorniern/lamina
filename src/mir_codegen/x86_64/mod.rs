@@ -8,7 +8,7 @@ pub mod util;
 
 use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
 use std::result::Result;
 use util::*;
@@ -333,7 +333,7 @@ fn emit_instruction_x86_64(
     stack_size: usize,
     target_os: TargetOperatingSystem,
     func_name: &str,
-    def_regs: &HashSet<VirtualReg>,
+    def_regs: &BTreeSet<VirtualReg>,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
 ) -> Result<(), LaminaError> {
