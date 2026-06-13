@@ -159,8 +159,7 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
-        let block_labels: HashSet<&str> =
-            func.blocks.iter().map(|b| b.label.as_str()).collect();
+        let block_labels: HashSet<&str> = func.blocks.iter().map(|b| b.label.as_str()).collect();
         assert!(block_labels.contains("entry"));
         assert!(block_labels.contains("block1"));
         assert!(block_labels.contains("block2"));
@@ -181,8 +180,7 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed); // No unreachable blocks
 
-        let block_labels: HashSet<&str> =
-            func.blocks.iter().map(|b| b.label.as_str()).collect();
+        let block_labels: HashSet<&str> = func.blocks.iter().map(|b| b.label.as_str()).collect();
         assert!(block_labels.contains("entry"));
     }
 

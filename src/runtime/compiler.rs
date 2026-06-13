@@ -111,9 +111,9 @@ impl RuntimeCompiler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
     #[cfg(not(feature = "encoder"))]
     use crate::mir::Module;
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
     fn make_compiler() -> RuntimeCompiler {
         RuntimeCompiler::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
