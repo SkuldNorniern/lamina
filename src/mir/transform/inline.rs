@@ -94,7 +94,7 @@ impl ModuleInlining {
     }
 
     /// Analyze the entire module and perform function inlining
-    pub fn inline_functions(&self, module: &mut Module) -> Result<usize, String> {
+    pub fn inline_functions(&self, module: &mut Module) -> Result<usize, TransformError> {
         let mut inlined_count = 0;
         const MAX_INLINE_ITERATIONS: usize = 20;
         const MAX_TOTAL_INSTRUCTIONS: usize = 50_000;
@@ -105,9 +105,10 @@ impl ModuleInlining {
             .map(|f| f.blocks.iter().map(|b| b.instructions.len()).sum::<usize>())
             .sum();
         if total_instructions > MAX_TOTAL_INSTRUCTIONS {
-            return Err(format!(
-                "Module too large for inlining ({total_instructions} instructions, max {MAX_TOTAL_INSTRUCTIONS})"
-            ));
+            return Err(TransformError::InliningModuleTooLarge {
+                count: total_instructions,
+                limit: MAX_TOTAL_INSTRUCTIONS,
+            });
         }
 
         // Collect all function call sites
@@ -173,9 +174,9 @@ impl ModuleInlining {
         }
 
         if iterations >= MAX_INLINE_ITERATIONS {
-            return Err(format!(
-                "Inlining did not converge after {MAX_INLINE_ITERATIONS} iterations"
-            ));
+            return Err(TransformError::InliningStalled {
+                limit: MAX_INLINE_ITERATIONS,
+            });
         }
 
         Ok(inlined_count)
@@ -249,38 +250,52 @@ impl ModuleInlining {
     }
 
     /// Perform the actual inlining operation
-    fn perform_inline(&self, call_site: &CallSite, module: &mut Module) -> Result<(), String> {
+    fn perform_inline(
+        &self,
+        call_site: &CallSite,
+        module: &mut Module,
+    ) -> Result<(), TransformError> {
         // Clone the callee function to avoid borrowing issues
         let callee_func = module
             .functions
             .get(&call_site.callee)
-            .ok_or_else(|| format!("Callee function '{}' not found", call_site.callee))?
+            .ok_or_else(|| TransformError::NotFound {
+                kind: "callee function",
+                name: call_site.callee.clone(),
+            })?
             .clone();
 
         // should_inline already validated the function, so we can proceed
 
         // Extract call information before mutating
         let call_args = {
-            let caller_func = module
-                .functions
-                .get(&call_site.caller)
-                .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
+            let caller_func = module.functions.get(&call_site.caller).ok_or_else(|| {
+                TransformError::NotFound {
+                    kind: "caller function",
+                    name: call_site.caller.clone(),
+                }
+            })?;
 
             let call_block = caller_func
                 .blocks
                 .iter()
                 .find(|b| b.label == call_site.block_label)
-                .ok_or_else(|| format!("Call block '{}' not found", call_site.block_label))?;
+                .ok_or_else(|| TransformError::NotFound {
+                    kind: "call block",
+                    name: call_site.block_label.clone(),
+                })?;
 
             if call_site.instr_idx >= call_block.instructions.len() {
-                return Err("Call instruction index out of bounds".to_string());
+                return Err(TransformError::InvalidState(
+                    "call instruction index out of bounds",
+                ));
             }
 
             let call_instr = &call_block.instructions[call_site.instr_idx];
             if let Instruction::Call { args, .. } = call_instr {
                 args.clone()
             } else {
-                return Err("Expected call instruction".to_string());
+                return Err(TransformError::InvalidState("expected call instruction"));
             }
         };
 
@@ -304,29 +319,29 @@ impl ModuleInlining {
         module: &mut Module,
         callee_func: &Function,
         param_mapping: &HashMap<Register, Operand>,
-    ) -> Result<(), String> {
+    ) -> Result<(), TransformError> {
         // Get the call instruction details first
         let (call_result_reg, _call_instr) = {
-            let caller_func = module
-                .functions
-                .get(&call_site.caller)
-                .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
+            let caller_func = module.functions.get(&call_site.caller).ok_or_else(|| {
+                TransformError::NotFound {
+                    kind: "caller function",
+                    name: call_site.caller.clone(),
+                }
+            })?;
             let call_block = caller_func
                 .blocks
                 .iter()
                 .find(|b| b.label == call_site.block_label)
-                .ok_or_else(|| {
-                    format!(
-                        "Block '{}' not found in caller function '{}'",
-                        call_site.block_label, call_site.caller
-                    )
+                .ok_or_else(|| TransformError::NotFound {
+                    kind: "call block",
+                    name: call_site.block_label.clone(),
                 })?;
 
             let call_instr = call_block.instructions[call_site.instr_idx].clone();
             let call_result_reg = if let Instruction::Call { ret, .. } = &call_instr {
                 ret.clone()
             } else {
-                return Err("Expected call instruction".to_string());
+                return Err(TransformError::InvalidState("expected call instruction"));
             };
 
             (call_result_reg, call_instr)
@@ -336,16 +351,22 @@ impl ModuleInlining {
         let callee_block = callee_func
             .blocks
             .first()
-            .ok_or_else(|| "Callee function has no blocks".to_string())?;
+            .ok_or(TransformError::InvalidState(
+                "callee function has no blocks",
+            ))?;
 
         // Create new instructions for the inlined code
         let mut inlined_instructions = Vec::new();
 
         // Get caller function for register ID calculation
-        let caller_func = module
-            .functions
-            .get(&call_site.caller)
-            .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
+        let caller_func =
+            module
+                .functions
+                .get(&call_site.caller)
+                .ok_or_else(|| TransformError::NotFound {
+                    kind: "caller function",
+                    name: call_site.caller.clone(),
+                })?;
 
         // Process each instruction in the callee, substituting parameters and renaming registers
         for instr in &callee_block.instructions {
@@ -358,9 +379,14 @@ impl ModuleInlining {
                 // Replace return with assignment to call result register
                 if let Some(ref result_reg) = call_result_reg {
                     // Extract the return type from the function signature
-                    let return_type = *callee_func.sig.ret_ty.as_ref().ok_or_else(|| {
-                        "Function has return value but no return type in signature".to_string()
-                    })?;
+                    let return_type =
+                        *callee_func
+                            .sig
+                            .ret_ty
+                            .as_ref()
+                            .ok_or(TransformError::InvalidState(
+                                "function has return value but no return type in signature",
+                            ))?;
 
                     let mut assign_instr = Instruction::IntBinary {
                         op: IntBinOp::Add,
@@ -392,19 +418,19 @@ impl ModuleInlining {
         }
 
         // Now modify the caller function
-        let caller_func = module
-            .functions
-            .get_mut(&call_site.caller)
-            .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
+        let caller_func = module.functions.get_mut(&call_site.caller).ok_or_else(|| {
+            TransformError::NotFound {
+                kind: "caller function",
+                name: call_site.caller.clone(),
+            }
+        })?;
         let call_block = caller_func
             .blocks
             .iter_mut()
             .find(|b| b.label == call_site.block_label)
-            .ok_or_else(|| {
-                format!(
-                    "Block '{}' not found in caller function '{}'",
-                    call_site.block_label, call_site.caller
-                )
+            .ok_or_else(|| TransformError::NotFound {
+                kind: "call block",
+                name: call_site.block_label.clone(),
             })?;
 
         // Replace the call instruction with the inlined instructions
@@ -422,7 +448,7 @@ impl ModuleInlining {
         instr: &mut Instruction,
         param_mapping: &HashMap<Register, Operand>,
         caller_func: &Function,
-    ) -> Result<(), String> {
+    ) -> Result<(), TransformError> {
         // Generate unique register names to avoid conflicts
         let mut register_map: HashMap<Register, Register> = HashMap::new();
         let mut next_reg_id = self.find_max_register_id(caller_func) + 1;
@@ -563,13 +589,12 @@ impl ModuleInlining {
         &self,
         callee_func: &Function,
         call_args: &[Operand],
-    ) -> Result<HashMap<Register, Operand>, String> {
+    ) -> Result<HashMap<Register, Operand>, TransformError> {
         if callee_func.sig.params.len() != call_args.len() {
-            return Err(format!(
-                "Parameter count mismatch: expected {}, got {}",
-                callee_func.sig.params.len(),
-                call_args.len()
-            ));
+            return Err(TransformError::ParamCountMismatch {
+                expected: callee_func.sig.params.len(),
+                got: call_args.len(),
+            });
         }
 
         let mut mapping = HashMap::new();
@@ -591,7 +616,7 @@ impl ModuleInlining {
         param_mapping: &HashMap<Register, Operand>,
         suffix: &str,
         caller_max_reg: u32,
-    ) -> Result<Vec<Block>, String> {
+    ) -> Result<Vec<Block>, TransformError> {
         let mut renamed_blocks = Vec::new();
         let mut register_mapping = HashMap::new();
 
@@ -673,7 +698,7 @@ impl ModuleInlining {
         module: &mut Module,
         callee_func: &Function,
         param_mapping: &HashMap<Register, Operand>,
-    ) -> Result<(), String> {
+    ) -> Result<(), TransformError> {
         let inline_id = self.next_inline_id();
         let suffix = format!("_inline_{}_{}", call_site.callee, inline_id);
 
@@ -690,19 +715,21 @@ impl ModuleInlining {
         )?;
 
         if inlined_blocks.is_empty() {
-            return Err("Callee has no blocks".to_string());
+            return Err(TransformError::InvalidState("callee has no blocks"));
         }
 
         // Get call details and split block
-        let caller_func = module
-            .functions
-            .get_mut(&call_site.caller)
-            .ok_or_else(|| format!("Caller function '{}' not found", call_site.caller))?;
+        let caller_func = module.functions.get_mut(&call_site.caller).ok_or_else(|| {
+            TransformError::NotFound {
+                kind: "caller function",
+                name: call_site.caller.clone(),
+            }
+        })?;
         let call_block_idx = caller_func
             .blocks
             .iter()
             .position(|b| b.label == call_site.block_label)
-            .ok_or_else(|| "Call block not found".to_string())?;
+            .ok_or(TransformError::InvalidState("call block not found"))?;
 
         let call_block = &mut caller_func.blocks[call_block_idx];
 
@@ -711,7 +738,7 @@ impl ModuleInlining {
             if let Instruction::Call { ret, .. } = &call_block.instructions[call_site.instr_idx] {
                 ret.clone()
             } else {
-                return Err("Expected Call instruction".to_string());
+                return Err(TransformError::InvalidState("expected call instruction"));
             };
 
         // Split instructions
@@ -806,7 +833,7 @@ impl ModuleInlining {
         instr: &mut Instruction,
         register_mapping: &HashMap<Register, Register>,
         param_mapping: &HashMap<Register, Operand>,
-    ) -> Result<(), String> {
+    ) -> Result<(), TransformError> {
         match instr {
             Instruction::IntBinary { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
@@ -867,7 +894,7 @@ impl ModuleInlining {
         operand: &Operand,
         register_mapping: &HashMap<Register, Register>,
         param_mapping: &HashMap<Register, Operand>,
-    ) -> Result<Operand, String> {
+    ) -> Result<Operand, TransformError> {
         match operand {
             Operand::Register(reg) => {
                 if let Some(param_operand) = param_mapping.get(reg) {
@@ -886,7 +913,7 @@ impl ModuleInlining {
         &self,
         reg: &Register,
         register_mapping: &HashMap<Register, Register>,
-    ) -> Result<Register, String> {
+    ) -> Result<Register, TransformError> {
         if let Some(mapped) = register_mapping.get(reg) {
             Ok(mapped.clone())
         } else {
@@ -898,7 +925,7 @@ impl ModuleInlining {
         &self,
         addr: &AddressMode,
         register_mapping: &HashMap<Register, Register>,
-    ) -> Result<AddressMode, String> {
+    ) -> Result<AddressMode, TransformError> {
         match addr {
             AddressMode::BaseOffset { base, offset } => Ok(AddressMode::BaseOffset {
                 base: self.map_register(base, register_mapping)?,
