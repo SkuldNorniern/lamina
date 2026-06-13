@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         if target_for_extensions.operating_system == lamina_platform::TargetOperatingSystem::Windows
             && stem.extension().is_none()
         {
-            let mut stem_with_ext = stem.clone();
+            let mut stem_with_ext = stem;
             stem_with_ext.set_extension("exe");
             stem_with_ext
         } else {
@@ -167,7 +167,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 }
             };
-            let mut mir_asm_path = output_stem.clone();
+            let mut mir_asm_path = output_stem;
             mir_asm_path.set_extension(asm_extension);
 
             let mut out = Vec::<u8>::new();
@@ -356,7 +356,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 target.architecture,
                 target.operating_system,
             );
-            let mut final_output_path = output_stem.clone();
+            let mut final_output_path = output_stem;
             if !final_output_ext.is_empty() {
                 final_output_path.set_extension(final_output_ext);
             }

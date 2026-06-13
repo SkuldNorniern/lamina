@@ -520,7 +520,8 @@ mod tests {
     fn execute_jit_arg_count_mismatch_is_error() {
         let sig = Signature::new("fn");
         // SAFETY: error is triggered during argument validation before the pointer is called.
-        let result = unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1, 2]), false, None) };
+        let result =
+            unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1, 2]), false, None) };
         assert!(result.is_err());
     }
 
@@ -531,7 +532,8 @@ mod tests {
             MirType::Scalar(ScalarType::F32),
         )]);
         // SAFETY: error is triggered during type validation before the pointer is called.
-        let result = unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1]), false, None) };
+        let result =
+            unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1]), false, None) };
         assert!(result.is_err());
     }
 

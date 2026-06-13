@@ -270,11 +270,11 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     }
 
     let settings_arc = Arc::new(settings.clone());
-    let results = compile_functions_parallel(module, target_os, codegen_units, {
-        let settings_arc = settings_arc.clone();
-        move |name, func, os| compile_single_function_aarch64(name, func, os, settings_arc.as_ref())
-    })
-    .map_err(parallel_codegen_error)?;
+    let results =
+        compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
+            compile_single_function_aarch64(name, func, os, settings_arc.as_ref())
+        })
+        .map_err(parallel_codegen_error)?;
 
     for result in results {
         writer.write_all(&result.assembly)?;
