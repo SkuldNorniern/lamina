@@ -319,11 +319,11 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     writeln!(writer, "{}", abi.get_main_global())?;
 
     let settings_arc = Arc::new(settings.clone());
-    let results = compile_functions_parallel(module, target_os, codegen_units, {
-        let settings_arc = settings_arc.clone();
-        move |name, func, os| compile_single_function_x86_64(name, func, os, settings_arc.as_ref())
-    })
-    .map_err(parallel_codegen_error)?;
+    let results =
+        compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
+            compile_single_function_x86_64(name, func, os, settings_arc.as_ref())
+        })
+        .map_err(parallel_codegen_error)?;
 
     for result in results {
         writer.write_all(&result.assembly)?;

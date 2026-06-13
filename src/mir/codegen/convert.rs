@@ -28,6 +28,39 @@ use crate::ir::instruction::{MemoryOrdering as IRMemOrd, SimdOp as IRSimdOp};
 #[cfg(feature = "nightly")]
 use crate::mir::{MemoryOrdering, SimdOp};
 
+fn float_binary(
+    op: FloatBinOp,
+    ty: MirType,
+    dst: Register,
+    lhs: Operand,
+    rhs: Operand,
+) -> Instruction {
+    Instruction::FloatBinary {
+        op,
+        ty,
+        dst,
+        lhs,
+        rhs,
+    }
+}
+
+/// Map an IR binary op to its signed/integer MIR opcode. Float-applicable ops
+/// (Add/Sub/Mul/Div) on float types are handled separately by the caller.
+fn lower_int_binop(op: &IRBin) -> IntBinOp {
+    match op {
+        IRBin::Add => IntBinOp::Add,
+        IRBin::Sub => IntBinOp::Sub,
+        IRBin::Mul => IntBinOp::Mul,
+        IRBin::Div => IntBinOp::SDiv,
+        IRBin::Rem => IntBinOp::SRem,
+        IRBin::And => IntBinOp::And,
+        IRBin::Or => IntBinOp::Or,
+        IRBin::Xor => IntBinOp::Xor,
+        IRBin::Shl => IntBinOp::Shl,
+        IRBin::Shr => IntBinOp::AShr,
+    }
+}
+
 /// Resolve an IR value to a MIR operand, allocating a fresh GPR binding on first encounter.
 fn resolve_operand<'a>(
     v: &IRVal<'a>,
@@ -508,101 +541,22 @@ fn convert_instruction<'a>(
             let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
 
             let mir = match (op, *ty) {
-                (IRBin::Add, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: FloatBinOp::FAdd,
+                (IRBin::Add, IRPrim::F32 | IRPrim::F64) => {
+                    float_binary(FloatBinOp::FAdd, mir_ty, dst, lhs_op, rhs_op)
+                }
+                (IRBin::Sub, IRPrim::F32 | IRPrim::F64) => {
+                    float_binary(FloatBinOp::FSub, mir_ty, dst, lhs_op, rhs_op)
+                }
+                (IRBin::Mul, IRPrim::F32 | IRPrim::F64) => {
+                    float_binary(FloatBinOp::FMul, mir_ty, dst, lhs_op, rhs_op)
+                }
+                (IRBin::Div, IRPrim::F32 | IRPrim::F64) => {
+                    float_binary(FloatBinOp::FDiv, mir_ty, dst, lhs_op, rhs_op)
+                }
+                (op, _) => Instruction::IntBinary {
+                    op: lower_int_binop(op),
                     ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Sub, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: FloatBinOp::FSub,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Mul, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: FloatBinOp::FMul,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Div, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: FloatBinOp::FDiv,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Add, _) => Instruction::IntBinary {
-                    op: IntBinOp::Add,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Sub, _) => Instruction::IntBinary {
-                    op: IntBinOp::Sub,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Mul, _) => Instruction::IntBinary {
-                    op: IntBinOp::Mul,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Div, _) => Instruction::IntBinary {
-                    op: IntBinOp::SDiv,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Rem, _) => Instruction::IntBinary {
-                    op: IntBinOp::SRem,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::And, _) => Instruction::IntBinary {
-                    op: IntBinOp::And,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Or, _) => Instruction::IntBinary {
-                    op: IntBinOp::Or,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Xor, _) => Instruction::IntBinary {
-                    op: IntBinOp::Xor,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Shl, _) => Instruction::IntBinary {
-                    op: IntBinOp::Shl,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Shr, _) => Instruction::IntBinary {
-                    op: IntBinOp::AShr,
-                    ty: mir_ty,
-                    dst: dst.clone(),
+                    dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
@@ -1239,7 +1193,7 @@ fn convert_instruction<'a>(
                     Instruction::IntBinary {
                         op: IntBinOp::Add,
                         ty: MirType::Scalar(ScalarType::I64),
-                        dst: dst.clone(),
+                        dst,
                         lhs: Operand::Register(base),
                         rhs: Operand::Register(temp_scaled),
                     },
@@ -1332,7 +1286,7 @@ fn convert_instruction<'a>(
                     }
                     // Lea computes address of storage's stack slot into dst
                     Ok(vec![Instruction::Lea {
-                        dst: dst.clone(),
+                        dst,
                         base: storage,
                         offset: 0,
                     }])
