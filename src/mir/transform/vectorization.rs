@@ -473,7 +473,7 @@ impl AutoVectorization {
                         op: VectorOp::VSplat,
                         ty: MirType::Vector(vector_type),
                         dst: splat_reg.clone(),
-                        operands: vec![compute_rhs.clone()],
+                        operands: vec![compute_rhs],
                     },
                 );
                 Operand::Register(splat_reg)
@@ -486,7 +486,7 @@ impl AutoVectorization {
                         ty: MirType::Vector(vector_type),
                         dst: vector_rhs_reg.clone(),
                         addr: AddressMode::BaseOffset {
-                            base: base.clone(),
+                            base,
                             offset: offset
                                 + (MirType::Scalar(pattern.element_type).size_bytes()
                                     * vectorization_factor)
@@ -497,7 +497,7 @@ impl AutoVectorization {
                 );
                 Operand::Register(vector_rhs_reg)
             } else {
-                compute_rhs.clone()
+                compute_rhs
             };
 
             block.instructions[pattern.compute_idx + 1] = Instruction::VectorOp {
