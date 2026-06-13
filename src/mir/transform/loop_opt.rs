@@ -2,6 +2,7 @@
 
 use crate::mir::transform::{
     Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators,
+    check_function_size,
 };
 use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register};
 use std::cmp::Reverse;
@@ -596,16 +597,9 @@ impl Transform for LoopUnrolling {
 
 impl LoopUnrolling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        const MAX_BLOCKS: usize = 1000;
         const MAX_LOOPS_TO_UNROLL: usize = 10;
 
-        if func.blocks.len() > MAX_BLOCKS {
-            return Err(TransformError::FunctionTooLarge {
-                pass: "loop_unrolling",
-                count: func.blocks.len(),
-                limit: MAX_BLOCKS,
-            });
-        }
+        check_function_size(func, "loop_unrolling", 1000, usize::MAX)?;
 
         let mut changed = false;
 

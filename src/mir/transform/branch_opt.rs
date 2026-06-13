@@ -3,7 +3,9 @@
 use std::collections::{HashSet, VecDeque};
 
 use crate::mir::Function;
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
+use crate::mir::transform::{
+    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+};
 
 /// Branch optimization that eliminates unreachable branches.
 #[derive(Default)]
@@ -33,14 +35,7 @@ impl Transform for BranchOptimization {
 
 impl BranchOptimization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        const MAX_BLOCKS: usize = 1_000;
-        if func.blocks.len() > MAX_BLOCKS {
-            return Err(TransformError::FunctionTooLarge {
-                pass: "branch_optimization",
-                count: func.blocks.len(),
-                limit: MAX_BLOCKS,
-            });
-        }
+        check_function_size(func, "branch_optimization", 1_000, usize::MAX)?;
 
         if func.blocks.len() <= 1 {
             return Ok(false);
