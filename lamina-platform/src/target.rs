@@ -3,6 +3,8 @@
 use std::fmt;
 use std::str::FromStr;
 
+use crate::detection::{detect_host_architecture_only, detect_host_os};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Target {
     pub architecture: TargetArchitecture,
@@ -31,8 +33,6 @@ impl Target {
     /// println!("Host target: {}", host);
     /// ```
     pub fn detect_host() -> Self {
-        use crate::detection::{detect_host_architecture_only, detect_host_os};
-        use std::str::FromStr;
         let arch = detect_host_architecture_only();
         let os = detect_host_os();
         Self::new(
@@ -124,6 +124,8 @@ pub enum TargetOperatingSystem {
     Psp,
     Psx,
     Vita,
+    Orbis,
+    Prospero,
     #[cfg(feature = "nightly")]
     Artery,
     Unknown,
@@ -151,6 +153,8 @@ impl FromStr for TargetOperatingSystem {
             "psp" => Ok(Self::Psp),
             "psx" => Ok(Self::Psx),
             "vita" => Ok(Self::Vita),
+            "orbis" | "ps4" => Ok(Self::Orbis),
+            "prospero" | "ps5" => Ok(Self::Prospero),
             "unknown" => Ok(Self::Unknown),
             #[cfg(feature = "nightly")]
             "artery" => Ok(Self::Artery),
@@ -178,7 +182,7 @@ impl fmt::Display for TargetArchitecture {
             Self::Lisa => "lisa",
             Self::Unknown => "unknown",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -202,11 +206,13 @@ impl fmt::Display for TargetOperatingSystem {
             Self::Psp => "psp",
             Self::Psx => "psx",
             Self::Vita => "vita",
+            Self::Orbis => "orbis",
+            Self::Prospero => "prospero",
             #[cfg(feature = "nightly")]
             Self::Artery => "artery",
             Self::Unknown => "unknown",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -233,6 +239,8 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "arm32_ios",
     "arm32_watchos",
     "arm32_vita",
+    "x86_64_orbis",
+    "x86_64_prospero",
     "arx64_unknown",
     "wasm32_unknown",
     "wasm64_unknown",

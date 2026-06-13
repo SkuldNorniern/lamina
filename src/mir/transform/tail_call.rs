@@ -1,7 +1,9 @@
 //! Tail call optimization transform for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Operand, Register};
+use crate::mir::function::Signature;
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
+use crate::mir::types::{MirType, ScalarType};
+use crate::mir::{Block, Function, Immediate, Instruction, Operand, Register};
 
 /// Tail call optimization that converts tail calls into jumps.
 ///
@@ -27,22 +29,21 @@ impl Transform for TailCallOptimization {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl TailCallOptimization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         const MAX_BLOCK_INSTRUCTIONS: usize = 1_000;
         for block in &func.blocks {
             if block.instructions.len() > MAX_BLOCK_INSTRUCTIONS {
-                return Err(format!(
-                    "Block '{}' too large for tail call optimization ({} instructions, max {})",
-                    block.label,
-                    block.instructions.len(),
-                    MAX_BLOCK_INSTRUCTIONS
-                ));
+                return Err(TransformError::BlockTooLarge {
+                    label: block.label.clone(),
+                    count: block.instructions.len(),
+                    limit: MAX_BLOCK_INSTRUCTIONS,
+                });
             }
         }
 
@@ -75,11 +76,7 @@ impl TailCallOptimization {
     }
 
     /// Optimize tail calls within a single block
-    fn optimize_block_tail_calls(
-        &self,
-        func_sig: &crate::mir::function::Signature,
-        block: &mut Block,
-    ) -> bool {
+    fn optimize_block_tail_calls(&self, func_sig: &Signature, block: &mut Block) -> bool {
         let mut changed = false;
 
         // Find the last instruction in the block
@@ -115,11 +112,6 @@ impl TailCallOptimization {
             (Some(Operand::Register(ret_reg)), Some(call_reg)) => ret_reg == call_reg,
             // No return value from both
             (None, None) => true,
-            // Call has no result but function returns something - not a tail call
-            (_, None) => false,
-            // Call has result but function returns nothing - not a tail call
-            (None, Some(_)) => false,
-            // Return value doesn't match call result
             _ => false,
         }
     }
@@ -152,7 +144,7 @@ impl TailCallOptimization {
     /// signature from the call instruction's arguments and return value.
     fn is_tail_call_safe(
         &self,
-        func_sig: &crate::mir::function::Signature,
+        func_sig: &Signature,
         _call_name: &str,
         call_args: &[Operand],
         call_ret: &Option<Register>,
@@ -182,22 +174,22 @@ impl TailCallOptimization {
     }
 
     /// Check if an operand is compatible with a formal parameter type
-    fn is_compatible(&self, param_ty: crate::mir::types::MirType, arg: &Operand) -> bool {
+    fn is_compatible(&self, param_ty: MirType, arg: &Operand) -> bool {
         match arg {
             Operand::Register(_) => true, // Assume virtual registers match (optimistic)
             Operand::Immediate(imm) => {
                 // Check if immediate fits in the type
                 match (param_ty, imm) {
-                    (crate::mir::types::MirType::Scalar(s), _) => match (s, imm) {
-                        (crate::mir::types::ScalarType::I64, crate::mir::Immediate::I64(_)) => true,
-                        (crate::mir::types::ScalarType::I32, crate::mir::Immediate::I32(_)) => true,
-                        (crate::mir::types::ScalarType::I16, crate::mir::Immediate::I16(_)) => true,
-                        (crate::mir::types::ScalarType::I8, crate::mir::Immediate::I8(_)) => true,
+                    (MirType::Scalar(s), _) => match (s, imm) {
+                        (ScalarType::I64, Immediate::I64(_))
+                        | (ScalarType::I32, Immediate::I32(_))
+                        | (ScalarType::I16, Immediate::I16(_))
+                        | (ScalarType::I8, Immediate::I8(_)) => true,
                         // Allow smaller immediates to fit in larger types?
                         // Usually MIR expects exact type match for immediates
                         _ => false,
                     },
-                    (crate::mir::types::MirType::Vector(_), _) => false, // Immediate vectors not fully supported yet in this check
+                    (MirType::Vector(_), _) => false, // Immediate vectors not fully supported yet in this check
                 }
             }
         }
@@ -208,7 +200,9 @@ impl TailCallOptimization {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, Immediate, MirType, Operand, ScalarType, VirtualReg};
+    use crate::mir::{
+        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
+    };
 
     #[test]
     fn test_tail_call_detection() {
@@ -296,7 +290,7 @@ mod tests {
             })
             // Do something with the result
             .instr(Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
+                op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(1).into(),
                 lhs: Operand::Register(VirtualReg::gpr(0).into()),

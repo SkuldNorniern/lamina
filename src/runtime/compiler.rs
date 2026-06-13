@@ -4,13 +4,16 @@
 
 use crate::error::LaminaError;
 use crate::mir::Module as MirModule;
+#[cfg(feature = "encoder")]
 use crate::mir_codegen::validate_module_call_parameters;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use ras::RasRuntime;
 use std::collections::HashMap;
+use std::mem;
 
 /// Runtime compiler for JIT compilation
 pub struct RuntimeCompiler {
+    #[cfg_attr(not(feature = "encoder"), allow(dead_code))] // Read when encoder feature is enabled
     target_arch: TargetArchitecture,
     #[allow(dead_code)] // Used when encoder feature is enabled
     runtime: RasRuntime,
@@ -44,19 +47,18 @@ impl RuntimeCompiler {
         {
             validate_module_call_parameters(_module, self.target_arch)?;
             self.runtime.compile_to_memory(_module).map_err(|e| {
-                let error_msg = format!("{}", e);
+                let error_msg = format!("{e}");
                 if error_msg.contains("not yet implemented")
                     || error_msg.contains("Unsupported target")
                 {
                     LaminaError::ValidationError(format!(
                         "JIT compilation is not supported for this target (or the MIR uses an unsupported construct).\n\
-                             Error: {}\n\
+                             Error: {error_msg}\n\
                              JIT machine code is emitted only for x86_64 and AArch64.\n\
-                             Consider AOT compilation instead (run without --jit).",
-                        error_msg
+                             Consider AOT compilation instead (run without --jit)."
                     ))
                 } else {
-                    LaminaError::ValidationError(format!("Runtime compilation failed: {}", e))
+                    LaminaError::ValidationError(format!("Runtime compilation failed: {e}"))
                 }
             })
         }
@@ -92,7 +94,7 @@ impl RuntimeCompiler {
                     "ExecutableMemory has null ptr".to_string(),
                 ));
             }
-            let f: unsafe extern "C" fn() -> T = std::mem::transmute(ptr);
+            let f: unsafe extern "C" fn() -> T = mem::transmute(ptr);
             Ok(f)
         }
     }
@@ -105,5 +107,41 @@ impl RuntimeCompiler {
     /// Clear all cached code
     pub fn clear_cache(&mut self) {
         self.code_cache.clear();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[cfg(not(feature = "encoder"))]
+    use crate::mir::Module;
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+    fn make_compiler() -> RuntimeCompiler {
+        RuntimeCompiler::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+    }
+
+    #[test]
+    fn invalidate_on_empty_cache_does_not_panic() {
+        let mut compiler = make_compiler();
+        compiler.invalidate("nonexistent");
+    }
+
+    #[test]
+    fn clear_cache_on_empty_does_not_panic() {
+        let mut compiler = make_compiler();
+        compiler.clear_cache();
+    }
+
+    #[cfg(not(feature = "encoder"))]
+    #[test]
+    fn compile_without_encoder_returns_validation_error() {
+        let mut compiler = make_compiler();
+        let module = Module::new("test");
+        let result = compiler.compile(&module, None);
+        assert!(matches!(
+            result,
+            Err(crate::error::LaminaError::ValidationError(_))
+        ));
     }
 }

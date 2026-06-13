@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::regalloc::RegisterAllocator as MirRegisterAllocator;
+use crate::regalloc::{Allocation, LocalRegisterAllocator as MirRegisterAllocator};
 use lamina_mir::{Register, RegisterClass, VirtualReg};
 use lamina_platform::TargetOperatingSystem;
 
@@ -20,10 +20,16 @@ pub struct X64RegAlloc {
 }
 
 const SYSV_MAP_GPRS: &[&str] = &["r12", "r13", "r14", "r15", "rbx"];
-const SYSV_SCRATCH_GPRS: &[&str] = &["r10", "r11"];
+const SYSV_LEAF_MAP_GPRS: &[&str] = &["r12", "r13", "r14", "r15", "rbx", "r10", "r11"];
+const SYSV_SCRATCH_GPRS: &[&str] = &["r10", "r11"]; // keep as-is for non-leaf
+const SYSV_LEAF_SCRATCH_GPRS: &[&str] = &["rcx", "rdx"]; // for leaf functions
 
 const WIN64_MAP_GPRS: &[&str] = &["rbx", "rsi", "rdi", "r12", "r13", "r14", "r15"];
+const WIN64_LEAF_MAP_GPRS: &[&str] = &[
+    "rbx", "rsi", "rdi", "r12", "r13", "r14", "r15", "r10", "r11",
+];
 const WIN64_SCRATCH_GPRS: &[&str] = &["r10", "r11"];
+const WIN64_LEAF_SCRATCH_GPRS: &[&str] = &["rcx", "rdx"];
 
 impl Default for X64RegAlloc {
     fn default() -> Self {
@@ -66,6 +72,72 @@ impl X64RegAlloc {
             scratch_free,
             scratch_used: HashSet::new(),
         }
+    }
+
+    /// Creates a new register allocator for leaf functions (no calls), expanding the available
+    /// register pool by including r10/r11 as mappable GPRs since they won't be clobbered.
+    pub fn new_leaf(target_os: TargetOperatingSystem) -> Self {
+        let (map_gprs, scratch_gprs) = match target_os {
+            TargetOperatingSystem::Windows => (WIN64_LEAF_MAP_GPRS, WIN64_LEAF_SCRATCH_GPRS),
+            _ => (SYSV_LEAF_MAP_GPRS, SYSV_LEAF_SCRATCH_GPRS),
+        };
+        let mut free_gprs = VecDeque::new();
+        for &r in map_gprs {
+            free_gprs.push_back(r);
+        }
+        let mut scratch_free = VecDeque::new();
+        for &r in scratch_gprs {
+            scratch_free.push_back(r);
+        }
+        Self {
+            target_os,
+            free_gprs,
+            used_gprs: HashSet::new(),
+            vreg_to_preg: HashMap::new(),
+            scratch_free,
+            scratch_used: HashSet::new(),
+        }
+    }
+
+    /// GPRs available for global allocation, in the same order as the initial `free_gprs` deque.
+    pub fn gpr_pool_for_global_allocation(
+        target_os: TargetOperatingSystem,
+        leaf: bool,
+    ) -> Vec<&'static str> {
+        let map_gprs = match (target_os, leaf) {
+            (TargetOperatingSystem::Windows, true) => WIN64_LEAF_MAP_GPRS,
+            (TargetOperatingSystem::Windows, false) => WIN64_MAP_GPRS,
+            (_, true) => SYSV_LEAF_MAP_GPRS,
+            (_, false) => SYSV_MAP_GPRS,
+        };
+        map_gprs.to_vec()
+    }
+
+    /// Rebuild allocator state from a precomputed GPR plan (global linear scan or graph coloring).
+    pub fn from_global_plan(
+        target_os: TargetOperatingSystem,
+        leaf: bool,
+        plan: &HashMap<VirtualReg, Allocation<&'static str>>,
+    ) -> Self {
+        let mut s = if leaf {
+            Self::new_leaf(target_os)
+        } else {
+            Self::new(target_os)
+        };
+        for (&vreg, alloc) in plan {
+            if vreg.class != RegisterClass::Gpr {
+                continue;
+            }
+            if let Allocation::Register(phys) = alloc
+                && s.vreg_to_preg.insert(vreg, *phys).is_none()
+            {
+                s.used_gprs.insert(*phys);
+                if let Some(pos) = s.free_gprs.iter().position(|&p| p == *phys) {
+                    let _ = s.free_gprs.remove(pos);
+                }
+            }
+        }
+        s
     }
 
     /// Sets conservative mode for complex functions, using fewer registers to reduce pressure.
@@ -208,5 +280,90 @@ impl MirRegisterAllocator for X64RegAlloc {
 
     fn is_occupied(&self, phys: Self::PhysReg) -> bool {
         self.used_gprs.contains(&phys)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_linux_has_sysv_pool() {
+        let ra = X64RegAlloc::new(TargetOperatingSystem::Linux);
+        let pool = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
+        assert_eq!(ra.free_gprs.len(), pool.len());
+        for r in &pool {
+            assert!(ra.free_gprs.contains(r));
+        }
+    }
+
+    #[test]
+    fn new_windows_has_win64_pool() {
+        let ra = X64RegAlloc::new(TargetOperatingSystem::Windows);
+        let pool =
+            X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Windows, false);
+        assert_eq!(ra.free_gprs.len(), pool.len());
+    }
+
+    #[test]
+    fn ensure_mapping_returns_same_reg_for_same_vreg() {
+        let mut ra = X64RegAlloc::new_default();
+        let vreg = VirtualReg::gpr(0);
+        let first = ra.ensure_mapping(vreg);
+        let second = ra.ensure_mapping(vreg);
+        assert!(first.is_some());
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn alloc_and_free_scratch_cycle() {
+        let mut ra = X64RegAlloc::new_default();
+        let scratch = ra.alloc_scratch();
+        assert!(
+            scratch.is_some(),
+            "scratch should be available on fresh allocator"
+        );
+        let phys = scratch.unwrap();
+        assert!(ra.scratch_used.contains(phys));
+        ra.free_scratch(phys);
+        assert!(!ra.scratch_used.contains(phys));
+        assert!(ra.scratch_free.contains(&phys));
+    }
+
+    #[test]
+    fn conservative_mode_shrinks_pool() {
+        let mut ra = X64RegAlloc::new_default();
+        let full_size = ra.free_gprs.len();
+        ra.set_conservative_mode();
+        assert!(ra.free_gprs.len() < full_size);
+    }
+
+    #[test]
+    fn leaf_mode_expands_pool_vs_non_leaf() {
+        let non_leaf =
+            X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
+        let leaf = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, true);
+        assert!(leaf.len() > non_leaf.len());
+    }
+
+    #[test]
+    fn is_occupied_tracks_occupy_and_release() {
+        let mut ra = X64RegAlloc::new_default();
+        let phys = "rbx";
+        assert!(!ra.is_occupied(phys));
+        ra.occupy(phys);
+        assert!(ra.is_occupied(phys));
+        ra.release(phys);
+        assert!(!ra.is_occupied(phys));
+    }
+
+    #[test]
+    fn non_gpr_vreg_returns_none() {
+        let mut ra = X64RegAlloc::new_default();
+        let fp_vreg = VirtualReg {
+            id: 99,
+            class: RegisterClass::Fpr,
+        };
+        assert!(ra.ensure_mapping(fp_vreg).is_none());
     }
 }

@@ -1,7 +1,12 @@
 //! Loop optimization transforms for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, IntBinOp, IntCmpOp, Operand, Register};
+use crate::mir::transform::{
+    Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators,
+    check_function_size,
+};
+use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register};
+use std::cmp::Reverse;
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
 /// Loop invariant code motion that moves loop-invariant computations outside loops.
@@ -25,7 +30,7 @@ impl Transform for LoopInvariantCodeMotion {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
@@ -34,9 +39,7 @@ impl Transform for LoopInvariantCodeMotion {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests_licm {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
     #[test]
     fn test_licm_basic() {
@@ -130,7 +133,7 @@ mod tests_licm {
 }
 
 impl LoopInvariantCodeMotion {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
         let loops = self.find_loops(func);
@@ -163,7 +166,7 @@ impl LoopInvariantCodeMotion {
     fn find_loops(&self, func: &Function) -> Vec<LoopInfo> {
         let mut loops = Vec::new();
 
-        let dominators = self.calculate_dominators(func);
+        let dominators = calculate_dominators(func);
 
         for block in &func.blocks {
             for instr in &block.instructions {
@@ -202,10 +205,10 @@ impl LoopInvariantCodeMotion {
 
         for loop_info in loops {
             match merged_loops.entry(loop_info.header) {
-                std::collections::hash_map::Entry::Vacant(e) => {
+                Entry::Vacant(e) => {
                     e.insert(loop_info.blocks);
                 }
-                std::collections::hash_map::Entry::Occupied(mut e) => {
+                Entry::Occupied(mut e) => {
                     e.get_mut().extend(loop_info.blocks);
                 }
             }
@@ -229,69 +232,6 @@ impl LoopInvariantCodeMotion {
         } else {
             false
         }
-    }
-
-    fn calculate_dominators(&self, func: &Function) -> HashMap<String, HashSet<String>> {
-        let mut dominators: HashMap<String, HashSet<String>> = HashMap::new();
-        let all_blocks: HashSet<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
-
-        // Initialize: value for entry is {entry}, others are all blocks
-        for block in &func.blocks {
-            if block.label == func.entry {
-                let mut set = HashSet::new();
-                set.insert(block.label.clone());
-                dominators.insert(block.label.clone(), set);
-            } else {
-                dominators.insert(block.label.clone(), all_blocks.clone());
-            }
-        }
-
-        let mut changed = true;
-        while changed {
-            changed = false;
-
-            for block in &func.blocks {
-                if block.label == func.entry {
-                    continue;
-                }
-
-                // Intersection of dominators of all predecessors
-                let mut new_doms: Option<HashSet<String>> = None;
-
-                // Find predecessors
-                let preds: Vec<&Block> = func
-                    .blocks
-                    .iter()
-                    .filter(|pred| self.has_edge_to(func, &pred.label, &block.label))
-                    .collect();
-
-                if preds.is_empty() {
-                    continue;
-                }
-
-                for pred in preds {
-                    if let Some(pred_doms) = dominators.get(&pred.label) {
-                        if let Some(current_intersect) = &mut new_doms {
-                            current_intersect.retain(|d| pred_doms.contains(d));
-                        } else {
-                            new_doms = Some(pred_doms.clone());
-                        }
-                    }
-                }
-
-                let mut final_doms = new_doms.unwrap_or_default();
-                final_doms.insert(block.label.clone());
-
-                if let Some(current_doms) = dominators.get(&block.label)
-                    && final_doms != *current_doms
-                {
-                    dominators.insert(block.label.clone(), final_doms);
-                    changed = true;
-                }
-            }
-        }
-
-        dominators
     }
 
     fn analyze_loop(
@@ -357,23 +297,15 @@ impl LoopInvariantCodeMotion {
     }
 
     fn has_edge_to(&self, func: &Function, from: &str, to: &str) -> bool {
-        if let Some(block) = func.blocks.iter().find(|b| b.label == *from) {
-            for instr in &block.instructions {
-                match instr {
-                    Instruction::Jmp { target } if target == to => return true,
-                    Instruction::Br {
-                        true_target,
-                        false_target,
-                        ..
-                    } if true_target == to || false_target == to => return true,
-                    _ => {}
-                }
-            }
-        }
-        false
+        func.get_block(from)
+            .is_some_and(|b| b.successors().contains(&to))
     }
 
-    fn optimize_loop(&self, func: &mut Function, loop_info: &LoopInfo) -> Result<bool, String> {
+    fn optimize_loop(
+        &self,
+        func: &mut Function,
+        loop_info: &LoopInfo,
+    ) -> Result<bool, TransformError> {
         let mut changed = false;
 
         let invariant_instrs = self.find_invariant_instructions(func, loop_info)?;
@@ -390,7 +322,7 @@ impl LoopInvariantCodeMotion {
         &self,
         func: &Function,
         loop_info: &LoopInfo,
-    ) -> Result<Vec<(usize, usize)>, String> {
+    ) -> Result<Vec<(usize, usize)>, TransformError> {
         let mut invariant = Vec::new();
         let defs_in_loop = self.collect_defs_in_loop(func, loop_info);
 
@@ -497,7 +429,7 @@ impl LoopInvariantCodeMotion {
         func: &mut Function,
         loop_info: &LoopInfo,
         invariant_instrs: &[(usize, usize)],
-    ) -> Result<(), String> {
+    ) -> Result<(), TransformError> {
         if invariant_instrs.is_empty() {
             return Ok(());
         }
@@ -506,7 +438,7 @@ impl LoopInvariantCodeMotion {
             .blocks
             .iter()
             .position(|b| b.label == loop_info.header)
-            .ok_or_else(|| format!("Loop header '{}' not found", loop_info.header))?;
+            .ok_or(TransformError::InvalidState("loop header not found"))?;
 
         // Generate unique pre-header label to avoid conflicts
         let mut pre_header_label = format!("{}_pre", loop_info.header);
@@ -522,8 +454,8 @@ impl LoopInvariantCodeMotion {
         };
 
         let mut sorted_invariant = invariant_instrs.to_vec();
-        sorted_invariant.sort_by_key(|t| std::cmp::Reverse(t.1));
-        sorted_invariant.sort_by_key(|t| std::cmp::Reverse(t.0));
+        sorted_invariant.sort_by_key(|t| Reverse(t.1));
+        sorted_invariant.sort_by_key(|t| Reverse(t.0));
 
         sorted_invariant.dedup();
         let mut instructions_to_move = Vec::new();
@@ -658,23 +590,16 @@ impl Transform for LoopUnrolling {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl LoopUnrolling {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        const MAX_BLOCKS: usize = 1000;
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         const MAX_LOOPS_TO_UNROLL: usize = 10;
 
-        if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for loop unrolling ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
-        }
+        check_function_size(func, "loop_unrolling", 1000, usize::MAX)?;
 
         let mut changed = false;
 
@@ -846,10 +771,8 @@ impl LoopUnrolling {
         if let Instruction::IntCmp { op, lhs, rhs, .. } = cond_def {
             // Expect induction variable vs Constant
             let (reg, limit) = match (lhs, rhs) {
-                (Operand::Register(r), Operand::Immediate(crate::mir::Immediate::I64(c))) => {
-                    (r, *c)
-                }
-                (Operand::Immediate(crate::mir::Immediate::I64(_c)), Operand::Register(_r)) => {
+                (Operand::Register(r), Operand::Immediate(Immediate::I64(c))) => (r, *c),
+                (Operand::Immediate(Immediate::I64(_c)), Operand::Register(_r)) => {
                     // Reverse op if needed?
                     return None; // Simplify
                 }
@@ -864,7 +787,7 @@ impl LoopUnrolling {
             if let Instruction::IntBinary {
                 op: IntBinOp::Add,
                 lhs: Operand::Register(src),
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(step)),
+                rhs: Operand::Immediate(Immediate::I64(step)),
                 ..
             } = inc_def
                 && src == reg
@@ -879,9 +802,8 @@ impl LoopUnrolling {
                 //   Count = N.
                 // Support bound up to 16-32.
                 let count = match op {
-                    IntCmpOp::SLt | IntCmpOp::ULt => limit,
+                    IntCmpOp::SLt | IntCmpOp::ULt | IntCmpOp::Ne => limit,
                     IntCmpOp::SLe | IntCmpOp::ULe => limit + 1,
-                    IntCmpOp::Ne => limit, // i != N
                     _ => return None,
                 };
 
@@ -910,21 +832,12 @@ impl LoopUnrolling {
                 continue; // Latch is part of body but has no successors in loop (except header)
             }
             if let Some(block) = func.get_block(&current) {
-                let successors = block.successors();
-                for succ in successors {
+                for succ in block.successors() {
                     // To be in the loop, successor must eventually reach latch (or be latch)
                     // and not be the header (backedge handled elsewhere)
-                    if succ != header && !body.contains(&succ) {
-                        // Check if succ can reach latch?
-                        // This is expensive.
-                        // Simplified assumption: All successors of header that are not exit are in loop.
-                        // We already know exit_target from analyze_loop. But we don't have it here.
-                        // Actually, finding natural loop nodes is standard.
-                        // For this task, let's assume if we hit latch, stop.
-                        // If we are branching, we follow both.
-                        // This is heuristic.
-                        body.insert(succ.clone());
-                        queue.push(succ);
+                    if succ != header && !body.contains(succ) {
+                        body.insert(succ.to_owned());
+                        queue.push(succ.to_owned());
                     }
                 }
             }
@@ -944,7 +857,11 @@ impl LoopUnrolling {
         list
     }
 
-    fn unroll_loop(&self, func: &mut Function, loop_info: &UnrollableLoop) -> Result<bool, String> {
+    fn unroll_loop(
+        &self,
+        func: &mut Function,
+        loop_info: &UnrollableLoop,
+    ) -> Result<bool, TransformError> {
         // 1. Locate blocks
         let mut body_indices = Vec::new();
         for lbl in &loop_info.body_blocks {
@@ -982,7 +899,7 @@ impl LoopUnrolling {
                                 }
                             } else if loop_info.body_blocks.contains(target) {
                                 // Internal edge: Jump to same iteration's version
-                                *target = format!("{}_unroll_{}", target, i);
+                                *target = format!("{target}_unroll_{i}");
                             }
                             // Else: exit edge (break/return), keep as is
                         }
@@ -999,7 +916,7 @@ impl LoopUnrolling {
                                     *true_target = format!("{}_unroll_{}", loop_info.header, i + 1);
                                 }
                             } else if loop_info.body_blocks.contains(true_target) {
-                                *true_target = format!("{}_unroll_{}", true_target, i);
+                                *true_target = format!("{true_target}_unroll_{i}");
                             }
 
                             // Handle False target
@@ -1011,7 +928,7 @@ impl LoopUnrolling {
                                         format!("{}_unroll_{}", loop_info.header, i + 1);
                                 }
                             } else if loop_info.body_blocks.contains(false_target) {
-                                *false_target = format!("{}_unroll_{}", false_target, i);
+                                *false_target = format!("{false_target}_unroll_{i}");
                             }
                         }
                         _ => {}
@@ -1120,7 +1037,8 @@ impl LoopUnrolling {
 mod tests {
     use super::*;
     use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
+        AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
+        ScalarType, VirtualReg,
     };
 
     #[test]
@@ -1271,11 +1189,11 @@ mod tests {
             .instr(Instruction::Store {
                 ty: MirType::Scalar(ScalarType::I64),
                 src: Operand::Immediate(Immediate::I64(42)),
-                addr: crate::mir::AddressMode::BaseOffset {
+                addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(0).into(),
                     offset: 0,
                 },
-                attrs: crate::mir::MemoryAttrs::default(),
+                attrs: MemoryAttrs::default(),
             })
             .instr(Instruction::Br {
                 cond: VirtualReg::gpr(0).into(),

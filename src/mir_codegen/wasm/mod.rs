@@ -1,24 +1,29 @@
-pub mod abi;
-pub mod regalloc;
 pub mod util;
 
+use std::collections::{HashMap, HashSet};
 use std::fs;
+
 use std::io::Write;
+
+use crate::error::LaminaError;
 use std::result::Result;
 
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir::{
+    AddressMode, Function, Global, Instruction as MirInst, MirType, Module as MirModule, Register,
+    ScalarType, Signature, VirtualReg,
+};
+use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, assemble, capability::CapabilitySet,
 };
-use abi::WasmABI;
+
+use lamina_codegen::wasm::WasmABI;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use util::{
     emit_float_binary_op, emit_float_cmp_op, emit_float_unary_op, emit_int_binary_op,
     emit_int_cmp_op, load_fp_operand_wasm, load_operand_wasm, load_register_wasm,
     store_fp_to_register_wasm, store_to_register_wasm,
 };
-
-use crate::mir_codegen::common::CodegenBase;
 
 /// Trait-backed MIR ⇒ WebAssembly code generator.
 pub struct WasmCodegen<'a> {
@@ -48,7 +53,7 @@ impl<'a> WasmCodegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
         codegen_units: usize,
-    ) -> Result<(), crate::error::LaminaError> {
+    ) -> Result<(), LaminaError> {
         generate_mir_wasm_with_units(module, writer, self.base.target_os, codegen_units)
     }
 }
@@ -68,9 +73,9 @@ impl<'a> Codegen for WasmCodegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &std::collections::HashMap<String, crate::mir::MirType>,
-        globals: &std::collections::HashMap<String, crate::mir::Global>,
-        funcs: &std::collections::HashMap<String, crate::mir::Signature>,
+        types: &HashMap<String, MirType>,
+        globals: &HashMap<String, Global>,
+        funcs: &HashMap<String, Signature>,
         codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],
@@ -113,10 +118,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
         // Write WAT to temporary file
         let temp_wat = std::env::temp_dir().join(format!("lamina_wasm_{}.wat", std::process::id()));
         fs::write(&temp_wat, &wat_content).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!(
-                "Failed to write temporary WAT file: {}",
-                e
-            ))
+            CodegenError::InvalidCodegenOptions(format!("Failed to write temporary WAT file: {e}"))
         })?;
 
         // Convert WAT to binary WASM using wat2wasm
@@ -132,12 +134,12 @@ impl<'a> Codegen for WasmCodegen<'a> {
             self.base.verbose,
         )
         .map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("Failed to assemble WASM: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("Failed to assemble WASM: {e}"))
         })?;
 
         // Read binary WASM back into output buffer
         let wasm_binary = fs::read(&temp_wasm).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("Failed to read WASM binary: {}", e))
+            CodegenError::InvalidCodegenOptions(format!("Failed to read WASM binary: {e}"))
         })?;
 
         self.base.output = wasm_binary;
@@ -150,32 +152,29 @@ impl<'a> Codegen for WasmCodegen<'a> {
     }
 }
 
-use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
-
 fn compile_single_function_wasm(
     func_name: &str,
-    func: &crate::mir::Function,
+    func: &Function,
     target_os: TargetOperatingSystem,
 ) -> Result<Vec<u8>, CodegenError> {
-    use std::io::Write;
     let mut output = Vec::new();
     let abi = WasmABI::new(target_os);
 
     let mangled_name = abi.mangle_function_name(func_name);
-    writeln!(output, "  (func ${}", mangled_name)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+    writeln!(output, "  (func ${mangled_name}")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     for (i, _param) in func.sig.params.iter().enumerate() {
-        writeln!(output, "    (param $p{} i64)", i)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "    (param $p{i} i64)")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     if func.sig.ret_ty.is_some() {
         writeln!(output, "    (result i64)")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
-    let mut local_vregs = std::collections::HashSet::new();
+    let mut local_vregs = HashSet::new();
     for block in &func.blocks {
         for inst in &block.instructions {
             if let Some(dst) = inst.def_reg()
@@ -191,70 +190,69 @@ fn compile_single_function_wasm(
         }
     }
 
-    let mut vreg_to_local: std::collections::HashMap<crate::mir::VirtualReg, usize> =
-        std::collections::HashMap::new();
+    let mut vreg_to_local: HashMap<VirtualReg, usize> = HashMap::new();
     for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
         vreg_to_local.insert(*vreg, local_idx);
         writeln!(output, "{}", abi.generate_local_decl(local_idx))
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
-    let mut block_labels: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut block_labels: HashMap<&str, usize> = HashMap::new();
     for (idx, block) in func.blocks.iter().enumerate() {
         block_labels.insert(&block.label, idx);
     }
 
     writeln!(output, "    (local $pc i64)")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    i64.const 0")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    local.set $pc")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    (loop $dispatch_loop")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     let num_blocks = func.blocks.len();
     for i in (0..num_blocks).rev() {
-        writeln!(output, "      (block $block_{}", i)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        writeln!(output, "      (block $block_{i}")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     writeln!(output, "        local.get $pc")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "        i32.wrap_i64")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     write!(output, "        br_table")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     for i in 0..num_blocks {
-        write!(output, " {}", i)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        write!(output, " {i}")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
     writeln!(output, " 0")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     for block in func.blocks.iter() {
         writeln!(output, "      )")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
         writeln!(output, "      ;; Block: {}", block.label)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
         for inst in &block.instructions {
             emit_instruction_wasm(inst, &mut output, &vreg_to_local, &block_labels)
                 .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
         writeln!(output, "      br $dispatch_loop")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     writeln!(output, "    )")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     if func.sig.ret_ty.is_some() {
         writeln!(output, "    i64.const 0")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
     writeln!(output, "  )")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {}", e)))?;
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     Ok(output)
 }
@@ -263,7 +261,7 @@ pub fn generate_mir_wasm<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_wasm_with_units(module, writer, target_os, 1)
 }
 
@@ -272,7 +270,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::Wasm64)?;
     let abi = WasmABI::new(target_os);
 
@@ -286,8 +284,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
             let mangled_name = abi.mangle_function_name(func_name);
             write!(
                 writer,
-                "  (import \"env\" \"{}\" (func ${}",
-                func_name, mangled_name
+                "  (import \"env\" \"{func_name}\" (func ${mangled_name}"
             )?;
 
             // Parameters
@@ -348,9 +345,9 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 fn emit_instruction_wasm(
     inst: &MirInst,
     writer: &mut impl Write,
-    vreg_to_local: &std::collections::HashMap<crate::mir::VirtualReg, usize>,
-    block_labels: &std::collections::HashMap<&str, usize>,
-) -> Result<(), crate::error::LaminaError> {
+    vreg_to_local: &HashMap<VirtualReg, usize>,
+    block_labels: &HashMap<&str, usize>,
+) -> Result<(), LaminaError> {
     match inst {
         MirInst::IntBinary {
             op,
@@ -402,7 +399,7 @@ fn emit_instruction_wasm(
                 }
 
                 // Call the function
-                writeln!(writer, "      call ${}", name)?;
+                writeln!(writer, "      call ${name}")?;
 
                 // Note: WebAssembly functions return values on the stack
                 // If there's a return value, it's already on the stack
@@ -423,7 +420,7 @@ fn emit_instruction_wasm(
         } => {
             // Compute address: base + offset
             match addr {
-                crate::mir::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     // Load base address onto stack
                     load_register_wasm(base, writer, vreg_to_local)?;
 
@@ -435,26 +432,25 @@ fn emit_instruction_wasm(
 
                     // Emit load instruction based on type
                     match ty {
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
+                        MirType::Scalar(ScalarType::I8) => {
                             writeln!(writer, "      i64.load8_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => {
+                        MirType::Scalar(ScalarType::I16) => {
                             writeln!(writer, "      i64.load16_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
+                        MirType::Scalar(ScalarType::I32) => {
                             writeln!(writer, "      i64.load32_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                        | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
+                        MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => {
                             writeln!(writer, "      i64.load")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
+                        MirType::Scalar(ScalarType::F32) => {
                             writeln!(writer, "      f32.load")?;
                             // Convert to i64 for storage (WebAssembly uses separate stacks)
                             writeln!(writer, "      i32.reinterpret_f32")?;
                             writeln!(writer, "      i64.extend_i32_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => {
+                        MirType::Scalar(ScalarType::F64) => {
                             writeln!(writer, "      f64.load")?;
                             // Convert to i64 for storage
                             writeln!(writer, "      i64.reinterpret_f64")?;
@@ -465,7 +461,7 @@ fn emit_instruction_wasm(
                         }
                     }
                 }
-                crate::mir::AddressMode::BaseIndexScale {
+                AddressMode::BaseIndexScale {
                     base,
                     index,
                     scale,
@@ -492,25 +488,21 @@ fn emit_instruction_wasm(
 
                     // Emit load instruction based on type (same as BaseOffset)
                     match ty {
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
+                        MirType::Scalar(ScalarType::I8) => {
                             writeln!(writer, "      i64.load8_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => {
+                        MirType::Scalar(ScalarType::I16) => {
                             writeln!(writer, "      i64.load16_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
+                        MirType::Scalar(ScalarType::I32) => {
                             writeln!(writer, "      i64.load32_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                        | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
-                            writeln!(writer, "      i64.load")?;
-                        }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
+                        MirType::Scalar(ScalarType::F32) => {
                             writeln!(writer, "      f32.load")?;
                             writeln!(writer, "      i32.reinterpret_f32")?;
                             writeln!(writer, "      i64.extend_i32_u")?;
                         }
-                        crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => {
+                        MirType::Scalar(ScalarType::F64) => {
                             writeln!(writer, "      f64.load")?;
                             writeln!(writer, "      i64.reinterpret_f64")?;
                         }
@@ -537,7 +529,7 @@ fn emit_instruction_wasm(
 
             // Compute address: base + offset
             match addr {
-                crate::mir::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     // Load base address onto stack
                     load_register_wasm(base, writer, vreg_to_local)?;
 
@@ -547,7 +539,7 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.add")?;
                     }
                 }
-                crate::mir::AddressMode::BaseIndexScale {
+                AddressMode::BaseIndexScale {
                     base,
                     index,
                     scale,
@@ -580,26 +572,25 @@ fn emit_instruction_wasm(
             // Emit store instruction based on type
             // Stack now: address (bottom), value (top)
             match ty {
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => {
+                MirType::Scalar(ScalarType::I8) => {
                     writeln!(writer, "      i64.store8")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => {
+                MirType::Scalar(ScalarType::I16) => {
                     writeln!(writer, "      i64.store16")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => {
+                MirType::Scalar(ScalarType::I32) => {
                     writeln!(writer, "      i64.store32")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => {
+                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => {
                     writeln!(writer, "      i64.store")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => {
+                MirType::Scalar(ScalarType::F32) => {
                     // Convert i64 to f32
                     writeln!(writer, "      i32.wrap_i64")?;
                     writeln!(writer, "      f32.reinterpret_i32")?;
                     writeln!(writer, "      f32.store")?;
                 }
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => {
+                MirType::Scalar(ScalarType::F64) => {
                     // Convert i64 to f64
                     writeln!(writer, "      f64.reinterpret_i64")?;
                     writeln!(writer, "      f64.store")?;
@@ -624,13 +615,12 @@ fn emit_instruction_wasm(
         MirInst::Jmp { target } => {
             // Set PC to target block index and continue dispatch loop
             if let Some(&target_idx) = block_labels.get(target.as_str()) {
-                writeln!(writer, "        i64.const {}", target_idx)?;
+                writeln!(writer, "        i64.const {target_idx}")?;
                 writeln!(writer, "        local.set $pc")?;
                 writeln!(writer, "        br $dispatch_loop")?;
             } else {
-                return Err(crate::error::LaminaError::ValidationError(format!(
-                    "Unknown block label: {}",
-                    target
+                return Err(LaminaError::ValidationError(format!(
+                    "Unknown block label: {target}"
                 )));
             }
         }
@@ -645,23 +635,21 @@ fn emit_instruction_wasm(
             writeln!(writer, "        (if")?;
             writeln!(writer, "          (then")?;
             if let Some(&true_idx) = block_labels.get(true_target.as_str()) {
-                writeln!(writer, "            i64.const {}", true_idx)?;
+                writeln!(writer, "            i64.const {true_idx}")?;
                 writeln!(writer, "            local.set $pc")?;
             } else {
-                return Err(crate::error::LaminaError::ValidationError(format!(
-                    "Unknown block label: {}",
-                    true_target
+                return Err(LaminaError::ValidationError(format!(
+                    "Unknown block label: {true_target}"
                 )));
             }
             writeln!(writer, "          )")?;
             writeln!(writer, "          (else")?;
             if let Some(&false_idx) = block_labels.get(false_target.as_str()) {
-                writeln!(writer, "            i64.const {}", false_idx)?;
+                writeln!(writer, "            i64.const {false_idx}")?;
                 writeln!(writer, "            local.set $pc")?;
             } else {
-                return Err(crate::error::LaminaError::ValidationError(format!(
-                    "Unknown block label: {}",
-                    false_target
+                return Err(LaminaError::ValidationError(format!(
+                    "Unknown block label: {false_target}"
                 )));
             }
             writeln!(writer, "          )")?;
@@ -754,12 +742,12 @@ fn emit_instruction_wasm(
             load_register_wasm(value, writer, vreg_to_local)?;
             for (case_val, case_label) in cases {
                 if let Some(&target_idx) = block_labels.get(case_label.as_str()) {
-                    writeln!(writer, "        i64.const {}", case_val)?;
+                    writeln!(writer, "        i64.const {case_val}")?;
                     // Load value again for comparison (stack-machine needs two copies).
                     load_register_wasm(value, writer, vreg_to_local)?;
                     writeln!(writer, "        i64.eq")?;
                     writeln!(writer, "        (if (then")?;
-                    writeln!(writer, "          i64.const {}", target_idx)?;
+                    writeln!(writer, "          i64.const {target_idx}")?;
                     writeln!(writer, "          local.set $pc")?;
                     writeln!(writer, "          br $dispatch_loop")?;
                     writeln!(writer, "        ))")?;
@@ -767,20 +755,20 @@ fn emit_instruction_wasm(
             }
             // Fall through to default.
             if let Some(&default_idx) = block_labels.get(default.as_str()) {
-                writeln!(writer, "        i64.const {}", default_idx)?;
+                writeln!(writer, "        i64.const {default_idx}")?;
                 writeln!(writer, "        local.set $pc")?;
             }
             writeln!(writer, "        br $dispatch_loop")?;
         }
         MirInst::Comment { text } => {
-            writeln!(writer, "        ;; {}", text)?;
+            writeln!(writer, "        ;; {text}")?;
         }
         MirInst::Lea { dst, base, offset } => {
             // In WASM linear memory there are no general-purpose effective-address
             // computations on integers, so we materialise base + offset as i64.
             load_register_wasm(base, writer, vreg_to_local)?;
             if *offset != 0 {
-                writeln!(writer, "        i64.const {}", offset)?;
+                writeln!(writer, "        i64.const {offset}")?;
                 writeln!(writer, "        i64.add")?;
             }
             if let Register::Virtual(vreg) = dst {
@@ -795,7 +783,7 @@ fn emit_instruction_wasm(
                 let _ = i;
                 load_operand_wasm(arg, writer, vreg_to_local)?;
             }
-            writeln!(writer, "        call ${}", name)?;
+            writeln!(writer, "        call ${name}")?;
             writeln!(writer, "        return")?;
         }
         MirInst::Unreachable => {
@@ -805,12 +793,9 @@ fn emit_instruction_wasm(
             // No-op in AOT/WASM path.
         }
         other => {
-            return Err(crate::error::LaminaError::CodegenError(
-                CodegenError::UnsupportedFeature(format!(
-                    "WASM backend: instruction not yet supported: {}",
-                    other
-                )),
-            ));
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!("WASM backend: instruction not yet supported: {other}"),
+            )));
         }
     }
 

@@ -450,6 +450,7 @@ macro_rules! lamina {
 }
 
 use std::io::Write;
+use std::str::FromStr;
 
 /// Lamina compiler version string (from `CARGO_PKG_VERSION`).
 pub const COMPILER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -498,9 +499,8 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 ) -> Result<(), LaminaError> {
     let module = parser::parse_module(input_ir)?;
 
-    use std::str::FromStr;
     let target_obj = lamina_platform::Target::from_str(target)
-        .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{}': {}", target, e)))?;
+        .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{target}': {e}")))?;
 
     if !lamina_codegen::is_assembly_supported(target_obj.architecture, target_obj.operating_system)
     {
@@ -541,7 +541,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
         }
         _ => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                format!("Unsupported target architecture: {}", target),
+                format!("Unsupported target architecture: {target}"),
             )));
         }
     }

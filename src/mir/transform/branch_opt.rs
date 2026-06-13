@@ -1,8 +1,11 @@
 //! Branch optimization transform for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Function, Instruction};
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
+
+use crate::mir::Function;
+use crate::mir::transform::{
+    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+};
 
 /// Branch optimization that eliminates unreachable branches.
 #[derive(Default)]
@@ -25,21 +28,14 @@ impl Transform for BranchOptimization {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl BranchOptimization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        const MAX_BLOCKS: usize = 1_000;
-        if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for branch optimization ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
-        }
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
+        check_function_size(func, "branch_optimization", 1_000, usize::MAX)?;
 
         if func.blocks.len() <= 1 {
             return Ok(false);
@@ -48,15 +44,15 @@ impl BranchOptimization {
         let mut changed = false;
 
         let mut reachable_blocks = self.compute_reachable_blocks(func);
-        reachable_blocks.insert(func.entry.clone());
+        reachable_blocks.insert(&func.entry);
 
         let original_count = func.blocks.len();
 
-        let to_remove: HashSet<String> = func
+        let to_remove: HashSet<&str> = func
             .blocks
             .iter()
-            .filter(|b| b.label != func.entry && !reachable_blocks.contains(&b.label))
-            .map(|b| b.label.clone())
+            .filter(|b| b.label != func.entry && !reachable_blocks.contains(b.label.as_str()))
+            .map(|b| b.label.as_str())
             .collect();
 
         if to_remove.is_empty() {
@@ -65,15 +61,17 @@ impl BranchOptimization {
 
         // Only remove blocks that are not referenced by any surviving block.
         // This guards against BFS under-approximation leaving dangling edges.
-        let surviving_targets: HashSet<String> = func
+        let surviving_targets: HashSet<&str> = func
             .blocks
             .iter()
-            .filter(|b| !to_remove.contains(&b.label))
-            .flat_map(Self::block_successors)
+            .filter(|b| !to_remove.contains(b.label.as_str()))
+            .flat_map(lamina_mir::Block::successors)
             .collect();
 
-        let safe_to_remove: HashSet<String> =
-            to_remove.difference(&surviving_targets).cloned().collect();
+        let safe_to_remove: HashSet<String> = to_remove
+            .difference(&surviving_targets)
+            .map(|s| s.to_string())
+            .collect();
 
         if safe_to_remove.is_empty() {
             return Ok(false);
@@ -82,7 +80,7 @@ impl BranchOptimization {
         func.blocks.retain(|b| !safe_to_remove.contains(&b.label));
 
         if func.blocks.is_empty() {
-            return Err("Branch optimization would remove all blocks".to_string());
+            return Err(TransformError::WouldDestroyFunction);
         }
 
         if func.blocks.len() != original_count {
@@ -92,15 +90,13 @@ impl BranchOptimization {
         Ok(changed)
     }
 
-    fn compute_reachable_blocks(&self, func: &Function) -> HashSet<String> {
-        use std::collections::{HashSet, VecDeque};
-
-        let mut reachable = HashSet::new();
-        let mut worklist = VecDeque::new();
+    fn compute_reachable_blocks<'a>(&self, func: &'a Function) -> HashSet<&'a str> {
+        let mut reachable: HashSet<&str> = HashSet::new();
+        let mut worklist: VecDeque<&str> = VecDeque::new();
         const MAX_ITERATIONS: usize = 10_000;
 
-        reachable.insert(func.entry.clone());
-        worklist.push_back(func.entry.clone());
+        reachable.insert(&func.entry);
+        worklist.push_back(&func.entry);
 
         let mut iterations = 0;
         while let Some(current_label) = worklist.pop_front() {
@@ -109,9 +105,9 @@ impl BranchOptimization {
             }
             iterations += 1;
 
-            if let Some(block) = func.get_block(&current_label) {
-                for succ in Self::block_successors(block) {
-                    if reachable.insert(succ.clone()) {
+            if let Some(block) = func.get_block(current_label) {
+                for succ in block.successors() {
+                    if reachable.insert(succ) {
                         worklist.push_back(succ);
                     }
                 }
@@ -120,38 +116,15 @@ impl BranchOptimization {
 
         reachable
     }
-
-    fn block_successors(block: &crate::mir::Block) -> Vec<String> {
-        let mut targets = Vec::new();
-        for instr in &block.instructions {
-            match instr {
-                Instruction::Jmp { target } => targets.push(target.clone()),
-                Instruction::Br {
-                    true_target,
-                    false_target,
-                    ..
-                } => {
-                    targets.push(true_target.clone());
-                    targets.push(false_target.clone());
-                }
-                Instruction::Switch { cases, default, .. } => {
-                    targets.push(default.clone());
-                    for (_, case_target) in cases {
-                        targets.push(case_target.clone());
-                    }
-                }
-                _ => {}
-            }
-        }
-        targets
-    }
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, Instruction, MirType, Operand, ScalarType, VirtualReg};
+    use crate::mir::{
+        Block, FunctionBuilder, Immediate, Instruction, MirType, Operand, ScalarType, VirtualReg,
+    };
 
     #[test]
     fn test_remove_unreachable_blocks() {
@@ -165,15 +138,15 @@ mod tests {
             })
             .block("block1")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(1))),
+                value: Some(Operand::Immediate(Immediate::I64(1))),
             })
             .block("block2")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(2))),
+                value: Some(Operand::Immediate(Immediate::I64(2))),
             })
             .block("unreachable")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(3))),
+                value: Some(Operand::Immediate(Immediate::I64(3))),
             })
             .build();
 
@@ -181,11 +154,11 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
-        let block_labels: Vec<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
-        assert!(block_labels.contains(&"entry".to_string()));
-        assert!(block_labels.contains(&"block1".to_string()));
-        assert!(block_labels.contains(&"block2".to_string()));
-        assert!(!block_labels.contains(&"unreachable".to_string()));
+        let block_labels: HashSet<&str> = func.blocks.iter().map(|b| b.label.as_str()).collect();
+        assert!(block_labels.contains("entry"));
+        assert!(block_labels.contains("block1"));
+        assert!(block_labels.contains("block2"));
+        assert!(!block_labels.contains("unreachable"));
     }
 
     #[test]
@@ -194,7 +167,7 @@ mod tests {
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(0))),
+                value: Some(Operand::Immediate(Immediate::I64(0))),
             })
             .build();
 
@@ -202,8 +175,8 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(!changed); // No unreachable blocks
 
-        let block_labels: Vec<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
-        assert!(block_labels.contains(&"entry".to_string()));
+        let block_labels: HashSet<&str> = func.blocks.iter().map(|b| b.label.as_str()).collect();
+        assert!(block_labels.contains("entry"));
     }
 
     #[test]
@@ -212,16 +185,16 @@ mod tests {
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(0))),
+                value: Some(Operand::Immediate(Immediate::I64(0))),
             })
             .build();
 
         // Add many blocks to exceed limit
         for i in 0..2000 {
             let label = format!("block{}", i);
-            let mut block = crate::mir::Block::new(&label);
+            let mut block = Block::new(&label);
             block.push(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::Immediate::I64(0))),
+                value: Some(Operand::Immediate(Immediate::I64(0))),
             });
             func.add_block(block);
         }
@@ -356,7 +329,7 @@ mod tests {
             .build();
 
         // Add unreachable block that could confuse algorithm
-        let mut dead = crate::mir::Block::new("dead");
+        let mut dead = Block::new("dead");
         dead.push(Instruction::Jmp {
             target: "entry".to_string(), // Points TO entry
         });
@@ -386,12 +359,12 @@ mod tests {
                 "exit".to_string()
             };
 
-            let mut block = crate::mir::Block::new(&label);
+            let mut block = Block::new(&label);
             block.push(Instruction::Jmp { target: next });
             func.add_block(block);
         }
 
-        let mut exit = crate::mir::Block::new("exit");
+        let mut exit = Block::new("exit");
         exit.push(Instruction::Ret { value: None });
         func.add_block(exit);
 

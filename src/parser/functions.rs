@@ -1,12 +1,10 @@
 //! Function parsing for Lamina IR.
 
-use super::instructions::parse_instruction;
-use super::state::ParserState;
-use super::types::parse_type;
-use crate::{
-    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature, Label,
-    LaminaError,
-};
+use crate::ir::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature};
+use crate::parser::instructions::parse_instruction;
+use crate::parser::state::ParserState;
+use crate::parser::types::parse_type;
+use crate::{Label, LaminaError};
 use std::collections::{HashMap, HashSet};
 
 /// Parses function annotations.
@@ -29,19 +27,8 @@ pub fn parse_annotations(
                 "noinline" => FunctionAnnotation::NoInline,
                 "cold" => FunctionAnnotation::Cold,
                 _ => {
-                    let valid_annotations =
-                        ["inline", "export", "extern", "noreturn", "noinline", "cold"];
-                    let mut suggestions = Vec::new();
-                    const MAX_TYPO_DISTANCE: usize = 2;
-
-                    for valid in &valid_annotations {
-                        let distance = super::edit_distance(name, valid, Some(MAX_TYPO_DISTANCE));
-                        if distance <= MAX_TYPO_DISTANCE {
-                            suggestions.push(*valid);
-                        }
-                    }
-
-                    suggestions.sort_by_key(|&s| super::edit_distance(name, s, None));
+                    let valid = super::get_annotation_names();
+                    let suggestions = super::suggest_alternatives(name, valid);
 
                     let hint = if !suggestions.is_empty() {
                         if suggestions.len() == 1 {
@@ -50,50 +37,50 @@ pub fn parse_annotations(
                             format!("Did you mean @{}?", suggestions.join(" or @"))
                         }
                     } else {
-                        format!("Valid annotations are: {}", valid_annotations.join(", "))
+                        let list = valid
+                            .iter()
+                            .map(|s| format!("@{s}"))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        format!("Valid annotations are: {list}")
                     };
 
                     return Err(state.error(format!(
-                        "Unknown function annotation: @{}\n  Hint: {}",
-                        name, hint
+                        "Unknown function annotation: @{name}\n  Hint: {hint}"
                     )));
                 }
             };
 
             if !seen.insert(annotation.clone()) {
-                return Err(state.error(format!("Duplicate annotation: @{}", name)));
+                return Err(state.error(format!("Duplicate annotation: @{name}")));
             }
 
             if annotation == FunctionAnnotation::Inline
                 && seen.contains(&FunctionAnnotation::NoInline)
             {
                 return Err(state.error(
-                    "Conflicting annotations: @inline and @noinline cannot be used together"
-                        .to_string(),
+                    "Conflicting annotations: @inline and @noinline cannot be used together",
                 ));
             }
             if annotation == FunctionAnnotation::NoInline
                 && seen.contains(&FunctionAnnotation::Inline)
             {
                 return Err(state.error(
-                    "Conflicting annotations: @noinline and @inline cannot be used together"
-                        .to_string(),
+                    "Conflicting annotations: @noinline and @inline cannot be used together",
                 ));
             }
             if annotation == FunctionAnnotation::Extern
                 && seen.contains(&FunctionAnnotation::Export)
             {
                 return Err(state.error(
-                    "Conflicting annotations: @extern and @export cannot be used together"
-                        .to_string(),
+                    "Conflicting annotations: @extern and @export cannot be used together",
                 ));
             }
             if annotation == FunctionAnnotation::Export
                 && seen.contains(&FunctionAnnotation::Extern)
             {
                 return Err(state.error(
-                    "Conflicting annotations: @export and @extern cannot be used together"
-                        .to_string(),
+                    "Conflicting annotations: @export and @extern cannot be used together",
                 ));
             }
 
@@ -130,12 +117,12 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
         }
 
         if basic_blocks.insert(label, block).is_some() {
-            return Err(state.error(format!("Redefinition of basic block label: '{}'", label)));
+            return Err(state.error(format!("Redefinition of basic block label: '{label}'")));
         }
     }
 
     let entry_block = entry_block_label
-        .ok_or_else(|| state.error("Function must have at least one basic block".to_string()))?;
+        .ok_or_else(|| state.error("Function must have at least one basic block"))?;
 
     Ok(Function {
         name,
@@ -178,7 +165,7 @@ pub fn parse_param_list<'a>(
         let param_name = state.parse_value_identifier()?;
 
         if !param_names.insert(param_name) {
-            return Err(state.error(format!("Duplicate parameter name: %{}", param_name)));
+            return Err(state.error(format!("Duplicate parameter name: %{param_name}")));
         }
 
         params.push(FunctionParameter {
@@ -231,8 +218,7 @@ pub fn parse_basic_block<'a>(
 
     if instructions.is_empty() || instructions.last().is_none_or(|last| !last.is_terminator()) {
         return Err(state.error(format!(
-            "Basic block '{}' must end with a terminator instruction (ret, jmp, br)",
-            label
+            "Basic block '{label}' must end with a terminator instruction (ret, jmp, br)"
         )));
     }
 

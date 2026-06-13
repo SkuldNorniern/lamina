@@ -9,9 +9,14 @@
 //! - A basic memory-budget check based on estimated code + stack size.
 
 use crate::error::LaminaError;
-use crate::mir::Module as MirModule;
+use crate::mir::{Instruction, Module as MirModule};
 use crate::runtime::compiler::RuntimeCompiler;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+#[cfg(feature = "encoder")]
+use std::mem;
+#[cfg(feature = "encoder")]
+use std::thread::spawn;
+#[cfg(feature = "encoder")]
 use std::time::Duration;
 
 /// Configuration for the sandbox execution environment.
@@ -118,28 +123,25 @@ fn analyse_module(module: &MirModule, config: &SandboxConfig) -> Vec<String> {
         for block in &func.blocks {
             for inst in &block.instructions {
                 let callee = match inst {
-                    crate::mir::Instruction::Call { name, .. } => Some(name.as_str()),
-                    crate::mir::Instruction::TailCall { name, .. } => Some(name.as_str()),
+                    Instruction::Call { name, .. } => Some(name.as_str()),
+                    Instruction::TailCall { name, .. } => Some(name.as_str()),
                     _ => None,
                 };
                 let Some(name) = callee else { continue };
 
                 if !config.allow_syscalls && SYSCALL_SYMBOLS.contains(&name) {
                     violations.push(format!(
-                        "function '{}': calls disallowed syscall intrinsic '{}'",
-                        func_name, name
+                        "function '{func_name}': calls disallowed syscall intrinsic '{name}'"
                     ));
                 }
                 if !config.allow_file_io && FILE_IO_SYMBOLS.contains(&name) {
                     violations.push(format!(
-                        "function '{}': calls disallowed file-I/O symbol '{}'",
-                        func_name, name
+                        "function '{func_name}': calls disallowed file-I/O symbol '{name}'"
                     ));
                 }
                 if !config.allow_network && NETWORK_SYMBOLS.contains(&name) {
                     violations.push(format!(
-                        "function '{}': calls disallowed network symbol '{}'",
-                        func_name, name
+                        "function '{func_name}': calls disallowed network symbol '{name}'"
                     ));
                 }
             }
@@ -155,6 +157,7 @@ fn analyse_module(module: &MirModule, config: &SandboxConfig) -> Vec<String> {
 
 /// Sandbox for safely executing JIT-compiled code.
 pub struct Sandbox {
+    #[cfg_attr(not(feature = "encoder"), allow(dead_code))] // Read when encoder feature is enabled
     compiler: RuntimeCompiler,
     config: SandboxConfig,
 }
@@ -201,7 +204,7 @@ impl Sandbox {
                 .compiler
                 .compile(module, Some(function_name))
                 .map_err(|e| {
-                    LaminaError::ValidationError(format!("Sandbox compilation failed: {}", e))
+                    LaminaError::ValidationError(format!("Sandbox compilation failed: {e}"))
                 })?;
 
             // SAFETY: `memory` is kept alive for the entire duration of the
@@ -213,7 +216,7 @@ impl Sandbox {
                         "Sandbox: compiled function pointer is null".to_string(),
                     ));
                 }
-                std::mem::transmute(raw)
+                mem::transmute(raw)
             };
 
             match self.config.max_execution_time {
@@ -231,9 +234,8 @@ impl Sandbox {
                     // this stack frame (and therefore alive) until `recv_timeout`
                     // returns, which is before `memory` is dropped.
                     let fn_addr = fn_ptr as usize;
-                    std::thread::spawn(move || {
-                        let f: unsafe extern "C" fn() -> i64 =
-                            unsafe { std::mem::transmute(fn_addr) };
+                    spawn(move || {
+                        let f: unsafe extern "C" fn() -> i64 = unsafe { mem::transmute(fn_addr) };
                         let result = unsafe { f() };
                         let _ = tx.send(Ok(result));
                     });
@@ -241,8 +243,7 @@ impl Sandbox {
                     rx.recv_timeout(Duration::from_millis(timeout_ms))
                         .map_err(|_| {
                             LaminaError::ValidationError(format!(
-                                "Sandbox: execution timed out after {} ms",
-                                timeout_ms
+                                "Sandbox: execution timed out after {timeout_ms} ms"
                             ))
                         })?
                         .map_err(LaminaError::ValidationError)
@@ -274,8 +275,7 @@ impl Sandbox {
             let estimated = module.functions.len() * (4 * 1024 + 8 * 1024);
             if estimated > max_mem {
                 return Err(LaminaError::ValidationError(format!(
-                    "Sandbox: estimated memory {} B exceeds limit {} B",
-                    estimated, max_mem
+                    "Sandbox: estimated memory {estimated} B exceeds limit {max_mem} B"
                 )));
             }
         }
@@ -297,7 +297,7 @@ impl Sandbox {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, MirType, Module as MirModule, ScalarType};
+    use crate::mir::{FunctionBuilder, MirType, ScalarType};
 
     fn empty_module() -> MirModule {
         MirModule::new("sandbox_test")
@@ -308,12 +308,12 @@ mod tests {
         let f = FunctionBuilder::new("main_fn")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
-            .instr(crate::mir::Instruction::Call {
+            .instr(Instruction::Call {
                 name: callee.to_string(),
                 args: vec![],
                 ret: None,
             })
-            .instr(crate::mir::Instruction::Ret { value: None })
+            .instr(Instruction::Ret { value: None })
             .build();
         m.add_function(f);
         m

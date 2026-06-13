@@ -21,6 +21,8 @@ pub mod module;
 pub mod jit;
 
 use std::ffi::{CStr, c_char};
+use std::sync::OnceLock;
+use std::ffi::CString;
 
 // ---------------------------------------------------------------------------
 // Status codes
@@ -75,11 +77,11 @@ static ABI_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "\0");
 // Lamina compiler version — injected by build.rs from the workspace Cargo.toml.
 static COMPILER_VERSION: &str = concat!(env!("LAMINA_COMPILER_VERSION"), "\0");
 
-static HOST_TARGET: std::sync::OnceLock<std::ffi::CString> = std::sync::OnceLock::new();
+static HOST_TARGET: OnceLock<CString> = OnceLock::new();
 
 /// Returns the lamina-c ABI version string (null-terminated, static lifetime).
 ///
-/// Versioned independently from the Rust crate version.
+/// Versioned independently of the Rust crate version.
 #[unsafe(no_mangle)]
 pub extern "C" fn lia_version() -> *const c_char {
     ABI_VERSION.as_ptr() as *const c_char
@@ -99,7 +101,7 @@ pub extern "C" fn lia_host_target() -> *const c_char {
     HOST_TARGET
         .get_or_init(|| {
             let t = lamina_platform::Target::detect_host();
-            std::ffi::CString::new(t.to_str()).unwrap_or_default()
+            CString::new(t.to_str()).unwrap_or_default()
         })
         .as_ptr()
 }
@@ -140,11 +142,8 @@ pub(crate) fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
 }
 
 pub(crate) fn catch<F: FnOnce() -> LaminaStatus + std::panic::UnwindSafe>(f: F) -> LaminaStatus {
-    match std::panic::catch_unwind(f) {
-        Ok(status) => status,
-        Err(_) => {
-            error::set_error("internal panic in Lamina C API");
-            LaminaStatus::ErrorInternal
-        }
-    }
+    std::panic::catch_unwind(f).unwrap_or_else(|_| {
+        error::set_error("internal panic in Lamina C API");
+        LaminaStatus::ErrorInternal
+    })
 }

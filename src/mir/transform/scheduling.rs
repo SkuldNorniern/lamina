@@ -1,9 +1,11 @@
 //! Instruction scheduling transform for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Register};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
+use crate::mir::{Block, Function, Instruction, IntBinOp, Register};
 use std::cmp::Ordering;
+use std::cmp::max;
 use std::collections::{BinaryHeap, HashMap, HashSet};
+use std::mem;
 
 /// Instruction scheduling that reorders instructions to improve ILP.
 #[derive(Default)]
@@ -26,13 +28,13 @@ impl Transform for InstructionScheduling {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl InstructionScheduling {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
         const MAX_BLOCKS: usize = 500;
@@ -70,7 +72,7 @@ impl InstructionScheduling {
 
         // 4. Reorder Instructions
         if self.is_order_changed(&scheduled_indices) {
-            let old_instructions = std::mem::take(&mut block.instructions);
+            let old_instructions = mem::take(&mut block.instructions);
             let mut new_instructions = Vec::with_capacity(old_instructions.len());
             for &idx in &scheduled_indices {
                 new_instructions.push(old_instructions[idx].clone());
@@ -196,7 +198,7 @@ impl InstructionScheduling {
 
         if let Some(succs) = graph.edges.get(&node) {
             for &succ in succs {
-                max_succ_depth = std::cmp::max(
+                max_succ_depth = max(
                     max_succ_depth,
                     self.compute_depth(succ, graph, instructions, priorities, visited),
                 );
@@ -211,20 +213,14 @@ impl InstructionScheduling {
 
     fn get_latency(&self, instr: &Instruction) -> usize {
         match instr {
-            Instruction::Load { .. } => 3,
+            Instruction::Load { .. } | Instruction::FloatBinary { .. } => 3,
             Instruction::IntBinary {
-                op: crate::mir::IntBinOp::SDiv,
+                op: IntBinOp::SDiv | IntBinOp::UDiv,
                 ..
             } => 4,
             Instruction::IntBinary {
-                op: crate::mir::IntBinOp::UDiv,
-                ..
-            } => 4,
-            Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Mul,
-                ..
+                op: IntBinOp::Mul, ..
             } => 2,
-            Instruction::FloatBinary { .. } => 3,
             Instruction::Call { .. } => 5,
             _ => 1,
         }
@@ -333,7 +329,10 @@ impl PartialOrd for ScheduledItem {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, IntBinOp, MirType, Operand, ScalarType, VirtualReg};
+    use crate::mir::{
+        AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
+        ScalarType, VirtualReg,
+    };
 
     #[test]
     fn test_scheduling_latency_hiding() {
@@ -353,11 +352,11 @@ mod tests {
             .instr(Instruction::Load {
                 dst: VirtualReg::gpr(1).into(),
                 ty: MirType::Scalar(ScalarType::I64),
-                addr: crate::mir::AddressMode::BaseOffset {
+                addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(10).into(),
                     offset: 0,
                 },
-                attrs: crate::mir::instruction::MemoryAttrs::default(),
+                attrs: MemoryAttrs::default(),
             })
             // 1: Dependent Add
             .instr(Instruction::IntBinary {
@@ -365,23 +364,23 @@ mod tests {
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(2).into(),
                 lhs: Operand::Register(VirtualReg::gpr(1).into()),
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(1)),
+                rhs: Operand::Immediate(Immediate::I64(1)),
             })
             // 2: Independent Add
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(3).into(),
-                lhs: Operand::Immediate(crate::mir::Immediate::I64(5)),
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(5)),
+                lhs: Operand::Immediate(Immediate::I64(5)),
+                rhs: Operand::Immediate(Immediate::I64(5)),
             })
             // 3: Independent Add
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: VirtualReg::gpr(4).into(),
-                lhs: Operand::Immediate(crate::mir::Immediate::I64(6)),
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(6)),
+                lhs: Operand::Immediate(Immediate::I64(6)),
+                rhs: Operand::Immediate(Immediate::I64(6)),
             })
             .build();
 

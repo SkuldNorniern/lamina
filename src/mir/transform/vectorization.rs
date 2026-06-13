@@ -2,15 +2,13 @@
 //!
 //! This transform converts scalar operations in loops to SIMD vector
 //! operations. This is an O3 nightly/unstable feature.
-//!
-//! Requires `#[cfg(feature = "nightly")]` to compile.
 
-#![cfg(feature = "nightly")]
+use crate::mir::transform::calculate_dominators;
 
-use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::Function;
 use crate::mir::instruction::{AddressMode, FloatBinOp, Instruction, IntBinOp, Operand, VectorOp};
 use crate::mir::register::{Register, VirtualReg};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::types::{MirType, ScalarType, VectorLane, VectorType};
 use std::collections::{HashMap, HashSet};
 
@@ -38,13 +36,13 @@ impl Transform for AutoVectorization {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl AutoVectorization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
         // Find all loops in the function
@@ -64,7 +62,7 @@ impl AutoVectorization {
     /// Find all loops in the function using back-edge detection
     fn find_loops(&self, func: &Function) -> Vec<LoopInfo> {
         let mut loops = Vec::new();
-        let dominators = self.calculate_dominators(func);
+        let dominators = calculate_dominators(func);
 
         for block in &func.blocks {
             for instr in &block.instructions {
@@ -102,95 +100,6 @@ impl AutoVectorization {
         loops.dedup_by(|a, b| a.header == b.header);
 
         loops
-    }
-
-    /// Calculate dominator sets for all blocks
-    fn calculate_dominators(&self, func: &Function) -> HashMap<String, HashSet<String>> {
-        let mut dominators: HashMap<String, HashSet<String>> = HashMap::new();
-        let all_blocks: HashSet<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
-
-        // Initialize: entry block dominates itself
-        if let Some(entry) = func.blocks.first() {
-            let mut entry_doms = HashSet::new();
-            entry_doms.insert(entry.label.clone());
-            dominators.insert(entry.label.clone(), entry_doms);
-        }
-
-        // Initialize all other blocks to be dominated by all blocks
-        for block in &func.blocks {
-            if block.label != func.entry {
-                dominators.insert(block.label.clone(), all_blocks.clone());
-            }
-        }
-
-        // Iterative dataflow: block is dominated by intersection of predecessors' dominators
-        let mut changed = true;
-        let mut iterations = 0;
-        const MAX_ITERATIONS: usize = 100;
-
-        while changed && iterations < MAX_ITERATIONS {
-            changed = false;
-            iterations += 1;
-
-            for block in &func.blocks {
-                if block.label == func.entry {
-                    continue;
-                }
-
-                let preds = self.get_predecessors(func, &block.label);
-                if preds.is_empty() {
-                    continue;
-                }
-
-                let mut new_doms = if let Some(first_pred) = preds.first() {
-                    dominators
-                        .get(first_pred.as_str())
-                        .cloned()
-                        .unwrap_or_default()
-                } else {
-                    HashSet::new()
-                };
-
-                for pred in &preds {
-                    if let Some(pred_doms) = dominators.get(pred) {
-                        new_doms = new_doms.intersection(pred_doms).cloned().collect();
-                    }
-                }
-
-                new_doms.insert(block.label.clone());
-
-                let old_doms = dominators.get(&block.label).cloned();
-                if old_doms != Some(new_doms.clone()) {
-                    dominators.insert(block.label.clone(), new_doms);
-                    changed = true;
-                }
-            }
-        }
-
-        dominators
-    }
-
-    /// Get predecessors of a block
-    fn get_predecessors(&self, func: &Function, block_label: &str) -> Vec<String> {
-        let mut preds = Vec::new();
-        for block in &func.blocks {
-            for instr in &block.instructions {
-                match instr {
-                    Instruction::Jmp { target } if target == block_label => {
-                        preds.push(block.label.clone());
-                    }
-                    Instruction::Br {
-                        true_target,
-                        false_target,
-                        ..
-                    } if true_target == block_label || false_target == block_label => {
-                        preds.push(block.label.clone());
-                    }
-                    _ => {}
-                }
-            }
-        }
-        preds
     }
 
     /// Check if an edge is a back edge (target dominates source)
@@ -252,22 +161,10 @@ impl AutoVectorization {
         })
     }
 
-    /// Check if there's an edge from source to target
     fn has_edge_to(&self, func: &Function, source: &str, target: &str) -> bool {
-        if let Some(block) = func.get_block(source) {
-            for instr in &block.instructions {
-                match instr {
-                    Instruction::Jmp { target: t } if t == target => return true,
-                    Instruction::Br {
-                        true_target,
-                        false_target,
-                        ..
-                    } if true_target == target || false_target == target => return true,
-                    _ => {}
-                }
-            }
-        }
-        false
+        func.get_block(source)
+            .map(|b| b.successors().contains(&target))
+            .unwrap_or(false)
     }
 
     /// Try to vectorize a loop
@@ -275,7 +172,7 @@ impl AutoVectorization {
         &self,
         func: &mut Function,
         loop_info: &LoopInfo,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, TransformError> {
         // Find vectorizable patterns in the loop
         let patterns = self.find_vectorizable_patterns(func, loop_info);
 
@@ -503,10 +400,10 @@ impl AutoVectorization {
         &self,
         func: &mut Function,
         pattern: &VectorizationPattern,
-    ) -> Result<bool, String> {
-        let block = func
-            .get_block_mut(&pattern.block)
-            .ok_or_else(|| format!("Block {} not found", pattern.block))?;
+    ) -> Result<bool, TransformError> {
+        let block = func.get_block_mut(&pattern.block).ok_or_else(|| {
+            TransformError::Unsupported(format!("Block {} not found", pattern.block))
+        })?;
 
         if block.instructions.len() <= pattern.store_idx {
             return Ok(false);
@@ -576,7 +473,7 @@ impl AutoVectorization {
                         op: VectorOp::VSplat,
                         ty: MirType::Vector(vector_type),
                         dst: splat_reg.clone(),
-                        operands: vec![compute_rhs.clone()],
+                        operands: vec![compute_rhs],
                     },
                 );
                 Operand::Register(splat_reg)
@@ -589,7 +486,7 @@ impl AutoVectorization {
                         ty: MirType::Vector(vector_type),
                         dst: vector_rhs_reg.clone(),
                         addr: AddressMode::BaseOffset {
-                            base: base.clone(),
+                            base,
                             offset: offset
                                 + (MirType::Scalar(pattern.element_type).size_bytes()
                                     * vectorization_factor)
@@ -600,7 +497,7 @@ impl AutoVectorization {
                 );
                 Operand::Register(vector_rhs_reg)
             } else {
-                compute_rhs.clone()
+                compute_rhs
             };
 
             block.instructions[pattern.compute_idx + 1] = Instruction::VectorOp {
@@ -637,13 +534,12 @@ impl AutoVectorization {
     }
 
     /// Get vector type for a scalar type
-    fn get_vector_type_for_scalar(&self, scalar: ScalarType) -> Result<VectorType, String> {
+    fn get_vector_type_for_scalar(&self, scalar: ScalarType) -> Result<VectorType, TransformError> {
         let lane = self.scalar_to_vector_lane(scalar)?;
         Ok(VectorType::V128(lane))
     }
 
-    /// Convert scalar type to vector lane type
-    fn scalar_to_vector_lane(&self, scalar: ScalarType) -> Result<VectorLane, String> {
+    fn scalar_to_vector_lane(&self, scalar: ScalarType) -> Result<VectorLane, TransformError> {
         match scalar {
             ScalarType::I8 => Ok(VectorLane::I8),
             ScalarType::I16 => Ok(VectorLane::I16),
@@ -651,19 +547,22 @@ impl AutoVectorization {
             ScalarType::I64 => Ok(VectorLane::I64),
             ScalarType::F32 => Ok(VectorLane::F32),
             ScalarType::F64 => Ok(VectorLane::F64),
-            _ => Err(format!("Cannot vectorize type {:?}", scalar)),
+            _ => Err(TransformError::Unsupported(format!(
+                "cannot vectorize type {scalar:?}"
+            ))),
         }
     }
 
-    /// Convert integer binary operation to vector operation
-    fn int_binop_to_vector_op(&self, op: IntBinOp) -> Result<VectorOp, String> {
+    fn int_binop_to_vector_op(&self, op: IntBinOp) -> Result<VectorOp, TransformError> {
         match op {
             IntBinOp::Add => Ok(VectorOp::VAdd),
             IntBinOp::Sub => Ok(VectorOp::VSub),
             IntBinOp::Mul => Ok(VectorOp::VMul),
             IntBinOp::And => Ok(VectorOp::VAnd),
             IntBinOp::Or => Ok(VectorOp::VOr),
-            _ => Err(format!("Cannot vectorize operation {:?}", op)),
+            _ => Err(TransformError::Unsupported(format!(
+                "cannot vectorize operation {op:?}"
+            ))),
         }
     }
 
@@ -700,9 +599,7 @@ struct VectorizationPattern {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::ir;
-    use crate::ir::builder::IRBuilder;
-    use crate::mir;
+    use crate::{ir, mir};
 
     #[test]
     fn test_find_loops_simple() {

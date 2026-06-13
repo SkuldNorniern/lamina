@@ -1,98 +1,51 @@
-//! Error types for the Lamina compiler.
-//!
-//! This module defines the error types used throughout the compiler pipeline,
-//! from parsing through code generation.
-//!
-//! ## Error Categories
-//!
-//! - **ParsingError**: Errors encountered while parsing IR text into structured data.
-//!   These include syntax errors, unexpected tokens, and malformed constructs.
-//!
-//! - **ValidationError**: Errors that occur when validating the IR structure.
-//!   These include undefined types, missing declarations, and type mismatches.
-//!
-//! - **CodegenError**: Errors during code generation, such as unsupported operations
-//!   or target-specific limitations.
-//!
-//! - **MirError**: Errors during MIR (Machine Intermediate Representation) conversion
-//!   or MIR-based code generation.
-//!
-//! - **IoError**: File I/O errors when reading or writing files.
-//!
-//! - **Utf8Error**: UTF-8 encoding errors when processing text.
-//!
-//! - **InternalError**: Internal compiler errors that indicate bugs in the compiler itself.
-//!
-//! ## Error Message Guidelines
-//!
-//! Error messages should be:
-//! - **Clear**: Explain what went wrong in plain language
-//! - **Actionable**: Suggest how to fix the issue when possible
-//! - **Contextual**: Include relevant information like type names, line numbers, etc.
-//! - **User-friendly**: Avoid technical jargon when possible
-//!
-//! ## Example
-//!
-//! ```rust
-//! use lamina::LaminaError;
-//!
-//! // Good error message
-//! let err = LaminaError::ValidationError(
-//!     "Type 'MyType' is not defined. Please declare it with 'type MyType = ...' before use".to_string()
-//! );
-//!
-//! // Bad error message (too technical, no guidance)
-//! let err = LaminaError::ValidationError(
-//!     "Type 'MyType' not found in type declarations - this indicates an invalid module".to_string()
-//! );
-//! ```
+//! Error types for the Lamina compiler pipeline.
 
 use crate::mir::codegen::FromIRError;
 use crate::mir_codegen::CodegenError;
-use std::error::Error;
 use std::fmt;
+use std::io::Error;
 use std::string::FromUtf8Error;
 
-/// Main error type for the Lamina compiler.
-///
-/// All possible errors that can occur during compilation.
-/// including parsing, validation, code generation, and I/O errors.
+/// Top-level error type covering all compiler pipeline stages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LaminaError {
-    /// Errors encountered during IR parsing.
+    /// Syntax or structural error while parsing IR text.
     ParsingError(String),
-    /// Errors during code generation.
+    /// Target-specific code generation failure.
     CodegenError(CodegenError),
-    /// Errors during MIR conversion or MIR-based code generation.
+    /// Error during IR→MIR lowering or MIR-level code generation.
     MirError(String),
-    /// Validation errors for IR or intermediate representations.
+    /// Semantic error: undefined types, missing declarations, type mismatches.
     ValidationError(String),
-    /// I/O errors when reading or writing files.
+    /// File I/O failure.
     IoError(String),
-    /// UTF-8 encoding errors.
+    /// Input was not valid UTF-8.
     Utf8Error(String),
-    /// Internal compiler errors indicating bugs.
+    /// Compiler bug — should never reach the caller.
     InternalError(String),
+    /// Failure during interpreter or JIT execution.
+    RuntimeError(String),
 }
 
 impl fmt::Display for LaminaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            LaminaError::ParsingError(msg) => write!(f, "Parsing Error: {}", msg),
-            LaminaError::CodegenError(msg) => write!(f, "Codegen Error: {}", msg),
-            LaminaError::MirError(msg) => write!(f, "MIR Error: {}", msg),
-            LaminaError::ValidationError(msg) => write!(f, "Validation Error: {}", msg),
-            LaminaError::IoError(msg) => write!(f, "IO Error: {}", msg),
-            LaminaError::Utf8Error(msg) => write!(f, "UTF8 Error: {}", msg),
-            LaminaError::InternalError(msg) => write!(f, "Internal Error: {}", msg),
+            LaminaError::ParsingError(msg) => write!(f, "Parsing Error: {msg}"),
+            LaminaError::CodegenError(msg) => write!(f, "Codegen Error: {msg}"),
+            LaminaError::MirError(msg) => write!(f, "MIR Error: {msg}"),
+            LaminaError::ValidationError(msg) => write!(f, "Validation Error: {msg}"),
+            LaminaError::IoError(msg) => write!(f, "IO Error: {msg}"),
+            LaminaError::Utf8Error(msg) => write!(f, "UTF8 Error: {msg}"),
+            LaminaError::InternalError(msg) => write!(f, "Internal Error: {msg}"),
+            LaminaError::RuntimeError(msg) => write!(f, "Runtime Error: {msg}"),
         }
     }
 }
 
-impl Error for LaminaError {}
+impl std::error::Error for LaminaError {}
 
-impl From<std::io::Error> for LaminaError {
-    fn from(err: std::io::Error) -> Self {
+impl From<Error> for LaminaError {
+    fn from(err: Error) -> Self {
         LaminaError::IoError(err.to_string())
     }
 }
@@ -103,16 +56,74 @@ impl From<FromUtf8Error> for LaminaError {
     }
 }
 
-/// Convert a CodegenError to LaminaError (for gradual migration)
 impl From<CodegenError> for LaminaError {
     fn from(err: CodegenError) -> Self {
         LaminaError::CodegenError(err)
     }
 }
 
-/// Convert a FromIRError to LaminaError
 impl From<FromIRError> for LaminaError {
     fn from(err: FromIRError) -> Self {
-        LaminaError::MirError(format!("{}", err))
+        LaminaError::MirError(format!("{err}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::ErrorKind;
+
+    #[test]
+    fn display_includes_variant_prefix() {
+        assert!(
+            LaminaError::ParsingError("x".into())
+                .to_string()
+                .starts_with("Parsing Error:")
+        );
+        assert!(
+            LaminaError::MirError("x".into())
+                .to_string()
+                .starts_with("MIR Error:")
+        );
+        assert!(
+            LaminaError::ValidationError("x".into())
+                .to_string()
+                .starts_with("Validation Error:")
+        );
+        assert!(
+            LaminaError::IoError("x".into())
+                .to_string()
+                .starts_with("IO Error:")
+        );
+        assert!(
+            LaminaError::Utf8Error("x".into())
+                .to_string()
+                .starts_with("UTF8 Error:")
+        );
+        assert!(
+            LaminaError::InternalError("x".into())
+                .to_string()
+                .starts_with("Internal Error:")
+        );
+        assert!(
+            LaminaError::RuntimeError("x".into())
+                .to_string()
+                .starts_with("Runtime Error:")
+        );
+    }
+
+    #[test]
+    fn from_io_error_wraps_message() {
+        let io_err = Error::new(ErrorKind::NotFound, "file missing");
+        let lamina_err = LaminaError::from(io_err);
+        assert!(matches!(lamina_err, LaminaError::IoError(_)));
+        assert!(lamina_err.to_string().contains("file missing"));
+    }
+
+    #[test]
+    fn from_utf8_error_wraps_message() {
+        let utf8_err = String::from_utf8(vec![0xFF]).unwrap_err();
+        let lamina_err = LaminaError::from(utf8_err);
+        assert!(matches!(lamina_err, LaminaError::Utf8Error(_)));
     }
 }

@@ -1,15 +1,15 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod tests {
-    use super::super::super::function::FunctionAnnotation;
+    use crate::builder::IRBuilder;
+    use crate::builder::values::*;
+    use crate::function::FunctionAnnotation;
     #[cfg(feature = "nightly")]
-    use super::super::super::instruction::SimdOp;
-    use super::super::super::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
+    use crate::instruction::SimdOp;
+    use crate::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
     #[cfg(feature = "nightly")]
-    use super::super::super::module::ModuleAnnotation;
-    use super::super::super::types::{Literal, PrimitiveType, Type};
-    use super::super::IRBuilder;
-    use super::super::values::*;
+    use crate::module::ModuleAnnotation;
+    use crate::types::{Literal, PrimitiveType, StructField, Type};
 
     #[test]
     fn test_build_simple_function() {
@@ -512,11 +512,11 @@ mod tests {
             .alloc_stack(
                 "point",
                 Type::Struct(vec![
-                    crate::types::StructField {
+                    StructField {
                         name: "x",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },
-                    crate::types::StructField {
+                    StructField {
                         name: "y",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },
@@ -1083,8 +1083,6 @@ mod tests {
     #[test]
     fn test_simd_operations() {
         let mut builder = IRBuilder::new();
-
-        use crate::instruction::SimdOp;
 
         let vector_type = Type::Array {
             element_type: Box::new(Type::Primitive(PrimitiveType::F32)),

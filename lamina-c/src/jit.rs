@@ -2,7 +2,9 @@
 // Gated at the module level in lib.rs: #[cfg(feature = "nightly")].
 
 use std::ffi::c_char;
+use std::mem;
 use std::panic::AssertUnwindSafe;
+use std::ffi::c_void;
 
 use crate::error::{clear_error, set_error};
 use crate::types::{LaminaJit, LaminaModule};
@@ -94,14 +96,14 @@ pub unsafe extern "C" fn lia_module_compile_jit(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_jit_get_function(
     jit: *const LaminaJit,
-    function_out: *mut *const std::ffi::c_void,
+    function_out: *mut *const c_void,
 ) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         if jit.is_null() || function_out.is_null() {
             set_error("jit or function_out is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        *function_out = (*jit).function_ptr as *const std::ffi::c_void;
+        *function_out = (*jit).function_ptr as *const c_void;
         clear_error();
         LaminaStatus::Ok
     }))
@@ -129,7 +131,7 @@ pub unsafe extern "C" fn lia_jit_call_i64_0(
             set_error("jit or result is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        let f: extern "C" fn() -> i64 = std::mem::transmute((*jit).function_ptr);
+        let f: extern "C" fn() -> i64 = mem::transmute((*jit).function_ptr);
         *result = f();
         clear_error();
         LaminaStatus::Ok
@@ -147,7 +149,7 @@ pub unsafe extern "C" fn lia_jit_call_i64_1(
             set_error("jit or result is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        let f: extern "C" fn(i64) -> i64 = std::mem::transmute((*jit).function_ptr);
+        let f: extern "C" fn(i64) -> i64 = mem::transmute((*jit).function_ptr);
         *result = f(a);
         clear_error();
         LaminaStatus::Ok
@@ -166,8 +168,49 @@ pub unsafe extern "C" fn lia_jit_call_i64_2(
             set_error("jit or result is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        let f: extern "C" fn(i64, i64) -> i64 = std::mem::transmute((*jit).function_ptr);
+        let f: extern "C" fn(i64, i64) -> i64 = mem::transmute((*jit).function_ptr);
         *result = f(a, b);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_jit_call_i64_3(
+    jit: *const LaminaJit,
+    a: i64,
+    b: i64,
+    c: i64,
+    result: *mut i64,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        if jit.is_null() || result.is_null() {
+            set_error("jit or result is null");
+            return LaminaStatus::ErrorInvalidArgument;
+        }
+        let f: extern "C" fn(i64, i64, i64) -> i64 = mem::transmute((*jit).function_ptr);
+        *result = f(a, b, c);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_jit_call_i64_4(
+    jit: *const LaminaJit,
+    a: i64,
+    b: i64,
+    c: i64,
+    d: i64,
+    result: *mut i64,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        if jit.is_null() || result.is_null() {
+            set_error("jit or result is null");
+            return LaminaStatus::ErrorInvalidArgument;
+        }
+        let f: extern "C" fn(i64, i64, i64, i64) -> i64 = mem::transmute((*jit).function_ptr);
+        *result = f(a, b, c, d);
         clear_error();
         LaminaStatus::Ok
     }))
@@ -194,4 +237,36 @@ fn compile_jit(ir_str: &str, func_name: &str) -> Result<LaminaJit, String> {
         memory: result.memory,
         function_ptr: result.function_ptr,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ptr;
+
+    #[test]
+    fn jit_free_null_does_not_crash() {
+        unsafe { lia_jit_free(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn jit_call_i64_3_null_jit_returns_error() {
+        let mut result = 0i64;
+        let st = unsafe { lia_jit_call_i64_3(ptr::null(), 1, 2, 3, &mut result) };
+        assert_eq!(st, LaminaStatus::ErrorInvalidArgument);
+    }
+
+    #[test]
+    fn jit_call_i64_4_null_jit_returns_error() {
+        let mut result = 0i64;
+        let st = unsafe { lia_jit_call_i64_4(ptr::null(), 1, 2, 3, 4, &mut result) };
+        assert_eq!(st, LaminaStatus::ErrorInvalidArgument);
+    }
+
+    #[test]
+    fn jit_call_i64_3_null_result_returns_error() {
+        // result ptr is null — must be rejected before dereferencing.
+        let st = unsafe { lia_jit_call_i64_3(ptr::null(), 1, 2, 3, ptr::null_mut()) };
+        assert_eq!(st, LaminaStatus::ErrorInvalidArgument);
+    }
 }

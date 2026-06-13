@@ -2,9 +2,9 @@
 //!
 //! A module is a collection of functions and global data. Modules are the
 //! top-level unit of organization in LUMIR and can be compiled independently.
-use super::function::Function;
-use super::instruction::Instruction;
-use super::types::MirType;
+use crate::function::Function;
+use crate::instruction::Instruction;
+use crate::types::MirType;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -111,17 +111,20 @@ impl Module {
 
     /// Get all function names
     pub fn function_names(&self) -> Vec<&str> {
-        self.functions.keys().map(|s| s.as_str()).collect()
+        self.functions.keys().map(String::as_str).collect()
     }
 
     /// Get all global names
     pub fn global_names(&self) -> Vec<&str> {
-        self.globals.keys().map(|s| s.as_str()).collect()
+        self.globals.keys().map(String::as_str).collect()
     }
 
     /// Total number of instructions across all functions
     pub fn instruction_count(&self) -> usize {
-        self.functions.values().map(|f| f.instruction_count()).sum()
+        self.functions
+            .values()
+            .map(Function::instruction_count)
+            .sum()
     }
 
     /// Validate the entire module
@@ -131,7 +134,7 @@ impl Module {
         // Validate all functions
         for (name, func) in &self.functions {
             if let Err(e) = func.validate() {
-                errors.push(format!("Function '{}': {}", name, e));
+                errors.push(format!("Function '{name}': {e}"));
             }
         }
 
@@ -139,8 +142,7 @@ impl Module {
         for func_name in self.functions.keys() {
             if self.globals.contains_key(func_name) {
                 errors.push(format!(
-                    "Name '{}' used for both function and global",
-                    func_name
+                    "Name '{func_name}' used for both function and global"
                 ));
             }
         }
@@ -171,8 +173,7 @@ impl Module {
                         let expected = callee.sig.params.len();
                         if argc != expected {
                             out.push(format!(
-                                "Function '{}' {} '{}' with {} args but callee expects {}",
-                                caller_name, op, callee_name, argc, expected
+                                "Function '{caller_name}' {op} '{callee_name}' with {argc} args but callee expects {expected}"
                             ));
                         }
                     }
@@ -190,7 +191,7 @@ impl fmt::Display for Module {
         names.sort();
         for (i, name) in names.iter().enumerate() {
             if let Some(func) = self.functions.get(*name) {
-                writeln!(f, "{}", func)?;
+                writeln!(f, "{func}")?;
                 if i < names.len() - 1 {
                     writeln!(f)?;
                 }

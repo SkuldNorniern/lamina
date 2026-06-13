@@ -1,20 +1,65 @@
 //! Common code for MIR codegen backends.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread;
 
 use crate::error::LaminaError;
-use crate::mir::{Global, MirType, Module as MirModule, Signature};
+use crate::mir::{Function, Global, MirType, Module as MirModule, Register, Signature, VirtualReg};
 use crate::mir_codegen::{CodegenError, CodegenOptions};
 use lamina_platform::TargetOperatingSystem;
 
 pub fn parallel_codegen_error(error: impl std::fmt::Debug) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
-        "Parallel compilation error: {:?}",
-        error
+        "Parallel compilation error: {error:?}"
     )))
+}
+
+/// Assign one stack slot per virtual register defined or used in `func`.
+///
+/// Defined registers are laid out first, then used-only registers, so the slot
+/// indices match the order the per-backend code previously produced. The byte
+/// offset for each slot index is computed by the backend-specific `offset_for_slot`.
+/// Returns the slot map together with the set of defined registers, which some
+/// backends need when emitting instructions.
+///
+/// Registers are collected into `BTreeSet`s so slot indices — and therefore the
+/// emitted stack offsets — are a deterministic function of the register ids,
+/// keeping codegen reproducible across runs.
+pub fn assign_stack_slots(
+    func: &Function,
+    offset_for_slot: impl Fn(usize) -> i32,
+) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>) {
+    let mut def_regs: BTreeSet<VirtualReg> = BTreeSet::new();
+    let mut used_regs: BTreeSet<VirtualReg> = BTreeSet::new();
+    for block in &func.blocks {
+        for inst in &block.instructions {
+            if let Some(Register::Virtual(vreg)) = inst.def_reg() {
+                def_regs.insert(*vreg);
+            }
+            for reg in inst.use_regs() {
+                if let Register::Virtual(vreg) = reg {
+                    used_regs.insert(*vreg);
+                }
+            }
+        }
+    }
+
+    let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
+    for vreg in &def_regs {
+        if !stack_slots.contains_key(vreg) {
+            let slot_index = stack_slots.len();
+            stack_slots.insert(*vreg, offset_for_slot(slot_index));
+        }
+    }
+    for vreg in &used_regs {
+        if !def_regs.contains(vreg) && !stack_slots.contains_key(vreg) {
+            let slot_index = stack_slots.len();
+            stack_slots.insert(*vreg, offset_for_slot(slot_index));
+        }
+    }
+    (stack_slots, def_regs)
 }
 
 /// Base structure for codegen backends with common fields.
@@ -66,8 +111,7 @@ impl<'a> CodegenBase<'a> {
         }
         if codegen_units > MAX_CODEGEN_UNITS {
             return Err(CodegenError::InvalidCodegenOptions(format!(
-                "codegen_units exceeds maximum: {}",
-                MAX_CODEGEN_UNITS
+                "codegen_units exceeds maximum: {MAX_CODEGEN_UNITS}"
             )));
         }
         self.codegen_units = codegen_units;
@@ -97,19 +141,17 @@ impl<'a> CodegenBase<'a> {
     {
         if !self.prepared {
             return Err(CodegenError::InvalidCodegenOptions(format!(
-                "emit_asm called before prepare for {}",
-                backend_name
+                "emit_asm called before prepare for {backend_name}"
             )));
         }
         let module = self.module.ok_or_else(|| {
             CodegenError::InvalidCodegenOptions(format!(
-                "No module set for emission in {} backend",
-                backend_name
+                "No module set for emission in {backend_name} backend"
             ))
         })?;
         self.output.clear();
         emit_fn(module, &mut self.output, self.target_os).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("{} emission failed: {}", backend_name, e))
+            CodegenError::InvalidCodegenOptions(format!("{backend_name} emission failed: {e}"))
         })
     }
 
@@ -129,19 +171,17 @@ impl<'a> CodegenBase<'a> {
     {
         if !self.prepared {
             return Err(CodegenError::InvalidCodegenOptions(format!(
-                "emit_asm called before prepare for {}",
-                backend_name
+                "emit_asm called before prepare for {backend_name}"
             )));
         }
         let module = self.module.ok_or_else(|| {
             CodegenError::InvalidCodegenOptions(format!(
-                "No module set for emission in {} backend",
-                backend_name
+                "No module set for emission in {backend_name} backend"
             ))
         })?;
         self.output.clear();
         emit_fn(module, &mut self.output, self.target_os, codegen_units).map_err(|e| {
-            CodegenError::InvalidCodegenOptions(format!("{} emission failed: {}", backend_name, e))
+            CodegenError::InvalidCodegenOptions(format!("{backend_name} emission failed: {e}"))
         })
     }
 }
@@ -149,7 +189,7 @@ impl<'a> CodegenBase<'a> {
 /// Compilation task for parallel execution.
 pub struct CompilationTask {
     pub func_name: String,
-    pub func: crate::mir::Function,
+    pub func: Function,
     pub func_index: usize,
 }
 
@@ -172,7 +212,7 @@ pub fn compile_functions_parallel<F>(
     compile_func: F,
 ) -> Result<Vec<CompilationResult>, CodegenError>
 where
-    F: Fn(&str, &crate::mir::Function, TargetOperatingSystem) -> Result<Vec<u8>, CodegenError>
+    F: Fn(&str, &Function, TargetOperatingSystem) -> Result<Vec<u8>, CodegenError>
         + Send
         + Sync
         + 'static,
@@ -181,7 +221,7 @@ where
         return compile_functions_sequential(module, target_os, compile_func);
     }
 
-    let mut functions: Vec<(String, crate::mir::Function)> = module
+    let mut functions: Vec<(String, Function)> = module
         .functions
         .iter()
         .filter_map(|(name, func)| {
@@ -195,7 +235,7 @@ where
 
     functions.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let functions: Vec<(String, crate::mir::Function, usize)> = functions
+    let functions: Vec<(String, Function, usize)> = functions
         .into_iter()
         .enumerate()
         .map(|(idx, (name, func))| (name, func, idx))
@@ -205,7 +245,6 @@ where
         return Ok(Vec::new());
     }
 
-    use std::sync::Arc;
     let compile_func_arc = Arc::new(compile_func);
 
     let num_workers = codegen_units.min(functions.len());
@@ -283,8 +322,7 @@ where
             }
             Err(e) => {
                 worker_errors.push(CodegenError::InvalidCodegenOptions(format!(
-                    "Worker thread {} panicked: {:?}",
-                    idx, e
+                    "Worker thread {idx} panicked: {e:?}"
                 )));
             }
         }
@@ -305,9 +343,9 @@ fn compile_functions_sequential<F>(
     compile_func: F,
 ) -> Result<Vec<CompilationResult>, CodegenError>
 where
-    F: Fn(&str, &crate::mir::Function, TargetOperatingSystem) -> Result<Vec<u8>, CodegenError>,
+    F: Fn(&str, &Function, TargetOperatingSystem) -> Result<Vec<u8>, CodegenError>,
 {
-    let mut functions: Vec<(&str, &crate::mir::Function)> = module
+    let mut functions: Vec<(&str, &Function)> = module
         .functions
         .iter()
         .filter_map(|(name, func)| {
@@ -364,14 +402,15 @@ pub fn emit_print_format_section<W: Write>(
 pub fn lamina_to_codegen_error(err: LaminaError) -> CodegenError {
     match err {
         LaminaError::InternalError(msg) => {
-            CodegenError::InvalidCodegenOptions(format!("Internal error: {}", msg))
+            CodegenError::InvalidCodegenOptions(format!("Internal error: {msg}"))
         }
         LaminaError::CodegenError(inner) => CodegenError::InvalidCodegenOptions(inner.to_string()),
         LaminaError::ParsingError(msg)
         | LaminaError::ValidationError(msg)
         | LaminaError::MirError(msg)
         | LaminaError::IoError(msg)
-        | LaminaError::Utf8Error(msg) => CodegenError::InvalidCodegenOptions(msg),
+        | LaminaError::Utf8Error(msg)
+        | LaminaError::RuntimeError(msg) => CodegenError::InvalidCodegenOptions(msg),
     }
 }
 

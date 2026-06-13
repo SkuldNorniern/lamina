@@ -9,25 +9,144 @@
 //! - Control flow graph construction
 //! - Type mapping and validation
 
-use super::error::FromIRError;
-use super::mapping::{map_ir_prim, map_ir_type};
+use std::collections::{HashMap, HashSet, VecDeque};
+
+use crate::ir::Module as IRModule;
+use crate::ir::function::{Function as IRFunction, FunctionAnnotation};
+use crate::ir::instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst};
+use crate::ir::types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
+use crate::mir::codegen::error::FromIRError;
+use crate::mir::codegen::mapping::{map_ir_prim, map_ir_type};
 use crate::mir::{
-    AddressMode, Block, Instruction, MemoryAttrs, Module, Operand, Parameter, Register,
-    RegisterClass, Signature, VirtualReg, VirtualRegAllocator,
+    AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction,
+    Instruction as MirInst, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter,
+    Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
 };
+
+#[cfg(feature = "nightly")]
+use crate::ir::instruction::{MemoryOrdering as IRMemOrd, SimdOp as IRSimdOp};
 #[cfg(feature = "nightly")]
 use crate::mir::{MemoryOrdering, SimdOp};
-use std::collections::HashSet;
 
-pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRError> {
+fn float_binary(
+    op: FloatBinOp,
+    ty: MirType,
+    dst: Register,
+    lhs: Operand,
+    rhs: Operand,
+) -> Instruction {
+    Instruction::FloatBinary {
+        op,
+        ty,
+        dst,
+        lhs,
+        rhs,
+    }
+}
+
+/// Map an IR binary op to its signed/integer MIR opcode. Float-applicable ops
+/// (Add/Sub/Mul/Div) on float types are handled separately by the caller.
+fn lower_int_binop(op: &IRBin) -> IntBinOp {
+    match op {
+        IRBin::Add => IntBinOp::Add,
+        IRBin::Sub => IntBinOp::Sub,
+        IRBin::Mul => IntBinOp::Mul,
+        IRBin::Div => IntBinOp::SDiv,
+        IRBin::Rem => IntBinOp::SRem,
+        IRBin::And => IntBinOp::And,
+        IRBin::Or => IntBinOp::Or,
+        IRBin::Xor => IntBinOp::Xor,
+        IRBin::Shl => IntBinOp::Shl,
+        IRBin::Shr => IntBinOp::AShr,
+    }
+}
+
+/// Resolve an IR value to a MIR operand, allocating a fresh GPR binding on first encounter.
+fn resolve_operand<'a>(
+    v: &IRVal<'a>,
+    vreg_alloc: &mut VirtualRegAllocator,
+    var_to_reg: &mut HashMap<&'a str, Register>,
+) -> Result<Operand, FromIRError> {
+    match v {
+        IRVal::Variable(id) => {
+            if let Some(r) = var_to_reg.get(id) {
+                Ok(Operand::Register(r.clone()))
+            } else {
+                let r = Register::Virtual(vreg_alloc.allocate_gpr());
+                var_to_reg.insert(*id, r.clone());
+                Ok(Operand::Register(r))
+            }
+        }
+        IRVal::Constant(lit) => literal_to_immediate(lit).map(Operand::Immediate),
+        IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
+    }
+}
+
+/// Look up `result` in the register map; if absent, allocate a fresh GPR and bind it.
+fn resolve_or_alloc_gpr<'a>(
+    result: &'a str,
+    vreg_alloc: &mut VirtualRegAllocator,
+    var_to_reg: &mut HashMap<&'a str, Register>,
+) -> Register {
+    if let Some(existing) = var_to_reg.get(result) {
+        existing.clone()
+    } else {
+        let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
+        var_to_reg.insert(result, fresh.clone());
+        fresh
+    }
+}
+
+/// Compute the byte size of an IR type; returns `None` for unsized/void types.
+fn sizeof_ir_type(ty: &IRType<'_>) -> Option<u64> {
+    match ty {
+        IRType::Primitive(p) => Some(match p {
+            IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 1,
+            IRPrim::I16 | IRPrim::U16 => 2,
+            IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 4,
+            IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 8,
+        }),
+        IRType::Array { element_type, size } => {
+            sizeof_ir_type(element_type).map(|es| es.saturating_mul(*size))
+        }
+        IRType::Struct(fields) => {
+            let mut total = 0u64;
+            for f in fields {
+                total = total.saturating_add(sizeof_ir_type(&f.ty)?);
+            }
+            Some(total)
+        }
+        _ => None,
+    }
+}
+
+/// Bit-width for sign-extension: returns 0 for float types (unsupported).
+fn int_bits_for_sext(ty: &IRPrim) -> u32 {
+    match ty {
+        IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
+        IRPrim::I16 | IRPrim::U16 => 16,
+        IRPrim::I32 | IRPrim::U32 => 32,
+        IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr => 64,
+        IRPrim::F32 | IRPrim::F64 => 0,
+    }
+}
+
+/// Bit-width for bitcast: F32 = 32 bits, F64 = 64 bits (valid bitcast widths).
+fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
+    match ty {
+        IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
+        IRPrim::I16 | IRPrim::U16 => 16,
+        IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 32,
+        IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 64,
+    }
+}
+
+pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     let mut mir_module = Module::new(name);
 
     for (func_name, ir_func) in &ir.functions {
         // Check if function is external before converting
-        if ir_func
-            .annotations
-            .contains(&crate::ir::function::FunctionAnnotation::Extern)
-        {
+        if ir_func.annotations.contains(&FunctionAnnotation::Extern) {
             mir_module.mark_external(*func_name);
         }
 
@@ -38,37 +157,7 @@ pub fn from_ir(ir: &crate::ir::Module<'_>, name: &str) -> Result<Module, FromIRE
     Ok(mir_module)
 }
 
-/// Converts an IR value into a MIR operand using the current variable bindings.
-///
-/// If a variable binding is missing, allocates a conservative general-purpose register
-/// to allow code generation to continue. This is a fallback mechanism for incomplete
-/// IR that may occur during development or transformation passes.
-fn ir_value_to_mir_operand<'a>(
-    v: &crate::ir::types::Value<'a>,
-    vreg_alloc: &mut VirtualRegAllocator,
-    var_to_reg: &mut std::collections::HashMap<&'a str, Register>,
-) -> Result<Operand, FromIRError> {
-    match v {
-        crate::ir::types::Value::Variable(id) => {
-            if let Some(r) = var_to_reg.get(id) {
-                Ok(Operand::Register(r.clone()))
-            } else {
-                let r = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*id, r.clone());
-                Ok(Operand::Register(r))
-            }
-        }
-        crate::ir::types::Value::Constant(lit) => literal_to_immediate(lit).map(Operand::Immediate),
-        crate::ir::types::Value::Global(_) => Err(FromIRError::UnsupportedInstruction),
-    }
-}
-
-fn convert_function<'a>(
-    name: &'a str,
-    f: &crate::ir::function::Function<'a>,
-) -> Result<crate::mir::Function, FromIRError> {
-    use crate::ir::types::Type as IRType;
-
+fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, FromIRError> {
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
 
@@ -80,8 +169,7 @@ fn convert_function<'a>(
         }
     }
 
-    let mut var_to_reg: std::collections::HashMap<&'a str, Register> =
-        std::collections::HashMap::new();
+    let mut var_to_reg: HashMap<&'a str, Register> = HashMap::new();
 
     for param in &f.signature.params {
         let class = reg_class_for_type(&param.ty);
@@ -95,11 +183,11 @@ fn convert_function<'a>(
         var_to_reg.insert(param.name, v);
     }
 
-    let mut mir_func = crate::mir::Function::new(mir_sig).with_entry(f.entry_block);
+    let mut mir_func = Function::new(mir_sig).with_entry(f.entry_block);
 
     // BFS traversal starting from entry block, guard with visited to avoid cycles
     let mut visited: HashSet<&'a str> = HashSet::new();
-    let mut worklist: std::collections::VecDeque<&'a str> = std::collections::VecDeque::new();
+    let mut worklist: VecDeque<&'a str> = VecDeque::new();
 
     // Ensure entry exists
     if !f.basic_blocks.contains_key(f.entry_block) {
@@ -125,7 +213,6 @@ fn convert_function<'a>(
 
         // After converting this block, enqueue IR successors (prevents borrow/move issues)
         if let Some(term) = ir_block.instructions.last() {
-            use crate::ir::instruction::Instruction as IRInst;
             match term {
                 IRInst::Br {
                     true_label,
@@ -169,12 +256,11 @@ fn convert_function<'a>(
     }
 
     {
-        let mut edge_moves: std::collections::HashMap<(String, String), Vec<Instruction>> =
-            std::collections::HashMap::new();
+        let mut edge_moves: HashMap<(String, String), Vec<Instruction>> = HashMap::new();
 
         for (succ_label, ir_block) in &f.basic_blocks {
             for instr in &ir_block.instructions {
-                if let crate::ir::instruction::Instruction::Phi {
+                if let IRInst::Phi {
                     result,
                     ty,
                     incoming,
@@ -183,15 +269,14 @@ fn convert_function<'a>(
                     if let Some(dst_reg) = var_to_reg.get(result).cloned() {
                         let mir_ty = map_ir_type(ty)?;
                         for (val, pred_label) in incoming {
-                            let src_op =
-                                ir_value_to_mir_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
+                            let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
                             // Encode a move using add with zero; the backend already handles it.
                             let mov_like = Instruction::IntBinary {
-                                op: crate::mir::IntBinOp::Add,
+                                op: IntBinOp::Add,
                                 ty: mir_ty,
                                 dst: dst_reg.clone(),
                                 lhs: src_op,
-                                rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                                rhs: Operand::Immediate(Immediate::I64(0)),
                             };
                             edge_moves
                                 .entry(((*pred_label).to_string(), (*succ_label).to_string()))
@@ -295,10 +380,7 @@ fn convert_function<'a>(
     Ok(mir_func)
 }
 
-fn add_missing_initializations(func: &mut crate::mir::Function) {
-    use crate::mir::{Immediate, Instruction as MirInst, MirType, Operand, Register, ScalarType};
-    use std::collections::HashSet;
-
+fn add_missing_initializations(func: &mut Function) {
     // Collect all defined and used virtual registers
     let mut defined_regs = HashSet::new();
     let mut used_regs = HashSet::new();
@@ -336,7 +418,7 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
         for vreg in undefined_regs {
             // Initialize undefined registers to 0
             let init_instr = MirInst::IntBinary {
-                op: crate::mir::IntBinOp::Add,
+                op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: Register::Virtual(vreg),
                 lhs: Operand::Immediate(Immediate::I64(0)),
@@ -352,19 +434,10 @@ fn add_missing_initializations(func: &mut crate::mir::Function) {
 
 fn collect_regs_from_instruction(instr: &Instruction, used_regs: &mut HashSet<VirtualReg>) {
     match instr {
-        Instruction::IntBinary { lhs, rhs, .. } => {
-            collect_regs_from_operand(lhs, used_regs);
-            collect_regs_from_operand(rhs, used_regs);
-        }
-        Instruction::FloatBinary { lhs, rhs, .. } => {
-            collect_regs_from_operand(lhs, used_regs);
-            collect_regs_from_operand(rhs, used_regs);
-        }
-        Instruction::IntCmp { lhs, rhs, .. } => {
-            collect_regs_from_operand(lhs, used_regs);
-            collect_regs_from_operand(rhs, used_regs);
-        }
-        Instruction::FloatCmp { lhs, rhs, .. } => {
+        Instruction::IntBinary { lhs, rhs, .. }
+        | Instruction::FloatBinary { lhs, rhs, .. }
+        | Instruction::IntCmp { lhs, rhs, .. }
+        | Instruction::FloatCmp { lhs, rhs, .. } => {
             collect_regs_from_operand(lhs, used_regs);
             collect_regs_from_operand(rhs, used_regs);
         }
@@ -383,7 +456,6 @@ fn collect_regs_from_instruction(instr: &Instruction, used_regs: &mut HashSet<Vi
         Instruction::Ret { value: Some(val) } => {
             collect_regs_from_operand(val, used_regs);
         }
-        Instruction::Jmp { .. } | Instruction::Br { .. } => {}
         _ => {}
     }
 }
@@ -418,39 +490,15 @@ fn collect_regs_from_address_mode(addr: &AddressMode, used_regs: &mut HashSet<Vi
 }
 
 fn convert_instruction<'a>(
-    instr: &crate::ir::instruction::Instruction<'a>,
+    instr: &IRInst<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
-    var_to_reg: &mut std::collections::HashMap<&'a str, Register>,
+    var_to_reg: &mut HashMap<&'a str, Register>,
 ) -> Result<Vec<Instruction>, FromIRError> {
-    use crate::ir::instruction::{BinaryOp as IRBin, CmpOp as IRCmp};
-    use crate::ir::types::{PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
-
-    fn get_operand_permissive<'b>(
-        v: &IRVal<'b>,
-        vreg_alloc: &mut VirtualRegAllocator,
-        var_to_reg: &mut std::collections::HashMap<&'b str, Register>,
-    ) -> Result<Operand, FromIRError> {
-        match v {
-            IRVal::Variable(id) => {
-                if let Some(r) = var_to_reg.get(id) {
-                    Ok(Operand::Register(r.clone()))
-                } else {
-                    // Fallback: allocate a GPR binding so lowering can proceed.
-                    let r = Register::Virtual(vreg_alloc.allocate_gpr());
-                    var_to_reg.insert(*id, r.clone());
-                    Ok(Operand::Register(r))
-                }
-            }
-            IRVal::Constant(lit) => literal_to_immediate(lit).map(Operand::Immediate),
-            IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
-        }
-    }
-
     #[cfg(feature = "nightly")]
     fn ir_address_mode_to_mir<'b>(
         ptr: &IRVal<'b>,
         vreg_alloc: &mut VirtualRegAllocator,
-        var_to_reg: &mut std::collections::HashMap<&'b str, Register>,
+        var_to_reg: &mut HashMap<&'b str, Register>,
     ) -> Result<AddressMode, FromIRError> {
         match ptr {
             IRVal::Variable(id) => {
@@ -468,7 +516,7 @@ fn convert_instruction<'a>(
     }
 
     match instr {
-        crate::ir::instruction::Instruction::Binary {
+        IRInst::Binary {
             op,
             result,
             ty,
@@ -489,105 +537,26 @@ fn convert_instruction<'a>(
 
             let mir_ty = map_ir_prim(*ty)?;
             // Read operands using the PREVIOUS bindings to avoid using the new dest mapping
-            let lhs_op = get_operand_permissive(lhs, vreg_alloc, var_to_reg)?;
-            let rhs_op = get_operand_permissive(rhs, vreg_alloc, var_to_reg)?;
+            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg)?;
+            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
 
             let mir = match (op, *ty) {
-                (IRBin::Add, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: crate::mir::FloatBinOp::FAdd,
+                (IRBin::Add, IRPrim::F32 | IRPrim::F64) => {
+                    float_binary(FloatBinOp::FAdd, mir_ty, dst, lhs_op, rhs_op)
+                }
+                (IRBin::Sub, IRPrim::F32 | IRPrim::F64) => {
+                    float_binary(FloatBinOp::FSub, mir_ty, dst, lhs_op, rhs_op)
+                }
+                (IRBin::Mul, IRPrim::F32 | IRPrim::F64) => {
+                    float_binary(FloatBinOp::FMul, mir_ty, dst, lhs_op, rhs_op)
+                }
+                (IRBin::Div, IRPrim::F32 | IRPrim::F64) => {
+                    float_binary(FloatBinOp::FDiv, mir_ty, dst, lhs_op, rhs_op)
+                }
+                (op, _) => Instruction::IntBinary {
+                    op: lower_int_binop(op),
                     ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Sub, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: crate::mir::FloatBinOp::FSub,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Mul, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: crate::mir::FloatBinOp::FMul,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Div, IRPrim::F32 | IRPrim::F64) => Instruction::FloatBinary {
-                    op: crate::mir::FloatBinOp::FDiv,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Add, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Add,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Sub, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Sub,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Mul, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Mul,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Div, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::SDiv,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Rem, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::SRem,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::And, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::And,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Or, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Or,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Xor, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Xor,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Shl, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Shl,
-                    ty: mir_ty,
-                    dst: dst.clone(),
-                    lhs: lhs_op,
-                    rhs: rhs_op,
-                },
-                (IRBin::Shr, _) => Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::AShr,
-                    ty: mir_ty,
-                    dst: dst.clone(),
+                    dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
@@ -596,7 +565,7 @@ fn convert_instruction<'a>(
         }
         // SSA merge: create a binding for the phi result so subsequent uses resolve.
         // Semantics are not materialized here; a later SSA elimination pass should lower this.
-        crate::ir::instruction::Instruction::Phi {
+        IRInst::Phi {
             result,
             ty,
             incoming: _,
@@ -611,61 +580,55 @@ fn convert_instruction<'a>(
             var_to_reg.insert(*result, dst);
             Ok(vec![])
         }
-        crate::ir::instruction::Instruction::Cmp {
+        IRInst::Cmp {
             op,
             result,
             ty,
             lhs,
             rhs,
         } => {
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_prim(*ty)?;
-            let lhs_op = get_operand_permissive(lhs, vreg_alloc, var_to_reg)?;
-            let rhs_op = get_operand_permissive(rhs, vreg_alloc, var_to_reg)?;
+            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg)?;
+            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
             let mir = match (*ty, op) {
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Eq) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Eq,
+                    op: FloatCmpOp::Eq,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Ne) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Ne,
+                    op: FloatCmpOp::Ne,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Lt) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Lt,
+                    op: FloatCmpOp::Lt,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Le) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Le,
+                    op: FloatCmpOp::Le,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Gt) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Gt,
+                    op: FloatCmpOp::Gt,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Ge) => Instruction::FloatCmp {
-                    op: crate::mir::FloatCmpOp::Ge,
+                    op: FloatCmpOp::Ge,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
@@ -673,7 +636,7 @@ fn convert_instruction<'a>(
                 },
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Eq) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::Eq,
+                        op: IntCmpOp::Eq,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -682,7 +645,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Ne) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::Ne,
+                        op: IntCmpOp::Ne,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -691,7 +654,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Lt) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::ULt,
+                        op: IntCmpOp::ULt,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -700,7 +663,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Le) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::ULe,
+                        op: IntCmpOp::ULe,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -709,7 +672,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Gt) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::UGt,
+                        op: IntCmpOp::UGt,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -718,7 +681,7 @@ fn convert_instruction<'a>(
                 }
                 (IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64, IRCmp::Ge) => {
                     Instruction::IntCmp {
-                        op: crate::mir::IntCmpOp::UGe,
+                        op: IntCmpOp::UGe,
                         ty: mir_ty,
                         dst,
                         lhs: lhs_op,
@@ -726,42 +689,42 @@ fn convert_instruction<'a>(
                     }
                 }
                 (_, IRCmp::Eq) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::Eq,
+                    op: IntCmpOp::Eq,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Ne) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::Ne,
+                    op: IntCmpOp::Ne,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Lt) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::SLt,
+                    op: IntCmpOp::SLt,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Le) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::SLe,
+                    op: IntCmpOp::SLe,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Gt) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::SGt,
+                    op: IntCmpOp::SGt,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
                     rhs: rhs_op,
                 },
                 (_, IRCmp::Ge) => Instruction::IntCmp {
-                    op: crate::mir::IntCmpOp::SGe,
+                    op: IntCmpOp::SGe,
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
@@ -770,7 +733,7 @@ fn convert_instruction<'a>(
             };
             Ok(vec![mir])
         }
-        crate::ir::instruction::Instruction::Br {
+        IRInst::Br {
             condition,
             true_label,
             false_label,
@@ -788,7 +751,7 @@ fn convert_instruction<'a>(
                 false_target: (*false_label).to_string(),
             }])
         }
-        crate::ir::instruction::Instruction::Switch {
+        IRInst::Switch {
             ty: _,
             value,
             default,
@@ -805,7 +768,6 @@ fn convert_instruction<'a>(
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
 
-            use crate::ir::types::Literal as IRLit;
             let mut mir_cases = Vec::with_capacity(cases.len());
 
             for (lit, label) in cases {
@@ -839,27 +801,21 @@ fn convert_instruction<'a>(
                 default: (*default).to_string(),
             }])
         }
-        crate::ir::instruction::Instruction::Jmp { target_label } => Ok(vec![Instruction::Jmp {
+        IRInst::Jmp { target_label } => Ok(vec![Instruction::Jmp {
             target: (*target_label).to_string(),
         }]),
-        crate::ir::instruction::Instruction::Ret { ty, value } => {
+        IRInst::Ret { ty, value } => {
             if matches!(ty, IRType::Void) {
                 return Ok(vec![Instruction::Ret { value: None }]);
             }
             let op = match value {
-                Some(v) => Some(get_operand_permissive(v, vreg_alloc, var_to_reg)?),
+                Some(v) => Some(resolve_operand(v, vreg_alloc, var_to_reg)?),
                 None => None,
             };
             Ok(vec![Instruction::Ret { value: op }])
         }
-        crate::ir::instruction::Instruction::Load { result, ty, ptr } => {
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+        IRInst::Load { result, ty, ptr } => {
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
                 IRVal::Variable(id) => var_to_reg
@@ -879,7 +835,7 @@ fn convert_instruction<'a>(
                 },
             }])
         }
-        crate::ir::instruction::Instruction::Store { ty, ptr, value } => {
+        IRInst::Store { ty, ptr, value } => {
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
                 IRVal::Variable(id) => var_to_reg
@@ -888,7 +844,7 @@ fn convert_instruction<'a>(
                     .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            let src = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
+            let src = resolve_operand(value, vreg_alloc, var_to_reg)?;
             let addr = AddressMode::BaseOffset { base, offset: 0 };
             Ok(vec![Instruction::Store {
                 ty: mir_ty,
@@ -900,85 +856,56 @@ fn convert_instruction<'a>(
                 },
             }])
         }
-        crate::ir::instruction::Instruction::Call {
+        IRInst::Call {
             result,
             func_name,
             args,
         } => {
             let mut mir_args = Vec::new();
             for a in args {
-                mir_args.push(get_operand_permissive(a, vreg_alloc, var_to_reg)?);
+                mir_args.push(resolve_operand(a, vreg_alloc, var_to_reg)?);
             }
-            let ret = if let Some(res) = result {
-                let dst = if let Some(existing) = var_to_reg.get(res) {
-                    existing.clone()
-                } else {
-                    let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                    var_to_reg.insert(*res, fresh.clone());
-                    fresh
-                };
-                Some(dst)
-            } else {
-                None
-            };
+            let ret = result.map(|res| resolve_or_alloc_gpr(res, vreg_alloc, var_to_reg));
             Ok(vec![Instruction::Call {
                 name: (*func_name).to_string(),
                 args: mir_args,
                 ret,
             }])
         }
-        crate::ir::instruction::Instruction::ZeroExtend {
+        IRInst::ZeroExtend {
             result,
             source_type,
             target_type,
             value,
         } => {
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             // Compute mask based on source type bit-width
-            use crate::ir::types::PrimitiveType as IRPrim;
             let (mask, mir_ty) = match (source_type, target_type) {
                 (IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char, _) => {
                     (0xFFu64, map_ir_prim(*target_type)?)
                 }
                 (IRPrim::I16 | IRPrim::U16, _) => (0xFFFFu64, map_ir_prim(*target_type)?),
                 (IRPrim::I32 | IRPrim::U32, _) => (0xFFFF_FFFFu64, map_ir_prim(*target_type)?),
-                (
-                    IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr,
-                    IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr,
-                ) => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
                 _ => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
             };
-            let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
-            let mask_op = Operand::Immediate(crate::mir::Immediate::I64(mask as i64));
+            let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let mask_op = Operand::Immediate(Immediate::I64(mask as i64));
             Ok(vec![Instruction::IntBinary {
-                op: crate::mir::IntBinOp::And,
+                op: IntBinOp::And,
                 ty: mir_ty,
                 dst,
                 lhs: val_op,
                 rhs: mask_op,
             }])
         }
-        crate::ir::instruction::Instruction::Trunc {
+        IRInst::Trunc {
             result,
             source_type: _,
             target_type,
             value,
         } => {
             // Lower truncation as an AND with a mask of the target width.
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
-            use crate::ir::types::PrimitiveType as IRPrim;
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let (mask, mir_ty) = match target_type {
                 IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => {
                     (0xFFu64, map_ir_prim(*target_type)?)
@@ -990,46 +917,26 @@ fn convert_instruction<'a>(
                 }
                 _ => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
             };
-            let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
-            let mask_op = Operand::Immediate(crate::mir::Immediate::I64(mask as i64));
+            let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let mask_op = Operand::Immediate(Immediate::I64(mask as i64));
             Ok(vec![Instruction::IntBinary {
-                op: crate::mir::IntBinOp::And,
+                op: IntBinOp::And,
                 ty: mir_ty,
                 dst,
                 lhs: val_op,
                 rhs: mask_op,
             }])
         }
-        crate::ir::instruction::Instruction::SignExtend {
+        IRInst::SignExtend {
             result,
             source_type,
             target_type,
             value,
         } => {
-            // Lower sext using a mask and shifts to propagate the sign bit.
-            use crate::ir::types::PrimitiveType as IRPrim;
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
-
-            // Determine source and target bit-widths
-            fn bits_for(ty: &IRPrim) -> u32 {
-                match ty {
-                    IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
-                    IRPrim::I16 | IRPrim::U16 => 16,
-                    IRPrim::I32 | IRPrim::U32 => 32,
-                    IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr => 64,
-                    IRPrim::F32 | IRPrim::F64 => 0,
-                }
-            }
-
-            let src_bits = bits_for(source_type);
-            let dst_bits = bits_for(target_type);
+            let src_bits = int_bits_for_sext(source_type);
+            let dst_bits = int_bits_for_sext(target_type);
 
             if src_bits == 0 || dst_bits == 0 || src_bits >= dst_bits {
                 return Err(FromIRError::UnsupportedType);
@@ -1038,15 +945,15 @@ fn convert_instruction<'a>(
             let mir_ty = map_ir_prim(*target_type)?;
             let shift = (dst_bits - src_bits) as i64;
 
-            let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
+            let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
 
             // temp = (val << shift)
             let temp_reg = Register::Virtual(vreg_alloc.allocate_gpr());
-            let shift_imm = Operand::Immediate(crate::mir::Immediate::I64(shift));
+            let shift_imm = Operand::Immediate(Immediate::I64(shift));
 
             let instrs = vec![
                 Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Shl,
+                    op: IntBinOp::Shl,
                     ty: mir_ty,
                     dst: temp_reg.clone(),
                     lhs: val_op,
@@ -1054,34 +961,23 @@ fn convert_instruction<'a>(
                 },
                 // dst = temp >> shift (arithmetic shift right propagates sign)
                 Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::AShr,
+                    op: IntBinOp::AShr,
                     ty: mir_ty,
                     dst,
                     lhs: Operand::Register(temp_reg),
-                    rhs: Operand::Immediate(crate::mir::Immediate::I64(shift)),
+                    rhs: Operand::Immediate(Immediate::I64(shift)),
                 },
             ];
 
             Ok(instrs)
         }
-        crate::ir::instruction::Instruction::Bitcast {
+        IRInst::Bitcast {
             result,
             source_type,
             target_type,
             value,
         } => {
-            use crate::ir::types::PrimitiveType as IRPrim;
-
-            fn bits_for(ty: &IRPrim) -> u32 {
-                match ty {
-                    IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
-                    IRPrim::I16 | IRPrim::U16 => 16,
-                    IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 32,
-                    IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 64,
-                }
-            }
-
-            if bits_for(source_type) != bits_for(target_type) {
+            if int_bits_for_bitcast(source_type) != int_bits_for_bitcast(target_type) {
                 return Err(FromIRError::UnsupportedType);
             }
 
@@ -1089,67 +985,45 @@ fn convert_instruction<'a>(
                 IRVal::Variable(id) => {
                     // Reuse the same MIR register for the result; MIR is untyped and the
                     // backend will see the result type through later uses.
-                    let src_reg = if let Some(existing) = var_to_reg.get(id) {
-                        existing.clone()
-                    } else {
-                        let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                        var_to_reg.insert(*id, fresh.clone());
-                        fresh
-                    };
+                    let src_reg = resolve_or_alloc_gpr(id, vreg_alloc, var_to_reg);
                     var_to_reg.insert(*result, src_reg);
                     Ok(vec![])
                 }
                 IRVal::Constant(lit) => {
                     let mir_ty = map_ir_prim(*target_type)?;
-                    let dst = if let Some(existing) = var_to_reg.get(result) {
-                        existing.clone()
-                    } else {
-                        let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                        var_to_reg.insert(*result, fresh.clone());
-                        fresh
-                    };
+                    let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
                     let imm = match (source_type, target_type, lit) {
-                        (IRPrim::F32, IRPrim::I32, crate::ir::types::Literal::F32(v)) => {
-                            crate::mir::Immediate::I32(v.to_bits() as i32)
+                        (IRPrim::F32, IRPrim::I32, IRLit::F32(v)) => {
+                            Immediate::I32(v.to_bits() as i32)
                         }
-                        (IRPrim::F64, IRPrim::I64, crate::ir::types::Literal::F64(v)) => {
-                            crate::mir::Immediate::I64(v.to_bits() as i64)
+                        (IRPrim::F64, IRPrim::I64, IRLit::F64(v)) => {
+                            Immediate::I64(v.to_bits() as i64)
                         }
-                        (IRPrim::I32, IRPrim::F32, crate::ir::types::Literal::I32(v)) => {
-                            crate::mir::Immediate::I32(*v)
-                        }
-                        (IRPrim::I64, IRPrim::F64, crate::ir::types::Literal::I64(v)) => {
-                            crate::mir::Immediate::I64(*v)
-                        }
+                        (IRPrim::I32, IRPrim::F32, IRLit::I32(v)) => Immediate::I32(*v),
+                        (IRPrim::I64, IRPrim::F64, IRLit::I64(v)) => Immediate::I64(*v),
                         _ => return Err(FromIRError::UnsupportedInstruction),
                     };
 
                     Ok(vec![Instruction::IntBinary {
-                        op: crate::mir::IntBinOp::Add,
+                        op: IntBinOp::Add,
                         ty: mir_ty,
                         dst,
                         lhs: Operand::Immediate(imm),
-                        rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                        rhs: Operand::Immediate(Immediate::I64(0)),
                     }])
                 }
                 IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
             }
         }
-        crate::ir::instruction::Instruction::Select {
+        IRInst::Select {
             result,
             ty,
             cond,
             true_val,
             false_val,
         } => {
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             let mir_ty = map_ir_type(ty)?;
 
@@ -1162,8 +1036,8 @@ fn convert_instruction<'a>(
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
 
-            let tv = get_operand_permissive(true_val, vreg_alloc, var_to_reg)?;
-            let fv = get_operand_permissive(false_val, vreg_alloc, var_to_reg)?;
+            let tv = resolve_operand(true_val, vreg_alloc, var_to_reg)?;
+            let fv = resolve_operand(false_val, vreg_alloc, var_to_reg)?;
 
             Ok(vec![Instruction::Select {
                 dst,
@@ -1173,55 +1047,43 @@ fn convert_instruction<'a>(
                 false_val: fv,
             }])
         }
-        crate::ir::instruction::Instruction::PtrToInt {
+        IRInst::PtrToInt {
             result,
             ptr_value,
             target_type: _,
         } => {
             // On 64-bit, pointers are integers; lower to add with 0 to move value
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
-            let val_op = get_operand_permissive(ptr_value, vreg_alloc, var_to_reg)?;
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
-                ty: crate::mir::types::MirType::Scalar(crate::mir::types::ScalarType::I64),
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
                 dst,
                 lhs: val_op,
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
             }])
         }
-        crate::ir::instruction::Instruction::IntToPtr {
+        IRInst::IntToPtr {
             result,
             int_value,
             target_type: _,
         } => {
             // Treat as identity move via add with 0 (pointer-sized)
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
-            let val_op = get_operand_permissive(int_value, vreg_alloc, var_to_reg)?;
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
-                ty: crate::mir::types::MirType::Scalar(crate::mir::types::ScalarType::I64),
+                op: IntBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
                 dst,
                 lhs: val_op,
-                rhs: Operand::Immediate(crate::mir::Immediate::I64(0)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
             }])
         }
-        crate::ir::instruction::Instruction::MemCpy { dst, src, size } => {
+        IRInst::MemCpy { dst, src, size } => {
             let args = vec![
-                get_operand_permissive(dst, vreg_alloc, var_to_reg)?,
-                get_operand_permissive(src, vreg_alloc, var_to_reg)?,
-                get_operand_permissive(size, vreg_alloc, var_to_reg)?,
+                resolve_operand(dst, vreg_alloc, var_to_reg)?,
+                resolve_operand(src, vreg_alloc, var_to_reg)?,
+                resolve_operand(size, vreg_alloc, var_to_reg)?,
             ];
             Ok(vec![Instruction::Call {
                 name: "memcpy".to_string(),
@@ -1229,11 +1091,11 @@ fn convert_instruction<'a>(
                 ret: None,
             }])
         }
-        crate::ir::instruction::Instruction::MemMove { dst, src, size } => {
+        IRInst::MemMove { dst, src, size } => {
             let args = vec![
-                get_operand_permissive(dst, vreg_alloc, var_to_reg)?,
-                get_operand_permissive(src, vreg_alloc, var_to_reg)?,
-                get_operand_permissive(size, vreg_alloc, var_to_reg)?,
+                resolve_operand(dst, vreg_alloc, var_to_reg)?,
+                resolve_operand(src, vreg_alloc, var_to_reg)?,
+                resolve_operand(size, vreg_alloc, var_to_reg)?,
             ];
             Ok(vec![Instruction::Call {
                 name: "memmove".to_string(),
@@ -1241,11 +1103,11 @@ fn convert_instruction<'a>(
                 ret: None,
             }])
         }
-        crate::ir::instruction::Instruction::MemSet { dst, value, size } => {
+        IRInst::MemSet { dst, value, size } => {
             let args = vec![
-                get_operand_permissive(dst, vreg_alloc, var_to_reg)?,
-                get_operand_permissive(value, vreg_alloc, var_to_reg)?,
-                get_operand_permissive(size, vreg_alloc, var_to_reg)?,
+                resolve_operand(dst, vreg_alloc, var_to_reg)?,
+                resolve_operand(value, vreg_alloc, var_to_reg)?,
+                resolve_operand(size, vreg_alloc, var_to_reg)?,
             ];
             Ok(vec![Instruction::Call {
                 name: "memset".to_string(),
@@ -1253,7 +1115,7 @@ fn convert_instruction<'a>(
                 ret: None,
             }])
         }
-        crate::ir::instruction::Instruction::GetFieldPtr {
+        IRInst::GetFieldPtr {
             result,
             struct_ptr,
             field_index,
@@ -1266,17 +1128,11 @@ fn convert_instruction<'a>(
                     .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let offset = (*field_index as i32) * 8;
             Ok(vec![Instruction::Lea { dst, base, offset }])
         }
-        crate::ir::instruction::Instruction::GetElemPtr {
+        IRInst::GetElemPtr {
             result,
             array_ptr,
             index,
@@ -1298,21 +1154,15 @@ fn convert_instruction<'a>(
             };
             let idx_const = match index {
                 IRVal::Constant(lit) => match lit {
-                    crate::ir::types::Literal::I64(v) => Some(*v),
-                    crate::ir::types::Literal::I32(v) => Some(*v as i64),
-                    crate::ir::types::Literal::U64(v) => Some(*v as i64),
-                    crate::ir::types::Literal::U32(v) => Some(*v as i64),
+                    IRLit::I64(v) => Some(*v),
+                    IRLit::I32(v) => Some(*v as i64),
+                    IRLit::U64(v) => Some(*v as i64),
+                    IRLit::U32(v) => Some(*v as i64),
                     _ => None,
                 },
                 _ => None,
             };
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             if let Some(iv) = idx_const {
                 // Constant index: use simple LEA with offset
@@ -1324,7 +1174,7 @@ fn convert_instruction<'a>(
                 // 2. result = base + temp
 
                 // Get the index operand
-                let index_op = get_operand_permissive(index, vreg_alloc, var_to_reg)?;
+                let index_op = resolve_operand(index, vreg_alloc, var_to_reg)?;
 
                 // Allocate a temp register for the scaled index
                 let temp_scaled = Register::Virtual(vreg_alloc.allocate_gpr());
@@ -1333,17 +1183,17 @@ fn convert_instruction<'a>(
                 let instrs = vec![
                     // Instruction 1: temp_scaled = index * elem_size
                     Instruction::IntBinary {
-                        op: crate::mir::IntBinOp::Mul,
-                        ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
+                        op: IntBinOp::Mul,
+                        ty: MirType::Scalar(ScalarType::I64),
                         dst: temp_scaled.clone(),
                         lhs: index_op,
-                        rhs: Operand::Immediate(crate::mir::Immediate::I64(elem_size as i64)),
+                        rhs: Operand::Immediate(Immediate::I64(elem_size as i64)),
                     },
                     // Instruction 2: result = base + temp_scaled
                     Instruction::IntBinary {
-                        op: crate::mir::IntBinOp::Add,
-                        ty: crate::mir::MirType::Scalar(crate::mir::ScalarType::I64),
-                        dst: dst.clone(),
+                        op: IntBinOp::Add,
+                        ty: MirType::Scalar(ScalarType::I64),
+                        dst,
                         lhs: Operand::Register(base),
                         rhs: Operand::Register(temp_scaled),
                     },
@@ -1353,150 +1203,82 @@ fn convert_instruction<'a>(
             }
         }
         // Debug and I/O operations: lower to calls with conventional names
-        crate::ir::instruction::Instruction::Print { value } => {
-            if matches!(
-                value,
-                crate::ir::types::Value::Constant(crate::ir::types::Literal::String(_))
-            ) {
+        IRInst::Print { value } => {
+            if matches!(value, IRVal::Constant(IRLit::String(_))) {
                 return Err(FromIRError::PrintStringLiteralUnsupported);
             }
-            let arg = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
+            let arg = resolve_operand(value, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::Call {
                 name: "print".to_string(),
                 args: vec![arg],
                 ret: None,
             }])
         }
-        crate::ir::instruction::Instruction::Write {
+        IRInst::Write {
             buffer,
             size,
             result,
         } => {
-            let buf = get_operand_permissive(buffer, vreg_alloc, var_to_reg)?;
-            let sz = get_operand_permissive(size, vreg_alloc, var_to_reg)?;
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+            let buf = resolve_operand(buffer, vreg_alloc, var_to_reg)?;
+            let sz = resolve_operand(size, vreg_alloc, var_to_reg)?;
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "write".to_string(),
                 args: vec![buf, sz],
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::WriteByte { value, result } => {
-            let v = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+        IRInst::WriteByte { value, result } => {
+            let v = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "writebyte".to_string(),
                 args: vec![v],
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::ReadByte { result } => {
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+        IRInst::ReadByte { result } => {
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "readbyte".to_string(),
                 args: vec![],
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::WritePtr { ptr, result } => {
-            let p = get_operand_permissive(ptr, vreg_alloc, var_to_reg)?;
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+        IRInst::WritePtr { ptr, result } => {
+            let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "writeptr".to_string(),
                 args: vec![p],
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::Read {
+        IRInst::Read {
             buffer,
             size,
             result,
         } => {
-            let buf = get_operand_permissive(buffer, vreg_alloc, var_to_reg)?;
-            let sz = get_operand_permissive(size, vreg_alloc, var_to_reg)?;
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+            let buf = resolve_operand(buffer, vreg_alloc, var_to_reg)?;
+            let sz = resolve_operand(size, vreg_alloc, var_to_reg)?;
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "read".to_string(),
                 args: vec![buf, sz],
                 ret: Some(dst),
             }])
         }
-        crate::ir::instruction::Instruction::Alloc {
+        IRInst::Alloc {
             result,
             alloc_type,
             allocated_ty,
         } => {
-            use crate::ir::types::PrimitiveType as IRPrim;
-            // Allocate a destination vreg representing the pointer
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             match alloc_type {
-                crate::ir::instruction::AllocType::Stack => {
-                    fn sizeof_ty(ty: &crate::ir::types::Type<'_>) -> Option<u64> {
-                        use crate::ir::types::Type as IRType;
-                        match ty {
-                            IRType::Primitive(p) => Some(match p {
-                                IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 1,
-                                IRPrim::I16 | IRPrim::U16 => 2,
-                                IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 4,
-                                IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 8,
-                            }),
-                            IRType::Array { element_type, size } => {
-                                sizeof_ty(element_type).map(|es| es.saturating_mul(*size))
-                            }
-                            IRType::Struct(fields) => {
-                                let mut total = 0u64;
-                                for f in fields {
-                                    if let Some(sz) = sizeof_ty(&f.ty) {
-                                        total = total.saturating_add(sz);
-                                    } else {
-                                        return None;
-                                    }
-                                }
-                                Some(total)
-                            }
-                            _ => None,
-                        }
-                    }
-                    // Allocate storage vreg; for larger types, we still use one vreg
+                AllocType::Stack => {
                     let storage = Register::Virtual(vreg_alloc.allocate_gpr());
-                    if let Some(sz) = sizeof_ty(allocated_ty) {
+                    if let Some(sz) = sizeof_ir_type(allocated_ty) {
                         let slots_needed = sz.div_ceil(8) as usize;
                         for _ in 1..slots_needed {
                             vreg_alloc.allocate_gpr();
@@ -1504,43 +1286,16 @@ fn convert_instruction<'a>(
                     }
                     // Lea computes address of storage's stack slot into dst
                     Ok(vec![Instruction::Lea {
-                        dst: dst.clone(),
+                        dst,
                         base: storage,
                         offset: 0,
                     }])
                 }
-                crate::ir::instruction::AllocType::Heap => {
-                    // Compute size in bytes for the allocated type and call malloc(size)
-                    fn sizeof_ty(ty: &crate::ir::types::Type<'_>) -> Option<u64> {
-                        use crate::ir::types::Type as IRType;
-                        match ty {
-                            IRType::Primitive(p) => Some(match p {
-                                IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 1,
-                                IRPrim::I16 | IRPrim::U16 => 2,
-                                IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 4,
-                                IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 8,
-                            }),
-                            IRType::Array { element_type, size } => {
-                                sizeof_ty(element_type).map(|es| es.saturating_mul(*size))
-                            }
-                            IRType::Struct(fields) => {
-                                let mut total = 0u64;
-                                for f in fields {
-                                    if let Some(sz) = sizeof_ty(&f.ty) {
-                                        total = total.saturating_add(sz);
-                                    } else {
-                                        return None;
-                                    }
-                                }
-                                Some(total)
-                            }
-                            _ => None,
-                        }
-                    }
-                    if let Some(sz) = sizeof_ty(allocated_ty) {
+                AllocType::Heap => {
+                    if let Some(sz) = sizeof_ir_type(allocated_ty) {
                         Ok(vec![Instruction::Call {
                             name: "malloc".to_string(),
-                            args: vec![Operand::Immediate(crate::mir::Immediate::I64(sz as i64))],
+                            args: vec![Operand::Immediate(Immediate::I64(sz as i64))],
                             ret: Some(dst),
                         }])
                     } else {
@@ -1549,9 +1304,9 @@ fn convert_instruction<'a>(
                 }
             }
         }
-        crate::ir::instruction::Instruction::Dealloc { ptr } => {
+        IRInst::Dealloc { ptr } => {
             // Lower heap dealloc to a conventional call that backends can map
-            let p = get_operand_permissive(ptr, vreg_alloc, var_to_reg)?;
+            let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::Call {
                 name: "dealloc".to_string(),
                 args: vec![p],
@@ -1559,7 +1314,7 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::SimdBinary {
+        IRInst::SimdBinary {
             op,
             result,
             vector_type,
@@ -1574,18 +1329,18 @@ fn convert_instruction<'a>(
                 fresh
             };
             let mir_ty = map_ir_type(vector_type)?;
-            let lhs_op = get_operand_permissive(lhs, vreg_alloc, var_to_reg)?;
-            let rhs_op = get_operand_permissive(rhs, vreg_alloc, var_to_reg)?;
+            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg)?;
+            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
             let mir_op = match op {
-                crate::ir::instruction::SimdOp::Add => SimdOp::Add,
-                crate::ir::instruction::SimdOp::Sub => SimdOp::Sub,
-                crate::ir::instruction::SimdOp::Mul => SimdOp::Mul,
-                crate::ir::instruction::SimdOp::Div => SimdOp::Div,
-                crate::ir::instruction::SimdOp::Min => SimdOp::Min,
-                crate::ir::instruction::SimdOp::Max => SimdOp::Max,
-                crate::ir::instruction::SimdOp::Abs => SimdOp::Abs,
-                crate::ir::instruction::SimdOp::Neg => SimdOp::Neg,
-                crate::ir::instruction::SimdOp::Sqrt => SimdOp::Sqrt,
+                IRSimdOp::Add => SimdOp::Add,
+                IRSimdOp::Sub => SimdOp::Sub,
+                IRSimdOp::Mul => SimdOp::Mul,
+                IRSimdOp::Div => SimdOp::Div,
+                IRSimdOp::Min => SimdOp::Min,
+                IRSimdOp::Max => SimdOp::Max,
+                IRSimdOp::Abs => SimdOp::Abs,
+                IRSimdOp::Neg => SimdOp::Neg,
+                IRSimdOp::Sqrt => SimdOp::Sqrt,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             Ok(vec![Instruction::SimdBinary {
@@ -1597,7 +1352,7 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::SimdUnary {
+        IRInst::SimdUnary {
             op,
             result,
             vector_type,
@@ -1611,11 +1366,11 @@ fn convert_instruction<'a>(
                 fresh
             };
             let mir_ty = map_ir_type(vector_type)?;
-            let src_op = get_operand_permissive(operand, vreg_alloc, var_to_reg)?;
+            let src_op = resolve_operand(operand, vreg_alloc, var_to_reg)?;
             let mir_op = match op {
-                crate::ir::instruction::SimdOp::Abs => SimdOp::Abs,
-                crate::ir::instruction::SimdOp::Neg => SimdOp::Neg,
-                crate::ir::instruction::SimdOp::Sqrt => SimdOp::Sqrt,
+                IRSimdOp::Abs => SimdOp::Abs,
+                IRSimdOp::Neg => SimdOp::Neg,
+                IRSimdOp::Sqrt => SimdOp::Sqrt,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             Ok(vec![Instruction::SimdUnary {
@@ -1626,27 +1381,21 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::AtomicLoad {
+        IRInst::AtomicLoad {
             result,
             ty,
             ptr,
             ordering,
         } => {
-            let dst = if let Some(existing) = var_to_reg.get(result) {
-                existing.clone()
-            } else {
-                let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
-                var_to_reg.insert(*result, fresh.clone());
-                fresh
-            };
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
             let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
             let mir_ordering = match ordering {
-                crate::ir::instruction::MemoryOrdering::Relaxed => MemoryOrdering::Relaxed,
-                crate::ir::instruction::MemoryOrdering::Acquire => MemoryOrdering::Acquire,
-                crate::ir::instruction::MemoryOrdering::Release => MemoryOrdering::Release,
-                crate::ir::instruction::MemoryOrdering::AcqRel => MemoryOrdering::AcqRel,
-                crate::ir::instruction::MemoryOrdering::SeqCst => MemoryOrdering::SeqCst,
+                IRMemOrd::Relaxed => MemoryOrdering::Relaxed,
+                IRMemOrd::Acquire => MemoryOrdering::Acquire,
+                IRMemOrd::Release => MemoryOrdering::Release,
+                IRMemOrd::AcqRel => MemoryOrdering::AcqRel,
+                IRMemOrd::SeqCst => MemoryOrdering::SeqCst,
             };
             Ok(vec![Instruction::AtomicLoad {
                 ty: mir_ty,
@@ -1656,7 +1405,7 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::AtomicStore {
+        IRInst::AtomicStore {
             ty,
             ptr,
             value,
@@ -1664,13 +1413,13 @@ fn convert_instruction<'a>(
         } => {
             let mir_ty = map_ir_type(ty)?;
             let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
-            let val_op = get_operand_permissive(value, vreg_alloc, var_to_reg)?;
+            let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
             let mir_ordering = match ordering {
-                crate::ir::instruction::MemoryOrdering::Relaxed => MemoryOrdering::Relaxed,
-                crate::ir::instruction::MemoryOrdering::Acquire => MemoryOrdering::Acquire,
-                crate::ir::instruction::MemoryOrdering::Release => MemoryOrdering::Release,
-                crate::ir::instruction::MemoryOrdering::AcqRel => MemoryOrdering::AcqRel,
-                crate::ir::instruction::MemoryOrdering::SeqCst => MemoryOrdering::SeqCst,
+                IRMemOrd::Relaxed => MemoryOrdering::Relaxed,
+                IRMemOrd::Acquire => MemoryOrdering::Acquire,
+                IRMemOrd::Release => MemoryOrdering::Release,
+                IRMemOrd::AcqRel => MemoryOrdering::AcqRel,
+                IRMemOrd::SeqCst => MemoryOrdering::SeqCst,
             };
             Ok(vec![Instruction::AtomicStore {
                 ty: mir_ty,
@@ -1680,13 +1429,13 @@ fn convert_instruction<'a>(
             }])
         }
         #[cfg(feature = "nightly")]
-        crate::ir::instruction::Instruction::Fence { ordering } => {
+        IRInst::Fence { ordering } => {
             let mir_ordering = match ordering {
-                crate::ir::instruction::MemoryOrdering::Relaxed => MemoryOrdering::Relaxed,
-                crate::ir::instruction::MemoryOrdering::Acquire => MemoryOrdering::Acquire,
-                crate::ir::instruction::MemoryOrdering::Release => MemoryOrdering::Release,
-                crate::ir::instruction::MemoryOrdering::AcqRel => MemoryOrdering::AcqRel,
-                crate::ir::instruction::MemoryOrdering::SeqCst => MemoryOrdering::SeqCst,
+                IRMemOrd::Relaxed => MemoryOrdering::Relaxed,
+                IRMemOrd::Acquire => MemoryOrdering::Acquire,
+                IRMemOrd::Release => MemoryOrdering::Release,
+                IRMemOrd::AcqRel => MemoryOrdering::AcqRel,
+                IRMemOrd::SeqCst => MemoryOrdering::SeqCst,
             };
             Ok(vec![Instruction::Fence {
                 ordering: mir_ordering,
@@ -1696,30 +1445,26 @@ fn convert_instruction<'a>(
     }
 }
 
-fn literal_to_immediate(
-    l: &crate::ir::types::Literal<'_>,
-) -> Result<crate::mir::Immediate, FromIRError> {
-    use crate::ir::types::Literal as IRLit;
+fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
     let imm = match l {
-        IRLit::I8(v) => crate::mir::Immediate::I8(*v),
-        IRLit::I16(v) => crate::mir::Immediate::I16(*v),
-        IRLit::I32(v) => crate::mir::Immediate::I32(*v),
-        IRLit::I64(v) => crate::mir::Immediate::I64(*v),
-        IRLit::U8(v) => crate::mir::Immediate::I8(*v as i8),
-        IRLit::U16(v) => crate::mir::Immediate::I16(*v as i16),
-        IRLit::U32(v) => crate::mir::Immediate::I32(*v as i32),
-        IRLit::U64(v) => crate::mir::Immediate::I64(*v as i64),
-        IRLit::F32(v) => crate::mir::Immediate::F32(*v),
-        IRLit::F64(v) => crate::mir::Immediate::F64(*v),
-        IRLit::Bool(b) => crate::mir::Immediate::I8(if *b { 1 } else { 0 }),
-        IRLit::Char(c) => crate::mir::Immediate::I8(*c as i8),
+        IRLit::I8(v) => Immediate::I8(*v),
+        IRLit::I16(v) => Immediate::I16(*v),
+        IRLit::I32(v) => Immediate::I32(*v),
+        IRLit::I64(v) => Immediate::I64(*v),
+        IRLit::U8(v) => Immediate::I8(*v as i8),
+        IRLit::U16(v) => Immediate::I16(*v as i16),
+        IRLit::U32(v) => Immediate::I32(*v as i32),
+        IRLit::U64(v) => Immediate::I64(*v as i64),
+        IRLit::F32(v) => Immediate::F32(*v),
+        IRLit::F64(v) => Immediate::F64(*v),
+        IRLit::Bool(b) => Immediate::I8(if *b { 1 } else { 0 }),
+        IRLit::Char(c) => Immediate::I8(*c as i8),
         IRLit::String(_) => return Err(FromIRError::UnsupportedInstruction),
     };
     Ok(imm)
 }
 
-fn reg_class_for_type(ty: &crate::ir::types::Type<'_>) -> RegisterClass {
-    use crate::ir::types::{PrimitiveType as IRPrim, Type as IRType};
+fn reg_class_for_type(ty: &IRType<'_>) -> RegisterClass {
     match ty {
         IRType::Primitive(IRPrim::F32) | IRType::Primitive(IRPrim::F64) => RegisterClass::Fpr,
         _ => RegisterClass::Gpr,
@@ -1732,10 +1477,7 @@ mod tests {
 
     use super::*;
     use crate::ir::builder::{i64 as ir_i64, string, var};
-    use crate::ir::instruction::BinaryOp;
-    use crate::ir::types::{PrimitiveType, Type};
     use crate::ir::{FunctionParameter, IRBuilder};
-    use crate::mir::MirType;
 
     #[test]
     fn test_from_ir_simple_add() {
@@ -1746,19 +1488,19 @@ mod tests {
                 vec![
                     FunctionParameter {
                         name: "a",
-                        ty: Type::Primitive(PrimitiveType::I64),
+                        ty: IRType::Primitive(IRPrim::I64),
                         annotations: vec![],
                     },
                     FunctionParameter {
                         name: "b",
-                        ty: Type::Primitive(PrimitiveType::I64),
+                        ty: IRType::Primitive(IRPrim::I64),
                         annotations: vec![],
                     },
                 ],
-                Type::Primitive(PrimitiveType::I64),
+                IRType::Primitive(IRPrim::I64),
             )
-            .binary(BinaryOp::Add, "sum", PrimitiveType::I64, var("a"), var("b"))
-            .ret(Type::Primitive(PrimitiveType::I64), var("sum"));
+            .binary(IRBin::Add, "sum", IRPrim::I64, var("a"), var("b"))
+            .ret(IRType::Primitive(IRPrim::I64), var("sum"));
 
         let ir_module = builder.build();
         let mir_module = from_ir(&ir_module, "test").expect("from_ir should succeed");
@@ -1775,11 +1517,8 @@ mod tests {
                 lhs,
                 rhs,
             } => {
-                assert!(matches!(op, crate::mir::IntBinOp::Add));
-                assert!(matches!(
-                    ty,
-                    MirType::Scalar(crate::mir::types::ScalarType::I64)
-                ));
+                assert!(matches!(op, IntBinOp::Add));
+                assert!(matches!(ty, MirType::Scalar(ScalarType::I64)));
                 assert!(matches!(lhs, Operand::Register(_)));
                 assert!(matches!(rhs, Operand::Register(_)));
             }
@@ -1797,9 +1536,9 @@ mod tests {
     fn test_print_numeric_succeeds() {
         let mut builder = IRBuilder::new();
         builder
-            .function("main", Type::Primitive(PrimitiveType::I64))
+            .function("main", IRType::Primitive(IRPrim::I64))
             .print(ir_i64(42))
-            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
+            .ret(IRType::Primitive(IRPrim::I64), ir_i64(0));
 
         let ir_module = builder.build();
         let result = from_ir(&ir_module, "test");
@@ -1814,9 +1553,9 @@ mod tests {
     fn test_print_string_fails() {
         let mut builder = IRBuilder::new();
         builder
-            .function("main", Type::Primitive(PrimitiveType::I64))
+            .function("main", IRType::Primitive(IRPrim::I64))
             .print(string("hello"))
-            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
+            .ret(IRType::Primitive(IRPrim::I64), ir_i64(0));
 
         let ir_module = builder.build();
         let result = from_ir(&ir_module, "test");

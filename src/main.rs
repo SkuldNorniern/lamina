@@ -2,12 +2,14 @@ mod cli;
 
 use cli::jit::handle_jit_compilation;
 use cli::options::{parse_args, print_usage, toolchain_backends};
+use std::error::Error;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::process;
 use std::str::FromStr;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let options = match parse_args() {
         Ok(opts) => opts,
         Err(e) => {
@@ -15,9 +17,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 print_usage();
                 return Ok(());
             } else {
-                eprintln!("Error: {}", e);
+                eprintln!("Error: {e}");
                 print_usage();
-                std::process::exit(1);
+                process::exit(1);
             }
         }
     };
@@ -28,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "Error: Input file '{}' does not exist.",
             input_path.display()
         );
-        std::process::exit(1);
+        process::exit(1);
     }
 
     if input_path.extension().is_none_or(|ext| ext != "lamina") {
@@ -56,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if target_for_extensions.operating_system == lamina_platform::TargetOperatingSystem::Windows
             && stem.extension().is_none()
         {
-            let mut stem_with_ext = stem.clone();
+            let mut stem_with_ext = stem;
             stem_with_ext.set_extension("exe");
             stem_with_ext
         } else {
@@ -73,9 +75,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("[VERBOSE] Compiler options:");
         println!("  Verbose mode: {}", options.verbose);
         println!("  Optimization level: {}", options.opt_level);
-        println!("  Codegen units (parallel threads): {}", codegen_units);
+        println!("  Codegen units (parallel threads): {codegen_units}");
         if let Some(compiler) = &options.forced_compiler {
-            println!("  Forced compiler: {}", compiler);
+            println!("  Forced compiler: {compiler}");
         }
         if !options.assembler_flags.is_empty() {
             println!(
@@ -91,29 +93,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut input_file = match File::open(input_path) {
         Ok(file) => file,
         Err(e) => {
-            eprintln!("[ERROR] Failed to open input file: {}", e);
-            std::process::exit(1);
+            eprintln!("[ERROR] Failed to open input file: {e}");
+            process::exit(1);
         }
     };
 
     let mut ir_source = String::new();
     if let Err(e) = input_file.read_to_string(&mut ir_source) {
-        eprintln!("[ERROR] Failed to read input file: {}", e);
-        std::process::exit(1);
+        eprintln!("[ERROR] Failed to read input file: {e}");
+        process::exit(1);
     }
 
     if options.emit_mir || options.emit_mir_asm.is_some() {
         let ir_mod = lamina::parser::parse_module(&ir_source)
-            .map_err(|e| format!("IR parse failed: {}", e))?;
+            .map_err(|e| format!("IR parse failed: {e}"))?;
         let mut mir_mod =
             lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-                .map_err(|e| format!("MIR lowering failed: {}", e))?;
+                .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
         if options.opt_level > 0 {
             let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
             let transform_stats = pipeline
                 .apply_to_module(&mut mir_mod)
-                .map_err(|e| format!("MIR optimization failed: {}", e))?;
+                .map_err(|e| format!("MIR optimization failed: {e}"))?;
 
             let mut inlined_count = 0;
             if options.opt_level >= 2 {
@@ -136,11 +138,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut mir_path = output_stem.clone();
             mir_path.set_extension("lumir");
             let mut mir_file =
-                File::create(&mir_path).map_err(|e| format!("Failed to create MIR file: {}", e))?;
-            let mir_text = format!("{}", mir_mod);
+                File::create(&mir_path).map_err(|e| format!("Failed to create MIR file: {e}"))?;
+            let mir_text = format!("{mir_mod}");
             mir_file
                 .write_all(mir_text.as_bytes())
-                .map_err(|e| format!("Failed to write MIR file: {}", e))?;
+                .map_err(|e| format!("Failed to write MIR file: {e}"))?;
             println!("[INFO] MIR written to {}", mir_path.display());
         }
 
@@ -165,7 +167,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             };
-            let mut mir_asm_path = output_stem.clone();
+            let mut mir_asm_path = output_stem;
             mir_asm_path.set_extension(asm_extension);
 
             let mut out = Vec::<u8>::new();
@@ -202,47 +204,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             File::create(&mir_asm_path)
                 .and_then(|mut f| f.write_all(&out))
-                .map_err(|e| format!("Failed to write MIR output: {}", e))?;
+                .map_err(|e| format!("Failed to write MIR output: {e}"))?;
         }
 
         return Ok(());
     }
 
     if options.jit {
-        return handle_jit_compilation(&ir_source, input_path, &options);
+        return Ok(handle_jit_compilation(&ir_source, input_path, &options)?);
     }
 
     if !options.emit_mir {
         let target = if let Some(target_str) = &options.target_arch {
             if options.verbose {
-                println!("[VERBOSE] Using explicit target: {}", target_str);
+                println!("[VERBOSE] Using explicit target: {target_str}");
             }
             lamina_platform::Target::from_str(target_str).unwrap_or_else(|e| {
-                eprintln!(
-                    "Warning: Invalid target '{}': {}. Using host target.",
-                    target_str, e
-                );
+                eprintln!("Warning: Invalid target '{target_str}': {e}. Using host target.");
                 lamina_platform::Target::detect_host()
             })
         } else {
             let default_target = lamina_platform::Target::detect_host();
             if options.verbose {
-                println!("[VERBOSE] Using host target: {}", default_target);
+                println!("[VERBOSE] Using host target: {default_target}");
             }
             default_target
         };
 
         let ir_mod = lamina::parser::parse_module(&ir_source)
-            .map_err(|e| format!("IR parse failed: {}", e))?;
+            .map_err(|e| format!("IR parse failed: {e}"))?;
         let mut mir_mod =
             lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
-                .map_err(|e| format!("MIR lowering failed: {}", e))?;
+                .map_err(|e| format!("MIR lowering failed: {e}"))?;
 
         if options.opt_level > 0 {
             let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
             let transform_stats = pipeline
                 .apply_to_module(&mut mir_mod)
-                .map_err(|e| format!("MIR optimization failed: {}", e))?;
+                .map_err(|e| format!("MIR optimization failed: {e}"))?;
 
             if options.verbose {
                 println!(
@@ -261,7 +260,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             codegen_units,
             &options.mir_codegen_settings,
         )
-        .map_err(|e| format!("Code generation failed: {}", e))?;
+        .map_err(|e| format!("Code generation failed: {e}"))?;
 
         let intermediate_ext = lamina::mir_codegen::assemble::get_intermediate_extension(
             target.architecture,
@@ -302,7 +301,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         File::create(&intermediate_path)
             .and_then(|mut f| f.write_all(&intermediate_buffer))
-            .map_err(|e| format!("Failed to write intermediate file: {}", e))?;
+            .map_err(|e| format!("Failed to write intermediate file: {e}"))?;
 
         println!(
             "[INFO] {} generated successfully ({} bytes).",
@@ -337,7 +336,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             options.verbose,
             options.ras_object_write_options(target.operating_system),
         )
-        .map_err(|e| format!("Assembly failed: {}", e))?;
+        .map_err(|e| format!("Assembly failed: {e}"))?;
 
         println!(
             "[INFO] {} assembled successfully.",
@@ -357,7 +356,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 target.architecture,
                 target.operating_system,
             );
-            let mut final_output_path = output_stem.clone();
+            let mut final_output_path = output_stem;
             if !final_output_ext.is_empty() {
                 final_output_path.set_extension(final_output_ext);
             }
@@ -371,7 +370,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &options.linker_flags,
                 options.verbose,
             )
-            .map_err(|e| format!("Linking failed: {}", e))?;
+            .map_err(|e| format!("Linking failed: {e}"))?;
 
             println!(
                 "[INFO] Executable '{}' created successfully.",

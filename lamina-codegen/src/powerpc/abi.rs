@@ -10,7 +10,7 @@
 //! - Stack pointer: r1 (must be 16-byte aligned at call sites).
 //! - TOC pointer: r2 (do not clobber).
 
-use crate::mir_codegen::abi::{Abi, common_call_stub, mangle_macos_name};
+use crate::abi::{Abi, common_call_stub, mangle_macos_name};
 use lamina_platform::TargetOperatingSystem;
 
 pub struct Ppc64Abi {

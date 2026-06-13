@@ -2,6 +2,7 @@
 name = "lamina-codegen"
 version = "0.1.1"
 edition = "2024"
+rust-version = "1.85"
 authors = ["Eira <eira@nornity.com>"]
 description = "Codegen utilities for Lamina (register allocation, ABI, frame management)"
 license = "Apache-2.0"
@@ -10,8 +11,8 @@ categories = ["compilers", "development-tools"]
 repository = "https://github.com/SkuldNorniern/lamina"
 
 [dependencies]
-lamina-platform = { version = "0.1.0" }
-lamina-mir = { version = "0.1.0" }
+lamina-platform = { path = "../lamina-platform", version = "0.1.1" }
+lamina-mir = { path = "../lamina-mir", version = "0.1.0" }
 
 [features]
 default = []

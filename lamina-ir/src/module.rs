@@ -132,11 +132,11 @@
 //! let module = builder.build();
 //! ```
 
-use std::collections::HashMap; // Using HashMap for functions and types
+use std::collections::HashMap;
 use std::fmt;
 
-use super::function::Function;
-use super::types::{Identifier, Type, Value};
+use crate::function::Function;
+use crate::types::{Identifier, Type, Value};
 
 /// A named type declaration (e.g., `type @Vec2 = struct { ... }`).
 ///
@@ -290,7 +290,7 @@ impl fmt::Display for ModuleAnnotation {
             ModuleAnnotation::OptimizeForSize => write!(f, "@optimize_size"),
             ModuleAnnotation::IncludeDebugInfo => write!(f, "@debug"),
             ModuleAnnotation::StripSymbols => write!(f, "@strip"),
-            ModuleAnnotation::TargetTriple(triple) => write!(f, "@target_triple({})", triple),
+            ModuleAnnotation::TargetTriple(triple) => write!(f, "@target_triple({triple})"),
         }
     }
 }
@@ -373,7 +373,7 @@ impl fmt::Display for GlobalDeclaration<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "global @{}: {}", self.name, self.ty)?;
         if let Some(init) = &self.initializer {
-            write!(f, " = {}", init)?;
+            write!(f, " = {init}")?;
         }
         Ok(())
     }
@@ -383,7 +383,7 @@ impl fmt::Display for Module<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Print type declarations first
         for decl in self.type_declarations.values() {
-            writeln!(f, "{}", decl)?;
+            writeln!(f, "{decl}")?;
         }
         if !self.type_declarations.is_empty() {
             writeln!(f)?;
@@ -391,7 +391,7 @@ impl fmt::Display for Module<'_> {
 
         // Print global declarations
         for decl in self.global_declarations.values() {
-            writeln!(f, "{}", decl)?;
+            writeln!(f, "{decl}")?;
         }
         if !self.global_declarations.is_empty() {
             writeln!(f)?;
@@ -404,7 +404,7 @@ impl fmt::Display for Module<'_> {
         for (i, name) in function_names.iter().enumerate() {
             // Dereference name twice (&&str -> &str) to match the key type for lookup
             if let Some(func) = self.functions.get(*name) {
-                write!(f, "{}", func)?;
+                write!(f, "{func}")?;
                 if i < function_names.len() - 1 {
                     writeln!(f)?;
                 }
@@ -420,7 +420,7 @@ mod tests {
     use super::*;
     use crate::function::{BasicBlock, Function, FunctionParameter, FunctionSignature};
     use crate::instruction::{BinaryOp, Instruction};
-    use crate::types::{Literal, PrimitiveType, Type, Value};
+    use crate::types::{Literal, PrimitiveType, StructField, Type, Value};
     use std::collections::HashMap;
 
     #[test]
@@ -461,11 +461,11 @@ mod tests {
             TypeDeclaration {
                 name: "Vec2",
                 ty: Type::Struct(vec![
-                    crate::types::StructField {
+                    StructField {
                         name: "x",
                         ty: Type::Primitive(PrimitiveType::F32),
                     },
-                    crate::types::StructField {
+                    StructField {
                         name: "y",
                         ty: Type::Primitive(PrimitiveType::F32),
                     },
