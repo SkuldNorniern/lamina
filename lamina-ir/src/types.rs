@@ -381,7 +381,7 @@ impl fmt::Display for Type<'_> {
             Type::Vector {
                 element_type,
                 lanes,
-            } => write!(f, "<{} x {}>", lanes, element_type),
+            } => write!(f, "<{lanes} x {element_type}>"),
             Type::Struct(fields) => {
                 write!(f, "struct {{ ")?;
                 for (i, field) in fields.iter().enumerate() {
