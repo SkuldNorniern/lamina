@@ -4,6 +4,7 @@ use crate::mir::transform::{
     Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators,
 };
 use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register};
+use std::cmp::Reverse;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
@@ -452,8 +453,8 @@ impl LoopInvariantCodeMotion {
         };
 
         let mut sorted_invariant = invariant_instrs.to_vec();
-        sorted_invariant.sort_by_key(|t| std::cmp::Reverse(t.1));
-        sorted_invariant.sort_by_key(|t| std::cmp::Reverse(t.0));
+        sorted_invariant.sort_by_key(|t| Reverse(t.1));
+        sorted_invariant.sort_by_key(|t| Reverse(t.0));
 
         sorted_invariant.dedup();
         let mut instructions_to_move = Vec::new();

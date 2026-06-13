@@ -2,8 +2,8 @@
 
 use crate::mir::codegen::FromIRError;
 use crate::mir_codegen::CodegenError;
-use std::error::Error;
 use std::fmt;
+use std::io::Error;
 use std::string::FromUtf8Error;
 
 /// Top-level error type covering all compiler pipeline stages.
@@ -42,10 +42,10 @@ impl fmt::Display for LaminaError {
     }
 }
 
-impl Error for LaminaError {}
+impl std::error::Error for LaminaError {}
 
-impl From<std::io::Error> for LaminaError {
-    fn from(err: std::io::Error) -> Self {
+impl From<Error> for LaminaError {
+    fn from(err: Error) -> Self {
         LaminaError::IoError(err.to_string())
     }
 }
@@ -71,6 +71,7 @@ impl From<FromIRError> for LaminaError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::ErrorKind;
 
     #[test]
     fn display_includes_variant_prefix() {
@@ -113,7 +114,7 @@ mod tests {
 
     #[test]
     fn from_io_error_wraps_message() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file missing");
+        let io_err = Error::new(ErrorKind::NotFound, "file missing");
         let lamina_err = LaminaError::from(io_err);
         assert!(matches!(lamina_err, LaminaError::IoError(_)));
         assert!(lamina_err.to_string().contains("file missing"));
