@@ -4,6 +4,7 @@
 use std::ffi::CString;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::mem;
+use std::ffi::c_void;
 
 /// Returns the host architecture name: "x86_64", "aarch64", "riscv64", etc.
 pub fn detect_host_architecture_only() -> &'static str {
