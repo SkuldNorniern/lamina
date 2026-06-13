@@ -3,6 +3,7 @@
 use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{Block, Function, Instruction, IntBinOp, Register};
 use std::cmp::Ordering;
+use std::cmp::max;
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::mem;
 
@@ -197,7 +198,7 @@ impl InstructionScheduling {
 
         if let Some(succs) = graph.edges.get(&node) {
             for &succ in succs {
-                max_succ_depth = std::cmp::max(
+                max_succ_depth = max(
                     max_succ_depth,
                     self.compute_depth(succ, graph, instructions, priorities, visited),
                 );

@@ -1,6 +1,7 @@
 //! CLI option parsing for the lamina compiler driver.
 
 use std::path::PathBuf;
+use std::process::exit;
 
 use lamina::mir_codegen::assemble::AssemblerBackend;
 use lamina::mir_codegen::link::LinkerBackend;
@@ -264,7 +265,7 @@ pub fn parse_args() -> Result<CompileOptions, String> {
             }
             "--version" => {
                 println!("lamina {}", env!("CARGO_PKG_VERSION"));
-                std::process::exit(0);
+                exit(0);
             }
             arg => {
                 if let Some(rest) = arg.strip_prefix("-Wl,") {

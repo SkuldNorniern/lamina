@@ -7,6 +7,7 @@ use lamina_platform::Target;
 
 use lamina::LaminaError;
 use std::env;
+use std::path::Path;
 use std::process::{self, Command};
 use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -14,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Handle JIT compilation and execution
 pub fn handle_jit_compilation(
     ir_source: &str,
-    input_path: &std::path::Path,
+    input_path: &Path,
     options: &CompileOptions,
 ) -> Result<(), LaminaError> {
     let target = if let Some(target_str) = &options.target_arch {

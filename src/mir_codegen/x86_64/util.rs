@@ -1,7 +1,7 @@
 //! Utility functions for x86_64 code generation.
 
 use std::collections::HashMap;
-use std::io::{Error, Write};
+use std::io::{Error, ErrorKind, Write};
 
 use crate::mir::Operand;
 use crate::mir::instruction::Immediate;
@@ -91,7 +91,7 @@ pub fn load_register_to_rax<
         writeln!(writer, "    movq {offset}(%rbp), %rax")?;
     } else {
         return Err(Error::new(
-            std::io::ErrorKind::InvalidData,
+            ErrorKind::InvalidData,
             format!("Virtual register {reg:?} has no mapping or stack slot"),
         ));
     }
@@ -114,7 +114,7 @@ pub fn store_rax_to_register<
         writeln!(writer, "    movq %rax, {offset}(%rbp)")?;
     } else {
         return Err(Error::new(
-            std::io::ErrorKind::InvalidData,
+            ErrorKind::InvalidData,
             format!("Virtual register {reg:?} has no mapping or stack slot"),
         ));
     }
@@ -138,7 +138,7 @@ pub fn load_register_to_register<
         writeln!(writer, "    movq {offset}(%rbp), %{target_reg}")?;
     } else {
         return Err(Error::new(
-            std::io::ErrorKind::InvalidData,
+            ErrorKind::InvalidData,
             format!("Virtual register {src:?} has no mapping or stack slot"),
         ));
     }
