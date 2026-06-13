@@ -290,7 +290,7 @@ impl fmt::Display for ModuleAnnotation {
             ModuleAnnotation::OptimizeForSize => write!(f, "@optimize_size"),
             ModuleAnnotation::IncludeDebugInfo => write!(f, "@debug"),
             ModuleAnnotation::StripSymbols => write!(f, "@strip"),
-            ModuleAnnotation::TargetTriple(triple) => write!(f, "@target_triple({})", triple),
+            ModuleAnnotation::TargetTriple(triple) => write!(f, "@target_triple({triple})"),
         }
     }
 }
