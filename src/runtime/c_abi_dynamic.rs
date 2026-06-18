@@ -270,6 +270,13 @@ pub unsafe fn call_function_dynamic(
     target_arch = "aarch64",
     all(target_arch = "x86_64", not(target_os = "windows")),
 )))]
+/// Call an arbitrary C-ABI function at `function_ptr` with up to [`MAX_JIT_ARGS`] `i64` args.
+///
+/// # Safety
+///
+/// - `function_ptr` must point to valid, executable code with a C-compatible ABI.
+/// - `args` must be the exact set of arguments expected by the callee.
+/// - The callee must be safe to call from the current thread context.
 pub unsafe fn call_function_dynamic(
     function_ptr: *const u8,
     args: &[i64],

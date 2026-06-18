@@ -246,6 +246,8 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
     use crate::ir::builder::i32 as ir_i32;
     use crate::ir::{BinaryOp, CmpOp, IRBuilder, Instruction, Literal, Type, Value};

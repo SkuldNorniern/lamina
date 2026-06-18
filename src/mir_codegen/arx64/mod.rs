@@ -581,6 +581,8 @@ fn unsupported<T>(message: impl Into<String>) -> Result<T, LaminaError> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
     use crate::mir::{Block, Signature, VirtualReg};
 

@@ -20,9 +20,9 @@ pub mod module;
 #[cfg(feature = "nightly")]
 pub mod jit;
 
+use std::ffi::CString;
 use std::ffi::{CStr, c_char};
 use std::sync::OnceLock;
-use std::ffi::CString;
 
 // ---------------------------------------------------------------------------
 // Status codes
