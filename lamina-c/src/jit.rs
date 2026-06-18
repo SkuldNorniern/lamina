@@ -2,9 +2,9 @@
 // Gated at the module level in lib.rs: #[cfg(feature = "nightly")].
 
 use std::ffi::c_char;
+use std::ffi::c_void;
 use std::mem;
 use std::panic::AssertUnwindSafe;
-use std::ffi::c_void;
 
 use crate::error::{clear_error, set_error};
 use crate::types::{LaminaJit, LaminaModule};

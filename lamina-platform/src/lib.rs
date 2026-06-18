@@ -65,6 +65,6 @@ mod tests {
         let target = Target::detect_host();
         let caps = target.simd_capabilities();
         // At minimum, we should know if SIMD is supported or not
-        assert!(caps.max_vector_width >= 0);
+        assert!(caps.max_vector_width <= 2048);
     }
 }

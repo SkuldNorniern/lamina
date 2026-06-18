@@ -283,21 +283,16 @@ mod tests {
     #[test]
     fn test_validate_rejects_tailcall_arity_mismatch() {
         let i64_ty = MirType::Scalar(ScalarType::I64);
-        let mut sink = Function::new(Signature::new("sink").with_return(i64_ty.clone()));
+        let mut sink = Function::new(Signature::new("sink").with_return(i64_ty));
         let mut sink_entry = Block::new("entry");
         sink_entry.push(Instruction::Ret {
             value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(0)))),
         });
         sink.add_block(sink_entry);
 
-        let mut bad = Function::new(
-            Signature::new("bad")
-                .with_return(i64_ty.clone())
-                .with_params(vec![Parameter::new(
-                    Register::Virtual(VirtualReg::gpr(0)),
-                    i64_ty.clone(),
-                )]),
-        );
+        let mut bad = Function::new(Signature::new("bad").with_return(i64_ty).with_params(vec![
+            Parameter::new(Register::Virtual(VirtualReg::gpr(0)), i64_ty),
+        ]));
         let mut bad_entry = Block::new("entry");
         bad_entry.push(Instruction::TailCall {
             name: "sink".to_string(),

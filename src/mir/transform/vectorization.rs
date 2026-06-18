@@ -637,7 +637,7 @@ mod tests {
             .get("test")
             .expect("Function should exist");
 
-        let vectorizer = AutoVectorization::default();
+        let vectorizer = AutoVectorization;
         let loops = vectorizer.find_loops(func);
         assert!(!loops.is_empty(), "Should find at least one loop");
     }
@@ -685,7 +685,7 @@ mod tests {
             .get("test")
             .expect("Function should exist");
 
-        let vectorizer = AutoVectorization::default();
+        let vectorizer = AutoVectorization;
         let loops = vectorizer.find_loops(func);
         assert!(!loops.is_empty(), "Should find loop");
 
@@ -724,7 +724,7 @@ mod tests {
             .cloned()
             .expect("Function should exist");
 
-        let vectorizer = AutoVectorization::default();
+        let vectorizer = AutoVectorization;
         let result = vectorizer.apply_internal(&mut func);
         assert!(result.is_ok());
         let changed = result.unwrap();

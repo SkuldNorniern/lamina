@@ -1066,7 +1066,7 @@ mod tests {
         // Verify atomic store
         if let Instruction::AtomicStore {
             ty,
-            ptr,
+            ptr: _,
             value,
             ordering,
         } = &entry.instructions[1]
@@ -1111,7 +1111,7 @@ mod tests {
                 "new_vec",
                 vector_type.clone(),
                 var("sqrt_result"),
-                f32(3.14),
+                f32(std::f32::consts::PI),
                 i32(1),
             )
             .simd_load("loaded_vec", vector_type.clone(), var("vec1"), Some(16))
