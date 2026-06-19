@@ -17,6 +17,16 @@
 //! Prefer packing parameters for hot paths; see [`JIT_ARG_SOFT_WARN_THRESHOLD`] for hints.
 
 use std::mem;
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", not(target_os = "windows")),
+))]
+use std::mem::size_of;
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", not(target_os = "windows")),
+))]
+use std::ptr::copy_nonoverlapping;
 
 #[cfg(any(
     target_arch = "aarch64",
@@ -122,13 +132,13 @@ pub unsafe fn call_function_dynamic(
         // Keep the saved sp in x20 and declare `lateout("x20") _`: (1) addresses passed via
         // `in(reg)` are in caller-saved registers and the JIT callee may clobber them before we
         // reload; (2) AArch64 Rust reserves x19 for LLVM, so it cannot be an asm operand.
-        let byte_len = stack_n * core::mem::size_of::<i64>() + 16;
+        let byte_len = stack_n * size_of::<i64>() + 16;
         let backing = vec![0u8; byte_len];
         let base = backing.as_ptr() as usize;
         let call_sp = (base + 15) & !15;
         let dst = call_sp as *mut i64;
         unsafe {
-            core::ptr::copy_nonoverlapping(args.as_ptr().add(8), dst, stack_n);
+            copy_nonoverlapping(args.as_ptr().add(8), dst, stack_n);
         }
         unsafe {
             asm!(
@@ -230,12 +240,12 @@ pub unsafe fn call_function_dynamic(
         // Copy outgoing stack args into a heap buffer and point rsp at it for the
         // call, then restore the host sp. Same rationale as the AArch64 path:
         // adjusting rsp in asm alone can clobber Rust stack slots below the frame.
-        let byte_len = stack_n * core::mem::size_of::<i64>() + 16;
+        let byte_len = stack_n * size_of::<i64>() + 16;
         let backing = vec![0u8; byte_len];
         let call_sp = (backing.as_ptr() as usize + 15) & !15;
         let dst = call_sp as *mut i64;
         unsafe {
-            core::ptr::copy_nonoverlapping(stack_src, dst, stack_n);
+            copy_nonoverlapping(stack_src, dst, stack_n);
         }
         let mut saved_sp = 0usize;
         let saved_sp_ptr = &mut saved_sp as *mut usize;
