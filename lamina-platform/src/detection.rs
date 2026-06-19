@@ -1,5 +1,6 @@
 //! Host system detection functions.
 
+use std::env::consts::{ARCH, OS};
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
 use std::ffi::c_void;
@@ -8,12 +9,12 @@ use std::mem;
 
 /// Returns the host architecture name: "x86_64", "aarch64", "riscv64", etc.
 pub fn detect_host_architecture_only() -> &'static str {
-    std::env::consts::ARCH
+    ARCH
 }
 
 /// Returns the host OS name: "linux", "macos", "windows", "freebsd", etc.
 pub fn detect_host_os() -> &'static str {
-    std::env::consts::OS
+    OS
 }
 
 /// Get the number of available CPU cores.

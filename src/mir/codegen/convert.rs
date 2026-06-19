@@ -1478,6 +1478,7 @@ mod tests {
     use super::*;
     use crate::ir::builder::{i64 as ir_i64, string, var};
     use crate::ir::{FunctionParameter, IRBuilder};
+    use crate::parser::parse_module;
 
     #[test]
     fn test_from_ir_simple_add() {
@@ -1575,7 +1576,7 @@ fn @main() -> i64 {
     ret.i64 0
 }
 "#;
-        let ir_module = crate::parser::parse_module(ir_source).expect("parse should succeed");
+        let ir_module = parse_module(ir_source).expect("parse should succeed");
         let result = from_ir(&ir_module, "test");
         assert!(
             matches!(result, Err(FromIRError::PrintStringLiteralUnsupported)),

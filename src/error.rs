@@ -2,6 +2,7 @@
 
 use crate::mir::codegen::FromIRError;
 use crate::mir_codegen::CodegenError;
+use std::error::Error as StdError;
 use std::fmt;
 use std::io::Error;
 use std::string::FromUtf8Error;
@@ -42,7 +43,7 @@ impl fmt::Display for LaminaError {
     }
 }
 
-impl std::error::Error for LaminaError {}
+impl StdError for LaminaError {}
 
 impl From<Error> for LaminaError {
     fn from(err: Error) -> Self {

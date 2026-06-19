@@ -7,6 +7,7 @@
 
 use crate::error::LaminaError;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+use ras::{ObjectWriteOptions, Ras, is_object_file_supported};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -51,11 +52,11 @@ pub fn assemble(
         backend,
         additional_flags,
         verbose,
-        ras::ObjectWriteOptions::default(),
+        ObjectWriteOptions::default(),
     )
 }
 
-/// Like [`assemble`], but passes [`ras::ObjectWriteOptions`] when the backend is Ras (ignored for gas/lld/wat2wasm).
+/// Like [`assemble`], but passes [`ObjectWriteOptions`] when the backend is Ras (ignored for gas/lld/wat2wasm).
 #[allow(clippy::too_many_arguments)]
 pub fn assemble_with_ras_object_options(
     input_path: &Path,
@@ -65,7 +66,7 @@ pub fn assemble_with_ras_object_options(
     backend: Option<AssemblerBackend>,
     additional_flags: &[String],
     verbose: bool,
-    ras_object_write_options: ras::ObjectWriteOptions,
+    ras_object_write_options: ObjectWriteOptions,
 ) -> Result<AssembleResult, LaminaError> {
     if !input_path.exists() {
         return Err(LaminaError::ValidationError(format!(
@@ -150,7 +151,7 @@ fn assemble_native(
     backend: Option<AssemblerBackend>,
     additional_flags: &[String],
     verbose: bool,
-    ras_object_write_options: ras::ObjectWriteOptions,
+    ras_object_write_options: ObjectWriteOptions,
 ) -> Result<AssembleResult, LaminaError> {
     let backend = backend.unwrap_or_else(|| detect_assembler_backend(target_arch, target_os));
     let backend = validate_assembler_backend_for_target(backend, target_arch, target_os)?;
@@ -164,10 +165,10 @@ fn assemble_native(
             );
         }
         let mut ras =
-            ras::Ras::with_object_write_options(target_arch, target_os, ras_object_write_options)
+            Ras::with_object_write_options(target_arch, target_os, ras_object_write_options)
                 .map_err(|e| {
-                LaminaError::ValidationError(format!("Failed to create ras assembler: {e}"))
-            })?;
+                    LaminaError::ValidationError(format!("Failed to create ras assembler: {e}"))
+                })?;
         ras.assemble_file(input_path, output_path)
             .map_err(|e| LaminaError::ValidationError(format!("ras assembly failed: {e}")))?;
         return Ok(AssembleResult {
@@ -317,7 +318,7 @@ pub fn detect_assembler_backend(
     if matches!(
         target_arch,
         TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Arx64
-    ) && ras::is_object_file_supported(target_arch, target_os)
+    ) && is_object_file_supported(target_arch, target_os)
     {
         return AssemblerBackend::Ras;
     }
@@ -379,7 +380,7 @@ fn validate_assembler_backend_for_target(
                     "Ras assembler supports x86_64, AArch64, and ARX64 only, not {target_arch:?}"
                 )));
             }
-            if !ras::is_object_file_supported(target_arch, target_os) {
+            if !is_object_file_supported(target_arch, target_os) {
                 return Err(LaminaError::ValidationError(format!(
                     "Ras assembler does not support object output for {target_arch:?} {target_os:?}"
                 )));

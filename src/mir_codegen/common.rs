@@ -1,7 +1,9 @@
 //! Common code for MIR codegen backends.
 
 use std::collections::{BTreeSet, HashMap};
+use std::fmt::Debug;
 use std::io::Write;
+use std::mem;
 use std::sync::{Arc, mpsc};
 use std::thread;
 
@@ -10,7 +12,7 @@ use crate::mir::{Function, Global, MirType, Module as MirModule, Register, Signa
 use crate::mir_codegen::{CodegenError, CodegenOptions};
 use lamina_platform::TargetOperatingSystem;
 
-pub fn parallel_codegen_error(error: impl std::fmt::Debug) -> LaminaError {
+pub fn parallel_codegen_error(error: impl Debug) -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
         "Parallel compilation error: {error:?}"
     )))
@@ -89,7 +91,7 @@ impl<'a> CodegenBase<'a> {
     }
 
     pub fn drain_output(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.output)
+        mem::take(&mut self.output)
     }
 
     #[allow(clippy::too_many_arguments)]

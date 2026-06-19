@@ -6,6 +6,7 @@ use crate::mir::Function;
 use crate::mir::transform::{
     Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
 };
+use lamina_mir::Block as MirBlock;
 
 /// Branch optimization that eliminates unreachable branches.
 #[derive(Default)]
@@ -65,7 +66,7 @@ impl BranchOptimization {
             .blocks
             .iter()
             .filter(|b| !to_remove.contains(b.label.as_str()))
-            .flat_map(lamina_mir::Block::successors)
+            .flat_map(MirBlock::successors)
             .collect();
 
         let safe_to_remove: HashSet<String> = to_remove

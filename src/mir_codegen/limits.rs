@@ -70,6 +70,7 @@ mod tests {
     use crate::mir::{
         Block, Function, MirType, Operand, Parameter, Register, ScalarType, Signature, VirtualReg,
     };
+    use lamina_mir::Immediate;
 
     #[test]
     fn rejects_call_over_limit() {
@@ -82,9 +83,9 @@ mod tests {
 
         let mut args = Vec::new();
         for i in 0..MAX_MIR_CALL_PARAMETERS {
-            args.push(Operand::Immediate(lamina_mir::Immediate::I64(i as i64)));
+            args.push(Operand::Immediate(Immediate::I64(i as i64)));
         }
-        args.push(Operand::Immediate(lamina_mir::Immediate::I64(0)));
+        args.push(Operand::Immediate(Immediate::I64(0)));
 
         let caller_sig = Signature::new("caller").with_return(i64_ty);
         let mut caller = Function::new(caller_sig);

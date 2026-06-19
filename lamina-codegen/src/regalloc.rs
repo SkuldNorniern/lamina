@@ -1,5 +1,6 @@
-use lamina_mir::{Function, Instruction, Operand, Register, VirtualReg};
+use lamina_mir::{AddressMode, Function, Instruction, Operand, Register, VirtualReg};
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 
 /// Opaque handle that allows dynamic dispatch over register allocators without
 /// leaking architecture-specific physical register types.
@@ -250,9 +251,9 @@ impl LinearScanAllocator {
             }
         };
 
-        let push_addr = |uses: &mut Vec<Register>, addr: &lamina_mir::AddressMode| match addr {
-            lamina_mir::AddressMode::BaseOffset { base, .. } => uses.push(base.clone()),
-            lamina_mir::AddressMode::BaseIndexScale { base, index, .. } => {
+        let push_addr = |uses: &mut Vec<Register>, addr: &AddressMode| match addr {
+            AddressMode::BaseOffset { base, .. } => uses.push(base.clone()),
+            AddressMode::BaseIndexScale { base, index, .. } => {
                 uses.push(base.clone());
                 uses.push(index.clone());
             }
@@ -399,7 +400,7 @@ impl GraphColorAllocator {
     /// Color `intervals` using at most `available_regs.len()` registers.
     ///
     /// `intervals` may be in any order; internally sorted by interference degree.
-    pub fn allocate<R: Copy + Eq + std::hash::Hash>(
+    pub fn allocate<R: Copy + Eq + Hash>(
         intervals: &[LiveInterval],
         available_regs: &[R],
     ) -> HashMap<VirtualReg, Allocation<R>> {

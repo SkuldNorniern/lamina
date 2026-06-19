@@ -1,4 +1,4 @@
-//! Helper functions for the `lir!` macro
+//! Helper functions for the `lamina!` macro.
 //!
 //! These functions are used internally by the macro to compile Lamina IR code.
 

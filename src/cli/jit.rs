@@ -2,11 +2,20 @@
 
 use crate::cli::options::{CompileOptions, toolchain_backends};
 
-use lamina::runtime::{Sandbox, SandboxConfig, compile_to_runtime};
-use lamina_platform::Target;
+use lamina::mir::TransformPipeline;
+use lamina::mir::codegen::from_ir;
+use lamina::mir_codegen::assemble::{
+    assemble_with_ras_object_options, get_assembly_output_extension, get_intermediate_extension,
+};
+use lamina::mir_codegen::generate_mir_to_target_with_settings;
+use lamina::mir_codegen::link::{get_output_extension, link};
+use lamina::parser::parse_module;
+use lamina::runtime::{Sandbox, SandboxConfig, compile_to_runtime, execute_jit_function};
+use lamina_platform::{Target, TargetArchitecture, cpu_count};
 
 use lamina::LaminaError;
 use std::env;
+use std::fs::{create_dir_all, remove_dir_all, write};
 use std::path::Path;
 use std::process::{self, Command};
 use std::str::FromStr;
@@ -37,13 +46,13 @@ pub fn handle_jit_compilation(
         }
     }
 
-    let ir_mod = lamina::parser::parse_module(ir_source)
+    let ir_mod = parse_module(ir_source)
         .map_err(|e| LaminaError::ParsingError(format!("IR parse failed: {e}")))?;
-    let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
+    let mut mir_mod = from_ir(&ir_mod, input_path.to_string_lossy().as_ref())
         .map_err(|e| LaminaError::MirError(format!("MIR lowering failed: {e}")))?;
 
     if options.opt_level > 0 {
-        let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(options.opt_level);
+        let pipeline = TransformPipeline::default_for_opt_level(options.opt_level);
         let transform_stats = pipeline
             .apply_to_module(&mut mir_mod)
             .map_err(|e| LaminaError::MirError(format!("MIR optimization failed: {e}")))?;
@@ -93,7 +102,7 @@ pub fn handle_jit_compilation(
         }
     } else {
         let codegen_units = options.codegen_units.unwrap_or_else(|| {
-            let max_threads = lamina_platform::cpu_count();
+            let max_threads = cpu_count();
             if max_threads > 2 { max_threads - 2 } else { 1 }
         });
 
@@ -149,7 +158,7 @@ pub fn handle_jit_compilation(
             }
 
             unsafe {
-                let result = lamina::runtime::execute_jit_function(
+                let result = execute_jit_function(
                     &func.sig,
                     runtime_result.function_ptr,
                     None,
@@ -171,8 +180,7 @@ pub fn handle_jit_compilation(
             // AOT fallback: compile to a temp executable and run it.
             if matches!(
                 target.architecture,
-                lamina_platform::TargetArchitecture::Wasm32
-                    | lamina_platform::TargetArchitecture::Wasm64
+                TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64
             ) {
                 return Err(LaminaError::ValidationError(
                     "JIT fallback: cannot execute WASM targets directly".to_owned(),
@@ -185,18 +193,12 @@ pub fn handle_jit_compilation(
                 .unwrap_or_default()
                 .as_nanos();
             let tmp_dir = env::temp_dir().join(format!("lamina_jit_{pid}_{nanos}"));
-            std::fs::create_dir_all(&tmp_dir)?;
+            create_dir_all(&tmp_dir)?;
 
-            let intermediate_ext = lamina::mir_codegen::assemble::get_intermediate_extension(
-                target.architecture,
-                target.operating_system,
-            );
-            let assembly_output_ext =
-                lamina::mir_codegen::assemble::get_assembly_output_extension(target.architecture);
-            let final_ext = lamina::mir_codegen::link::get_output_extension(
-                target.architecture,
-                target.operating_system,
-            );
+            let intermediate_ext =
+                get_intermediate_extension(target.architecture, target.operating_system);
+            let assembly_output_ext = get_assembly_output_extension(target.architecture);
+            let final_ext = get_output_extension(target.architecture, target.operating_system);
 
             let mut intermediate_path = tmp_dir.join("module");
             intermediate_path.set_extension(intermediate_ext);
@@ -208,7 +210,7 @@ pub fn handle_jit_compilation(
             }
 
             let mut intermediate = Vec::<u8>::new();
-            lamina::mir_codegen::generate_mir_to_target_with_settings(
+            generate_mir_to_target_with_settings(
                 &mir_mod,
                 &mut intermediate,
                 target.architecture,
@@ -217,11 +219,11 @@ pub fn handle_jit_compilation(
                 &options.mir_codegen_settings,
             )?;
 
-            std::fs::write(&intermediate_path, &intermediate)?;
+            write(&intermediate_path, &intermediate)?;
 
             let (assembler_backend, linker_backend) =
                 toolchain_backends(&options.forced_compiler, &options.assembler);
-            let assemble_result = lamina::mir_codegen::assemble::assemble_with_ras_object_options(
+            let assemble_result = assemble_with_ras_object_options(
                 &intermediate_path,
                 &object_path,
                 target.architecture,
@@ -233,7 +235,7 @@ pub fn handle_jit_compilation(
             )?;
 
             if assemble_result.needs_linking {
-                lamina::mir_codegen::link::link(
+                link(
                     &assemble_result.output_path,
                     &exe_path,
                     target.architecture,
@@ -262,7 +264,7 @@ pub fn handle_jit_compilation(
                 )));
             }
 
-            let _ = std::fs::remove_dir_all(&tmp_dir);
+            let _ = remove_dir_all(&tmp_dir);
         }
     }
 

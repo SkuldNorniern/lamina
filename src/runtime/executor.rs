@@ -396,6 +396,7 @@ mod tests {
         Block, Function, Immediate, Instruction, IntBinOp, MirType, Operand, Parameter, Register,
         ScalarType, Signature, VirtualReg,
     };
+    use std::ptr::null;
 
     fn vreg(id: u32) -> Register {
         Register::Virtual(VirtualReg::gpr(id))
@@ -520,8 +521,7 @@ mod tests {
     fn execute_jit_arg_count_mismatch_is_error() {
         let sig = Signature::new("fn");
         // SAFETY: error is triggered during argument validation before the pointer is called.
-        let result =
-            unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1, 2]), false, None) };
+        let result = unsafe { execute_jit_function(&sig, null(), Some(&[1, 2]), false, None) };
         assert!(result.is_err());
     }
 
@@ -532,8 +532,7 @@ mod tests {
             MirType::Scalar(ScalarType::F32),
         )]);
         // SAFETY: error is triggered during type validation before the pointer is called.
-        let result =
-            unsafe { execute_jit_function(&sig, std::ptr::null(), Some(&[1]), false, None) };
+        let result = unsafe { execute_jit_function(&sig, null(), Some(&[1]), false, None) };
         assert!(result.is_err());
     }
 
@@ -541,7 +540,7 @@ mod tests {
     fn execute_jit_unsupported_return_type_is_error() {
         let sig = Signature::new("fn").with_return(MirType::Scalar(ScalarType::F64));
         // SAFETY: error is triggered during return-type validation before the pointer is called.
-        let result = unsafe { execute_jit_function(&sig, std::ptr::null(), None, false, None) };
+        let result = unsafe { execute_jit_function(&sig, null(), None, false, None) };
         assert!(result.is_err());
     }
 }

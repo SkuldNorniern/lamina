@@ -15,6 +15,8 @@ use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 #[cfg(feature = "encoder")]
 use std::mem;
 #[cfg(feature = "encoder")]
+use std::sync::mpsc::channel;
+#[cfg(feature = "encoder")]
 use std::thread::spawn;
 #[cfg(feature = "encoder")]
 use std::time::Duration;
@@ -227,7 +229,7 @@ impl Sandbox {
                 }
                 Some(timeout_ms) => {
                     // Run on a dedicated thread and wait for the result.
-                    let (tx, rx) = std::sync::mpsc::channel::<Result<i64, String>>();
+                    let (tx, rx) = channel::<Result<i64, String>>();
                     // SAFETY: We transmit the raw function pointer as a usize so it
                     // can cross the thread boundary without a Send bound.  The
                     // `memory` object is not moved into the thread — it remains on

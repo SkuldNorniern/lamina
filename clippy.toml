@@ -1,2 +1,10 @@
+absolute-paths-max-segments = 1
+allow-dbg-in-tests = false
+allow-expect-in-tests = true
+allow-panic-in-tests = true
 allow-unwrap-in-tests = true
 cognitive-complexity-threshold = 10
+enum-variant-size-threshold = 200
+msrv = "1.85.0"
+too-many-arguments-threshold = 7
+type-complexity-threshold = 250
