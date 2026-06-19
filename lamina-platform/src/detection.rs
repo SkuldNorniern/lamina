@@ -3,9 +3,14 @@
 use std::env::consts::{ARCH, OS};
 #[cfg(target_os = "macos")]
 use std::ffi::CString;
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::ffi::c_void;
+#[cfg(target_os = "linux")]
+use std::fs::read_to_string;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::mem;
+#[cfg(target_os = "macos")]
+use std::ptr::null;
 
 /// Returns the host architecture name: "x86_64", "aarch64", "riscv64", etc.
 pub fn detect_host_architecture_only() -> &'static str {
@@ -33,7 +38,7 @@ pub fn cpu_count() -> usize {
     #[cfg(target_os = "linux")]
     {
         // Try reading from /proc/cpuinfo first (most reliable)
-        if let Ok(content) = std::fs::read_to_string("/proc/cpuinfo") {
+        if let Ok(content) = read_to_string("/proc/cpuinfo") {
             let count = content
                 .lines()
                 .filter(|line| line.starts_with("processor"))
@@ -62,9 +67,9 @@ pub fn cpu_count() -> usize {
             unsafe extern "C" {
                 fn sysctlbyname(
                     name: *const i8,
-                    oldp: *mut std::ffi::c_void,
+                    oldp: *mut c_void,
                     oldlenp: *mut usize,
-                    newp: *const std::ffi::c_void,
+                    newp: *const c_void,
                     newlen: usize,
                 ) -> i32;
             }
@@ -75,9 +80,9 @@ pub fn cpu_count() -> usize {
             let mut size = mem::size_of::<u32>();
             if sysctlbyname(
                 name.as_ptr(),
-                &mut count as *mut _ as *mut std::ffi::c_void,
+                &mut count as *mut _ as *mut c_void,
                 &mut size,
-                std::ptr::null(),
+                null(),
                 0,
             ) == 0
             {

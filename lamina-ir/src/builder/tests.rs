@@ -10,6 +10,7 @@ mod tests {
     #[cfg(feature = "nightly")]
     use crate::module::ModuleAnnotation;
     use crate::types::{Literal, PrimitiveType, StructField, Type};
+    use std::f32::consts::PI;
 
     #[test]
     fn test_build_simple_function() {
