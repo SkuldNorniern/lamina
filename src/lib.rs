@@ -463,6 +463,8 @@ pub use ir::{
     module::{GlobalDeclaration, Module, TypeDeclaration},
     types::{Identifier, Label, Literal, PrimitiveType, StructField, Type, Value},
 };
+use lamina_codegen::{is_assembly_supported, supported_assembly_targets_hint};
+use lamina_platform::{Target, TargetArchitecture};
 use mir_codegen::CodegenError;
 pub use mir_codegen::{generate_mir_to_target, generate_mir_to_target_with_settings};
 
@@ -477,7 +479,7 @@ pub fn compile_lamina_ir_to_assembly<W: Write>(
     output_asm: &mut W,
     codegen_units: usize,
 ) -> Result<(), LaminaError> {
-    let target = lamina_platform::Target::detect_host().to_str();
+    let target = Target::detect_host().to_str();
     compile_lamina_ir_to_target_assembly(input_ir, output_asm, &target, codegen_units)
 }
 
@@ -499,28 +501,27 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
 ) -> Result<(), LaminaError> {
     let module = parser::parse_module(input_ir)?;
 
-    let target_obj = lamina_platform::Target::from_str(target)
+    let target_obj = Target::from_str(target)
         .map_err(|e| LaminaError::ValidationError(format!("Invalid target '{target}': {e}")))?;
 
-    if !lamina_codegen::is_assembly_supported(target_obj.architecture, target_obj.operating_system)
-    {
+    if !is_assembly_supported(target_obj.architecture, target_obj.operating_system) {
         return Err(LaminaError::ValidationError(format!(
             "Target {} is not supported for assembly generation. {}",
             target,
-            lamina_codegen::supported_assembly_targets_hint()
+            supported_assembly_targets_hint()
         )));
     }
 
     let mir_module = mir::codegen::from_ir(&module, "module")?;
 
     match target_obj.architecture {
-        lamina_platform::TargetArchitecture::X86_64
-        | lamina_platform::TargetArchitecture::Aarch64
-        | lamina_platform::TargetArchitecture::Arx64
-        | lamina_platform::TargetArchitecture::Wasm32
-        | lamina_platform::TargetArchitecture::Wasm64
-        | lamina_platform::TargetArchitecture::Riscv32
-        | lamina_platform::TargetArchitecture::Riscv64 => {
+        TargetArchitecture::X86_64
+        | TargetArchitecture::Aarch64
+        | TargetArchitecture::Arx64
+        | TargetArchitecture::Wasm32
+        | TargetArchitecture::Wasm64
+        | TargetArchitecture::Riscv32
+        | TargetArchitecture::Riscv64 => {
             generate_mir_to_target(
                 &mir_module,
                 output_asm,
@@ -530,7 +531,7 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
             )?;
         }
         #[cfg(feature = "nightly")]
-        lamina_platform::TargetArchitecture::Riscv128 => {
+        TargetArchitecture::Riscv128 => {
             mir_codegen::generate_mir_to_target(
                 &mir_module,
                 output_asm,
@@ -547,4 +548,53 @@ pub fn compile_lamina_ir_to_target_assembly<W: Write>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+
+    const SIMPLE_IR: &str = r#"
+fn @main() -> i64 {
+entry:
+    %result = add.i64 42, 8
+    ret.i64 %result
+}
+"#;
+
+    #[test]
+    fn compile_lamina_ir_to_target_assembly_generates_output() {
+        let mut assembly = Vec::new();
+        compile_lamina_ir_to_target_assembly(SIMPLE_IR, &mut assembly, "x86_64_linux", 1)
+            .expect("target assembly should compile");
+
+        assert!(!assembly.is_empty());
+        let assembly = String::from_utf8(assembly).expect("assembly should be utf-8");
+        assert!(assembly.contains("main"));
+    }
+
+    #[test]
+    fn compile_lamina_ir_to_assembly_uses_host_target() {
+        let mut assembly = Vec::new();
+        compile_lamina_ir_to_assembly(SIMPLE_IR, &mut assembly, 1)
+            .expect("host assembly should compile");
+
+        assert!(!assembly.is_empty());
+    }
+
+    #[test]
+    fn compile_lamina_ir_to_target_assembly_rejects_invalid_target() {
+        let mut assembly = Vec::new();
+        let error = compile_lamina_ir_to_target_assembly(
+            SIMPLE_IR,
+            &mut assembly,
+            "definitely_not_a_target",
+            1,
+        )
+        .expect_err("invalid target should fail");
+
+        assert!(error.to_string().contains("Invalid target"));
+    }
 }

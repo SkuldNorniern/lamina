@@ -18,3 +18,6 @@ lamina-mir = { path = "../lamina-mir", version = "0.1.0" }
 default = []
 # Enable experimental/nightly features (may change without notice)
 nightly = []
+
+[lints]
+workspace = true

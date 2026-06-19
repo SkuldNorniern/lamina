@@ -1,9 +1,11 @@
 pub mod util;
 
 use std::collections::{HashMap, HashSet};
+use std::env::temp_dir;
 use std::fs;
 
 use std::io::Write;
+use std::process::id;
 
 use crate::error::LaminaError;
 use std::result::Result;
@@ -15,6 +17,7 @@ use crate::mir::{
 use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, assemble, capability::CapabilitySet,
+    validate_module_call_parameters,
 };
 
 use lamina_codegen::wasm::WasmABI;
@@ -116,14 +119,13 @@ impl<'a> Codegen for WasmCodegen<'a> {
         let wat_content = self.base.drain_output();
 
         // Write WAT to temporary file
-        let temp_wat = std::env::temp_dir().join(format!("lamina_wasm_{}.wat", std::process::id()));
+        let temp_wat = temp_dir().join(format!("lamina_wasm_{}.wat", id()));
         fs::write(&temp_wat, &wat_content).map_err(|e| {
             CodegenError::InvalidCodegenOptions(format!("Failed to write temporary WAT file: {e}"))
         })?;
 
         // Convert WAT to binary WASM using wat2wasm
-        let temp_wasm =
-            std::env::temp_dir().join(format!("lamina_wasm_{}.wasm", std::process::id()));
+        let temp_wasm = temp_dir().join(format!("lamina_wasm_{}.wasm", id()));
         let _assemble_result = assemble::assemble(
             &temp_wat,
             &temp_wasm,
@@ -271,7 +273,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
 ) -> Result<(), LaminaError> {
-    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::Wasm64)?;
+    validate_module_call_parameters(module, TargetArchitecture::Wasm64)?;
     let abi = WasmABI::new(target_os);
 
     // WASM module header

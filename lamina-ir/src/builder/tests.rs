@@ -10,6 +10,7 @@ mod tests {
     #[cfg(feature = "nightly")]
     use crate::module::ModuleAnnotation;
     use crate::types::{Literal, PrimitiveType, StructField, Type};
+    use std::f32::consts::PI;
 
     #[test]
     fn test_build_simple_function() {
@@ -1111,7 +1112,7 @@ mod tests {
                 "new_vec",
                 vector_type.clone(),
                 var("sqrt_result"),
-                f32(std::f32::consts::PI),
+                f32(PI),
                 i32(1),
             )
             .simd_load("loaded_vec", vector_type.clone(), var("vec1"), Some(16))

@@ -5,8 +5,9 @@
 //! scalar GPR operations, base+offset loads/stores, calls, branches, and returns.
 //! Unsupported MIR ops fail loudly instead of being silently lowered wrong.
 
+use std::cmp::Ordering as CmpOrdering;
 use std::collections::{BTreeMap, HashMap};
-use std::io::Write;
+use std::io::{Error as IoError, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::error::LaminaError;
@@ -95,9 +96,9 @@ fn emit_function<W: Write>(name: &str, func: &Function, writer: &mut W) -> Resul
 
     let mut blocks: Vec<_> = func.blocks.iter().collect();
     blocks.sort_by(|a, b| match (a.label.as_str(), b.label.as_str()) {
-        ("entry", "entry") => std::cmp::Ordering::Equal,
-        ("entry", _) => std::cmp::Ordering::Less,
-        (_, "entry") => std::cmp::Ordering::Greater,
+        ("entry", "entry") => CmpOrdering::Equal,
+        ("entry", _) => CmpOrdering::Less,
+        (_, "entry") => CmpOrdering::Greater,
         _ => a.label.cmp(&b.label),
     });
 
@@ -567,7 +568,7 @@ fn fits_i12(value: i64) -> bool {
     (-2048..=2047).contains(&value)
 }
 
-fn io_error(error: std::io::Error) -> LaminaError {
+fn io_error(error: IoError) -> LaminaError {
     LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(format!(
         "ARX64 asm write failed: {error}"
     )))

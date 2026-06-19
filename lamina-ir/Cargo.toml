@@ -15,3 +15,6 @@ repository = "https://github.com/SkuldNorniern/lamina"
 [features]
 default = []
 nightly = []
+
+[lints]
+workspace = true

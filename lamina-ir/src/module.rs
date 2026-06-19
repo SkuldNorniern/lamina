@@ -422,6 +422,7 @@ mod tests {
     use crate::instruction::{BinaryOp, Instruction};
     use crate::types::{Literal, PrimitiveType, StructField, Type, Value};
     use std::collections::HashMap;
+    use std::f32::consts::PI;
 
     #[test]
     fn test_display_type_declaration() {
@@ -478,7 +479,7 @@ mod tests {
             GlobalDeclaration {
                 name: "PI",
                 ty: Type::Primitive(PrimitiveType::F32),
-                initializer: Some(Value::Constant(Literal::F32(std::f32::consts::PI))),
+                initializer: Some(Value::Constant(Literal::F32(PI))),
             },
         );
 
@@ -520,7 +521,7 @@ mod tests {
 
         let expected_output = format!(
             "type @Vec2 = struct {{ x: f32, y: f32 }}\n\nglobal @PI: f32 = {}\n\nfn @add_one(i32 %a) -> i32 {{\nentry:\n  %res = add.i32 %a, 1\n  ret.i32 %res\n}}\n",
-            std::f32::consts::PI
+            PI
         );
 
         // Display sorts functions, but type/global maps still depend on insertion order.

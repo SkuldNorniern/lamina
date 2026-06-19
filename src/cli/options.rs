@@ -1,12 +1,14 @@
 //! CLI option parsing for the lamina compiler driver.
 
+use std::env::args;
 use std::path::PathBuf;
 use std::process::exit;
 
 use lamina::mir_codegen::assemble::AssemblerBackend;
 use lamina::mir_codegen::link::LinkerBackend;
 use lamina::mir_codegen::{MirCodegenSettings, RegallocStrategy};
-use lamina_platform::TargetOperatingSystem;
+use lamina_platform::{HOST_ARCH_LIST, TargetOperatingSystem};
+use ras::ObjectWriteOptions;
 
 pub struct CompileOptions {
     pub input_file: PathBuf,
@@ -28,11 +30,8 @@ pub struct CompileOptions {
 }
 
 impl CompileOptions {
-    pub fn ras_object_write_options(
-        &self,
-        target_os: TargetOperatingSystem,
-    ) -> ras::ObjectWriteOptions {
-        let mut o = ras::ObjectWriteOptions::default();
+    pub fn ras_object_write_options(&self, target_os: TargetOperatingSystem) -> ObjectWriteOptions {
+        let mut o = ObjectWriteOptions::default();
         let elfish = matches!(
             target_os,
             TargetOperatingSystem::Linux
@@ -122,7 +121,7 @@ pub fn print_usage() {
 }
 
 pub fn parse_args() -> Result<CompileOptions, String> {
-    let args: Vec<String> = std::env::args().collect();
+    let args: Vec<String> = args().collect();
 
     if args.len() < 2 {
         return Err("Not enough arguments".to_string());
@@ -197,14 +196,14 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                 }
                 let requested_target = args[i + 1].to_lowercase();
                 if !requested_target.contains('_')
-                    || !lamina_platform::HOST_ARCH_LIST
+                    || !HOST_ARCH_LIST
                         .iter()
                         .any(|&supported| supported == requested_target)
                 {
                     return Err(format!(
                         "Unsupported target '{}'. Supported values:\n{}",
                         requested_target,
-                        lamina_platform::HOST_ARCH_LIST.join(", ")
+                        HOST_ARCH_LIST.join(", ")
                     ));
                 }
                 options.target_arch = Some(requested_target);

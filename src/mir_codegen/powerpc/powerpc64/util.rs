@@ -1,7 +1,7 @@
 //! Utility functions for PowerPC64 code generation.
 
 use std::collections::HashMap;
-use std::io::{Error, Write};
+use std::io::{Error, ErrorKind, Write};
 
 use crate::mir::Operand;
 use crate::mir::instruction::Immediate;
@@ -21,7 +21,7 @@ pub fn load_register_to_r3<W: Write, RA: RegisterAllocator<PhysReg = &'static st
         writeln!(writer, "    ld 3, {offset}(1)")
     } else {
         Err(Error::new(
-            std::io::ErrorKind::InvalidData,
+            ErrorKind::InvalidData,
             format!("Virtual register {reg:?} has no mapping or stack slot"),
         ))
     }
@@ -40,7 +40,7 @@ pub fn store_r3_to_register<W: Write, RA: RegisterAllocator<PhysReg = &'static s
         writeln!(writer, "    std 3, {offset}(1)")
     } else {
         Err(Error::new(
-            std::io::ErrorKind::InvalidData,
+            ErrorKind::InvalidData,
             format!("Virtual register {reg:?} has no mapping or stack slot"),
         ))
     }
@@ -60,7 +60,7 @@ pub fn load_register_to_register<W: Write, RA: RegisterAllocator<PhysReg = &'sta
         writeln!(writer, "    ld {dest_reg}, {offset}(1)")
     } else {
         Err(Error::new(
-            std::io::ErrorKind::InvalidData,
+            ErrorKind::InvalidData,
             format!("Virtual register {src:?} has no mapping or stack slot"),
         ))
     }

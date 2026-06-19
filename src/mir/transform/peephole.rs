@@ -1,5 +1,7 @@
 //! Peephole optimizations for MIR.
 
+use core::mem::swap;
+
 use crate::mir::instruction::{FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
 use crate::mir::{Block, Function, Register};
 
@@ -130,7 +132,7 @@ impl Peephole {
     ) -> bool {
         // Canonicalize: prefer register on LHS
         if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
-            core::mem::swap(lhs, rhs);
+            swap(lhs, rhs);
             return true;
         }
         // x + 0 => x
@@ -178,7 +180,7 @@ impl Peephole {
         rhs_imm: Option<i64>,
     ) -> bool {
         if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
-            core::mem::swap(lhs, rhs);
+            swap(lhs, rhs);
             return true;
         }
         if is_one(rhs_imm) {
@@ -287,7 +289,7 @@ impl Peephole {
         rhs_imm: Option<i64>,
     ) -> bool {
         if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
-            core::mem::swap(lhs, rhs);
+            swap(lhs, rhs);
             return true;
         }
         if is_all_ones(rhs_imm) {
@@ -314,7 +316,7 @@ impl Peephole {
         rhs_imm: Option<i64>,
     ) -> bool {
         if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
-            core::mem::swap(lhs, rhs);
+            swap(lhs, rhs);
             return true;
         }
         if is_zero(rhs_imm) {
@@ -336,7 +338,7 @@ impl Peephole {
         rhs_imm: Option<i64>,
     ) -> bool {
         if let (Operand::Immediate(_), Operand::Register(_)) = (&lhs, &rhs) {
-            core::mem::swap(lhs, rhs);
+            swap(lhs, rhs);
             return true;
         }
         if is_zero(rhs_imm) {

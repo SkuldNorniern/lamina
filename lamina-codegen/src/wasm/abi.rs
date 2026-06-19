@@ -4,6 +4,7 @@
 //! but we still need utilities for function naming and module structure.
 
 use crate::abi::Abi;
+use lamina_mir::MirType;
 use lamina_platform::TargetOperatingSystem;
 
 /// Platform-specific ABI utilities for WASM code generation.
@@ -30,7 +31,7 @@ impl WasmABI {
     }
 
     /// Get the WASM type for MIR types (currently only i64).
-    pub fn get_wasm_type(&self, ty: &lamina_mir::MirType) -> &'static str {
+    pub fn get_wasm_type(&self, ty: &MirType) -> &'static str {
         let _ = ty;
         "i64"
     }

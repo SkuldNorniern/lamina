@@ -7,7 +7,7 @@ use crate::mir::Module as MirModule;
 #[cfg(feature = "encoder")]
 use crate::mir_codegen::validate_module_call_parameters;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use ras::RasRuntime;
+use ras::{ExecutableMemory, RasRuntime};
 use std::collections::HashMap;
 use std::mem;
 
@@ -17,7 +17,7 @@ pub struct RuntimeCompiler {
     target_arch: TargetArchitecture,
     #[allow(dead_code)] // Used when encoder feature is enabled
     runtime: RasRuntime,
-    code_cache: HashMap<String, ras::ExecutableMemory>,
+    code_cache: HashMap<String, ExecutableMemory>,
 }
 
 impl RuntimeCompiler {
@@ -38,7 +38,7 @@ impl RuntimeCompiler {
         &mut self,
         _module: &MirModule,
         _function_name: Option<&str>,
-    ) -> Result<ras::ExecutableMemory, LaminaError> {
+    ) -> Result<ExecutableMemory, LaminaError> {
         // TODO: Implement caching when ExecutableMemory supports it
         // For now, always compile fresh
 

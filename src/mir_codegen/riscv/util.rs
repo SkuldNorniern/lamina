@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Write};
 
 use crate::mir::instruction::Immediate;
 use crate::mir::register::{Register, VirtualReg};
@@ -8,7 +8,7 @@ use lamina_codegen::LocalRegisterAllocator as RegisterAllocator;
 use lamina_codegen::riscv::RiscVRegAlloc;
 
 /// Load a virtual register into a destination register
-pub fn load_register_to_register<W: std::io::Write>(
+pub fn load_register_to_register<W: Write>(
     src: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RiscVRegAlloc,
@@ -29,7 +29,7 @@ pub fn load_register_to_register<W: std::io::Write>(
 }
 
 /// Store a register to a virtual register
-pub fn store_register_to_register<W: std::io::Write>(
+pub fn store_register_to_register<W: Write>(
     src_reg: &str,
     dst: &VirtualReg,
     writer: &mut W,
@@ -50,7 +50,7 @@ pub fn store_register_to_register<W: std::io::Write>(
 }
 
 /// Load an operand into a destination register
-pub fn load_operand_to_register<W: std::io::Write>(
+pub fn load_operand_to_register<W: Write>(
     operand: &Operand,
     writer: &mut W,
     reg_alloc: &RiscVRegAlloc,
@@ -99,7 +99,7 @@ pub fn load_operand_to_register<W: std::io::Write>(
 
 /// Load a floating-point operand into a floating-point register
 /// For RISC-V F/D extensions, we use fa0/fa1 as scratch FP registers
-pub fn load_fp_operand_to_register<W: std::io::Write>(
+pub fn load_fp_operand_to_register<W: Write>(
     operand: &Operand,
     writer: &mut W,
     reg_alloc: &RiscVRegAlloc,
@@ -167,7 +167,7 @@ pub fn load_fp_operand_to_register<W: std::io::Write>(
 }
 
 /// Store a floating-point register to a virtual register
-pub fn store_fp_register_to_register<W: std::io::Write>(
+pub fn store_fp_register_to_register<W: Write>(
     src_fp_reg: &str,
     dst: &VirtualReg,
     writer: &mut W,
@@ -199,7 +199,7 @@ pub fn store_fp_register_to_register<W: std::io::Write>(
 }
 
 /// Emit RISC-V instruction for integer comparison operations
-pub fn emit_int_cmp_op<W: std::io::Write>(op: &IntCmpOp, writer: &mut W) -> Result<(), Error> {
+pub fn emit_int_cmp_op<W: Write>(op: &IntCmpOp, writer: &mut W) -> Result<(), Error> {
     match op {
         IntCmpOp::Eq => {
             writeln!(writer, "    xor a0, a0, a1")?;

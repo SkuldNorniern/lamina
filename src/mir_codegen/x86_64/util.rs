@@ -7,6 +7,7 @@ use crate::mir::Operand;
 use crate::mir::instruction::Immediate;
 use crate::mir::register::{Register, VirtualReg};
 use crate::mir::types::{MirType, ScalarType};
+use lamina_codegen::LocalRegisterAllocator;
 
 /// Whether a MirType is a 32-bit float (`f32`).
 pub fn is_f32(ty: &MirType) -> bool {
@@ -21,10 +22,7 @@ pub fn is_float(ty: &MirType) -> bool {
 /// Load a float operand (stored as integer bits in a GPR stack slot) into an XMM register.
 ///
 /// Strategy: integers hold float bit patterns via `movd` (f32) or `movq` (f64) into xmm.
-pub fn load_float_operand_to_xmm<
-    W: Write,
-    RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
->(
+pub fn load_float_operand_to_xmm<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     operand: &Operand,
     writer: &mut W,
     reg_alloc: &RA,
@@ -59,10 +57,7 @@ pub fn load_float_operand_to_xmm<
 }
 
 /// Store the float result from an XMM register back into a virtual register (as integer bits).
-pub fn store_xmm_to_register<
-    W: Write,
-    RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
->(
+pub fn store_xmm_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     xmm: &str,
     reg: &VirtualReg,
     writer: &mut W,
@@ -76,10 +71,7 @@ pub fn store_xmm_to_register<
 }
 
 /// Load a virtual register into RAX
-pub fn load_register_to_rax<
-    W: Write,
-    RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
->(
+pub fn load_register_to_rax<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     reg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
@@ -99,10 +91,7 @@ pub fn load_register_to_rax<
 }
 
 /// Store RAX to a virtual register
-pub fn store_rax_to_register<
-    W: Write,
-    RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
->(
+pub fn store_rax_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     reg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
@@ -122,10 +111,7 @@ pub fn store_rax_to_register<
 }
 
 /// Load a register to another register
-pub fn load_register_to_register<
-    W: Write,
-    RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
->(
+pub fn load_register_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     src: &VirtualReg,
     writer: &mut W,
     reg_alloc: &RA,
@@ -146,10 +132,7 @@ pub fn load_register_to_register<
 }
 
 /// Load an operand into RAX
-pub fn load_operand_to_rax<
-    W: Write,
-    RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
->(
+pub fn load_operand_to_rax<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     operand: &Operand,
     writer: &mut W,
     reg_alloc: &RA,
@@ -186,10 +169,7 @@ pub fn load_operand_to_rax<
 }
 
 /// Load an operand into a specific register
-pub fn load_operand_to_register<
-    W: Write,
-    RA: lamina_codegen::LocalRegisterAllocator<PhysReg = &'static str>,
->(
+pub fn load_operand_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     operand: &Operand,
     writer: &mut W,
     reg_alloc: &RA,
