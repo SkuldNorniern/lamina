@@ -894,6 +894,46 @@ pub unsafe extern "C" fn lia_builder_select(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_tuple(
+    builder: *mut LaminaBuilder,
+    result: *const c_char,
+    elements: *const *const LaminaValue,
+    element_count: usize,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        let b = require_mut!(builder, "builder");
+        let r = require_str!(result, "result");
+        let owned_elements = match collect_values(elements, element_count) {
+            Ok(v) => v,
+            Err(msg) => {
+                set_error(msg);
+                return LaminaStatus::ErrorInvalidArgument;
+            }
+        };
+        b.0.tuple(r, &owned_elements);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_extract_tuple(
+    builder: *mut LaminaBuilder,
+    result: *const c_char,
+    tuple_value: *const LaminaValue,
+    index: usize,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        let b = require_mut!(builder, "builder");
+        let r = require_str!(result, "result");
+        let tuple = require_ref!(tuple_value, "tuple_value");
+        b.0.extract_tuple(r, &tuple.0, index);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_builder_write(
     builder: *mut LaminaBuilder,
     result: *const c_char,
@@ -970,6 +1010,20 @@ pub unsafe extern "C" fn lia_builder_write_ptr(
         let r = require_str!(result, "result");
         let p = require_ref!(ptr, "ptr");
         b.0.write_ptr(r, &p.0);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_print(
+    builder: *mut LaminaBuilder,
+    value: *const LaminaValue,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        let b = require_mut!(builder, "builder");
+        let v = require_ref!(value, "value");
+        b.0.print(&v.0);
         clear_error();
         LaminaStatus::Ok
     }))
@@ -1119,5 +1173,63 @@ mod tests {
     #[test]
     fn type_free_null_does_not_crash() {
         unsafe { lia_type_free(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn builder_tuple_extract_and_print_emit_ir() {
+        unsafe {
+            let builder = lia_builder_create();
+            let void_ty = lia_type_void();
+            assert_eq!(
+                lia_builder_function(builder, cs("tuple_debug").as_ptr(), ptr::null(), 0, void_ty),
+                LaminaStatus::Ok
+            );
+
+            let first = lia_value_i64(7);
+            let second = lia_value_var(cs("arg").as_ptr());
+            let elements: [*const LaminaValue; 2] = [first, second];
+            assert_eq!(
+                lia_builder_tuple(builder, cs("pair").as_ptr(), elements.as_ptr(), elements.len()),
+                LaminaStatus::Ok
+            );
+
+            let tuple_val = lia_value_var(cs("pair").as_ptr());
+            assert_eq!(
+                lia_builder_extract_tuple(builder, cs("head").as_ptr(), tuple_val, 0),
+                LaminaStatus::Ok
+            );
+
+            let head = lia_value_var(cs("head").as_ptr());
+            assert_eq!(lia_builder_print(builder, head), LaminaStatus::Ok);
+            assert_eq!(lia_builder_return_void(builder), LaminaStatus::Ok);
+
+            let mut module = ptr::null_mut();
+            assert_eq!(
+                lia_builder_finish(builder, &mut module),
+                LaminaStatus::Ok
+            );
+            let ir = &(*module).0;
+            assert!(ir.contains("%pair = tuple, 7, %arg"), "got: {ir}");
+            assert!(ir.contains("%head = extract.tuple %pair, 0"), "got: {ir}");
+            assert!(ir.contains("print %head"), "got: {ir}");
+
+            lia_value_free(first);
+            lia_value_free(second);
+            lia_value_free(tuple_val);
+            lia_value_free(head);
+            lia_type_free(void_ty);
+            crate::module::lia_module_free(module);
+            lia_builder_free(builder);
+        }
+    }
+
+    #[test]
+    fn builder_tuple_rejects_null_elements_with_count() {
+        unsafe {
+            let builder = lia_builder_create();
+            let st = lia_builder_tuple(builder, cs("pair").as_ptr(), ptr::null(), 1);
+            assert_eq!(st, LaminaStatus::ErrorInvalidArgument);
+            lia_builder_free(builder);
+        }
     }
 }
