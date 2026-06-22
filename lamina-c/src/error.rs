@@ -4,6 +4,7 @@
 
 use std::cell::RefCell;
 use std::ffi::CString;
+use std::ffi::c_char;
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -17,6 +18,7 @@ pub fn set_error(msg: impl Into<String>) {
     } else {
         s
     };
+    // SAFETY: fallback literal contains no NUL bytes, so CString::new cannot fail.
     let cs = CString::new(safe)
         .unwrap_or_else(|_| CString::new("(error message encoding failed)").unwrap());
     LAST_ERROR.with(|e| *e.borrow_mut() = Some(cs));
@@ -28,7 +30,7 @@ pub fn clear_error() {
 
 /// Returns a NUL-terminated pointer valid until the next Lamina API call on
 /// this thread. Returns NULL if no error is set.
-pub fn last_error_ptr() -> *const std::ffi::c_char {
+pub fn last_error_ptr() -> *const c_char {
     LAST_ERROR.with(|e| match e.borrow().as_ref() {
         Some(cs) => cs.as_ptr(),
         None => std::ptr::null(),

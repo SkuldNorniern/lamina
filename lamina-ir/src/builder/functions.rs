@@ -3,8 +3,10 @@
 //! This module provides methods for creating functions, defining parameters,
 //! and managing function signatures in the IR builder API.
 
-use super::IRBuilder;
-use crate::function::{FunctionParameter, FunctionSignature};
+use std::collections::HashMap;
+
+use crate::builder::IRBuilder;
+use crate::function::{FunctionParameter, FunctionSignature, VariableAnnotation};
 use crate::types::Type;
 
 impl<'a> IRBuilder<'a> {
@@ -35,8 +37,7 @@ impl<'a> IRBuilder<'a> {
         };
 
         self.function_signatures.insert(name, signature);
-        self.function_blocks
-            .insert(name, std::collections::HashMap::new());
+        self.function_blocks.insert(name, HashMap::new());
         self.function_annotations.insert(name, vec![]);
         self.current_function = Some(name);
 
@@ -57,7 +58,7 @@ impl<'a> IRBuilder<'a> {
         &mut self,
         name: &'a str,
         ty: Type<'a>,
-        annotations: Vec<crate::function::VariableAnnotation>,
+        annotations: Vec<VariableAnnotation>,
     ) -> FunctionParameter<'a> {
         FunctionParameter {
             name,

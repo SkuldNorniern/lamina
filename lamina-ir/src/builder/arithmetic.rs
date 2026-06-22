@@ -3,7 +3,7 @@
 //! This module provides methods for binary arithmetic operations, comparisons,
 //! and unary operations (negation, logical not).
 
-use super::IRBuilder;
+use crate::builder::IRBuilder;
 use crate::instruction::{BinaryOp, CmpOp, Instruction};
 use crate::types::{PrimitiveType, Value};
 

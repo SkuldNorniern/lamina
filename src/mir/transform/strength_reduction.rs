@@ -1,7 +1,7 @@
 //! Strength reduction transform for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
 use crate::mir::instruction::Immediate;
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{Function, Instruction, IntBinOp, MirType, Operand};
 
 /// Strength reduction that replaces expensive operations with cheaper equivalents.
@@ -30,13 +30,13 @@ impl Transform for StrengthReduction {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl StrengthReduction {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
         for block in &mut func.blocks {
@@ -192,9 +192,7 @@ fn extract_constant(operand: &Operand) -> Option<i64> {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::{FunctionBuilder, Immediate, ScalarType, VirtualReg};
 
     #[test]
     fn test_multiplication_by_power_of_2() {

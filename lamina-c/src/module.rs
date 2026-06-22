@@ -2,6 +2,9 @@
 
 use std::ffi::c_char;
 use std::panic::AssertUnwindSafe;
+use std::str::FromStr;
+
+use lamina_platform::Target;
 
 use crate::error::{clear_error, set_error};
 use crate::types::{LaminaBuffer, LaminaModule};
@@ -79,12 +82,6 @@ pub unsafe extern "C" fn lia_compile_ir_to_assembly(
             set_error("output is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        if let Some(level) = unsafe { opt_level(options) }
-            && level != 0
-        {
-            set_error("opt_level != 0 not yet supported; pass 0");
-            return LaminaStatus::ErrorInvalidArgument;
-        }
         unsafe { compile_to_buf(ir_str, options, output) }
     }))
 }
@@ -104,12 +101,6 @@ pub unsafe extern "C" fn lia_module_compile_to_assembly(
             set_error("output is null");
             return LaminaStatus::ErrorInvalidArgument;
         }
-        if let Some(level) = unsafe { opt_level(options) }
-            && level != 0
-        {
-            set_error("opt_level != 0 not yet supported; pass 0");
-            return LaminaStatus::ErrorInvalidArgument;
-        }
         let ir_str = &(*module).0;
         unsafe { compile_to_buf(ir_str, options, output) }
     }))
@@ -124,25 +115,47 @@ unsafe fn compile_to_buf(
     options: *const LaminaCompileOptions,
     output: *mut LaminaBuffer,
 ) -> LaminaStatus {
-    // SAFETY: all pointer validity checked by callers before reaching here.
-    let tgt = unsafe { target_str(options) };
+    let tgt_string = unsafe { target_str(options) };
     let units = unsafe { codegen_units(options) };
-    let mut asm: Vec<u8> = Vec::new();
-    let result = if let Some(ref tgt_str) = tgt {
-        lamina::compile_lamina_ir_to_target_assembly(ir_str, &mut asm, tgt_str, units)
-    } else {
-        lamina::compile_lamina_ir_to_assembly(ir_str, &mut asm, units)
-    };
+    let level = unsafe { opt_level(options) }.unwrap_or(0);
+
+    let result = (|| -> Result<Vec<u8>, lamina::LaminaError> {
+        let ir_mod = lamina::parser::parse_module(ir_str)?;
+        let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, "module")?;
+
+        if level > 0 {
+            let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(level);
+            pipeline
+                .apply_to_module(&mut mir_mod)
+                .map_err(|e| lamina::LaminaError::MirError(e.to_string()))?;
+        }
+
+        let target = match tgt_string {
+            Some(ref s) => Target::from_str(s).map_err(|e| {
+                lamina::LaminaError::ValidationError(format!("invalid target: {e}"))
+            })?,
+            None => Target::detect_host(),
+        };
+
+        let mut asm: Vec<u8> = Vec::new();
+        lamina::generate_mir_to_target(
+            &mir_mod,
+            &mut asm,
+            target.architecture,
+            target.operating_system,
+            units,
+        )?;
+        Ok(asm)
+    })();
+
     match result {
-        Ok(()) => {
-            // SAFETY: output validity checked by all callers before reaching here.
+        Ok(asm) => {
             unsafe { *output = LaminaBuffer::from_vec(asm) };
             clear_error();
             LaminaStatus::Ok
         }
         Err(e) => {
             set_error(e.to_string());
-            // SAFETY: same as above.
             unsafe { *output = LaminaBuffer::null() };
             LaminaStatus::ErrorCodegen
         }
@@ -178,5 +191,63 @@ unsafe fn opt_level(options: *const LaminaCompileOptions) -> Option<u8> {
     } else {
         // SAFETY: non-null, caller upholds validity.
         Some(unsafe { (*options).opt_level })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+    use std::ptr;
+
+    fn cs(s: &str) -> CString {
+        // SAFETY: test strings contain no NUL bytes.
+        CString::new(s).unwrap()
+    }
+
+    const ADD_IR: &str =
+        "fn @add(i64 %a, i64 %b) -> i64 {\nentry:\n  %r = add.i64 %a, %b\n  ret.i64 %r\n}\n";
+
+    #[test]
+    fn null_output_rejected() {
+        let ir = cs(ADD_IR);
+        unsafe {
+            let st = lia_compile_ir_to_assembly(ir.as_ptr(), ptr::null(), ptr::null_mut());
+            assert_eq!(st, LaminaStatus::ErrorInvalidArgument);
+        }
+    }
+
+    #[test]
+    fn compile_with_opt_level_zero_succeeds() {
+        let ir = cs(ADD_IR);
+        let opts = LaminaCompileOptions {
+            target: ptr::null(),
+            codegen_units: 1,
+            opt_level: 0,
+        };
+        unsafe {
+            let mut buf = LaminaBuffer::null();
+            let st = lia_compile_ir_to_assembly(ir.as_ptr(), &opts, &mut buf);
+            assert_eq!(st, LaminaStatus::Ok);
+            assert!(buf.len > 0);
+            crate::lia_buffer_free(&mut buf);
+        }
+    }
+
+    #[test]
+    fn compile_with_opt_level_one_succeeds() {
+        let ir = cs(ADD_IR);
+        let opts = LaminaCompileOptions {
+            target: ptr::null(),
+            codegen_units: 1,
+            opt_level: 1,
+        };
+        unsafe {
+            let mut buf = LaminaBuffer::null();
+            let st = lia_compile_ir_to_assembly(ir.as_ptr(), &opts, &mut buf);
+            assert_eq!(st, LaminaStatus::Ok);
+            assert!(buf.len > 0);
+            crate::lia_buffer_free(&mut buf);
+        }
     }
 }

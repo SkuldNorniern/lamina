@@ -30,7 +30,7 @@ impl FrameMap {
         }
 
         let mut reg_vec: Vec<Register> = regs.into_iter().collect();
-        reg_vec.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+        reg_vec.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
 
         let mut slots = HashMap::new();
         let mut offset: i32 = -8;
@@ -46,6 +46,22 @@ impl FrameMap {
         }
         frame_size = (frame_size + 15) & !15;
         Self { slots, frame_size }
+    }
+
+    pub fn recompute_frame_size_from_slots(&mut self) {
+        let mut min_off = 0i32;
+        for &o in self.slots.values() {
+            if o < min_off {
+                min_off = o;
+            }
+        }
+        let mut frame_size = if min_off == 0 {
+            0
+        } else {
+            (-min_off - 8).max(0)
+        };
+        frame_size = (frame_size + 15) & !15;
+        self.frame_size = frame_size;
     }
 
     /// Returns the stack slot offset for a register, if it has one.

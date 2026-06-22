@@ -2,6 +2,7 @@
 name = "lamina-c"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
 authors = ["Eira <eira@nornity.com>"]
 description = "Stable C API for the Lamina compiler"
 license = "Apache-2.0"
@@ -13,9 +14,13 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [dependencies]
 lamina = { path = "..", version = "0.0.10", features = ["encoder"] }
 lamina-ir = { path = "../lamina-ir", version = "0.1.0" }
-lamina-platform = { version = "0.1.0" }
+lamina-platform = { path = "../lamina-platform", version = "0.1.1" }
 
 [workspace]
+
+[patch.crates-io]
+lamina-platform = { path = "../lamina-platform" }
+lamina-mir = { path = "../lamina-mir" }
 
 [features]
 default = []

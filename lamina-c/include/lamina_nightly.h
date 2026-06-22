@@ -65,6 +65,21 @@ lia_status_t lia_jit_call_i64_2(
     int64_t       b,
     int64_t      *result);
 
+lia_status_t lia_jit_call_i64_3(
+    lia_jit_t *jit,
+    int64_t       a,
+    int64_t       b,
+    int64_t       c,
+    int64_t      *result);
+
+lia_status_t lia_jit_call_i64_4(
+    lia_jit_t *jit,
+    int64_t       a,
+    int64_t       b,
+    int64_t       c,
+    int64_t       d,
+    int64_t      *result);
+
 #ifdef __cplusplus
 }
 #endif

@@ -3,7 +3,7 @@
 //! This module provides methods for pointer arithmetic, structure field access,
 //! and pointer-integer conversions.
 
-use super::IRBuilder;
+use crate::builder::IRBuilder;
 use crate::instruction::Instruction;
 use crate::types::{PrimitiveType, Value};
 

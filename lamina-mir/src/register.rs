@@ -17,7 +17,7 @@
 use std::fmt;
 
 /// Register class determines which physical registers can be used
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum RegisterClass {
     /// General Purpose Register (integers, pointers)
     Gpr,
@@ -29,7 +29,7 @@ pub enum RegisterClass {
 
 /// Virtual register (pre-register allocation)
 /// on Target Codegen, this will be mapped to a physical register
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VirtualReg {
     pub id: u32,
     pub class: RegisterClass,
@@ -105,8 +105,8 @@ impl Register {
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Register::Virtual(v) => write!(f, "{}", v),
-            Register::Physical(p) => write!(f, "{}", p),
+            Register::Virtual(v) => write!(f, "{v}"),
+            Register::Physical(p) => write!(f, "{p}"),
         }
     }
 }
