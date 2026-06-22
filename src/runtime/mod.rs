@@ -16,9 +16,19 @@ pub use executor::execute_jit_function;
 pub use macro_helpers::compile_lir_internal;
 pub use sandbox::{Sandbox, SandboxConfig};
 
+#[cfg(feature = "encoder")]
+use std::env;
+
 use crate::error::LaminaError;
 use crate::mir::Module as MirModule;
+#[cfg(feature = "encoder")]
+use crate::mir_codegen::validate_module_call_parameters;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+// Re-export ras types for convenience
+#[cfg(feature = "encoder")]
+use ras::assembler::RasAssembler;
+pub use ras::{ExecutableMemory, RasRuntime};
 
 /// Runtime compilation result
 pub struct RuntimeResult {
@@ -27,9 +37,6 @@ pub struct RuntimeResult {
     /// Function pointer (unsafe - caller must ensure signature matches)
     pub function_ptr: *const u8,
 }
-
-// Re-export ras types for convenience
-pub use ras::{ExecutableMemory, RasRuntime};
 
 /// Compile MIR module to executable memory using runtime compilation
 pub fn compile_to_runtime(
@@ -40,22 +47,20 @@ pub fn compile_to_runtime(
 ) -> Result<RuntimeResult, LaminaError> {
     #[cfg(feature = "encoder")]
     {
-        use ras::assembler::RasAssembler;
-
-        crate::mir_codegen::validate_module_call_parameters(_module, _target_arch)?;
+        validate_module_call_parameters(_module, _target_arch)?;
 
         // Keep JIT output quiet by default (release-friendly). Enable with `LAMINA_JIT_DEBUG=1`.
-        let jit_debug = std::env::var_os("LAMINA_JIT_DEBUG").is_some();
+        let jit_debug = env::var_os("LAMINA_JIT_DEBUG").is_some();
 
         let mut assembler = RasAssembler::new(_target_arch, _target_os).map_err(|e| {
-            LaminaError::ValidationError(format!("Failed to create assembler: {}", e))
+            LaminaError::ValidationError(format!("Failed to create assembler: {e}"))
         })?;
 
         // Always compile all functions (needed for internal function calls)
         let (code, function_offsets) = assembler
             .compile_mir_to_binary_function(_module, None)
             .map_err(|e| {
-                LaminaError::ValidationError(format!("Runtime compilation failed: {}", e))
+                LaminaError::ValidationError(format!("Runtime compilation failed: {e}"))
             })?;
 
         // Find the function offset for the requested function
@@ -66,7 +71,7 @@ pub fn compile_to_runtime(
                     if let Some(stripped) = name.strip_prefix('@') {
                         function_offsets.get(stripped)
                     } else {
-                        function_offsets.get(&format!("@{}", name))
+                        function_offsets.get(&format!("@{name}"))
                     }
                 })
                 .copied();
@@ -85,18 +90,17 @@ pub fn compile_to_runtime(
         };
 
         // Allocate writable memory
-        let mut memory = ExecutableMemory::allocate_writable(code.len()).map_err(|e| {
-            LaminaError::ValidationError(format!("Memory allocation failed: {}", e))
-        })?;
+        let mut memory = ExecutableMemory::allocate_writable(code.len())
+            .map_err(|e| LaminaError::ValidationError(format!("Memory allocation failed: {e}")))?;
 
         // Write code
         memory
             .write_code(&code)
-            .map_err(|e| LaminaError::ValidationError(format!("Failed to write code: {}", e)))?;
+            .map_err(|e| LaminaError::ValidationError(format!("Failed to write code: {e}")))?;
 
         // Make executable
         memory.make_executable().map_err(|e| {
-            LaminaError::ValidationError(format!("Failed to make memory executable: {}", e))
+            LaminaError::ValidationError(format!("Failed to make memory executable: {e}"))
         })?;
 
         // Get function pointer, adjusting for function offset if specified
@@ -115,8 +119,7 @@ pub fn compile_to_runtime(
             let adjusted = (base_ptr as usize + offset) as *const u8;
             if jit_debug {
                 eprintln!(
-                    "[JIT-DEBUG] Function pointer: base={:p}, offset={}, adjusted={:p}",
-                    base_ptr, offset, adjusted
+                    "[JIT-DEBUG] Function pointer: base={base_ptr:p}, offset={offset}, adjusted={adjusted:p}"
                 );
             }
 
@@ -256,10 +259,7 @@ pub fn compile_to_runtime(
             adjusted
         } else {
             if jit_debug {
-                eprintln!(
-                    "[JIT-DEBUG] Function pointer: base={:p}, no offset",
-                    base_ptr
-                );
+                eprintln!("[JIT-DEBUG] Function pointer: base={base_ptr:p}, no offset");
             }
             base_ptr
         };
@@ -274,5 +274,28 @@ pub fn compile_to_runtime(
         Err(LaminaError::ValidationError(
             "Runtime compilation requires the 'encoder' feature to be enabled".to_string(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(not(feature = "encoder"))]
+    use super::*;
+    #[cfg(not(feature = "encoder"))]
+    use crate::mir::Module;
+    #[cfg(not(feature = "encoder"))]
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+    #[cfg(not(feature = "encoder"))]
+    #[test]
+    fn compile_to_runtime_without_encoder_returns_error() {
+        let module = Module::new("test");
+        let result = compile_to_runtime(
+            &module,
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Linux,
+            None,
+        );
+        assert!(matches!(result, Err(LaminaError::ValidationError(_))));
     }
 }

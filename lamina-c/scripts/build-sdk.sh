@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-sdk.sh — assemble a lamina-c release archive.
+# build-sdk.sh - assemble a lamina-c release archive.
 #
 # Usage:
 #   ./scripts/build-sdk.sh [--release] [--nightly] [--out DIR]

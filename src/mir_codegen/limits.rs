@@ -64,15 +64,18 @@ pub fn validate_module_call_parameters(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::expect_used)]
+
     use super::*;
     use crate::mir::{
         Block, Function, MirType, Operand, Parameter, Register, ScalarType, Signature, VirtualReg,
     };
+    use lamina_mir::Immediate;
 
     #[test]
     fn rejects_call_over_limit() {
         let i64_ty = MirType::Scalar(ScalarType::I64);
-        let callee_sig = Signature::new("callee").with_return(i64_ty.clone());
+        let callee_sig = Signature::new("callee").with_return(i64_ty);
         let mut callee = Function::new(callee_sig);
         let mut cb = Block::new("entry");
         cb.push(Instruction::Ret { value: None });
@@ -80,11 +83,11 @@ mod tests {
 
         let mut args = Vec::new();
         for i in 0..MAX_MIR_CALL_PARAMETERS {
-            args.push(Operand::Immediate(lamina_mir::Immediate::I64(i as i64)));
+            args.push(Operand::Immediate(Immediate::I64(i as i64)));
         }
-        args.push(Operand::Immediate(lamina_mir::Immediate::I64(0)));
+        args.push(Operand::Immediate(Immediate::I64(0)));
 
-        let caller_sig = Signature::new("caller").with_return(i64_ty.clone());
+        let caller_sig = Signature::new("caller").with_return(i64_ty);
         let mut caller = Function::new(caller_sig);
         let mut eb = Block::new("entry");
         eb.push(Instruction::Call {
@@ -111,7 +114,7 @@ mod tests {
     fn accepts_boundary_arity() {
         let i64_ty = MirType::Scalar(ScalarType::I64);
         let params: Vec<Parameter> = (0..MAX_MIR_CALL_PARAMETERS)
-            .map(|i| Parameter::new(Register::Virtual(VirtualReg::gpr(i as u32)), i64_ty.clone()))
+            .map(|i| Parameter::new(Register::Virtual(VirtualReg::gpr(i as u32)), i64_ty))
             .collect();
         let sig = Signature::new("big")
             .with_params(params)

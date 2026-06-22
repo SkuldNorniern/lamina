@@ -4,4 +4,4 @@ pub mod abi;
 pub mod regalloc;
 
 pub use abi::WasmABI;
-pub use regalloc::WasmRegAlloc;
+pub use regalloc::{WasmRegAlloc, WasmStackSlot};

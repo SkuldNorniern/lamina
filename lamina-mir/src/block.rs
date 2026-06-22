@@ -3,7 +3,7 @@
 //! A basic block is a sequence of instructions with a single entry point and
 //! a single exit point (terminator instruction). Basic blocks are the fundamental
 //! unit of control flow in LUMIR.
-use super::instruction::Instruction;
+use crate::instruction::Instruction;
 use std::fmt;
 
 /// Block in LUMIR
@@ -20,7 +20,7 @@ impl fmt::Display for Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "{}:", self.label)?;
         for instr in &self.instructions {
-            writeln!(f, "  {}", instr)?;
+            writeln!(f, "  {instr}")?;
         }
         Ok(())
     }
@@ -47,9 +47,7 @@ impl Block {
 
     /// Check if this block has a terminator
     pub fn has_terminator(&self) -> bool {
-        self.terminator()
-            .map(|i| i.is_terminator())
-            .unwrap_or(false)
+        self.terminator().is_some_and(Instruction::is_terminator)
     }
 
     /// Get all non-terminator instructions
@@ -71,15 +69,20 @@ impl Block {
         self.instructions.is_empty()
     }
 
-    /// Get successor block labels
-    pub fn successors(&self) -> Vec<String> {
+    /// Get successor block labels, borrowing from the terminator instruction.
+    pub fn successors(&self) -> Vec<&str> {
         match self.terminator() {
-            Some(Instruction::Jmp { target }) => vec![target.clone()],
+            Some(Instruction::Jmp { target }) => vec![target.as_str()],
             Some(Instruction::Br {
                 true_target,
                 false_target,
                 ..
-            }) => vec![true_target.clone(), false_target.clone()],
+            }) => vec![true_target.as_str(), false_target.as_str()],
+            Some(Instruction::Switch { cases, default, .. }) => {
+                let mut targets = vec![default.as_str()];
+                targets.extend(cases.iter().map(|(_, t)| t.as_str()));
+                targets
+            }
             _ => vec![],
         }
     }

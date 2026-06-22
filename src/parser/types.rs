@@ -1,7 +1,11 @@
 //! Type parsing for Lamina IR.
 
-use super::state::ParserState;
-use crate::{LaminaError, PrimitiveType, StructField, Type, TypeDeclaration};
+use std::collections::HashSet;
+use std::iter;
+
+use crate::LaminaError;
+use crate::ir::{PrimitiveType, StructField, Type, TypeDeclaration};
+use crate::parser::state::ParserState;
 
 /// Parses a type declaration.
 pub fn parse_type_declaration<'a>(
@@ -22,13 +26,13 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
         state.consume_keyword("struct")?;
         state.expect_char('{')?;
         let mut fields = Vec::new();
-        let mut field_names = std::collections::HashSet::new();
+        let mut field_names = HashSet::new();
 
         loop {
             state.skip_whitespace_and_comments();
             if state.current_char() == Some('}') {
                 if fields.is_empty() {
-                    return Err(state.error("Struct type must have at least one field\n  Hint: Empty structs are not allowed. Add at least one field (e.g., 'struct { x: i32 }')".to_string()));
+                    return Err(state.error("Struct type must have at least one field\n  Hint: Empty structs are not allowed. Add at least one field (e.g., 'struct { x: i32 }')"));
                 }
                 state.advance();
                 break;
@@ -38,8 +42,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
             // Check for duplicate field names
             if !field_names.insert(field_name) {
                 return Err(state.error(format!(
-                    "Duplicate struct field name: '{}'\n  Hint: Each field in a struct must have a unique name",
-                    field_name
+                    "Duplicate struct field name: '{field_name}'\n  Hint: Each field in a struct must have a unique name"
                 )));
             }
 
@@ -63,7 +66,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
         let size_val = state.parse_integer()?;
 
         if size_val < 0 {
-            return Err(state.error(format!("Invalid array size: {}", size_val)));
+            return Err(state.error(format!("Invalid array size: {size_val}")));
         }
 
         let size = size_val as u64;
@@ -77,8 +80,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
     } else {
         let found = state.peek_slice(20).unwrap_or("");
         Err(state.error(format!(
-            "Expected 'struct' or '[' for composite type, but found '{}'",
-            found
+            "Expected 'struct' or '[' for composite type, but found '{found}'"
         )))
     }
 }
@@ -129,24 +131,10 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                     let all_type_names: Vec<&str> = primitive_types
                         .iter()
                         .copied()
-                        .chain(std::iter::once("void"))
+                        .chain(iter::once("void"))
                         .collect();
-                    let mut suggestions = Vec::new();
-                    const MAX_TYPO_DISTANCE: usize = 2;
-
-                    for valid in &all_type_names {
-                        let distance = super::edit_distance(
-                            potential_primitive,
-                            valid,
-                            Some(MAX_TYPO_DISTANCE),
-                        );
-                        if distance <= MAX_TYPO_DISTANCE {
-                            suggestions.push(*valid);
-                        }
-                    }
-
-                    suggestions
-                        .sort_by_key(|&s| super::edit_distance(potential_primitive, s, None));
+                    let suggestions =
+                        super::suggest_alternatives(potential_primitive, &all_type_names);
 
                     let hint = if !suggestions.is_empty() {
                         if suggestions.len() == 1 {
@@ -157,7 +145,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                                 suggestions
                                     .iter()
                                     .take(3)
-                                    .map(|s| format!("'{}'", s))
+                                    .map(|s| format!("'{s}'"))
                                     .collect::<Vec<_>>()
                                     .join(", ")
                             )
@@ -170,8 +158,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
                     };
 
                     Err(state.error(format!(
-                        "Unknown type identifier: '{}'\n  Hint: {}",
-                        potential_primitive, hint
+                        "Unknown type identifier: '{potential_primitive}'\n  Hint: {hint}"
                     )))
                 }
             }

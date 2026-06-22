@@ -2,9 +2,11 @@
 //!
 //! This module defines the structures for representing functions in LUMIR,
 //! including function signatures, parameters, and basic blocks.
-use super::block::Block;
-use super::register::Register;
-use super::types::MirType;
+use crate::block::Block;
+use crate::instruction::Instruction;
+use crate::register::Register;
+use crate::types::MirType;
+use std::collections::HashSet;
 use std::fmt;
 
 /// Function parameter
@@ -126,7 +128,7 @@ impl Function {
 
     /// Total number of instructions across all blocks
     pub fn instruction_count(&self) -> usize {
-        self.blocks.iter().map(|b| b.len()).sum()
+        self.blocks.iter().map(Block::len).sum()
     }
 
     /// Check if this function is well-formed
@@ -137,9 +139,9 @@ impl Function {
         }
 
         // Check that all blocks have unique labels
-        let mut seen_labels = std::collections::HashSet::new();
+        let mut seen_labels: HashSet<&str> = HashSet::new();
         for block in &self.blocks {
-            if !seen_labels.insert(&block.label) {
+            if !seen_labels.insert(block.label.as_str()) {
                 return Err(format!("Duplicate block label: {}", block.label));
             }
         }
@@ -154,7 +156,7 @@ impl Function {
         // Check that all branch/jump targets reference existing blocks
         for block in &self.blocks {
             for label in block.successors() {
-                if !seen_labels.contains(&label) {
+                if !seen_labels.contains(label) {
                     return Err(format!(
                         "Block '{}' references undefined target '{}'",
                         block.label, label
@@ -179,13 +181,13 @@ impl fmt::Display for Function {
         }
         write!(f, ")")?;
         if let Some(ret) = &self.sig.ret_ty {
-            write!(f, " -> {}", ret)?;
+            write!(f, " -> {ret}")?;
         }
         writeln!(f, " {{")?;
 
         // Emit blocks in order
         for block in &self.blocks {
-            writeln!(f, "{}", block)?;
+            writeln!(f, "{block}")?;
         }
 
         write!(f, "}}")
@@ -228,7 +230,7 @@ impl FunctionBuilder {
     }
 
     /// Add an instruction to the current block
-    pub fn instr(mut self, instr: super::instruction::Instruction) -> Self {
+    pub fn instr(mut self, instr: Instruction) -> Self {
         if let Some(ref label) = self.current_block
             && let Some(block) = self.function.get_block_mut(label)
         {

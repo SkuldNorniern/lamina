@@ -1,13 +1,11 @@
 //! MIR-based code generation for multiple target architectures.
 
-pub mod abi;
 pub mod arx64;
 pub mod assemble;
 pub mod capability;
 pub mod common;
 pub mod limits;
 pub mod link;
-pub mod regalloc;
 pub mod settings;
 
 pub mod arm;
@@ -16,7 +14,6 @@ pub mod riscv;
 pub mod wasm;
 pub mod x86_64;
 
-pub use abi::Abi;
 pub use capability::{CapabilitySet, CodegenCapability};
 pub use limits::{MAX_MIR_CALL_PARAMETERS, validate_module_call_parameters};
 pub use settings::{MirCodegenSettings, RegallocStrategy};
@@ -26,12 +23,12 @@ use std::fmt;
 use std::io::Write;
 
 use crate::error::LaminaError;
-use crate::mir::{Global, MirType, Signature};
+use crate::mir::{Global, MirType, Module, Signature};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Generates assembly from MIR for the requested target architecture and OS.
 pub fn generate_mir_to_target<W: Write>(
-    module: &crate::mir::Module,
+    module: &Module,
     writer: &mut W,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
@@ -50,16 +47,25 @@ pub fn generate_mir_to_target<W: Write>(
 /// Like [`generate_mir_to_target`], but honors [`MirCodegenSettings`] for register allocation
 /// and optional assembly debug directives.
 pub fn generate_mir_to_target_with_settings<W: Write>(
-    module: &crate::mir::Module,
+    module: &Module,
     writer: &mut W,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
-    if settings.emit_asm_debug_lines
-        && !CapabilitySet::for_architecture(target_arch).supports(&CodegenCapability::DebugInfo)
-    {
+    let effective_caps = {
+        #[cfg(feature = "nightly")]
+        {
+            CapabilitySet::for_architecture_with_simd(target_arch, settings.simd.as_ref())
+        }
+        #[cfg(not(feature = "nightly"))]
+        {
+            CapabilitySet::for_architecture(target_arch)
+        }
+    };
+
+    if settings.emit_asm_debug_lines && !effective_caps.supports(&CodegenCapability::DebugInfo) {
         return Err(LaminaError::ValidationError(
             "emit_asm_debug_lines requires DebugInfo capability on this target".to_string(),
         ));
@@ -153,65 +159,12 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
         }
         _ => {
             return Err(LaminaError::ValidationError(format!(
-                "Unsupported target architecture: {:?}",
-                target_arch
+                "Unsupported target architecture: {target_arch:?}"
             )));
         }
     }
 
     Ok(())
-}
-
-/// Generates AArch64 assembly from MIR for the requested host OS.
-#[deprecated(
-    since = "0.0.9",
-    note = "Use generate_mir_to_target with TargetArchitecture::Aarch64 instead"
-)]
-pub fn generate_mir_to_aarch64<W: Write>(
-    module: &crate::mir::Module,
-    writer: &mut W,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::Aarch64, target_os, 1)
-}
-
-/// Generates x86_64 assembly from MIR for the requested host OS.
-#[deprecated(
-    since = "0.0.9",
-    note = "Use generate_mir_to_target with TargetArchitecture::X86_64 instead"
-)]
-pub fn generate_mir_to_x86_64<W: Write>(
-    module: &crate::mir::Module,
-    writer: &mut W,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::X86_64, target_os, 1)
-}
-
-/// Generates WASM from MIR for the requested host OS.
-#[deprecated(
-    since = "0.0.9",
-    note = "Use generate_mir_to_target with TargetArchitecture::Wasm32/Wasm64 instead"
-)]
-pub fn generate_mir_to_wasm<W: Write>(
-    module: &crate::mir::Module,
-    writer: &mut W,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::Wasm32, target_os, 1)
-}
-
-/// Generates RISC-V assembly from MIR for the requested host OS.
-#[deprecated(
-    since = "0.0.9",
-    note = "Use generate_mir_to_target with TargetArchitecture::Riscv32/Riscv64/Riscv128 instead"
-)]
-pub fn generate_mir_to_riscv<W: Write>(
-    module: &crate::mir::Module,
-    writer: &mut W,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    generate_mir_to_target(module, writer, TargetArchitecture::Riscv64, target_os, 1)
 }
 
 /// Code generation options.
@@ -295,25 +248,25 @@ impl fmt::Display for CodegenError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CodegenError::UnsupportedFeature(message) => {
-                write!(f, "Unsupported feature: {}", message)
+                write!(f, "Unsupported feature: {message}")
             }
             CodegenError::InvalidCodegenOptions(message) => {
-                write!(f, "Invalid codegen options: {}", message)
+                write!(f, "Invalid codegen options: {message}")
             }
-            CodegenError::InvalidTargetOs(message) => write!(f, "Invalid target OS: {}", message),
+            CodegenError::InvalidTargetOs(message) => write!(f, "Invalid target OS: {message}"),
             CodegenError::InvalidMaxBitWidth(width) => {
-                write!(f, "Invalid max bit width: {}", width)
+                write!(f, "Invalid max bit width: {width}")
             }
             CodegenError::InvalidInputName(message) => {
-                write!(f, "Invalid input name: {}", message)
+                write!(f, "Invalid input name: {message}")
             }
-            CodegenError::InvalidVerbose(value) => write!(f, "Invalid verbose flag: {}", value),
+            CodegenError::InvalidVerbose(value) => write!(f, "Invalid verbose flag: {value}"),
             CodegenError::InvalidOptions(options) => {
-                write!(f, "Invalid options: {:?}", options)
+                write!(f, "Invalid options: {options:?}")
             }
-            CodegenError::InvalidTypes(types) => write!(f, "Invalid types: {:?}", types),
-            CodegenError::InvalidGlobals(globals) => write!(f, "Invalid globals: {:?}", globals),
-            CodegenError::InvalidFuncs(funcs) => write!(f, "Invalid functions: {:?}", funcs),
+            CodegenError::InvalidTypes(types) => write!(f, "Invalid types: {types:?}"),
+            CodegenError::InvalidGlobals(globals) => write!(f, "Invalid globals: {globals:?}"),
+            CodegenError::InvalidFuncs(funcs) => write!(f, "Invalid functions: {funcs:?}"),
         }
     }
 }
@@ -326,7 +279,7 @@ mod tests {
     use crate::mir::codegen;
     use crate::parser;
 
-    fn create_simple_add_function() -> crate::mir::Module {
+    fn create_simple_add_function() -> Module {
         let input = r#"
         fn @add(i64 %a, i64 %b) -> i64 {
             entry:

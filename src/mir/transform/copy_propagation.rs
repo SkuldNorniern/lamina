@@ -1,8 +1,44 @@
 //! Copy propagation transform for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Immediate, Instruction, Operand, Register};
+use crate::mir::transform::{
+    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+};
+use crate::mir::{
+    AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
+};
 use std::collections::HashMap;
+
+fn as_reg(operand: &Operand) -> Option<&Register> {
+    if let Operand::Register(r) = operand {
+        Some(r)
+    } else {
+        None
+    }
+}
+
+fn is_imm(operand: &Operand, v: i64) -> bool {
+    matches!(operand, Operand::Immediate(Immediate::I64(x)) if *x == v)
+}
+
+fn identity_copy_source(instr: &Instruction) -> Option<(&Register, &Register)> {
+    let Instruction::IntBinary {
+        op, dst, lhs, rhs, ..
+    } = instr
+    else {
+        return None;
+    };
+    let src = match op {
+        IntBinOp::Add | IntBinOp::Sub | IntBinOp::Xor | IntBinOp::Or if is_imm(rhs, 0) => {
+            as_reg(lhs)?
+        }
+        IntBinOp::Or if is_imm(lhs, 0) => as_reg(rhs)?,
+        IntBinOp::Mul if is_imm(rhs, 1) => as_reg(lhs)?,
+        IntBinOp::Mul if is_imm(lhs, 1) => as_reg(rhs)?,
+        IntBinOp::And if is_imm(rhs, -1) => as_reg(lhs)?,
+        _ => return None,
+    };
+    Some((dst, src))
+}
 
 /// Copy propagation transform that replaces variable uses with their source values.
 #[derive(Default)]
@@ -25,34 +61,14 @@ impl Transform for CopyPropagation {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl CopyPropagation {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        const MAX_BLOCKS: usize = 500;
-        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
-
-        if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for copy propagation ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
-        }
-
-        for block in &func.blocks {
-            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
-                return Err(format!(
-                    "Block '{}' too large for copy propagation ({} instructions, max {})",
-                    block.label,
-                    block.instructions.len(),
-                    MAX_INSTRUCTIONS_PER_BLOCK
-                ));
-            }
-        }
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
+        check_function_size(func, "copy_propagation", 500, 1_000)?;
 
         let mut changed = false;
 
@@ -96,102 +112,8 @@ impl CopyPropagation {
                 // would silently produce wrong code on non-SSA loops.
                 value_map.retain(|_, v| !matches!(v, Operand::Register(r) if r == def_reg));
             }
-            if let Instruction::IntBinary {
-                op: crate::mir::IntBinOp::Add,
-                dst,
-                lhs,
-                rhs,
-                ..
-            } = &new_instr
-                && let Operand::Immediate(Immediate::I64(0)) = rhs
-                && let Operand::Register(src_reg) = lhs
-            {
-                value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-            }
-            match &new_instr {
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Sub,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y - 0 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Mul,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y * 1 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(1)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                    // Check for x = 1 * y (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(1)) = lhs
-                        && let Operand::Register(src_reg) = rhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Or,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y | 0 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                    // Check for x = 0 | y (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = lhs
-                        && let Operand::Register(src_reg) = rhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::And,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y & -1 (copy pattern, since -1 is all bits set)
-                    if let Operand::Immediate(Immediate::I64(-1)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                Instruction::IntBinary {
-                    op: crate::mir::IntBinOp::Xor,
-                    dst,
-                    lhs,
-                    rhs,
-                    ..
-                } => {
-                    // Check for x = y ^ 0 (copy pattern)
-                    if let Operand::Immediate(Immediate::I64(0)) = rhs
-                        && let Operand::Register(src_reg) = lhs
-                    {
-                        value_map.insert(dst.clone(), Operand::Register(src_reg.clone()));
-                    }
-                }
-                _ => {}
+            if let Some((dst, src)) = identity_copy_source(&new_instr) {
+                value_map.insert(dst.clone(), Operand::Register(src.clone()));
             }
 
             new_instructions.push(new_instr);
@@ -229,7 +151,7 @@ impl CopyPropagation {
                 changed |= self.replace_operand(false_val, value_map);
             }
             Instruction::Load { addr, .. } => {
-                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr
+                if let AddressMode::BaseOffset { base, offset: _ } = addr
                     && let Some(new_base) = value_map.get(base)
                     && let Operand::Register(new_reg) = new_base
                 {
@@ -239,7 +161,7 @@ impl CopyPropagation {
             }
             Instruction::Store { src, addr, .. } => {
                 changed |= self.replace_operand(src, value_map);
-                if let crate::mir::AddressMode::BaseOffset { base, offset: _ } = addr
+                if let AddressMode::BaseOffset { base, offset: _ } = addr
                     && let Some(new_base) = value_map.get(base)
                     && let Operand::Register(new_reg) = new_base
                 {
@@ -296,9 +218,8 @@ impl CopyPropagation {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::transform::test_utils::get_block;
+    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
     #[test]
     fn test_copy_propagation_basic() {
@@ -488,7 +409,7 @@ mod tests {
         assert!(changed);
 
         // Second instruction should now use v0 directly
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[1] {
             Instruction::IntBinary { lhs, .. } => {
                 assert_eq!(lhs, &Operand::Register(VirtualReg::gpr(0).into()));
@@ -609,7 +530,7 @@ mod tests {
         assert!(changed);
 
         // Final add should use v0 directly (all copies should chain)
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[3] {
             Instruction::IntBinary { lhs, .. } => {
                 // After propagation, should trace back to v0

@@ -1,8 +1,14 @@
 //! Common Subexpression Elimination (CSE) transform for MIR.
 
-use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{Block, Function, Immediate, Instruction, MirType, Operand, Register, ScalarType};
-use std::collections::HashMap;
+use crate::mir::transform::{
+    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+    compute_back_edge_headers,
+};
+use crate::mir::{
+    Block, FloatBinOp, Function, Immediate, Instruction, IntBinOp, MirType, Operand, Register,
+    ScalarType,
+};
+use std::collections::{HashMap, HashSet};
 
 /// Common Subexpression Elimination (CSE)
 /// Eliminates redundant computations within basic blocks
@@ -26,7 +32,7 @@ impl Transform for CommonSubexpressionElimination {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
@@ -50,28 +56,8 @@ impl CommonSubexpressionElimination {
         }
     }
 
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        const MAX_BLOCKS: usize = 500;
-        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 500;
-
-        if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for CSE ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
-        }
-
-        for block in &func.blocks {
-            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
-                return Err(format!(
-                    "Block '{}' too large for CSE ({} instructions, max {})",
-                    block.label,
-                    block.instructions.len(),
-                    MAX_INSTRUCTIONS_PER_BLOCK
-                ));
-            }
-        }
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
+        check_function_size(func, "common_subexpression_elimination", 500, 500)?;
 
         let mut changed = false;
         let loop_headers = compute_back_edge_headers(func);
@@ -79,7 +65,7 @@ impl CommonSubexpressionElimination {
         for block in &mut func.blocks {
             // Skip only loop header blocks to avoid complex control flow issues
             // Allow CSE within loop bodies where it's safe and beneficial
-            if loop_headers.contains(&block.label) {
+            if loop_headers.contains(block.label.as_str()) {
                 continue;
             }
 
@@ -92,11 +78,7 @@ impl CommonSubexpressionElimination {
         Ok(changed)
     }
 
-    fn eliminate_in_block_safe(
-        &self,
-        block: &mut Block,
-        loop_headers: &std::collections::HashSet<String>,
-    ) -> bool {
+    fn eliminate_in_block_safe(&self, block: &mut Block, loop_headers: &HashSet<String>) -> bool {
         // For blocks that are part of loops, be more conservative
         // Only apply CSE if the block is small and contains simple operations
         let is_in_loop_body = self.is_block_in_loop_body(block, loop_headers);
@@ -112,11 +94,7 @@ impl CommonSubexpressionElimination {
         self.eliminate_in_block_conservative(block, is_in_loop_body)
     }
 
-    fn is_block_in_loop_body(
-        &self,
-        block: &Block,
-        loop_headers: &std::collections::HashSet<String>,
-    ) -> bool {
+    fn is_block_in_loop_body(&self, block: &Block, loop_headers: &HashSet<String>) -> bool {
         // Check if this block can reach a loop header (simplified check)
         // This is a conservative approximation
         for instr in &block.instructions {
@@ -126,7 +104,7 @@ impl CommonSubexpressionElimination {
                     true_target: target,
                     ..
                 } => {
-                    if loop_headers.contains(target) {
+                    if loop_headers.contains(target.as_str()) {
                         return true;
                     }
                 }
@@ -134,7 +112,7 @@ impl CommonSubexpressionElimination {
                 Instruction::Br {
                     false_target: target,
                     ..
-                } if loop_headers.contains(target) => {
+                } if loop_headers.contains(target.as_str()) => {
                     return true;
                 }
                 _ => {}
@@ -147,20 +125,10 @@ impl CommonSubexpressionElimination {
         // Only allow simple arithmetic operations for CSE in loop bodies
         match instr {
             Instruction::IntBinary { op, .. } => {
-                matches!(
-                    op,
-                    crate::mir::IntBinOp::Add
-                        | crate::mir::IntBinOp::Sub
-                        | crate::mir::IntBinOp::Mul
-                )
+                matches!(op, IntBinOp::Add | IntBinOp::Sub | IntBinOp::Mul)
             }
             Instruction::FloatBinary { op, .. } => {
-                matches!(
-                    op,
-                    crate::mir::FloatBinOp::FAdd
-                        | crate::mir::FloatBinOp::FSub
-                        | crate::mir::FloatBinOp::FMul
-                )
+                matches!(op, FloatBinOp::FAdd | FloatBinOp::FSub | FloatBinOp::FMul)
             }
             _ => false, // Only simple arithmetic for loop CSE
         }
@@ -208,7 +176,7 @@ impl CommonSubexpressionElimination {
                                             _ => unreachable!(),
                                         };
                                         Instruction::FloatBinary {
-                                            op: crate::mir::FloatBinOp::FAdd,
+                                            op: FloatBinOp::FAdd,
                                             dst: dst.clone(),
                                             ty: instr_type,
                                             lhs: Operand::Register(existing_reg.clone()),
@@ -218,7 +186,7 @@ impl CommonSubexpressionElimination {
                                     _ => {
                                         // For integer types, use integer add with 0
                                         Instruction::IntBinary {
-                                            op: crate::mir::IntBinOp::Add,
+                                            op: IntBinOp::Add,
                                             dst: dst.clone(),
                                             ty: instr_type,
                                             lhs: Operand::Register(existing_reg.clone()),
@@ -263,16 +231,16 @@ impl CommonSubexpressionElimination {
     fn expr_key(&self, instr: &Instruction) -> Option<String> {
         match instr {
             Instruction::IntBinary { op, lhs, rhs, .. } => {
-                Some(format!("IntBinary_{:?}_{:?}_{:?}", op, lhs, rhs))
+                Some(format!("IntBinary_{op:?}_{lhs:?}_{rhs:?}"))
             }
             Instruction::FloatBinary { op, lhs, rhs, .. } => {
-                Some(format!("FloatBinary_{:?}_{:?}_{:?}", op, lhs, rhs))
+                Some(format!("FloatBinary_{op:?}_{lhs:?}_{rhs:?}"))
             }
             Instruction::IntCmp { op, lhs, rhs, .. } => {
-                Some(format!("IntCmp_{:?}_{:?}_{:?}", op, lhs, rhs))
+                Some(format!("IntCmp_{op:?}_{lhs:?}_{rhs:?}"))
             }
             Instruction::FloatCmp { op, lhs, rhs, .. } => {
-                Some(format!("FloatCmp_{:?}_{:?}_{:?}", op, lhs, rhs))
+                Some(format!("FloatCmp_{op:?}_{lhs:?}_{rhs:?}"))
             }
             _ => None,
         }
@@ -289,60 +257,18 @@ impl CommonSubexpressionElimination {
         let mut parts = vec![base];
         for reg in instr.use_regs() {
             let ver = def_version.get(reg).copied().unwrap_or(0);
-            parts.push(format!("{}@{}", reg, ver));
+            parts.push(format!("{reg}@{ver}"));
         }
         Some(parts.join("|"))
     }
-}
-
-/// Identify loop headers via simple back-edge detection using block order.
-fn compute_back_edge_headers(func: &Function) -> std::collections::HashSet<String> {
-    use std::collections::{HashMap, HashSet};
-    let mut label_index: HashMap<&str, usize> = HashMap::new();
-    for (i, b) in func.blocks.iter().enumerate() {
-        label_index.insert(&b.label, i);
-    }
-    let mut headers: HashSet<String> = HashSet::new();
-    for (i, b) in func.blocks.iter().enumerate() {
-        if let Some(term) = b.instructions.last() {
-            match term {
-                Instruction::Jmp { target } => {
-                    if let Some(&tidx) = label_index.get(target.as_str())
-                        && tidx <= i
-                    {
-                        headers.insert(target.clone());
-                    }
-                }
-                Instruction::Br {
-                    true_target,
-                    false_target,
-                    ..
-                } => {
-                    if let Some(&tidx) = label_index.get(true_target.as_str())
-                        && tidx <= i
-                    {
-                        headers.insert(true_target.clone());
-                    }
-                    if let Some(&fidx) = label_index.get(false_target.as_str())
-                        && fidx <= i
-                    {
-                        headers.insert(false_target.clone());
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    headers
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::transform::test_utils::get_block;
+    use crate::mir::{FunctionBuilder, IntBinOp, ScalarType, VirtualReg};
 
     #[test]
     fn test_cse_empty_function() {
@@ -464,7 +390,7 @@ mod tests {
         assert!(result.is_ok());
         // Function should still be valid (have blocks and instructions)
         assert!(!func.blocks.is_empty());
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         assert!(!entry.instructions.is_empty());
     }
 

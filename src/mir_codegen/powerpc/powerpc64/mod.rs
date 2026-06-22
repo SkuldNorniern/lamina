@@ -14,32 +14,34 @@
 //! - TOC: `r2` (never clobbered)
 //! - Link register saved/restored in prologue/epilogue
 
-mod abi;
-mod frame;
-mod regalloc;
 mod util;
 
-use abi::Ppc64Abi;
-use frame::Ppc64Frame;
-use regalloc::Ppc64RegAlloc;
+use std::collections::HashMap;
 use std::io::Write;
 use std::result::Result;
+use std::sync::Arc;
 use util::{
     load_operand_to_register, load_register_to_r3, load_register_to_register, store_r3_to_register,
 };
 
+use crate::error::LaminaError;
+use crate::mir::instruction::{AddressMode, Immediate};
 use crate::mir::register::RegisterClass;
-use crate::mir::{Instruction as MirInst, Module as MirModule, Register};
+use crate::mir::{
+    FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp,
+    IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
+};
+use crate::mir_codegen::common::{
+    CodegenBase, assign_stack_slots, compile_functions_parallel, parallel_codegen_error,
+};
 use crate::mir_codegen::{
     Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-    capability::CapabilitySet,
+    capability::CapabilitySet, validate_module_call_parameters,
 };
+
+use lamina_codegen::powerpc::{Ppc64Abi, Ppc64Frame, Ppc64RegAlloc};
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-
-use crate::mir_codegen::common::CodegenBase;
 
 pub struct Ppc64Codegen<'a> {
     base: CodegenBase<'a>,
@@ -65,7 +67,7 @@ impl<'a> Ppc64Codegen<'a> {
         module: &'a MirModule,
         writer: &mut W,
         codegen_units: usize,
-    ) -> Result<(), crate::error::LaminaError> {
+    ) -> Result<(), LaminaError> {
         generate_mir_ppc64_with_units_and_settings(
             module,
             writer,
@@ -91,9 +93,9 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
 
     fn prepare(
         &mut self,
-        types: &HashMap<String, crate::mir::MirType>,
-        globals: &HashMap<String, crate::mir::Global>,
-        funcs: &HashMap<String, crate::mir::Signature>,
+        types: &HashMap<String, MirType>,
+        globals: &HashMap<String, Global>,
+        funcs: &HashMap<String, Signature>,
         codegen_units: usize,
         verbose: bool,
         options: &[CodegenOptions],
@@ -141,8 +143,6 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
     }
 }
 
-use crate::mir_codegen::common::{compile_functions_parallel, parallel_codegen_error};
-
 fn ppc64_stack_offset_for_linear_spill(off: i32) -> i32 {
     let k = ((-off) / 8) as usize;
     let slot_ix = k.saturating_sub(1);
@@ -151,7 +151,7 @@ fn ppc64_stack_offset_for_linear_spill(off: i32) -> i32 {
 
 fn compile_single_function_ppc64(
     func_name: &str,
-    func: &crate::mir::Function,
+    func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
@@ -159,47 +159,20 @@ fn compile_single_function_ppc64(
     let abi = Ppc64Abi::new(target_os);
 
     let label = abi.mangle_function_name(func_name);
-    writeln!(output, "{}:", label)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e)))?;
+    writeln!(output, "{label}:")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
 
     if settings.emit_asm_debug_lines {
         let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{}\"", tag)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e)))?;
+        writeln!(output, "    .file 1 \"{tag}\"")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
     }
 
     let mut reg_alloc = Ppc64RegAlloc::new(target_os);
-    let mut stack_slots: HashMap<crate::mir::VirtualReg, i32> = HashMap::new();
+    let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
 
     if settings.regalloc != RegallocStrategy::Incremental {
-        let mut def_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
-        let mut used_regs: HashSet<crate::mir::VirtualReg> = HashSet::new();
-        for block in &func.blocks {
-            for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(vreg) = dst
-                {
-                    def_regs.insert(*vreg);
-                }
-                for reg in inst.use_regs() {
-                    if let Register::Virtual(vreg) = reg {
-                        used_regs.insert(*vreg);
-                    }
-                }
-            }
-        }
-        for vreg in &def_regs {
-            if !stack_slots.contains_key(vreg) {
-                let slot_index = stack_slots.len();
-                stack_slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(slot_index));
-            }
-        }
-        for vreg in used_regs {
-            if !def_regs.contains(&vreg) && !stack_slots.contains_key(&vreg) {
-                let slot_index = stack_slots.len();
-                stack_slots.insert(vreg, Ppc64Frame::calculate_stack_offset(slot_index));
-            }
-        }
+        (stack_slots, _) = assign_stack_slots(func, Ppc64Frame::calculate_stack_offset);
         let pool = Ppc64RegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()
@@ -254,7 +227,7 @@ fn compile_single_function_ppc64(
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
         writeln!(output, ".L_{}:", block.label)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {}", e)))?;
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
 
         for inst in &block.instructions {
             emit_instruction_ppc64(
@@ -277,7 +250,7 @@ pub fn generate_mir_ppc64<W: Write>(
     module: &MirModule,
     writer: &mut W,
     target_os: TargetOperatingSystem,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_ppc64_with_units(module, writer, target_os, 1)
 }
 
@@ -286,7 +259,7 @@ pub fn generate_mir_ppc64_with_units<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     generate_mir_ppc64_with_units_and_settings(
         module,
         writer,
@@ -302,8 +275,8 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
-) -> Result<(), crate::error::LaminaError> {
-    crate::mir_codegen::validate_module_call_parameters(module, TargetArchitecture::PowerPC64)?;
+) -> Result<(), LaminaError> {
+    validate_module_call_parameters(module, TargetArchitecture::PowerPC64)?;
     let abi = Ppc64Abi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;
@@ -313,15 +286,15 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
 
     for func_name in &module.external_functions {
         let label = abi.mangle_function_name(func_name);
-        writeln!(writer, ".extern {}", label)?;
+        writeln!(writer, ".extern {label}")?;
     }
 
     let settings_arc = Arc::new(settings.clone());
-    let results = compile_functions_parallel(module, target_os, codegen_units, {
-        let settings_arc = settings_arc.clone();
-        move |name, func, os| compile_single_function_ppc64(name, func, os, settings_arc.as_ref())
-    })
-    .map_err(parallel_codegen_error)?;
+    let results =
+        compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
+            compile_single_function_ppc64(name, func, os, settings_arc.as_ref())
+        })
+        .map_err(parallel_codegen_error)?;
 
     for result in results {
         writer.write_all(&result.assembly)?;
@@ -335,11 +308,11 @@ fn emit_instruction_ppc64<W: Write>(
     inst: &MirInst,
     writer: &mut W,
     reg_alloc: &mut Ppc64RegAlloc,
-    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
@@ -355,28 +328,28 @@ fn emit_instruction_ppc64<W: Write>(
             load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "3")?;
             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "4")?;
             match op {
-                crate::mir::IntBinOp::Add => writeln!(writer, "    add 3, 3, 4")?,
-                crate::mir::IntBinOp::Sub => writeln!(writer, "    sub 3, 3, 4")?,
-                crate::mir::IntBinOp::Mul => writeln!(writer, "    mulld 3, 3, 4")?,
-                crate::mir::IntBinOp::SDiv => writeln!(writer, "    divd 3, 3, 4")?,
-                crate::mir::IntBinOp::UDiv => writeln!(writer, "    divdu 3, 3, 4")?,
-                crate::mir::IntBinOp::SRem => {
+                IntBinOp::Add => writeln!(writer, "    add 3, 3, 4")?,
+                IntBinOp::Sub => writeln!(writer, "    sub 3, 3, 4")?,
+                IntBinOp::Mul => writeln!(writer, "    mulld 3, 3, 4")?,
+                IntBinOp::SDiv => writeln!(writer, "    divd 3, 3, 4")?,
+                IntBinOp::UDiv => writeln!(writer, "    divdu 3, 3, 4")?,
+                IntBinOp::SRem => {
                     // rem = lhs - (lhs/rhs)*rhs
                     writeln!(writer, "    divd 5, 3, 4")?;
                     writeln!(writer, "    mulld 5, 5, 4")?;
                     writeln!(writer, "    sub 3, 3, 5")?;
                 }
-                crate::mir::IntBinOp::URem => {
+                IntBinOp::URem => {
                     writeln!(writer, "    divdu 5, 3, 4")?;
                     writeln!(writer, "    mulld 5, 5, 4")?;
                     writeln!(writer, "    sub 3, 3, 5")?;
                 }
-                crate::mir::IntBinOp::And => writeln!(writer, "    and 3, 3, 4")?,
-                crate::mir::IntBinOp::Or => writeln!(writer, "    or 3, 3, 4")?,
-                crate::mir::IntBinOp::Xor => writeln!(writer, "    xor 3, 3, 4")?,
-                crate::mir::IntBinOp::Shl => writeln!(writer, "    sld 3, 3, 4")?,
-                crate::mir::IntBinOp::AShr => writeln!(writer, "    srad 3, 3, 4")?,
-                crate::mir::IntBinOp::LShr => writeln!(writer, "    srd 3, 3, 4")?,
+                IntBinOp::And => writeln!(writer, "    and 3, 3, 4")?,
+                IntBinOp::Or => writeln!(writer, "    or 3, 3, 4")?,
+                IntBinOp::Xor => writeln!(writer, "    xor 3, 3, 4")?,
+                IntBinOp::Shl => writeln!(writer, "    sld 3, 3, 4")?,
+                IntBinOp::AShr => writeln!(writer, "    srad 3, 3, 4")?,
+                IntBinOp::LShr => writeln!(writer, "    srd 3, 3, 4")?,
             }
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -394,33 +367,30 @@ fn emit_instruction_ppc64<W: Write>(
             // cmpd sets CR0; use branch + li to materialise 0/1 into r3.
             writeln!(writer, "    cmpd 3, 4")?;
             let (set_true, set_false) = match op {
-                crate::mir::IntCmpOp::Eq => ("beq", "bne"),
-                crate::mir::IntCmpOp::Ne => ("bne", "beq"),
-                crate::mir::IntCmpOp::SLt => ("blt", "bge"),
-                crate::mir::IntCmpOp::SLe => ("ble", "bgt"),
-                crate::mir::IntCmpOp::SGt => ("bgt", "ble"),
-                crate::mir::IntCmpOp::SGe => ("bge", "blt"),
+                IntCmpOp::Eq => ("beq", "bne"),
+                IntCmpOp::Ne => ("bne", "beq"),
+                IntCmpOp::SLt => ("blt", "bge"),
+                IntCmpOp::SLe => ("ble", "bgt"),
+                IntCmpOp::SGt => ("bgt", "ble"),
+                IntCmpOp::SGe => ("bge", "blt"),
                 // Unsigned: use cmplw/cmpld
-                crate::mir::IntCmpOp::ULt
-                | crate::mir::IntCmpOp::ULe
-                | crate::mir::IntCmpOp::UGt
-                | crate::mir::IntCmpOp::UGe => {
+                IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe => {
                     // Redo with unsigned compare
                     writeln!(writer, "    cmpld 3, 4")?;
                     match op {
-                        crate::mir::IntCmpOp::ULt => ("blt", "bge"),
-                        crate::mir::IntCmpOp::ULe => ("ble", "bgt"),
-                        crate::mir::IntCmpOp::UGt => ("bgt", "ble"),
+                        IntCmpOp::ULt => ("blt", "bge"),
+                        IntCmpOp::ULe => ("ble", "bgt"),
+                        IntCmpOp::UGt => ("bgt", "ble"),
                         _ => ("bge", "blt"),
                     }
                 }
             };
-            writeln!(writer, "    {} .L_ppc_cmp_true_{:p}", set_true, lhs)?;
+            writeln!(writer, "    {set_true} .L_ppc_cmp_true_{lhs:p}")?;
             writeln!(writer, "    li 3, 0")?;
-            writeln!(writer, "    b .L_ppc_cmp_end_{:p}", lhs)?;
-            writeln!(writer, ".L_ppc_cmp_true_{:p}:", lhs)?;
+            writeln!(writer, "    b .L_ppc_cmp_end_{lhs:p}")?;
+            writeln!(writer, ".L_ppc_cmp_true_{lhs:p}:")?;
             writeln!(writer, "    li 3, 1")?;
-            writeln!(writer, ".L_ppc_cmp_end_{:p}:", lhs)?;
+            writeln!(writer, ".L_ppc_cmp_end_{lhs:p}:")?;
             let _ = set_false; // used in branch selection above
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -439,10 +409,10 @@ fn emit_instruction_ppc64<W: Write>(
             emit_load_fp_operand(lhs, writer, reg_alloc, stack_slots, "1", is_f32)?;
             emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32)?;
             match op {
-                crate::mir::FloatBinOp::FAdd => writeln!(writer, "    fadd{} 1, 1, 2", suffix)?,
-                crate::mir::FloatBinOp::FSub => writeln!(writer, "    fsub{} 1, 1, 2", suffix)?,
-                crate::mir::FloatBinOp::FMul => writeln!(writer, "    fmul{} 1, 1, 2", suffix)?,
-                crate::mir::FloatBinOp::FDiv => writeln!(writer, "    fdiv{} 1, 1, 2", suffix)?,
+                FloatBinOp::FAdd => writeln!(writer, "    fadd{suffix} 1, 1, 2")?,
+                FloatBinOp::FSub => writeln!(writer, "    fsub{suffix} 1, 1, 2")?,
+                FloatBinOp::FMul => writeln!(writer, "    fmul{suffix} 1, 1, 2")?,
+                FloatBinOp::FDiv => writeln!(writer, "    fdiv{suffix} 1, 1, 2")?,
             }
             if let Register::Virtual(vreg) = dst {
                 emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
@@ -453,8 +423,8 @@ fn emit_instruction_ppc64<W: Write>(
             let suffix = if is_f32 { "s" } else { "d" };
             emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32)?;
             match op {
-                crate::mir::FloatUnOp::FNeg => writeln!(writer, "    fneg{} 1, 1", suffix)?,
-                crate::mir::FloatUnOp::FSqrt => writeln!(writer, "    fsqrt{} 1, 1", suffix)?,
+                FloatUnOp::FNeg => writeln!(writer, "    fneg{suffix} 1, 1")?,
+                FloatUnOp::FSqrt => writeln!(writer, "    fsqrt{suffix} 1, 1")?,
             }
             if let Register::Virtual(vreg) = dst {
                 emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
@@ -472,19 +442,19 @@ fn emit_instruction_ppc64<W: Write>(
             emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32)?;
             writeln!(writer, "    fcmpu 0, 1, 2")?;
             let branch = match op {
-                crate::mir::FloatCmpOp::Eq => "beq",
-                crate::mir::FloatCmpOp::Ne => "bne",
-                crate::mir::FloatCmpOp::Lt => "blt",
-                crate::mir::FloatCmpOp::Le => "ble",
-                crate::mir::FloatCmpOp::Gt => "bgt",
-                crate::mir::FloatCmpOp::Ge => "bge",
+                FloatCmpOp::Eq => "beq",
+                FloatCmpOp::Ne => "bne",
+                FloatCmpOp::Lt => "blt",
+                FloatCmpOp::Le => "ble",
+                FloatCmpOp::Gt => "bgt",
+                FloatCmpOp::Ge => "bge",
             };
-            writeln!(writer, "    {} .L_ppc_fcmp_true_{:p}", branch, lhs)?;
+            writeln!(writer, "    {branch} .L_ppc_fcmp_true_{lhs:p}")?;
             writeln!(writer, "    li 3, 0")?;
-            writeln!(writer, "    b .L_ppc_fcmp_end_{:p}", lhs)?;
-            writeln!(writer, ".L_ppc_fcmp_true_{:p}:", lhs)?;
+            writeln!(writer, "    b .L_ppc_fcmp_end_{lhs:p}")?;
+            writeln!(writer, ".L_ppc_fcmp_true_{lhs:p}:")?;
             writeln!(writer, "    li 3, 1")?;
-            writeln!(writer, ".L_ppc_fcmp_end_{:p}:", lhs)?;
+            writeln!(writer, ".L_ppc_fcmp_end_{lhs:p}:")?;
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
@@ -525,10 +495,10 @@ fn emit_instruction_ppc64<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mr 3, {}", p.name)?,
             }
             for (case_val, case_label) in cases {
-                writeln!(writer, "    cmpdi 3, {}", case_val)?;
-                writeln!(writer, "    beq .L_{}", case_label)?;
+                writeln!(writer, "    cmpdi 3, {case_val}")?;
+                writeln!(writer, "    beq .L_{case_label}")?;
             }
-            writeln!(writer, "    b .L_{}", default)?;
+            writeln!(writer, "    b .L_{default}")?;
         }
         MirInst::Call { name, args, ret } => {
             let abi = Ppc64Abi::new(target_os);
@@ -552,7 +522,7 @@ fn emit_instruction_ppc64<W: Write>(
 
                 let stack_space = ((num_stack_args * 8) + 15) & !15;
                 if stack_space > 0 {
-                    writeln!(writer, "    addi 1, 1, -{}", stack_space)?;
+                    writeln!(writer, "    addi 1, 1, -{stack_space}")?;
                     for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
                         load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
                         writeln!(writer, "    std 11, {}(1)", i * 8)?;
@@ -562,11 +532,11 @@ fn emit_instruction_ppc64<W: Write>(
                 let target_sym = abi
                     .call_stub(name)
                     .unwrap_or_else(|| abi.mangle_function_name(name));
-                writeln!(writer, "    bl {}", target_sym)?;
+                writeln!(writer, "    bl {target_sym}")?;
                 writeln!(writer, "    nop")?;
 
                 if stack_space > 0 {
-                    writeln!(writer, "    addi 1, 1, {}", stack_space)?;
+                    writeln!(writer, "    addi 1, 1, {stack_space}")?;
                 }
             }
 
@@ -590,18 +560,16 @@ fn emit_instruction_ppc64<W: Write>(
                 for (j, arg) in args.iter().skip(num_reg_args).enumerate() {
                     let disp = frame_size as i32 + (j as i32) * 8;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
-                    writeln!(writer, "    std 11, {}(1)", disp)?;
+                    writeln!(writer, "    std 11, {disp}(1)")?;
                 }
             }
             Ppc64Frame::generate_tail_epilogue(writer, local_bytes).map_err(|e| {
-                crate::error::LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(
-                    e.to_string(),
-                ))
+                LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
             })?;
             let target_sym = abi
                 .call_stub(name)
                 .unwrap_or_else(|| abi.mangle_function_name(name));
-            writeln!(writer, "    b {}", target_sym)?;
+            writeln!(writer, "    b {target_sym}")?;
         }
         MirInst::Load {
             dst,
@@ -610,42 +578,35 @@ fn emit_instruction_ppc64<W: Write>(
             attrs: _,
         } => {
             let load_op = match ty {
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "lbz",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => "lhz",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "lwz",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "ld",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => "lfs",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "lfd",
+                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lbz",
+                MirType::Scalar(ScalarType::I16) => "lhz",
+                MirType::Scalar(ScalarType::I32) => "lwz",
+                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "ld",
+                MirType::Scalar(ScalarType::F32) => "lfs",
+                MirType::Scalar(ScalarType::F64) => "lfd",
                 other => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64 load: unsupported type {:?}",
-                            other
-                        )),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!("PowerPC64 load: unsupported type {other:?}"),
+                    )));
                 }
             };
             match addr {
-                crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "5")?;
                         }
                         Register::Physical(p) => writeln!(writer, "    mr 5, {}", p.name)?,
                     }
-                    writeln!(writer, "    {} 3, {}(5)", load_op, offset)?;
+                    writeln!(writer, "    {load_op} 3, {offset}(5)")?;
                     if let Register::Virtual(vreg) = dst {
                         store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
                     }
                 }
                 _ => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(
-                            "PowerPC64 load: only base+offset addressing supported".to_string(),
-                        ),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        "PowerPC64 load: only base+offset addressing supported".to_string(),
+                    )));
                 }
             }
         }
@@ -656,40 +617,33 @@ fn emit_instruction_ppc64<W: Write>(
             attrs: _,
         } => {
             let store_op = match ty {
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I1)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::I8) => "stb",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I16) => "sth",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I32) => "stw",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::I64)
-                | crate::mir::MirType::Scalar(crate::mir::ScalarType::Ptr) => "std",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F32) => "stfs",
-                crate::mir::MirType::Scalar(crate::mir::ScalarType::F64) => "stfd",
+                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "stb",
+                MirType::Scalar(ScalarType::I16) => "sth",
+                MirType::Scalar(ScalarType::I32) => "stw",
+                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "std",
+                MirType::Scalar(ScalarType::F32) => "stfs",
+                MirType::Scalar(ScalarType::F64) => "stfd",
                 other => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64 store: unsupported type {:?}",
-                            other
-                        )),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!("PowerPC64 store: unsupported type {other:?}"),
+                    )));
                 }
             };
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
             match addr {
-                crate::mir::instruction::AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "5")?;
                         }
                         Register::Physical(p) => writeln!(writer, "    mr 5, {}", p.name)?,
                     }
-                    writeln!(writer, "    {} 3, {}(5)", store_op, offset)?;
+                    writeln!(writer, "    {store_op} 3, {offset}(5)")?;
                 }
                 _ => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(
-                            "PowerPC64 store: only base+offset addressing supported".to_string(),
-                        ),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        "PowerPC64 store: only base+offset addressing supported".to_string(),
+                    )));
                 }
             }
         }
@@ -701,14 +655,14 @@ fn emit_instruction_ppc64<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mr 3, {}", p.name)?,
             }
             if *offset != 0 {
-                writeln!(writer, "    addi 3, 3, {}", offset)?;
+                writeln!(writer, "    addi 3, 3, {offset}")?;
             }
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
         }
         MirInst::Jmp { target } => {
-            writeln!(writer, "    b .L_{}", target)?;
+            writeln!(writer, "    b .L_{target}")?;
         }
         MirInst::Br {
             cond,
@@ -722,8 +676,8 @@ fn emit_instruction_ppc64<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mr 3, {}", p.name)?,
             }
             writeln!(writer, "    cmpdi 3, 0")?;
-            writeln!(writer, "    bne .L_{}", true_target)?;
-            writeln!(writer, "    b .L_{}", false_target)?;
+            writeln!(writer, "    bne .L_{true_target}")?;
+            writeln!(writer, "    b .L_{false_target}")?;
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
@@ -731,21 +685,16 @@ fn emit_instruction_ppc64<W: Write>(
             }
             let local_bytes = stack_slots.len() * 8;
             Ppc64Frame::generate_epilogue(writer, local_bytes).map_err(|e| {
-                crate::error::LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(
-                    e.to_string(),
-                ))
+                LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
             })?;
         }
         MirInst::Comment { text } => {
-            writeln!(writer, "    # {}", text)?;
+            writeln!(writer, "    # {text}")?;
         }
         other => {
-            return Err(crate::error::LaminaError::CodegenError(
-                CodegenError::UnsupportedFeature(format!(
-                    "PowerPC64 backend: instruction not yet supported: {:?}",
-                    other
-                )),
-            ));
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!("PowerPC64 backend: instruction not yet supported: {other:?}"),
+            )));
         }
     }
     Ok(())
@@ -756,50 +705,47 @@ fn emit_instruction_ppc64<W: Write>(
 /// Strategy: store the integer bits to a temp stack slot and then `lfs`/`lfd` them
 /// into the FPR, which reinterprets the bit pattern as a float.
 fn emit_load_fp_operand<W: Write>(
-    operand: &crate::mir::Operand,
+    operand: &Operand,
     writer: &mut W,
     reg_alloc: &mut Ppc64RegAlloc,
-    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     fpr: &str,
     is_f32: bool,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     let load_fp = if is_f32 { "lfs" } else { "lfd" };
     match operand {
-        crate::mir::Operand::Register(reg) => {
+        Operand::Register(reg) => {
             match reg {
                 Register::Virtual(v) => {
                     if let Some(offset) = stack_slots.get(v) {
-                        writeln!(writer, "    {} {}, {}(1)", load_fp, fpr, offset)?;
+                        writeln!(writer, "    {load_fp} {fpr}, {offset}(1)")?;
                     } else if let Some(phys) = reg_alloc.get_mapping_for(v) {
                         // Store to temp stack location then load as float
-                        writeln!(writer, "    std {}, -8(1)", phys)?;
-                        writeln!(writer, "    {} {}, -8(1)", load_fp, fpr)?;
+                        writeln!(writer, "    std {phys}, -8(1)")?;
+                        writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
                     }
                 }
                 Register::Physical(p) => {
                     writeln!(writer, "    std {}, -8(1)", p.name)?;
-                    writeln!(writer, "    {} {}, -8(1)", load_fp, fpr)?;
+                    writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
                 }
             }
         }
-        crate::mir::Operand::Immediate(imm) => {
+        Operand::Immediate(imm) => {
             let bits: i64 = match imm {
-                crate::mir::instruction::Immediate::F32(v) => v.to_bits() as i64,
-                crate::mir::instruction::Immediate::F64(v) => v.to_bits() as i64,
-                crate::mir::instruction::Immediate::I32(v) => *v as i64,
-                crate::mir::instruction::Immediate::I64(v) => *v,
+                Immediate::F32(v) => v.to_bits() as i64,
+                Immediate::F64(v) => v.to_bits() as i64,
+                Immediate::I32(v) => *v as i64,
+                Immediate::I64(v) => *v,
                 other => {
-                    return Err(crate::error::LaminaError::CodegenError(
-                        CodegenError::UnsupportedFeature(format!(
-                            "PowerPC64: float immediate {:?} not supported",
-                            other
-                        )),
-                    ));
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!("PowerPC64: float immediate {other:?} not supported"),
+                    )));
                 }
             };
-            writeln!(writer, "    li 11, {}", bits)?;
+            writeln!(writer, "    li 11, {bits}")?;
             writeln!(writer, "    std 11, -8(1)")?;
-            writeln!(writer, "    {} {}, -8(1)", load_fp, fpr)?;
+            writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
         }
     }
     Ok(())
@@ -808,18 +754,18 @@ fn emit_load_fp_operand<W: Write>(
 /// Store FPR result back to a virtual register stack slot as integer bits.
 fn emit_store_fp_result<W: Write>(
     fpr: &str,
-    vreg: &crate::mir::VirtualReg,
+    vreg: &VirtualReg,
     writer: &mut W,
     reg_alloc: &Ppc64RegAlloc,
-    stack_slots: &HashMap<crate::mir::VirtualReg, i32>,
+    stack_slots: &HashMap<VirtualReg, i32>,
     is_f32: bool,
-) -> Result<(), crate::error::LaminaError> {
+) -> Result<(), LaminaError> {
     let store_fp = if is_f32 { "stfs" } else { "stfd" };
     if let Some(offset) = stack_slots.get(vreg) {
-        writeln!(writer, "    {} {}, {}(1)", store_fp, fpr, offset)?;
+        writeln!(writer, "    {store_fp} {fpr}, {offset}(1)")?;
     } else if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
-        writeln!(writer, "    {} {}, -8(1)", store_fp, fpr)?;
-        writeln!(writer, "    ld {}, -8(1)", phys)?;
+        writeln!(writer, "    {store_fp} {fpr}, -8(1)")?;
+        writeln!(writer, "    ld {phys}, -8(1)")?;
     }
     Ok(())
 }
@@ -827,14 +773,15 @@ fn emit_store_fp_result<W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
+    use crate::mir::FunctionBuilder;
+    use crate::mir::instruction::{Instruction, IntBinOp, Operand};
 
     fn make_module_with_empty_func() -> MirModule {
         let mut m = MirModule::new("test_ppc64");
         let f = FunctionBuilder::new("test_fn")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
-            .instr(crate::mir::Instruction::Ret { value: None })
+            .instr(Instruction::Ret { value: None })
             .build();
         m.add_function(f);
         m
@@ -852,7 +799,6 @@ mod tests {
 
     #[test]
     fn test_generate_integer_add() {
-        use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
         let mut m = MirModule::new("test_ppc64_add");
         let v0 = VirtualReg::gpr(0);
         let v2 = VirtualReg::gpr(2);
@@ -879,7 +825,6 @@ mod tests {
 
     #[test]
     fn test_generate_jmp_br() {
-        use crate::mir::instruction::{Instruction, Operand};
         let mut m = MirModule::new("test_ppc64_cf");
         let cond = VirtualReg::gpr(0);
         let f = FunctionBuilder::new("cf_fn")
@@ -892,15 +837,11 @@ mod tests {
             })
             .block("then")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(
-                    1,
-                ))),
+                value: Some(Operand::Immediate(Immediate::I64(1))),
             })
             .block("else")
             .instr(Instruction::Ret {
-                value: Some(Operand::Immediate(crate::mir::instruction::Immediate::I64(
-                    0,
-                ))),
+                value: Some(Operand::Immediate(Immediate::I64(0))),
             })
             .build();
         m.add_function(f);
