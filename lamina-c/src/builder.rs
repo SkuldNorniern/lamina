@@ -4,7 +4,7 @@ use std::ffi::c_char;
 use std::panic::AssertUnwindSafe;
 
 use lamina_ir::instruction::{BinaryOp, CmpOp};
-use lamina_ir::owned::{OwnedIRBuilder, OwnedParam, OwnedType, OwnedValue};
+use lamina_ir::owned::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
 use lamina_ir::types::PrimitiveType;
 
 use crate::error::{clear_error, set_error};
@@ -53,11 +53,8 @@ macro_rules! require_str {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn lia_builder_create() -> *mut LaminaBuilder {
-    match std::panic::catch_unwind(|| Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new()))))
-    {
-        Ok(ptr) => ptr,
-        Err(_) => std::ptr::null_mut(),
-    }
+    std::panic::catch_unwind(|| Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new()))))
+        .unwrap_or(std::ptr::null_mut())
 }
 
 #[unsafe(no_mangle)]
@@ -99,6 +96,82 @@ pub unsafe extern "C" fn lia_type_free(ty: *mut LaminaType) {
     if !ty.is_null() {
         unsafe { drop(Box::from_raw(ty)) };
     }
+}
+
+/// Named type reference (`@TypeName`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_type_named(name: *const c_char) -> *mut LaminaType {
+    match cstr_to_str(name) {
+        Some(s) => Box::into_raw(Box::new(LaminaType(OwnedType::Named(s.to_string())))),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Array type: `[size x element_type]`. Clones `element_type`; caller retains ownership.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_type_array(
+    element_type: *const LaminaType,
+    size: u64,
+) -> *mut LaminaType {
+    match unsafe { element_type.as_ref() } {
+        Some(t) => Box::into_raw(Box::new(LaminaType(OwnedType::Array {
+            element_type: Box::new(t.0.clone()),
+            size,
+        }))),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Struct field descriptor passed from C.
+#[repr(C)]
+pub struct LaminaStructField {
+    pub name: *const c_char,
+    pub ty: *const LaminaType,
+}
+
+/// Struct type with named fields. Clones all field types.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_type_struct(
+    fields: *const LaminaStructField,
+    count: usize,
+) -> *mut LaminaType {
+    if count > 0 && fields.is_null() {
+        return std::ptr::null_mut();
+    }
+    let mut owned_fields = Vec::with_capacity(count);
+    for i in 0..count {
+        let f = unsafe { &*fields.add(i) };
+        let name = match cstr_to_str(f.name) {
+            Some(s) => s.to_string(),
+            None => return std::ptr::null_mut(),
+        };
+        let ty = match unsafe { f.ty.as_ref() } {
+            Some(t) => t.0.clone(),
+            None => return std::ptr::null_mut(),
+        };
+        owned_fields.push(OwnedStructField { name, ty });
+    }
+    Box::into_raw(Box::new(LaminaType(OwnedType::Struct(owned_fields))))
+}
+
+/// Tuple type from an array of type pointers. Clones all element types.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_type_tuple(
+    types: *const *const LaminaType,
+    count: usize,
+) -> *mut LaminaType {
+    if count > 0 && types.is_null() {
+        return std::ptr::null_mut();
+    }
+    let mut owned = Vec::with_capacity(count);
+    for i in 0..count {
+        let tp = unsafe { *types.add(i) };
+        match unsafe { tp.as_ref() } {
+            Some(t) => owned.push(t.0.clone()),
+            None => return std::ptr::null_mut(),
+        }
+    }
+    Box::into_raw(Box::new(LaminaType(OwnedType::Tuple(owned))))
 }
 
 // ---------------------------------------------------------------------------
@@ -431,6 +504,59 @@ pub unsafe extern "C" fn lia_builder_jump(
         let b = require_mut!(builder, "builder");
         let t = require_str!(target, "target");
         b.0.jump(t);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+/// A switch case passed from C: `(integer_value, target_label)`.
+#[repr(C)]
+pub struct LaminaSwitchCase {
+    pub value: i64,
+    pub label: *const c_char,
+}
+
+/// Multi-way branch. `cases` may be NULL when `case_count` is 0 (degenerates to jump to default).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_switch(
+    builder: *mut LaminaBuilder,
+    ty: *const LaminaType,
+    value: *const LaminaValue,
+    default_label: *const c_char,
+    cases: *const LaminaSwitchCase,
+    case_count: usize,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        let b = require_mut!(builder, "builder");
+        let t = require_ref!(ty, "ty");
+        let v = require_ref!(value, "value");
+        let default = require_str!(default_label, "default_label");
+        let prim = match t.0 {
+            OwnedType::Primitive(p) => p,
+            _ => {
+                set_error("switch type must be primitive");
+                return LaminaStatus::ErrorInvalidArgument;
+            }
+        };
+        if case_count > 0 && cases.is_null() {
+            set_error("cases is null but case_count > 0");
+            return LaminaStatus::ErrorInvalidArgument;
+        }
+        let mut owned_cases: Vec<(i64, String)> = Vec::with_capacity(case_count);
+        for i in 0..case_count {
+            let c = &*cases.add(i);
+            let label = match cstr_to_str(c.label) {
+                Some(s) => s.to_string(),
+                None => {
+                    set_error("switch case label is null or invalid UTF-8");
+                    return LaminaStatus::ErrorInvalidArgument;
+                }
+            };
+            owned_cases.push((c.value, label));
+        }
+        let case_refs: Vec<(i64, &str)> =
+            owned_cases.iter().map(|(v, l)| (*v, l.as_str())).collect();
+        b.0.switch(prim, &v.0, default, &case_refs);
         clear_error();
         LaminaStatus::Ok
     }))
@@ -897,4 +1023,101 @@ unsafe fn collect_values(
         }
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+    use std::ptr;
+
+    fn cs(s: &str) -> CString {
+        // SAFETY: test strings contain no NUL bytes.
+        CString::new(s).unwrap()
+    }
+
+    #[test]
+    fn builder_free_null_does_not_crash() {
+        unsafe { lia_builder_free(ptr::null_mut()) };
+    }
+
+    #[test]
+    fn type_named_valid_name_is_non_null() {
+        unsafe {
+            let ty = lia_type_named(cs("MyStruct").as_ptr());
+            assert!(!ty.is_null());
+            lia_type_free(ty);
+        }
+    }
+
+    #[test]
+    fn type_named_null_returns_null() {
+        unsafe {
+            let ty = lia_type_named(ptr::null());
+            assert!(ty.is_null());
+        }
+    }
+
+    #[test]
+    fn type_array_returns_non_null() {
+        unsafe {
+            let elem = lia_type_i64();
+            let arr = lia_type_array(elem, 8);
+            assert!(!arr.is_null());
+            lia_type_free(elem);
+            lia_type_free(arr);
+        }
+    }
+
+    #[test]
+    fn type_array_null_element_returns_null() {
+        unsafe {
+            let arr = lia_type_array(ptr::null(), 4);
+            assert!(arr.is_null());
+        }
+    }
+
+    #[test]
+    fn type_struct_with_one_field_returns_non_null() {
+        unsafe {
+            let field_ty = lia_type_i64();
+            let field_name = cs("x");
+            let fields = [LaminaStructField {
+                name: field_name.as_ptr(),
+                ty: field_ty,
+            }];
+            let ty = lia_type_struct(fields.as_ptr(), 1);
+            assert!(!ty.is_null());
+            lia_type_free(field_ty);
+            lia_type_free(ty);
+        }
+    }
+
+    #[test]
+    fn type_tuple_empty_returns_non_null() {
+        unsafe {
+            let ty = lia_type_tuple(ptr::null(), 0);
+            assert!(!ty.is_null());
+            lia_type_free(ty);
+        }
+    }
+
+    #[test]
+    fn type_tuple_with_elements_returns_non_null() {
+        unsafe {
+            let t0 = lia_type_i64();
+            let t1 = lia_type_i32();
+            let ptrs: [*const LaminaType; 2] = [t0, t1];
+            let ty = lia_type_tuple(ptrs.as_ptr(), 2);
+            assert!(!ty.is_null());
+            lia_type_free(t0);
+            lia_type_free(t1);
+            lia_type_free(ty);
+        }
+    }
+
+    #[test]
+    fn type_free_null_does_not_crash() {
+        unsafe { lia_type_free(ptr::null_mut()) };
+    }
 }

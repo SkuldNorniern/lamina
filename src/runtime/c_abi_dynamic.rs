@@ -16,12 +16,36 @@
 //!
 //! Prefer packing parameters for hot paths; see [`JIT_ARG_SOFT_WARN_THRESHOLD`] for hints.
 
+use std::mem;
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", not(target_os = "windows")),
+))]
+use std::mem::size_of;
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", not(target_os = "windows")),
+))]
+use std::ptr::copy_nonoverlapping;
+
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", not(target_os = "windows")),
+))]
+use std::arch::asm;
+
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", not(target_os = "windows")),
+))]
+use crate::mir_codegen::MAX_MIR_CALL_PARAMETERS;
+
 #[cfg(any(
     target_arch = "aarch64",
     all(target_arch = "x86_64", not(target_os = "windows")),
 ))]
 /// Upper bound for [`call_function_dynamic`] on AArch64 and SysV x86_64 (stack shim).
-pub const MAX_JIT_ARGS: usize = crate::mir_codegen::MAX_MIR_CALL_PARAMETERS;
+pub const MAX_JIT_ARGS: usize = MAX_MIR_CALL_PARAMETERS;
 
 #[cfg(not(any(
     target_arch = "aarch64",
@@ -32,6 +56,10 @@ pub const MAX_JIT_ARGS: usize = 15;
 
 /// Past this count, tooling may warn: extra arguments use the stack under the C ABI.
 pub const JIT_ARG_SOFT_WARN_THRESHOLD: usize = 8;
+
+fn call_args_valid(function_ptr: *const u8, args: &[i64]) -> bool {
+    !function_ptr.is_null() && args.len() <= MAX_JIT_ARGS
+}
 
 #[cfg(target_arch = "aarch64")]
 /// Call an arbitrary C-ABI function at `function_ptr` with up to [`MAX_JIT_ARGS`] `i64` args.
@@ -46,10 +74,7 @@ pub unsafe fn call_function_dynamic(
     args: &[i64],
     returns_value: bool,
 ) -> Option<i64> {
-    if function_ptr.is_null() {
-        return None;
-    }
-    if args.len() > MAX_JIT_ARGS {
+    if !call_args_valid(function_ptr, args) {
         return None;
     }
     if !(function_ptr as usize).is_multiple_of(4) {
@@ -60,7 +85,7 @@ pub unsafe fn call_function_dynamic(
     if n == 0 {
         let mut out: i64 = 0;
         unsafe {
-            std::arch::asm!(
+            asm!(
                 "mov x16, {fp}",
                 "mov x8, xzr",
                 "blr x16",
@@ -81,7 +106,7 @@ pub unsafe fn call_function_dynamic(
     let mut out: i64 = 0;
     if stack_n == 0 {
         unsafe {
-            std::arch::asm!(
+            asm!(
                 "mov x16, {fp}",
                 "ldr x0, [{rp}]",
                 "ldr x1, [{rp}, #8]",
@@ -107,16 +132,16 @@ pub unsafe fn call_function_dynamic(
         // Keep the saved sp in x20 and declare `lateout("x20") _`: (1) addresses passed via
         // `in(reg)` are in caller-saved registers and the JIT callee may clobber them before we
         // reload; (2) AArch64 Rust reserves x19 for LLVM, so it cannot be an asm operand.
-        let byte_len = stack_n * core::mem::size_of::<i64>() + 16;
+        let byte_len = stack_n * size_of::<i64>() + 16;
         let backing = vec![0u8; byte_len];
         let base = backing.as_ptr() as usize;
         let call_sp = (base + 15) & !15;
         let dst = call_sp as *mut i64;
         unsafe {
-            core::ptr::copy_nonoverlapping(args.as_ptr().add(8), dst, stack_n);
+            copy_nonoverlapping(args.as_ptr().add(8), dst, stack_n);
         }
         unsafe {
-            std::arch::asm!(
+            asm!(
                 "mov x20, sp",
                 "mov sp, {csp}",
                 "mov x16, {fp}",
@@ -157,10 +182,7 @@ pub unsafe fn call_function_dynamic(
     args: &[i64],
     returns_value: bool,
 ) -> Option<i64> {
-    if function_ptr.is_null() {
-        return None;
-    }
-    if args.len() > MAX_JIT_ARGS {
+    if !call_args_valid(function_ptr, args) {
         return None;
     }
     if args.len() <= 15 {
@@ -171,7 +193,7 @@ pub unsafe fn call_function_dynamic(
     if n == 0 {
         let out: i64;
         unsafe {
-            std::arch::asm!(
+            asm!(
                 "mov r11, {fp}",
                 "call r11",
                 fp = in(reg) function_ptr,
@@ -198,7 +220,7 @@ pub unsafe fn call_function_dynamic(
 
     if stack_n == 0 {
         unsafe {
-            std::arch::asm!(
+            asm!(
                 "mov r11, {fp}",
                 "mov r10, {rp}",
                 "mov rdi, [r10]",
@@ -218,17 +240,17 @@ pub unsafe fn call_function_dynamic(
         // Copy outgoing stack args into a heap buffer and point rsp at it for the
         // call, then restore the host sp. Same rationale as the AArch64 path:
         // adjusting rsp in asm alone can clobber Rust stack slots below the frame.
-        let byte_len = stack_n * core::mem::size_of::<i64>() + 16;
+        let byte_len = stack_n * size_of::<i64>() + 16;
         let backing = vec![0u8; byte_len];
         let call_sp = (backing.as_ptr() as usize + 15) & !15;
         let dst = call_sp as *mut i64;
         unsafe {
-            core::ptr::copy_nonoverlapping(stack_src, dst, stack_n);
+            copy_nonoverlapping(stack_src, dst, stack_n);
         }
         let mut saved_sp = 0usize;
         let saved_sp_ptr = &mut saved_sp as *mut usize;
         unsafe {
-            std::arch::asm!(
+            asm!(
                 "mov [{sp}], rsp",
                 "mov rsp, {csp}",
                 "mov r11, {fp}",
@@ -258,20 +280,22 @@ pub unsafe fn call_function_dynamic(
     target_arch = "aarch64",
     all(target_arch = "x86_64", not(target_os = "windows")),
 )))]
+/// Call an arbitrary C-ABI function at `function_ptr` with up to [`MAX_JIT_ARGS`] `i64` args.
+///
+/// # Safety
+///
+/// - `function_ptr` must point to valid, executable code with a C-compatible ABI.
+/// - `args` must be the exact set of arguments expected by the callee.
+/// - The callee must be safe to call from the current thread context.
 pub unsafe fn call_function_dynamic(
     function_ptr: *const u8,
     args: &[i64],
     returns_value: bool,
 ) -> Option<i64> {
-    unsafe {
-        if function_ptr.is_null() {
-            return None;
-        }
-        if args.len() > MAX_JIT_ARGS {
-            return None;
-        }
-        transmute_dynamic_call(function_ptr, args, returns_value)
+    if !call_args_valid(function_ptr, args) {
+        return None;
     }
+    unsafe { transmute_dynamic_call(function_ptr, args, returns_value) }
 }
 
 unsafe fn transmute_dynamic_call(
@@ -283,10 +307,10 @@ unsafe fn transmute_dynamic_call(
         match args.len() {
             0 => {
                 if returns_value {
-                    let callee: unsafe extern "C" fn() -> i64 = std::mem::transmute(function_ptr);
+                    let callee: unsafe extern "C" fn() -> i64 = mem::transmute(function_ptr);
                     Some(callee())
                 } else {
-                    let callee: unsafe extern "C" fn() = std::mem::transmute(function_ptr);
+                    let callee: unsafe extern "C" fn() = mem::transmute(function_ptr);
                     callee();
                     None
                 }
@@ -294,11 +318,10 @@ unsafe fn transmute_dynamic_call(
             1 => {
                 let a0 = args[0];
                 if returns_value {
-                    let callee: unsafe extern "C" fn(i64) -> i64 =
-                        std::mem::transmute(function_ptr);
+                    let callee: unsafe extern "C" fn(i64) -> i64 = mem::transmute(function_ptr);
                     Some(callee(a0))
                 } else {
-                    let callee: unsafe extern "C" fn(i64) = std::mem::transmute(function_ptr);
+                    let callee: unsafe extern "C" fn(i64) = mem::transmute(function_ptr);
                     callee(a0);
                     None
                 }
@@ -308,10 +331,10 @@ unsafe fn transmute_dynamic_call(
                 let a1 = args[1];
                 if returns_value {
                     let callee: unsafe extern "C" fn(i64, i64) -> i64 =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     Some(callee(a0, a1))
                 } else {
-                    let callee: unsafe extern "C" fn(i64, i64) = std::mem::transmute(function_ptr);
+                    let callee: unsafe extern "C" fn(i64, i64) = mem::transmute(function_ptr);
                     callee(a0, a1);
                     None
                 }
@@ -322,11 +345,10 @@ unsafe fn transmute_dynamic_call(
                 let a2 = args[2];
                 if returns_value {
                     let callee: unsafe extern "C" fn(i64, i64, i64) -> i64 =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2))
                 } else {
-                    let callee: unsafe extern "C" fn(i64, i64, i64) =
-                        std::mem::transmute(function_ptr);
+                    let callee: unsafe extern "C" fn(i64, i64, i64) = mem::transmute(function_ptr);
                     callee(a0, a1, a2);
                     None
                 }
@@ -338,11 +360,11 @@ unsafe fn transmute_dynamic_call(
                 let a3 = args[3];
                 if returns_value {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64) -> i64 =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2, a3))
                 } else {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64) =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3);
                     None
                 }
@@ -355,11 +377,11 @@ unsafe fn transmute_dynamic_call(
                 let a4 = args[4];
                 if returns_value {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64) -> i64 =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2, a3, a4))
                 } else {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64) =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4);
                     None
                 }
@@ -373,11 +395,11 @@ unsafe fn transmute_dynamic_call(
                 let a5 = args[5];
                 if returns_value {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64) -> i64 =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2, a3, a4, a5))
                 } else {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64) =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4, a5);
                     None
                 }
@@ -392,11 +414,11 @@ unsafe fn transmute_dynamic_call(
                 let a6 = args[6];
                 if returns_value {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64) -> i64 =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2, a3, a4, a5, a6))
                 } else {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64) =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4, a5, a6);
                     None
                 }
@@ -420,11 +442,11 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) -> i64 = std::mem::transmute(function_ptr);
+                    ) -> i64 = mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2, a3, a4, a5, a6, a7))
                 } else {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64) =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4, a5, a6, a7);
                     None
                 }
@@ -450,11 +472,11 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) -> i64 = std::mem::transmute(function_ptr);
+                    ) -> i64 = mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8))
                 } else {
                     let callee: unsafe extern "C" fn(i64, i64, i64, i64, i64, i64, i64, i64, i64) =
-                        std::mem::transmute(function_ptr);
+                        mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4, a5, a6, a7, a8);
                     None
                 }
@@ -482,7 +504,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) -> i64 = std::mem::transmute(function_ptr);
+                    ) -> i64 = mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9))
                 } else {
                     let callee: unsafe extern "C" fn(
@@ -496,7 +518,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) = std::mem::transmute(function_ptr);
+                    ) = mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9);
                     None
                 }
@@ -526,7 +548,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) -> i64 = std::mem::transmute(function_ptr);
+                    ) -> i64 = mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10))
                 } else {
                     let callee: unsafe extern "C" fn(
@@ -541,7 +563,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) = std::mem::transmute(function_ptr);
+                    ) = mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
                     None
                 }
@@ -573,7 +595,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) -> i64 = std::mem::transmute(function_ptr);
+                    ) -> i64 = mem::transmute(function_ptr);
                     Some(callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11))
                 } else {
                     let callee: unsafe extern "C" fn(
@@ -589,7 +611,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) = std::mem::transmute(function_ptr);
+                    ) = mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11);
                     None
                 }
@@ -623,7 +645,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) -> i64 = std::mem::transmute(function_ptr);
+                    ) -> i64 = mem::transmute(function_ptr);
                     Some(callee(
                         a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12,
                     ))
@@ -642,7 +664,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) = std::mem::transmute(function_ptr);
+                    ) = mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12);
                     None
                 }
@@ -678,7 +700,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) -> i64 = std::mem::transmute(function_ptr);
+                    ) -> i64 = mem::transmute(function_ptr);
                     Some(callee(
                         a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13,
                     ))
@@ -698,7 +720,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) = std::mem::transmute(function_ptr);
+                    ) = mem::transmute(function_ptr);
                     callee(a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13);
                     None
                 }
@@ -736,7 +758,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) -> i64 = std::mem::transmute(function_ptr);
+                    ) -> i64 = mem::transmute(function_ptr);
                     Some(callee(
                         a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14,
                     ))
@@ -757,7 +779,7 @@ unsafe fn transmute_dynamic_call(
                         i64,
                         i64,
                         i64,
-                    ) = std::mem::transmute(function_ptr);
+                    ) = mem::transmute(function_ptr);
                     callee(
                         a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14,
                     );

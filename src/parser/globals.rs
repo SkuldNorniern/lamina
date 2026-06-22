@@ -1,8 +1,9 @@
 //! Global variable parsing for Lamina IR.
 
-use super::state::ParserState;
-use super::types::parse_type;
-use crate::{GlobalDeclaration, LaminaError, Literal, PrimitiveType, Type, Value};
+use crate::LaminaError;
+use crate::ir::{GlobalDeclaration, Literal, PrimitiveType, Type, Value};
+use crate::parser::state::ParserState;
+use crate::parser::types::parse_type;
 
 /// Parses a global declaration.
 pub fn parse_global_declaration<'a>(
@@ -57,13 +58,11 @@ pub fn parse_value_with_type_hint<'a>(
                         Ok(Value::Constant(Literal::String(string_value)))
                     }
                     _ => Err(state.error(format!(
-                        "String literal is not compatible with type hint: {:?}",
-                        type_hint
+                        "String literal is not compatible with type hint: {type_hint:?}"
                     ))),
                 },
                 _ => Err(state.error(format!(
-                    "String literal is not compatible with type hint: {:?}",
-                    type_hint
+                    "String literal is not compatible with type hint: {type_hint:?}"
                 ))),
             }
         }
@@ -76,27 +75,18 @@ pub fn parse_value_with_type_hint<'a>(
                         Ok(Value::Constant(Literal::Bool(true)))
                     }
                     _ => Err(state.error(format!(
-                        "Boolean literal not compatible with type hint: {:?}",
-                        type_hint
+                        "Boolean literal not compatible with type hint: {type_hint:?}"
                     ))),
                 }
             } else {
                 let found = state.peek_slice(10).unwrap_or("");
-                let mut suggestions = Vec::new();
-                const MAX_TYPO_DISTANCE: usize = 2;
-
-                let distance = super::edit_distance(found, "true", Some(MAX_TYPO_DISTANCE));
-                if distance <= MAX_TYPO_DISTANCE {
-                    suggestions.push("true");
-                }
-
-                let hint = if !suggestions.is_empty() {
+                let hint = if super::edit_distance(found, "true", Some(2)) <= 2 {
                     "Did you mean 'true'?".to_string()
                 } else {
                     "Expected 'true' boolean literal".to_string()
                 };
 
-                Err(state.error(format!("Expected 'true'\n  Hint: {}", hint)))
+                Err(state.error(format!("Expected 'true'\n  Hint: {hint}")))
             }
         }
         Some('f') => {
@@ -108,27 +98,18 @@ pub fn parse_value_with_type_hint<'a>(
                         Ok(Value::Constant(Literal::Bool(false)))
                     }
                     _ => Err(state.error(format!(
-                        "Boolean literal not compatible with type hint: {:?}",
-                        type_hint
+                        "Boolean literal not compatible with type hint: {type_hint:?}"
                     ))),
                 }
             } else {
                 let found = state.peek_slice(10).unwrap_or("");
-                let mut suggestions = Vec::new();
-                const MAX_TYPO_DISTANCE: usize = 2;
-
-                let distance = super::edit_distance(found, "false", Some(MAX_TYPO_DISTANCE));
-                if distance <= MAX_TYPO_DISTANCE {
-                    suggestions.push("false");
-                }
-
-                let hint = if !suggestions.is_empty() {
+                let hint = if super::edit_distance(found, "false", Some(2)) <= 2 {
                     "Did you mean 'false'?".to_string()
                 } else {
                     "Expected 'false' boolean literal".to_string()
                 };
 
-                Err(state.error(format!("Expected 'false'\n  Hint: {}", hint)))
+                Err(state.error(format!("Expected 'false'\n  Hint: {hint}")))
             }
         }
         Some(c) if c.is_ascii_digit() || c == '-' => {
@@ -142,15 +123,14 @@ pub fn parse_value_with_type_hint<'a>(
                     return Ok(Value::Constant(Literal::F32(i_val as f32)));
                 }
 
-                return Err(state.error("Expected float literal for F32 hint".to_string()));
+                return Err(state.error("Expected float literal for F32 hint"));
             }
 
             match type_hint {
                 Type::Primitive(PrimitiveType::I8) => {
                     let peek_string = state.peek_slice(20).unwrap_or("");
                     if peek_string.contains('.') {
-                        return Err(state
-                            .error("Float literal cannot be used with I8 type hint".to_string()));
+                        return Err(state.error("Float literal cannot be used with I8 type hint"));
                     }
 
                     let i_val = state.parse_integer()?;
@@ -167,8 +147,7 @@ pub fn parse_value_with_type_hint<'a>(
                 Type::Primitive(PrimitiveType::I32) => {
                     let peek_string = state.peek_slice(20).unwrap_or("");
                     if peek_string.contains('.') {
-                        return Err(state
-                            .error("Float literal cannot be used with I32 type hint".to_string()));
+                        return Err(state.error("Float literal cannot be used with I32 type hint"));
                     }
 
                     let i_val = state.parse_integer()?;
@@ -185,8 +164,7 @@ pub fn parse_value_with_type_hint<'a>(
                 Type::Primitive(PrimitiveType::I64) => {
                     let peek_string = state.peek_slice(20).unwrap_or("");
                     if peek_string.contains('.') {
-                        return Err(state
-                            .error("Float literal cannot be used with I64 type hint".to_string()));
+                        return Err(state.error("Float literal cannot be used with I64 type hint"));
                     }
 
                     let i_val = state.parse_integer()?;
@@ -207,10 +185,10 @@ pub fn parse_value_with_type_hint<'a>(
                         return Ok(Value::Constant(Literal::F32(f_val)));
                     }
 
-                    Err(state.error("Expected a numeric literal".to_string()))
+                    Err(state.error("Expected a numeric literal"))
                 }
             }
         }
-        _ => Err(state.error("Expected value (%, @, literal)".to_string())),
+        _ => Err(state.error("Expected value (%, @, literal)")),
     }
 }

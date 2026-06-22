@@ -7,8 +7,13 @@
 //!
 //! This helps on x86_64 which has native support for complex addressing modes.
 
-use super::{Transform, TransformCategory, TransformLevel};
-use crate::mir::{AddressMode, Function, Instruction, Operand, Register};
+use std::collections::HashMap;
+
+use crate::mir::instruction::Immediate;
+use crate::mir::transform::{
+    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+};
+use crate::mir::{AddressMode, Function, Instruction, IntBinOp, Operand, Register};
 
 /// Canonicalizes address formation patterns into BaseIndexScale addressing.
 #[derive(Default)]
@@ -31,41 +36,20 @@ impl Transform for AddressingCanonicalization {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
     }
 }
 
 impl AddressingCanonicalization {
-    fn apply_internal(&self, func: &mut Function) -> Result<bool, String> {
-        const MAX_BLOCKS: usize = 500;
-        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 1_000;
-
-        if func.blocks.len() > MAX_BLOCKS {
-            return Err(format!(
-                "Function too large for addressing canonicalization ({} blocks, max {})",
-                func.blocks.len(),
-                MAX_BLOCKS
-            ));
-        }
-
-        for block in &func.blocks {
-            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
-                return Err(format!(
-                    "Block '{}' too large for addressing canonicalization ({} instructions, max {})",
-                    block.label,
-                    block.instructions.len(),
-                    MAX_INSTRUCTIONS_PER_BLOCK
-                ));
-            }
-        }
+    fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
+        check_function_size(func, "addressing_canonicalization", 500, 1_000)?;
 
         let mut changed = false;
 
         for block in &mut func.blocks {
             // Build a simple def map for this block: reg -> (idx of instr)
-            let mut def_index: std::collections::HashMap<Register, usize> =
-                std::collections::HashMap::new();
+            let mut def_index: HashMap<Register, usize> = HashMap::new();
             for (i, instr) in block.instructions.iter().enumerate() {
                 if let Some(reg) = instr.def_reg() {
                     def_index.insert(reg.clone(), i);
@@ -84,15 +68,7 @@ impl AddressingCanonicalization {
 
                 // Phase 1: analyze immutably to compute potential new addressing mode
                 let new_addr_mode: Option<AddressMode> = match &block.instructions[i] {
-                    Instruction::Load { addr, .. } => {
-                        let mut addr_clone = addr.clone();
-                        if self.try_rewrite_addr(&mut addr_clone, &def_index, &block.instructions) {
-                            Some(addr_clone)
-                        } else {
-                            None
-                        }
-                    }
-                    Instruction::Store { addr, .. } => {
+                    Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
                         let mut addr_clone = addr.clone();
                         if self.try_rewrite_addr(&mut addr_clone, &def_index, &block.instructions) {
                             Some(addr_clone)
@@ -106,12 +82,7 @@ impl AddressingCanonicalization {
                 // Phase 2: apply mutation
                 if let Some(new_mode) = new_addr_mode {
                     match &mut block.instructions[i] {
-                        Instruction::Load { addr, .. } => {
-                            *addr = new_mode;
-                            changed = true;
-                            rewrites_this_block += 1;
-                        }
-                        Instruction::Store { addr, .. } => {
+                        Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
                             *addr = new_mode;
                             changed = true;
                             rewrites_this_block += 1;
@@ -128,7 +99,7 @@ impl AddressingCanonicalization {
     fn try_rewrite_addr(
         &self,
         addr: &mut AddressMode,
-        def_index: &std::collections::HashMap<Register, usize>,
+        def_index: &HashMap<Register, usize>,
         instructions: &[Instruction],
     ) -> bool {
         match addr {
@@ -171,16 +142,13 @@ impl AddressingCanonicalization {
     fn match_add_scaled_index(
         &self,
         def_instr: &Instruction,
-        def_index: &std::collections::HashMap<Register, usize>,
+        def_index: &HashMap<Register, usize>,
         instructions: &[Instruction],
     ) -> Option<(Register, Register, u8)> {
-        use crate::mir::IntBinOp;
-        use crate::mir::instruction::Immediate;
-
         // Check if a register is defined by shift-left with small power-of-two scale
         fn scaled_from_shift(
             r: &Register,
-            def_index: &std::collections::HashMap<Register, usize>,
+            def_index: &HashMap<Register, usize>,
             instructions: &[Instruction],
         ) -> Option<(Register, u8)> {
             if let Some(&pos) = def_index.get(r)
@@ -202,7 +170,7 @@ impl AddressingCanonicalization {
         // Check if a register is defined by mul-by-const in {1,2,4,8}
         fn scaled_from_mul(
             r: &Register,
-            def_index: &std::collections::HashMap<Register, usize>,
+            def_index: &HashMap<Register, usize>,
             instructions: &[Instruction],
         ) -> Option<(Register, u8)> {
             if let Some(&pos) = def_index.get(r)
@@ -227,7 +195,7 @@ impl AddressingCanonicalization {
         fn try_base_plus_scaled(
             base_op: &Operand,
             other_op: &Operand,
-            def_index: &std::collections::HashMap<Register, usize>,
+            def_index: &HashMap<Register, usize>,
             instructions: &[Instruction],
         ) -> Option<(Register, Register, u8)> {
             if let Operand::Register(base_reg) = base_op
@@ -263,9 +231,8 @@ impl AddressingCanonicalization {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand, ScalarType, VirtualReg,
-    };
+    use crate::mir::transform::test_utils::get_block;
+    use crate::mir::{FunctionBuilder, Immediate, MemoryAttrs, MirType, ScalarType, VirtualReg};
 
     #[test]
     fn test_addressing_empty_function() {
@@ -375,7 +342,7 @@ mod tests {
         assert!(changed);
 
         // Verify the addressing mode was changed to BaseIndexScale
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[2] {
             Instruction::Load { addr, .. } => {
                 assert!(
@@ -432,7 +399,7 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[2] {
             Instruction::Load { addr, .. } => {
                 assert!(
@@ -565,7 +532,7 @@ mod tests {
         let changed = pass.apply(&mut func).expect("should succeed");
         assert!(changed);
 
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         match &entry.instructions[2] {
             Instruction::Store { addr, .. } => {
                 assert!(

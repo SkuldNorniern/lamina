@@ -14,5 +14,5 @@ pub mod transform; // Optimizations (lamina-specific)
 // Re-export transform types for convenience
 pub use transform::{
     DeadCodeElimination, FunctionInlining, LoopInvariantCodeMotion, LoopUnrolling, ModuleInlining,
-    Peephole, Transform, TransformPipeline, TransformStats,
+    Peephole, Transform, TransformError, TransformPipeline, TransformStats,
 };

@@ -37,7 +37,12 @@
 //! ⚠️ = Partial support (some types/operations may not work)
 //! ❌ = Not supported
 
+use std::collections::HashSet;
 use std::fmt;
+
+#[cfg(feature = "nightly")]
+use lamina_platform::SimdCapabilities;
+use lamina_platform::TargetArchitecture;
 
 /// Capabilities that a codegen backend may support
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -144,7 +149,7 @@ impl fmt::Display for CodegenCapability {
 /// A set of capabilities supported by a backend
 #[derive(Debug, Clone, Default)]
 pub struct CapabilitySet {
-    capabilities: std::collections::HashSet<CodegenCapability>,
+    capabilities: HashSet<CodegenCapability>,
 }
 
 impl CapabilitySet {
@@ -223,9 +228,26 @@ impl CapabilitySet {
         .collect()
     }
 
+    /// Like [`for_architecture`] but includes [`CodegenCapability::SimdOperations`] when
+    /// `simd.supported` is true, overriding the static per-arch default.
+    #[cfg(feature = "nightly")]
+    pub fn for_architecture_with_simd(
+        arch: TargetArchitecture,
+        simd: Option<&SimdCapabilities>,
+    ) -> Self {
+        let mut caps = Self::for_architecture(arch);
+        if let Some(s) = simd {
+            if s.supported {
+                caps.add(CodegenCapability::SimdOperations);
+            } else {
+                caps.remove(&CodegenCapability::SimdOperations);
+            }
+        }
+        caps
+    }
+
     /// Capability set advertised for a target architecture (used for gating flags such as debug assembly).
-    pub fn for_architecture(arch: lamina_platform::TargetArchitecture) -> Self {
-        use lamina_platform::TargetArchitecture;
+    pub fn for_architecture(arch: TargetArchitecture) -> Self {
         match arch {
             TargetArchitecture::X86_64
             | TargetArchitecture::Aarch64

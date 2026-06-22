@@ -1,15 +1,16 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod tests {
-    use super::super::super::function::FunctionAnnotation;
+    use crate::builder::IRBuilder;
+    use crate::builder::values::*;
+    use crate::function::FunctionAnnotation;
     #[cfg(feature = "nightly")]
-    use super::super::super::instruction::SimdOp;
-    use super::super::super::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
+    use crate::instruction::SimdOp;
+    use crate::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
     #[cfg(feature = "nightly")]
-    use super::super::super::module::ModuleAnnotation;
-    use super::super::super::types::{Literal, PrimitiveType, Type};
-    use super::super::IRBuilder;
-    use super::super::values::*;
+    use crate::module::ModuleAnnotation;
+    use crate::types::{Literal, PrimitiveType, StructField, Type};
+    use std::f32::consts::PI;
 
     #[test]
     fn test_build_simple_function() {
@@ -512,11 +513,11 @@ mod tests {
             .alloc_stack(
                 "point",
                 Type::Struct(vec![
-                    crate::types::StructField {
+                    StructField {
                         name: "x",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },
-                    crate::types::StructField {
+                    StructField {
                         name: "y",
                         ty: Type::Primitive(PrimitiveType::I32),
                     },
@@ -1066,7 +1067,7 @@ mod tests {
         // Verify atomic store
         if let Instruction::AtomicStore {
             ty,
-            ptr,
+            ptr: _,
             value,
             ordering,
         } = &entry.instructions[1]
@@ -1083,8 +1084,6 @@ mod tests {
     #[test]
     fn test_simd_operations() {
         let mut builder = IRBuilder::new();
-
-        use crate::instruction::SimdOp;
 
         let vector_type = Type::Array {
             element_type: Box::new(Type::Primitive(PrimitiveType::F32)),
@@ -1113,7 +1112,7 @@ mod tests {
                 "new_vec",
                 vector_type.clone(),
                 var("sqrt_result"),
-                f32(3.14),
+                f32(PI),
                 i32(1),
             )
             .simd_load("loaded_vec", vector_type.clone(), var("vec1"), Some(16))

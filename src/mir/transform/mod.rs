@@ -25,6 +25,7 @@ mod vectorization;
 pub use addressing::AddressingCanonicalization;
 pub use branch_opt::BranchOptimization;
 pub use cfg::{CfgSimplify, JumpThreading};
+pub(crate) use cfg::{calculate_dominators, compute_back_edge_headers};
 pub use constant_folding::ConstantFolding;
 pub use copy_propagation::CopyPropagation;
 pub use cse::CommonSubexpressionElimination;
@@ -36,8 +37,179 @@ pub use peephole::Peephole;
 pub use scheduling::InstructionScheduling;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
+
+use crate::mir::{Function, Module};
+use std::fmt;
+
 #[cfg(feature = "nightly")]
 pub use vectorization::AutoVectorization;
+
+/// Error returned by transform passes.
+#[derive(Debug)]
+pub enum TransformError {
+    FunctionTooLarge {
+        pass: &'static str,
+        count: usize,
+        limit: usize,
+    },
+    BlockTooLarge {
+        label: String,
+        count: usize,
+        limit: usize,
+    },
+    WouldDestroyFunction,
+    ConvergenceFailed,
+    Unsupported(String),
+    InvalidState(&'static str),
+    /// Function exceeded the pipeline-wide instruction budget.
+    PipelineFunctionTooLarge {
+        count: usize,
+        limit: usize,
+    },
+    /// Pipeline ran too many iterations; a pass likely fails to converge.
+    PipelineStalled {
+        pass: &'static str,
+        limit: usize,
+    },
+    /// A named pass returned an error.
+    PassFailed {
+        pass: &'static str,
+        source: Box<TransformError>,
+    },
+    /// Every function in the module failed to transform.
+    AllFunctionsFailed {
+        failures: Vec<(String, TransformError)>,
+    },
+    /// A control-flow edge targets a block that does not exist.
+    InvalidCfg {
+        block: String,
+        target: String,
+        edge: &'static str,
+    },
+    /// Module exceeded the inliner's instruction budget.
+    InliningModuleTooLarge {
+        count: usize,
+        limit: usize,
+    },
+    /// Inlining did not reach a fixed point within the iteration limit.
+    InliningStalled {
+        limit: usize,
+    },
+    /// Call site argument count did not match the callee signature.
+    ParamCountMismatch {
+        expected: usize,
+        got: usize,
+    },
+    /// A referenced function or block was not present in the module.
+    NotFound {
+        kind: &'static str,
+        name: String,
+    },
+}
+
+impl fmt::Display for TransformError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FunctionTooLarge { pass, count, limit } => {
+                write!(
+                    f,
+                    "Function too large for {pass} ({count} blocks, max {limit})"
+                )
+            }
+            Self::BlockTooLarge {
+                label,
+                count,
+                limit,
+            } => {
+                write!(
+                    f,
+                    "Block '{label}' too large ({count} instructions, max {limit})"
+                )
+            }
+            Self::WouldDestroyFunction => write!(f, "transform would remove all blocks"),
+            Self::ConvergenceFailed => write!(f, "liveness analysis failed to converge"),
+            Self::Unsupported(msg) => write!(f, "unsupported: {msg}"),
+            Self::InvalidState(msg) => write!(f, "invalid state: {msg}"),
+            Self::PipelineFunctionTooLarge { count, limit } => {
+                write!(
+                    f,
+                    "function too large for transforms ({count} instructions, max {limit})"
+                )
+            }
+            Self::PipelineStalled { pass, limit } => {
+                write!(
+                    f,
+                    "transform pipeline exceeded {limit} iterations, possible infinite loop in pass '{pass}'"
+                )
+            }
+            Self::PassFailed { pass, source } => write!(f, "transform '{pass}' failed: {source}"),
+            Self::AllFunctionsFailed { failures } => {
+                write!(f, "all functions failed transforms: ")?;
+                for (i, (name, err)) in failures.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{name}: {err}")?;
+                }
+                Ok(())
+            }
+            Self::InvalidCfg {
+                block,
+                target,
+                edge,
+            } => {
+                write!(
+                    f,
+                    "invalid CFG: block '{block}' {edge} targets missing block '{target}'"
+                )
+            }
+            Self::InliningModuleTooLarge { count, limit } => {
+                write!(
+                    f,
+                    "module too large for inlining ({count} instructions, max {limit})"
+                )
+            }
+            Self::InliningStalled { limit } => {
+                write!(f, "inlining did not converge after {limit} iterations")
+            }
+            Self::ParamCountMismatch { expected, got } => {
+                write!(
+                    f,
+                    "parameter count mismatch: expected {expected}, got {got}"
+                )
+            }
+            Self::NotFound { kind, name } => write!(f, "{kind} '{name}' not found"),
+        }
+    }
+}
+
+/// Reject functions too large for a pass to process in reasonable time.
+///
+/// Pass `usize::MAX` for `max_instructions_per_block` to skip the per-block check.
+pub(crate) fn check_function_size(
+    func: &Function,
+    pass: &'static str,
+    max_blocks: usize,
+    max_instructions_per_block: usize,
+) -> Result<(), TransformError> {
+    if func.blocks.len() > max_blocks {
+        return Err(TransformError::FunctionTooLarge {
+            pass,
+            count: func.blocks.len(),
+            limit: max_blocks,
+        });
+    }
+    for block in &func.blocks {
+        if block.instructions.len() > max_instructions_per_block {
+            return Err(TransformError::BlockTooLarge {
+                label: block.label.clone(),
+                count: block.instructions.len(),
+                limit: max_instructions_per_block,
+            });
+        }
+    }
+    Ok(())
+}
 
 /// Trait for MIR transformation passes.
 pub trait Transform {
@@ -54,7 +226,7 @@ pub trait Transform {
     fn level(&self) -> TransformLevel;
 
     /// Apply this transform to a function. Returns true if any changes were made.
-    fn apply(&self, func: &mut crate::mir::Function) -> Result<bool, String>;
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError>;
 }
 
 /// Stability level of a transform.
@@ -76,12 +248,12 @@ impl TransformLevel {
     /// - `-O2`: `Stable` + `Experimental` transforms
     /// - `-O3`: All transforms (including `Deprecated` for compatibility)
     pub fn is_enabled_at_opt_level(self, opt_level: u8) -> bool {
-        match (self, opt_level) {
-            (TransformLevel::Deprecated, 3..) => true, // Only at -O3+
-            (TransformLevel::Experimental, 2..) => true, // At -O2+
-            (TransformLevel::Stable, 1..) => true,     // At -O1+
-            _ => false,
-        }
+        matches!(
+            (self, opt_level),
+            (TransformLevel::Deprecated, 3..)
+                | (TransformLevel::Experimental, 2..)
+                | (TransformLevel::Stable, 1..)
+        )
     }
 }
 
@@ -168,17 +340,14 @@ impl TransformPipeline {
         pipeline
     }
 
-    pub fn apply_to_function(
-        &self,
-        func: &mut crate::mir::Function,
-    ) -> Result<TransformStats, String> {
+    pub fn apply_to_function(&self, func: &mut Function) -> Result<TransformStats, TransformError> {
         let total_instructions: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
         const MAX_INSTRUCTIONS: usize = 100_000;
         if total_instructions > MAX_INSTRUCTIONS {
-            return Err(format!(
-                "Function too large for transforms ({} instructions, max {})",
-                total_instructions, MAX_INSTRUCTIONS
-            ));
+            return Err(TransformError::PipelineFunctionTooLarge {
+                count: total_instructions,
+                limit: MAX_INSTRUCTIONS,
+            });
         }
 
         let mut stats = TransformStats::default();
@@ -186,23 +355,21 @@ impl TransformPipeline {
 
         for transform in &self.transforms {
             if total_iterations >= self.max_total_iterations {
-                return Err(format!(
-                    "Transform pipeline exceeded maximum iterations ({}), possible infinite loop in transform '{}'",
-                    self.max_total_iterations,
-                    transform.name()
-                ));
+                return Err(TransformError::PipelineStalled {
+                    pass: transform.name(),
+                    limit: self.max_total_iterations,
+                });
             }
 
             stats.transforms_run += 1;
-            match transform.apply(func) {
-                Ok(changed) => {
-                    if changed {
-                        stats.transforms_changed += 1;
-                    }
-                }
-                Err(e) => {
-                    return Err(format!("Transform '{}' failed: {}", transform.name(), e));
-                }
+            let changed = transform
+                .apply(func)
+                .map_err(|e| TransformError::PassFailed {
+                    pass: transform.name(),
+                    source: Box::new(e),
+                })?;
+            if changed {
+                stats.transforms_changed += 1;
             }
 
             total_iterations += 1;
@@ -212,10 +379,7 @@ impl TransformPipeline {
         Ok(stats)
     }
 
-    pub fn apply_to_module(
-        &self,
-        module: &mut crate::mir::Module,
-    ) -> Result<TransformStats, String> {
+    pub fn apply_to_module(&self, module: &mut Module) -> Result<TransformStats, TransformError> {
         let mut total_stats = TransformStats::default();
         let mut failed_functions = Vec::new();
 
@@ -233,14 +397,9 @@ impl TransformPipeline {
         }
 
         if !failed_functions.is_empty() && total_stats.transforms_run == 0 {
-            return Err(format!(
-                "All functions failed transforms: {}",
-                failed_functions
-                    .iter()
-                    .map(|(name, err)| format!("{}: {}", name, err))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
+            return Err(TransformError::AllFunctionsFailed {
+                failures: failed_functions,
+            });
         }
 
         if !failed_functions.is_empty() {
@@ -249,7 +408,7 @@ impl TransformPipeline {
                 failed_functions.len()
             );
             for (name, err) in &failed_functions {
-                eprintln!("  {}: {}", name, err);
+                eprintln!("  {name}: {err}");
             }
         }
 
@@ -272,9 +431,30 @@ impl Default for TransformPipeline {
 }
 
 #[cfg(test)]
+pub(crate) mod test_utils {
+    use crate::mir::{Block, Function};
+
+    /// Retrieves a block by label, panicking with the label name if not found.
+    // SAFETY: test helper — label must exist in the function's block list.
+    pub fn get_block<'a>(func: &'a Function, label: &str) -> &'a Block {
+        func.get_block(label)
+            .unwrap_or_else(|| panic!("block '{label}' not found in function"))
+    }
+
+    /// Applies a transform pass, panicking on error, and returns whether anything changed.
+    // SAFETY: test helper — pass must be valid for the function's IR.
+    pub fn apply_pass(pass: &impl super::Transform, func: &mut Function) -> bool {
+        pass.apply(func)
+            .unwrap_or_else(|e| panic!("transform failed: {e}"))
+    }
+}
+
+#[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
+    use crate::mir::register::Register;
     use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
     #[test]
@@ -310,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_transform_pipeline_apply_to_module() {
-        let mut module = crate::mir::Module::new("test");
+        let mut module = Module::new("test");
         let pipeline = TransformPipeline::new().add_transform(Peephole);
         let stats = pipeline.apply_to_module(&mut module).unwrap();
         assert_eq!(stats.transforms_run, 0);
@@ -360,9 +540,6 @@ mod tests {
 
     #[test]
     fn test_phase_ordering_cfg_then_constant_folding() {
-        use crate::mir::instruction::{Instruction, IntBinOp, Operand};
-        use crate::mir::register::Register;
-
         let func = FunctionBuilder::new("test")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
@@ -371,8 +548,8 @@ mod tests {
                 op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: Register::Virtual(VirtualReg::gpr(1)),
-                lhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(5)),
-                rhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(3)),
+                lhs: Operand::Immediate(Immediate::I64(5)),
+                rhs: Operand::Immediate(Immediate::I64(3)),
             })
             .instr(Instruction::Ret {
                 value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(1)))),
@@ -389,10 +566,6 @@ mod tests {
 
     #[test]
     fn test_phase_ordering_dce_after_optimizations() {
-        // Test that DCE after other optimizations works correctly
-        use crate::mir::instruction::{Instruction, IntBinOp, Operand};
-        use crate::mir::register::Register;
-
         let func = FunctionBuilder::new("test")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
@@ -402,7 +575,7 @@ mod tests {
                 ty: MirType::Scalar(ScalarType::I64),
                 dst: Register::Virtual(VirtualReg::gpr(1)),
                 lhs: Operand::Register(Register::Virtual(VirtualReg::gpr(0))),
-                rhs: Operand::Immediate(crate::mir::instruction::Immediate::I64(0)),
+                rhs: Operand::Immediate(Immediate::I64(0)),
             })
             .instr(Instruction::Ret {
                 value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(0)))),

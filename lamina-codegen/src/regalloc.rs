@@ -1,5 +1,6 @@
-use lamina_mir::{Function, Instruction, Operand, Register, VirtualReg};
+use lamina_mir::{AddressMode, Function, Instruction, Operand, Register, VirtualReg};
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 
 /// Opaque handle that allows dynamic dispatch over register allocators without
 /// leaking architecture-specific physical register types.
@@ -42,7 +43,7 @@ impl PhysRegConvertible for &'static str {
     }
 }
 
-/// Target-facing interface for MIR register allocation.
+/// Target-facing interface for MIR register allocation (per-function/incremental).
 ///
 /// The trait stays purposefully small: code generators typically need a
 /// lightweight scratch register pool, a stable mapping from virtual to
@@ -50,7 +51,7 @@ impl PhysRegConvertible for &'static str {
 /// registers that are pre-coloured by the ABI. Architecture backends can build
 /// richer policies on top of this contract without forcing every target to
 /// adopt the same strategy.
-pub trait RegisterAllocator {
+pub trait LocalRegisterAllocator {
     /// Architecture-specific physical register handle.
     type PhysReg: PhysRegConvertible;
 
@@ -58,7 +59,7 @@ pub trait RegisterAllocator {
     /// pool is exhausted so the caller may spill or choose an alternate path.
     fn alloc_scratch(&mut self) -> Option<Self::PhysReg>;
 
-    /// Release a scratch register obtained through [`RegisterAllocator::alloc_scratch`].
+    /// Release a scratch register obtained through [`LocalRegisterAllocator::alloc_scratch`].
     fn free_scratch(&mut self, phys: Self::PhysReg);
 
     /// Look up the physical register currently assigned to the virtual
@@ -86,9 +87,12 @@ pub trait RegisterAllocator {
     fn is_occupied(&self, phys: Self::PhysReg) -> bool;
 }
 
-/// Object-safe wrapper around [`RegisterAllocator`] permitting dynamic dispatch
-/// via `dyn RegisterAllocatorDyn`.
-pub trait RegisterAllocatorDyn {
+/// Backward-compatible alias for [`LocalRegisterAllocator`].
+pub use LocalRegisterAllocator as RegisterAllocator;
+
+/// Object-safe wrapper around [`LocalRegisterAllocator`] permitting dynamic dispatch
+/// via `dyn LocalRegisterAllocatorDyn`.
+pub trait LocalRegisterAllocatorDyn {
     fn alloc_scratch_dyn(&mut self) -> Option<PhysRegHandle>;
     fn free_scratch_dyn(&mut self, phys: PhysRegHandle);
     fn get_mapping_dyn(&self, vreg: &VirtualReg) -> Option<PhysRegHandle>;
@@ -98,6 +102,9 @@ pub trait RegisterAllocatorDyn {
     fn release_dyn(&mut self, phys: PhysRegHandle);
     fn is_occupied_dyn(&self, phys: PhysRegHandle) -> bool;
 }
+
+/// Backward-compatible alias for [`LocalRegisterAllocatorDyn`].
+pub use LocalRegisterAllocatorDyn as RegisterAllocatorDyn;
 
 /// Result of allocating a virtual register: either a physical register or a
 /// stack spill slot (byte offset from the frame base pointer).
@@ -244,9 +251,9 @@ impl LinearScanAllocator {
             }
         };
 
-        let push_addr = |uses: &mut Vec<Register>, addr: &lamina_mir::AddressMode| match addr {
-            lamina_mir::AddressMode::BaseOffset { base, .. } => uses.push(base.clone()),
-            lamina_mir::AddressMode::BaseIndexScale { base, index, .. } => {
+        let push_addr = |uses: &mut Vec<Register>, addr: &AddressMode| match addr {
+            AddressMode::BaseOffset { base, .. } => uses.push(base.clone()),
+            AddressMode::BaseIndexScale { base, index, .. } => {
                 uses.push(base.clone());
                 uses.push(index.clone());
             }
@@ -393,7 +400,7 @@ impl GraphColorAllocator {
     /// Color `intervals` using at most `available_regs.len()` registers.
     ///
     /// `intervals` may be in any order; internally sorted by interference degree.
-    pub fn allocate<R: Copy + Eq + std::hash::Hash>(
+    pub fn allocate<R: Copy + Eq + Hash>(
         intervals: &[LiveInterval],
         available_regs: &[R],
     ) -> HashMap<VirtualReg, Allocation<R>> {
@@ -454,12 +461,12 @@ impl GraphColorAllocator {
     }
 }
 
-impl<T> RegisterAllocatorDyn for T
+impl<T> LocalRegisterAllocatorDyn for T
 where
-    T: RegisterAllocator,
+    T: LocalRegisterAllocator,
 {
     fn alloc_scratch_dyn(&mut self) -> Option<PhysRegHandle> {
-        self.alloc_scratch().map(|reg| reg.into_handle())
+        self.alloc_scratch().map(PhysRegConvertible::into_handle)
     }
 
     fn free_scratch_dyn(&mut self, phys: PhysRegHandle) {
@@ -471,15 +478,17 @@ where
     }
 
     fn get_mapping_dyn(&self, vreg: &VirtualReg) -> Option<PhysRegHandle> {
-        self.get_mapping(vreg).map(|reg| reg.into_handle())
+        self.get_mapping(vreg).map(PhysRegConvertible::into_handle)
     }
 
     fn ensure_mapping_dyn(&mut self, vreg: VirtualReg) -> Option<PhysRegHandle> {
-        self.ensure_mapping(vreg).map(|reg| reg.into_handle())
+        self.ensure_mapping(vreg)
+            .map(PhysRegConvertible::into_handle)
     }
 
     fn mapped_for_register_dyn(&self, reg: &Register) -> Option<PhysRegHandle> {
-        self.mapped_for_register(reg).map(|r| r.into_handle())
+        self.mapped_for_register(reg)
+            .map(PhysRegConvertible::into_handle)
     }
 
     fn occupy_dyn(&mut self, phys: PhysRegHandle) {

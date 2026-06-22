@@ -1,6 +1,14 @@
 //! CLI option parsing for the lamina compiler driver.
 
+use std::env::args;
 use std::path::PathBuf;
+use std::process::exit;
+
+use lamina::mir_codegen::assemble::AssemblerBackend;
+use lamina::mir_codegen::link::LinkerBackend;
+use lamina::mir_codegen::{MirCodegenSettings, RegallocStrategy};
+use lamina_platform::{HOST_ARCH_LIST, TargetOperatingSystem};
+use ras::ObjectWriteOptions;
 
 pub struct CompileOptions {
     pub input_file: PathBuf,
@@ -18,23 +26,20 @@ pub struct CompileOptions {
     pub jit: bool,
     pub sandbox: bool,
     pub codegen_units: Option<usize>,
-    pub mir_codegen_settings: lamina::mir_codegen::MirCodegenSettings,
+    pub mir_codegen_settings: MirCodegenSettings,
 }
 
 impl CompileOptions {
-    pub fn ras_object_write_options(
-        &self,
-        target_os: lamina_platform::TargetOperatingSystem,
-    ) -> ras::ObjectWriteOptions {
-        let mut o = ras::ObjectWriteOptions::default();
+    pub fn ras_object_write_options(&self, target_os: TargetOperatingSystem) -> ObjectWriteOptions {
+        let mut o = ObjectWriteOptions::default();
         let elfish = matches!(
             target_os,
-            lamina_platform::TargetOperatingSystem::Linux
-                | lamina_platform::TargetOperatingSystem::FreeBSD
-                | lamina_platform::TargetOperatingSystem::OpenBSD
-                | lamina_platform::TargetOperatingSystem::NetBSD
-                | lamina_platform::TargetOperatingSystem::DragonFly
-                | lamina_platform::TargetOperatingSystem::Redox
+            TargetOperatingSystem::Linux
+                | TargetOperatingSystem::FreeBSD
+                | TargetOperatingSystem::OpenBSD
+                | TargetOperatingSystem::NetBSD
+                | TargetOperatingSystem::DragonFly
+                | TargetOperatingSystem::Redox
         );
         if self.mir_codegen_settings.emit_asm_debug_lines && elfish {
             o.emit_minimal_dwarf_sections = true;
@@ -47,13 +52,7 @@ impl CompileOptions {
 pub fn toolchain_backends(
     forced_compiler: &Option<String>,
     assembler_override: &Option<String>,
-) -> (
-    Option<lamina::mir_codegen::assemble::AssemblerBackend>,
-    Option<lamina::mir_codegen::link::LinkerBackend>,
-) {
-    use lamina::mir_codegen::assemble::AssemblerBackend;
-    use lamina::mir_codegen::link::LinkerBackend;
-
+) -> (Option<AssemblerBackend>, Option<LinkerBackend>) {
     let assem = assembler_override
         .as_deref()
         .and_then(|s| match s {
@@ -122,7 +121,7 @@ pub fn print_usage() {
 }
 
 pub fn parse_args() -> Result<CompileOptions, String> {
-    let args: Vec<String> = std::env::args().collect();
+    let args: Vec<String> = args().collect();
 
     if args.len() < 2 {
         return Err("Not enough arguments".to_string());
@@ -148,7 +147,7 @@ pub fn parse_args() -> Result<CompileOptions, String> {
         jit: false,
         sandbox: false,
         codegen_units: None,
-        mir_codegen_settings: lamina::mir_codegen::MirCodegenSettings::default(),
+        mir_codegen_settings: MirCodegenSettings::default(),
     };
 
     let mut i = 1;
@@ -197,14 +196,14 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                 }
                 let requested_target = args[i + 1].to_lowercase();
                 if !requested_target.contains('_')
-                    || !lamina_platform::HOST_ARCH_LIST
+                    || !HOST_ARCH_LIST
                         .iter()
                         .any(|&supported| supported == requested_target)
                 {
                     return Err(format!(
                         "Unsupported target '{}'. Supported values:\n{}",
                         requested_target,
-                        lamina_platform::HOST_ARCH_LIST.join(", ")
+                        HOST_ARCH_LIST.join(", ")
                     ));
                 }
                 options.target_arch = Some(requested_target);
@@ -233,9 +232,9 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                 }
                 let m = args[i + 1].to_lowercase();
                 options.mir_codegen_settings.regalloc = match m.as_str() {
-                    "incremental" => lamina::mir_codegen::RegallocStrategy::Incremental,
-                    "linear" => lamina::mir_codegen::RegallocStrategy::LinearScanGlobal,
-                    "graph" => lamina::mir_codegen::RegallocStrategy::GraphColorGlobal,
+                    "incremental" => RegallocStrategy::Incremental,
+                    "linear" => RegallocStrategy::LinearScanGlobal,
+                    "graph" => RegallocStrategy::GraphColorGlobal,
                     _ => {
                         return Err("--regalloc must be incremental, linear, or graph".to_string());
                     }
@@ -265,18 +264,18 @@ pub fn parse_args() -> Result<CompileOptions, String> {
             }
             "--version" => {
                 println!("lamina {}", env!("CARGO_PKG_VERSION"));
-                std::process::exit(0);
+                exit(0);
             }
             arg => {
                 if let Some(rest) = arg.strip_prefix("-Wl,") {
                     options
                         .linker_flags
-                        .extend(rest.split(',').map(|s| s.to_string()));
+                        .extend(rest.split(',').map(ToString::to_string));
                     i += 1;
                 } else if let Some(rest) = arg.strip_prefix("-Wa,") {
                     options
                         .assembler_flags
-                        .extend(rest.split(',').map(|s| s.to_string()));
+                        .extend(rest.split(',').map(ToString::to_string));
                     i += 1;
                 } else if arg == "-Wl" {
                     if i + 1 >= args.len() {
@@ -284,7 +283,7 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                     }
                     options
                         .linker_flags
-                        .extend(args[i + 1].split(',').map(|s| s.to_string()));
+                        .extend(args[i + 1].split(',').map(ToString::to_string));
                     i += 2;
                 } else if arg == "-Wa" {
                     if i + 1 >= args.len() {
@@ -292,14 +291,14 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                     }
                     options
                         .assembler_flags
-                        .extend(args[i + 1].split(',').map(|s| s.to_string()));
+                        .extend(args[i + 1].split(',').map(ToString::to_string));
                     i += 2;
                 } else if options.input_file.as_os_str().is_empty() {
                     // First non-flag argument is the input file, regardless of position.
                     options.input_file = PathBuf::from(arg);
                     i += 1;
                 } else {
-                    return Err(format!("Unknown argument: {}", arg));
+                    return Err(format!("Unknown argument: {arg}"));
                 }
             }
         }

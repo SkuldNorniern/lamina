@@ -1,7 +1,7 @@
 //! Dead code elimination transform for MIR.
 
-use super::super::{Block, Function, Instruction, Register};
-use super::{Transform, TransformCategory, TransformLevel};
+use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
+use crate::mir::{Block, Function, Instruction, Register};
 use std::collections::{HashMap, HashSet};
 
 /// Statistics about dead code elimination
@@ -34,7 +34,7 @@ impl Transform for DeadCodeElimination {
         TransformLevel::Stable
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, String> {
+    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
         self.apply_internal(func)
             .map(|stats| stats.instructions_removed > 0)
     }
@@ -42,7 +42,7 @@ impl Transform for DeadCodeElimination {
 
 impl DeadCodeElimination {
     /// Apply dead code elimination to a function
-    pub fn apply_internal(&self, func: &mut Function) -> Result<DeadCodeStats, String> {
+    pub fn apply_internal(&self, func: &mut Function) -> Result<DeadCodeStats, TransformError> {
         let mut stats = DeadCodeStats::default();
 
         // 1. Compute liveness analysis (inter-block)
@@ -64,7 +64,7 @@ impl DeadCodeElimination {
     fn compute_liveness(
         &self,
         func: &Function,
-    ) -> Result<HashMap<String, HashSet<Register>>, String> {
+    ) -> Result<HashMap<String, HashSet<Register>>, TransformError> {
         let mut live_in: HashMap<String, HashSet<Register>> = HashMap::new();
         let mut live_out: HashMap<String, HashSet<Register>> = HashMap::new();
 
@@ -80,7 +80,7 @@ impl DeadCodeElimination {
 
         while changed {
             if iterations > MAX_ITERATIONS {
-                return Err("Liveness analysis failed to converge".to_string());
+                return Err(TransformError::ConvergenceFailed);
             }
             iterations += 1;
             changed = false;
@@ -126,8 +126,9 @@ impl DeadCodeElimination {
 
                 // Safe: live_out is initialized for all blocks at function start
                 // If this fails, it indicates a bug in the initialization logic
-                let prev_live_out = live_out.get(label)
-                    .ok_or_else(|| format!("Block '{}' not found in live_out map - internal error in liveness analysis", label))?;
+                let prev_live_out = live_out.get(label).ok_or(TransformError::InvalidState(
+                    "block missing from live_out map",
+                ))?;
                 if current_live_out != *prev_live_out {
                     live_out.insert(label.clone(), current_live_out.clone());
                     changed = true;
@@ -147,12 +148,9 @@ impl DeadCodeElimination {
 
                 // Safe: live_in is initialized for all blocks at function start
                 // If this fails, it indicates a bug in the initialization logic
-                let prev_live_in = live_in.get(label).ok_or_else(|| {
-                    format!(
-                        "Block '{}' not found in live_in map - internal error in liveness analysis",
-                        label
-                    )
-                })?;
+                let prev_live_in = live_in.get(label).ok_or(TransformError::InvalidState(
+                    "block missing from live_in map",
+                ))?;
                 if current_live_in != *prev_live_in {
                     live_in.insert(label.clone(), current_live_in);
                     changed = true;
@@ -277,8 +275,10 @@ impl DeadCodeElimination {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::mir::transform::test_utils::get_block;
     use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
+        AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
+        ScalarType, VirtualReg,
     };
 
     #[test]
@@ -388,7 +388,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Jmp and Ret should still exist
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         assert!(matches!(
             entry.instructions.last(),
             Some(Instruction::Jmp { .. })
@@ -404,11 +404,11 @@ mod tests {
             .instr(Instruction::Store {
                 ty: MirType::Scalar(ScalarType::I64),
                 src: Operand::Immediate(Immediate::I64(42)),
-                addr: crate::mir::AddressMode::BaseOffset {
+                addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(0).into(),
                     offset: 0,
                 },
-                attrs: crate::mir::MemoryAttrs::default(),
+                attrs: MemoryAttrs::default(),
             })
             .instr(Instruction::Call {
                 name: "print".to_string(),
@@ -497,7 +497,7 @@ mod tests {
 
         // v1 is used in exit block, so entry's add should remain
         assert!(!changed);
-        let entry = func.get_block("entry").unwrap();
+        let entry = get_block(&func, "entry");
         assert_eq!(entry.instructions.len(), 2);
     }
 
@@ -536,7 +536,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Loop body should be preserved (v0 is used)
-        let loop_block = func.get_block("loop").unwrap();
+        let loop_block = get_block(&func, "loop");
         assert_eq!(loop_block.instructions.len(), 2);
     }
 

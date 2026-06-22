@@ -1,28 +1,7 @@
-use std::process::Command;
-use std::str;
+mod common;
 
 fn run_lamina(opt: u8) -> String {
-    let repo_root = env!("CARGO_MANIFEST_DIR");
-    let lamina_bin = format!("{}/target/release/lamina", repo_root);
-    let bench_dir = format!("{}/benchmarks/fibonacci", repo_root);
-    let src = format!("{}/fibonacci.lamina", bench_dir);
-
-    // Build lamina release if needed: recommend running `cargo build --release` before
-    let status = Command::new(&lamina_bin)
-        .current_dir(repo_root)
-        .args(["--verbose", &src, "--opt-level", &opt.to_string()])
-        .status()
-        .expect("failed to run lamina");
-    assert!(status.success(), "lamina failed at -O{}", opt);
-
-    // Run produced executable
-    let exe = format!("{}/fibonacci{}", repo_root, std::env::consts::EXE_SUFFIX);
-    let out = Command::new(&exe)
-        .current_dir(repo_root)
-        .output()
-        .expect("failed to run produced executable");
-    assert!(out.status.success(), "fibonacci run failed");
-    String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n")
+    common::run_lamina_benchmark("fibonacci", "fibonacci.lamina", "fibonacci", opt)
 }
 
 fn expected_output() -> &'static str {

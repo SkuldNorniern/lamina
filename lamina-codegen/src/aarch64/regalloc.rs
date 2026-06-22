@@ -1,13 +1,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::regalloc::RegisterAllocator as MirRegisterAllocator;
+use crate::regalloc::{Allocation, LocalRegisterAllocator as MirRegisterAllocator};
 use lamina_mir::{Register, RegisterClass, VirtualReg};
 
 // AArch64 register allocator for MIR virtual registers.
 
 /// AArch64 register allocator for MIR virtual registers.
 ///
-/// Tracks a fixed pool of available caller-saved GPRs and provides
+/// Tracks a fixed pool of available caller-saved GPRs and gives
 /// stable mappings from virtual registers to physical registers.
 /// Returns None when no register is available (caller should spill to stack).
 pub struct A64RegAlloc {
@@ -58,11 +58,7 @@ impl A64RegAlloc {
         self.free_gprs.push_back("x13");
         self.free_gprs.push_back("x14");
         self.free_gprs.push_back("x15");
-        self.free_gprs.push_back("x19");
-        self.free_gprs.push_back("x20");
-        self.free_gprs.push_back("x21");
-        self.free_gprs.push_back("x22");
-        self.free_gprs.push_back("x23");
+        // Removed x19-x23 - these are callee-saved and need prologue/epilogue save/restore
         self.used_gprs.retain(|r| self.free_gprs.contains(r));
         let free_set: HashSet<&str> = self.free_gprs.iter().copied().collect();
         self.vreg_to_preg.retain(|_, preg| free_set.contains(preg));
@@ -111,6 +107,29 @@ impl A64RegAlloc {
     #[inline]
     pub fn mapped_for_register(&self, r: &Register) -> Option<&'static str> {
         MirRegisterAllocator::mapped_for_register(self, r)
+    }
+
+    pub fn gpr_pool_for_global_allocation() -> Vec<&'static str> {
+        MAP_GPRS.to_vec()
+    }
+
+    pub fn from_global_plan(plan: &HashMap<VirtualReg, Allocation<&'static str>>) -> Self {
+        let mut s = Self::new();
+        for (&vreg, alloc) in plan {
+            if vreg.class != RegisterClass::Gpr {
+                continue;
+            }
+            if let Allocation::Register(phys) = alloc
+                && MAP_GPRS.contains(phys)
+                && s.vreg_to_preg.insert(vreg, *phys).is_none()
+            {
+                s.used_gprs.insert(*phys);
+                if let Some(pos) = s.free_gprs.iter().position(|&p| p == *phys) {
+                    let _ = s.free_gprs.remove(pos);
+                }
+            }
+        }
+        s
     }
 }
 

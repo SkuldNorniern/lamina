@@ -40,14 +40,14 @@ impl Ppc64Frame {
         let frame_size = Self::aligned_frame_size(local_bytes);
         writeln!(writer, "    mflr 0")?;
         writeln!(writer, "    std 0, 16(1)")?; // Save LR to LR save slot
-        writeln!(writer, "    stdu 1, -{}(1)", frame_size)?; // Allocate frame + store back-chain
+        writeln!(writer, "    stdu 1, -{frame_size}(1)")?; // Allocate frame + store back-chain
         Ok(())
     }
 
     /// Emit the function epilogue and return.
     pub fn generate_epilogue<W: Write>(writer: &mut W, local_bytes: usize) -> io::Result<()> {
         let frame_size = Self::aligned_frame_size(local_bytes);
-        writeln!(writer, "    addi 1, 1, {}", frame_size)?; // Deallocate frame
+        writeln!(writer, "    addi 1, 1, {frame_size}")?; // Deallocate frame
         writeln!(writer, "    ld 0, 16(1)")?; // Restore LR
         writeln!(writer, "    mtlr 0")?;
         writeln!(writer, "    blr")?;
@@ -58,7 +58,7 @@ impl Ppc64Frame {
     /// (no `blr` — that would return to this function instead of tail-calling).
     pub fn generate_tail_epilogue<W: Write>(writer: &mut W, local_bytes: usize) -> io::Result<()> {
         let frame_size = Self::aligned_frame_size(local_bytes);
-        writeln!(writer, "    addi 1, 1, {}", frame_size)?;
+        writeln!(writer, "    addi 1, 1, {frame_size}")?;
         writeln!(writer, "    ld 0, 16(1)")?;
         writeln!(writer, "    mtlr 0")?;
         Ok(())

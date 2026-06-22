@@ -5,8 +5,8 @@
  *   - Every handle returned by a constructor must be freed with the
  *     matching *_free function.
  *   - lia_buffer_t must be freed with lia_buffer_free().
- *   - Builder calls clone all strings and value handles; temporary handles
- *     may be freed immediately after each call.
+ *   - Builder calls clone all strings, type, and value handles; temporary
+ *     handles may be freed immediately after each call.
  *   - lia_last_error() is valid only until the next API call on this thread.
  *
  * NOTE: This header is maintained by hand. Auto-generation via cbindgen is
@@ -48,9 +48,21 @@ typedef struct {
 } lia_compile_options_t;
 
 typedef struct {
-    const char          *name;
+    const char       *name;
     const lia_type_t *ty;
 } lia_param_t;
+
+/* Struct field descriptor for lia_type_struct(). */
+typedef struct {
+    const char       *name;
+    const lia_type_t *ty;
+} lia_struct_field_t;
+
+/* Switch case for lia_builder_switch(): (integer value, target label). */
+typedef struct {
+    int64_t     value;
+    const char *label;
+} lia_switch_case_t;
 
 typedef enum {
     LIA_BIN_ADD=0, LIA_BIN_SUB=1, LIA_BIN_MUL=2, LIA_BIN_DIV=3,
@@ -70,6 +82,7 @@ const char *lia_last_error(void);
 void        lia_clear_error(void);
 void        lia_buffer_free(lia_buffer_t *buf);
 
+/* Primitive types */
 lia_type_t *lia_type_void(void);
 lia_type_t *lia_type_i8(void);   lia_type_t *lia_type_i16(void);
 lia_type_t *lia_type_i32(void);  lia_type_t *lia_type_i64(void);
@@ -77,21 +90,28 @@ lia_type_t *lia_type_u8(void);   lia_type_t *lia_type_u16(void);
 lia_type_t *lia_type_u32(void);  lia_type_t *lia_type_u64(void);
 lia_type_t *lia_type_f32(void);  lia_type_t *lia_type_f64(void);
 lia_type_t *lia_type_bool(void); lia_type_t *lia_type_ptr(void);
-void           lia_type_free(lia_type_t *ty);
+
+/* Composite types (Phase 2) */
+lia_type_t *lia_type_named(const char *name);
+lia_type_t *lia_type_array(const lia_type_t *element_type, uint64_t size);
+lia_type_t *lia_type_struct(const lia_struct_field_t *fields, size_t count);
+lia_type_t *lia_type_tuple(const lia_type_t *const *types, size_t count);
+
+void lia_type_free(lia_type_t *ty);
 
 lia_value_t *lia_value_var(const char *name);
 lia_value_t *lia_value_global(const char *name);
 lia_value_t *lia_value_i8(int8_t v);    lia_value_t *lia_value_i16(int16_t v);
 lia_value_t *lia_value_i32(int32_t v);  lia_value_t *lia_value_i64(int64_t v);
 lia_value_t *lia_value_u8(uint8_t v);   lia_value_t *lia_value_u16(uint16_t v);
-lia_value_t *lia_value_u32(uint32_t v);
-lia_value_t *lia_value_u64(uint64_t v); lia_value_t *lia_value_f32(float v);
-lia_value_t *lia_value_f64(double v);   lia_value_t *lia_value_bool(bool v);
+lia_value_t *lia_value_u32(uint32_t v); lia_value_t *lia_value_u64(uint64_t v);
+lia_value_t *lia_value_f32(float v);    lia_value_t *lia_value_f64(double v);
+lia_value_t *lia_value_bool(bool v);
 lia_value_t *lia_value_string(const char *s);
-void            lia_value_free(lia_value_t *val);
+void         lia_value_free(lia_value_t *val);
 
 lia_builder_t *lia_builder_create(void);
-void              lia_builder_free(lia_builder_t *b);
+void           lia_builder_free(lia_builder_t *b);
 
 lia_status_t lia_builder_function(lia_builder_t *b, const char *name,
     const lia_param_t *params, size_t n, const lia_type_t *ret);
@@ -110,6 +130,9 @@ lia_status_t lia_builder_cmp(lia_builder_t *b, lia_cmp_op_t op,
 lia_status_t lia_builder_branch(lia_builder_t *b,
     const lia_value_t *cond, const char *t, const char *f);
 lia_status_t lia_builder_jump(lia_builder_t *b, const char *target);
+lia_status_t lia_builder_switch(lia_builder_t *b,
+    const lia_type_t *ty, const lia_value_t *val, const char *default_label,
+    const lia_switch_case_t *cases, size_t case_count);
 lia_status_t lia_builder_call(lia_builder_t *b, const char *result,
     const char *fn_name, const lia_value_t *const *args, size_t n);
 lia_status_t lia_builder_phi(lia_builder_t *b, const char *result,

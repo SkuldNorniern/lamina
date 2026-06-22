@@ -374,14 +374,14 @@ impl fmt::Display for PrimitiveType {
 impl fmt::Display for Type<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Type::Primitive(pt) => write!(f, "{}", pt),
-            Type::Named(id) => write!(f, "@{}", id),
-            Type::Array { element_type, size } => write!(f, "[{} x {}]", size, element_type),
+            Type::Primitive(pt) => write!(f, "{pt}"),
+            Type::Named(id) => write!(f, "@{id}"),
+            Type::Array { element_type, size } => write!(f, "[{size} x {element_type}]"),
             #[cfg(feature = "nightly")]
             Type::Vector {
                 element_type,
                 lanes,
-            } => write!(f, "<{} x {}>", lanes, element_type),
+            } => write!(f, "<{lanes} x {element_type}>"),
             Type::Struct(fields) => {
                 write!(f, "struct {{ ")?;
                 for (i, field) in fields.iter().enumerate() {
@@ -395,7 +395,7 @@ impl fmt::Display for Type<'_> {
             Type::Tuple(types) => {
                 write!(f, "tuple(")?;
                 for (i, ty) in types.iter().enumerate() {
-                    write!(f, "{}", ty)?;
+                    write!(f, "{ty}")?;
                     if i < types.len() - 1 {
                         write!(f, ", ")?;
                     }
@@ -410,19 +410,19 @@ impl fmt::Display for Type<'_> {
 impl fmt::Display for Literal<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Literal::I8(v) => write!(f, "{}", v),
-            Literal::I16(v) => write!(f, "{}", v),
-            Literal::I32(v) => write!(f, "{}", v),
-            Literal::I64(v) => write!(f, "{}", v),
-            Literal::U8(v) => write!(f, "{}", v),
-            Literal::U16(v) => write!(f, "{}", v),
-            Literal::U32(v) => write!(f, "{}", v),
-            Literal::U64(v) => write!(f, "{}", v),
-            Literal::F32(v) => write!(f, "{}", v),
-            Literal::F64(v) => write!(f, "{}", v),
-            Literal::Bool(v) => write!(f, "{}", v),
-            Literal::Char(c) => write!(f, "'{}'", c),
-            Literal::String(s) => write!(f, "\"{}\"", s), // Note: needs escaping for proper output
+            Literal::I8(v) => write!(f, "{v}"),
+            Literal::I16(v) => write!(f, "{v}"),
+            Literal::I32(v) => write!(f, "{v}"),
+            Literal::I64(v) => write!(f, "{v}"),
+            Literal::U8(v) => write!(f, "{v}"),
+            Literal::U16(v) => write!(f, "{v}"),
+            Literal::U32(v) => write!(f, "{v}"),
+            Literal::U64(v) => write!(f, "{v}"),
+            Literal::F32(v) => write!(f, "{v}"),
+            Literal::F64(v) => write!(f, "{v}"),
+            Literal::Bool(v) => write!(f, "{v}"),
+            Literal::Char(c) => write!(f, "'{c}'"),
+            Literal::String(s) => write!(f, "\"{s}\""), // Note: needs escaping for proper output
         }
     }
 }
@@ -431,7 +431,7 @@ impl fmt::Display for Value<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Value::Variable(id) => write!(f, "%{id}"),
-            Value::Constant(lit) => write!(f, "{}", lit),
+            Value::Constant(lit) => write!(f, "{lit}"),
             Value::Global(id) => write!(f, "@{id}"),
         }
     }

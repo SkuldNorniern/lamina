@@ -7,7 +7,7 @@
 //! instruction is debug-oriented and does not support string literals; use `write_byte`
 //! in a loop for string output. See `docs/OUTPUT_SEMANTICS.md` in the repository.
 
-use super::IRBuilder;
+use crate::builder::IRBuilder;
 use crate::instruction::Instruction;
 use crate::types::Value;
 

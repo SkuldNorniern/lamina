@@ -5,7 +5,7 @@
 //! These operations are only available when the `nightly` feature is enabled.
 
 #[cfg(feature = "nightly")]
-use super::IRBuilder;
+use crate::builder::IRBuilder;
 #[cfg(feature = "nightly")]
 use crate::instruction::{AtomicBinOp, Instruction, MemoryOrdering};
 #[cfg(feature = "nightly")]

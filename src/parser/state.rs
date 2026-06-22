@@ -1,6 +1,6 @@
 //! Parser state management for Lamina IR parsing.
 
-use crate::LaminaError;
+use crate::{Identifier, Label, LaminaError};
 use std::result::Result;
 
 /// Parser state tracking position and input.
@@ -85,8 +85,7 @@ impl<'a> ParserState<'a> {
         } else {
             let found = self
                 .current_char()
-                .map(|c| format!("'{}'", c))
-                .unwrap_or_else(|| "end of input".to_string());
+                .map_or_else(|| "end of input".to_string(), |c| format!("'{c}'"));
 
             let hint = match expected {
                 '(' => "Did you forget an opening parenthesis?",
@@ -102,12 +101,9 @@ impl<'a> ParserState<'a> {
             };
 
             let msg = if hint.is_empty() {
-                format!("Expected character '{}', but found {}", expected, found)
+                format!("Expected character '{expected}', but found {found}")
             } else {
-                format!(
-                    "Expected character '{}', but found {}\n  Hint: {}",
-                    expected, found, hint
-                )
+                format!("Expected character '{expected}', but found {found}\n  Hint: {hint}")
             };
 
             Err(self.error(msg))
@@ -127,19 +123,18 @@ impl<'a> ParserState<'a> {
             } else {
                 let found = self.peek_slice(keyword.len() + 10).unwrap_or("");
                 Err(self.error(format!(
-                    "Expected keyword '{}', but found longer identifier '{}'\n  Hint: Keywords must be followed by whitespace or punctuation, not alphanumeric characters",
-                    keyword, found
+                    "Expected keyword '{keyword}', but found longer identifier '{found}'\n  Hint: Keywords must be followed by whitespace or punctuation, not alphanumeric characters"
                 )))
             }
         } else {
             let found = self.peek_slice(keyword.len().max(20)).unwrap_or("");
             let suggestion = if found.starts_with(&keyword[..keyword.len().min(found.len())]) {
-                format!("Did you mean '{}'? (check spelling)", keyword)
+                format!("Did you mean '{keyword}'? (check spelling)")
             } else {
-                format!("Expected keyword '{}'", keyword)
+                format!("Expected keyword '{keyword}'")
             };
 
-            Err(self.error(format!("{}, but found '{}'", suggestion, found)))
+            Err(self.error(format!("{suggestion}, but found '{found}'")))
         }
     }
 
@@ -151,7 +146,7 @@ impl<'a> ParserState<'a> {
         let first_byte = *self
             .bytes
             .get(start)
-            .ok_or_else(|| self.error("Unexpected end of input while parsing identifier\n  Hint: Identifiers must start with a letter (a-z, A-Z) or underscore (_)".to_string()))?;
+            .ok_or_else(|| self.error("Unexpected end of input while parsing identifier\n  Hint: Identifiers must start with a letter (a-z, A-Z) or underscore (_)"))?;
         if !(first_byte.is_ascii_alphabetic() || first_byte == b'_') {
             let found_char = first_byte as char;
             let hint = if found_char.is_ascii_digit() {
@@ -160,8 +155,7 @@ impl<'a> ParserState<'a> {
                 "Identifiers must start with a letter (a-z, A-Z) or underscore (_)"
             };
             return Err(self.error(format!(
-                "Invalid identifier start: found '{}'\n  Hint: {}",
-                found_char, hint
+                "Invalid identifier start: found '{found_char}'\n  Hint: {hint}"
             )));
         }
         self.advance();
@@ -179,19 +173,19 @@ impl<'a> ParserState<'a> {
     }
 
     /// Parses a type identifier (starts with '@').
-    pub fn parse_type_identifier(&mut self) -> Result<crate::Identifier<'a>, LaminaError> {
+    pub fn parse_type_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
         self.expect_char('@')?;
         self.parse_identifier_str()
     }
 
     /// Parses a value identifier (starts with '%').
-    pub fn parse_value_identifier(&mut self) -> Result<crate::Identifier<'a>, LaminaError> {
+    pub fn parse_value_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
         self.expect_char('%')?;
         self.parse_identifier_str()
     }
 
     /// Parses a label identifier.
-    pub fn parse_label_identifier(&mut self) -> Result<crate::Label<'a>, LaminaError> {
+    pub fn parse_label_identifier(&mut self) -> Result<Label<'a>, LaminaError> {
         self.parse_identifier_str()
     }
 
@@ -211,7 +205,7 @@ impl<'a> ParserState<'a> {
         }
 
         if start == self.position || (negative && start + 1 == self.position) {
-            Err(self.error("Expected an integer literal\n  Hint: Integer literals can be positive (e.g., 42) or negative (e.g., -42)".to_string()))
+            Err(self.error("Expected an integer literal\n  Hint: Integer literals can be positive (e.g., 42) or negative (e.g., -42)"))
         } else {
             let digits = &self.input[if negative { start + 1 } else { start }..self.position];
 
@@ -283,15 +277,14 @@ impl<'a> ParserState<'a> {
         }
 
         if !has_digit {
-            return Err(self.error("Expected a floating-point literal\n  Hint: Float literals must contain at least one digit (e.g., 3.14, -0.5, 42.0)".to_string()));
+            return Err(self.error("Expected a floating-point literal\n  Hint: Float literals must contain at least one digit (e.g., 3.14, -0.5, 42.0)"));
         }
 
         let value_str = &self.input[start..self.position];
         value_str
             .parse::<f32>()
             .map_err(|e| self.error(format!(
-                "Failed to parse float: {}\n  Hint: Float literals must be valid numbers (e.g., 3.14, -0.5, 42.0). Check for overflow or invalid format",
-                e
+                "Failed to parse float: {e}\n  Hint: Float literals must be valid numbers (e.g., 3.14, -0.5, 42.0). Check for overflow or invalid format"
             )))
     }
 
@@ -323,7 +316,7 @@ impl<'a> ParserState<'a> {
         }
 
         if self.is_eof() {
-            return Err(self.error("Unclosed string literal\n  Hint: String literals must be closed with a double quote (\")".to_string()));
+            return Err(self.error("Unclosed string literal\n  Hint: String literals must be closed with a double quote (\")"));
         }
 
         let end = self.position;
@@ -332,12 +325,13 @@ impl<'a> ParserState<'a> {
     }
 
     /// Creates a parsing error with the given message, including line and column information.
-    pub fn error(&self, message: String) -> LaminaError {
+    pub fn error(&self, message: impl AsRef<str>) -> LaminaError {
+        let message = message.as_ref();
         let (line, column) = self.get_line_column();
         let context = self.get_error_context();
 
         let error_msg = if context.is_empty() {
-            format!("{} at line {}, column {}", message, line, column)
+            format!("{message} at line {line}, column {column}")
         } else {
             format!(
                 "{}\n  at line {}, column {}\n  {}\n  {}^",
