@@ -158,8 +158,8 @@ impl<'a> IRBuilder<'a> {
     /// # Examples
     ///
     /// ```
-    /// # use lamina::ir::{IRBuilder, Type, PrimitiveType};
-    /// # use lamina::ir::builder::{var};
+    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
+    /// # use lamina_ir::builder::var;
     /// # #[cfg(feature = "nightly")]
     /// # {
     /// let mut builder = IRBuilder::new();
@@ -287,8 +287,8 @@ impl<'a> IRBuilder<'a> {
     /// # Examples
     ///
     /// ```
-    /// # use lamina::ir::{IRBuilder, Type, PrimitiveType};
-    /// # use lamina::ir::builder::i32;
+    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
+    /// # use lamina_ir::builder::i32;
     /// # #[cfg(feature = "nightly")]
     /// # {
     /// let mut builder = IRBuilder::new();
@@ -319,8 +319,7 @@ impl<'a> IRBuilder<'a> {
     /// # Examples
     ///
     /// ```
-    /// # use lamina::ir::{IRBuilder, Type};
-    /// # use lamina::ir::types::PrimitiveType;
+    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
     /// # #[cfg(feature = "nightly")]
     /// # {
     /// let mut builder = IRBuilder::new();
@@ -342,8 +341,7 @@ impl<'a> IRBuilder<'a> {
     /// # Examples
     ///
     /// ```
-    /// # use lamina::ir::{IRBuilder, Type};
-    /// # use lamina::ir::types::PrimitiveType;
+    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
     /// # #[cfg(feature = "nightly")]
     /// # {
     /// let mut builder = IRBuilder::new();
@@ -372,8 +370,7 @@ impl<'a> IRBuilder<'a> {
     /// # Examples
     ///
     /// ```
-    /// # use lamina::ir::{IRBuilder, Type};
-    /// # use lamina::ir::types::PrimitiveType;
+    /// # use lamina_ir::{IRBuilder, Type, PrimitiveType};
     /// # #[cfg(feature = "nightly")]
     /// # {
     /// let mut builder = IRBuilder::new();
