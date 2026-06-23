@@ -744,6 +744,60 @@ pub unsafe extern "C" fn lia_builder_dealloc(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_memcpy(
+    builder: *mut LaminaBuilder,
+    dst: *const LaminaValue,
+    src: *const LaminaValue,
+    size: *const LaminaValue,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        let b = require_mut!(builder, "builder");
+        let d = require_ref!(dst, "dst");
+        let s = require_ref!(src, "src");
+        let sz = require_ref!(size, "size");
+        b.0.memcpy(&d.0, &s.0, &sz.0);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_memmove(
+    builder: *mut LaminaBuilder,
+    dst: *const LaminaValue,
+    src: *const LaminaValue,
+    size: *const LaminaValue,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        let b = require_mut!(builder, "builder");
+        let d = require_ref!(dst, "dst");
+        let s = require_ref!(src, "src");
+        let sz = require_ref!(size, "size");
+        b.0.memmove(&d.0, &s.0, &sz.0);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lia_builder_memset(
+    builder: *mut LaminaBuilder,
+    dst: *const LaminaValue,
+    value: *const LaminaValue,
+    size: *const LaminaValue,
+) -> LaminaStatus {
+    catch(AssertUnwindSafe(|| unsafe {
+        let b = require_mut!(builder, "builder");
+        let d = require_ref!(dst, "dst");
+        let v = require_ref!(value, "value");
+        let sz = require_ref!(size, "size");
+        b.0.memset(&d.0, &v.0, &sz.0);
+        clear_error();
+        LaminaStatus::Ok
+    }))
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_builder_getelementptr(
     builder: *mut LaminaBuilder,
     result: *const c_char,
