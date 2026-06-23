@@ -321,6 +321,7 @@ fn parse_getfield<'a>(
         result,
         struct_ptr,
         field_index,
+        field_byte_offset: None,
     })
 }
 
@@ -344,47 +345,7 @@ fn parse_getelem<'a>(
         parse_primitive_type_suffix(state)?
     } else {
         let type_str = state.parse_identifier_str()?;
-        match type_str {
-            "i8" => PrimitiveType::I8,
-            "i16" => PrimitiveType::I16,
-            "i32" => PrimitiveType::I32,
-            "i64" => PrimitiveType::I64,
-            "u8" => PrimitiveType::U8,
-            "u16" => PrimitiveType::U16,
-            "u32" => PrimitiveType::U32,
-            "u64" => PrimitiveType::U64,
-            "f32" => PrimitiveType::F32,
-            "f64" => PrimitiveType::F64,
-            "bool" => PrimitiveType::Bool,
-            "char" => PrimitiveType::Char,
-            "ptr" => PrimitiveType::Ptr,
-            _ => {
-                let valid_types = super::get_primitive_type_names();
-                let suggestions = super::suggest_alternatives(type_str, valid_types);
-
-                let hint = if !suggestions.is_empty() {
-                    if suggestions.len() == 1 {
-                        format!("Did you mean '{}'?", suggestions[0])
-                    } else {
-                        format!(
-                            "Did you mean one of: {}?",
-                            suggestions
-                                .iter()
-                                .take(3)
-                                .map(|s| format!("'{s}'"))
-                                .collect::<Vec<_>>()
-                                .join(", ")
-                        )
-                    }
-                } else {
-                    format!("Valid primitive types include: {}", valid_types.join(", "))
-                };
-
-                return Err(state.error(format!(
-                    "Expected primitive type, found '{type_str}'\n  Hint: {hint}"
-                )));
-            }
-        }
+        parse_primitive_from_ident(state, type_str)?
     };
 
     Ok(Instruction::GetElemPtr {
