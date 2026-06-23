@@ -717,6 +717,11 @@ pub enum Instruction<'a> {
         result: Identifier<'a>, // Result is always ptr
         struct_ptr: Value<'a>,  // Must be a ptr to a struct or named struct type
         field_index: usize,
+        /// Pre-computed byte offset of this field using ABI-correct struct layout.
+        /// `None` when the struct type is unavailable (e.g., parsed from text without
+        /// type context); the backend then falls back to a fixed 8-byte-per-field stride.
+        /// Set by `IRBuilder::struct_gep_typed` when the full field list is known.
+        field_byte_offset: Option<u64>,
     },
     GetElemPtr {
         // Get pointer to array element
@@ -1268,6 +1273,7 @@ impl fmt::Display for Instruction<'_> {
                 result,
                 struct_ptr,
                 field_index,
+                ..
             } => write!(f, "%{result} = getfield.ptr {struct_ptr}, {field_index}"),
             Instruction::GetElemPtr {
                 result,
@@ -1481,6 +1487,7 @@ mod tests {
             result: "field_ptr",
             struct_ptr: Value::Variable("struct_instance_ptr"),
             field_index: 1,
+            field_byte_offset: None,
         };
         assert_eq!(
             format!("{}", instr11),
