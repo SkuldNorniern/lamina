@@ -423,6 +423,24 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Copies `size` bytes from `src` to `dst` (non-overlapping).
+    pub fn memcpy(&mut self, dst: &OwnedValue, src: &OwnedValue, size: &OwnedValue) -> &mut Self {
+        self.push(format!("memcpy {dst}, {src}, {size}"));
+        self
+    }
+
+    /// Copies `size` bytes from `src` to `dst` (overlapping regions allowed).
+    pub fn memmove(&mut self, dst: &OwnedValue, src: &OwnedValue, size: &OwnedValue) -> &mut Self {
+        self.push(format!("memmove {dst}, {src}, {size}"));
+        self
+    }
+
+    /// Sets `size` bytes at `dst` to the byte `value`.
+    pub fn memset(&mut self, dst: &OwnedValue, value: &OwnedValue, size: &OwnedValue) -> &mut Self {
+        self.push(format!("memset {dst}, {value}, {size}"));
+        self
+    }
+
     // -----------------------------------------------------------------------
     // Pointer operations
     // -----------------------------------------------------------------------
