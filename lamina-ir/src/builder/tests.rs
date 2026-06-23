@@ -83,6 +83,9 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), i32(2));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("conditional"));
+
         let func = &module.functions["conditional"];
 
         assert!(func.basic_blocks.contains_key("entry"));
@@ -122,7 +125,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("val"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("use_memory"));
+
         let func = &module.functions["use_memory"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 4);
@@ -230,6 +239,9 @@ mod tests {
             .align(16);
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("test_func"));
+
         let func = &module.functions["test_func"];
 
         assert!(func.annotations.contains(&FunctionAnnotation::Inline));
@@ -273,6 +285,9 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I64), var("sum"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("add"));
+
         let func = &module.functions["add"];
 
         assert_eq!(func.signature.params.len(), 2);
@@ -359,7 +374,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("add_result"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("binary_ops"));
+
         let func = &module.functions["binary_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 11);
@@ -387,7 +408,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("cmp_ops"));
+
         let func = &module.functions["cmp_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 7);
@@ -434,7 +461,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I64), var("zext_result"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("conversions"));
+
         let func = &module.functions["conversions"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 5);
@@ -482,7 +515,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("value"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("pointer_ops"));
+
         let func = &module.functions["pointer_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 5);
@@ -530,7 +569,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("x_val"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("struct_ops"));
+
         let func = &module.functions["struct_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 7);
@@ -565,7 +610,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("heap_ops"));
+
         let func = &module.functions["heap_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 4);
@@ -610,6 +661,9 @@ mod tests {
         assert!(module.functions.contains_key("caller"));
 
         let caller = &module.functions["caller"];
+
+        assert!(caller.basic_blocks.contains_key("entry"));
+
         let entry = &caller.basic_blocks["entry"];
 
         // Verify call instruction
@@ -634,6 +688,9 @@ mod tests {
         builder.external_function("printf", vec![], Type::Void);
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("printf"));
+
         let func = &module.functions["printf"];
 
         assert!(func.annotations.contains(&FunctionAnnotation::Extern));
@@ -666,12 +723,16 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), i32(0));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("switch_test"));
+
         let func = &module.functions["switch_test"];
 
         assert!(func.basic_blocks.contains_key("case_1"));
         assert!(func.basic_blocks.contains_key("case_2"));
         assert!(func.basic_blocks.contains_key("case_3"));
         assert!(func.basic_blocks.contains_key("default_case"));
+        assert!(func.basic_blocks.contains_key("entry"));
 
         let entry = &func.basic_blocks["entry"];
         if let Instruction::Switch {
@@ -725,7 +786,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("result"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("phi_test"));
+
         let func = &module.functions["phi_test"];
+
+        assert!(func.basic_blocks.contains_key("merge"));
+
         let merge = &func.basic_blocks["merge"];
 
         if let Instruction::Phi {
@@ -759,7 +826,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("max"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("select_test"));
+
         let func = &module.functions["select_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         if let Instruction::Select {
@@ -792,7 +865,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("first"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("tuple_test"));
+
         let func = &module.functions["tuple_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 4);
@@ -842,7 +921,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("io_test"));
+
         let func = &module.functions["io_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 8);
@@ -888,7 +973,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("value"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("ptr_conv"));
+
         let func = &module.functions["ptr_conv"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         // Verify ptrtoint
@@ -969,6 +1060,9 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), i32(42));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("custom_entry"));
+
         let func = &module.functions["custom_entry"];
 
         assert_eq!(func.entry_block, "actual_start");
@@ -982,7 +1076,13 @@ mod tests {
         builder.function("void_func", Type::Void).ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("void_func"));
+
         let func = &module.functions["void_func"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         if let Instruction::Ret { ty, value } = &entry.instructions[0] {
@@ -1004,7 +1104,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("jump_test"));
+
         let func = &module.functions["jump_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         if let Instruction::Jmp { target_label } = &entry.instructions[0] {
@@ -1058,7 +1164,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("loaded"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("atomic_test"));
+
         let func = &module.functions["atomic_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 7);
@@ -1119,7 +1231,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("simd_test"));
+
         let func = &module.functions["simd_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 9);
