@@ -1193,6 +1193,161 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_struct_gep_typed() {
+        use crate::types::struct_field_byte_offset;
+
+        let mut builder = IRBuilder::new();
+
+        let fields = vec![
+            StructField {
+                name: "flag",
+                ty: Type::Primitive(PrimitiveType::I8),
+            },
+            StructField {
+                name: "value",
+                ty: Type::Primitive(PrimitiveType::I32),
+            },
+            StructField {
+                name: "extra",
+                ty: Type::Primitive(PrimitiveType::I64),
+            },
+        ];
+
+        builder
+            .function("typed_gep", Type::Void)
+            .alloc_stack("s", Type::Struct(fields.clone()))
+            .struct_gep_typed("flag_ptr", var("s"), &fields, 0)
+            .struct_gep_typed("val_ptr", var("s"), &fields, 1)
+            .struct_gep_typed("ext_ptr", var("s"), &fields, 2)
+            .ret_void();
+
+        let module = builder.build();
+        let func = &module.functions["typed_gep"];
+        let entry = &func.basic_blocks["entry"];
+
+        // GetFieldPtr for field 0 (flag: i8) — offset 0
+        if let Instruction::GetFieldPtr {
+            result,
+            field_index,
+            field_byte_offset,
+            ..
+        } = &entry.instructions[1]
+        {
+            assert_eq!(*result, "flag_ptr");
+            assert_eq!(*field_index, 0);
+            assert_eq!(*field_byte_offset, struct_field_byte_offset(&fields, 0));
+            assert_eq!(*field_byte_offset, Some(0));
+        } else {
+            panic!("Expected GetFieldPtr for flag");
+        }
+
+        // GetFieldPtr for field 1 (value: i32) — ABI offset = align_up(1, 4) = 4
+        if let Instruction::GetFieldPtr {
+            result,
+            field_index,
+            field_byte_offset,
+            ..
+        } = &entry.instructions[2]
+        {
+            assert_eq!(*result, "val_ptr");
+            assert_eq!(*field_index, 1);
+            assert_eq!(*field_byte_offset, struct_field_byte_offset(&fields, 1));
+            assert_eq!(*field_byte_offset, Some(4));
+        } else {
+            panic!("Expected GetFieldPtr for value");
+        }
+
+        // GetFieldPtr for field 2 (extra: i64) — ABI offset = align_up(4+4, 8) = 8
+        if let Instruction::GetFieldPtr {
+            result,
+            field_index,
+            field_byte_offset,
+            ..
+        } = &entry.instructions[3]
+        {
+            assert_eq!(*result, "ext_ptr");
+            assert_eq!(*field_index, 2);
+            assert_eq!(*field_byte_offset, struct_field_byte_offset(&fields, 2));
+            assert_eq!(*field_byte_offset, Some(8));
+        } else {
+            panic!("Expected GetFieldPtr for extra");
+        }
+    }
+
+    #[test]
+    fn test_memcpy_builder() {
+        let mut builder = IRBuilder::new();
+
+        builder
+            .function("copy_fn", Type::Void)
+            .alloc_stack("dst", Type::Primitive(PrimitiveType::I8))
+            .alloc_stack("src", Type::Primitive(PrimitiveType::I8))
+            .memcpy(var("dst"), var("src"), i32(64))
+            .ret_void();
+
+        let module = builder.build();
+        let entry = &module.functions["copy_fn"].basic_blocks["entry"];
+
+        assert_eq!(entry.instructions.len(), 4);
+
+        if let Instruction::MemCpy { dst, src, size } = &entry.instructions[2] {
+            assert_eq!(*dst, var("dst"));
+            assert_eq!(*src, var("src"));
+            assert_eq!(*size, i32(64));
+        } else {
+            panic!("Expected MemCpy instruction");
+        }
+    }
+
+    #[test]
+    fn test_memmove_builder() {
+        let mut builder = IRBuilder::new();
+
+        builder
+            .function("move_fn", Type::Void)
+            .alloc_stack("buf", Type::Primitive(PrimitiveType::I8))
+            .memmove(var("buf"), var("buf"), i32(32))
+            .ret_void();
+
+        let module = builder.build();
+        let entry = &module.functions["move_fn"].basic_blocks["entry"];
+
+        assert_eq!(entry.instructions.len(), 3);
+
+        if let Instruction::MemMove { dst, src, size } = &entry.instructions[1] {
+            assert_eq!(*dst, var("buf"));
+            assert_eq!(*src, var("buf"));
+            assert_eq!(*size, i32(32));
+        } else {
+            panic!("Expected MemMove instruction");
+        }
+    }
+
+    #[test]
+    fn test_memset_builder() {
+        let mut builder = IRBuilder::new();
+
+        builder
+            .function("set_fn", Type::Void)
+            .alloc_stack("buf", Type::Primitive(PrimitiveType::I8))
+            .memset(var("buf"), i8(0), i32(128))
+            .ret_void();
+
+        let module = builder.build();
+        let entry = &module.functions["set_fn"].basic_blocks["entry"];
+
+        assert_eq!(entry.instructions.len(), 3);
+
+        if let Instruction::MemSet { dst, value, size } = &entry.instructions[1] {
+            assert_eq!(*dst, var("buf"));
+            assert_eq!(*value, i8(0));
+            assert_eq!(*size, i32(128));
+        } else {
+            panic!("Expected MemSet instruction");
+        }
+    }
+
     #[cfg(feature = "nightly")]
     #[test]
     fn test_simd_operations() {
