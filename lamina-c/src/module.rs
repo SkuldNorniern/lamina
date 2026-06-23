@@ -4,6 +4,11 @@ use std::ffi::c_char;
 use std::panic::AssertUnwindSafe;
 use std::str::FromStr;
 
+use lamina::LaminaError;
+use lamina::generate_mir_to_target;
+use lamina::mir::TransformPipeline;
+use lamina::mir::codegen::from_ir;
+use lamina::parser::parse_module;
 use lamina_platform::Target;
 
 use crate::error::{clear_error, set_error};
@@ -119,26 +124,25 @@ unsafe fn compile_to_buf(
     let units = unsafe { codegen_units(options) };
     let level = unsafe { opt_level(options) }.unwrap_or(0);
 
-    let result = (|| -> Result<Vec<u8>, lamina::LaminaError> {
-        let ir_mod = lamina::parser::parse_module(ir_str)?;
-        let mut mir_mod = lamina::mir::codegen::from_ir(&ir_mod, "module")?;
+    let result = (|| -> Result<Vec<u8>, LaminaError> {
+        let ir_mod = parse_module(ir_str)?;
+        let mut mir_mod = from_ir(&ir_mod, "module")?;
 
         if level > 0 {
-            let pipeline = lamina::mir::TransformPipeline::default_for_opt_level(level);
+            let pipeline = TransformPipeline::default_for_opt_level(level);
             pipeline
                 .apply_to_module(&mut mir_mod)
-                .map_err(|e| lamina::LaminaError::MirError(e.to_string()))?;
+                .map_err(|e| LaminaError::MirError(e.to_string()))?;
         }
 
         let target = match tgt_string {
-            Some(ref s) => Target::from_str(s).map_err(|e| {
-                lamina::LaminaError::ValidationError(format!("invalid target: {e}"))
-            })?,
+            Some(ref s) => Target::from_str(s)
+                .map_err(|e| LaminaError::ValidationError(format!("invalid target: {e}")))?,
             None => Target::detect_host(),
         };
 
         let mut asm: Vec<u8> = Vec::new();
-        lamina::generate_mir_to_target(
+        generate_mir_to_target(
             &mir_mod,
             &mut asm,
             target.architecture,
@@ -197,9 +201,9 @@ unsafe fn opt_level(options: *const LaminaCompileOptions) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lia_buffer_free;
     use std::ffi::CString;
     use std::ptr;
-    use crate::lia_buffer_free;
 
     fn cs(s: &str) -> CString {
         // SAFETY: test strings contain no NUL bytes.

@@ -1,7 +1,7 @@
 // C API for the IR builder.
 
 use std::ffi::c_char;
-use std::panic::AssertUnwindSafe;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr::null_mut;
 
 use lamina_ir::instruction::{BinaryOp, CmpOp};
@@ -54,7 +54,7 @@ macro_rules! require_str {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn lia_builder_create() -> *mut LaminaBuilder {
-    std::panic::catch_unwind(|| Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new()))))
+    catch_unwind(|| Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new()))))
         .unwrap_or(null_mut())
 }
 
@@ -1137,6 +1137,7 @@ unsafe fn collect_values(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::module::lia_module_free;
     use std::ffi::CString;
     use std::ptr;
 
@@ -1244,7 +1245,12 @@ mod tests {
             let second = lia_value_var(cs("arg").as_ptr());
             let elements: [*const LaminaValue; 2] = [first, second];
             assert_eq!(
-                lia_builder_tuple(builder, cs("pair").as_ptr(), elements.as_ptr(), elements.len()),
+                lia_builder_tuple(
+                    builder,
+                    cs("pair").as_ptr(),
+                    elements.as_ptr(),
+                    elements.len()
+                ),
                 LaminaStatus::Ok
             );
 
@@ -1259,10 +1265,7 @@ mod tests {
             assert_eq!(lia_builder_return_void(builder), LaminaStatus::Ok);
 
             let mut module = null_mut();
-            assert_eq!(
-                lia_builder_finish(builder, &mut module),
-                LaminaStatus::Ok
-            );
+            assert_eq!(lia_builder_finish(builder, &mut module), LaminaStatus::Ok);
             let ir = &(*module).0;
             assert!(ir.contains("%pair = tuple, 7, %arg"), "got: {ir}");
             assert!(ir.contains("%head = extract.tuple %pair, 0"), "got: {ir}");
@@ -1273,7 +1276,7 @@ mod tests {
             lia_value_free(tuple_val);
             lia_value_free(head);
             lia_type_free(void_ty);
-            crate::module::lia_module_free(module);
+            lia_module_free(module);
             lia_builder_free(builder);
         }
     }
