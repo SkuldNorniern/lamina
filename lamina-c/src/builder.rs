@@ -2,6 +2,7 @@
 
 use std::ffi::c_char;
 use std::panic::AssertUnwindSafe;
+use std::ptr::null_mut;
 
 use lamina_ir::instruction::{BinaryOp, CmpOp};
 use lamina_ir::owned::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
@@ -54,7 +55,7 @@ macro_rules! require_str {
 #[unsafe(no_mangle)]
 pub extern "C" fn lia_builder_create() -> *mut LaminaBuilder {
     std::panic::catch_unwind(|| Box::into_raw(Box::new(LaminaBuilder(OwnedIRBuilder::new()))))
-        .unwrap_or(std::ptr::null_mut())
+        .unwrap_or(null_mut())
 }
 
 #[unsafe(no_mangle)]
@@ -103,7 +104,7 @@ pub unsafe extern "C" fn lia_type_free(ty: *mut LaminaType) {
 pub unsafe extern "C" fn lia_type_named(name: *const c_char) -> *mut LaminaType {
     match cstr_to_str(name) {
         Some(s) => Box::into_raw(Box::new(LaminaType(OwnedType::Named(s.to_string())))),
-        None => std::ptr::null_mut(),
+        None => null_mut(),
     }
 }
 
@@ -118,7 +119,7 @@ pub unsafe extern "C" fn lia_type_array(
             element_type: Box::new(t.0.clone()),
             size,
         }))),
-        None => std::ptr::null_mut(),
+        None => null_mut(),
     }
 }
 
@@ -136,18 +137,18 @@ pub unsafe extern "C" fn lia_type_struct(
     count: usize,
 ) -> *mut LaminaType {
     if count > 0 && fields.is_null() {
-        return std::ptr::null_mut();
+        return null_mut();
     }
     let mut owned_fields = Vec::with_capacity(count);
     for i in 0..count {
         let f = unsafe { &*fields.add(i) };
         let name = match cstr_to_str(f.name) {
             Some(s) => s.to_string(),
-            None => return std::ptr::null_mut(),
+            None => return null_mut(),
         };
         let ty = match unsafe { f.ty.as_ref() } {
             Some(t) => t.0.clone(),
-            None => return std::ptr::null_mut(),
+            None => return null_mut(),
         };
         owned_fields.push(OwnedStructField { name, ty });
     }
@@ -161,14 +162,14 @@ pub unsafe extern "C" fn lia_type_tuple(
     count: usize,
 ) -> *mut LaminaType {
     if count > 0 && types.is_null() {
-        return std::ptr::null_mut();
+        return null_mut();
     }
     let mut owned = Vec::with_capacity(count);
     for i in 0..count {
         let tp = unsafe { *types.add(i) };
         match unsafe { tp.as_ref() } {
             Some(t) => owned.push(t.0.clone()),
-            None => return std::ptr::null_mut(),
+            None => return null_mut(),
         }
     }
     Box::into_raw(Box::new(LaminaType(OwnedType::Tuple(owned))))
@@ -182,7 +183,7 @@ pub unsafe extern "C" fn lia_type_tuple(
 pub unsafe extern "C" fn lia_value_var(name: *const c_char) -> *mut LaminaValue {
     match cstr_to_str(name) {
         Some(s) => Box::into_raw(Box::new(LaminaValue(OwnedValue::Variable(s.to_string())))),
-        None => std::ptr::null_mut(),
+        None => null_mut(),
     }
 }
 
@@ -190,7 +191,7 @@ pub unsafe extern "C" fn lia_value_var(name: *const c_char) -> *mut LaminaValue 
 pub unsafe extern "C" fn lia_value_global(name: *const c_char) -> *mut LaminaValue {
     match cstr_to_str(name) {
         Some(s) => Box::into_raw(Box::new(LaminaValue(OwnedValue::Global(s.to_string())))),
-        None => std::ptr::null_mut(),
+        None => null_mut(),
     }
 }
 
@@ -243,7 +244,7 @@ pub extern "C" fn lia_value_bool(v: bool) -> *mut LaminaValue {
 pub unsafe extern "C" fn lia_value_string(s: *const c_char) -> *mut LaminaValue {
     match cstr_to_str(s) {
         Some(s) => Box::into_raw(Box::new(LaminaValue(OwnedValue::Str(s.to_string())))),
-        None => std::ptr::null_mut(),
+        None => null_mut(),
     }
 }
 
@@ -1146,7 +1147,7 @@ mod tests {
 
     #[test]
     fn builder_free_null_does_not_crash() {
-        unsafe { lia_builder_free(ptr::null_mut()) };
+        unsafe { lia_builder_free(null_mut()) };
     }
 
     #[test]
@@ -1226,7 +1227,7 @@ mod tests {
 
     #[test]
     fn type_free_null_does_not_crash() {
-        unsafe { lia_type_free(ptr::null_mut()) };
+        unsafe { lia_type_free(null_mut()) };
     }
 
     #[test]
@@ -1257,7 +1258,7 @@ mod tests {
             assert_eq!(lia_builder_print(builder, head), LaminaStatus::Ok);
             assert_eq!(lia_builder_return_void(builder), LaminaStatus::Ok);
 
-            let mut module = ptr::null_mut();
+            let mut module = null_mut();
             assert_eq!(
                 lia_builder_finish(builder, &mut module),
                 LaminaStatus::Ok
