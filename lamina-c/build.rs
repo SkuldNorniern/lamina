@@ -6,16 +6,17 @@
 // cbindgen 0.27 does not yet recognise #[unsafe(no_mangle)] (Rust 2024 edition),
 // so lamina.h is maintained by hand until upstream support lands.
 
+use std::fs;
 use std::path::Path;
 
 fn main() {
     // Read lamina's version from its Cargo.toml at build time.
-    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("lamina-c has a parent directory")
-        .join("Cargo.toml");
+    let manifest = match Path::new(env!("CARGO_MANIFEST_DIR")).parent() {
+        Some(parent) => parent.join("Cargo.toml"),
+        None => panic!("lamina-c has no parent directory"),
+    };
 
-    let content = std::fs::read_to_string(&manifest)
+    let content = fs::read_to_string(&manifest)
         .unwrap_or_else(|e| panic!("failed to read {}: {}", manifest.display(), e));
 
     let version = content
