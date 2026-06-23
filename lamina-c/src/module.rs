@@ -199,6 +199,7 @@ mod tests {
     use super::*;
     use std::ffi::CString;
     use std::ptr;
+    use crate::lia_buffer_free;
 
     fn cs(s: &str) -> CString {
         // SAFETY: test strings contain no NUL bytes.
@@ -230,7 +231,7 @@ mod tests {
             let st = lia_compile_ir_to_assembly(ir.as_ptr(), &opts, &mut buf);
             assert_eq!(st, LaminaStatus::Ok);
             assert!(buf.len > 0);
-            crate::lia_buffer_free(&mut buf);
+            lia_buffer_free(&mut buf);
         }
     }
 
@@ -247,7 +248,7 @@ mod tests {
             let st = lia_compile_ir_to_assembly(ir.as_ptr(), &opts, &mut buf);
             assert_eq!(st, LaminaStatus::Ok);
             assert!(buf.len > 0);
-            crate::lia_buffer_free(&mut buf);
+            lia_buffer_free(&mut buf);
         }
     }
 }
