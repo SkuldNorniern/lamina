@@ -12,8 +12,8 @@ use crate::error::LaminaError;
 use crate::mir::instruction::AddressMode;
 use crate::mir::register::RegisterClass;
 use crate::mir::{
-    FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp, MirType,
-    Module as MirModule, Register, ScalarType, Signature, VirtualReg,
+    Block as MirBlock, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
+    IntBinOp, MirType, Module as MirModule, Register, ScalarType, Signature, VirtualReg,
 };
 use crate::mir_codegen::common::{
     assign_stack_slots, compile_functions_parallel, parallel_codegen_error,
@@ -210,22 +210,29 @@ fn compile_single_function_riscv(
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     let mut debug_line: u32 = 0;
+    let entry_block = func.entry_block().expect("Not found entry block");
+    emit_block_riscv(
+        entry_block,
+        &mut output,
+        &mut reg_alloc,
+        &stack_slots,
+        target_os,
+        settings,
+        &mut debug_line,
+    )?;
     for block in &func.blocks {
-        writeln!(output, ".L_{}:", block.label)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-
-        for inst in &block.instructions {
-            emit_instruction_riscv(
-                inst,
-                &mut output,
-                &mut reg_alloc,
-                &stack_slots,
-                target_os,
-                settings,
-                &mut debug_line,
-            )
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        if block == entry_block {
+            continue;
         }
+        emit_block_riscv(
+            block,
+            &mut output,
+            &mut reg_alloc,
+            &stack_slots,
+            target_os,
+            settings,
+            &mut debug_line,
+        )?;
     }
 
     Ok(output)
@@ -285,6 +292,32 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
         writer.write_all(&result.assembly)?;
     }
 
+    Ok(())
+}
+
+fn emit_block_riscv<W: Write>(
+    block: &MirBlock,
+    writer: &mut W,
+    reg_alloc: &mut RiscVRegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+    target_os: TargetOperatingSystem,
+    settings: &MirCodegenSettings,
+    debug_line: &mut u32,
+) -> Result<(), CodegenError> {
+    writeln!(writer, ".L_{}:", block.label)
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    for inst in &block.instructions {
+        emit_instruction_riscv(
+            inst,
+            writer,
+            reg_alloc,
+            stack_slots,
+            target_os,
+            settings,
+            debug_line,
+        )
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
     Ok(())
 }
 
