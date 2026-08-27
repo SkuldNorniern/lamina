@@ -423,6 +423,24 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Copies `size` bytes from `src` to `dst` (non-overlapping).
+    pub fn memcpy(&mut self, dst: &OwnedValue, src: &OwnedValue, size: &OwnedValue) -> &mut Self {
+        self.push(format!("memcpy {dst}, {src}, {size}"));
+        self
+    }
+
+    /// Copies `size` bytes from `src` to `dst` (overlapping regions allowed).
+    pub fn memmove(&mut self, dst: &OwnedValue, src: &OwnedValue, size: &OwnedValue) -> &mut Self {
+        self.push(format!("memmove {dst}, {src}, {size}"));
+        self
+    }
+
+    /// Sets `size` bytes at `dst` to the byte `value`.
+    pub fn memset(&mut self, dst: &OwnedValue, value: &OwnedValue, size: &OwnedValue) -> &mut Self {
+        self.push(format!("memset {dst}, {value}, {size}"));
+        self
+    }
+
     // -----------------------------------------------------------------------
     // Pointer operations
     // -----------------------------------------------------------------------
@@ -593,6 +611,33 @@ impl OwnedIRBuilder {
             cond,
             true_val,
             false_val
+        );
+        self.push(t);
+        self
+    }
+
+    /// Appends a tuple construction instruction.
+    pub fn tuple(&mut self, result: impl AsRef<str>, elements: &[OwnedValue]) -> &mut Self {
+        let mut t = format!("%{} = tuple", result.as_ref());
+        for element in elements {
+            t.push_str(&format!(", {element}"));
+        }
+        self.push(t);
+        self
+    }
+
+    /// Appends a tuple element extraction instruction.
+    pub fn extract_tuple(
+        &mut self,
+        result: impl AsRef<str>,
+        tuple_val: &OwnedValue,
+        index: usize,
+    ) -> &mut Self {
+        let t = format!(
+            "%{} = extract.tuple {}, {}",
+            result.as_ref(),
+            tuple_val,
+            index
         );
         self.push(t);
         self
@@ -795,5 +840,26 @@ mod tests {
         assert_eq!(OwnedValue::Global("g".to_string()).to_string(), "@g");
         assert_eq!(OwnedValue::I32(42).to_string(), "42");
         assert_eq!(OwnedValue::Bool(true).to_string(), "true");
+    }
+
+    #[test]
+    fn test_tuple_and_print_ir_text() {
+        let mut b = OwnedIRBuilder::new();
+        b.function("tuple_debug", OwnedType::Void)
+            .tuple(
+                "pair",
+                &[
+                    OwnedValue::I64(10),
+                    OwnedValue::Variable("input".to_string()),
+                ],
+            )
+            .extract_tuple("first", &OwnedValue::Variable("pair".to_string()), 0)
+            .print(&OwnedValue::Variable("first".to_string()))
+            .ret_void();
+
+        let ir = b.build_ir_text();
+        assert!(ir.contains("%pair = tuple, 10, %input"), "got: {ir}");
+        assert!(ir.contains("%first = extract.tuple %pair, 0"), "got: {ir}");
+        assert!(ir.contains("print %first"), "got: {ir}");
     }
 }
