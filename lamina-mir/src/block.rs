@@ -7,7 +7,7 @@ use crate::instruction::Instruction;
 use std::fmt;
 
 /// Block in LUMIR
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Block {
     /// Block label/name
     pub label: String,
@@ -23,6 +23,16 @@ impl fmt::Display for Block {
             writeln!(f, "  {instr}")?;
         }
         Ok(())
+    }
+}
+
+impl PartialEq for Block {
+    fn eq(&self, other: &Self) -> bool {
+        self.label == other.label
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        self.label != other.label
     }
 }
 
