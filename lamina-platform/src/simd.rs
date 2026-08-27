@@ -146,6 +146,7 @@ impl SimdCapabilities {
     ///
     /// ```
     /// # use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem};
+    /// # use lamina_platform::simd::SimdCapabilities;
     /// # #[cfg(feature = "nightly")]
     /// # {
     /// let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux);
@@ -345,6 +346,7 @@ impl SimdCapabilities {
     ///
     /// ```
     /// # use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem};
+    /// # use lamina_platform::simd::SimdCapabilities;
     /// # #[cfg(feature = "nightly")]
     /// # {
     /// let target = Target::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux);
@@ -393,7 +395,7 @@ impl SimdCapabilities {
     /// # Examples
     ///
     /// ```
-    /// # use lamina_platform::simd::SimdCapabilities;
+    /// # use lamina_platform::simd::{SimdCapabilities, X86SimdExtension};
     /// # #[cfg(feature = "nightly")]
     /// # {
     /// let caps = SimdCapabilities::detect_runtime();

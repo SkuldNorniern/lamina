@@ -5,6 +5,7 @@
 use std::cell::RefCell;
 use std::ffi::CString;
 use std::ffi::c_char;
+use std::ptr::null;
 
 thread_local! {
     static LAST_ERROR: RefCell<Option<CString>> = const { RefCell::new(None) };
@@ -18,9 +19,7 @@ pub fn set_error(msg: impl Into<String>) {
     } else {
         s
     };
-    // SAFETY: fallback literal contains no NUL bytes, so CString::new cannot fail.
-    let cs = CString::new(safe)
-        .unwrap_or_else(|_| CString::new("(error message encoding failed)").unwrap());
+    let cs = CString::new(safe).unwrap_or_else(|_| c"(error message encoding failed)".to_owned());
     LAST_ERROR.with(|e| *e.borrow_mut() = Some(cs));
 }
 
@@ -33,6 +32,6 @@ pub fn clear_error() {
 pub fn last_error_ptr() -> *const c_char {
     LAST_ERROR.with(|e| match e.borrow().as_ref() {
         Some(cs) => cs.as_ptr(),
-        None => std::ptr::null(),
+        None => null(),
     })
 }

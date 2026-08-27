@@ -42,11 +42,14 @@
 //!
 //! ### Missing / Planned Instructions:
 //! - **Floating point**: additional ops beyond the existing arithmetic and comparisons
-//! - **Memory intrinsics**: `memcpy`, `memset`, `memmove`
 //! - **Atomic operations**: richer `atomicrmw`/`cmpxchg`/`fence` variants
 //! - **Exception handling**: `invoke`, `landingpad`, `resume`
-//! - **Control flow**: `switch`, `indirectbr`
+//! - **Control flow**: `indirectbr`
 //! - **Vector operations**: additional SIMD arithmetic and operations (kept behind `nightly`)
+//!
+//! ### Implemented (previously listed as missing):
+//! - `memcpy`, `memmove`, `memset` — lowered to libc calls in MIR
+//! - `switch` — full multi-way branch lowered to cmp/jmp chains in all backends
 //!
 //! ### Advanced Features:
 //! - **Debug information**: `!dbg`, `!llvm.dbg.value`
@@ -435,6 +438,94 @@ impl fmt::Display for Value<'_> {
             Value::Global(id) => write!(f, "@{id}"),
         }
     }
+}
+
+/// Returns the ABI alignment of a primitive type in bytes.
+pub const fn align_of_primitive(ty: PrimitiveType) -> u64 {
+    match ty {
+        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
+        PrimitiveType::I16 | PrimitiveType::U16 => 2,
+        PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+    }
+}
+
+/// Returns the size in bytes of a primitive type.
+pub const fn sizeof_primitive(ty: PrimitiveType) -> u64 {
+    match ty {
+        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
+        PrimitiveType::I16 | PrimitiveType::U16 => 2,
+        PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
+        PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+    }
+}
+
+/// Returns the size in bytes of an IR type, or `None` for unsized/void types.
+pub fn sizeof_type(ty: &Type<'_>) -> Option<u64> {
+    match ty {
+        Type::Primitive(p) => Some(sizeof_primitive(*p)),
+        Type::Array { element_type, size } => {
+            sizeof_type(element_type).map(|es| es.saturating_mul(*size))
+        }
+        Type::Struct(fields) => {
+            let mut offset = 0u64;
+            for f in fields {
+                let align = align_of_type(&f.ty);
+                offset = (offset + align - 1) & !(align - 1);
+                offset = offset.saturating_add(sizeof_type(&f.ty)?);
+            }
+            // Round up total to the struct's own alignment (= max field alignment)
+            let struct_align = fields
+                .iter()
+                .map(|f| align_of_type(&f.ty))
+                .max()
+                .unwrap_or(1);
+            Some((offset + struct_align - 1) & !(struct_align - 1))
+        }
+        _ => None,
+    }
+}
+
+/// Returns the ABI alignment in bytes of an IR type.
+pub fn align_of_type(ty: &Type<'_>) -> u64 {
+    match ty {
+        Type::Primitive(p) => align_of_primitive(*p),
+        Type::Array { element_type, .. } => align_of_type(element_type),
+        Type::Struct(fields) => fields
+            .iter()
+            .map(|f| align_of_type(&f.ty))
+            .max()
+            .unwrap_or(1),
+        _ => 8,
+    }
+}
+
+/// Computes the byte offset of `field_index` within a struct using standard ABI layout rules.
+///
+/// Returns `None` if `field_index` is out of bounds or a field size cannot be determined.
+/// Each field is aligned to its natural ABI alignment; padding bytes are inserted between
+/// fields when required (same rules as C `struct` layout with default alignment).
+///
+/// # Example
+/// For `struct { a: i8, b: i32, c: i64 }`:
+/// - field 0 (`a`): offset 0
+/// - field 1 (`b`): offset 4  (3 bytes of padding after `a`)
+/// - field 2 (`c`): offset 8
+pub fn struct_field_byte_offset(fields: &[StructField<'_>], field_index: usize) -> Option<u64> {
+    if field_index >= fields.len() {
+        return None;
+    }
+    let mut offset = 0u64;
+    for field in &fields[..field_index] {
+        // Align to this field's requirement, then skip past it
+        let align = align_of_type(&field.ty);
+        offset = (offset + align - 1) & !(align - 1);
+        offset = offset.saturating_add(sizeof_type(&field.ty)?);
+    }
+    // Align the cursor to the target field's own alignment
+    let target_align = align_of_type(&fields[field_index].ty);
+    offset = (offset + target_align - 1) & !(target_align - 1);
+    Some(offset)
 }
 
 #[cfg(test)]
