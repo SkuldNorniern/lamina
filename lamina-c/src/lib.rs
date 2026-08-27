@@ -22,7 +22,11 @@ pub mod jit;
 
 use std::ffi::CString;
 use std::ffi::{CStr, c_char};
+use std::panic::{UnwindSafe, catch_unwind};
+use std::ptr::{null_mut, slice_from_raw_parts_mut};
 use std::sync::OnceLock;
+
+use lamina_platform::Target;
 
 // ---------------------------------------------------------------------------
 // Status codes
@@ -100,7 +104,7 @@ pub extern "C" fn lia_compiler_version() -> *const c_char {
 pub extern "C" fn lia_host_target() -> *const c_char {
     HOST_TARGET
         .get_or_init(|| {
-            let t = lamina_platform::Target::detect_host();
+            let t = Target::detect_host();
             CString::new(t.to_str()).unwrap_or_default()
         })
         .as_ptr()
@@ -121,11 +125,9 @@ pub unsafe extern "C" fn lia_buffer_free(buf: *mut types::LaminaBuffer) {
     unsafe {
         let buf = &mut *buf;
         if !buf.data.is_null() && buf.len > 0 {
-            drop(Box::from_raw(std::ptr::slice_from_raw_parts_mut(
-                buf.data, buf.len,
-            )));
+            drop(Box::from_raw(slice_from_raw_parts_mut(buf.data, buf.len)));
         }
-        buf.data = std::ptr::null_mut();
+        buf.data = null_mut();
         buf.len = 0;
     }
 }
@@ -141,8 +143,8 @@ pub(crate) fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     unsafe { CStr::from_ptr(ptr).to_str().ok() }
 }
 
-pub(crate) fn catch<F: FnOnce() -> LaminaStatus + std::panic::UnwindSafe>(f: F) -> LaminaStatus {
-    std::panic::catch_unwind(f).unwrap_or_else(|_| {
+pub(crate) fn catch<F: FnOnce() -> LaminaStatus + UnwindSafe>(f: F) -> LaminaStatus {
+    catch_unwind(f).unwrap_or_else(|_| {
         error::set_error("internal panic in Lamina C API");
         LaminaStatus::ErrorInternal
     })

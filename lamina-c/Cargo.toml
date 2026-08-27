@@ -18,6 +18,17 @@ lamina-platform = { path = "../lamina-platform", version = "0.1.1" }
 
 [workspace]
 
+[workspace.lints.clippy]
+absolute_paths = "deny"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+unwrap_used = "warn"
+expect_used = "warn"
+
+[lints]
+workspace = true
+
 [patch.crates-io]
 lamina-platform = { path = "../lamina-platform" }
 lamina-mir = { path = "../lamina-mir" }

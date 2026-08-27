@@ -44,20 +44,41 @@ fn float_binary(
     }
 }
 
-/// Map an IR binary op to its signed/integer MIR opcode. Float-applicable ops
-/// (Add/Sub/Mul/Div) on float types are handled separately by the caller.
-fn lower_int_binop(op: &IRBin) -> IntBinOp {
+/// Map an IR binary op to its MIR opcode, choosing signed vs. unsigned variants
+/// based on the operand type. Float-applicable ops on float types are handled
+/// separately by the caller before this function is reached.
+fn lower_int_binop(op: &IRBin, ty: IRPrim) -> IntBinOp {
+    let unsigned = matches!(ty, IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64);
     match op {
         IRBin::Add => IntBinOp::Add,
         IRBin::Sub => IntBinOp::Sub,
         IRBin::Mul => IntBinOp::Mul,
-        IRBin::Div => IntBinOp::SDiv,
-        IRBin::Rem => IntBinOp::SRem,
+        IRBin::Div => {
+            if unsigned {
+                IntBinOp::UDiv
+            } else {
+                IntBinOp::SDiv
+            }
+        }
+        IRBin::Rem => {
+            if unsigned {
+                IntBinOp::URem
+            } else {
+                IntBinOp::SRem
+            }
+        }
         IRBin::And => IntBinOp::And,
         IRBin::Or => IntBinOp::Or,
         IRBin::Xor => IntBinOp::Xor,
         IRBin::Shl => IntBinOp::Shl,
-        IRBin::Shr => IntBinOp::AShr,
+        // Arithmetic shift for signed types, logical shift for unsigned types.
+        IRBin::Shr => {
+            if unsigned {
+                IntBinOp::LShr
+            } else {
+                IntBinOp::AShr
+            }
+        }
     }
 }
 
@@ -553,8 +574,8 @@ fn convert_instruction<'a>(
                 (IRBin::Div, IRPrim::F32 | IRPrim::F64) => {
                     float_binary(FloatBinOp::FDiv, mir_ty, dst, lhs_op, rhs_op)
                 }
-                (op, _) => Instruction::IntBinary {
-                    op: lower_int_binop(op),
+                (op, prim_ty) => Instruction::IntBinary {
+                    op: lower_int_binop(op, prim_ty),
                     ty: mir_ty,
                     dst,
                     lhs: lhs_op,
@@ -1119,8 +1140,8 @@ fn convert_instruction<'a>(
             result,
             struct_ptr,
             field_index,
+            field_byte_offset,
         } => {
-            // Simplified layout: 8 bytes per field
             let base = match struct_ptr {
                 IRVal::Variable(id) => var_to_reg
                     .get(id)
@@ -1129,7 +1150,12 @@ fn convert_instruction<'a>(
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-            let offset = (*field_index as i32) * 8;
+            // Use the pre-computed ABI-correct offset when available; otherwise
+            // fall back to a fixed 8-byte-per-field stride (preserves behaviour
+            // for IR parsed from text without type information).
+            let offset = field_byte_offset
+                .map(|b| b as i32)
+                .unwrap_or((*field_index as i32) * 8);
             Ok(vec![Instruction::Lea { dst, base, offset }])
         }
         IRInst::GetElemPtr {

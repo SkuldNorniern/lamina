@@ -5,7 +5,7 @@
 
 use crate::builder::IRBuilder;
 use crate::instruction::Instruction;
-use crate::types::{PrimitiveType, Value};
+use crate::types::{PrimitiveType, StructField, Value, struct_field_byte_offset};
 
 impl<'a> IRBuilder<'a> {
     /// Gets a pointer to an array element (pointer arithmetic)
@@ -52,7 +52,10 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Gets a pointer to a struct field (structure field access)
+    /// Gets a pointer to a struct field using a fixed 8-byte-per-field stride.
+    ///
+    /// For structs with non-uniform or non-8-byte fields, use [`Self::struct_gep_typed`]
+    /// which computes the correct ABI offset from the field type list.
     pub fn struct_gep(
         &mut self,
         result: &'a str,
@@ -63,6 +66,29 @@ impl<'a> IRBuilder<'a> {
             result,
             struct_ptr,
             field_index,
+            field_byte_offset: None,
+        })
+    }
+
+    /// Gets a pointer to a struct field with ABI-correct byte offset computation.
+    ///
+    /// The `fields` slice must describe the complete struct layout; `field_index` selects
+    /// which field to address. The byte offset is computed from `fields` using standard
+    /// C-ABI alignment rules (natural alignment, no packing) and embedded in the
+    /// instruction so the MIR backend uses the correct offset instead of a fixed stride.
+    pub fn struct_gep_typed(
+        &mut self,
+        result: &'a str,
+        struct_ptr: Value<'a>,
+        fields: &[StructField<'a>],
+        field_index: usize,
+    ) -> &mut Self {
+        let field_byte_offset = struct_field_byte_offset(fields, field_index);
+        self.inst(Instruction::GetFieldPtr {
+            result,
+            struct_ptr,
+            field_index,
+            field_byte_offset,
         })
     }
 }

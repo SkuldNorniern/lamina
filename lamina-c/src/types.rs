@@ -1,5 +1,9 @@
 // Opaque handle types for the C API.
 
+use std::ptr::null_mut;
+
+#[cfg(feature = "nightly")]
+use lamina::runtime::ExecutableMemory;
 use lamina_ir::owned::{OwnedIRBuilder, OwnedType, OwnedValue};
 
 pub struct LaminaBuilder(pub OwnedIRBuilder);
@@ -27,7 +31,7 @@ impl LaminaBuffer {
 
     pub fn null() -> Self {
         LaminaBuffer {
-            data: std::ptr::null_mut(),
+            data: null_mut(),
             len: 0,
         }
     }
@@ -37,6 +41,6 @@ impl LaminaBuffer {
 /// Owns executable memory; invalidates all function pointers on free.
 #[cfg(feature = "nightly")]
 pub struct LaminaJit {
-    pub memory: lamina::runtime::ExecutableMemory,
+    pub memory: ExecutableMemory,
     pub function_ptr: *const u8,
 }

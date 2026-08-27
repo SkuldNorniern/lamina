@@ -10,6 +10,7 @@ mod tests {
     #[cfg(feature = "nightly")]
     use crate::module::ModuleAnnotation;
     use crate::types::{Literal, PrimitiveType, StructField, Type};
+    #[cfg(feature = "nightly")]
     use std::f32::consts::PI;
 
     #[test]
@@ -84,6 +85,9 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), i32(2));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("conditional"));
+
         let func = &module.functions["conditional"];
 
         assert!(func.basic_blocks.contains_key("entry"));
@@ -123,7 +127,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("val"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("use_memory"));
+
         let func = &module.functions["use_memory"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 4);
@@ -231,6 +241,9 @@ mod tests {
             .align(16);
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("test_func"));
+
         let func = &module.functions["test_func"];
 
         assert!(func.annotations.contains(&FunctionAnnotation::Inline));
@@ -274,6 +287,9 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I64), var("sum"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("add"));
+
         let func = &module.functions["add"];
 
         assert_eq!(func.signature.params.len(), 2);
@@ -360,7 +376,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("add_result"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("binary_ops"));
+
         let func = &module.functions["binary_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 11);
@@ -388,7 +410,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("cmp_ops"));
+
         let func = &module.functions["cmp_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 7);
@@ -435,7 +463,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I64), var("zext_result"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("conversions"));
+
         let func = &module.functions["conversions"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 5);
@@ -483,7 +517,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("value"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("pointer_ops"));
+
         let func = &module.functions["pointer_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 5);
@@ -531,7 +571,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("x_val"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("struct_ops"));
+
         let func = &module.functions["struct_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 7);
@@ -566,7 +612,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("heap_ops"));
+
         let func = &module.functions["heap_ops"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 4);
@@ -611,6 +663,9 @@ mod tests {
         assert!(module.functions.contains_key("caller"));
 
         let caller = &module.functions["caller"];
+
+        assert!(caller.basic_blocks.contains_key("entry"));
+
         let entry = &caller.basic_blocks["entry"];
 
         // Verify call instruction
@@ -635,6 +690,9 @@ mod tests {
         builder.external_function("printf", vec![], Type::Void);
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("printf"));
+
         let func = &module.functions["printf"];
 
         assert!(func.annotations.contains(&FunctionAnnotation::Extern));
@@ -667,12 +725,16 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), i32(0));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("switch_test"));
+
         let func = &module.functions["switch_test"];
 
         assert!(func.basic_blocks.contains_key("case_1"));
         assert!(func.basic_blocks.contains_key("case_2"));
         assert!(func.basic_blocks.contains_key("case_3"));
         assert!(func.basic_blocks.contains_key("default_case"));
+        assert!(func.basic_blocks.contains_key("entry"));
 
         let entry = &func.basic_blocks["entry"];
         if let Instruction::Switch {
@@ -726,7 +788,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("result"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("phi_test"));
+
         let func = &module.functions["phi_test"];
+
+        assert!(func.basic_blocks.contains_key("merge"));
+
         let merge = &func.basic_blocks["merge"];
 
         if let Instruction::Phi {
@@ -760,7 +828,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("max"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("select_test"));
+
         let func = &module.functions["select_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         if let Instruction::Select {
@@ -793,7 +867,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("first"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("tuple_test"));
+
         let func = &module.functions["tuple_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 4);
@@ -843,7 +923,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("io_test"));
+
         let func = &module.functions["io_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 8);
@@ -889,7 +975,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("value"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("ptr_conv"));
+
         let func = &module.functions["ptr_conv"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         // Verify ptrtoint
@@ -970,6 +1062,9 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), i32(42));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("custom_entry"));
+
         let func = &module.functions["custom_entry"];
 
         assert_eq!(func.entry_block, "actual_start");
@@ -983,7 +1078,13 @@ mod tests {
         builder.function("void_func", Type::Void).ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("void_func"));
+
         let func = &module.functions["void_func"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         if let Instruction::Ret { ty, value } = &entry.instructions[0] {
@@ -1005,7 +1106,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("jump_test"));
+
         let func = &module.functions["jump_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         if let Instruction::Jmp { target_label } = &entry.instructions[0] {
@@ -1059,7 +1166,13 @@ mod tests {
             .ret(Type::Primitive(PrimitiveType::I32), var("loaded"));
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("atomic_test"));
+
         let func = &module.functions["atomic_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 7);
@@ -1077,6 +1190,161 @@ mod tests {
             assert_eq!(*ordering, MemoryOrdering::SeqCst);
         } else {
             panic!("Expected AtomicStore instruction");
+        }
+    }
+
+    #[test]
+    fn test_struct_gep_typed() {
+        use crate::types::struct_field_byte_offset;
+
+        let mut builder = IRBuilder::new();
+
+        let fields = vec![
+            StructField {
+                name: "flag",
+                ty: Type::Primitive(PrimitiveType::I8),
+            },
+            StructField {
+                name: "value",
+                ty: Type::Primitive(PrimitiveType::I32),
+            },
+            StructField {
+                name: "extra",
+                ty: Type::Primitive(PrimitiveType::I64),
+            },
+        ];
+
+        builder
+            .function("typed_gep", Type::Void)
+            .alloc_stack("s", Type::Struct(fields.clone()))
+            .struct_gep_typed("flag_ptr", var("s"), &fields, 0)
+            .struct_gep_typed("val_ptr", var("s"), &fields, 1)
+            .struct_gep_typed("ext_ptr", var("s"), &fields, 2)
+            .ret_void();
+
+        let module = builder.build();
+        let func = &module.functions["typed_gep"];
+        let entry = &func.basic_blocks["entry"];
+
+        // GetFieldPtr for field 0 (flag: i8) — offset 0
+        if let Instruction::GetFieldPtr {
+            result,
+            field_index,
+            field_byte_offset,
+            ..
+        } = &entry.instructions[1]
+        {
+            assert_eq!(*result, "flag_ptr");
+            assert_eq!(*field_index, 0);
+            assert_eq!(*field_byte_offset, struct_field_byte_offset(&fields, 0));
+            assert_eq!(*field_byte_offset, Some(0));
+        } else {
+            panic!("Expected GetFieldPtr for flag");
+        }
+
+        // GetFieldPtr for field 1 (value: i32) — ABI offset = align_up(1, 4) = 4
+        if let Instruction::GetFieldPtr {
+            result,
+            field_index,
+            field_byte_offset,
+            ..
+        } = &entry.instructions[2]
+        {
+            assert_eq!(*result, "val_ptr");
+            assert_eq!(*field_index, 1);
+            assert_eq!(*field_byte_offset, struct_field_byte_offset(&fields, 1));
+            assert_eq!(*field_byte_offset, Some(4));
+        } else {
+            panic!("Expected GetFieldPtr for value");
+        }
+
+        // GetFieldPtr for field 2 (extra: i64) — ABI offset = align_up(4+4, 8) = 8
+        if let Instruction::GetFieldPtr {
+            result,
+            field_index,
+            field_byte_offset,
+            ..
+        } = &entry.instructions[3]
+        {
+            assert_eq!(*result, "ext_ptr");
+            assert_eq!(*field_index, 2);
+            assert_eq!(*field_byte_offset, struct_field_byte_offset(&fields, 2));
+            assert_eq!(*field_byte_offset, Some(8));
+        } else {
+            panic!("Expected GetFieldPtr for extra");
+        }
+    }
+
+    #[test]
+    fn test_memcpy_builder() {
+        let mut builder = IRBuilder::new();
+
+        builder
+            .function("copy_fn", Type::Void)
+            .alloc_stack("dst", Type::Primitive(PrimitiveType::I8))
+            .alloc_stack("src", Type::Primitive(PrimitiveType::I8))
+            .memcpy(var("dst"), var("src"), i32(64))
+            .ret_void();
+
+        let module = builder.build();
+        let entry = &module.functions["copy_fn"].basic_blocks["entry"];
+
+        assert_eq!(entry.instructions.len(), 4);
+
+        if let Instruction::MemCpy { dst, src, size } = &entry.instructions[2] {
+            assert_eq!(*dst, var("dst"));
+            assert_eq!(*src, var("src"));
+            assert_eq!(*size, i32(64));
+        } else {
+            panic!("Expected MemCpy instruction");
+        }
+    }
+
+    #[test]
+    fn test_memmove_builder() {
+        let mut builder = IRBuilder::new();
+
+        builder
+            .function("move_fn", Type::Void)
+            .alloc_stack("buf", Type::Primitive(PrimitiveType::I8))
+            .memmove(var("buf"), var("buf"), i32(32))
+            .ret_void();
+
+        let module = builder.build();
+        let entry = &module.functions["move_fn"].basic_blocks["entry"];
+
+        assert_eq!(entry.instructions.len(), 3);
+
+        if let Instruction::MemMove { dst, src, size } = &entry.instructions[1] {
+            assert_eq!(*dst, var("buf"));
+            assert_eq!(*src, var("buf"));
+            assert_eq!(*size, i32(32));
+        } else {
+            panic!("Expected MemMove instruction");
+        }
+    }
+
+    #[test]
+    fn test_memset_builder() {
+        let mut builder = IRBuilder::new();
+
+        builder
+            .function("set_fn", Type::Void)
+            .alloc_stack("buf", Type::Primitive(PrimitiveType::I8))
+            .memset(var("buf"), i8(0), i32(128))
+            .ret_void();
+
+        let module = builder.build();
+        let entry = &module.functions["set_fn"].basic_blocks["entry"];
+
+        assert_eq!(entry.instructions.len(), 3);
+
+        if let Instruction::MemSet { dst, value, size } = &entry.instructions[1] {
+            assert_eq!(*dst, var("buf"));
+            assert_eq!(*value, i8(0));
+            assert_eq!(*size, i32(128));
+        } else {
+            panic!("Expected MemSet instruction");
         }
     }
 
@@ -1120,7 +1388,13 @@ mod tests {
             .ret_void();
 
         let module = builder.build();
+
+        assert!(module.functions.contains_key("simd_test"));
+
         let func = &module.functions["simd_test"];
+
+        assert!(func.basic_blocks.contains_key("entry"));
+
         let entry = &func.basic_blocks["entry"];
 
         assert_eq!(entry.instructions.len(), 9);
