@@ -695,6 +695,15 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    movq $1, %rdx")?;
                         writeln!(writer, "    syscall")?;
                     }
+                    TargetOperatingSystem::Windows => {
+                        // Windows syscall numbers are unstable and cannot be invoked
+                        // directly like on Linux/macOS. Route the byte through the CRT
+                        // (putchar) instead, matching how `print` uses `printf`.
+                        writeln!(writer, "    movzbl (%rsp), %ecx")?;
+                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    call putchar")?;
+                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                    }
                     _ => {
                         writeln!(writer, "    movq ${}, %rax", linux::SYS_WRITE)?;
                         writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
