@@ -75,6 +75,30 @@ impl RiscVTarget {
         }
     }
 
+    /// Bytes in a general-purpose register.
+    pub fn word_bytes(self) -> i32 {
+        match self.xlen {
+            Xlen::Rv32 => 4,
+            Xlen::Rv64 => 8,
+        }
+    }
+
+    /// Mnemonic for storing a whole register. `sd` has no rv32 encoding.
+    pub fn store_word(self) -> &'static str {
+        match self.xlen {
+            Xlen::Rv32 => "sw",
+            Xlen::Rv64 => "sd",
+        }
+    }
+
+    /// Mnemonic for loading a whole register.
+    pub fn load_word(self) -> &'static str {
+        match self.xlen {
+            Xlen::Rv32 => "lw",
+            Xlen::Rv64 => "ld",
+        }
+    }
+
     /// ISA string, for diagnostics.
     pub fn isa_name(&self) -> String {
         let mut s = format!("rv{}i", self.xlen.bits());
@@ -101,6 +125,20 @@ mod tests {
     fn base_has_no_multiply() {
         assert!(!RiscVTarget::base(Xlen::Rv64).m);
         assert!(RiscVTarget::general(Xlen::Rv64).m);
+    }
+
+    #[test]
+    fn word_size_follows_xlen() {
+        let rv32 = RiscVTarget::general(Xlen::Rv32);
+        let rv64 = RiscVTarget::general(Xlen::Rv64);
+        assert_eq!(
+            (rv32.word_bytes(), rv32.store_word(), rv32.load_word()),
+            (4, "sw", "lw")
+        );
+        assert_eq!(
+            (rv64.word_bytes(), rv64.store_word(), rv64.load_word()),
+            (8, "sd", "ld")
+        );
     }
 
     #[test]

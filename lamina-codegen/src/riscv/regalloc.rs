@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::regalloc::{Allocation, LocalRegisterAllocator as MirRegisterAllocator};
+use crate::riscv::target::{RiscVTarget, Xlen};
 use lamina_mir::{Register, RegisterClass, VirtualReg};
 use lamina_platform::TargetOperatingSystem;
 
@@ -20,6 +21,7 @@ use lamina_platform::TargetOperatingSystem;
 /// The allocator uses a conservative subset until prologue/epilogue support
 /// covers every saved register.
 pub struct RiscVRegAlloc {
+    target: RiscVTarget,
     #[allow(dead_code)]
     target_os: TargetOperatingSystem,
     available_gprs: Vec<&'static str>,
@@ -52,7 +54,18 @@ impl RiscVRegAlloc {
     const AVAILABLE_REGISTERS: &'static [&'static str] = &["t1", "t2", "t3", "t4", "t5", "t6"];
 
     pub fn new(target_os: TargetOperatingSystem) -> Self {
+        Self::with_target(target_os, RiscVTarget::general(Xlen::Rv64))
+    }
+
+    /// The ISA this allocator is emitting for. Held here because every helper that needs
+    /// the word size already receives the allocator.
+    pub fn target(&self) -> RiscVTarget {
+        self.target
+    }
+
+    pub fn with_target(target_os: TargetOperatingSystem, target: RiscVTarget) -> Self {
         Self {
+            target,
             target_os,
             available_gprs: Self::AVAILABLE_REGISTERS.to_vec(),
             allocated_gprs: HashMap::new(),
