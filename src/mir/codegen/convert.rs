@@ -200,6 +200,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
     }
 
     let mut var_to_reg: HashMap<&'a str, Register> = HashMap::new();
+    let mut stack_allocs: HashSet<&'a str> = HashSet::new();
 
     for param in &f.signature.params {
         let class = reg_class_for_type(&param.ty);
@@ -231,7 +232,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
         let mut mir_block = Block::new(label);
 
         for instr in &ir_block.instructions {
-            match convert_instruction(instr, &mut vreg_alloc, &mut var_to_reg) {
+            match convert_instruction(instr, &mut vreg_alloc, &mut var_to_reg, &mut stack_allocs) {
                 Ok(mir_instrs) => {
                     for mir_instr in mir_instrs {
                         mir_block.push(mir_instr);
@@ -521,6 +522,7 @@ fn convert_instruction<'a>(
     instr: &IRInst<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut HashMap<&'a str, Register>,
+    stack_allocs: &mut HashSet<&'a str>,
 ) -> Result<Vec<Instruction>, FromIRError> {
     #[cfg(feature = "nightly")]
     fn ir_address_mode_to_mir<'b>(
@@ -1302,6 +1304,7 @@ fn convert_instruction<'a>(
 
             match alloc_type {
                 AllocType::Stack => {
+                    stack_allocs.insert(result);
                     let storage = Register::Virtual(vreg_alloc.allocate_gpr());
                     if let Some(sz) = sizeof_ir_type(allocated_ty) {
                         let slots_needed = sz.div_ceil(8) as usize;
@@ -1330,7 +1333,13 @@ fn convert_instruction<'a>(
             }
         }
         IRInst::Dealloc { ptr } => {
-            // Lower heap dealloc to a conventional call that backends can map
+            // dealloc.heap on a stack allocation is a no-op; passing a stack
+            // address to free() aborts.
+            if let IRVal::Variable(name) = ptr
+                && stack_allocs.contains(name)
+            {
+                return Ok(Vec::new());
+            }
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::Call {
                 name: "free".to_string(),
