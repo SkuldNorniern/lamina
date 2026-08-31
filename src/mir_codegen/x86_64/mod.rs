@@ -342,6 +342,23 @@ fn emit_instruction_x86_64(
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
     }
     match inst {
+        MirInst::Copy { ty, dst, src } => {
+            if matches!(ty, MirType::Vector(_)) {
+                return Err(LaminaError::ValidationError(format!(
+                    "x86_64 backend does not support vector Copy of type {ty}"
+                )));
+            }
+            load_copy_operand_to_rax(ty, src, writer, reg_alloc, stack_slots)?;
+            match dst {
+                Register::Virtual(vreg) => {
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
+                Register::Physical(phys) if phys.name != "rax" => {
+                    writeln!(writer, "    movq %rax, %{}", phys.name)?;
+                }
+                Register::Physical(_) => {}
+            }
+        }
         MirInst::IntBinary {
             op,
             dst,
@@ -1159,5 +1176,165 @@ fn load_insn_for(ty: &MirType) -> &'static str {
         2 => "movzwq (%rax), %rax",
         4 => "movl (%rax), %eax",
         _ => "movq (%rax), %rax",
+    }
+}
+
+fn load_copy_operand_to_rax(
+    ty: &MirType,
+    src: &Operand,
+    writer: &mut impl Write,
+    reg_alloc: &X64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    let size = ty.size_bytes();
+    match src {
+        Operand::Register(Register::Virtual(vreg)) => {
+            if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
+                emit_copy_register_load(writer, physical, size)?;
+            } else if let Some(offset) = stack_slots.get(vreg) {
+                match size {
+                    1 => writeln!(writer, "    movzbq {offset}(%rbp), %rax")?,
+                    2 => writeln!(writer, "    movzwq {offset}(%rbp), %rax")?,
+                    4 => writeln!(writer, "    movl {offset}(%rbp), %eax")?,
+                    _ => writeln!(writer, "    movq {offset}(%rbp), %rax")?,
+                }
+            } else {
+                return Err(LaminaError::ValidationError(format!(
+                    "Virtual register {vreg:?} has no mapping or stack slot"
+                )));
+            }
+        }
+        Operand::Register(Register::Physical(physical)) => {
+            emit_copy_register_load(writer, physical.name, size)?;
+        }
+        Operand::Immediate(immediate) => {
+            let bits = match immediate {
+                Immediate::I8(value) => *value as i64 as u64,
+                Immediate::I16(value) => *value as i64 as u64,
+                Immediate::I32(value) => *value as i64 as u64,
+                Immediate::I64(value) => *value as u64,
+                Immediate::F32(value) => u64::from(value.to_bits()),
+                Immediate::F64(value) => value.to_bits(),
+            };
+            if size <= 4 {
+                let mask = if size == 4 {
+                    u64::from(u32::MAX)
+                } else {
+                    (1u64 << (size * 8)) - 1
+                };
+                writeln!(writer, "    movl ${}, %eax", bits & mask)?;
+            } else {
+                writeln!(writer, "    movq ${}, %rax", bits as i64)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn emit_copy_register_load(
+    writer: &mut impl Write,
+    register: &str,
+    size: usize,
+) -> Result<(), LaminaError> {
+    let narrowed = x86_register_for_size(register, size).ok_or_else(|| {
+        LaminaError::ValidationError(format!(
+            "x86_64 backend cannot select a {size}-byte alias for register {register}"
+        ))
+    })?;
+    match size {
+        1 => writeln!(writer, "    movzbq %{narrowed}, %rax")?,
+        2 => writeln!(writer, "    movzwq %{narrowed}, %rax")?,
+        4 => writeln!(writer, "    movl %{narrowed}, %eax")?,
+        _ => writeln!(writer, "    movq %{narrowed}, %rax")?,
+    }
+    Ok(())
+}
+
+fn x86_register_for_size(register: &str, size: usize) -> Option<String> {
+    let alias = match (register, size) {
+        ("rax", 1) => "al".to_string(),
+        ("rax", 2) => "ax".to_string(),
+        ("rax", 4) => "eax".to_string(),
+        ("rbx", 1) => "bl".to_string(),
+        ("rbx", 2) => "bx".to_string(),
+        ("rbx", 4) => "ebx".to_string(),
+        ("rcx", 1) => "cl".to_string(),
+        ("rcx", 2) => "cx".to_string(),
+        ("rcx", 4) => "ecx".to_string(),
+        ("rdx", 1) => "dl".to_string(),
+        ("rdx", 2) => "dx".to_string(),
+        ("rdx", 4) => "edx".to_string(),
+        ("rsi", 1) => "sil".to_string(),
+        ("rsi", 2) => "si".to_string(),
+        ("rsi", 4) => "esi".to_string(),
+        ("rdi", 1) => "dil".to_string(),
+        ("rdi", 2) => "di".to_string(),
+        ("rdi", 4) => "edi".to_string(),
+        ("rbp", 1) => "bpl".to_string(),
+        ("rbp", 2) => "bp".to_string(),
+        ("rbp", 4) => "ebp".to_string(),
+        ("rsp", 1) => "spl".to_string(),
+        ("rsp", 2) => "sp".to_string(),
+        ("rsp", 4) => "esp".to_string(),
+        (name, 1)
+            if matches!(
+                name,
+                "r8" | "r9" | "r10" | "r11" | "r12" | "r13" | "r14" | "r15"
+            ) =>
+        {
+            format!("{name}b")
+        }
+        (name, 2)
+            if matches!(
+                name,
+                "r8" | "r9" | "r10" | "r11" | "r12" | "r13" | "r14" | "r15"
+            ) =>
+        {
+            format!("{name}w")
+        }
+        (name, 4)
+            if matches!(
+                name,
+                "r8" | "r9" | "r10" | "r11" | "r12" | "r13" | "r14" | "r15"
+            ) =>
+        {
+            format!("{name}d")
+        }
+        (name, 8) => name.to_string(),
+        _ => return None,
+    };
+    Some(alias)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{FunctionBuilder, ScalarType};
+
+    #[test]
+    fn float_copy_emits_bit_move_not_add() {
+        let ty = MirType::Scalar(ScalarType::F64);
+        let dst = Register::Virtual(VirtualReg::fpr(0));
+        let function = FunctionBuilder::new("copy_float")
+            .block("entry")
+            .instr(MirInst::Copy {
+                ty,
+                dst: dst.clone(),
+                src: Operand::Immediate(Immediate::F64(-0.0)),
+            })
+            .instr(MirInst::Ret { value: None })
+            .build();
+        let mut module = MirModule::new("copy_test");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_x86_64(&module, &mut output, TargetOperatingSystem::Linux)
+            .expect("x86_64 codegen should succeed");
+        let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
+
+        assert!(assembly.contains("movq"), "expected move: {assembly}");
+        assert!(
+            !assembly.contains("addsd"),
+            "unexpected float add: {assembly}"
+        );
     }
 }

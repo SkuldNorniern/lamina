@@ -225,7 +225,8 @@ impl DeadCodeElimination {
     fn has_no_side_effects(&self, instr: &Instruction) -> bool {
         match instr {
             // Pure arithmetic operations - safe to remove
-            Instruction::IntBinary { .. }
+            Instruction::Copy { .. }
+            | Instruction::IntBinary { .. }
             | Instruction::FloatBinary { .. }
             | Instruction::FloatUnary { .. }
             | Instruction::IntCmp { .. }

@@ -1,8 +1,7 @@
 //! Memory optimization transforms for MIR.
 
-use crate::mir::instruction::Immediate;
 use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::{AddressMode, Function, Instruction, IntBinOp, Operand, Register};
+use crate::mir::{AddressMode, Function, Instruction, Operand, Register};
 use std::collections::HashMap;
 
 /// Memory optimization transform performing redundant load elimination.
@@ -79,23 +78,19 @@ impl MemoryOptimization {
                             let key = (base.clone(), *offset);
                             if let Some(stored_val) = last_store.get(&key) {
                                 // store-to-load forwarding: replace load with a copy of stored_val
-                                replacement = Some(Instruction::IntBinary {
-                                    op: IntBinOp::Add,
+                                replacement = Some(Instruction::Copy {
                                     ty: *ty,
                                     dst: dst.clone(),
-                                    lhs: stored_val.clone(),
-                                    rhs: Operand::Immediate(Immediate::I64(0)),
+                                    src: stored_val.clone(),
                                 });
                                 // record latest load destination
                                 last_load.insert(key, dst.clone());
                             } else if let Some(prev_reg) = last_load.get(&key) {
                                 // Redundant load: reuse previous loaded register
-                                replacement = Some(Instruction::IntBinary {
-                                    op: IntBinOp::Add,
+                                replacement = Some(Instruction::Copy {
                                     ty: *ty,
                                     dst: dst.clone(),
-                                    lhs: Operand::Register(prev_reg.clone()),
-                                    rhs: Operand::Immediate(Immediate::I64(0)),
+                                    src: Operand::Register(prev_reg.clone()),
                                 });
                                 // record latest load destination
                                 last_load.insert(key, dst.clone());
@@ -133,8 +128,8 @@ mod tests {
     use super::*;
     use crate::mir::transform::test_utils::apply_pass;
     use crate::mir::{
-        AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
-        ScalarType, VirtualReg,
+        AddressMode, FunctionBuilder, Immediate, MemoryAttrs, MirType, Operand, ScalarType,
+        VirtualReg,
     };
 
     fn i64() -> MirType {
@@ -189,13 +184,7 @@ mod tests {
         assert!(changed, "second load should have been replaced");
         let entry = func.get_block("entry").unwrap();
         let second = &entry.instructions[1];
-        assert!(matches!(
-            second,
-            Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ..
-            }
-        ));
+        assert!(matches!(second, Instruction::Copy { .. }));
     }
 
     #[test]
@@ -230,13 +219,7 @@ mod tests {
             "load after store to same address should be forwarded"
         );
         let entry = func.get_block("entry").unwrap();
-        assert!(matches!(
-            &entry.instructions[1],
-            Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ..
-            }
-        ));
+        assert!(matches!(&entry.instructions[1], Instruction::Copy { .. }));
     }
 
     #[test]
