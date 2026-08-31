@@ -126,9 +126,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut inlined_count = 0;
             if options.opt_level >= 2 {
                 let inliner = ModuleInlining::new();
-                if let Ok(count) = inliner.inline_functions(&mut mir_mod) {
-                    inlined_count = count;
-                }
+                inlined_count = inliner
+                    .inline_functions(&mut mir_mod)
+                    .map_err(|e| format!("MIR inlining failed: {e}"))?;
             }
 
             if options.verbose {

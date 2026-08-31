@@ -1292,7 +1292,7 @@ mod tests {
         assert_eq!(copy.def_reg(), Some(&dst));
         assert_eq!(copy.use_regs(), vec![&src]);
         assert!(!copy.is_terminator());
-        assert_eq!(format!("{copy}"), "%f0 = copy.f64 %f1");
+        assert_eq!(format!("{copy}"), "v0 = copy.f64 v1");
     }
 
     #[test]

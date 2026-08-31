@@ -868,6 +868,7 @@ mod tests {
         let v0 = VirtualReg::gpr(0);
         let v2 = VirtualReg::gpr(2);
         let f = FunctionBuilder::new("add_fn")
+            .param(Register::Virtual(v0), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntBinary {
@@ -893,6 +894,7 @@ mod tests {
         let mut m = MirModule::new("test_ppc64_cf");
         let cond = VirtualReg::gpr(0);
         let f = FunctionBuilder::new("cf_fn")
+            .param(Register::Virtual(cond), MirType::Scalar(ScalarType::I1))
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::Br {

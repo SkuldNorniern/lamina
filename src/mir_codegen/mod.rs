@@ -242,6 +242,7 @@ pub enum CodegenError {
     InvalidTypes(Vec<String>),
     InvalidGlobals(Vec<String>),
     InvalidFuncs(Vec<String>),
+    InvalidMir(Vec<String>),
 }
 
 impl fmt::Display for CodegenError {
@@ -267,6 +268,9 @@ impl fmt::Display for CodegenError {
             CodegenError::InvalidTypes(types) => write!(f, "Invalid types: {types:?}"),
             CodegenError::InvalidGlobals(globals) => write!(f, "Invalid globals: {globals:?}"),
             CodegenError::InvalidFuncs(funcs) => write!(f, "Invalid functions: {funcs:?}"),
+            CodegenError::InvalidMir(errors) => {
+                write!(f, "Invalid MIR: {}", errors.join("; "))
+            }
         }
     }
 }
