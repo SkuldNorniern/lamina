@@ -21,7 +21,23 @@ jobs:
       - name: Build
         run: cargo build --release --verbose
       - name: Test
-        run: cargo test --verbose
+        run: cargo test --workspace --verbose
+
+      # The macOS lib test binary exits with SIGSEGV after every test passes, so the
+      # fault is in teardown and no test name identifies it. Capture the crash report
+      # and a backtrace so the next run says where.
+      - name: Crash report
+        if: failure() && runner.os == 'macOS'
+        run: |
+          sleep 5
+          for f in ~/Library/Logs/DiagnosticReports/*.ips; do
+            [ -e "$f" ] || continue
+            echo "=== $f ==="
+            cat "$f"
+          done
+          bin=$(ls -t target/debug/deps/lamina-* | grep -v '\.d$' | head -1)
+          echo "=== lldb backtrace: $bin ==="
+          lldb --batch -o run -o 'bt all' -o quit -- "$bin" --test-threads=1 2>&1 | tail -60
 
   # Compiles each program in testcases/, runs it, and diffs against its .expected
   # file. This is the only job that checks the compiler produces correct programs
