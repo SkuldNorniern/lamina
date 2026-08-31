@@ -211,6 +211,31 @@ fn compile_single_function_riscv(
     RiscVFrame::generate_prologue(&mut output, stack_size)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
+    // Copy incoming arguments into their stack slots. Without this the callee reads an
+    // uninitialised slot, because nothing else ever writes a0-a7 into the frame.
+    if !func.sig.params.is_empty() {
+        let arg_regs = RiscVAbi::ARG_REGISTERS;
+        for (index, param) in func.sig.params.iter().enumerate() {
+            let Register::Virtual(vreg) = &param.reg else {
+                continue;
+            };
+            let Some(slot_off) = stack_slots.get(vreg) else {
+                continue;
+            };
+            if index < arg_regs.len() {
+                writeln!(output, "    sd {}, {slot_off}(fp)", arg_regs[index])
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+            } else {
+                // fp is the caller's sp, so arguments past a7 start there and go up.
+                let caller_off = (index - arg_regs.len()) as i32 * 8;
+                writeln!(output, "    ld t0, {caller_off}(fp)")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                writeln!(output, "    sd t0, {slot_off}(fp)")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+            }
+        }
+    }
+
     let mut debug_line: u32 = 0;
     let entry_block = func.entry_block().ok_or_else(|| {
         CodegenError::InvalidFuncs(vec![format!(
@@ -892,6 +917,47 @@ fn copy_store_mnemonic(ty: &MirType) -> &'static str {
 mod tests {
     use super::*;
     use crate::mir::FunctionBuilder;
+
+    #[test]
+    fn incoming_arguments_are_stored_into_their_slots() {
+        // Nothing else writes a0-a7 into the frame, so without this store the callee
+        // loads whatever the slot happened to hold.
+        let ty = MirType::Scalar(ScalarType::I64);
+        let p0 = Register::Virtual(VirtualReg::gpr(0));
+        let p1 = Register::Virtual(VirtualReg::gpr(1));
+        let sum = Register::Virtual(VirtualReg::gpr(2));
+        let function = FunctionBuilder::new("add_two")
+            .param(p0.clone(), ty)
+            .param(p1.clone(), ty)
+            .returns(ty)
+            .block("entry")
+            .instr(MirInst::IntBinary {
+                op: IntBinOp::Add,
+                ty,
+                dst: sum.clone(),
+                lhs: Operand::Register(p0),
+                rhs: Operand::Register(p1),
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(sum)),
+            })
+            .build();
+        let mut module = MirModule::new("param_test");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_riscv(&module, &mut output, TargetOperatingSystem::Linux)
+            .expect("RISC-V codegen should succeed");
+        let asm = String::from_utf8(output).expect("assembly should be UTF-8");
+
+        // Look between the function label and its first block label.
+        let body = asm.split("add_two:").nth(1).expect("function label");
+        let prologue_end = body.find(".L_").unwrap_or(body.len());
+        let prologue = &body[..prologue_end];
+        assert!(
+            prologue.contains("sd a0,") && prologue.contains("sd a1,"),
+            "arguments were never stored, prologue was:\n{prologue}"
+        );
+    }
 
     #[test]
     fn float_copy_emits_bit_move_not_add() {
