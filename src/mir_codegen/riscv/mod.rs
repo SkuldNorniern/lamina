@@ -215,8 +215,6 @@ fn compile_single_function_riscv(
     RiscVFrame::generate_prologue(&mut output, stack_size, &callee_saved_registers, target)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
-    // Copy incoming arguments into their stack slots. Without this the callee reads an
-    // uninitialised slot, because nothing else ever writes a0-a7 into the frame.
     if !func.sig.params.is_empty() {
         let arg_regs = RiscVAbi::ARG_REGISTERS;
         for (index, param) in func.sig.params.iter().enumerate() {
@@ -241,7 +239,7 @@ fn compile_single_function_riscv(
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 }
             } else {
-                // fp is the caller's sp, so arguments past a7 start there and go up.
+                // fp is the caller's sp, so stack args start there and go up.
                 let caller_off = (index - arg_regs.len()) as i32 * target.word_bytes();
                 writeln!(output, "    {} t0, {caller_off}(fp)", target.load_word())
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
@@ -1032,9 +1030,6 @@ fn emit_instruction_riscv<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
             }
             // If condition is zero (false), replace a0 with a1.
-            // A sequence number, not the operand address. Formatting `{cond:p}` put a
-            // runtime pointer in the symbol, so the same input assembled to different
-            // text on every run.
             let sel = ctx.label_seq;
             ctx.label_seq = ctx.label_seq.saturating_add(1);
             writeln!(writer, "    bnez t0, .L_{func_name}_sel_{sel}")?;
@@ -1157,8 +1152,6 @@ mod tests {
 
     #[test]
     fn rv32_uses_word_memory_ops_not_doubleword() {
-        // sd and ld have no rv32 encoding. The emitter used them whatever the target,
-        // so riscv32 got rv64 code.
         let ty = MirType::Scalar(ScalarType::I32);
         let a = Register::Virtual(VirtualReg::gpr(0));
         let b = Register::Virtual(VirtualReg::gpr(1));
@@ -1364,8 +1357,6 @@ mod tests {
 
     #[test]
     fn base_isa_rejects_multiply_instead_of_emitting_it() {
-        // mul is M-extension. Emitting it for an rv64i target produced an instruction
-        // the core cannot execute, with nothing to say so.
         let ty = MirType::Scalar(ScalarType::I64);
         let dst = Register::Virtual(VirtualReg::gpr(0));
         let function = FunctionBuilder::new("times")
@@ -1399,7 +1390,6 @@ mod tests {
         assert!(msg.contains("M extension"), "unhelpful message: {msg}");
         assert!(msg.contains("rv64i"), "message should name the ISA: {msg}");
 
-        // The same module is fine on rv64g.
         let mut out = Vec::new();
         generate_mir_riscv_with_units_and_settings(
             &module,
@@ -1415,9 +1405,7 @@ mod tests {
 
     #[test]
     fn block_labels_are_unique_across_functions() {
-        // Both functions have a block called "entry". Unqualified labels made that a
-        // duplicate symbol in one object; arithmetic.lamina emitted `.L_entry:` three
-        // times.
+        // Both functions have a block called "entry".
         let ty = MirType::Scalar(ScalarType::I64);
         let mut module = MirModule::new("label_test");
         for name in ["first", "second"] {
@@ -1455,8 +1443,6 @@ mod tests {
 
     #[test]
     fn incoming_arguments_are_stored_into_their_slots() {
-        // Nothing else writes a0-a7 into the frame, so without this store the callee
-        // loads whatever the slot happened to hold.
         let ty = MirType::Scalar(ScalarType::I64);
         let p0 = Register::Virtual(VirtualReg::gpr(0));
         let p1 = Register::Virtual(VirtualReg::gpr(1));
@@ -1484,7 +1470,6 @@ mod tests {
             .expect("RISC-V codegen should succeed");
         let asm = String::from_utf8(output).expect("assembly should be UTF-8");
 
-        // Look between the function label and its first block label.
         let body = asm.split("add_two:").nth(1).expect("function label");
         let prologue_end = body.find(".L_").unwrap_or(body.len());
         let prologue = &body[..prologue_end];

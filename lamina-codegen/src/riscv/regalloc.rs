@@ -189,10 +189,6 @@ impl MirRegisterAllocator for RiscVRegAlloc {
     type PhysReg = &'static str;
 
     fn alloc_scratch(&mut self) -> Option<Self::PhysReg> {
-        // None when the pool is exhausted. Returning the first register regardless, as
-        // this used to, handed out one that was already live; `ensure_mapping` then
-        // overwrote the previous owner's mapping and two values shared a register. None
-        // instead reaches the spill path that is already there.
         self.available_gprs
             .iter()
             .copied()
@@ -276,8 +272,6 @@ mod tests {
 
     #[test]
     fn pool_is_written_in_abi_names() {
-        // The emitter says `a0`; the pool used to say `x10`. Same register, two
-        // spellings, so a clash between them was invisible.
         for reg in RiscVRegAlloc::AVAILABLE_REGISTERS {
             assert!(
                 !reg.starts_with('x'),
@@ -349,8 +343,6 @@ mod tests {
             alloc.allocated_gprs.insert(phys, VirtualReg::gpr(i as u32));
             handed_out.push(phys);
         }
-        // Previously this returned the first register again, and the caller overwrote
-        // whichever value already held it.
         assert_eq!(alloc.alloc_scratch(), None);
     }
 }
