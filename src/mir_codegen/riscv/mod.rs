@@ -785,6 +785,9 @@ fn emit_instruction_riscv<W: Write>(
             ty,
         } => {
             let is_f32 = ty.size_bytes() == 4;
+            ctx.target
+                .require_float(is_f32)
+                .map_err(|e| LaminaError::ValidationError(format!("{:?}: {e}", op)))?;
             let suffix = if is_f32 { "s" } else { "d" };
 
             // Load operands to floating-point registers
@@ -830,6 +833,9 @@ fn emit_instruction_riscv<W: Write>(
             ty,
         } => {
             let is_f32 = ty.size_bytes() == 4;
+            ctx.target
+                .require_float(is_f32)
+                .map_err(|e| LaminaError::ValidationError(format!("{op:?}: {e}")))?;
             let suffix = if is_f32 { "s" } else { "d" };
 
             // Load operands to floating-point registers

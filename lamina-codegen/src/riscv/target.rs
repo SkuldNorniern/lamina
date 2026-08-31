@@ -99,6 +99,22 @@ impl RiscVTarget {
         }
     }
 
+    /// Check the float extension a width needs is present.
+    ///
+    /// F covers f32, D covers f64. Emitting `fadd.d` on a target without D produces an
+    /// instruction the core traps on.
+    pub fn require_float(self, is_f32: bool) -> Result<(), String> {
+        let (have, needs) = if is_f32 { (self.f, 'F') } else { (self.d, 'D') };
+        if have {
+            return Ok(());
+        }
+        Err(format!(
+            "needs the {needs} extension, but the target is {}. Select an ISA with \
+             {needs} or lower the operation to soft float before codegen.",
+            self.isa_name()
+        ))
+    }
+
     /// ISA string, for diagnostics.
     pub fn isa_name(&self) -> String {
         let mut s = format!("rv{}i", self.xlen.bits());
@@ -125,6 +141,28 @@ mod tests {
     fn base_has_no_multiply() {
         assert!(!RiscVTarget::base(Xlen::Rv64).m);
         assert!(RiscVTarget::general(Xlen::Rv64).m);
+    }
+
+    #[test]
+    fn float_widths_need_their_extension() {
+        let base = RiscVTarget::base(Xlen::Rv64);
+        assert!(base.require_float(true).is_err(), "rv64i has no F");
+        assert!(base.require_float(false).is_err(), "rv64i has no D");
+
+        let g = RiscVTarget::general(Xlen::Rv64);
+        assert!(g.require_float(true).is_ok());
+        assert!(g.require_float(false).is_ok());
+
+        let f_only = RiscVTarget {
+            f: true,
+            ..RiscVTarget::base(Xlen::Rv32)
+        };
+        assert!(f_only.require_float(true).is_ok(), "F covers f32");
+        let err = f_only
+            .require_float(false)
+            .expect_err("F does not cover f64");
+        assert!(err.contains('D'), "message should name D: {err}");
+        assert!(err.contains("rv32if"), "message should name the ISA: {err}");
     }
 
     #[test]
