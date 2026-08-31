@@ -23,6 +23,7 @@ pub mod module;
 pub mod register;
 pub mod simd;
 pub mod types;
+pub mod verify;
 
 // Re-exports for convenience
 pub use block::Block;
@@ -41,3 +42,6 @@ pub use simd::{
     vector_alignment, vector_size_bytes,
 };
 pub use types::{MirType, ScalarType, VectorLane, VectorType};
+pub use verify::{
+    verify_function, verify_function_in_pipeline, verify_module, verify_module_in_pipeline,
+};

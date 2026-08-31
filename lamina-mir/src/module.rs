@@ -5,6 +5,7 @@
 use crate::function::Function;
 use crate::instruction::Instruction;
 use crate::types::MirType;
+use crate::verify::{function_errors, verify_module_in_pipeline};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
@@ -131,12 +132,37 @@ impl Module {
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors = Vec::new();
 
-        // Validate all functions
-        for (name, func) in &self.functions {
-            if let Err(e) = func.validate() {
-                errors.push(format!("Function '{name}': {e}"));
-            }
+        for func in self.functions.values() {
+            errors.extend(function_errors(func));
         }
+
+        errors.extend(self.module_errors());
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
+    /// Validate a module at compiler pipeline boundaries.
+    #[doc(hidden)]
+    pub fn validate_in_pipeline(&self) -> Result<(), Vec<String>> {
+        let mut errors = match verify_module_in_pipeline(self) {
+            Ok(()) => Vec::new(),
+            Err(errors) => errors,
+        };
+        errors.extend(self.module_errors());
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
+    fn module_errors(&self) -> Vec<String> {
+        let mut errors = Vec::new();
 
         // Check for duplicate function/global names
         for func_name in self.functions.keys() {
@@ -148,12 +174,7 @@ impl Module {
         }
 
         errors.extend(self.validate_internal_call_arities());
-
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
+        errors
     }
 
     /// [`Call`](Instruction::Call) / [`TailCall`](Instruction::TailCall) arity vs in-module callee signatures.
@@ -161,7 +182,7 @@ impl Module {
         let mut out = Vec::new();
         for (caller_name, caller) in &self.functions {
             for block in &caller.blocks {
-                for inst in &block.instructions {
+                for (instruction_index, inst) in block.instructions.iter().enumerate() {
                     let (op, callee_name, argc) = match inst {
                         Instruction::Call { name, args, .. } => ("call", name.as_str(), args.len()),
                         Instruction::TailCall { name, args } => {
@@ -173,7 +194,8 @@ impl Module {
                         let expected = callee.sig.params.len();
                         if argc != expected {
                             out.push(format!(
-                                "Function '{caller_name}' {op} '{callee_name}' with {argc} args but callee expects {expected}"
+                                "function '{caller_name}', block '{}': instruction {instruction_index}: expected {op} '{callee_name}' to have {expected} arguments, found {argc}",
+                                block.label
                             ));
                         }
                     }

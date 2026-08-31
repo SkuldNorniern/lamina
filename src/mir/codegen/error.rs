@@ -20,6 +20,8 @@ pub enum FromIRError {
     UnknownVariable,
     /// print with string literal is not supported; use writebyte for portable output.
     PrintStringLiteralUnsupported,
+    /// Lowering produced MIR that failed verification.
+    InvalidMir(Vec<String>),
 }
 
 impl fmt::Display for FromIRError {
@@ -48,6 +50,9 @@ impl fmt::Display for FromIRError {
                 f,
                 "print with string literal is not supported. Use writebyte in a loop for portable output. See docs/OUTPUT_SEMANTICS.md"
             ),
+            FromIRError::InvalidMir(errors) => {
+                write!(f, "lowering produced invalid MIR: {}", errors.join("; "))
+            }
         }
     }
 }

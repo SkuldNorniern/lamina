@@ -178,6 +178,11 @@ impl ModuleInlining {
             });
         }
 
+        if cfg!(debug_assertions) {
+            module
+                .validate_in_pipeline()
+                .map_err(|errors| TransformError::VerificationFailed { errors })?;
+        }
         Ok(inlined_count)
     }
 
@@ -981,14 +986,14 @@ mod tests {
         //   jmp exit
         // exit:
         //   ret v0
-        let mut callee = FunctionBuilder::new("callee")
+        let callee = FunctionBuilder::new("callee")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
-                dst: VirtualReg::gpr(0).into(),
+                dst: VirtualReg::gpr(1).into(),
                 lhs: Operand::Register(VirtualReg::gpr(0).into()), // p0 is v0 (param 0)
                 rhs: Operand::Immediate(Immediate::I64(1)),
             })
@@ -997,11 +1002,9 @@ mod tests {
             })
             .block("exit")
             .instr(Instruction::Ret {
-                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
             })
             .build();
-        // Fix param reg
-        callee.sig.params[0].reg = VirtualReg::gpr(0).into();
 
         module.add_function(callee);
 
