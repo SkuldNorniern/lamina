@@ -1333,7 +1333,7 @@ fn convert_instruction<'a>(
             // Lower heap dealloc to a conventional call that backends can map
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::Call {
-                name: "dealloc".to_string(),
+                name: "free".to_string(),
                 args: vec![p],
                 ret: None,
             }])
