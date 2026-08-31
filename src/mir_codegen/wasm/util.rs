@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::io::Write;
-use std::result::Result;
 
 use crate::error::LaminaError;
 use crate::mir::{
