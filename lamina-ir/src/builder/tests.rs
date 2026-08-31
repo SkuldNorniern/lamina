@@ -1,15 +1,16 @@
 #[cfg(test)]
 #[allow(clippy::module_inception)]
 mod tests {
-    use crate::builder::IRBuilder;
-    use crate::builder::values::*;
-    use crate::function::FunctionAnnotation;
     #[cfg(feature = "nightly")]
     use crate::instruction::SimdOp;
-    use crate::instruction::{AllocType, BinaryOp, CmpOp, Instruction};
     #[cfg(feature = "nightly")]
     use crate::module::ModuleAnnotation;
-    use crate::types::{Literal, PrimitiveType, StructField, Type};
+    use crate::{
+        builder::{IRBuilder, values::*},
+        function::FunctionAnnotation,
+        instruction::{AllocType, BinaryOp, CmpOp, Instruction},
+        types::{Literal, PrimitiveType, StructField, Type},
+    };
     #[cfg(feature = "nightly")]
     use std::f32::consts::PI;
 

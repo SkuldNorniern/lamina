@@ -1,11 +1,11 @@
 //! Common Subexpression Elimination (CSE) transform for MIR.
 
-use crate::mir::transform::{
-    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
-    compute_back_edge_headers,
-};
 use crate::mir::{
     Block, FloatBinOp, Function, Instruction, IntBinOp, MirType, Operand, Register, ScalarType,
+    transform::{
+        Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+        compute_back_edge_headers,
+    },
 };
 use std::collections::{HashMap, HashSet};
 
@@ -244,8 +244,10 @@ impl CommonSubexpressionElimination {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::get_block;
-    use crate::mir::{FloatCmpOp, FunctionBuilder, Immediate, IntBinOp, ScalarType, VirtualReg};
+    use crate::mir::{
+        FloatCmpOp, FunctionBuilder, Immediate, IntBinOp, ScalarType, VirtualReg,
+        transform::test_utils::get_block,
+    };
 
     #[test]
     fn test_cse_empty_function() {

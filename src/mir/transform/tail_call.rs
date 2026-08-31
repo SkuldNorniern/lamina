@@ -1,9 +1,11 @@
 //! Tail call optimization transform for MIR.
 
-use crate::mir::function::Signature;
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::types::{MirType, ScalarType};
-use crate::mir::{Block, Function, Immediate, Instruction, Operand, Register};
+use crate::mir::{
+    Block, Function, Immediate, Instruction, Operand, Register,
+    function::Signature,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+    types::{MirType, ScalarType},
+};
 
 /// Tail call optimization that converts tail calls into jumps.
 ///

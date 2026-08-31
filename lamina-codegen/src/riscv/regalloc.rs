@@ -1,8 +1,12 @@
 use std::collections::HashMap;
 
-use crate::regalloc::{Allocation, LocalRegisterAllocator as MirRegisterAllocator};
-use crate::riscv::frame::RiscVFrame;
-use crate::riscv::target::{RiscVTarget, Xlen};
+use crate::{
+    regalloc::{Allocation, LocalRegisterAllocator as MirRegisterAllocator},
+    riscv::{
+        frame::RiscVFrame,
+        target::{RiscVTarget, Xlen},
+    },
+};
 use lamina_mir::{Register, RegisterClass, VirtualReg};
 use lamina_platform::TargetOperatingSystem;
 

@@ -1,11 +1,11 @@
 //! Function inlining transforms for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{
-    AddressMode, Block, Function, Instruction, Module, Operand, Register, RegisterClass, VirtualReg,
+    AddressMode, Block, Function, Instruction, Module, Operand, Register, RegisterClass,
+    VirtualReg,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
-use std::cell::Cell;
-use std::collections::HashMap;
+use std::{cell::Cell, collections::HashMap};
 
 /// Function-level inlining transform.
 ///

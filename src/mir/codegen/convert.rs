@@ -11,16 +11,22 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::ir::Module as IRModule;
-use crate::ir::function::{Function as IRFunction, FunctionAnnotation};
-use crate::ir::instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst};
-use crate::ir::types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
-use crate::mir::codegen::error::FromIRError;
-use crate::mir::codegen::mapping::{map_ir_prim, map_ir_type};
-use crate::mir::{
-    AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction,
-    Instruction as MirInst, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter,
-    Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
+use crate::{
+    ir::{
+        Module as IRModule,
+        function::{Function as IRFunction, FunctionAnnotation},
+        instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst},
+        types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal},
+    },
+    mir::{
+        AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction,
+        Instruction as MirInst, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand,
+        Parameter, Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
+        codegen::{
+            error::FromIRError,
+            mapping::{map_ir_prim, map_ir_type},
+        },
+    },
 };
 
 #[cfg(feature = "nightly")]
@@ -1495,9 +1501,13 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::ir::builder::{i64 as ir_i64, string, var};
-    use crate::ir::{FunctionParameter, IRBuilder};
-    use crate::parser::parse_module;
+    use crate::{
+        ir::{
+            FunctionParameter, IRBuilder,
+            builder::{i64 as ir_i64, string, var},
+        },
+        parser::parse_module,
+    };
 
     #[test]
     fn test_from_ir_simple_add() {

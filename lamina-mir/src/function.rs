@@ -2,11 +2,10 @@
 //!
 //! This module defines the structures for representing functions in LUMIR,
 //! including function signatures, parameters, and basic blocks.
-use crate::block::Block;
-use crate::instruction::Instruction;
-use crate::register::Register;
-use crate::types::MirType;
-use crate::verify::verify_function;
+use crate::{
+    block::Block, instruction::Instruction, register::Register, types::MirType,
+    verify::verify_function,
+};
 use std::fmt;
 
 /// Function parameter
@@ -216,9 +215,11 @@ impl FunctionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::instruction::{Instruction, IntBinOp, Operand};
-    use crate::register::VirtualReg;
-    use crate::types::ScalarType;
+    use crate::{
+        instruction::{Instruction, IntBinOp, Operand},
+        register::VirtualReg,
+        types::ScalarType,
+    };
 
     #[test]
     fn test_signature_creation() {

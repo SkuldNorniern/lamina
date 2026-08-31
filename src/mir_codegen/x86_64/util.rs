@@ -1,12 +1,16 @@
 //! Utility functions for x86_64 code generation.
 
-use std::collections::HashMap;
-use std::io::{Error, ErrorKind, Write};
+use std::{
+    collections::HashMap,
+    io::{Error, ErrorKind, Write},
+};
 
-use crate::mir::Operand;
-use crate::mir::instruction::Immediate;
-use crate::mir::register::{Register, VirtualReg};
-use crate::mir::types::{MirType, ScalarType};
+use crate::mir::{
+    Operand,
+    instruction::Immediate,
+    register::{Register, VirtualReg},
+    types::{MirType, ScalarType},
+};
 use lamina_codegen::LocalRegisterAllocator;
 
 /// Whether a MirType is a 32-bit float (`f32`).

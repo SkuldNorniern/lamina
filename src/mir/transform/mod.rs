@@ -472,9 +472,11 @@ pub(crate) mod test_utils {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::instruction::{Immediate, Instruction, IntBinOp, Operand};
-    use crate::mir::register::Register;
-    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
+    use crate::mir::{
+        FunctionBuilder, MirType, ScalarType, VirtualReg,
+        instruction::{Immediate, Instruction, IntBinOp, Operand},
+        register::Register,
+    };
 
     #[test]
     fn test_transform_pipeline_empty() {

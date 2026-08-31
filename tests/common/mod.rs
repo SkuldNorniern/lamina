@@ -1,8 +1,6 @@
 #![allow(clippy::expect_used)]
 
-use std::env::consts::EXE_SUFFIX;
-use std::path::PathBuf;
-use std::process::Command;
+use std::{env::consts::EXE_SUFFIX, path::PathBuf, process::Command};
 
 pub fn run_lamina_benchmark(
     bench_dir: &str,

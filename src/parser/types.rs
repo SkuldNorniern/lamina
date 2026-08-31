@@ -1,11 +1,12 @@
 //! Type parsing for Lamina IR.
 
-use std::collections::HashSet;
-use std::iter;
+use std::{collections::HashSet, iter};
 
-use crate::LaminaError;
-use crate::ir::{PrimitiveType, StructField, Type, TypeDeclaration};
-use crate::parser::state::ParserState;
+use crate::{
+    LaminaError,
+    ir::{PrimitiveType, StructField, Type, TypeDeclaration},
+    parser::state::ParserState,
+};
 
 /// Parses a type declaration.
 pub fn parse_type_declaration<'a>(

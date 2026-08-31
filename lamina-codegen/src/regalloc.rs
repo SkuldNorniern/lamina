@@ -1,6 +1,8 @@
 use lamina_mir::{AddressMode, Function, Instruction, Operand, Register, VirtualReg};
-use std::collections::{HashMap, HashSet};
-use std::hash::Hash;
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+};
 
 /// Opaque handle that allows dynamic dispatch over register allocators without
 /// leaking architecture-specific physical register types.

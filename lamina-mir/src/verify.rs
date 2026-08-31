@@ -1,7 +1,9 @@
 //! Structural, SSA, dominance, and type verification for MIR.
 
-use crate::{Function, Immediate, Instruction, MirType, Module, Operand, Register, RegisterClass};
-use crate::{ScalarType, VectorType};
+use crate::{
+    Function, Immediate, Instruction, MirType, Module, Operand, Register, RegisterClass,
+    ScalarType, VectorType,
+};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy)]

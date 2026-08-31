@@ -1,11 +1,15 @@
 //! Utility functions for PowerPC64 code generation.
 
-use std::collections::HashMap;
-use std::io::{Error, ErrorKind, Write};
+use std::{
+    collections::HashMap,
+    io::{Error, ErrorKind, Write},
+};
 
-use crate::mir::Operand;
-use crate::mir::instruction::Immediate;
-use crate::mir::register::{Register, VirtualReg};
+use crate::mir::{
+    Operand,
+    instruction::Immediate,
+    register::{Register, VirtualReg},
+};
 use lamina_codegen::LocalRegisterAllocator as RegisterAllocator;
 
 /// Load a virtual register into GPR `r3` (the primary scratch/return reg).

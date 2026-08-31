@@ -23,12 +23,12 @@ mod tests;
 
 use std::collections::HashMap;
 
-use crate::function::{
-    BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
+use crate::{
+    function::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
+    instruction::Instruction,
+    module::Module,
+    types::Type,
 };
-use crate::instruction::Instruction;
-use crate::module::Module;
-use crate::types::Type;
 
 // Re-export value factory functions
 pub use values::*;
