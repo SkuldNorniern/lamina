@@ -115,6 +115,17 @@ impl RiscVTarget {
         ))
     }
 
+    pub fn require_i64(self) -> Result<(), String> {
+        if self.xlen == Xlen::Rv64 {
+            return Ok(());
+        }
+        Err(format!(
+            "type i64 is not supported on target {}. An i64 needs two rv32 registers or two \
+             words of spill storage; lower it to a register pair before codegen.",
+            self.isa_name()
+        ))
+    }
+
     /// ISA string, for diagnostics.
     pub fn isa_name(&self) -> String {
         let mut s = format!("rv{}i", self.xlen.bits());
@@ -177,6 +188,18 @@ mod tests {
             (rv64.word_bytes(), rv64.store_word(), rv64.load_word()),
             (8, "sd", "ld")
         );
+    }
+
+    #[test]
+    fn i64_requires_rv64() {
+        let result = RiscVTarget::general(Xlen::Rv32).require_i64();
+        assert!(result.is_err(), "rv32 cannot hold i64 in one register");
+        let Err(error) = result else {
+            return;
+        };
+        assert!(error.contains("i64"));
+        assert!(error.contains("rv32imafd"));
+        assert!(RiscVTarget::general(Xlen::Rv64).require_i64().is_ok());
     }
 
     #[test]
