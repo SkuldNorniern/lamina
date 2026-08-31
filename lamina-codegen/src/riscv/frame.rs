@@ -33,8 +33,7 @@ impl RiscVFrame {
         callee_saved_registers: &[&str],
         target: RiscVTarget,
     ) -> Result<(), Error> {
-        // Reserve 16 either way, because both ABIs want sp 16-byte aligned. On rv32 the
-        // pair only fills the top 8 bytes of that and the rest is padding.
+        // 16 either way: both ABIs want sp 16-byte aligned.
         let w = target.word_bytes();
         let sw = target.store_word();
         writeln!(writer, "    addi sp, sp, -{SAVED_PAIR_BYTES}")?;
@@ -127,7 +126,6 @@ mod tests {
     #[test]
     fn locals_never_land_on_the_saved_pair() {
         let rv64 = RiscVTarget::general(Xlen::Rv64);
-        // fp-8 holds ra and fp-16 holds the caller's fp, so no local may sit there.
         for slot in 0..8 {
             let off = RiscVFrame::calculate_stack_offset(slot, rv64);
             assert!(off <= -24, "slot {slot} at fp{off} overlaps the saved pair");
@@ -139,7 +137,6 @@ mod tests {
 
     #[test]
     fn locals_area_keeps_sp_16_byte_aligned() {
-        // Callers pass slots * 8, so an odd count would misalign sp for the whole call.
         let rv64 = RiscVTarget::general(Xlen::Rv64);
         assert_eq!(RiscVFrame::locals_bytes(0, &[], rv64), 0);
         assert_eq!(RiscVFrame::locals_bytes(8, &[], rv64), 16);
