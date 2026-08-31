@@ -7,7 +7,7 @@
 
 use crate::mir::instruction::Immediate;
 use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::{Function, Instruction, IntBinOp, Operand};
+use crate::mir::{Function, Instruction, IntBinOp, MirType, Operand, ScalarType};
 use std::collections::{HashMap, HashSet};
 
 /// Identify loop headers via back-edge detection (target block index ≤ source block index).
@@ -136,14 +136,19 @@ impl CfgSimplify {
                         *instr = Instruction::Jmp { target };
                         changed = true;
                     }
-                    // select cond, x, x -> add x, 0
+                    // select cond, x, x -> add x, 0, for integers only.
+                    //
+                    // MIR has no copy, so this stands in for one, and `add 0` is only a
+                    // copy for integers. On f32/f64 it would emit an IntBinary carrying
+                    // a float type, and even as a float add it would not be a copy:
+                    // -0.0 + 0.0 is +0.0, and a signalling NaN does not survive intact.
                     Instruction::Select {
                         dst,
                         ty,
                         cond: _,
                         true_val,
                         false_val,
-                    } if true_val == false_val => {
+                    } if true_val == false_val && is_integer_type(ty) => {
                         let replacement = Instruction::IntBinary {
                             op: IntBinOp::Add,
                             ty: *ty,
@@ -354,6 +359,21 @@ impl JumpThreading {
     }
 }
 
+/// True for the integer and pointer scalars, where `add 0` is a faithful copy.
+fn is_integer_type(ty: &MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Scalar(
+            ScalarType::I1
+                | ScalarType::I8
+                | ScalarType::I16
+                | ScalarType::I32
+                | ScalarType::I64
+                | ScalarType::Ptr
+        )
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,6 +509,38 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn cfg_simplify_leaves_float_select_alone() {
+        // `add 0` is not a copy for floats, and an IntBinary carrying F64 is not even
+        // well formed, so the rewrite has to stop at integers.
+        let dst: Register = VirtualReg::gpr(1).into();
+        let f64_ty = MirType::Scalar(ScalarType::F64);
+        let val = Operand::Immediate(Immediate::F64(2.5));
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), f64_ty)
+            .returns(f64_ty)
+            .block("entry")
+            .instr(Instruction::Select {
+                dst: dst.clone(),
+                ty: f64_ty,
+                cond: cond_reg(),
+                true_val: val.clone(),
+                false_val: val,
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+
+        apply_pass(&CfgSimplify, &mut func);
+        let entry = func.get_block("entry").unwrap();
+        assert!(
+            matches!(&entry.instructions[0], Instruction::Select { .. }),
+            "float select must survive, got {:?}",
+            &entry.instructions[0]
+        );
     }
 
     #[test]
