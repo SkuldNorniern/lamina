@@ -9,11 +9,11 @@ use util::{
 };
 
 use crate::error::LaminaError;
-use crate::mir::instruction::AddressMode;
+use crate::mir::instruction::{AddressMode, Immediate};
 use crate::mir::register::RegisterClass;
 use crate::mir::{
     Block as MirBlock, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
-    IntBinOp, MirType, Module as MirModule, Register, ScalarType, Signature, VirtualReg,
+    IntBinOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
 };
 use crate::mir_codegen::common::{
     assign_stack_slots, compile_functions_parallel, parallel_codegen_error,
@@ -23,7 +23,9 @@ use crate::mir_codegen::{
     capability::CapabilitySet, validate_module_call_parameters,
 };
 
-use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
+use lamina_codegen::{
+    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator, LocalRegisterAllocator,
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -340,6 +342,59 @@ fn emit_instruction_riscv<W: Write>(
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
     }
     match inst {
+        MirInst::Copy { ty, dst, src } => {
+            if matches!(ty, MirType::Vector(_)) {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!("RISC-V backend does not support vector Copy of type {ty}"),
+                )));
+            }
+            match src {
+                Operand::Register(Register::Virtual(vreg)) => {
+                    if let Some(physical) = reg_alloc.get_mapping(vreg) {
+                        writeln!(writer, "    mv a0, {physical}")?;
+                    } else if let Some(offset) = stack_slots.get(vreg) {
+                        writeln!(writer, "    {} a0, {offset}(fp)", copy_load_mnemonic(ty))?;
+                    } else {
+                        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                            format!("RISC-V Copy source {vreg:?} has no register or stack slot"),
+                        )));
+                    }
+                }
+                Operand::Register(Register::Physical(physical)) => {
+                    writeln!(writer, "    mv a0, {}", physical.name)?;
+                }
+                Operand::Immediate(immediate) => {
+                    let bits = match immediate {
+                        Immediate::I8(value) => *value as i64 as u64,
+                        Immediate::I16(value) => *value as i64 as u64,
+                        Immediate::I32(value) => *value as i64 as u64,
+                        Immediate::I64(value) => *value as u64,
+                        Immediate::F32(value) => u64::from(value.to_bits()),
+                        Immediate::F64(value) => value.to_bits(),
+                    };
+                    writeln!(writer, "    li a0, {bits}")?;
+                }
+            }
+            match dst {
+                Register::Virtual(vreg) => {
+                    if let Some(physical) = reg_alloc.get_mapping(vreg) {
+                        writeln!(writer, "    mv {physical}, a0")?;
+                    } else if let Some(offset) = stack_slots.get(vreg) {
+                        writeln!(writer, "    {} a0, {offset}(fp)", copy_store_mnemonic(ty))?;
+                    } else {
+                        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                            format!(
+                                "RISC-V Copy destination {vreg:?} has no register or stack slot"
+                            ),
+                        )));
+                    }
+                }
+                Register::Physical(phys) if phys.name != "a0" => {
+                    writeln!(writer, "    mv {}, a0", phys.name)?;
+                }
+                Register::Physical(_) => {}
+            }
+        }
         MirInst::IntBinary {
             op,
             dst,
@@ -811,4 +866,63 @@ fn emit_instruction_riscv<W: Write>(
     }
 
     Ok(())
+}
+
+fn copy_load_mnemonic(ty: &MirType) -> &'static str {
+    match ty {
+        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lbu",
+        MirType::Scalar(ScalarType::I16) => "lhu",
+        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lwu",
+        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        | MirType::Vector(_) => "ld",
+    }
+}
+
+fn copy_store_mnemonic(ty: &MirType) -> &'static str {
+    match ty {
+        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "sb",
+        MirType::Scalar(ScalarType::I16) => "sh",
+        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "sw",
+        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        | MirType::Vector(_) => "sd",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::FunctionBuilder;
+
+    #[test]
+    fn float_copy_emits_bit_move_not_add() {
+        let ty = MirType::Scalar(ScalarType::F64);
+        let src = Register::Virtual(VirtualReg::fpr(0));
+        let dst = Register::Virtual(VirtualReg::fpr(1));
+        let function = FunctionBuilder::new("copy_float")
+            .param(src.clone(), ty)
+            .returns(ty)
+            .block("entry")
+            .instr(MirInst::Copy {
+                ty,
+                dst: dst.clone(),
+                src: Operand::Register(src),
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+        let mut module = MirModule::new("copy_test");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_riscv(&module, &mut output, TargetOperatingSystem::Linux)
+            .expect("RISC-V codegen should succeed");
+        let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
+
+        assert!(assembly.contains("ld a0"), "expected bit load: {assembly}");
+        assert!(assembly.contains("sd a0"), "expected bit store: {assembly}");
+        assert!(
+            !assembly.contains("fadd"),
+            "unexpected float add: {assembly}"
+        );
+    }
 }

@@ -3,7 +3,7 @@
 use core::mem::swap;
 
 use crate::mir::instruction::{FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
-use crate::mir::{Block, Function, Register};
+use crate::mir::{Block, Function, MirType, Register, ScalarType};
 
 use crate::mir::transform::{
     Transform, TransformCategory, TransformError, TransformLevel, compute_back_edge_headers,
@@ -75,7 +75,29 @@ impl Peephole {
     /// Try to optimize a single instruction through various peephole patterns
     fn try_optimize_instruction(&self, inst: &mut Instruction, _in_loop_block: bool) -> bool {
         match inst {
-            Instruction::IntBinary { op, lhs, rhs, .. } => self.try_fold_int_binary(op, lhs, rhs),
+            Instruction::IntBinary { op, lhs, rhs, .. } => {
+                let changed = self.try_fold_int_binary(op, lhs, rhs);
+                if changed {
+                    let replacement = match inst {
+                        Instruction::IntBinary {
+                            ty, dst, lhs, rhs, ..
+                        } if matches!(lhs, Operand::Immediate(_))
+                            && is_zero(extract_constant(rhs)) =>
+                        {
+                            Some(Instruction::Copy {
+                                ty: *ty,
+                                dst: dst.clone(),
+                                src: lhs.clone(),
+                            })
+                        }
+                        _ => None,
+                    };
+                    if let Some(replacement) = replacement {
+                        *inst = replacement;
+                    }
+                }
+                changed
+            }
             Instruction::IntCmp { .. } => self.try_fold_int_cmp(inst),
             Instruction::FloatUnary { op, src, .. } => self.try_fold_float_unary(op, src),
             Instruction::Select {
@@ -421,11 +443,7 @@ impl Peephole {
 
     fn try_fold_int_cmp(&self, inst: &mut Instruction) -> bool {
         if let Instruction::IntCmp {
-            op,
-            lhs,
-            rhs,
-            dst,
-            ty,
+            op, lhs, rhs, dst, ..
         } = inst
         {
             let lhs_imm = extract_constant(lhs);
@@ -445,14 +463,11 @@ impl Peephole {
                     IntCmpOp::UGe => (c1 as u64) >= (c2 as u64),
                 };
 
-                // Replace with IntBinary Add 0 (Move)
                 let result_val = if result { 1 } else { 0 };
-                *inst = Instruction::IntBinary {
-                    op: IntBinOp::Add,
-                    ty: *ty,
+                *inst = Instruction::Copy {
+                    ty: MirType::Scalar(ScalarType::I1),
                     dst: dst.clone(),
-                    lhs: Operand::Immediate(Immediate::I64(result_val)),
-                    rhs: Operand::Immediate(Immediate::I64(0)),
+                    src: Operand::Immediate(Immediate::I64(result_val)),
                 };
                 return true;
             }
@@ -613,12 +628,11 @@ mod tests {
 
         let bb = &func.blocks[0];
         match &bb.instructions[0] {
-            Instruction::IntBinary { op, lhs, rhs, .. } => {
-                assert_eq!(*op, IntBinOp::Add);
-                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(1))); // True result (1)
-                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            Instruction::Copy { ty, src, .. } => {
+                assert_eq!(*ty, MirType::Scalar(ScalarType::I1));
+                assert_eq!(src, &Operand::Immediate(Immediate::I64(1)));
             }
-            _ => panic!("Expected IntBinary (move)"),
+            _ => panic!("Expected Copy"),
         }
     }
 
@@ -753,14 +767,11 @@ mod tests {
         let changed = pass.run_on_function(&mut func);
 
         assert!(changed);
-        // Result should be 0 + 0 (constant zero)
         match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary { op, lhs, rhs, .. } => {
-                assert_eq!(*op, IntBinOp::Add);
-                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(0)));
-                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            Instruction::Copy { src, .. } => {
+                assert_eq!(src, &Operand::Immediate(Immediate::I64(0)));
             }
-            _ => panic!("Expected IntBinary"),
+            _ => panic!("Expected Copy"),
         }
     }
 
@@ -784,11 +795,10 @@ mod tests {
 
         assert!(changed);
         match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary { lhs, rhs, .. } => {
-                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(0)));
-                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            Instruction::Copy { src, .. } => {
+                assert_eq!(src, &Operand::Immediate(Immediate::I64(0)));
             }
-            _ => panic!("Expected IntBinary"),
+            _ => panic!("Expected Copy"),
         }
     }
 
@@ -811,11 +821,10 @@ mod tests {
 
         assert!(changed);
         match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary { lhs, rhs, .. } => {
-                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(0)));
-                assert_eq!(rhs, &Operand::Immediate(Immediate::I64(0)));
+            Instruction::Copy { src, .. } => {
+                assert_eq!(src, &Operand::Immediate(Immediate::I64(0)));
             }
-            _ => panic!("Expected IntBinary"),
+            _ => panic!("Expected Copy"),
         }
     }
 
@@ -882,10 +891,10 @@ mod tests {
 
         // Should fold to 1 (true)
         match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary { lhs, .. } => {
-                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(1)));
+            Instruction::Copy { src, .. } => {
+                assert_eq!(src, &Operand::Immediate(Immediate::I64(1)));
             }
-            _ => panic!("Expected IntBinary"),
+            _ => panic!("Expected Copy"),
         }
     }
 
@@ -908,10 +917,10 @@ mod tests {
         assert!(changed);
 
         match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary { lhs, .. } => {
-                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(1))); // true
+            Instruction::Copy { src, .. } => {
+                assert_eq!(src, &Operand::Immediate(Immediate::I64(1))); // true
             }
-            _ => panic!("Expected IntBinary"),
+            _ => panic!("Expected Copy"),
         }
     }
 }

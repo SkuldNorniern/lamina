@@ -5,9 +5,8 @@
 //! - **CfgSimplify**: Simplifies trivial branches and selects
 //! - **JumpThreading**: Bypasses trivial jump-only blocks
 
-use crate::mir::instruction::Immediate;
 use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::{Function, Instruction, IntBinOp, MirType, Operand, ScalarType};
+use crate::mir::{Function, Instruction};
 use std::collections::{HashMap, HashSet};
 
 /// Identify loop headers via back-edge detection (target block index ≤ source block index).
@@ -136,25 +135,18 @@ impl CfgSimplify {
                         *instr = Instruction::Jmp { target };
                         changed = true;
                     }
-                    // select cond, x, x -> add x, 0, for integers only.
-                    //
-                    // MIR has no copy, so this stands in for one, and `add 0` is only a
-                    // copy for integers. On f32/f64 it would emit an IntBinary carrying
-                    // a float type, and even as a float add it would not be a copy:
-                    // -0.0 + 0.0 is +0.0, and a signalling NaN does not survive intact.
+                    // select cond, x, x -> copy x
                     Instruction::Select {
                         dst,
                         ty,
                         cond: _,
                         true_val,
                         false_val,
-                    } if true_val == false_val && is_integer_type(ty) => {
-                        let replacement = Instruction::IntBinary {
-                            op: IntBinOp::Add,
+                    } if true_val == false_val => {
+                        let replacement = Instruction::Copy {
                             ty: *ty,
                             dst: dst.clone(),
-                            lhs: true_val.clone(),
-                            rhs: Operand::Immediate(Immediate::I64(0)),
+                            src: true_val.clone(),
                         };
                         *instr = replacement;
                         changed = true;
@@ -359,27 +351,12 @@ impl JumpThreading {
     }
 }
 
-/// True for the integer and pointer scalars, where `add 0` is a faithful copy.
-fn is_integer_type(ty: &MirType) -> bool {
-    matches!(
-        ty,
-        MirType::Scalar(
-            ScalarType::I1
-                | ScalarType::I8
-                | ScalarType::I16
-                | ScalarType::I32
-                | ScalarType::I64
-                | ScalarType::Ptr
-        )
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::mir::transform::test_utils::apply_pass;
     use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, Register, ScalarType, VirtualReg,
+        FunctionBuilder, Immediate, MirType, Operand, Register, ScalarType, VirtualReg,
     };
 
     fn i64() -> MirType {
@@ -502,19 +479,11 @@ mod tests {
         let changed = apply_pass(&CfgSimplify, &mut func);
         assert!(changed);
         let entry = func.get_block("entry").unwrap();
-        assert!(matches!(
-            &entry.instructions[0],
-            Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ..
-            }
-        ));
+        assert!(matches!(&entry.instructions[0], Instruction::Copy { .. }));
     }
 
     #[test]
     fn cfg_simplify_leaves_float_select_alone() {
-        // `add 0` is not a copy for floats, and an IntBinary carrying F64 is not even
-        // well formed, so the rewrite has to stop at integers.
         let dst: Register = VirtualReg::gpr(1).into();
         let f64_ty = MirType::Scalar(ScalarType::F64);
         let val = Operand::Immediate(Immediate::F64(2.5));
@@ -534,11 +503,19 @@ mod tests {
             })
             .build();
 
-        apply_pass(&CfgSimplify, &mut func);
+        let changed = apply_pass(&CfgSimplify, &mut func);
+        assert!(changed);
         let entry = func.get_block("entry").unwrap();
         assert!(
-            matches!(&entry.instructions[0], Instruction::Select { .. }),
-            "float select must survive, got {:?}",
+            matches!(
+                &entry.instructions[0],
+                Instruction::Copy {
+                    ty,
+                    src: Operand::Immediate(Immediate::F64(value)),
+                    ..
+                } if *ty == f64_ty && *value == 2.5
+            ),
+            "float select must become Copy, got {:?}",
             &entry.instructions[0]
         );
     }

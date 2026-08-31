@@ -318,6 +318,51 @@ fn emit_instruction_ppc64<W: Write>(
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
     }
     match inst {
+        MirInst::Copy { ty, dst, src } => {
+            if matches!(ty, MirType::Vector(_)) {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!("PowerPC64 backend does not support vector Copy of type {ty}"),
+                )));
+            }
+            match src {
+                Operand::Register(Register::Virtual(vreg)) => {
+                    if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
+                        writeln!(writer, "    mr 3, {physical}")?;
+                    } else if let Some(offset) = stack_slots.get(vreg) {
+                        writeln!(writer, "    {} 3, {offset}(1)", copy_load_mnemonic(ty))?;
+                    } else {
+                        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                            format!("PowerPC64 Copy source {vreg:?} has no register or stack slot"),
+                        )));
+                    }
+                }
+                Operand::Register(Register::Physical(physical)) => {
+                    writeln!(writer, "    mr 3, {}", physical.name)?;
+                }
+                Operand::Immediate(_) => {
+                    load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
+                }
+            }
+            match dst {
+                Register::Virtual(vreg) => {
+                    if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
+                        writeln!(writer, "    mr {physical}, 3")?;
+                    } else if let Some(offset) = stack_slots.get(vreg) {
+                        writeln!(writer, "    {} 3, {offset}(1)", copy_store_mnemonic(ty))?;
+                    } else {
+                        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                            format!(
+                                "PowerPC64 Copy destination {vreg:?} has no register or stack slot"
+                            ),
+                        )));
+                    }
+                }
+                Register::Physical(phys) if phys.name != "3" => {
+                    writeln!(writer, "    mr {}, 3", phys.name)?;
+                }
+                Register::Physical(_) => {}
+            }
+        }
         MirInst::IntBinary {
             op,
             dst,
@@ -700,6 +745,26 @@ fn emit_instruction_ppc64<W: Write>(
     Ok(())
 }
 
+fn copy_load_mnemonic(ty: &MirType) -> &'static str {
+    match ty {
+        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lbz",
+        MirType::Scalar(ScalarType::I16) => "lhz",
+        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lwz",
+        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        | MirType::Vector(_) => "ld",
+    }
+}
+
+fn copy_store_mnemonic(ty: &MirType) -> &'static str {
+    match ty {
+        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "stb",
+        MirType::Scalar(ScalarType::I16) => "sth",
+        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "stw",
+        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        | MirType::Vector(_) => "std",
+    }
+}
+
 /// Load a float operand (stored as integer bits in a stack slot) into FPR `fN`.
 ///
 /// Strategy: store the integer bits to a temp stack slot and then `lfs`/`lfd` them
@@ -850,5 +915,37 @@ mod tests {
         let s = String::from_utf8(output).unwrap();
         assert!(s.contains("bne"), "Expected bne in output: {s}");
         assert!(s.contains(".L_then"), "Expected .L_then in output: {s}");
+    }
+
+    #[test]
+    fn float_copy_emits_bit_move_not_add() {
+        let ty = MirType::Scalar(ScalarType::F64);
+        let src = Register::Virtual(VirtualReg::fpr(0));
+        let dst = Register::Virtual(VirtualReg::fpr(1));
+        let function = FunctionBuilder::new("copy_float")
+            .param(src.clone(), ty)
+            .returns(ty)
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty,
+                dst: dst.clone(),
+                src: Operand::Register(src),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+        let mut module = MirModule::new("copy_test");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_ppc64(&module, &mut output, TargetOperatingSystem::Linux).unwrap();
+        let assembly = String::from_utf8(output).unwrap();
+
+        assert!(assembly.contains("ld 3"), "expected bit load: {assembly}");
+        assert!(assembly.contains("std 3"), "expected bit store: {assembly}");
+        assert!(
+            !assembly.contains("fadd"),
+            "unexpected float add: {assembly}"
+        );
     }
 }
