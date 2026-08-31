@@ -1,0 +1,51 @@
+name: testcases
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  unit:
+    name: "unit tests (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --verbose
+      - name: Test
+        run: cargo test --verbose
+
+  # Compiles each program in testcases/, runs it, and diffs against its .expected
+  # file. This is the only job that checks the compiler produces correct programs
+  # rather than merely building.
+  #
+  # Only Linux is required. Windows and macOS report their status without blocking,
+  # because the Win64 ABI and the AArch64 backend are known to be incomplete; the
+  # point is to see the number move as they are fixed rather than to hide it.
+  testcases:
+    name: "testcases (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.os != 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Build compiler
+        run: cargo build --release
+      - name: Run testcases
+        run: python3 run_tests.py

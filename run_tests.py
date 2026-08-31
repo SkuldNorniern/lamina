@@ -70,6 +70,11 @@ def compile_and_run_test(test_path, use_mir=False):
     project_root = Path(__file__).parent
     test_path = Path(test_path)
     executable_name = test_path.stem
+    if os.name == 'nt':
+        executable_name += '.exe'
+    # Resolve against the project root rather than using "./name", which is not a
+    # runnable form on Windows.
+    executable_path = str((Path(project_root) / executable_name).resolve())
     
     # Define stdin input for interactive tests
     stdin_inputs = {
@@ -90,7 +95,7 @@ def compile_and_run_test(test_path, use_mir=False):
     if stdin_input:
         try:
             result = subprocess.run(
-                [f'./{executable_name}'],
+                [executable_path],
                 capture_output=True,
                 text=True,
                 cwd=project_root,
@@ -104,7 +109,7 @@ def compile_and_run_test(test_path, use_mir=False):
         except Exception as e:
             return False, f"Execution failed: {str(e)}"
     else:
-        run_cmd = f"./{executable_name}"
+        run_cmd = f'"{executable_path}"'
         success, stdout, stderr = run_command(run_cmd, cwd=project_root)
 
     if not success:
