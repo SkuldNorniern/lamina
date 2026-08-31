@@ -5,17 +5,21 @@
 //! scalar GPR operations, base+offset loads/stores, calls, branches, and returns.
 //! Unsupported MIR ops fail loudly instead of being silently lowered wrong.
 
-use std::cmp::Ordering as CmpOrdering;
-use std::collections::{BTreeMap, HashMap};
-use std::io::{Error as IoError, Write};
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use crate::error::LaminaError;
-use crate::mir::{
-    AddressMode, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType,
-    Module as MirModule, Operand, Register, ScalarType,
+use std::{
+    cmp::Ordering as CmpOrdering,
+    collections::{BTreeMap, HashMap},
+    io::{Error as IoError, Write},
+    sync::atomic::{AtomicUsize, Ordering},
 };
-use crate::mir_codegen::{CodegenError, MirCodegenSettings, validate_module_call_parameters};
+
+use crate::{
+    error::LaminaError,
+    mir::{
+        AddressMode, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType,
+        Module as MirModule, Operand, Register, ScalarType,
+    },
+    mir_codegen::{CodegenError, MirCodegenSettings, validate_module_call_parameters},
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 const RA: &str = "r1";

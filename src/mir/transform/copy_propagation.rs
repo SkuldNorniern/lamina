@@ -1,10 +1,10 @@
 //! Copy propagation transform for MIR.
 
-use crate::mir::transform::{
-    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
-};
 use crate::mir::{
     AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
+    transform::{
+        Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+    },
 };
 use std::collections::HashMap;
 
@@ -229,8 +229,9 @@ impl CopyPropagation {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::get_block;
-    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
+    use crate::mir::{
+        FunctionBuilder, MirType, ScalarType, VirtualReg, transform::test_utils::get_block,
+    };
 
     #[test]
     fn test_copy_propagation_basic() {

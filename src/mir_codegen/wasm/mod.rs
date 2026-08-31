@@ -1,22 +1,26 @@
 pub mod util;
 
-use std::collections::{HashMap, HashSet};
-use std::env::temp_dir;
-use std::fs;
+use std::{
+    collections::{HashMap, HashSet},
+    env::temp_dir,
+    fs,
+};
 
-use std::io::Write;
-use std::process::id;
+use std::{io::Write, process::id};
 
 use crate::error::LaminaError;
 
-use crate::mir::{
-    AddressMode, Function, Global, Immediate, Instruction as MirInst, MirType, Module as MirModule,
-    Operand, Register, ScalarType, Signature, VirtualReg,
-};
-use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
-use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions, assemble, capability::CapabilitySet,
-    validate_module_call_parameters,
+use crate::{
+    mir::{
+        AddressMode, Function, Global, Immediate, Instruction as MirInst, MirType,
+        Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
+    },
+    mir_codegen::{
+        Codegen, CodegenError, CodegenOptions, assemble,
+        capability::CapabilitySet,
+        common::{CodegenBase, compile_functions_parallel, parallel_codegen_error},
+        validate_module_call_parameters,
+    },
 };
 
 use lamina_codegen::wasm::WasmABI;

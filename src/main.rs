@@ -1,22 +1,30 @@
 mod cli;
 
-use cli::jit::handle_jit_compilation;
-use cli::options::{parse_args, print_usage, toolchain_backends};
-use lamina::mir::codegen::from_ir;
-use lamina::mir::{ModuleInlining, TransformPipeline};
-use lamina::mir_codegen::assemble::{
-    assemble_with_ras_object_options, get_assembly_output_extension, get_intermediate_extension,
+use cli::{
+    jit::handle_jit_compilation,
+    options::{parse_args, print_usage, toolchain_backends},
 };
-use lamina::mir_codegen::generate_mir_to_target_with_settings;
-use lamina::mir_codegen::link::{get_output_extension, link};
-use lamina::parser::parse_module;
+use lamina::{
+    mir::{ModuleInlining, TransformPipeline, codegen::from_ir},
+    mir_codegen::{
+        assemble::{
+            assemble_with_ras_object_options, get_assembly_output_extension,
+            get_intermediate_extension,
+        },
+        generate_mir_to_target_with_settings,
+        link::{get_output_extension, link},
+    },
+    parser::parse_module,
+};
 use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem, cpu_count};
-use std::error::Error;
-use std::fs::File;
-use std::io::{Read, Write};
-use std::path::PathBuf;
-use std::process;
-use std::str::FromStr;
+use std::{
+    error::Error,
+    fs::File,
+    io::{Read, Write},
+    path::PathBuf,
+    process,
+    str::FromStr,
+};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let options = match parse_args() {

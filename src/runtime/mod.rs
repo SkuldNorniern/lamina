@@ -19,10 +19,9 @@ pub use sandbox::{Sandbox, SandboxConfig};
 #[cfg(feature = "encoder")]
 use std::env;
 
-use crate::error::LaminaError;
-use crate::mir::Module as MirModule;
 #[cfg(feature = "encoder")]
 use crate::mir_codegen::validate_module_call_parameters;
+use crate::{error::LaminaError, mir::Module as MirModule};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 // Re-export ras types for convenience

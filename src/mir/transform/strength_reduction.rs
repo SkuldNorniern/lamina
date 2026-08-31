@@ -1,8 +1,10 @@
 //! Strength reduction transform for MIR.
 
-use crate::mir::instruction::Immediate;
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::{Function, Instruction, IntBinOp, MirType, Operand};
+use crate::mir::{
+    Function, Instruction, IntBinOp, MirType, Operand,
+    instruction::Immediate,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+};
 
 /// Strength reduction that replaces expensive operations with cheaper equivalents.
 ///

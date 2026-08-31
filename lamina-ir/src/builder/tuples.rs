@@ -3,9 +3,7 @@
 //! This module provides methods for creating tuples from multiple values
 //! and extracting individual elements from tuples.
 
-use crate::builder::IRBuilder;
-use crate::instruction::Instruction;
-use crate::types::Value;
+use crate::{builder::IRBuilder, instruction::Instruction, types::Value};
 
 impl<'a> IRBuilder<'a> {
     /// Creates a tuple from multiple values (composite data construction)

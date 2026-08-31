@@ -2,12 +2,16 @@
 //!
 //! A module is a collection of functions and global data. Modules are the
 //! top-level unit of organization in LUMIR and can be compiled independently.
-use crate::function::Function;
-use crate::instruction::Instruction;
-use crate::types::MirType;
-use crate::verify::{function_errors, verify_module_in_pipeline};
-use std::collections::{HashMap, HashSet};
-use std::fmt;
+use crate::{
+    function::Function,
+    instruction::Instruction,
+    types::MirType,
+    verify::{function_errors, verify_module_in_pipeline},
+};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 /// Global variable declaration
 #[derive(Debug, Clone, PartialEq)]
@@ -253,11 +257,13 @@ impl ModuleBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::block::Block;
-    use crate::function::{Function, Parameter, Signature};
-    use crate::instruction::{Instruction, Operand};
-    use crate::register::{Register, VirtualReg};
-    use crate::types::{MirType, ScalarType};
+    use crate::{
+        block::Block,
+        function::{Function, Parameter, Signature},
+        instruction::{Instruction, Operand},
+        register::{Register, VirtualReg},
+        types::{MirType, ScalarType},
+    };
 
     #[test]
     fn test_module_creation() {

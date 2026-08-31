@@ -2,24 +2,30 @@
 
 use crate::cli::options::{CompileOptions, toolchain_backends};
 
-use lamina::mir::TransformPipeline;
-use lamina::mir::codegen::from_ir;
-use lamina::mir_codegen::assemble::{
-    assemble_with_ras_object_options, get_assembly_output_extension, get_intermediate_extension,
+use lamina::{
+    mir::{TransformPipeline, codegen::from_ir},
+    mir_codegen::{
+        assemble::{
+            assemble_with_ras_object_options, get_assembly_output_extension,
+            get_intermediate_extension,
+        },
+        generate_mir_to_target_with_settings,
+        link::{get_output_extension, link},
+    },
+    parser::parse_module,
+    runtime::{Sandbox, SandboxConfig, compile_to_runtime, execute_jit_function},
 };
-use lamina::mir_codegen::generate_mir_to_target_with_settings;
-use lamina::mir_codegen::link::{get_output_extension, link};
-use lamina::parser::parse_module;
-use lamina::runtime::{Sandbox, SandboxConfig, compile_to_runtime, execute_jit_function};
 use lamina_platform::{Target, TargetArchitecture, cpu_count};
 
 use lamina::LaminaError;
-use std::env;
-use std::fs::{create_dir_all, remove_dir_all, write};
-use std::path::Path;
-use std::process::{self, Command};
-use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    env,
+    fs::{create_dir_all, remove_dir_all, write},
+    path::Path,
+    process::{self, Command},
+    str::FromStr,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 /// Handle JIT compilation and execution
 pub fn handle_jit_compilation(

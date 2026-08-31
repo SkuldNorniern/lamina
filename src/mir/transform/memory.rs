@@ -1,7 +1,9 @@
 //! Memory optimization transforms for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::{AddressMode, Function, Instruction, Operand, Register};
+use crate::mir::{
+    AddressMode, Function, Instruction, Operand, Register,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+};
 use std::collections::HashMap;
 
 /// Memory optimization transform performing redundant load elimination.
@@ -126,10 +128,9 @@ impl MemoryOptimization {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::apply_pass;
     use crate::mir::{
         AddressMode, FunctionBuilder, Immediate, MemoryAttrs, MirType, Operand, ScalarType,
-        VirtualReg,
+        VirtualReg, transform::test_utils::apply_pass,
     };
 
     fn i64() -> MirType {

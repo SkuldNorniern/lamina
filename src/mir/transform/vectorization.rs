@@ -5,11 +5,13 @@
 
 use crate::mir::transform::calculate_dominators;
 
-use crate::mir::Function;
-use crate::mir::instruction::{AddressMode, FloatBinOp, Instruction, IntBinOp, Operand, VectorOp};
-use crate::mir::register::{Register, VirtualReg};
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::types::{MirType, ScalarType, VectorLane, VectorType};
+use crate::mir::{
+    Function,
+    instruction::{AddressMode, FloatBinOp, Instruction, IntBinOp, Operand, VectorOp},
+    register::{Register, VirtualReg},
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+    types::{MirType, ScalarType, VectorLane, VectorType},
+};
 use std::collections::{HashMap, HashSet};
 
 /// Auto-vectorization transform that converts scalar loop operations to SIMD.

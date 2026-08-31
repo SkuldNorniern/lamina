@@ -1,13 +1,16 @@
 //! Loop optimization transforms for MIR.
 
-use crate::mir::transform::{
-    Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators,
-    check_function_size,
+use crate::mir::{
+    Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register,
+    transform::{
+        Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators,
+        check_function_size,
+    },
 };
-use crate::mir::{Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, Operand, Register};
-use std::cmp::Reverse;
-use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet};
+use std::{
+    cmp::Reverse,
+    collections::{HashMap, HashSet, hash_map::Entry},
+};
 
 /// Loop invariant code motion that moves loop-invariant computations outside loops.
 #[derive(Default)]

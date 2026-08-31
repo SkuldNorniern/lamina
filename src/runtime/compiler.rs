@@ -2,14 +2,12 @@
 //!
 //! Compiles MIR modules to executable memory using ras.
 
-use crate::error::LaminaError;
-use crate::mir::Module as MirModule;
 #[cfg(feature = "encoder")]
 use crate::mir_codegen::validate_module_call_parameters;
+use crate::{error::LaminaError, mir::Module as MirModule};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use ras::{ExecutableMemory, RasRuntime};
-use std::collections::HashMap;
-use std::mem;
+use std::{collections::HashMap, mem};
 
 /// Runtime compiler for JIT compilation
 pub struct RuntimeCompiler {

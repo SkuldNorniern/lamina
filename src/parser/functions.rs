@@ -1,10 +1,10 @@
 //! Function parsing for Lamina IR.
 
-use crate::ir::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature};
-use crate::parser::instructions::parse_instruction;
-use crate::parser::state::ParserState;
-use crate::parser::types::parse_type;
-use crate::{Label, LaminaError};
+use crate::{
+    Label, LaminaError,
+    ir::{BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature},
+    parser::{instructions::parse_instruction, state::ParserState, types::parse_type},
+};
 use std::collections::{HashMap, HashSet};
 
 /// Parses function annotations.

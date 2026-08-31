@@ -3,10 +3,9 @@
 //! This module provides methods for adding annotations to functions and modules.
 //! Annotations provide metadata that affects optimization, linking, and code generation.
 
-use crate::builder::IRBuilder;
-use crate::function::FunctionAnnotation;
 #[cfg(feature = "nightly")]
 use crate::module::ModuleAnnotation;
+use crate::{builder::IRBuilder, function::FunctionAnnotation};
 
 impl<'a> IRBuilder<'a> {
     /// Adds an annotation to the current function

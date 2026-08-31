@@ -5,9 +5,11 @@
 //! cannot be skipped by calling a per-arch emitter directly. JIT entry points also validate
 //! before RAS encoding.
 
-use crate::error::LaminaError;
-use crate::mir::{Instruction, Module};
-use crate::mir_codegen::CodegenError;
+use crate::{
+    error::LaminaError,
+    mir::{Instruction, Module},
+    mir_codegen::CodegenError,
+};
 use lamina_platform::TargetArchitecture;
 
 /// Maximum number of scalar parameters on any single function and on any `Call` / `TailCall`.

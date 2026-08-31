@@ -4,9 +4,13 @@
 //! The mapping process handles primitive type conversions and validates
 //! that only supported types are converted.
 
-use crate::ir::types::{PrimitiveType as IRPrim, Type as IRType};
-use crate::mir::codegen::error::FromIRError;
-use crate::mir::types::{MirType, ScalarType};
+use crate::{
+    ir::types::{PrimitiveType as IRPrim, Type as IRType},
+    mir::{
+        codegen::error::FromIRError,
+        types::{MirType, ScalarType},
+    },
+};
 
 pub fn map_ir_prim(p: IRPrim) -> Result<MirType, FromIRError> {
     let scalar = match p {

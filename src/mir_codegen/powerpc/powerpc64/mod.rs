@@ -16,30 +16,34 @@
 
 mod util;
 
-use std::collections::HashMap;
-use std::io::Write;
-use std::sync::Arc;
+use std::{collections::HashMap, io::Write, sync::Arc};
 use util::{
     load_operand_to_register, load_register_to_r3, load_register_to_register, store_r3_to_register,
 };
 
-use crate::error::LaminaError;
-use crate::mir::instruction::{AddressMode, Immediate};
-use crate::mir::register::RegisterClass;
-use crate::mir::{
-    FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp,
-    IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
-};
-use crate::mir_codegen::common::{
-    CodegenBase, assign_stack_slots, compile_functions_parallel, parallel_codegen_error,
-};
-use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-    capability::CapabilitySet, validate_module_call_parameters,
+use crate::{
+    error::LaminaError,
+    mir::{
+        FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp,
+        IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
+        VirtualReg,
+        instruction::{AddressMode, Immediate},
+        register::RegisterClass,
+    },
+    mir_codegen::{
+        Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
+        capability::CapabilitySet,
+        common::{
+            CodegenBase, assign_stack_slots, compile_functions_parallel, parallel_codegen_error,
+        },
+        validate_module_call_parameters,
+    },
 };
 
-use lamina_codegen::powerpc::{Ppc64Abi, Ppc64Frame, Ppc64RegAlloc};
-use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
+use lamina_codegen::{
+    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
+    powerpc::{Ppc64Abi, Ppc64Frame, Ppc64RegAlloc},
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 pub struct Ppc64Codegen<'a> {
@@ -837,8 +841,10 @@ fn emit_store_fp_result<W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::FunctionBuilder;
-    use crate::mir::instruction::{Instruction, IntBinOp, Operand};
+    use crate::mir::{
+        FunctionBuilder,
+        instruction::{Instruction, IntBinOp, Operand},
+    };
 
     fn make_module_with_empty_func() -> MirModule {
         let mut m = MirModule::new("test_ppc64");

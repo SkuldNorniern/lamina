@@ -37,8 +37,7 @@
 //! ⚠️ = Partial support (some types/operations may not work)
 //! ❌ = Not supported
 
-use std::collections::HashSet;
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 #[cfg(feature = "nightly")]
 use lamina_platform::SimdCapabilities;

@@ -89,8 +89,7 @@
 //! - `wasm::abi` - WebAssembly stack-based calling
 
 use lamina_platform::TargetOperatingSystem;
-use std::collections::HashMap;
-use std::env;
+use std::{collections::HashMap, env};
 
 pub struct BuiltinLibrary {
     target_os: TargetOperatingSystem,

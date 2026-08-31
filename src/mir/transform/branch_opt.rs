@@ -2,9 +2,11 @@
 
 use std::collections::{HashSet, VecDeque};
 
-use crate::mir::Function;
-use crate::mir::transform::{
-    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+use crate::mir::{
+    Function,
+    transform::{
+        Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+    },
 };
 use lamina_mir::Block as MirBlock;
 
