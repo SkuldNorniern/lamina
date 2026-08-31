@@ -6,8 +6,7 @@
 
 use std::collections::HashSet;
 
-use crate::mir::transform::TransformError;
-use crate::mir::{Function, Instruction};
+use crate::mir::{Function, Instruction, transform::TransformError};
 
 /// Validate that all branch and jump targets reference existing blocks.
 pub fn validate_cfg(func: &Function) -> Result<(), TransformError> {

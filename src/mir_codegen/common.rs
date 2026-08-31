@@ -1,15 +1,19 @@
 //! Common code for MIR codegen backends.
 
-use std::collections::{BTreeSet, HashMap};
-use std::fmt::Debug;
-use std::io::Write;
-use std::mem;
-use std::sync::{Arc, mpsc};
-use std::thread;
+use std::{
+    collections::{BTreeSet, HashMap},
+    fmt::Debug,
+    io::Write,
+    mem,
+    sync::{Arc, mpsc},
+    thread,
+};
 
-use crate::error::LaminaError;
-use crate::mir::{Function, Global, MirType, Module as MirModule, Register, Signature, VirtualReg};
-use crate::mir_codegen::{CodegenError, CodegenOptions};
+use crate::{
+    error::LaminaError,
+    mir::{Function, Global, MirType, Module as MirModule, Register, Signature, VirtualReg},
+    mir_codegen::{CodegenError, CodegenOptions},
+};
 use lamina_platform::TargetOperatingSystem;
 
 pub fn parallel_codegen_error(error: impl Debug) -> LaminaError {

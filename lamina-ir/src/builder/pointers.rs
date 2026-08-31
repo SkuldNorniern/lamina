@@ -3,9 +3,11 @@
 //! This module provides methods for pointer arithmetic, structure field access,
 //! and pointer-integer conversions.
 
-use crate::builder::IRBuilder;
-use crate::instruction::Instruction;
-use crate::types::{PrimitiveType, StructField, Value, struct_field_byte_offset};
+use crate::{
+    builder::IRBuilder,
+    instruction::Instruction,
+    types::{PrimitiveType, StructField, Value, struct_field_byte_offset},
+};
 
 impl<'a> IRBuilder<'a> {
     /// Gets a pointer to an array element (pointer arithmetic)

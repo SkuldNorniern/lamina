@@ -5,29 +5,29 @@ use util::{
     load_register_to_register, store_fp_register_to_register, store_register_to_register,
 };
 
-use crate::error::LaminaError;
-use crate::mir::instruction::{AddressMode, Immediate};
-use crate::mir::register::RegisterClass;
-use crate::mir::{
-    Block as MirBlock, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
-    IntBinOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
-};
-use crate::mir_codegen::common::{
-    assign_stack_slots, compile_functions_parallel, parallel_codegen_error,
-};
-use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-    capability::CapabilitySet, validate_module_call_parameters,
+use crate::{
+    error::LaminaError,
+    mir::{
+        Block as MirBlock, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
+        Instruction as MirInst, IntBinOp, MirType, Module as MirModule, Operand, Register,
+        ScalarType, Signature, VirtualReg,
+        instruction::{AddressMode, Immediate},
+        register::RegisterClass,
+    },
+    mir_codegen::{
+        Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
+        capability::CapabilitySet,
+        common::{assign_stack_slots, compile_functions_parallel, parallel_codegen_error},
+        validate_module_call_parameters,
+    },
 };
 
-use lamina_codegen::riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc, RiscVTarget, Xlen};
 use lamina_codegen::{
     GraphColorAllocator, LinearScanAllocator, LiveInterval, LocalRegisterAllocator,
+    riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc, RiscVTarget, Xlen},
 };
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::collections::HashMap;
-use std::io::Write;
-use std::sync::Arc;
+use std::{collections::HashMap, io::Write, sync::Arc};
 
 use crate::mir_codegen::common::CodegenBase;
 

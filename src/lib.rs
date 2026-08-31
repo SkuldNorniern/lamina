@@ -449,8 +449,7 @@ macro_rules! lamina {
     }};
 }
 
-use std::io::Write;
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
 /// Lamina compiler version string (from `CARGO_PKG_VERSION`).
 pub const COMPILER_VERSION: &str = env!("CARGO_PKG_VERSION");

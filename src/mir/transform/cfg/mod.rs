@@ -5,8 +5,10 @@
 //! - **CfgSimplify**: Simplifies trivial branches and selects
 //! - **JumpThreading**: Bypasses trivial jump-only blocks
 
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::{Function, Instruction};
+use crate::mir::{
+    Function, Instruction,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+};
 use std::collections::{HashMap, HashSet};
 
 /// Identify loop headers via back-edge detection (target block index ≤ source block index).
@@ -354,9 +356,9 @@ impl JumpThreading {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::apply_pass;
     use crate::mir::{
         FunctionBuilder, Immediate, MirType, Operand, Register, ScalarType, VirtualReg,
+        transform::test_utils::apply_pass,
     };
 
     fn i64() -> MirType {

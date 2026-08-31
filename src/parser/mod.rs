@@ -10,16 +10,15 @@ pub mod state;
 mod types;
 mod values;
 
-use std::collections::HashSet;
-use std::mem;
+use std::{collections::HashSet, mem};
 
-use self::functions::parse_function_def;
-use self::globals::parse_global_declaration;
-use self::state::ParserState;
-use self::types::parse_type_declaration;
-use crate::LaminaError;
-use crate::ir::{
-    AllocType, Module, PrimitiveType, assignment_opcode_names, non_assignment_opcode_names,
+use self::{
+    functions::parse_function_def, globals::parse_global_declaration, state::ParserState,
+    types::parse_type_declaration,
+};
+use crate::{
+    LaminaError,
+    ir::{AllocType, Module, PrimitiveType, assignment_opcode_names, non_assignment_opcode_names},
 };
 
 /// Calculates the Levenshtein edit distance between two strings.
@@ -249,8 +248,9 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::ir::builder::i32 as ir_i32;
-    use crate::ir::{BinaryOp, CmpOp, IRBuilder, Instruction, Literal, Type, Value};
+    use crate::ir::{
+        BinaryOp, CmpOp, IRBuilder, Instruction, Literal, Type, Value, builder::i32 as ir_i32,
+    };
     use std::fs;
 
     #[test]

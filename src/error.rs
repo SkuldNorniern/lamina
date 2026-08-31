@@ -1,11 +1,7 @@
 //! Error types for the Lamina compiler pipeline.
 
-use crate::mir::codegen::FromIRError;
-use crate::mir_codegen::CodegenError;
-use std::error::Error as StdError;
-use std::fmt;
-use std::io::Error;
-use std::string::FromUtf8Error;
+use crate::{mir::codegen::FromIRError, mir_codegen::CodegenError};
+use std::{error::Error as StdError, fmt, io::Error, string::FromUtf8Error};
 
 /// Top-level error type covering all compiler pipeline stages.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -18,12 +18,12 @@ pub use capability::{CapabilitySet, CodegenCapability};
 pub use limits::{MAX_MIR_CALL_PARAMETERS, validate_module_call_parameters};
 pub use settings::{MirCodegenSettings, RegallocStrategy};
 
-use std::collections::HashMap;
-use std::fmt;
-use std::io::Write;
+use std::{collections::HashMap, fmt, io::Write};
 
-use crate::error::LaminaError;
-use crate::mir::{Global, MirType, Module, Signature};
+use crate::{
+    error::LaminaError,
+    mir::{Global, MirType, Module, Signature},
+};
 use lamina_codegen::riscv::{RiscVTarget, Xlen};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
@@ -285,8 +285,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::mir::codegen;
-    use crate::parser;
+    use crate::{mir::codegen, parser};
 
     fn create_simple_add_function() -> Module {
         let input = r#"

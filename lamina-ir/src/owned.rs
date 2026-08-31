@@ -6,8 +6,10 @@
 
 use std::fmt;
 
-use crate::instruction::{BinaryOp, CmpOp};
-use crate::types::PrimitiveType;
+use crate::{
+    instruction::{BinaryOp, CmpOp},
+    types::PrimitiveType,
+};
 
 // ---------------------------------------------------------------------------
 // Owned type and value representations
@@ -779,8 +781,7 @@ impl OwnedIRBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::instruction::BinaryOp;
-    use crate::types::PrimitiveType;
+    use crate::{instruction::BinaryOp, types::PrimitiveType};
 
     #[test]
     fn test_add_function_ir_text() {

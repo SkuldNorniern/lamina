@@ -5,28 +5,32 @@
 
 mod util;
 
-use std::collections::HashMap;
-use std::io::Write;
-use std::sync::Arc;
+use std::{collections::HashMap, io::Write, sync::Arc};
 
 use util::{emit_mov_imm64, imm_to_u64};
 
-use crate::error::LaminaError;
-use crate::mir::register::RegisterClass;
-use crate::mir::{
-    AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
-    IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, Signature, VirtualReg,
-};
-use crate::mir_codegen::common::{
-    CodegenBase, compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
-};
-use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-    capability::CapabilitySet, validate_module_call_parameters,
+use crate::{
+    error::LaminaError,
+    mir::{
+        AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
+        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, Signature, VirtualReg,
+        register::RegisterClass,
+    },
+    mir_codegen::{
+        Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
+        capability::CapabilitySet,
+        common::{
+            CodegenBase, compile_functions_parallel, emit_print_format_section,
+            parallel_codegen_error,
+        },
+        validate_module_call_parameters,
+    },
 };
 
-use lamina_codegen::aarch64::{A64RegAlloc, AArch64ABI, FrameMap};
-use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
+use lamina_codegen::{
+    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
+    aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).

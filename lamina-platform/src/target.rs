@@ -1,7 +1,6 @@
 //! Target architecture and operating system definitions.
 
-use std::fmt;
-use std::str::FromStr;
+use std::{fmt, str::FromStr};
 
 use crate::detection::{detect_host_architecture_only, detect_host_os};
 

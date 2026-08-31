@@ -3,9 +3,11 @@
 //! This module provides methods for memory allocation, access, and deallocation
 //! operations in the IR builder API.
 
-use crate::builder::IRBuilder;
-use crate::instruction::{AllocType, Instruction};
-use crate::types::{Type, Value};
+use crate::{
+    builder::IRBuilder,
+    instruction::{AllocType, Instruction},
+    types::{Type, Value},
+};
 
 impl<'a> IRBuilder<'a> {
     /// Allocates stack memory (automatic lifetime management)

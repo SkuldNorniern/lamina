@@ -1,9 +1,10 @@
 //! Global variable parsing for Lamina IR.
 
-use crate::LaminaError;
-use crate::ir::{GlobalDeclaration, Literal, PrimitiveType, Type, Value};
-use crate::parser::state::ParserState;
-use crate::parser::types::parse_type;
+use crate::{
+    LaminaError,
+    ir::{GlobalDeclaration, Literal, PrimitiveType, Type, Value},
+    parser::{state::ParserState, types::parse_type},
+};
 
 /// Parses a global declaration.
 pub fn parse_global_declaration<'a>(

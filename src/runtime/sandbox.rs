@@ -8,9 +8,11 @@
 //!   capability is disabled in `SandboxConfig`.
 //! - A basic memory-budget check based on estimated code + stack size.
 
-use crate::error::LaminaError;
-use crate::mir::{Instruction, Module as MirModule};
-use crate::runtime::compiler::RuntimeCompiler;
+use crate::{
+    error::LaminaError,
+    mir::{Instruction, Module as MirModule},
+    runtime::compiler::RuntimeCompiler,
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 #[cfg(feature = "encoder")]
 use std::mem;

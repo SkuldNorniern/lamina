@@ -1,11 +1,14 @@
 //! Instruction scheduling transform for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::{Block, Function, Instruction, IntBinOp, Register};
-use std::cmp::Ordering;
-use std::cmp::max;
-use std::collections::{BinaryHeap, HashMap, HashSet};
-use std::mem;
+use crate::mir::{
+    Block, Function, Instruction, IntBinOp, Register,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+};
+use std::{
+    cmp::{Ordering, max},
+    collections::{BinaryHeap, HashMap, HashSet},
+    mem,
+};
 
 /// Instruction scheduling that reorders instructions to improve ILP.
 #[derive(Default)]

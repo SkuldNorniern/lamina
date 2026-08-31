@@ -3,8 +3,7 @@
 //! LUMIR instructions are low-level, machine-friendly operations that map
 //! closely to actual assembly instructions. This design enables efficient
 //! code generation and optimization.
-use crate::register::Register;
-use crate::types::MirType;
+use crate::{register::Register, types::MirType};
 use std::fmt;
 
 /// Integer binary operations
@@ -1260,8 +1259,7 @@ impl fmt::Display for Instruction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::register::VirtualReg;
-    use crate::types::ScalarType;
+    use crate::{register::VirtualReg, types::ScalarType};
 
     #[test]
     fn test_instruction_def_reg() {

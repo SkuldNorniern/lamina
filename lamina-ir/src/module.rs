@@ -132,11 +132,12 @@
 //! let module = builder.build();
 //! ```
 
-use std::collections::HashMap;
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
-use crate::function::Function;
-use crate::types::{Identifier, Type, Value};
+use crate::{
+    function::Function,
+    types::{Identifier, Type, Value},
+};
 
 /// A named type declaration (e.g., `type @Vec2 = struct { ... }`).
 ///
@@ -418,11 +419,12 @@ impl fmt::Display for Module<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::function::{BasicBlock, Function, FunctionParameter, FunctionSignature};
-    use crate::instruction::{BinaryOp, Instruction};
-    use crate::types::{Literal, PrimitiveType, StructField, Type, Value};
-    use std::collections::HashMap;
-    use std::f32::consts::PI;
+    use crate::{
+        function::{BasicBlock, Function, FunctionParameter, FunctionSignature},
+        instruction::{BinaryOp, Instruction},
+        types::{Literal, PrimitiveType, StructField, Type, Value},
+    };
+    use std::{collections::HashMap, f32::consts::PI};
 
     #[test]
     fn test_display_type_declaration() {

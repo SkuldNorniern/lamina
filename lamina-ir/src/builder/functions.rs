@@ -5,9 +5,11 @@
 
 use std::collections::HashMap;
 
-use crate::builder::IRBuilder;
-use crate::function::{FunctionParameter, FunctionSignature, VariableAnnotation};
-use crate::types::Type;
+use crate::{
+    builder::IRBuilder,
+    function::{FunctionParameter, FunctionSignature, VariableAnnotation},
+    types::Type,
+};
 
 impl<'a> IRBuilder<'a> {
     /// Creates a new function with no parameters

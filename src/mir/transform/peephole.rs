@@ -2,8 +2,10 @@
 
 use core::mem::swap;
 
-use crate::mir::instruction::{FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp, Operand};
-use crate::mir::{Block, Function, MirType, Register, ScalarType};
+use crate::mir::{
+    Block, Function, MirType, Register, ScalarType,
+    instruction::{FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp, Operand},
+};
 
 use crate::mir::transform::{
     Transform, TransformCategory, TransformError, TransformLevel, compute_back_edge_headers,
@@ -569,9 +571,11 @@ fn decompose_multiplication(const_val: i64) -> Option<(u32, i64)> {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::function::Signature;
-    use crate::mir::register::{Register, VirtualReg};
-    use crate::mir::types::{MirType, ScalarType};
+    use crate::mir::{
+        function::Signature,
+        register::{Register, VirtualReg},
+        types::{MirType, ScalarType},
+    };
 
     #[test]
     fn fold_add_zero_right() {

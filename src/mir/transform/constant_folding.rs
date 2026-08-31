@@ -1,8 +1,8 @@
 //! Constant folding transform for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{
     FloatBinOp, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, ScalarType,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 
 /// Constant folding that evaluates constant expressions at compile time.
@@ -207,8 +207,7 @@ impl ConstantFolding {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::function::Signature;
-    use crate::mir::{Block, Register, VirtualReg};
+    use crate::mir::{Block, Register, VirtualReg, function::Signature};
 
     #[test]
     fn test_signed_division_overflow_prevention() {

@@ -2,10 +2,12 @@
 //!
 //! These functions are used internally by the macro to compile Lamina IR code.
 
-use crate::error::LaminaError;
-use crate::mir::codegen::from_ir;
-use crate::parser::parse_module;
-use crate::runtime::{RuntimeResult, compile_to_runtime};
+use crate::{
+    error::LaminaError,
+    mir::codegen::from_ir,
+    parser::parse_module,
+    runtime::{RuntimeResult, compile_to_runtime},
+};
 use lamina_platform::Target;
 
 /// Compiles Lamina IR code at runtime and returns the runtime result.

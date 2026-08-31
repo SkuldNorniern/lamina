@@ -10,9 +10,11 @@
 
 use crate::error::LaminaError;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::{env, fs};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 fn detect_compiler() -> Option<&'static str> {
     if Command::new("gcc").arg("--version").output().is_ok() {
