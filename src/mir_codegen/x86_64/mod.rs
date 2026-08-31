@@ -789,7 +789,7 @@ fn emit_instruction_x86_64(
         MirInst::Load {
             dst,
             addr,
-            ty: _,
+            ty,
             attrs: _,
         } => {
             if let AddressMode::BaseOffset { base, offset: 0 } = addr {
@@ -801,7 +801,7 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %{}, %rax", phys.name)?;
                     }
                 }
-                writeln!(writer, "    movq (%rax), %rax")?;
+                writeln!(writer, "    {}", load_insn_for(ty))?;
                 if let Register::Virtual(vreg) = dst {
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
@@ -814,7 +814,7 @@ fn emit_instruction_x86_64(
         MirInst::Store {
             addr,
             src,
-            ty: _,
+            ty,
             attrs: _,
         } => {
             // Simple direct store for now
@@ -829,7 +829,12 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %{}, %{}", phys.name, scratch)?;
                     }
                 }
-                writeln!(writer, "    movq %rax, (%{scratch})")?;
+                writeln!(
+                    writer,
+                    "    mov{} %{}, (%{scratch})",
+                    size_suffix(ty),
+                    rax_for(ty)
+                )?;
                 if scratch != "rbx" {
                     reg_alloc.free_scratch(scratch);
                 }
@@ -1120,4 +1125,39 @@ fn emit_instruction_x86_64(
     }
 
     Ok(())
+}
+
+/// Width suffix for a `mov` touching memory of this type.
+fn size_suffix(ty: &MirType) -> &'static str {
+    match ty.size_bytes() {
+        1 => "b",
+        2 => "w",
+        4 => "l",
+        _ => "q",
+    }
+}
+
+/// The sub-register of `rax` holding exactly the bytes of this type.
+fn rax_for(ty: &MirType) -> &'static str {
+    match ty.size_bytes() {
+        1 => "al",
+        2 => "ax",
+        4 => "eax",
+        _ => "rax",
+    }
+}
+
+/// Load through `rax`, reading only the bytes the type occupies.
+///
+/// Narrow loads zero-extend. Signedness lives in the operations (SDiv against UDiv,
+/// AShr against LShr) rather than in MirType, so a load cannot know which to pick, and
+/// zero-extension at least leaves the register with a defined value. Writing `movl`
+/// into `eax` already clears the top half.
+fn load_insn_for(ty: &MirType) -> &'static str {
+    match ty.size_bytes() {
+        1 => "movzbq (%rax), %rax",
+        2 => "movzwq (%rax), %rax",
+        4 => "movl (%rax), %eax",
+        _ => "movq (%rax), %rax",
+    }
 }
