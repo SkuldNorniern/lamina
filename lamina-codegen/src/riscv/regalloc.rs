@@ -35,13 +35,21 @@ impl Default for RiscVRegAlloc {
 }
 
 impl RiscVRegAlloc {
-    const AVAILABLE_REGISTERS: &'static [&'static str] = &[
-        "x5", "x6", "x7", // t0-t2
-        "x9", "x10", "x11", "x12", "x13", "x14", "x15", // s1-s7
-        "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23", // a0-a7
-        "x24", "x25", "x26", "x27", // t3-t6
-        "x28", "x29", "x30", "x31", // t3-t6 (duplicate for simplicity)
-    ];
+    /// Registers this allocator may hand out, by ABI name.
+    ///
+    /// ABI names, not `x` numbers, because the emitter writes `a0`, `a1` and `t0`
+    /// directly. While this list said `x10` and the emitter said `a0`, they were the
+    /// same register under two spellings and nothing could see the clash.
+    ///
+    /// Excluded and why:
+    ///   a0-a7 (x10-x17)  arguments and return values, and the emitter names a0/a1
+    ///   t0     (x5)      the emitter's own scratch
+    ///   s0-s11 (x8-x9, x18-x27)  callee-saved, and nothing saves them
+    ///   ra, sp, gp, tp, zero     reserved
+    ///
+    /// What remains is the caller-saved temporaries the emitter never names. They still
+    /// do not survive a call, which is why nothing may stay in one across a call site.
+    const AVAILABLE_REGISTERS: &'static [&'static str] = &["t1", "t2", "t3", "t4", "t5", "t6"];
 
     pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
@@ -55,10 +63,7 @@ impl RiscVRegAlloc {
 
     /// Set conservative mode (limit to fewer registers)
     pub fn set_conservative_mode(&mut self) {
-        self.available_gprs = vec![
-            "x9", "x10", "x11", "x12", "x13", "x14", "x15", // s1-s7
-            "x16", "x17", "x18", "x19", // a0-a3
-        ];
+        self.available_gprs = vec!["t1", "t2"];
     }
 
     /// Get stack slot for a virtual register
@@ -103,12 +108,14 @@ impl MirRegisterAllocator for RiscVRegAlloc {
     type PhysReg = &'static str;
 
     fn alloc_scratch(&mut self) -> Option<Self::PhysReg> {
-        for &reg in &self.available_gprs {
-            if !self.allocated_gprs.contains_key(reg) {
-                return Some(reg);
-            }
-        }
-        self.available_gprs.first().copied()
+        // None when the pool is exhausted. Returning the first register regardless, as
+        // this used to, handed out one that was already live; `ensure_mapping` then
+        // overwrote the previous owner's mapping and two values shared a register. None
+        // instead reaches the spill path that is already there.
+        self.available_gprs
+            .iter()
+            .copied()
+            .find(|reg| !self.allocated_gprs.contains_key(reg))
     }
 
     fn free_scratch(&mut self, phys: Self::PhysReg) {
@@ -159,5 +166,58 @@ impl MirRegisterAllocator for RiscVRegAlloc {
 
     fn is_occupied(&self, phys: Self::PhysReg) -> bool {
         self.allocated_gprs.contains_key(phys)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Registers the RISC-V emitter writes by name, plus those the ABI reserves.
+    const OFF_LIMITS: &[&str] = &[
+        "a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "t0", "ra", "sp", "gp", "tp", "zero", "fp",
+    ];
+
+    #[test]
+    fn pool_avoids_registers_the_emitter_uses_by_name() {
+        for reg in RiscVRegAlloc::AVAILABLE_REGISTERS {
+            assert!(
+                !OFF_LIMITS.contains(reg),
+                "{reg} is in the pool but the emitter or the ABI owns it"
+            );
+        }
+        let mut conservative = RiscVRegAlloc::default();
+        conservative.set_conservative_mode();
+        for reg in &conservative.available_gprs {
+            assert!(!OFF_LIMITS.contains(reg), "{reg} in conservative pool");
+        }
+    }
+
+    #[test]
+    fn pool_is_written_in_abi_names() {
+        // The emitter says `a0`; the pool used to say `x10`. Same register, two
+        // spellings, so a clash between them was invisible.
+        for reg in RiscVRegAlloc::AVAILABLE_REGISTERS {
+            assert!(
+                !reg.starts_with('x'),
+                "{reg} is an x-number; the emitter uses ABI names"
+            );
+        }
+    }
+
+    #[test]
+    fn exhausted_pool_reports_none_rather_than_a_live_register() {
+        let mut alloc = RiscVRegAlloc::default();
+        let total = alloc.available_gprs.len();
+        let mut handed_out = Vec::new();
+        for i in 0..total {
+            let phys = alloc.alloc_scratch().expect("pool should still have room");
+            assert!(!handed_out.contains(&phys), "{phys} handed out twice");
+            alloc.allocated_gprs.insert(phys, VirtualReg::gpr(i as u32));
+            handed_out.push(phys);
+        }
+        // Previously this returned the first register again, and the caller overwrote
+        // whichever value already held it.
+        assert_eq!(alloc.alloc_scratch(), None);
     }
 }
