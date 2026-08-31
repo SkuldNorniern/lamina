@@ -1,8 +1,5 @@
 mod util;
 
-use lamina_codegen::riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc, RiscVTarget, Xlen};
-use std::io::Write;
-use std::result::Result;
 use util::{
     emit_int_cmp_op, load_fp_operand_to_register, load_operand_to_register,
     load_register_to_register, store_fp_register_to_register, store_register_to_register,
@@ -23,11 +20,13 @@ use crate::mir_codegen::{
     capability::CapabilitySet, validate_module_call_parameters,
 };
 
+use lamina_codegen::riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc, RiscVTarget, Xlen};
 use lamina_codegen::{
     GraphColorAllocator, LinearScanAllocator, LiveInterval, LocalRegisterAllocator,
 };
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::collections::HashMap;
+use std::io::Write;
 use std::sync::Arc;
 
 use crate::mir_codegen::common::CodegenBase;

@@ -7,7 +7,6 @@ mod util;
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::result::Result;
 use std::sync::Arc;
 
 use util::{emit_mov_imm64, imm_to_u64};

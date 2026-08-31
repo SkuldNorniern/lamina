@@ -1,7 +1,6 @@
 //! Parser state management for Lamina IR parsing.
 
 use crate::{Identifier, Label, LaminaError};
-use std::result::Result;
 
 /// Parser state tracking position and input.
 #[derive(Debug)]

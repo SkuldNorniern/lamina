@@ -1,7 +1,6 @@
 /// RISC-V stack frame management utilities
 use crate::riscv::target::RiscVTarget;
-use std::io::Error;
-use std::io::Write;
+use std::io::{Error, Write};
 
 pub struct RiscVFrame;
 

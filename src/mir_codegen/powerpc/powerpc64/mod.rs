@@ -18,7 +18,6 @@ mod util;
 
 use std::collections::HashMap;
 use std::io::Write;
-use std::result::Result;
 use std::sync::Arc;
 use util::{
     load_operand_to_register, load_register_to_r3, load_register_to_register, store_r3_to_register,
