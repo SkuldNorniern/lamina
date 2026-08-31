@@ -159,10 +159,11 @@ fn compile_single_function_riscv(
     }
 
     let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
-    let mut reg_alloc = RiscVRegAlloc::new(target_os);
+    let mut reg_alloc = RiscVRegAlloc::with_target(target_os, target);
 
     if settings.regalloc != RegallocStrategy::Incremental {
-        (stack_slots, _) = assign_stack_slots(func, RiscVFrame::calculate_stack_offset);
+        (stack_slots, _) =
+            assign_stack_slots(func, |i| RiscVFrame::calculate_stack_offset(i, target));
         let pool = RiscVRegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()
@@ -195,14 +196,16 @@ fn compile_single_function_riscv(
                     && let Register::Virtual(vreg) = dst
                     && !stack_slots.contains_key(vreg)
                 {
-                    stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
+                    stack_slots
+                        .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot, target));
                     next_slot += 1;
                 }
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg
                         && !stack_slots.contains_key(vreg)
                     {
-                        stack_slots.insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot));
+                        stack_slots
+                            .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot, target));
                         next_slot += 1;
                     }
                 }
@@ -210,8 +213,8 @@ fn compile_single_function_riscv(
         }
     }
 
-    let stack_size = stack_slots.len() * 8;
-    RiscVFrame::generate_prologue(&mut output, stack_size)
+    let stack_size = stack_slots.len() * target.word_bytes() as usize;
+    RiscVFrame::generate_prologue(&mut output, stack_size, target)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     // Copy incoming arguments into their stack slots. Without this the callee reads an
@@ -226,14 +229,19 @@ fn compile_single_function_riscv(
                 continue;
             };
             if index < arg_regs.len() {
-                writeln!(output, "    sd {}, {slot_off}(fp)", arg_regs[index])
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                writeln!(
+                    output,
+                    "    {} {}, {slot_off}(fp)",
+                    target.store_word(),
+                    arg_regs[index]
+                )
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
             } else {
                 // fp is the caller's sp, so arguments past a7 start there and go up.
                 let caller_off = (index - arg_regs.len()) as i32 * 8;
-                writeln!(output, "    ld t0, {caller_off}(fp)")
+                writeln!(output, "    {} t0, {caller_off}(fp)", target.load_word())
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                writeln!(output, "    sd t0, {slot_off}(fp)")
+                writeln!(output, "    {} t0, {slot_off}(fp)", target.store_word())
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
             }
         }
@@ -555,7 +563,7 @@ fn emit_instruction_riscv<W: Write>(
                         // Load argument to a temporary register (use t0)
                         load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
                         // Store to stack
-                        writeln!(writer, "    sd t0, {offset}(sp)")?;
+                        writeln!(writer, "    {} t0, {offset}(sp)", ctx.target.store_word())?;
                     }
                 }
 
@@ -600,18 +608,24 @@ fn emit_instruction_riscv<W: Write>(
             if num_stack_args > 0 {
                 for (j, arg) in args.iter().skip(num_reg_args).enumerate() {
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
-                    writeln!(writer, "    sd t0, {}(fp)", j * 8)?;
+                    writeln!(
+                        writer,
+                        "    {} t0, {}(fp)",
+                        ctx.target.store_word(),
+                        j as i32 * ctx.target.word_bytes()
+                    )?;
                 }
             }
-            let stack_size = stack_slots.len() * 8;
+            let stack_size = stack_slots.len() * ctx.target.word_bytes() as usize;
             let target_sym = if let Some(stub) = abi.call_stub(name) {
                 stub
             } else {
                 abi.mangle_function_name(name)
             };
-            RiscVFrame::generate_tail_epilogue(writer, stack_size, &target_sym).map_err(|e| {
-                LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
-            })?;
+            RiscVFrame::generate_tail_epilogue(writer, stack_size, &target_sym, ctx.target)
+                .map_err(|e| {
+                    LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
+                })?;
         }
         MirInst::Load {
             dst,
@@ -746,8 +760,8 @@ fn emit_instruction_riscv<W: Write>(
                 load_operand_to_register(val, writer, reg_alloc, stack_slots, "a0")?;
             }
             // Epilogue
-            let stack_size = stack_slots.len() * 8;
-            RiscVFrame::generate_epilogue(writer, stack_size)?;
+            let stack_size = stack_slots.len() * ctx.target.word_bytes() as usize;
+            RiscVFrame::generate_epilogue(writer, stack_size, ctx.target)?;
         }
         MirInst::Jmp { target } => {
             writeln!(writer, "    j .L_{func_name}_{target}")?;
@@ -944,6 +958,58 @@ fn copy_store_mnemonic(ty: &MirType) -> &'static str {
 mod tests {
     use super::*;
     use crate::mir::FunctionBuilder;
+
+    #[test]
+    fn rv32_uses_word_memory_ops_not_doubleword() {
+        // sd and ld have no rv32 encoding. The emitter used them whatever the target,
+        // so riscv32 got rv64 code.
+        let ty = MirType::Scalar(ScalarType::I64);
+        let a = Register::Virtual(VirtualReg::gpr(0));
+        let b = Register::Virtual(VirtualReg::gpr(1));
+        let build = || {
+            let mut module = MirModule::new("width_test");
+            module.add_function(
+                FunctionBuilder::new("addup")
+                    .param(a.clone(), ty)
+                    .returns(ty)
+                    .block("entry")
+                    .instr(MirInst::IntBinary {
+                        op: IntBinOp::Add,
+                        ty,
+                        dst: b.clone(),
+                        lhs: Operand::Register(a.clone()),
+                        rhs: Operand::Immediate(Immediate::I64(1)),
+                    })
+                    .instr(MirInst::Ret {
+                        value: Some(Operand::Register(b.clone())),
+                    })
+                    .build(),
+            );
+            module
+        };
+
+        let emit = |target| {
+            let mut out = Vec::new();
+            generate_mir_riscv_with_units_and_settings(
+                &build(),
+                &mut out,
+                target,
+                TargetOperatingSystem::Linux,
+                1,
+                &MirCodegenSettings::default(),
+            )
+            .expect("codegen");
+            String::from_utf8(out).expect("utf8")
+        };
+
+        let rv32 = emit(RiscVTarget::general(Xlen::Rv32));
+        assert!(!rv32.contains("    sd "), "rv32 emitted sd:\n{rv32}");
+        assert!(!rv32.contains("    ld "), "rv32 emitted ld:\n{rv32}");
+        assert!(rv32.contains("    sw "), "rv32 emitted no sw:\n{rv32}");
+
+        let rv64 = emit(RiscVTarget::general(Xlen::Rv64));
+        assert!(rv64.contains("    sd "), "rv64 lost sd:\n{rv64}");
+    }
 
     #[test]
     fn base_isa_rejects_multiply_instead_of_emitting_it() {
