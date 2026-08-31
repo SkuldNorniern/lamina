@@ -115,7 +115,7 @@ pub fn parse_value_with_type_hint<'a>(
         Some(c) if c.is_ascii_digit() || c == '-' => {
             if matches!(type_hint, Type::Primitive(PrimitiveType::F32)) {
                 if let Ok(f_val) = state.parse_float() {
-                    return Ok(Value::Constant(Literal::F32(f_val)));
+                    return Ok(Value::Constant(Literal::F32(f_val as f32)));
                 }
 
                 state.set_position(start_pos);
@@ -124,6 +124,19 @@ pub fn parse_value_with_type_hint<'a>(
                 }
 
                 return Err(state.error("Expected float literal for F32 hint"));
+            }
+
+            if matches!(type_hint, Type::Primitive(PrimitiveType::F64)) {
+                if let Ok(f_val) = state.parse_float() {
+                    return Ok(Value::Constant(Literal::F64(f_val)));
+                }
+
+                state.set_position(start_pos);
+                if let Ok(i_val) = state.parse_integer() {
+                    return Ok(Value::Constant(Literal::F64(i_val as f64)));
+                }
+
+                return Err(state.error("Expected float literal for F64 hint"));
             }
 
             match type_hint {
@@ -182,7 +195,7 @@ pub fn parse_value_with_type_hint<'a>(
 
                     state.set_position(start_pos);
                     if let Ok(f_val) = state.parse_float() {
-                        return Ok(Value::Constant(Literal::F32(f_val)));
+                        return Ok(Value::Constant(Literal::F64(f_val)));
                     }
 
                     Err(state.error("Expected a numeric literal"))
