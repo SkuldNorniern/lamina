@@ -18,7 +18,11 @@ pub fn load_register_to_register<W: Write>(
     if let Some(phys) = reg_alloc.get_mapping(src) {
         writeln!(writer, "    mv {dest_reg}, {phys}")?;
     } else if let Some(offset) = stack_slots.get(src) {
-        writeln!(writer, "    ld {dest_reg}, {offset}(fp)")?;
+        writeln!(
+            writer,
+            "    {} {dest_reg}, {offset}(fp)",
+            reg_alloc.target().load_word()
+        )?;
     } else {
         return Err(Error::new(
             ErrorKind::InvalidData,
@@ -39,7 +43,11 @@ pub fn store_register_to_register<W: Write>(
     if let Some(phys) = reg_alloc.get_mapping(dst) {
         writeln!(writer, "    mv {phys}, {src_reg}")?;
     } else if let Some(offset) = stack_slots.get(dst) {
-        writeln!(writer, "    sd {src_reg}, {offset}(fp)")?;
+        writeln!(
+            writer,
+            "    {} {src_reg}, {offset}(fp)",
+            reg_alloc.target().store_word()
+        )?;
     } else {
         return Err(Error::new(
             ErrorKind::InvalidData,
