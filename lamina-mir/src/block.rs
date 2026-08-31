@@ -30,10 +30,6 @@ impl PartialEq for Block {
     fn eq(&self, other: &Self) -> bool {
         self.label == other.label
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        self.label != other.label
-    }
 }
 
 impl Block {
