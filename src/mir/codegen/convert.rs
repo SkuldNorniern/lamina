@@ -291,13 +291,10 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
                         let mir_ty = map_ir_type(ty)?;
                         for (val, pred_label) in incoming {
                             let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
-                            // Encode a move using add with zero; the backend already handles it.
-                            let mov_like = Instruction::IntBinary {
-                                op: IntBinOp::Add,
+                            let mov_like = Instruction::Copy {
                                 ty: mir_ty,
                                 dst: dst_reg.clone(),
-                                lhs: src_op,
-                                rhs: Operand::Immediate(Immediate::I64(0)),
+                                src: src_op,
                             };
                             edge_moves
                                 .entry(((*pred_label).to_string(), (*succ_label).to_string()))
@@ -455,6 +452,7 @@ fn add_missing_initializations(func: &mut Function) {
 
 fn collect_regs_from_instruction(instr: &Instruction, used_regs: &mut HashSet<VirtualReg>) {
     match instr {
+        Instruction::Copy { src, .. } => collect_regs_from_operand(src, used_regs),
         Instruction::IntBinary { lhs, rhs, .. }
         | Instruction::FloatBinary { lhs, rhs, .. }
         | Instruction::IntCmp { lhs, rhs, .. }
@@ -1026,12 +1024,10 @@ fn convert_instruction<'a>(
                         _ => return Err(FromIRError::UnsupportedInstruction),
                     };
 
-                    Ok(vec![Instruction::IntBinary {
-                        op: IntBinOp::Add,
+                    Ok(vec![Instruction::Copy {
                         ty: mir_ty,
                         dst,
-                        lhs: Operand::Immediate(imm),
-                        rhs: Operand::Immediate(Immediate::I64(0)),
+                        src: Operand::Immediate(imm),
                     }])
                 }
                 IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
@@ -1071,17 +1067,14 @@ fn convert_instruction<'a>(
         IRInst::PtrToInt {
             result,
             ptr_value,
-            target_type: _,
+            target_type,
         } => {
-            // On 64-bit, pointers are integers; lower to add with 0 to move value
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg)?;
-            Ok(vec![Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ty: MirType::Scalar(ScalarType::I64),
+            Ok(vec![Instruction::Copy {
+                ty: map_ir_prim(*target_type)?,
                 dst,
-                lhs: val_op,
-                rhs: Operand::Immediate(Immediate::I64(0)),
+                src: val_op,
             }])
         }
         IRInst::IntToPtr {
@@ -1089,15 +1082,12 @@ fn convert_instruction<'a>(
             int_value,
             target_type: _,
         } => {
-            // Treat as identity move via add with 0 (pointer-sized)
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg)?;
-            Ok(vec![Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ty: MirType::Scalar(ScalarType::I64),
+            Ok(vec![Instruction::Copy {
+                ty: MirType::Scalar(ScalarType::Ptr),
                 dst,
-                lhs: val_op,
-                rhs: Operand::Immediate(Immediate::I64(0)),
+                src: val_op,
             }])
         }
         IRInst::MemCpy { dst, src, size } => {
@@ -1557,6 +1547,54 @@ mod tests {
             }
             other => panic!("Unexpected second instruction: {:?}", other),
         }
+    }
+
+    #[test]
+    fn f64_phi_immediate_survives_lowering_as_copy() {
+        let negative_zero = IRVal::Constant(IRLit::F64(-0.0));
+        let other = IRVal::Constant(IRLit::F64(3.5));
+        let mut builder = IRBuilder::new();
+        builder
+            .function_with_params(
+                "choose",
+                vec![FunctionParameter {
+                    name: "condition",
+                    ty: IRType::Primitive(IRPrim::I8),
+                    annotations: vec![],
+                }],
+                IRType::Primitive(IRPrim::F64),
+            )
+            .branch(var("condition"), "left", "right")
+            .block("left")
+            .jump("merge")
+            .block("right")
+            .jump("merge")
+            .block("merge")
+            .phi(
+                "value",
+                IRType::Primitive(IRPrim::F64),
+                vec![(negative_zero, "left"), (other, "right")],
+            )
+            .ret(IRType::Primitive(IRPrim::F64), var("value"));
+
+        let mir_module = from_ir(&builder.build(), "test").expect("from_ir should succeed");
+        let function = mir_module
+            .get_function("choose")
+            .expect("function should exist");
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| &block.instructions)
+                .any(|instruction| matches!(
+                    instruction,
+                    Instruction::Copy {
+                        ty: MirType::Scalar(ScalarType::F64),
+                        src: Operand::Immediate(Immediate::F64(value)),
+                        ..
+                    } if value.to_bits() == (-0.0f64).to_bits()
+                ))
+        );
     }
 
     #[test]

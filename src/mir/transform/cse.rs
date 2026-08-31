@@ -5,8 +5,7 @@ use crate::mir::transform::{
     compute_back_edge_headers,
 };
 use crate::mir::{
-    Block, FloatBinOp, Function, Immediate, Instruction, IntBinOp, MirType, Operand, Register,
-    ScalarType,
+    Block, FloatBinOp, Function, Instruction, IntBinOp, MirType, Operand, Register, ScalarType,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -41,15 +40,17 @@ impl CommonSubexpressionElimination {
     /// Extract the type from an instruction for use in replacement instructions
     fn extract_instruction_type(&self, instr: &Instruction) -> MirType {
         match instr {
-            Instruction::IntBinary { ty, .. }
+            Instruction::Copy { ty, .. }
+            | Instruction::IntBinary { ty, .. }
             | Instruction::FloatBinary { ty, .. }
             | Instruction::FloatUnary { ty, .. }
-            | Instruction::IntCmp { ty, .. }
-            | Instruction::FloatCmp { ty, .. }
             | Instruction::Select { ty, .. }
             | Instruction::Load { ty, .. }
             | Instruction::Store { ty, .. }
             | Instruction::VectorOp { ty, .. } => *ty,
+            Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
+                MirType::Scalar(ScalarType::I1)
+            }
             // For other instructions that don't have explicit types, default to I64
             // This should be rare and these instructions probably shouldn't be CSE'd
             _ => MirType::Scalar(ScalarType::I64),
@@ -165,34 +166,10 @@ impl CommonSubexpressionElimination {
                             if is_in_loop_body && !self.is_simple_cse_candidate(instr) {
                                 instructions.push(instr.clone());
                             } else {
-                                let instr_type = self.extract_instruction_type(instr);
-                                let copy_instr = match instr_type {
-                                    MirType::Scalar(ScalarType::F64)
-                                    | MirType::Scalar(ScalarType::F32) => {
-                                        // For float types, create a float add with 0.0
-                                        let zero = match instr_type {
-                                            MirType::Scalar(ScalarType::F64) => Immediate::F64(0.0),
-                                            MirType::Scalar(ScalarType::F32) => Immediate::F32(0.0),
-                                            _ => unreachable!(),
-                                        };
-                                        Instruction::FloatBinary {
-                                            op: FloatBinOp::FAdd,
-                                            dst: dst.clone(),
-                                            ty: instr_type,
-                                            lhs: Operand::Register(existing_reg.clone()),
-                                            rhs: Operand::Immediate(zero),
-                                        }
-                                    }
-                                    _ => {
-                                        // For integer types, use integer add with 0
-                                        Instruction::IntBinary {
-                                            op: IntBinOp::Add,
-                                            dst: dst.clone(),
-                                            ty: instr_type,
-                                            lhs: Operand::Register(existing_reg.clone()),
-                                            rhs: Operand::Immediate(Immediate::I64(0)),
-                                        }
-                                    }
+                                let copy_instr = Instruction::Copy {
+                                    ty: self.extract_instruction_type(instr),
+                                    dst: dst.clone(),
+                                    src: Operand::Register(existing_reg.clone()),
                                 };
                                 instructions.push(copy_instr);
                                 changed = true;
@@ -268,7 +245,7 @@ impl CommonSubexpressionElimination {
 mod tests {
     use super::*;
     use crate::mir::transform::test_utils::get_block;
-    use crate::mir::{FunctionBuilder, IntBinOp, ScalarType, VirtualReg};
+    use crate::mir::{FloatCmpOp, FunctionBuilder, Immediate, IntBinOp, ScalarType, VirtualReg};
 
     #[test]
     fn test_cse_empty_function() {
@@ -282,6 +259,26 @@ mod tests {
         let result = cse.apply(&mut func);
         assert!(result.is_ok());
         assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn cse_float_comparison_reuse_has_i1_result_type() {
+        let f64_ty = MirType::Scalar(ScalarType::F64);
+        let i1_ty = MirType::Scalar(ScalarType::I1);
+        let lhs: Register = VirtualReg::fpr(0).into();
+        let rhs: Register = VirtualReg::fpr(1).into();
+        let comparison = Instruction::FloatCmp {
+            op: FloatCmpOp::Eq,
+            ty: f64_ty,
+            dst: VirtualReg::gpr(2).into(),
+            lhs: Operand::Register(lhs),
+            rhs: Operand::Register(rhs),
+        };
+
+        assert_eq!(
+            CommonSubexpressionElimination.extract_instruction_type(&comparison),
+            i1_ty
+        );
     }
 
     #[test]

@@ -11,8 +11,8 @@ use crate::error::LaminaError;
 use std::result::Result;
 
 use crate::mir::{
-    AddressMode, Function, Global, Instruction as MirInst, MirType, Module as MirModule, Register,
-    ScalarType, Signature, VirtualReg,
+    AddressMode, Function, Global, Immediate, Instruction as MirInst, MirType, Module as MirModule,
+    Operand, Register, ScalarType, Signature, VirtualReg,
 };
 use crate::mir_codegen::common::{CodegenBase, compile_functions_parallel, parallel_codegen_error};
 use crate::mir_codegen::{
@@ -351,6 +351,23 @@ fn emit_instruction_wasm(
     block_labels: &HashMap<&str, usize>,
 ) -> Result<(), LaminaError> {
     match inst {
+        MirInst::Copy { ty, dst, src } => {
+            if matches!(ty, MirType::Vector(_)) {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!("WASM backend does not support vector Copy of type {ty}"),
+                )));
+            }
+            match src {
+                Operand::Immediate(Immediate::F32(value)) => {
+                    writeln!(writer, "      i64.const {}", value.to_bits())?;
+                }
+                Operand::Immediate(Immediate::F64(value)) => {
+                    writeln!(writer, "      i64.const {}", value.to_bits() as i64)?;
+                }
+                _ => load_operand_wasm(src, writer, vreg_to_local)?,
+            }
+            store_to_register_wasm(dst, writer, vreg_to_local)?;
+        }
         MirInst::IntBinary {
             op,
             dst,
@@ -805,3 +822,48 @@ fn emit_instruction_wasm(
 }
 
 // Utility functions are now in the util module
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::FunctionBuilder;
+
+    #[test]
+    fn float_copy_emits_local_move_not_add() {
+        let ty = MirType::Scalar(ScalarType::F64);
+        let src = Register::Virtual(VirtualReg::fpr(0));
+        let dst = Register::Virtual(VirtualReg::fpr(1));
+        let function = FunctionBuilder::new("copy_float")
+            .param(src.clone(), ty)
+            .returns(ty)
+            .block("entry")
+            .instr(MirInst::Copy {
+                ty,
+                dst: dst.clone(),
+                src: Operand::Register(src),
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+        let mut module = MirModule::new("copy_test");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_wasm(&module, &mut output, TargetOperatingSystem::Unknown)
+            .expect("WASM codegen should succeed");
+        let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
+
+        assert!(
+            assembly.contains("local.get"),
+            "expected local move: {assembly}"
+        );
+        assert!(
+            assembly.contains("local.set"),
+            "expected local move: {assembly}"
+        );
+        assert!(
+            !assembly.contains("f64.add"),
+            "unexpected float add: {assembly}"
+        );
+    }
+}

@@ -21,6 +21,14 @@ fn is_imm(operand: &Operand, v: i64) -> bool {
 }
 
 fn identity_copy_source(instr: &Instruction) -> Option<(&Register, &Register)> {
+    if let Instruction::Copy {
+        dst,
+        src: Operand::Register(src),
+        ..
+    } = instr
+    {
+        return Some((dst, src));
+    }
     let Instruction::IntBinary {
         op, dst, lhs, rhs, ..
     } = instr
@@ -131,6 +139,9 @@ impl CopyPropagation {
         let mut changed = false;
 
         match instr {
+            Instruction::Copy { src, .. } => {
+                changed |= self.replace_operand(src, value_map);
+            }
             Instruction::IntBinary { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
             | Instruction::IntCmp { lhs, rhs, .. }

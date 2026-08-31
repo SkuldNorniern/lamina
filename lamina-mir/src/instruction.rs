@@ -490,6 +490,13 @@ impl Default for MemoryAttrs {
 /// LUMIR instruction
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
+    // Typed value copy
+    Copy {
+        ty: MirType,
+        dst: Register,
+        src: Operand,
+    },
+
     // Integer arithmetic
     IntBinary {
         op: IntBinOp,
@@ -740,7 +747,8 @@ impl Instruction {
     /// Get the destination register if this instruction defines one
     pub fn def_reg(&self) -> Option<&Register> {
         match self {
-            Instruction::IntBinary { dst, .. }
+            Instruction::Copy { dst, .. }
+            | Instruction::IntBinary { dst, .. }
             | Instruction::FloatBinary { dst, .. }
             | Instruction::FloatUnary { dst, .. }
             | Instruction::IntCmp { dst, .. }
@@ -770,6 +778,11 @@ impl Instruction {
         let mut regs = Vec::new();
 
         match self {
+            Instruction::Copy {
+                src: Operand::Register(r),
+                ..
+            } => regs.push(r),
+            Instruction::Copy { .. } => {}
             Instruction::IntBinary { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
             | Instruction::IntCmp { lhs, rhs, .. }
@@ -992,6 +1005,9 @@ impl Instruction {
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Instruction::Copy { ty, dst, src } => {
+                write!(f, "{dst} = copy.{ty} {src}")
+            }
             Instruction::IntBinary {
                 op,
                 ty,
@@ -1261,6 +1277,22 @@ mod tests {
         };
 
         assert_eq!(add.def_reg(), Some(&v0));
+    }
+
+    #[test]
+    fn copy_defines_destination_and_uses_source() {
+        let dst = Register::Virtual(VirtualReg::fpr(0));
+        let src = Register::Virtual(VirtualReg::fpr(1));
+        let copy = Instruction::Copy {
+            ty: MirType::Scalar(ScalarType::F64),
+            dst: dst.clone(),
+            src: Operand::Register(src.clone()),
+        };
+
+        assert_eq!(copy.def_reg(), Some(&dst));
+        assert_eq!(copy.use_regs(), vec![&src]);
+        assert!(!copy.is_terminator());
+        assert_eq!(format!("{copy}"), "%f0 = copy.f64 %f1");
     }
 
     #[test]
