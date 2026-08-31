@@ -739,6 +739,87 @@ fn emit_instruction_x86_64(
                 }
 
                 writeln!(writer, "    addq ${}, %rsp", stack::ALIGNMENT)?;
+            } else if name == "readbyte" && args.is_empty() {
+                writeln!(writer, "    subq ${}, %rsp", stack::ALIGNMENT)?;
+
+                match target_os {
+                    TargetOperatingSystem::MacOS => {
+                        writeln!(writer, "    movq ${}, %rax", macos::SYS_READ)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDIN)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                    }
+                    TargetOperatingSystem::Windows => {
+                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    call getchar")?;
+                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    movslq %eax, %rax")?;
+                    }
+                    _ => {
+                        writeln!(writer, "    movq ${}, %rax", linux::SYS_READ)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDIN)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                    }
+                }
+
+                // getchar already returns the byte (or -1); the syscall returns a
+                // count, so swap in the byte it stored only on a full read.
+                if target_os != TargetOperatingSystem::Windows {
+                    writeln!(writer, "    movzbl (%rsp), %ecx")?;
+                    writeln!(writer, "    cmpq $1, %rax")?;
+                    writeln!(writer, "    cmovel %ecx, %eax")?;
+                }
+
+                writeln!(writer, "    addq ${}, %rsp", stack::ALIGNMENT)?;
+
+                if let Some(ret_reg) = ret
+                    && let Register::Virtual(vreg) = ret_reg
+                {
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
+            } else if name == "writeptr" && args.len() == 1 {
+                let arg = args.first().ok_or_else(|| {
+                    LaminaError::ValidationError("writeptr requires one argument".to_string())
+                })?;
+                load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
+                writeln!(writer, "    movzbl (%rax), %ecx")?;
+                writeln!(writer, "    subq ${}, %rsp", stack::ALIGNMENT)?;
+                writeln!(writer, "    movb %cl, (%rsp)")?;
+
+                match target_os {
+                    TargetOperatingSystem::MacOS => {
+                        writeln!(writer, "    movq ${}, %rax", macos::SYS_WRITE)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                    }
+                    TargetOperatingSystem::Windows => {
+                        writeln!(writer, "    movzbl (%rsp), %ecx")?;
+                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    call putchar")?;
+                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    movslq %eax, %rax")?;
+                    }
+                    _ => {
+                        writeln!(writer, "    movq ${}, %rax", linux::SYS_WRITE)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                    }
+                }
+
+                writeln!(writer, "    addq ${}, %rsp", stack::ALIGNMENT)?;
+
+                if let Some(ret_reg) = ret
+                    && let Register::Virtual(vreg) = ret_reg
+                {
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
             } else {
                 let abi = X86ABI::new(target_os);
                 let arg_regs = abi.arg_registers();
