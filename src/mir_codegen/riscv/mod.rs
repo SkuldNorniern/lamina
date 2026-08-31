@@ -24,7 +24,7 @@ use crate::mir_codegen::{
 };
 
 use lamina_codegen::{
-    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator, LocalRegisterAllocator,
+    GraphColorAllocator, LinearScanAllocator, LiveInterval, LocalRegisterAllocator,
 };
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::collections::HashMap;
@@ -160,6 +160,7 @@ fn compile_single_function_riscv(
 
     let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
     let mut reg_alloc = RiscVRegAlloc::with_target(target_os, target);
+    let mut live_across_calls = HashMap::new();
 
     if settings.regalloc != RegallocStrategy::Incremental {
         (stack_slots, _) =
@@ -182,12 +183,8 @@ fn compile_single_function_riscv(
                 ));
             }
         };
-        reg_alloc = RiscVRegAlloc::from_global_plan(target_os, &plan);
-        for (v, a) in &plan {
-            if let MirAllocation::Spill(off) = a {
-                stack_slots.insert(*v, *off);
-            }
-        }
+        live_across_calls = live_vregs_across_calls(func, &intervals);
+        reg_alloc = RiscVRegAlloc::from_global_plan(target_os, target, &plan, &stack_slots);
     } else {
         let mut next_slot = 0usize;
         for block in &func.blocks {
@@ -214,7 +211,8 @@ fn compile_single_function_riscv(
     }
 
     let stack_size = stack_slots.len() * target.word_bytes() as usize;
-    RiscVFrame::generate_prologue(&mut output, stack_size, target)
+    let callee_saved_registers = reg_alloc.used_callee_saved_registers();
+    RiscVFrame::generate_prologue(&mut output, stack_size, &callee_saved_registers, target)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     // Copy incoming arguments into their stack slots. Without this the callee reads an
@@ -229,20 +227,33 @@ fn compile_single_function_riscv(
                 continue;
             };
             if index < arg_regs.len() {
-                writeln!(
-                    output,
-                    "    {} {}, {slot_off}(fp)",
-                    target.store_word(),
-                    arg_regs[index]
-                )
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                if let Some(physical) = reg_alloc.get_mapping(vreg) {
+                    writeln!(output, "    mv {physical}, {}", arg_regs[index]).map_err(|e| {
+                        CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                    })?;
+                } else {
+                    writeln!(
+                        output,
+                        "    {} {}, {slot_off}(fp)",
+                        target.store_word(),
+                        arg_regs[index]
+                    )
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                }
             } else {
                 // fp is the caller's sp, so arguments past a7 start there and go up.
-                let caller_off = (index - arg_regs.len()) as i32 * 8;
+                let caller_off = (index - arg_regs.len()) as i32 * target.word_bytes();
                 writeln!(output, "    {} t0, {caller_off}(fp)", target.load_word())
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                writeln!(output, "    {} t0, {slot_off}(fp)", target.store_word())
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                if let Some(physical) = reg_alloc.get_mapping(vreg) {
+                    writeln!(output, "    mv {physical}, t0").map_err(|e| {
+                        CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                    })?;
+                } else {
+                    writeln!(output, "    {} t0, {slot_off}(fp)", target.store_word()).map_err(
+                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                    )?;
+                }
             }
         }
     }
@@ -254,6 +265,9 @@ fn compile_single_function_riscv(
         settings,
         debug_line: 0,
         label_seq: 0,
+        live_across_calls,
+        stack_size,
+        callee_saved_registers,
     };
     let entry_block = func.entry_block().ok_or_else(|| {
         CodegenError::InvalidFuncs(vec![format!(
@@ -261,8 +275,23 @@ fn compile_single_function_riscv(
             func.entry
         )])
     })?;
+    let mut block_start = 0;
+    let mut block_starts = HashMap::new();
+    for block in &func.blocks {
+        block_starts.insert(block.label.as_str(), block_start);
+        block_start += block.instructions.len();
+    }
+    let entry_start = block_starts
+        .get(entry_block.label.as_str())
+        .copied()
+        .ok_or_else(|| {
+            CodegenError::InvalidFuncs(vec![format!(
+                "{func_name}: entry block position is unavailable"
+            )])
+        })?;
     emit_block_riscv(
         entry_block,
+        entry_start,
         &mut output,
         &mut reg_alloc,
         &stack_slots,
@@ -272,10 +301,103 @@ fn compile_single_function_riscv(
         if block == entry_block {
             continue;
         }
-        emit_block_riscv(block, &mut output, &mut reg_alloc, &stack_slots, &mut ctx)?;
+        let start = block_starts
+            .get(block.label.as_str())
+            .copied()
+            .ok_or_else(|| {
+                CodegenError::InvalidFuncs(vec![format!(
+                    "{func_name}: block '{}' position is unavailable",
+                    block.label
+                )])
+            })?;
+        emit_block_riscv(
+            block,
+            start,
+            &mut output,
+            &mut reg_alloc,
+            &stack_slots,
+            &mut ctx,
+        )?;
     }
 
     Ok(output)
+}
+
+fn live_vregs_across_calls(
+    function: &Function,
+    intervals: &[LiveInterval],
+) -> HashMap<usize, Vec<VirtualReg>> {
+    let mut result = HashMap::new();
+    let mut instruction_index = 0;
+    for block in &function.blocks {
+        for instruction in &block.instructions {
+            if matches!(instruction, MirInst::Call { .. }) {
+                let mut live: Vec<_> = intervals
+                    .iter()
+                    .filter(|interval| {
+                        interval.start < instruction_index && interval.end > instruction_index
+                    })
+                    .map(|interval| interval.vreg)
+                    .collect();
+                live.sort_unstable();
+                result.insert(instruction_index, live);
+            }
+            instruction_index += 1;
+        }
+    }
+    result
+}
+
+fn validate_rv32_i64(module: &MirModule, target: RiscVTarget) -> Result<(), LaminaError> {
+    if target.xlen == Xlen::Rv64 {
+        return Ok(());
+    }
+    let i64_type = |ty: &MirType| matches!(ty, MirType::Scalar(ScalarType::I64));
+    let has_i64_global = module.globals.values().any(|global| i64_type(&global.ty));
+    let has_i64_function = module.functions.values().any(|function| {
+        function.sig.params.iter().any(|param| i64_type(&param.ty))
+            || function.sig.ret_ty.as_ref().is_some_and(&i64_type)
+            || function.blocks.iter().any(|block| {
+                block
+                    .instructions
+                    .iter()
+                    .filter_map(instruction_type)
+                    .any(&i64_type)
+            })
+    });
+    if has_i64_global || has_i64_function {
+        target.require_i64().map_err(LaminaError::ValidationError)?;
+    }
+    Ok(())
+}
+
+fn instruction_type(instruction: &MirInst) -> Option<&MirType> {
+    match instruction {
+        MirInst::Copy { ty, .. }
+        | MirInst::IntBinary { ty, .. }
+        | MirInst::FloatBinary { ty, .. }
+        | MirInst::FloatUnary { ty, .. }
+        | MirInst::IntCmp { ty, .. }
+        | MirInst::FloatCmp { ty, .. }
+        | MirInst::Select { ty, .. }
+        | MirInst::Load { ty, .. }
+        | MirInst::Store { ty, .. }
+        | MirInst::VectorOp { ty, .. } => Some(ty),
+        #[cfg(feature = "nightly")]
+        MirInst::SimdBinary { ty, .. }
+        | MirInst::SimdUnary { ty, .. }
+        | MirInst::SimdTernary { ty, .. }
+        | MirInst::SimdShuffle { ty, .. }
+        | MirInst::SimdExtract { ty, .. }
+        | MirInst::SimdInsert { ty, .. }
+        | MirInst::SimdLoad { ty, .. }
+        | MirInst::SimdStore { ty, .. }
+        | MirInst::AtomicLoad { ty, .. }
+        | MirInst::AtomicStore { ty, .. }
+        | MirInst::AtomicBinary { ty, .. }
+        | MirInst::AtomicCompareExchange { ty, .. } => Some(ty),
+        _ => None,
+    }
 }
 
 pub fn generate_mir_riscv<W: Write>(
@@ -315,6 +437,7 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
         Xlen::Rv64 => TargetArchitecture::Riscv64,
     };
     validate_module_call_parameters(module, arch)?;
+    validate_rv32_i64(module, target)?;
     let abi = RiscVAbi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;
@@ -350,10 +473,14 @@ struct EmitCtx<'a> {
     debug_line: u32,
     /// Sequence for compiler-generated labels, so they do not depend on any address.
     label_seq: u32,
+    live_across_calls: HashMap<usize, Vec<VirtualReg>>,
+    stack_size: usize,
+    callee_saved_registers: Vec<&'static str>,
 }
 
 fn emit_block_riscv<W: Write>(
     block: &MirBlock,
+    block_start: usize,
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
@@ -361,8 +488,9 @@ fn emit_block_riscv<W: Write>(
 ) -> Result<(), CodegenError> {
     writeln!(writer, ".L_{}_{}:", ctx.func_name, block.label)
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    for inst in &block.instructions {
-        emit_instruction_riscv(inst, writer, reg_alloc, stack_slots, ctx)
+    for (block_instruction_index, inst) in block.instructions.iter().enumerate() {
+        let instruction_index = block_start + block_instruction_index;
+        emit_instruction_riscv(inst, instruction_index, writer, reg_alloc, stack_slots, ctx)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
     Ok(())
@@ -370,6 +498,7 @@ fn emit_block_riscv<W: Write>(
 
 fn emit_instruction_riscv<W: Write>(
     inst: &MirInst,
+    instruction_index: usize,
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
@@ -508,6 +637,13 @@ fn emit_instruction_riscv<W: Write>(
         }
         MirInst::Call { name, args, ret } => {
             let abi = RiscVAbi::new(target_os);
+            let live_vregs = ctx
+                .live_across_calls
+                .get(&instruction_index)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let caller_saved_mappings = reg_alloc.caller_saved_mappings(live_vregs);
+            spill_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
 
             // Handle print intrinsic
             if name == "print" {
@@ -548,7 +684,7 @@ fn emit_instruction_riscv<W: Write>(
                 // Pass stack arguments (16-byte aligned)
                 let stack_space = if num_stack_args > 0 {
                     // Align to 16 bytes
-                    ((num_stack_args * 8) + 15) & !15
+                    ((num_stack_args * ctx.target.word_bytes() as usize) + 15) & !15
                 } else {
                     0
                 };
@@ -559,7 +695,7 @@ fn emit_instruction_riscv<W: Write>(
 
                     // Store arguments on stack (in order, starting at sp+0)
                     for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
-                        let offset = i * 8;
+                        let offset = i * ctx.target.word_bytes() as usize;
                         // Load argument to a temporary register (use t0)
                         load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
                         // Store to stack
@@ -582,6 +718,8 @@ fn emit_instruction_riscv<W: Write>(
                     writeln!(writer, "    addi sp, sp, {stack_space}")?;
                 }
             }
+
+            reload_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
 
             // Handle return value (always in a0)
             if let Some(ret_reg) = ret
@@ -616,16 +754,21 @@ fn emit_instruction_riscv<W: Write>(
                     )?;
                 }
             }
-            let stack_size = stack_slots.len() * ctx.target.word_bytes() as usize;
             let target_sym = if let Some(stub) = abi.call_stub(name) {
                 stub
             } else {
                 abi.mangle_function_name(name)
             };
-            RiscVFrame::generate_tail_epilogue(writer, stack_size, &target_sym, ctx.target)
-                .map_err(|e| {
-                    LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
-                })?;
+            RiscVFrame::generate_tail_epilogue(
+                writer,
+                ctx.stack_size,
+                &ctx.callee_saved_registers,
+                &target_sym,
+                ctx.target,
+            )
+            .map_err(|e| {
+                LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
+            })?;
         }
         MirInst::Load {
             dst,
@@ -760,8 +903,12 @@ fn emit_instruction_riscv<W: Write>(
                 load_operand_to_register(val, writer, reg_alloc, stack_slots, "a0")?;
             }
             // Epilogue
-            let stack_size = stack_slots.len() * ctx.target.word_bytes() as usize;
-            RiscVFrame::generate_epilogue(writer, stack_size, ctx.target)?;
+            RiscVFrame::generate_epilogue(
+                writer,
+                ctx.stack_size,
+                &ctx.callee_saved_registers,
+                ctx.target,
+            )?;
         }
         MirInst::Jmp { target } => {
             writeln!(writer, "    j .L_{func_name}_{target}")?;
@@ -940,6 +1087,48 @@ fn emit_instruction_riscv<W: Write>(
     Ok(())
 }
 
+fn spill_caller_saved<W: Write>(
+    writer: &mut W,
+    mappings: &[(VirtualReg, &'static str)],
+    stack_slots: &HashMap<VirtualReg, i32>,
+    target: RiscVTarget,
+) -> Result<(), LaminaError> {
+    for (vreg, physical) in mappings {
+        let offset = stack_slots.get(vreg).ok_or_else(|| {
+            LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+                "RISC-V caller-saved value {vreg:?} has no spill slot"
+            )))
+        })?;
+        writeln!(
+            writer,
+            "    {} {physical}, {offset}(fp)",
+            target.store_word()
+        )?;
+    }
+    Ok(())
+}
+
+fn reload_caller_saved<W: Write>(
+    writer: &mut W,
+    mappings: &[(VirtualReg, &'static str)],
+    stack_slots: &HashMap<VirtualReg, i32>,
+    target: RiscVTarget,
+) -> Result<(), LaminaError> {
+    for (vreg, physical) in mappings {
+        let offset = stack_slots.get(vreg).ok_or_else(|| {
+            LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+                "RISC-V caller-saved value {vreg:?} has no spill slot"
+            )))
+        })?;
+        writeln!(
+            writer,
+            "    {} {physical}, {offset}(fp)",
+            target.load_word()
+        )?;
+    }
+    Ok(())
+}
+
 fn copy_load_mnemonic(ty: &MirType) -> &'static str {
     match ty {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lbu",
@@ -964,12 +1153,13 @@ fn copy_store_mnemonic(ty: &MirType) -> &'static str {
 mod tests {
     use super::*;
     use crate::mir::FunctionBuilder;
+    use std::error::Error;
 
     #[test]
     fn rv32_uses_word_memory_ops_not_doubleword() {
         // sd and ld have no rv32 encoding. The emitter used them whatever the target,
         // so riscv32 got rv64 code.
-        let ty = MirType::Scalar(ScalarType::I64);
+        let ty = MirType::Scalar(ScalarType::I32);
         let a = Register::Virtual(VirtualReg::gpr(0));
         let b = Register::Virtual(VirtualReg::gpr(1));
         let build = || {
@@ -984,7 +1174,7 @@ mod tests {
                         ty,
                         dst: b.clone(),
                         lhs: Operand::Register(a.clone()),
-                        rhs: Operand::Immediate(Immediate::I64(1)),
+                        rhs: Operand::Immediate(Immediate::I32(1)),
                     })
                     .instr(MirInst::Ret {
                         value: Some(Operand::Register(b.clone())),
@@ -1015,6 +1205,161 @@ mod tests {
 
         let rv64 = emit(RiscVTarget::general(Xlen::Rv64));
         assert!(rv64.contains("    sd "), "rv64 lost sd:\n{rv64}");
+    }
+
+    #[test]
+    fn rv32_rejects_i64_instead_of_truncating_it() {
+        let ty = MirType::Scalar(ScalarType::I64);
+        let dst = Register::Virtual(VirtualReg::gpr(0));
+        let function = FunctionBuilder::new("wide")
+            .returns(ty)
+            .block("entry")
+            .instr(MirInst::Copy {
+                ty,
+                dst: dst.clone(),
+                src: Operand::Immediate(Immediate::I64(1_i64 << 40)),
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+        let mut module = MirModule::new("wide_test");
+        module.add_function(function);
+        let mut output = Vec::new();
+        let result = generate_mir_riscv_with_units_and_settings(
+            &module,
+            &mut output,
+            RiscVTarget::general(Xlen::Rv32),
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+        );
+        assert!(result.is_err(), "rv32 i64 must be rejected");
+        let Err(error) = result else {
+            return;
+        };
+        let message = error.to_string();
+        assert!(
+            message.contains("i64"),
+            "message did not name type: {message}"
+        );
+        assert!(
+            message.contains("rv32imafd"),
+            "message did not name target: {message}"
+        );
+    }
+
+    #[test]
+    fn caller_saved_value_live_across_call_is_spilled_and_reloaded() -> Result<(), Box<dyn Error>> {
+        let ty = MirType::Scalar(ScalarType::I64);
+        let live = Register::Virtual(VirtualReg::gpr(0));
+        let result = Register::Virtual(VirtualReg::gpr(1));
+        let caller = FunctionBuilder::new("caller")
+            .returns(ty)
+            .block("entry")
+            .instr(MirInst::Copy {
+                ty,
+                dst: live.clone(),
+                src: Operand::Immediate(Immediate::I64(41)),
+            })
+            .instr(MirInst::Call {
+                name: "callee".to_string(),
+                args: Vec::new(),
+                ret: None,
+            })
+            .instr(MirInst::IntBinary {
+                op: IntBinOp::Add,
+                ty,
+                dst: result.clone(),
+                lhs: Operand::Register(live),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(result)),
+            })
+            .build();
+        let callee = FunctionBuilder::new("callee")
+            .block("entry")
+            .instr(MirInst::Ret { value: None })
+            .build();
+        let mut module = MirModule::new("call_preservation");
+        module.add_function(caller);
+        module.add_function(callee);
+        let settings = MirCodegenSettings {
+            regalloc: RegallocStrategy::GraphColorGlobal,
+            ..MirCodegenSettings::default()
+        };
+        let mut output = Vec::new();
+        generate_mir_riscv_with_units_and_settings(
+            &module,
+            &mut output,
+            RiscVTarget::general(Xlen::Rv64),
+            TargetOperatingSystem::Linux,
+            1,
+            &settings,
+        )?;
+        let assembly = String::from_utf8(output)?;
+        let caller_body = assembly.split("caller:").nth(1);
+        assert!(caller_body.is_some(), "missing caller body in:\n{assembly}");
+        let Some(caller_body) = caller_body else {
+            return Ok(());
+        };
+        let call_position = caller_body.find("call callee");
+        assert!(
+            call_position.is_some(),
+            "missing call instruction in:\n{caller_body}"
+        );
+        let Some(call_position) = call_position else {
+            return Ok(());
+        };
+        let before_call = &caller_body[..call_position];
+        let after_call = &caller_body[call_position..];
+        assert!(
+            before_call.contains("sd t1,"),
+            "missing spill:\n{caller_body}"
+        );
+        assert!(
+            after_call.contains("ld t1,"),
+            "missing reload:\n{caller_body}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn globally_allocated_callee_saved_register_is_saved_by_frame() -> Result<(), Box<dyn Error>> {
+        let ty = MirType::Scalar(ScalarType::I64);
+        let value = Register::Virtual(VirtualReg::gpr(0));
+        let function = FunctionBuilder::new("uses_saved")
+            .returns(ty)
+            .block("entry")
+            .instr(MirInst::Copy {
+                ty,
+                dst: value.clone(),
+                src: Operand::Immediate(Immediate::I64(7)),
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(value)),
+            })
+            .build();
+        let mut module = MirModule::new("saved_register");
+        module.add_function(function);
+        let settings = MirCodegenSettings {
+            regalloc: RegallocStrategy::LinearScanGlobal,
+            ..MirCodegenSettings::default()
+        };
+        let mut output = Vec::new();
+        generate_mir_riscv_with_units_and_settings(
+            &module,
+            &mut output,
+            RiscVTarget::general(Xlen::Rv64),
+            TargetOperatingSystem::Linux,
+            1,
+            &settings,
+        )?;
+        let assembly = String::from_utf8(output)?;
+        assert!(assembly.contains("sd s11,"), "missing save:\n{assembly}");
+        assert!(assembly.contains("ld s11,"), "missing restore:\n{assembly}");
+        Ok(())
     }
 
     #[test]
