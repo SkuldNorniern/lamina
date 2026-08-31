@@ -8,7 +8,6 @@ use std::io::Write;
 use std::process::id;
 
 use crate::error::LaminaError;
-use std::result::Result;
 
 use crate::mir::{
     AddressMode, Function, Global, Immediate, Instruction as MirInst, MirType, Module as MirModule,

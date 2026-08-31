@@ -10,7 +10,6 @@ use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame};
 use std::collections::{BTreeSet, HashMap};
 use std::io::Write;
-use std::result::Result;
 use util::*;
 
 use crate::error::LaminaError;
