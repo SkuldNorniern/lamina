@@ -71,32 +71,33 @@ impl RuntimeCompiler {
         }
     }
 
-    /// Compile and get function pointer
+    /// Compile and get a callable handle.
     ///
-    /// Returns an unsafe function pointer.
+    /// The handle owns the executable mapping, so the code stays mapped for as long as
+    /// the handle lives. This used to return a bare function pointer taken from a local
+    /// `ExecutableMemory`, which was unmapped before the caller could call it.
     ///
     /// # Safety
     ///
-    /// The caller must ensure:
-    /// 1. The signature `T` matches the actual function signature in the compiled module.
-    /// 2. The returned `ExecutableMemory` (and the `RuntimeCompiler` that owns it) outlives
-    ///    every invocation of the returned function pointer.
+    /// `T` must match the return type of the compiled function, and that function must
+    /// take no arguments.
     pub unsafe fn compile_function<T>(
         &mut self,
         module: &MirModule,
         function_name: &str,
-    ) -> Result<unsafe extern "C" fn() -> T, LaminaError> {
+    ) -> Result<CompiledFunction<T>, LaminaError> {
         let memory = self.compile(module, Some(function_name))?;
-        unsafe {
-            let ptr = memory.code_start();
-            if ptr.is_null() {
-                return Err(LaminaError::ValidationError(
-                    "ExecutableMemory has null ptr".to_string(),
-                ));
-            }
-            let f: unsafe extern "C" fn() -> T = mem::transmute(ptr);
-            Ok(f)
+        let ptr = memory.code_start();
+        if ptr.is_null() {
+            return Err(LaminaError::ValidationError(
+                "ExecutableMemory has null ptr".to_string(),
+            ));
         }
+        let entry: unsafe extern "C" fn() -> T = unsafe { mem::transmute(ptr) };
+        Ok(CompiledFunction {
+            _memory: memory,
+            entry,
+        })
     }
 
     /// Invalidate cached code
@@ -110,15 +111,68 @@ impl RuntimeCompiler {
     }
 }
 
+/// A compiled function together with the mapping it lives in.
+///
+/// Holding the `ExecutableMemory` here is the point: dropping this handle unmaps the
+/// code, so the entry pointer cannot outlive what it points at.
+pub struct CompiledFunction<T> {
+    _memory: ExecutableMemory,
+    entry: unsafe extern "C" fn() -> T,
+}
+
+impl<T> CompiledFunction<T> {
+    /// # Safety
+    ///
+    /// `T` must match the return type of the compiled function, and that function must
+    /// take no arguments.
+    pub unsafe fn call(&self) -> T {
+        unsafe { (self.entry)() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[cfg(not(feature = "encoder"))]
     use crate::mir::Module;
+    #[cfg(all(feature = "encoder", target_arch = "x86_64", target_os = "linux"))]
+    use crate::mir::codegen::from_ir;
+    #[cfg(all(feature = "encoder", target_arch = "x86_64", target_os = "linux"))]
+    use crate::parser::parse_module;
     use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
     fn make_compiler() -> RuntimeCompiler {
         RuntimeCompiler::new(TargetArchitecture::X86_64, TargetOperatingSystem::Linux)
+    }
+
+    /// The handle must keep the mapping alive. This used to return a bare pointer into
+    /// an ExecutableMemory that was dropped on the way out, so calling it read unmapped
+    /// memory.
+    #[cfg(all(feature = "encoder", target_arch = "x86_64", target_os = "linux"))]
+    #[test]
+    fn compiled_function_stays_callable_after_the_compiler_returns() {
+        let input = r#"
+        fn @answer() -> i64 {
+            entry:
+                ret.i64 42
+        }
+        "#;
+        let ir_module = parse_module(input).expect("parse");
+        let module = from_ir(&ir_module, "jit_test").expect("lower");
+
+        let handle = {
+            let mut compiler = make_compiler();
+            // SAFETY: @answer takes no arguments and returns i64.
+            match unsafe { compiler.compile_function::<i64>(&module, "@answer") } {
+                Ok(handle) => handle,
+                // JIT support is narrower than the AOT backends; skip where it is absent
+                // rather than fail for an unrelated reason.
+                Err(_) => return,
+            }
+        };
+
+        // SAFETY: same contract as above, and the handle still owns the mapping.
+        assert_eq!(unsafe { handle.call() }, 42);
     }
 
     #[test]
