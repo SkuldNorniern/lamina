@@ -175,6 +175,9 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
         mir_module.add_function(mir_func);
     }
 
+    mir_module
+        .validate_in_pipeline()
+        .map_err(FromIRError::InvalidMir)?;
     Ok(mir_module)
 }
 

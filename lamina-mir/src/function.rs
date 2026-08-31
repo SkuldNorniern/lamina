@@ -6,7 +6,7 @@ use crate::block::Block;
 use crate::instruction::Instruction;
 use crate::register::Register;
 use crate::types::MirType;
-use std::collections::HashSet;
+use crate::verify::verify_function;
 use std::fmt;
 
 /// Function parameter
@@ -133,39 +133,7 @@ impl Function {
 
     /// Check if this function is well-formed
     pub fn validate(&self) -> Result<(), String> {
-        // Check that entry block exists
-        if self.entry_block().is_none() {
-            return Err(format!("Entry block '{}' not found", self.entry));
-        }
-
-        // Check that all blocks have unique labels
-        let mut seen_labels: HashSet<&str> = HashSet::new();
-        for block in &self.blocks {
-            if !seen_labels.insert(block.label.as_str()) {
-                return Err(format!("Duplicate block label: {}", block.label));
-            }
-        }
-
-        // Check that all blocks have terminators
-        for block in &self.blocks {
-            if !block.has_terminator() {
-                return Err(format!("Block '{}' has no terminator", block.label));
-            }
-        }
-
-        // Check that all branch/jump targets reference existing blocks
-        for block in &self.blocks {
-            for label in block.successors() {
-                if !seen_labels.contains(label) {
-                    return Err(format!(
-                        "Block '{}' references undefined target '{}'",
-                        block.label, label
-                    ));
-                }
-            }
-        }
-
-        Ok(())
+        verify_function(self).map_err(|errors| errors.join("\n"))
     }
 }
 

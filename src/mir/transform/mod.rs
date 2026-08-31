@@ -38,7 +38,7 @@ pub use scheduling::InstructionScheduling;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
 
-use crate::mir::{Function, Module};
+use crate::mir::{Function, Module, verify_function_in_pipeline};
 use std::fmt;
 
 #[cfg(feature = "nightly")]
@@ -104,6 +104,10 @@ pub enum TransformError {
     NotFound {
         kind: &'static str,
         name: String,
+    },
+    /// A transform produced MIR that failed verification.
+    VerificationFailed {
+        errors: Vec<String>,
     },
 }
 
@@ -179,6 +183,9 @@ impl fmt::Display for TransformError {
                 )
             }
             Self::NotFound { kind, name } => write!(f, "{kind} '{name}' not found"),
+            Self::VerificationFailed { errors } => {
+                write!(f, "MIR verification failed: {}", errors.join("; "))
+            }
         }
     }
 }
@@ -372,9 +379,18 @@ impl TransformPipeline {
                 stats.transforms_changed += 1;
             }
 
+            if cfg!(debug_assertions) {
+                verify_function_in_pipeline(func).map_err(|errors| TransformError::PassFailed {
+                    pass: transform.name(),
+                    source: Box::new(TransformError::VerificationFailed { errors }),
+                })?;
+            }
+
             total_iterations += 1;
         }
 
+        verify_function_in_pipeline(func)
+            .map_err(|errors| TransformError::VerificationFailed { errors })?;
         stats.iterations = total_iterations;
         Ok(stats)
     }
@@ -412,6 +428,9 @@ impl TransformPipeline {
             }
         }
 
+        module
+            .validate_in_pipeline()
+            .map_err(|errors| TransformError::VerificationFailed { errors })?;
         Ok(total_stats)
     }
 
@@ -480,6 +499,9 @@ mod tests {
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
             .build();
 
         let mut func = func;
@@ -502,6 +524,9 @@ mod tests {
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
             .build();
 
         let mut func = func;
@@ -516,6 +541,9 @@ mod tests {
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
             .build();
 
         let mut func = func;
@@ -530,6 +558,9 @@ mod tests {
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+            })
             .build();
 
         let mut func = func;
