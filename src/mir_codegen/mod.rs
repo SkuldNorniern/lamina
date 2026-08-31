@@ -24,6 +24,7 @@ use std::io::Write;
 
 use crate::error::LaminaError;
 use crate::mir::{Global, MirType, Module, Signature};
+use lamina_codegen::riscv::{RiscVTarget, Xlen};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Generates assembly from MIR for the requested target architecture and OS.
@@ -133,6 +134,8 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             riscv::generate_mir_riscv_with_units_and_settings(
                 module,
                 writer,
+                RiscVTarget::from_arch(target_arch)
+                    .unwrap_or_else(|| RiscVTarget::general(Xlen::Rv64)),
                 target_os,
                 codegen_units,
                 settings,
@@ -152,6 +155,8 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             riscv::generate_mir_riscv_with_units_and_settings(
                 module,
                 writer,
+                RiscVTarget::from_arch(target_arch)
+                    .unwrap_or_else(|| RiscVTarget::general(Xlen::Rv64)),
                 target_os,
                 codegen_units,
                 settings,
