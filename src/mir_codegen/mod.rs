@@ -321,7 +321,6 @@ mod tests {
             regalloc: RegallocStrategy::GraphColorGlobal,
             emit_asm_debug_lines: true,
             debug_file_tag: "add.lamina".to_string(),
-            ..Default::default()
         };
         let mut output = Vec::new();
         generate_mir_to_target_with_settings(

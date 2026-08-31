@@ -210,7 +210,12 @@ fn compile_single_function_riscv(
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     let mut debug_line: u32 = 0;
-    let entry_block = func.entry_block().expect("Not found entry block");
+    let entry_block = func.entry_block().ok_or_else(|| {
+        CodegenError::InvalidFuncs(vec![format!(
+            "{func_name}: entry block {:?} is not present in the function",
+            func.entry
+        )])
+    })?;
     emit_block_riscv(
         entry_block,
         &mut output,
