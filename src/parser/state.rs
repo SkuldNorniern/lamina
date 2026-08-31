@@ -252,7 +252,7 @@ impl<'a> ParserState<'a> {
     }
 
     /// Parses a float literal.
-    pub fn parse_float(&mut self) -> Result<f32, LaminaError> {
+    pub fn parse_float(&mut self) -> Result<f64, LaminaError> {
         self.skip_whitespace_and_comments();
         let start = self.position;
 
@@ -282,7 +282,7 @@ impl<'a> ParserState<'a> {
 
         let value_str = &self.input[start..self.position];
         value_str
-            .parse::<f32>()
+            .parse::<f64>()
             .map_err(|e| self.error(format!(
                 "Failed to parse float: {e}\n  Hint: Float literals must be valid numbers (e.g., 3.14, -0.5, 42.0). Check for overflow or invalid format"
             )))

@@ -46,7 +46,7 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
                 && bytes[temp_pos + 1].is_ascii_digit();
 
             if looks_like_float && let Ok(f_val) = state.parse_float() {
-                return Ok(Value::Constant(Literal::F32(f_val)));
+                return Ok(Value::Constant(Literal::F64(f_val)));
             }
 
             if let Ok(i_val) = state.parse_integer() {
@@ -59,7 +59,7 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
 
             state.set_position(start_pos);
             if let Ok(f_val) = state.parse_float() {
-                return Ok(Value::Constant(Literal::F32(f_val)));
+                return Ok(Value::Constant(Literal::F64(f_val)));
             }
 
             Err(state.error("Expected a numeric literal"))

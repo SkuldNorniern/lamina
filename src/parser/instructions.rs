@@ -1,7 +1,9 @@
 //! Instruction parsing for Lamina IR.
 
 use crate::LaminaError;
-use crate::ir::{AllocType, BinaryOp, CmpOp, Identifier, Instruction, PrimitiveType, Type, Value};
+use crate::ir::{
+    AllocType, BinaryOp, CmpOp, Identifier, Instruction, Literal, PrimitiveType, Type, Value,
+};
 use crate::parser::state::ParserState;
 use crate::parser::types::parse_type;
 use crate::parser::values::parse_value;
@@ -172,9 +174,9 @@ fn parse_binary_op<'a>(
         _ => unreachable!(),
     };
     let ty = parse_primitive_type_suffix(state)?;
-    let lhs = parse_value(state)?;
+    let lhs = narrow_float_literal(parse_value(state)?, ty);
     state.expect_char(',')?;
-    let rhs = parse_value(state)?;
+    let rhs = narrow_float_literal(parse_value(state)?, ty);
     Ok(Instruction::Binary {
         op,
         result,
@@ -199,9 +201,9 @@ fn parse_cmp_op<'a>(
         _ => unreachable!(),
     };
     let ty = parse_primitive_type_suffix(state)?;
-    let lhs = parse_value(state)?;
+    let lhs = narrow_float_literal(parse_value(state)?, ty);
     state.expect_char(',')?;
-    let rhs = parse_value(state)?;
+    let rhs = narrow_float_literal(parse_value(state)?, ty);
     Ok(Instruction::Cmp {
         op,
         result,
@@ -501,7 +503,10 @@ fn parse_phi<'a>(
             break; // End of incoming values
         }
         state.expect_char('[')?;
-        let value = parse_value(state)?;
+        let value = match ty {
+            Type::Primitive(prim) => narrow_float_literal(parse_value(state)?, prim),
+            _ => parse_value(state)?,
+        };
         state.expect_char(',')?;
         let label = state.parse_label_identifier()?;
         state.expect_char(']')?;
@@ -892,5 +897,16 @@ fn parse_primitive_from_ident(
         "char" => Ok(PrimitiveType::Char),
         "ptr" => Ok(PrimitiveType::Ptr),
         other => Err(state.error(format!("Invalid primitive type in conversion: {other}"))),
+    }
+}
+
+/// A decimal literal parses as f64, because that keeps the source text exact. Narrow it
+/// when the instruction is f32 so the operand width matches the instruction width.
+fn narrow_float_literal(value: Value<'_>, ty: PrimitiveType) -> Value<'_> {
+    match (ty, value) {
+        (PrimitiveType::F32, Value::Constant(Literal::F64(v))) => {
+            Value::Constant(Literal::F32(v as f32))
+        }
+        (_, other) => other,
     }
 }
