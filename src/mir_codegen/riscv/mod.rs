@@ -1,6 +1,6 @@
 mod util;
 
-use lamina_codegen::riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc};
+use lamina_codegen::riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc, RiscVTarget, Xlen};
 use std::io::Write;
 use std::result::Result;
 use util::{
@@ -64,6 +64,7 @@ impl<'a> RiscVCodegen<'a> {
         generate_mir_riscv_with_units_and_settings(
             module,
             writer,
+            RiscVTarget::general(Xlen::Rv64),
             self.base.target_os,
             codegen_units,
             &MirCodegenSettings::default(),
@@ -119,6 +120,7 @@ impl<'a> Codegen for RiscVCodegen<'a> {
                 generate_mir_riscv_with_units_and_settings(
                     module,
                     writer,
+                    RiscVTarget::general(Xlen::Rv64),
                     target_os,
                     codegen_units,
                     &MirCodegenSettings::default(),
@@ -139,6 +141,7 @@ impl<'a> Codegen for RiscVCodegen<'a> {
 fn compile_single_function_riscv(
     func_name: &str,
     func: &Function,
+    target: RiscVTarget,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
@@ -238,6 +241,7 @@ fn compile_single_function_riscv(
 
     let mut ctx = EmitCtx {
         func_name,
+        target,
         target_os,
         settings,
         debug_line: 0,
@@ -283,6 +287,7 @@ pub fn generate_mir_riscv_with_units<W: Write>(
     generate_mir_riscv_with_units_and_settings(
         module,
         writer,
+        RiscVTarget::general(Xlen::Rv64),
         target_os,
         codegen_units,
         &MirCodegenSettings::default(),
@@ -292,11 +297,16 @@ pub fn generate_mir_riscv_with_units<W: Write>(
 pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     module: &MirModule,
     writer: &mut W,
+    target: RiscVTarget,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
-    validate_module_call_parameters(module, TargetArchitecture::Riscv64)?;
+    let arch = match target.xlen {
+        Xlen::Rv32 => TargetArchitecture::Riscv32,
+        Xlen::Rv64 => TargetArchitecture::Riscv64,
+    };
+    validate_module_call_parameters(module, arch)?;
     let abi = RiscVAbi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;
@@ -312,7 +322,7 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     let settings_arc = Arc::new(settings.clone());
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
-            compile_single_function_riscv(name, func, os, settings_arc.as_ref())
+            compile_single_function_riscv(name, func, target, os, settings_arc.as_ref())
         })
         .map_err(parallel_codegen_error)?;
 
@@ -326,6 +336,7 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
 /// Per-function state shared by the block and instruction emitters.
 struct EmitCtx<'a> {
     func_name: &'a str,
+    target: RiscVTarget,
     target_os: TargetOperatingSystem,
     settings: &'a MirCodegenSettings,
     debug_line: u32,
@@ -434,6 +445,20 @@ fn emit_instruction_riscv<W: Write>(
             match op {
                 IntBinOp::Add => writeln!(writer, "    add a0, a0, a1")?,
                 IntBinOp::Sub => writeln!(writer, "    sub a0, a0, a1")?,
+                IntBinOp::Mul
+                | IntBinOp::SDiv
+                | IntBinOp::UDiv
+                | IntBinOp::SRem
+                | IntBinOp::URem
+                    if !ctx.target.m =>
+                {
+                    return Err(LaminaError::ValidationError(format!(
+                        "{op:?} needs the M extension, but the target is {}. Multiply and \
+                         divide have no base-ISA encoding; select an ISA with M or lower \
+                         the operation before codegen.",
+                        ctx.target.isa_name()
+                    )));
+                }
                 IntBinOp::Mul => writeln!(writer, "    mul a0, a0, a1")?,
                 IntBinOp::SDiv => writeln!(writer, "    div a0, a0, a1")?,
                 IntBinOp::UDiv => writeln!(writer, "    divu a0, a0, a1")?,
@@ -919,6 +944,57 @@ fn copy_store_mnemonic(ty: &MirType) -> &'static str {
 mod tests {
     use super::*;
     use crate::mir::FunctionBuilder;
+
+    #[test]
+    fn base_isa_rejects_multiply_instead_of_emitting_it() {
+        // mul is M-extension. Emitting it for an rv64i target produced an instruction
+        // the core cannot execute, with nothing to say so.
+        let ty = MirType::Scalar(ScalarType::I64);
+        let dst = Register::Virtual(VirtualReg::gpr(0));
+        let function = FunctionBuilder::new("times")
+            .returns(ty)
+            .block("entry")
+            .instr(MirInst::IntBinary {
+                op: IntBinOp::Mul,
+                ty,
+                dst: dst.clone(),
+                lhs: Operand::Immediate(Immediate::I64(6)),
+                rhs: Operand::Immediate(Immediate::I64(7)),
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+        let mut module = MirModule::new("ext_test");
+        module.add_function(function);
+
+        let mut out = Vec::new();
+        let err = generate_mir_riscv_with_units_and_settings(
+            &module,
+            &mut out,
+            RiscVTarget::base(Xlen::Rv64),
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+        )
+        .expect_err("rv64i has no mul");
+        let msg = err.to_string();
+        assert!(msg.contains("M extension"), "unhelpful message: {msg}");
+        assert!(msg.contains("rv64i"), "message should name the ISA: {msg}");
+
+        // The same module is fine on rv64g.
+        let mut out = Vec::new();
+        generate_mir_riscv_with_units_and_settings(
+            &module,
+            &mut out,
+            RiscVTarget::general(Xlen::Rv64),
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+        )
+        .expect("rv64g has mul");
+        assert!(String::from_utf8_lossy(&out).contains("mul "));
+    }
 
     #[test]
     fn block_labels_are_unique_across_functions() {
