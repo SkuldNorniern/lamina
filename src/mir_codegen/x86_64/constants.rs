@@ -4,12 +4,16 @@
 pub mod macos {
     /// write syscall on macOS
     pub const SYS_WRITE: i64 = 0x2000004;
+    /// read syscall on macOS
+    pub const SYS_READ: i64 = 0x2000003;
 }
 
 /// Linux syscall numbers
 pub mod linux {
     /// write syscall on Linux
     pub const SYS_WRITE: i64 = 1;
+    /// read syscall on Linux
+    pub const SYS_READ: i64 = 0;
 }
 
 /// Standard file descriptors
