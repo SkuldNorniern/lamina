@@ -236,7 +236,13 @@ fn compile_single_function_riscv(
         }
     }
 
-    let mut debug_line: u32 = 0;
+    let mut ctx = EmitCtx {
+        func_name,
+        target_os,
+        settings,
+        debug_line: 0,
+        label_seq: 0,
+    };
     let entry_block = func.entry_block().ok_or_else(|| {
         CodegenError::InvalidFuncs(vec![format!(
             "{func_name}: entry block {:?} is not present in the function",
@@ -248,23 +254,13 @@ fn compile_single_function_riscv(
         &mut output,
         &mut reg_alloc,
         &stack_slots,
-        target_os,
-        settings,
-        &mut debug_line,
+        &mut ctx,
     )?;
     for block in &func.blocks {
         if block == entry_block {
             continue;
         }
-        emit_block_riscv(
-            block,
-            &mut output,
-            &mut reg_alloc,
-            &stack_slots,
-            target_os,
-            settings,
-            &mut debug_line,
-        )?;
+        emit_block_riscv(block, &mut output, &mut reg_alloc, &stack_slots, &mut ctx)?;
     }
 
     Ok(output)
@@ -327,28 +323,28 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     Ok(())
 }
 
+/// Per-function state shared by the block and instruction emitters.
+struct EmitCtx<'a> {
+    func_name: &'a str,
+    target_os: TargetOperatingSystem,
+    settings: &'a MirCodegenSettings,
+    debug_line: u32,
+    /// Sequence for compiler-generated labels, so they do not depend on any address.
+    label_seq: u32,
+}
+
 fn emit_block_riscv<W: Write>(
     block: &MirBlock,
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
-    target_os: TargetOperatingSystem,
-    settings: &MirCodegenSettings,
-    debug_line: &mut u32,
+    ctx: &mut EmitCtx<'_>,
 ) -> Result<(), CodegenError> {
-    writeln!(writer, ".L_{}:", block.label)
+    writeln!(writer, ".L_{}_{}:", ctx.func_name, block.label)
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     for inst in &block.instructions {
-        emit_instruction_riscv(
-            inst,
-            writer,
-            reg_alloc,
-            stack_slots,
-            target_os,
-            settings,
-            debug_line,
-        )
-        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        emit_instruction_riscv(inst, writer, reg_alloc, stack_slots, ctx)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
     Ok(())
 }
@@ -358,13 +354,14 @@ fn emit_instruction_riscv<W: Write>(
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
-    target_os: TargetOperatingSystem,
-    settings: &MirCodegenSettings,
-    debug_line: &mut u32,
+    ctx: &mut EmitCtx<'_>,
 ) -> Result<(), LaminaError> {
+    let target_os = ctx.target_os;
+    let settings = ctx.settings;
+    let func_name = ctx.func_name;
     if settings.emit_asm_debug_lines {
-        *debug_line = debug_line.saturating_add(1);
-        writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
+        ctx.debug_line = ctx.debug_line.saturating_add(1);
+        writeln!(writer, "    .loc 1 {} 0", ctx.debug_line)?;
     }
     match inst {
         MirInst::Copy { ty, dst, src } => {
@@ -728,7 +725,7 @@ fn emit_instruction_riscv<W: Write>(
             RiscVFrame::generate_epilogue(writer, stack_size)?;
         }
         MirInst::Jmp { target } => {
-            writeln!(writer, "    j .L_{target}")?;
+            writeln!(writer, "    j .L_{func_name}_{target}")?;
         }
         MirInst::Br {
             cond,
@@ -737,8 +734,8 @@ fn emit_instruction_riscv<W: Write>(
         } => {
             if let Register::Virtual(vreg) = cond {
                 load_register_to_register(vreg, writer, reg_alloc, stack_slots, "t0")?;
-                writeln!(writer, "    bnez t0, .L_{true_target}")?;
-                writeln!(writer, "    j .L_{false_target}")?;
+                writeln!(writer, "    bnez t0, .L_{func_name}_{true_target}")?;
+                writeln!(writer, "    j .L_{func_name}_{false_target}")?;
             }
         }
         MirInst::FloatBinary {
@@ -843,9 +840,14 @@ fn emit_instruction_riscv<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mv t0, {}", p.name)?,
             }
             // If condition is zero (false), replace a0 with a1.
-            writeln!(writer, "    bnez t0, .L_riscv_sel_{cond:p}")?;
+            // A sequence number, not the operand address. Formatting `{cond:p}` put a
+            // runtime pointer in the symbol, so the same input assembled to different
+            // text on every run.
+            let sel = ctx.label_seq;
+            ctx.label_seq = ctx.label_seq.saturating_add(1);
+            writeln!(writer, "    bnez t0, .L_{func_name}_sel_{sel}")?;
             writeln!(writer, "    mv a0, a1")?;
-            writeln!(writer, ".L_riscv_sel_{cond:p}:")?;
+            writeln!(writer, ".L_{func_name}_sel_{sel}:")?;
             if let Register::Virtual(vreg) = dst {
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
@@ -863,9 +865,9 @@ fn emit_instruction_riscv<W: Write>(
             }
             for (case_val, case_label) in cases {
                 writeln!(writer, "    li t0, {case_val}")?;
-                writeln!(writer, "    beq a0, t0, .L_{case_label}")?;
+                writeln!(writer, "    beq a0, t0, .L_{func_name}_{case_label}")?;
             }
-            writeln!(writer, "    j .L_{default}")?;
+            writeln!(writer, "    j .L_{func_name}_{default}")?;
         }
         MirInst::Comment { text } => {
             writeln!(writer, "    # {text}")?;
@@ -917,6 +919,46 @@ fn copy_store_mnemonic(ty: &MirType) -> &'static str {
 mod tests {
     use super::*;
     use crate::mir::FunctionBuilder;
+
+    #[test]
+    fn block_labels_are_unique_across_functions() {
+        // Both functions have a block called "entry". Unqualified labels made that a
+        // duplicate symbol in one object; arithmetic.lamina emitted `.L_entry:` three
+        // times.
+        let ty = MirType::Scalar(ScalarType::I64);
+        let mut module = MirModule::new("label_test");
+        for name in ["first", "second"] {
+            let dst = Register::Virtual(VirtualReg::gpr(0));
+            module.add_function(
+                FunctionBuilder::new(name)
+                    .returns(ty)
+                    .block("entry")
+                    .instr(MirInst::Copy {
+                        ty,
+                        dst: dst.clone(),
+                        src: Operand::Immediate(Immediate::I64(1)),
+                    })
+                    .instr(MirInst::Ret {
+                        value: Some(Operand::Register(dst)),
+                    })
+                    .build(),
+            );
+        }
+        let mut output = Vec::new();
+        generate_mir_riscv(&module, &mut output, TargetOperatingSystem::Linux)
+            .expect("RISC-V codegen should succeed");
+        let asm = String::from_utf8(output).expect("assembly should be UTF-8");
+
+        let mut labels: Vec<&str> = asm
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with(".L_") && l.ends_with(':'))
+            .collect();
+        let before = labels.len();
+        labels.sort_unstable();
+        labels.dedup();
+        assert_eq!(before, labels.len(), "duplicate labels in:\n{asm}");
+    }
 
     #[test]
     fn incoming_arguments_are_stored_into_their_slots() {
