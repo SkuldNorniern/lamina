@@ -100,6 +100,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/download-artifact@v4
         with:
@@ -124,16 +126,18 @@ jobs:
             artifacts/*.tar.gz
             artifacts/*.sha256
 
+      - name: Generate release notes from conventional commits
+        run: bash .github/scripts/release-notes.sh > release-notes.md
+
       - name: Append C SDK info to release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.meta.outputs.version }}
           TAG=${GITHUB_REF_NAME}
-          CURRENT=$(gh release view "$TAG" --json body --jq '.body')
           NOTES_FILE=$(mktemp)
           {
-            echo "$CURRENT"
+            cat release-notes.md
             echo ""
             echo "---"
             echo ""
