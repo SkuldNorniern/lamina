@@ -1,0 +1,22 @@
+---
+name: "commit-lint"
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  commit-lint:
+    name: "Conventional commits"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit subjects
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: bash .github/scripts/check-commits.sh
