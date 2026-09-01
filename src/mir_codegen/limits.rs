@@ -5,8 +5,11 @@
 //! cannot be skipped by calling a per-arch emitter directly. JIT entry points also validate
 //! before RAS encoding.
 
-use crate::error::LaminaError;
-use crate::mir::{Instruction, Module};
+use crate::{
+    error::LaminaError,
+    mir::{Instruction, Module},
+    mir_codegen::CodegenError,
+};
 use lamina_platform::TargetArchitecture;
 
 /// Maximum number of scalar parameters on any single function and on any `Call` / `TailCall`.
@@ -23,6 +26,10 @@ pub fn validate_module_call_parameters(
     target_arch: TargetArchitecture,
 ) -> Result<(), LaminaError> {
     let _ = target_arch;
+    module
+        .validate_in_pipeline()
+        .map_err(CodegenError::InvalidMir)
+        .map_err(LaminaError::CodegenError)?;
     let max = MAX_MIR_CALL_PARAMETERS;
     for func in module.functions.values() {
         if func.sig.params.len() > max {
@@ -75,12 +82,6 @@ mod tests {
     #[test]
     fn rejects_call_over_limit() {
         let i64_ty = MirType::Scalar(ScalarType::I64);
-        let callee_sig = Signature::new("callee").with_return(i64_ty);
-        let mut callee = Function::new(callee_sig);
-        let mut cb = Block::new("entry");
-        cb.push(Instruction::Ret { value: None });
-        callee.add_block(cb);
-
         let mut args = Vec::new();
         for i in 0..MAX_MIR_CALL_PARAMETERS {
             args.push(Operand::Immediate(Immediate::I64(i as i64)));
@@ -99,7 +100,6 @@ mod tests {
         caller.add_block(eb);
 
         let mut module = Module::new("m");
-        module.add_function(callee);
         module.add_function(caller);
 
         let err = validate_module_call_parameters(&module, TargetArchitecture::Aarch64)

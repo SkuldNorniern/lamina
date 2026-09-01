@@ -1,15 +1,19 @@
 //! Common code for MIR codegen backends.
 
-use std::collections::{BTreeSet, HashMap};
-use std::fmt::Debug;
-use std::io::Write;
-use std::mem;
-use std::sync::{Arc, mpsc};
-use std::thread;
+use std::{
+    collections::{BTreeSet, HashMap},
+    fmt::Debug,
+    io::Write,
+    mem,
+    sync::{Arc, mpsc},
+    thread,
+};
 
-use crate::error::LaminaError;
-use crate::mir::{Function, Global, MirType, Module as MirModule, Register, Signature, VirtualReg};
-use crate::mir_codegen::{CodegenError, CodegenOptions};
+use crate::{
+    error::LaminaError,
+    mir::{Function, Global, MirType, Module as MirModule, Register, Signature, VirtualReg},
+    mir_codegen::{CodegenError, CodegenOptions},
+};
 use lamina_platform::TargetOperatingSystem;
 
 pub fn parallel_codegen_error(error: impl Debug) -> LaminaError {
@@ -32,7 +36,7 @@ pub fn parallel_codegen_error(error: impl Debug) -> LaminaError {
 pub fn assign_stack_slots(
     func: &Function,
     offset_for_slot: impl Fn(usize) -> i32,
-) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>) {
+) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>, usize) {
     let mut def_regs: BTreeSet<VirtualReg> = BTreeSet::new();
     let mut used_regs: BTreeSet<VirtualReg> = BTreeSet::new();
     for block in &func.blocks {
@@ -49,19 +53,25 @@ pub fn assign_stack_slots(
     }
 
     let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
+    let mut next_slot = 0usize;
+    // A reserved register addresses the lowest byte of its block, which sits at
+    // the deepest slot, so the extra slots are claimed ahead of it.
+    let claim = |vreg: &VirtualReg, slots: &mut HashMap<VirtualReg, i32>, next: &mut usize| {
+        let extra = func.stack_reservations.get(vreg).copied().unwrap_or(0);
+        slots.insert(*vreg, offset_for_slot(*next + extra));
+        *next += extra + 1;
+    };
     for vreg in &def_regs {
         if !stack_slots.contains_key(vreg) {
-            let slot_index = stack_slots.len();
-            stack_slots.insert(*vreg, offset_for_slot(slot_index));
+            claim(vreg, &mut stack_slots, &mut next_slot);
         }
     }
     for vreg in &used_regs {
         if !def_regs.contains(vreg) && !stack_slots.contains_key(vreg) {
-            let slot_index = stack_slots.len();
-            stack_slots.insert(*vreg, offset_for_slot(slot_index));
+            claim(vreg, &mut stack_slots, &mut next_slot);
         }
     }
-    (stack_slots, def_regs)
+    (stack_slots, def_regs, next_slot)
 }
 
 /// Base structure for codegen backends with common fields.
@@ -479,4 +489,46 @@ macro_rules! impl_codegen_trait_methods {
             self.base.finalize_base()
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::assign_stack_slots;
+    use lamina_mir::{
+        block::Block,
+        function::{Function, Signature},
+        instruction::Instruction,
+        register::{Register, RegisterClass, VirtualReg},
+    };
+
+    fn vreg(id: u32) -> VirtualReg {
+        VirtualReg {
+            id,
+            class: RegisterClass::Gpr,
+        }
+    }
+
+    /// A stack allocation wider than one slot must not share space with the
+    /// registers assigned after it.
+    #[test]
+    fn reserved_slots_are_not_handed_to_other_registers() {
+        let mut func = Function::new(Signature::new("f"));
+        let mut block = Block::new("entry");
+        block.push(Instruction::Lea {
+            dst: Register::Virtual(vreg(1)),
+            base: Register::Virtual(vreg(0)),
+            offset: 0,
+        });
+        func.add_block(block);
+        func.stack_reservations.insert(vreg(0), 4);
+
+        let (slots, _, total) = assign_stack_slots(&func, |i| -((i as i32) + 1) * 8);
+
+        assert_eq!(total, 6);
+        let base = slots[&vreg(0)];
+        let other = slots[&vreg(1)];
+        // vreg 0 owns 5 slots ending at its own address; nothing else may land
+        // inside base..base + 5 * 8.
+        assert!(other <= base - 8 || other >= base + 40);
+    }
 }

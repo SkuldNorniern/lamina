@@ -18,12 +18,13 @@ pub use capability::{CapabilitySet, CodegenCapability};
 pub use limits::{MAX_MIR_CALL_PARAMETERS, validate_module_call_parameters};
 pub use settings::{MirCodegenSettings, RegallocStrategy};
 
-use std::collections::HashMap;
-use std::fmt;
-use std::io::Write;
+use std::{collections::HashMap, fmt, io::Write};
 
-use crate::error::LaminaError;
-use crate::mir::{Global, MirType, Module, Signature};
+use crate::{
+    error::LaminaError,
+    mir::{Global, MirType, Module, Signature},
+};
+use lamina_codegen::riscv::{RiscVTarget, Xlen};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Generates assembly from MIR for the requested target architecture and OS.
@@ -133,6 +134,8 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             riscv::generate_mir_riscv_with_units_and_settings(
                 module,
                 writer,
+                RiscVTarget::from_arch(target_arch)
+                    .unwrap_or_else(|| RiscVTarget::general(Xlen::Rv64)),
                 target_os,
                 codegen_units,
                 settings,
@@ -152,6 +155,8 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             riscv::generate_mir_riscv_with_units_and_settings(
                 module,
                 writer,
+                RiscVTarget::from_arch(target_arch)
+                    .unwrap_or_else(|| RiscVTarget::general(Xlen::Rv64)),
                 target_os,
                 codegen_units,
                 settings,
@@ -242,6 +247,7 @@ pub enum CodegenError {
     InvalidTypes(Vec<String>),
     InvalidGlobals(Vec<String>),
     InvalidFuncs(Vec<String>),
+    InvalidMir(Vec<String>),
 }
 
 impl fmt::Display for CodegenError {
@@ -267,6 +273,9 @@ impl fmt::Display for CodegenError {
             CodegenError::InvalidTypes(types) => write!(f, "Invalid types: {types:?}"),
             CodegenError::InvalidGlobals(globals) => write!(f, "Invalid globals: {globals:?}"),
             CodegenError::InvalidFuncs(funcs) => write!(f, "Invalid functions: {funcs:?}"),
+            CodegenError::InvalidMir(errors) => {
+                write!(f, "Invalid MIR: {}", errors.join("; "))
+            }
         }
     }
 }
@@ -276,8 +285,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::mir::codegen;
-    use crate::parser;
+    use crate::{mir::codegen, parser};
 
     fn create_simple_add_function() -> Module {
         let input = r#"
@@ -321,7 +329,6 @@ mod tests {
             regalloc: RegallocStrategy::GraphColorGlobal,
             emit_asm_debug_lines: true,
             debug_file_tag: "add.lamina".to_string(),
-            ..Default::default()
         };
         let mut output = Vec::new();
         generate_mir_to_target_with_settings(

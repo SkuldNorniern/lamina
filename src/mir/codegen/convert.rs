@@ -11,16 +11,22 @@
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::ir::Module as IRModule;
-use crate::ir::function::{Function as IRFunction, FunctionAnnotation};
-use crate::ir::instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst};
-use crate::ir::types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal};
-use crate::mir::codegen::error::FromIRError;
-use crate::mir::codegen::mapping::{map_ir_prim, map_ir_type};
-use crate::mir::{
-    AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction,
-    Instruction as MirInst, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter,
-    Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
+use crate::{
+    ir::{
+        Module as IRModule,
+        function::{Function as IRFunction, FunctionAnnotation},
+        instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst},
+        types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal},
+    },
+    mir::{
+        AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction,
+        Instruction as MirInst, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand,
+        Parameter, Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
+        codegen::{
+            error::FromIRError,
+            mapping::{map_ir_prim, map_ir_type},
+        },
+    },
 };
 
 #[cfg(feature = "nightly")]
@@ -175,6 +181,9 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
         mir_module.add_function(mir_func);
     }
 
+    mir_module
+        .validate_in_pipeline()
+        .map_err(FromIRError::InvalidMir)?;
     Ok(mir_module)
 }
 
@@ -191,6 +200,8 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
     }
 
     let mut var_to_reg: HashMap<&'a str, Register> = HashMap::new();
+    let mut stack_allocs: HashSet<&'a str> = HashSet::new();
+    let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
 
     for param in &f.signature.params {
         let class = reg_class_for_type(&param.ty);
@@ -222,13 +233,15 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
         let mut mir_block = Block::new(label);
 
         for instr in &ir_block.instructions {
-            match convert_instruction(instr, &mut vreg_alloc, &mut var_to_reg) {
-                Ok(mir_instrs) => {
-                    for mir_instr in mir_instrs {
-                        mir_block.push(mir_instr);
-                    }
-                }
-                Err(e) => return Err(e),
+            let mir_instrs = convert_instruction(
+                instr,
+                &mut vreg_alloc,
+                &mut var_to_reg,
+                &mut stack_allocs,
+                &mut reservations,
+            )?;
+            for mir_instr in mir_instrs {
+                mir_block.push(mir_instr);
             }
         }
 
@@ -291,13 +304,10 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
                         let mir_ty = map_ir_type(ty)?;
                         for (val, pred_label) in incoming {
                             let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
-                            // Encode a move using add with zero; the backend already handles it.
-                            let mov_like = Instruction::IntBinary {
-                                op: IntBinOp::Add,
+                            let mov_like = Instruction::Copy {
                                 ty: mir_ty,
                                 dst: dst_reg.clone(),
-                                lhs: src_op,
-                                rhs: Operand::Immediate(Immediate::I64(0)),
+                                src: src_op,
                             };
                             edge_moves
                                 .entry(((*pred_label).to_string(), (*succ_label).to_string()))
@@ -397,6 +407,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
     }
 
     add_missing_initializations(&mut mir_func);
+    mir_func.stack_reservations = reservations;
 
     Ok(mir_func)
 }
@@ -455,6 +466,7 @@ fn add_missing_initializations(func: &mut Function) {
 
 fn collect_regs_from_instruction(instr: &Instruction, used_regs: &mut HashSet<VirtualReg>) {
     match instr {
+        Instruction::Copy { src, .. } => collect_regs_from_operand(src, used_regs),
         Instruction::IntBinary { lhs, rhs, .. }
         | Instruction::FloatBinary { lhs, rhs, .. }
         | Instruction::IntCmp { lhs, rhs, .. }
@@ -514,6 +526,8 @@ fn convert_instruction<'a>(
     instr: &IRInst<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut HashMap<&'a str, Register>,
+    stack_allocs: &mut HashSet<&'a str>,
+    reservations: &mut HashMap<VirtualReg, usize>,
 ) -> Result<Vec<Instruction>, FromIRError> {
     #[cfg(feature = "nightly")]
     fn ir_address_mode_to_mir<'b>(
@@ -1026,12 +1040,10 @@ fn convert_instruction<'a>(
                         _ => return Err(FromIRError::UnsupportedInstruction),
                     };
 
-                    Ok(vec![Instruction::IntBinary {
-                        op: IntBinOp::Add,
+                    Ok(vec![Instruction::Copy {
                         ty: mir_ty,
                         dst,
-                        lhs: Operand::Immediate(imm),
-                        rhs: Operand::Immediate(Immediate::I64(0)),
+                        src: Operand::Immediate(imm),
                     }])
                 }
                 IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
@@ -1071,17 +1083,14 @@ fn convert_instruction<'a>(
         IRInst::PtrToInt {
             result,
             ptr_value,
-            target_type: _,
+            target_type,
         } => {
-            // On 64-bit, pointers are integers; lower to add with 0 to move value
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg)?;
-            Ok(vec![Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ty: MirType::Scalar(ScalarType::I64),
+            Ok(vec![Instruction::Copy {
+                ty: map_ir_prim(*target_type)?,
                 dst,
-                lhs: val_op,
-                rhs: Operand::Immediate(Immediate::I64(0)),
+                src: val_op,
             }])
         }
         IRInst::IntToPtr {
@@ -1089,15 +1098,12 @@ fn convert_instruction<'a>(
             int_value,
             target_type: _,
         } => {
-            // Treat as identity move via add with 0 (pointer-sized)
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg)?;
-            Ok(vec![Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ty: MirType::Scalar(ScalarType::I64),
+            Ok(vec![Instruction::Copy {
+                ty: MirType::Scalar(ScalarType::Ptr),
                 dst,
-                lhs: val_op,
-                rhs: Operand::Immediate(Immediate::I64(0)),
+                src: val_op,
             }])
         }
         IRInst::MemCpy { dst, src, size } => {
@@ -1303,11 +1309,13 @@ fn convert_instruction<'a>(
 
             match alloc_type {
                 AllocType::Stack => {
-                    let storage = Register::Virtual(vreg_alloc.allocate_gpr());
+                    stack_allocs.insert(result);
+                    let storage_vreg = vreg_alloc.allocate_gpr();
+                    let storage = Register::Virtual(storage_vreg);
                     if let Some(sz) = sizeof_ir_type(allocated_ty) {
                         let slots_needed = sz.div_ceil(8) as usize;
-                        for _ in 1..slots_needed {
-                            vreg_alloc.allocate_gpr();
+                        if slots_needed > 1 {
+                            reservations.insert(storage_vreg, slots_needed - 1);
                         }
                     }
                     // Lea computes address of storage's stack slot into dst
@@ -1331,10 +1339,16 @@ fn convert_instruction<'a>(
             }
         }
         IRInst::Dealloc { ptr } => {
-            // Lower heap dealloc to a conventional call that backends can map
+            // dealloc.heap on a stack allocation is a no-op; passing a stack
+            // address to free() aborts.
+            if let IRVal::Variable(name) = ptr
+                && stack_allocs.contains(name)
+            {
+                return Ok(Vec::new());
+            }
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::Call {
-                name: "dealloc".to_string(),
+                name: "free".to_string(),
                 args: vec![p],
                 ret: None,
             }])
@@ -1502,9 +1516,13 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::ir::builder::{i64 as ir_i64, string, var};
-    use crate::ir::{FunctionParameter, IRBuilder};
-    use crate::parser::parse_module;
+    use crate::{
+        ir::{
+            FunctionParameter, IRBuilder,
+            builder::{i64 as ir_i64, string, var},
+        },
+        parser::parse_module,
+    };
 
     #[test]
     fn test_from_ir_simple_add() {
@@ -1557,6 +1575,54 @@ mod tests {
             }
             other => panic!("Unexpected second instruction: {:?}", other),
         }
+    }
+
+    #[test]
+    fn f64_phi_immediate_survives_lowering_as_copy() {
+        let negative_zero = IRVal::Constant(IRLit::F64(-0.0));
+        let other = IRVal::Constant(IRLit::F64(3.5));
+        let mut builder = IRBuilder::new();
+        builder
+            .function_with_params(
+                "choose",
+                vec![FunctionParameter {
+                    name: "condition",
+                    ty: IRType::Primitive(IRPrim::I8),
+                    annotations: vec![],
+                }],
+                IRType::Primitive(IRPrim::F64),
+            )
+            .branch(var("condition"), "left", "right")
+            .block("left")
+            .jump("merge")
+            .block("right")
+            .jump("merge")
+            .block("merge")
+            .phi(
+                "value",
+                IRType::Primitive(IRPrim::F64),
+                vec![(negative_zero, "left"), (other, "right")],
+            )
+            .ret(IRType::Primitive(IRPrim::F64), var("value"));
+
+        let mir_module = from_ir(&builder.build(), "test").expect("from_ir should succeed");
+        let function = mir_module
+            .get_function("choose")
+            .expect("function should exist");
+        assert!(
+            function
+                .blocks
+                .iter()
+                .flat_map(|block| &block.instructions)
+                .any(|instruction| matches!(
+                    instruction,
+                    Instruction::Copy {
+                        ty: MirType::Scalar(ScalarType::F64),
+                        src: Operand::Immediate(Immediate::F64(value)),
+                        ..
+                    } if value.to_bits() == (-0.0f64).to_bits()
+                ))
+        );
     }
 
     #[test]

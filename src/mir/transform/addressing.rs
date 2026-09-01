@@ -9,11 +9,13 @@
 
 use std::collections::HashMap;
 
-use crate::mir::instruction::Immediate;
-use crate::mir::transform::{
-    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+use crate::mir::{
+    AddressMode, Function, Instruction, IntBinOp, Operand, Register,
+    instruction::Immediate,
+    transform::{
+        Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+    },
 };
-use crate::mir::{AddressMode, Function, Instruction, IntBinOp, Operand, Register};
 
 /// Canonicalizes address formation patterns into BaseIndexScale addressing.
 #[derive(Default)]
@@ -231,8 +233,10 @@ impl AddressingCanonicalization {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::get_block;
-    use crate::mir::{FunctionBuilder, Immediate, MemoryAttrs, MirType, ScalarType, VirtualReg};
+    use crate::mir::{
+        FunctionBuilder, Immediate, MemoryAttrs, MirType, ScalarType, VirtualReg,
+        transform::test_utils::get_block,
+    };
 
     #[test]
     fn test_addressing_empty_function() {

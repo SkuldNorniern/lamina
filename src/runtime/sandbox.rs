@@ -8,9 +8,11 @@
 //!   capability is disabled in `SandboxConfig`.
 //! - A basic memory-budget check based on estimated code + stack size.
 
-use crate::error::LaminaError;
-use crate::mir::{Instruction, Module as MirModule};
-use crate::runtime::compiler::RuntimeCompiler;
+use crate::{
+    error::LaminaError,
+    mir::{Instruction, Module as MirModule},
+    runtime::compiler::RuntimeCompiler,
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 #[cfg(feature = "encoder")]
 use std::mem;
@@ -230,11 +232,11 @@ impl Sandbox {
                 Some(timeout_ms) => {
                     // Run on a dedicated thread and wait for the result.
                     let (tx, rx) = channel::<Result<i64, String>>();
-                    // SAFETY: We transmit the raw function pointer as a usize so it
-                    // can cross the thread boundary without a Send bound.  The
-                    // `memory` object is not moved into the thread — it remains on
-                    // this stack frame (and therefore alive) until `recv_timeout`
-                    // returns, which is before `memory` is dropped.
+                    // SAFETY: the raw function pointer crosses the thread boundary as a
+                    // usize so it needs no Send bound. The mapping it points into stays
+                    // alive for as long as the worker can run: on success the worker has
+                    // finished before `memory` drops, and on timeout `memory` is leaked
+                    // below rather than dropped.
                     let fn_addr = fn_ptr as usize;
                     spawn(move || {
                         let f: unsafe extern "C" fn() -> i64 = unsafe { mem::transmute(fn_addr) };
@@ -242,13 +244,25 @@ impl Sandbox {
                         let _ = tx.send(Ok(result));
                     });
 
-                    rx.recv_timeout(Duration::from_millis(timeout_ms))
-                        .map_err(|_| {
-                            LaminaError::ValidationError(format!(
-                                "Sandbox: execution timed out after {timeout_ms} ms"
-                            ))
-                        })?
-                        .map_err(LaminaError::ValidationError)
+                    match rx.recv_timeout(Duration::from_millis(timeout_ms)) {
+                        Ok(result) => result.map_err(LaminaError::ValidationError),
+                        Err(_) => {
+                            // A timeout does not stop the worker; there is no portable
+                            // way to kill a running thread. It is still executing inside
+                            // this mapping, so unmapping now would be a use after free.
+                            // Leak the mapping instead: an address-space leak for a
+                            // runaway program is the cheaper of the two.
+                            //
+                            // Bounding this properly needs the guest in its own process,
+                            // where exceeding the deadline can just kill it.
+                            mem::forget(memory);
+                            Err(LaminaError::ValidationError(format!(
+                                "Sandbox: execution timed out after {timeout_ms} ms. The \
+                                 runaway thread cannot be stopped, so its executable \
+                                 mapping is retained for the life of the process."
+                            )))
+                        }
+                    }
                 }
             }
         }

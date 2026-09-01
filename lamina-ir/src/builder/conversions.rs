@@ -3,9 +3,11 @@
 //! This module provides methods for type conversions including zero-extension,
 //! sign-extension, truncation, bitcasting, and conditional selection.
 
-use crate::builder::IRBuilder;
-use crate::instruction::Instruction;
-use crate::types::{PrimitiveType, Type, Value};
+use crate::{
+    builder::IRBuilder,
+    instruction::Instruction,
+    types::{PrimitiveType, Type, Value},
+};
 
 impl<'a> IRBuilder<'a> {
     /// Creates a zero-extension instruction

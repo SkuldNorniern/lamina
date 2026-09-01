@@ -5,29 +5,32 @@
 
 mod util;
 
-use std::collections::HashMap;
-use std::io::Write;
-use std::result::Result;
-use std::sync::Arc;
+use std::{collections::HashMap, io::Write, sync::Arc};
 
 use util::{emit_mov_imm64, imm_to_u64};
 
-use crate::error::LaminaError;
-use crate::mir::register::RegisterClass;
-use crate::mir::{
-    AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
-    IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, Signature, VirtualReg,
-};
-use crate::mir_codegen::common::{
-    CodegenBase, compile_functions_parallel, emit_print_format_section, parallel_codegen_error,
-};
-use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-    capability::CapabilitySet, validate_module_call_parameters,
+use crate::{
+    error::LaminaError,
+    mir::{
+        AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
+        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, Signature, VirtualReg,
+        register::RegisterClass,
+    },
+    mir_codegen::{
+        Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
+        capability::CapabilitySet,
+        common::{
+            CodegenBase, compile_functions_parallel, emit_print_format_section,
+            parallel_codegen_error,
+        },
+        validate_module_call_parameters,
+    },
 };
 
-use lamina_codegen::aarch64::{A64RegAlloc, AArch64ABI, FrameMap};
-use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
+use lamina_codegen::{
+    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
+    aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
@@ -301,6 +304,36 @@ fn emit_block<W: Write>(
             writeln!(w, "    .loc 1 {} 0", *debug_line)?;
         }
         match inst {
+            MirInst::Copy { ty, dst, src } => {
+                if matches!(ty, MirType::Vector(_)) {
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!("AArch64 backend does not support vector Copy of type {ty}"),
+                    )));
+                }
+                let scratch = ra.alloc_scratch().unwrap_or("x19");
+                let value = if ty.size_bytes() <= 4 {
+                    w_alias(scratch)
+                } else {
+                    x_alias(scratch)
+                };
+                match src {
+                    Operand::Immediate(immediate) => {
+                        let bits = imm_to_u64(immediate);
+                        let masked = match ty.size_bytes() {
+                            1 => bits & u64::from(u8::MAX),
+                            2 => bits & u64::from(u16::MAX),
+                            4 => bits & u64::from(u32::MAX),
+                            _ => bits,
+                        };
+                        emit_mov_imm64(w, &value, masked)?;
+                    }
+                    Operand::Register(register) => {
+                        load_copy_reg_to(w, register, &value, ty.size_bytes(), frame, ra)?;
+                    }
+                }
+                store_copy_result(w, dst, &value, ty.size_bytes(), frame, ra)?;
+                ra.free_scratch(scratch);
+            }
             MirInst::IntBinary {
                 op,
                 lhs,
@@ -627,9 +660,11 @@ fn emit_block<W: Write>(
             }
             MirInst::Lea { dst, base, offset } => {
                 let t = ra.alloc_scratch().unwrap_or("x19");
-                // LEA computes address of base's stack slot + offset
                 match base {
-                    Register::Virtual(_) => {
+                    // A placeholder's slot is the storage itself, so its
+                    // address is the value; any other register holds a pointer
+                    // that has to be loaded first.
+                    Register::Virtual(_) if !frame.holds_value(base) => {
                         if let Some(slot_off) = frame.slot_of(base) {
                             // Compute address: x29 + slot_off + offset
                             let total = slot_off as i64 + (*offset as i64);
@@ -1129,6 +1164,145 @@ fn store_result<W: Write>(
     Ok(())
 }
 
+fn load_copy_reg_to<W: Write>(
+    w: &mut W,
+    register: &Register,
+    dest: &str,
+    size: usize,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(), LaminaError> {
+    match register {
+        Register::Virtual(vreg) => {
+            if let Some(physical) = ra.get_mapping_for(vreg) {
+                let source = if size <= 4 {
+                    w_alias(physical)
+                } else {
+                    x_alias(physical)
+                };
+                if source != dest {
+                    writeln!(w, "    mov {dest}, {source}")?;
+                }
+            } else if let Some(offset) = frame.slot_of(register) {
+                let mnemonic = match size {
+                    1 => "ldurb",
+                    2 => "ldurh",
+                    _ => "ldur",
+                };
+                if (-256..=255).contains(&offset) {
+                    writeln!(w, "    {mnemonic} {dest}, [x29, #{offset}]")?;
+                } else {
+                    let allocated = ra.alloc_scratch();
+                    let address = allocated.unwrap_or("x12");
+                    emit_frame_slot_address(w, address, offset)?;
+                    let mnemonic = match size {
+                        1 => "ldrb",
+                        2 => "ldrh",
+                        _ => "ldr",
+                    };
+                    writeln!(w, "    {mnemonic} {dest}, [{address}]")?;
+                    if allocated.is_some() {
+                        ra.free_scratch(address);
+                    }
+                }
+            } else {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!("AArch64 Copy source {register} has no register or stack slot"),
+                )));
+            }
+        }
+        Register::Physical(physical) => {
+            let source = if size <= 4 {
+                w_alias(physical.name)
+            } else {
+                x_alias(physical.name)
+            };
+            if source != dest {
+                writeln!(w, "    mov {dest}, {source}")?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn store_copy_result<W: Write>(
+    w: &mut W,
+    dst: &Register,
+    src: &str,
+    size: usize,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(), LaminaError> {
+    match dst {
+        Register::Virtual(vreg) => {
+            if let Some(physical) = ra.get_mapping_for(vreg) {
+                let target = if size <= 4 {
+                    w_alias(physical)
+                } else {
+                    x_alias(physical)
+                };
+                if target != src {
+                    writeln!(w, "    mov {target}, {src}")?;
+                }
+            } else if let Some(offset) = frame.slot_of(dst) {
+                let mnemonic = match size {
+                    1 => "sturb",
+                    2 => "sturh",
+                    _ => "stur",
+                };
+                if (-256..=255).contains(&offset) {
+                    writeln!(w, "    {mnemonic} {src}, [x29, #{offset}]")?;
+                } else {
+                    let allocated = ra.alloc_scratch();
+                    let address = allocated.unwrap_or("x12");
+                    emit_frame_slot_address(w, address, offset)?;
+                    let mnemonic = match size {
+                        1 => "strb",
+                        2 => "strh",
+                        _ => "str",
+                    };
+                    writeln!(w, "    {mnemonic} {src}, [{address}]")?;
+                    if allocated.is_some() {
+                        ra.free_scratch(address);
+                    }
+                }
+            } else {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!("AArch64 Copy destination {dst} has no register or stack slot"),
+                )));
+            }
+        }
+        Register::Physical(physical) => {
+            let target = if size <= 4 {
+                w_alias(physical.name)
+            } else {
+                x_alias(physical.name)
+            };
+            if target != src {
+                writeln!(w, "    mov {target}, {src}")?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn emit_frame_slot_address<W: Write>(
+    w: &mut W,
+    dest: &str,
+    offset: i32,
+) -> Result<(), LaminaError> {
+    let offset = i64::from(offset);
+    if (0..=4095).contains(&offset) {
+        writeln!(w, "    add {dest}, x29, #{offset}")?;
+    } else if offset < 0 && -offset <= 4095 {
+        writeln!(w, "    sub {dest}, x29, #{}", -offset)?;
+    } else {
+        emit_mov_imm64(w, dest, offset as u64)?;
+        writeln!(w, "    add {dest}, x29, {dest}")?;
+    }
+    Ok(())
+}
+
 /// Materialize an address operand into a register.
 fn materialize_address<W: Write>(
     w: &mut W,
@@ -1322,5 +1496,43 @@ impl<'a> Codegen for AArch64Codegen<'a> {
         Err(CodegenError::UnsupportedFeature(
             "Binary emission not implemented for AArch64 MIR backend".into(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{FunctionBuilder, ScalarType};
+
+    #[test]
+    fn float_copy_emits_bit_move_not_add() {
+        let ty = MirType::Scalar(ScalarType::F64);
+        let src = Register::Virtual(VirtualReg::fpr(0));
+        let dst = Register::Virtual(VirtualReg::fpr(1));
+        let function = FunctionBuilder::new("copy_float")
+            .param(src.clone(), ty)
+            .returns(ty)
+            .block("entry")
+            .instr(MirInst::Copy {
+                ty,
+                dst: dst.clone(),
+                src: Operand::Register(src),
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+        let mut module = MirModule::new("copy_test");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_aarch64(&module, &mut output, TargetOperatingSystem::Linux)
+            .expect("AArch64 codegen should succeed");
+        let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
+
+        assert!(assembly.contains("mov "), "expected move: {assembly}");
+        assert!(
+            !assembly.contains("fadd"),
+            "unexpected float add: {assembly}"
+        );
     }
 }

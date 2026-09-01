@@ -5,9 +5,10 @@
 //! - **CfgSimplify**: Simplifies trivial branches and selects
 //! - **JumpThreading**: Bypasses trivial jump-only blocks
 
-use crate::mir::instruction::Immediate;
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::{Function, Instruction, IntBinOp, Operand};
+use crate::mir::{
+    Function, Instruction,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+};
 use std::collections::{HashMap, HashSet};
 
 /// Identify loop headers via back-edge detection (target block index ≤ source block index).
@@ -136,7 +137,7 @@ impl CfgSimplify {
                         *instr = Instruction::Jmp { target };
                         changed = true;
                     }
-                    // select cond, x, x -> add x, 0
+                    // select cond, x, x -> copy x
                     Instruction::Select {
                         dst,
                         ty,
@@ -144,12 +145,10 @@ impl CfgSimplify {
                         true_val,
                         false_val,
                     } if true_val == false_val => {
-                        let replacement = Instruction::IntBinary {
-                            op: IntBinOp::Add,
+                        let replacement = Instruction::Copy {
                             ty: *ty,
                             dst: dst.clone(),
-                            lhs: true_val.clone(),
-                            rhs: Operand::Immediate(Immediate::I64(0)),
+                            src: true_val.clone(),
                         };
                         *instr = replacement;
                         changed = true;
@@ -357,9 +356,9 @@ impl JumpThreading {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::apply_pass;
     use crate::mir::{
-        FunctionBuilder, Immediate, IntBinOp, MirType, Operand, Register, ScalarType, VirtualReg,
+        FunctionBuilder, Immediate, MirType, Operand, Register, ScalarType, VirtualReg,
+        transform::test_utils::apply_pass,
     };
 
     fn i64() -> MirType {
@@ -482,13 +481,45 @@ mod tests {
         let changed = apply_pass(&CfgSimplify, &mut func);
         assert!(changed);
         let entry = func.get_block("entry").unwrap();
-        assert!(matches!(
-            &entry.instructions[0],
-            Instruction::IntBinary {
-                op: IntBinOp::Add,
-                ..
-            }
-        ));
+        assert!(matches!(&entry.instructions[0], Instruction::Copy { .. }));
+    }
+
+    #[test]
+    fn cfg_simplify_leaves_float_select_alone() {
+        let dst: Register = VirtualReg::gpr(1).into();
+        let f64_ty = MirType::Scalar(ScalarType::F64);
+        let val = Operand::Immediate(Immediate::F64(2.5));
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), f64_ty)
+            .returns(f64_ty)
+            .block("entry")
+            .instr(Instruction::Select {
+                dst: dst.clone(),
+                ty: f64_ty,
+                cond: cond_reg(),
+                true_val: val.clone(),
+                false_val: val,
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+
+        let changed = apply_pass(&CfgSimplify, &mut func);
+        assert!(changed);
+        let entry = func.get_block("entry").unwrap();
+        assert!(
+            matches!(
+                &entry.instructions[0],
+                Instruction::Copy {
+                    ty,
+                    src: Operand::Immediate(Immediate::F64(value)),
+                    ..
+                } if *ty == f64_ty && *value == 2.5
+            ),
+            "float select must become Copy, got {:?}",
+            &entry.instructions[0]
+        );
     }
 
     #[test]

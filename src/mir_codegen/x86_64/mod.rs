@@ -8,21 +8,23 @@ pub mod util;
 
 use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame};
-use std::collections::{BTreeSet, HashMap};
-use std::io::Write;
-use std::result::Result;
+use std::{
+    collections::{BTreeSet, HashMap},
+    io::Write,
+};
 use util::*;
 
-use crate::error::LaminaError;
-use crate::mir::instruction::Immediate;
-use crate::mir::register::RegisterClass;
-use crate::mir::{
-    AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
-    IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, Signature, VirtualReg,
-};
-use crate::mir_codegen::{
-    Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
-    capability::CapabilitySet, validate_module_call_parameters,
+use crate::{
+    error::LaminaError,
+    mir::{
+        AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
+        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, Signature, VirtualReg,
+        instruction::Immediate, register::RegisterClass,
+    },
+    mir_codegen::{
+        Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
+        capability::CapabilitySet, validate_module_call_parameters,
+    },
 };
 
 use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
@@ -161,7 +163,8 @@ fn compile_single_function_x86_64(
         X64RegAlloc::new(target_os)
     };
 
-    let (mut stack_slots, def_regs) = assign_stack_slots(func, X86Frame::calculate_stack_offset);
+    let (mut stack_slots, def_regs, total_slots) =
+        assign_stack_slots(func, X86Frame::calculate_stack_offset);
 
     if settings.regalloc != RegallocStrategy::Incremental {
         let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
@@ -186,7 +189,7 @@ fn compile_single_function_x86_64(
         }
     }
 
-    let stack_size = stack_slots.len() * 8;
+    let stack_size = total_slots.max(stack_slots.len()) * 8;
     X86Frame::generate_prologue(&mut output, stack_size)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
@@ -205,7 +208,15 @@ fn compile_single_function_x86_64(
                     })?;
                 } else {
                     let stack_index = index - arg_regs.len();
-                    let caller_off = 16 + (stack_index as i32) * 8;
+                    // Saved rbp and the return address sit at rbp+0 and rbp+8;
+                    // on Windows the caller's home space follows before the
+                    // first stack argument.
+                    let home = if target_os == TargetOperatingSystem::Windows {
+                        windows::SHADOW_SPACE_SIZE
+                    } else {
+                        0
+                    };
+                    let caller_off = 16 + home + (stack_index as i32) * 8;
                     writeln!(output, "    movq {caller_off}(%rbp), %rax").map_err(|e| {
                         CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
                     })?;
@@ -342,6 +353,23 @@ fn emit_instruction_x86_64(
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
     }
     match inst {
+        MirInst::Copy { ty, dst, src } => {
+            if matches!(ty, MirType::Vector(_)) {
+                return Err(LaminaError::ValidationError(format!(
+                    "x86_64 backend does not support vector Copy of type {ty}"
+                )));
+            }
+            load_copy_operand_to_rax(ty, src, writer, reg_alloc, stack_slots)?;
+            match dst {
+                Register::Virtual(vreg) => {
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
+                Register::Physical(phys) if phys.name != "rax" => {
+                    writeln!(writer, "    movq %rax, %{}", phys.name)?;
+                }
+                Register::Physical(_) => {}
+            }
+        }
         MirInst::IntBinary {
             op,
             dst,
@@ -654,6 +682,9 @@ fn emit_instruction_x86_64(
                         TargetOperatingSystem::MacOS => {
                             writeln!(writer, "    leaq .L_mir_fmt_int(%rip), %rdi")?;
                             writeln!(writer, "    movq %rax, %rsi")?;
+                            // al carries the vector-register count for variadic
+                            // calls; printf reads it before saving xmm state.
+                            writeln!(writer, "    xorl %eax, %eax")?;
                             writeln!(writer, "    call _printf")?;
                             writeln!(writer, "    movq $0, %rdi")?;
                             writeln!(writer, "    call _fflush")?;
@@ -703,6 +734,14 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
                         writeln!(writer, "    call putchar")?;
                         writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        // putchar yields the character written; the syscall
+                        // paths yield the byte count, so report 1 or -1.
+                        writeln!(writer, "    movl %eax, %ecx")?;
+                        writeln!(writer, "    movl $1, %eax")?;
+                        writeln!(writer, "    movl $-1, %edx")?;
+                        writeln!(writer, "    cmpl $-1, %ecx")?;
+                        writeln!(writer, "    cmovel %edx, %eax")?;
+                        writeln!(writer, "    cltq")?;
                     }
                     _ => {
                         writeln!(writer, "    movq ${}, %rax", linux::SYS_WRITE)?;
@@ -720,6 +759,98 @@ fn emit_instruction_x86_64(
                 }
 
                 writeln!(writer, "    addq ${}, %rsp", stack::ALIGNMENT)?;
+            } else if name == "readbyte" && args.is_empty() {
+                writeln!(writer, "    subq ${}, %rsp", stack::ALIGNMENT)?;
+
+                match target_os {
+                    TargetOperatingSystem::MacOS => {
+                        writeln!(writer, "    movq ${}, %rax", macos::SYS_READ)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDIN)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                    }
+                    TargetOperatingSystem::Windows => {
+                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    call getchar")?;
+                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        // getchar reports EOF as -1; the syscall paths report 0.
+                        writeln!(writer, "    movslq %eax, %rax")?;
+                        writeln!(writer, "    xorl %ecx, %ecx")?;
+                        writeln!(writer, "    cmpq $-1, %rax")?;
+                        writeln!(writer, "    cmoveq %rcx, %rax")?;
+                    }
+                    _ => {
+                        writeln!(writer, "    movq ${}, %rax", linux::SYS_READ)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDIN)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                    }
+                }
+
+                // getchar already returns the byte (or -1); the syscall returns a
+                // count, so swap in the byte it stored only on a full read.
+                if target_os != TargetOperatingSystem::Windows {
+                    writeln!(writer, "    movzbl (%rsp), %ecx")?;
+                    writeln!(writer, "    cmpq $1, %rax")?;
+                    writeln!(writer, "    cmovel %ecx, %eax")?;
+                }
+
+                writeln!(writer, "    addq ${}, %rsp", stack::ALIGNMENT)?;
+
+                if let Some(ret_reg) = ret
+                    && let Register::Virtual(vreg) = ret_reg
+                {
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
+            } else if name == "writeptr" && args.len() == 1 {
+                let arg = args.first().ok_or_else(|| {
+                    LaminaError::ValidationError("writeptr requires one argument".to_string())
+                })?;
+                load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
+                writeln!(writer, "    movzbl (%rax), %ecx")?;
+                writeln!(writer, "    subq ${}, %rsp", stack::ALIGNMENT)?;
+                writeln!(writer, "    movb %cl, (%rsp)")?;
+
+                match target_os {
+                    TargetOperatingSystem::MacOS => {
+                        writeln!(writer, "    movq ${}, %rax", macos::SYS_WRITE)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                    }
+                    TargetOperatingSystem::Windows => {
+                        writeln!(writer, "    movzbl (%rsp), %ecx")?;
+                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    call putchar")?;
+                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        // putchar yields the character written; the syscall
+                        // paths yield the byte count, so report 1 or -1.
+                        writeln!(writer, "    movl %eax, %ecx")?;
+                        writeln!(writer, "    movl $1, %eax")?;
+                        writeln!(writer, "    movl $-1, %edx")?;
+                        writeln!(writer, "    cmpl $-1, %ecx")?;
+                        writeln!(writer, "    cmovel %edx, %eax")?;
+                        writeln!(writer, "    cltq")?;
+                    }
+                    _ => {
+                        writeln!(writer, "    movq ${}, %rax", linux::SYS_WRITE)?;
+                        writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
+                        writeln!(writer, "    movq %rsp, %rsi")?;
+                        writeln!(writer, "    movq $1, %rdx")?;
+                        writeln!(writer, "    syscall")?;
+                    }
+                }
+
+                writeln!(writer, "    addq ${}, %rsp", stack::ALIGNMENT)?;
+
+                if let Some(ret_reg) = ret
+                    && let Register::Virtual(vreg) = ret_reg
+                {
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
             } else {
                 let abi = X86ABI::new(target_os);
                 let arg_regs = abi.arg_registers();
@@ -727,12 +858,16 @@ fn emit_instruction_x86_64(
                 let num_stack_args = args.len().saturating_sub(arg_regs.len());
 
                 if target_os == TargetOperatingSystem::Windows {
-                    let shadow_space = if num_reg_args > 0 {
-                        windows::SHADOW_SPACE_SIZE as usize
-                    } else {
-                        0
-                    };
-                    let total_stack = shadow_space + (num_stack_args * stack::SLOT_SIZE);
+                    // Every Windows call gets home space, argument count aside:
+                    // the callee may spill into it whether or not it was passed
+                    // register arguments.
+                    let shadow_space = windows::SHADOW_SPACE_SIZE as usize;
+                    // Rounded up so rsp stays 16-aligned at the call; the
+                    // padding lands above the arguments, leaving their offsets
+                    // from rsp unchanged.
+                    let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
+                        .div_ceil(stack::ALIGNMENT)
+                        * stack::ALIGNMENT;
                     if total_stack > 0 {
                         writeln!(writer, "    subq ${total_stack}, %rsp")?;
                     }
@@ -744,6 +879,10 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %rax, {stack_offset}(%rsp)")?;
                     }
                 } else {
+                    // An odd number of pushes would leave rsp 8 off at the call.
+                    if num_stack_args % 2 == 1 {
+                        writeln!(writer, "    subq $8, %rsp")?;
+                    }
                     for i in (0..num_stack_args).rev() {
                         let arg_idx = num_reg_args + i;
                         let arg = &args[arg_idx];
@@ -762,21 +901,20 @@ fn emit_instruction_x86_64(
                 writeln!(writer, "    call {mangled_name}")?;
 
                 if target_os == TargetOperatingSystem::Windows {
-                    let shadow_space = if num_reg_args > 0 {
-                        windows::SHADOW_SPACE_SIZE as usize
-                    } else {
-                        0
-                    };
-                    let total_stack = shadow_space + (num_stack_args * stack::SLOT_SIZE);
+                    // Every Windows call gets home space, argument count aside:
+                    // the callee may spill into it whether or not it was passed
+                    // register arguments.
+                    let shadow_space = windows::SHADOW_SPACE_SIZE as usize;
+                    let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
+                        .div_ceil(stack::ALIGNMENT)
+                        * stack::ALIGNMENT;
                     if total_stack > 0 {
                         writeln!(writer, "    addq ${total_stack}, %rsp")?;
                     }
                 } else if num_stack_args > 0 {
-                    writeln!(
-                        writer,
-                        "    addq ${}, %rsp",
-                        num_stack_args * stack::SLOT_SIZE
-                    )?;
+                    let pushed = num_stack_args * stack::SLOT_SIZE;
+                    let padded = pushed.div_ceil(stack::ALIGNMENT) * stack::ALIGNMENT;
+                    writeln!(writer, "    addq ${padded}, %rsp")?;
                 }
 
                 if let Some(ret_reg) = ret
@@ -789,7 +927,7 @@ fn emit_instruction_x86_64(
         MirInst::Load {
             dst,
             addr,
-            ty: _,
+            ty,
             attrs: _,
         } => {
             if let AddressMode::BaseOffset { base, offset: 0 } = addr {
@@ -801,7 +939,7 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %{}, %rax", phys.name)?;
                     }
                 }
-                writeln!(writer, "    movq (%rax), %rax")?;
+                writeln!(writer, "    {}", load_insn_for(ty))?;
                 if let Register::Virtual(vreg) = dst {
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
@@ -814,7 +952,7 @@ fn emit_instruction_x86_64(
         MirInst::Store {
             addr,
             src,
-            ty: _,
+            ty,
             attrs: _,
         } => {
             // Simple direct store for now
@@ -829,7 +967,12 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %{}, %{}", phys.name, scratch)?;
                     }
                 }
-                writeln!(writer, "    movq %rax, (%{scratch})")?;
+                writeln!(
+                    writer,
+                    "    mov{} %{}, (%{scratch})",
+                    size_suffix(ty),
+                    rax_for(ty)
+                )?;
                 if scratch != "rbx" {
                     reg_alloc.free_scratch(scratch);
                 }
@@ -1120,4 +1263,199 @@ fn emit_instruction_x86_64(
     }
 
     Ok(())
+}
+
+/// Width suffix for a `mov` touching memory of this type.
+fn size_suffix(ty: &MirType) -> &'static str {
+    match ty.size_bytes() {
+        1 => "b",
+        2 => "w",
+        4 => "l",
+        _ => "q",
+    }
+}
+
+/// The sub-register of `rax` holding exactly the bytes of this type.
+fn rax_for(ty: &MirType) -> &'static str {
+    match ty.size_bytes() {
+        1 => "al",
+        2 => "ax",
+        4 => "eax",
+        _ => "rax",
+    }
+}
+
+/// Load through `rax`, reading only the bytes the type occupies.
+///
+/// Narrow loads zero-extend. Signedness lives in the operations (SDiv against UDiv,
+/// AShr against LShr) rather than in MirType, so a load cannot know which to pick, and
+/// zero-extension at least leaves the register with a defined value. Writing `movl`
+/// into `eax` already clears the top half.
+fn load_insn_for(ty: &MirType) -> &'static str {
+    match ty.size_bytes() {
+        1 => "movzbq (%rax), %rax",
+        2 => "movzwq (%rax), %rax",
+        4 => "movl (%rax), %eax",
+        _ => "movq (%rax), %rax",
+    }
+}
+
+fn load_copy_operand_to_rax(
+    ty: &MirType,
+    src: &Operand,
+    writer: &mut impl Write,
+    reg_alloc: &X64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    let size = ty.size_bytes();
+    match src {
+        Operand::Register(Register::Virtual(vreg)) => {
+            if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
+                emit_copy_register_load(writer, physical, size)?;
+            } else if let Some(offset) = stack_slots.get(vreg) {
+                match size {
+                    1 => writeln!(writer, "    movzbq {offset}(%rbp), %rax")?,
+                    2 => writeln!(writer, "    movzwq {offset}(%rbp), %rax")?,
+                    4 => writeln!(writer, "    movl {offset}(%rbp), %eax")?,
+                    _ => writeln!(writer, "    movq {offset}(%rbp), %rax")?,
+                }
+            } else {
+                return Err(LaminaError::ValidationError(format!(
+                    "Virtual register {vreg:?} has no mapping or stack slot"
+                )));
+            }
+        }
+        Operand::Register(Register::Physical(physical)) => {
+            emit_copy_register_load(writer, physical.name, size)?;
+        }
+        Operand::Immediate(immediate) => {
+            let bits = match immediate {
+                Immediate::I8(value) => *value as i64 as u64,
+                Immediate::I16(value) => *value as i64 as u64,
+                Immediate::I32(value) => *value as i64 as u64,
+                Immediate::I64(value) => *value as u64,
+                Immediate::F32(value) => u64::from(value.to_bits()),
+                Immediate::F64(value) => value.to_bits(),
+            };
+            if size <= 4 {
+                let mask = if size == 4 {
+                    u64::from(u32::MAX)
+                } else {
+                    (1u64 << (size * 8)) - 1
+                };
+                writeln!(writer, "    movl ${}, %eax", bits & mask)?;
+            } else {
+                writeln!(writer, "    movq ${}, %rax", bits as i64)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn emit_copy_register_load(
+    writer: &mut impl Write,
+    register: &str,
+    size: usize,
+) -> Result<(), LaminaError> {
+    let narrowed = x86_register_for_size(register, size).ok_or_else(|| {
+        LaminaError::ValidationError(format!(
+            "x86_64 backend cannot select a {size}-byte alias for register {register}"
+        ))
+    })?;
+    match size {
+        1 => writeln!(writer, "    movzbq %{narrowed}, %rax")?,
+        2 => writeln!(writer, "    movzwq %{narrowed}, %rax")?,
+        4 => writeln!(writer, "    movl %{narrowed}, %eax")?,
+        _ => writeln!(writer, "    movq %{narrowed}, %rax")?,
+    }
+    Ok(())
+}
+
+fn x86_register_for_size(register: &str, size: usize) -> Option<String> {
+    let alias = match (register, size) {
+        ("rax", 1) => "al".to_string(),
+        ("rax", 2) => "ax".to_string(),
+        ("rax", 4) => "eax".to_string(),
+        ("rbx", 1) => "bl".to_string(),
+        ("rbx", 2) => "bx".to_string(),
+        ("rbx", 4) => "ebx".to_string(),
+        ("rcx", 1) => "cl".to_string(),
+        ("rcx", 2) => "cx".to_string(),
+        ("rcx", 4) => "ecx".to_string(),
+        ("rdx", 1) => "dl".to_string(),
+        ("rdx", 2) => "dx".to_string(),
+        ("rdx", 4) => "edx".to_string(),
+        ("rsi", 1) => "sil".to_string(),
+        ("rsi", 2) => "si".to_string(),
+        ("rsi", 4) => "esi".to_string(),
+        ("rdi", 1) => "dil".to_string(),
+        ("rdi", 2) => "di".to_string(),
+        ("rdi", 4) => "edi".to_string(),
+        ("rbp", 1) => "bpl".to_string(),
+        ("rbp", 2) => "bp".to_string(),
+        ("rbp", 4) => "ebp".to_string(),
+        ("rsp", 1) => "spl".to_string(),
+        ("rsp", 2) => "sp".to_string(),
+        ("rsp", 4) => "esp".to_string(),
+        (name, 1)
+            if matches!(
+                name,
+                "r8" | "r9" | "r10" | "r11" | "r12" | "r13" | "r14" | "r15"
+            ) =>
+        {
+            format!("{name}b")
+        }
+        (name, 2)
+            if matches!(
+                name,
+                "r8" | "r9" | "r10" | "r11" | "r12" | "r13" | "r14" | "r15"
+            ) =>
+        {
+            format!("{name}w")
+        }
+        (name, 4)
+            if matches!(
+                name,
+                "r8" | "r9" | "r10" | "r11" | "r12" | "r13" | "r14" | "r15"
+            ) =>
+        {
+            format!("{name}d")
+        }
+        (name, 8) => name.to_string(),
+        _ => return None,
+    };
+    Some(alias)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::{FunctionBuilder, ScalarType};
+
+    #[test]
+    fn float_copy_emits_bit_move_not_add() {
+        let ty = MirType::Scalar(ScalarType::F64);
+        let dst = Register::Virtual(VirtualReg::fpr(0));
+        let function = FunctionBuilder::new("copy_float")
+            .block("entry")
+            .instr(MirInst::Copy {
+                ty,
+                dst: dst.clone(),
+                src: Operand::Immediate(Immediate::F64(-0.0)),
+            })
+            .instr(MirInst::Ret { value: None })
+            .build();
+        let mut module = MirModule::new("copy_test");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_x86_64(&module, &mut output, TargetOperatingSystem::Linux)
+            .expect("x86_64 codegen should succeed");
+        let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
+
+        assert!(assembly.contains("movq"), "expected move: {assembly}");
+        assert!(
+            !assembly.contains("addsd"),
+            "unexpected float add: {assembly}"
+        );
+    }
 }

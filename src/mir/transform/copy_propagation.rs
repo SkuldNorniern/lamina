@@ -1,10 +1,10 @@
 //! Copy propagation transform for MIR.
 
-use crate::mir::transform::{
-    Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
-};
 use crate::mir::{
     AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
+    transform::{
+        Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
+    },
 };
 use std::collections::HashMap;
 
@@ -21,6 +21,14 @@ fn is_imm(operand: &Operand, v: i64) -> bool {
 }
 
 fn identity_copy_source(instr: &Instruction) -> Option<(&Register, &Register)> {
+    if let Instruction::Copy {
+        dst,
+        src: Operand::Register(src),
+        ..
+    } = instr
+    {
+        return Some((dst, src));
+    }
     let Instruction::IntBinary {
         op, dst, lhs, rhs, ..
     } = instr
@@ -131,6 +139,9 @@ impl CopyPropagation {
         let mut changed = false;
 
         match instr {
+            Instruction::Copy { src, .. } => {
+                changed |= self.replace_operand(src, value_map);
+            }
             Instruction::IntBinary { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
             | Instruction::IntCmp { lhs, rhs, .. }
@@ -218,8 +229,9 @@ impl CopyPropagation {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::get_block;
-    use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
+    use crate::mir::{
+        FunctionBuilder, MirType, ScalarType, VirtualReg, transform::test_utils::get_block,
+    };
 
     #[test]
     fn test_copy_propagation_basic() {

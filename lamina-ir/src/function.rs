@@ -220,11 +220,15 @@
 //! let module = builder.build();
 //! ```
 
-use std::collections::{HashMap, HashSet};
-use std::fmt;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
-use crate::instruction::Instruction;
-use crate::types::{Identifier, Label, Type};
+use crate::{
+    instruction::Instruction,
+    types::{Identifier, Label, Type},
+};
 
 /// Function annotations that provide metadata about function behavior.
 ///
@@ -838,8 +842,10 @@ impl fmt::Display for Function<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::instruction::{AllocType, BinaryOp, Instruction};
-    use crate::types::{Literal, PrimitiveType, Type, Value};
+    use crate::{
+        instruction::{AllocType, BinaryOp, Instruction},
+        types::{Literal, PrimitiveType, Type, Value},
+    };
 
     #[test]
     fn test_display_function_annotation() {

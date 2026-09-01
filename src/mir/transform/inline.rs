@@ -1,12 +1,11 @@
 //! Function inlining transforms for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{
-    AddressMode, Block, Function, Immediate, Instruction, IntBinOp, MirType, Module, Operand,
-    Register, RegisterClass, ScalarType, VirtualReg,
+    AddressMode, Block, Function, Instruction, Module, Operand, Register, RegisterClass,
+    VirtualReg,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
-use std::cell::Cell;
-use std::collections::HashMap;
+use std::{cell::Cell, collections::HashMap};
 
 /// Function-level inlining transform.
 ///
@@ -179,6 +178,11 @@ impl ModuleInlining {
             });
         }
 
+        if cfg!(debug_assertions) {
+            module
+                .validate_in_pipeline()
+                .map_err(|errors| TransformError::VerificationFailed { errors })?;
+        }
         Ok(inlined_count)
     }
 
@@ -388,12 +392,10 @@ impl ModuleInlining {
                                 "function has return value but no return type in signature",
                             ))?;
 
-                    let mut assign_instr = Instruction::IntBinary {
-                        op: IntBinOp::Add,
+                    let mut assign_instr = Instruction::Copy {
                         dst: result_reg.clone(),
                         ty: return_type,
-                        lhs: ret_val.clone(),
-                        rhs: Operand::Immediate(Immediate::I64(0)),
+                        src: ret_val.clone(),
                     };
                     // Apply parameter substitution and renaming to the operand(s)
                     // Then restore destination to the intended call result register
@@ -402,7 +404,7 @@ impl ModuleInlining {
                         param_mapping,
                         caller_func,
                     )?;
-                    if let Instruction::IntBinary { dst, .. } = &mut assign_instr {
+                    if let Instruction::Copy { dst, .. } = &mut assign_instr {
                         *dst = result_reg.clone();
                     }
                     inlined_instructions.push(assign_instr);
@@ -508,6 +510,10 @@ impl ModuleInlining {
         F: FnMut(&Register) -> Register,
     {
         match instr {
+            Instruction::Copy { dst, src, .. } => {
+                *dst = map_reg(dst);
+                self.map_operand_register(src, map_reg);
+            }
             Instruction::IntBinary { dst, lhs, rhs, .. }
             | Instruction::FloatBinary { dst, lhs, rhs, .. } => {
                 *dst = map_reg(dst);
@@ -769,12 +775,18 @@ impl ModuleInlining {
                         && let Some(dst) = &ret_reg
                     {
                         // Assign return value to call result register
-                        block.instructions.push(Instruction::IntBinary {
-                            op: IntBinOp::Add,
-                            ty: MirType::Scalar(ScalarType::I64),
+                        let return_type =
+                            callee_func
+                                .sig
+                                .ret_ty
+                                .as_ref()
+                                .ok_or(TransformError::InvalidState(
+                                    "function has return value but no return type in signature",
+                                ))?;
+                        block.instructions.push(Instruction::Copy {
+                            ty: *return_type,
                             dst: dst.clone(),
-                            lhs: val,
-                            rhs: Operand::Immediate(Immediate::I64(0)),
+                            src: val,
                         });
                     }
                     // Jump to split block
@@ -809,7 +821,8 @@ impl ModuleInlining {
     /// Rename the destination register in an instruction
     fn rename_instruction_dst(&self, instr: &mut Instruction, new_dst: Register) {
         match instr {
-            Instruction::IntBinary { dst, .. }
+            Instruction::Copy { dst, .. }
+            | Instruction::IntBinary { dst, .. }
             | Instruction::FloatBinary { dst, .. }
             | Instruction::FloatUnary { dst, .. }
             | Instruction::IntCmp { dst, .. }
@@ -835,6 +848,9 @@ impl ModuleInlining {
         param_mapping: &HashMap<Register, Operand>,
     ) -> Result<(), TransformError> {
         match instr {
+            Instruction::Copy { src, .. } => {
+                *src = self.map_operand(src, register_mapping, param_mapping)?;
+            }
             Instruction::IntBinary { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
             | Instruction::IntCmp { lhs, rhs, .. }
@@ -958,7 +974,7 @@ struct CallSite {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, MirType, ScalarType};
+    use crate::mir::{FunctionBuilder, Immediate, IntBinOp, MirType, ScalarType};
 
     #[test]
     fn test_inline_multi_block() {
@@ -970,14 +986,14 @@ mod tests {
         //   jmp exit
         // exit:
         //   ret v0
-        let mut callee = FunctionBuilder::new("callee")
+        let callee = FunctionBuilder::new("callee")
             .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
             .instr(Instruction::IntBinary {
                 op: IntBinOp::Add,
                 ty: MirType::Scalar(ScalarType::I64),
-                dst: VirtualReg::gpr(0).into(),
+                dst: VirtualReg::gpr(1).into(),
                 lhs: Operand::Register(VirtualReg::gpr(0).into()), // p0 is v0 (param 0)
                 rhs: Operand::Immediate(Immediate::I64(1)),
             })
@@ -986,11 +1002,9 @@ mod tests {
             })
             .block("exit")
             .instr(Instruction::Ret {
-                value: Some(Operand::Register(VirtualReg::gpr(0).into())),
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
             })
             .build();
-        // Fix param reg
-        callee.sig.params[0].reg = VirtualReg::gpr(0).into();
 
         module.add_function(callee);
 

@@ -1,6 +1,8 @@
 use lamina_mir::{AddressMode, Function, Instruction, Operand, Register, VirtualReg};
-use std::collections::{HashMap, HashSet};
-use std::hash::Hash;
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+};
 
 /// Opaque handle that allows dynamic dispatch over register allocators without
 /// leaking architecture-specific physical register types.
@@ -211,7 +213,8 @@ impl LinearScanAllocator {
     /// Returns the single register *defined* by an instruction (if any).
     fn def_reg(instr: &Instruction) -> Option<Register> {
         match instr {
-            Instruction::IntBinary { dst, .. }
+            Instruction::Copy { dst, .. }
+            | Instruction::IntBinary { dst, .. }
             | Instruction::FloatBinary { dst, .. }
             | Instruction::FloatUnary { dst, .. }
             | Instruction::IntCmp { dst, .. }
@@ -260,6 +263,8 @@ impl LinearScanAllocator {
         };
 
         match instr {
+            Instruction::Copy { src, .. } => push_op(&mut uses, src),
+
             Instruction::IntBinary { lhs, rhs, .. }
             | Instruction::FloatBinary { lhs, rhs, .. }
             | Instruction::IntCmp { lhs, rhs, .. }
@@ -580,6 +585,31 @@ mod tests {
         let mut sorted = starts.clone();
         sorted.sort_unstable();
         assert_eq!(starts, sorted, "intervals should be sorted by start");
+    }
+
+    #[test]
+    fn copy_contributes_source_use_and_destination_def() {
+        let f64_ty = MirType::Scalar(ScalarType::F64);
+        let src = Register::Virtual(VirtualReg::fpr(0));
+        let dst = Register::Virtual(VirtualReg::fpr(1));
+        let func = FunctionBuilder::new("copy")
+            .param(src.clone(), f64_ty)
+            .returns(f64_ty)
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty: f64_ty,
+                dst: dst.clone(),
+                src: Operand::Register(src),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+
+        let intervals = LinearScanAllocator::compute_intervals(&func);
+        let ids: Vec<u32> = intervals.iter().map(|interval| interval.vreg.id).collect();
+        assert!(ids.contains(&0));
+        assert!(ids.contains(&1));
     }
 
     #[test]

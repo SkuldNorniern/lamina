@@ -2,8 +2,7 @@
 
 use std::io::Write;
 
-use crate::error::LaminaError;
-use crate::mir::Immediate;
+use crate::{error::LaminaError, mir::Immediate};
 
 /// Emits instructions to materialize a 64-bit immediate into a destination register.
 ///

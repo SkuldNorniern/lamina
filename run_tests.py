@@ -11,6 +11,14 @@ import glob
 import argparse
 from pathlib import Path
 
+# Windows consoles default to cp1252, which cannot encode the emoji below.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
+
+
 class Colors:
     GREEN = '\033[92m'
     RED = '\033[91m'
@@ -31,14 +39,60 @@ def run_command(cmd, cwd=None):
             capture_output=True,
             text=True,
             cwd=cwd,
+            # Tests that read stdin without declared input must see EOF rather
+            # than inherit a terminal and block until the timeout.
+            stdin=subprocess.DEVNULL,
             timeout=60,
             errors='replace'
         )
-        return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
+        return (
+            result.returncode == 0,
+            result.stdout.strip(),
+            result.stderr.strip(),
+            result.returncode,
+        )
     except subprocess.TimeoutExpired:
-        return False, "", "Command timed out"
+        return False, "", "Command timed out", None
     except Exception as e:
-        return False, "", str(e)
+        return False, "", str(e), None
+
+def describe_exit(code):
+    """Human-readable exit status. Windows reports crashes as large NTSTATUS values."""
+    if code is None:
+        return "no exit status"
+    if code < 0:
+        return f"killed by signal {-code}"
+    known = {
+        0xC0000005: "access violation",
+        0xC000001D: "illegal instruction",
+        0xC00000FD: "stack overflow",
+        0xC0000094: "integer divide by zero",
+        0xC0000374: "heap corruption",
+    }
+    unsigned = code & 0xFFFFFFFF
+    name = known.get(unsigned)
+    detail = f" ({name})" if name else ""
+    return f"exit code {code} [0x{unsigned:08X}]{detail}"
+
+def is_crash(code):
+    """True when the process died rather than chose its exit status.
+
+    Testcases may return any value from main (stdin.lamina returns the first
+    byte it read), so a plain non-zero exit is not a failure on its own.
+    """
+    if code is None:
+        return True
+    if code < 0:
+        return True
+    return (code & 0xFFFFFFFF) >= 0xC0000000
+
+def execution_failure(stdout, stderr, code):
+    parts = [describe_exit(code)]
+    if stderr:
+        parts.append(f"stderr: {stderr}")
+    if stdout:
+        parts.append(f"stdout: {stdout}")
+    return "Execution failed: " + "; ".join(parts)
 
 def load_expected_output(test_path):
     """Load expected output from .expected or expected_output.txt file"""
@@ -70,6 +124,11 @@ def compile_and_run_test(test_path, use_mir=False):
     project_root = Path(__file__).parent
     test_path = Path(test_path)
     executable_name = test_path.stem
+    if os.name == 'nt':
+        executable_name += '.exe'
+    # Resolve against the project root rather than using "./name", which is not a
+    # runnable form on Windows.
+    executable_path = str((Path(project_root) / executable_name).resolve())
     
     # Define stdin input for interactive tests
     stdin_inputs = {
@@ -80,7 +139,7 @@ def compile_and_run_test(test_path, use_mir=False):
     # Compile the test
     cmd_flags = "--emit-mir-asm" if use_mir else ""
     compile_cmd = f"cargo run --release --quiet {test_path} {cmd_flags}"
-    success, stdout, stderr = run_command(compile_cmd, cwd=project_root)
+    success, stdout, stderr, _ = run_command(compile_cmd, cwd=project_root)
 
     if not success:
         return False, f"Compilation failed: {stderr}"
@@ -90,7 +149,7 @@ def compile_and_run_test(test_path, use_mir=False):
     if stdin_input:
         try:
             result = subprocess.run(
-                [f'./{executable_name}'],
+                [executable_path],
                 capture_output=True,
                 text=True,
                 cwd=project_root,
@@ -98,17 +157,17 @@ def compile_and_run_test(test_path, use_mir=False):
                 timeout=60,
                 errors='replace'
             )
-            success = True
             stdout = result.stdout.strip()
             stderr = result.stderr.strip()
+            exit_code = result.returncode
         except Exception as e:
             return False, f"Execution failed: {str(e)}"
     else:
-        run_cmd = f"./{executable_name}"
-        success, stdout, stderr = run_command(run_cmd, cwd=project_root)
+        run_cmd = f'"{executable_path}"'
+        _, stdout, stderr, exit_code = run_command(run_cmd, cwd=project_root)
 
-    if not success:
-        return False, f"Execution failed: {stderr}"
+    if is_crash(exit_code):
+        return False, execution_failure(stdout, stderr, exit_code)
 
     # Return output lines (filter out empty lines and debug text)
     output_lines = [line.strip() for line in stdout.split('\n') if line.strip()]
@@ -137,6 +196,7 @@ def run_tests(use_mir=False):
     
     passed = 0
     failed = 0
+    failures = []
     
     # Discover tests
     test_files = sorted(glob.glob("testcases/*.lamina"))
@@ -155,7 +215,8 @@ def run_tests(use_mir=False):
         success, result = compile_and_run_test(test_path, use_mir)
         
         if not success:
-            print_colored(f"\n❌ FAILED: {result}", Colors.RED)
+            print_colored(f"\n❌ FAILED {test_name}: {result}", Colors.RED)
+            failures.append((test_name, result))
             failed += 1
             continue
         
@@ -166,9 +227,12 @@ def run_tests(use_mir=False):
             # print(f"   Output: {actual_output}")
             passed += 1
         else:
-            print_colored(f"\n❌ FAILED: Output mismatch", Colors.RED)
+            print_colored(f"\n❌ FAILED {test_name}: Output mismatch", Colors.RED)
             print(f"   Expected: {expected_output}")
             print(f"   Actual:   {actual_output}")
+            failures.append(
+                (test_name, f"Output mismatch; expected {expected_output}, got {actual_output}")
+            )
             failed += 1
     
     # Summary
@@ -178,6 +242,10 @@ def run_tests(use_mir=False):
         print_colored(f"🎉 All {total} tests PASSED!", Colors.GREEN + Colors.BOLD)
     else:
         print_colored(f"📊 Results: {passed}/{total} passed, {failed} failed", Colors.YELLOW)
+        # Repeated at the end so CI logs that elide the middle still show them.
+        print_colored("Failed tests:", Colors.RED + Colors.BOLD)
+        for name, reason in failures:
+            print_colored(f"  {name}: {reason}", Colors.RED)
         if failed > 0:
             sys.exit(1)
 

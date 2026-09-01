@@ -1,10 +1,11 @@
-use std::collections::HashMap;
-use std::io::Write;
-use std::result::Result;
+use std::{collections::HashMap, io::Write};
 
-use crate::error::LaminaError;
-use crate::mir::{
-    FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, IntBinOp, IntCmpOp, Operand, Register, VirtualReg,
+use crate::{
+    error::LaminaError,
+    mir::{
+        FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, IntBinOp, IntCmpOp, Operand, Register,
+        VirtualReg,
+    },
 };
 
 /// Load an operand into the WASM stack

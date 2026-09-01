@@ -1,12 +1,10 @@
 //! CLI option parsing for the lamina compiler driver.
 
-use std::env::args;
-use std::path::PathBuf;
-use std::process::exit;
+use std::{env::args, path::PathBuf, process::exit};
 
-use lamina::mir_codegen::assemble::AssemblerBackend;
-use lamina::mir_codegen::link::LinkerBackend;
-use lamina::mir_codegen::{MirCodegenSettings, RegallocStrategy};
+use lamina::mir_codegen::{
+    MirCodegenSettings, RegallocStrategy, assemble::AssemblerBackend, link::LinkerBackend,
+};
 use lamina_platform::{HOST_ARCH_LIST, TargetOperatingSystem};
 use ras::ObjectWriteOptions;
 

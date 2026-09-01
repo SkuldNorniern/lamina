@@ -30,10 +30,6 @@ impl PartialEq for Block {
     fn eq(&self, other: &Self) -> bool {
         self.label == other.label
     }
-
-    fn ne(&self, other: &Self) -> bool {
-        self.label != other.label
-    }
 }
 
 impl Block {
@@ -101,9 +97,11 @@ impl Block {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::instruction::{Immediate, Instruction, IntBinOp, Operand};
-    use crate::register::{Register, VirtualReg};
-    use crate::types::{MirType, ScalarType};
+    use crate::{
+        instruction::{Immediate, Instruction, IntBinOp, Operand},
+        register::{Register, VirtualReg},
+        types::{MirType, ScalarType},
+    };
 
     #[test]
     fn test_basic_block_creation() {

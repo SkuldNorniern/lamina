@@ -2,11 +2,11 @@
 //!
 //! This module defines the structures for representing functions in LUMIR,
 //! including function signatures, parameters, and basic blocks.
-use crate::block::Block;
-use crate::instruction::Instruction;
-use crate::register::Register;
-use crate::types::MirType;
-use std::collections::HashSet;
+use crate::{
+    block::Block, instruction::Instruction, register::Register, register::VirtualReg,
+    types::MirType, verify::verify_function,
+};
+use std::collections::HashMap;
 use std::fmt;
 
 /// Function parameter
@@ -77,6 +77,11 @@ pub struct Function {
 
     /// Entry block label
     pub entry: String,
+
+    /// Extra 8-byte stack slots a virtual register needs beyond its own, for
+    /// stack allocations larger than one slot. The register addresses the
+    /// lowest byte of the reservation.
+    pub stack_reservations: HashMap<VirtualReg, usize>,
 }
 
 impl Function {
@@ -86,6 +91,7 @@ impl Function {
             sig,
             blocks: Vec::new(),
             entry: "entry".to_string(),
+            stack_reservations: HashMap::new(),
         }
     }
 
@@ -133,39 +139,7 @@ impl Function {
 
     /// Check if this function is well-formed
     pub fn validate(&self) -> Result<(), String> {
-        // Check that entry block exists
-        if self.entry_block().is_none() {
-            return Err(format!("Entry block '{}' not found", self.entry));
-        }
-
-        // Check that all blocks have unique labels
-        let mut seen_labels: HashSet<&str> = HashSet::new();
-        for block in &self.blocks {
-            if !seen_labels.insert(block.label.as_str()) {
-                return Err(format!("Duplicate block label: {}", block.label));
-            }
-        }
-
-        // Check that all blocks have terminators
-        for block in &self.blocks {
-            if !block.has_terminator() {
-                return Err(format!("Block '{}' has no terminator", block.label));
-            }
-        }
-
-        // Check that all branch/jump targets reference existing blocks
-        for block in &self.blocks {
-            for label in block.successors() {
-                if !seen_labels.contains(label) {
-                    return Err(format!(
-                        "Block '{}' references undefined target '{}'",
-                        block.label, label
-                    ));
-                }
-            }
-        }
-
-        Ok(())
+        verify_function(self).map_err(|errors| errors.join("\n"))
     }
 }
 
@@ -248,9 +222,11 @@ impl FunctionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::instruction::{Instruction, IntBinOp, Operand};
-    use crate::register::VirtualReg;
-    use crate::types::ScalarType;
+    use crate::{
+        instruction::{Instruction, IntBinOp, Operand},
+        register::VirtualReg,
+        types::ScalarType,
+    };
 
     #[test]
     fn test_signature_creation() {

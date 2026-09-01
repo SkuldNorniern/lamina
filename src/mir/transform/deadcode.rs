@@ -1,7 +1,9 @@
 //! Dead code elimination transform for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
-use crate::mir::{Block, Function, Instruction, Register};
+use crate::mir::{
+    Block, Function, Instruction, Register,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+};
 use std::collections::{HashMap, HashSet};
 
 /// Statistics about dead code elimination
@@ -225,7 +227,8 @@ impl DeadCodeElimination {
     fn has_no_side_effects(&self, instr: &Instruction) -> bool {
         match instr {
             // Pure arithmetic operations - safe to remove
-            Instruction::IntBinary { .. }
+            Instruction::Copy { .. }
+            | Instruction::IntBinary { .. }
             | Instruction::FloatBinary { .. }
             | Instruction::FloatUnary { .. }
             | Instruction::IntCmp { .. }
@@ -275,10 +278,9 @@ impl DeadCodeElimination {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::transform::test_utils::get_block;
     use crate::mir::{
         AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
-        ScalarType, VirtualReg,
+        ScalarType, VirtualReg, transform::test_utils::get_block,
     };
 
     #[test]

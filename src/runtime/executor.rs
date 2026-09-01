@@ -3,16 +3,17 @@
 //! Functions to execute JIT-compiled functions with dynamic argument counts
 //! using the platform C ABI.
 
-use crate::error::LaminaError;
-use crate::mir::{
-    Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register, ScalarType,
-    Signature,
+use crate::{
+    error::LaminaError,
+    mir::{
+        Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register,
+        ScalarType, Signature,
+    },
+    runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic},
 };
-use crate::runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic};
 #[cfg(target_arch = "aarch64")]
 use std::arch::asm;
-use std::collections::HashMap;
-use std::env;
+use std::{collections::HashMap, env};
 
 fn evaluate_operand(
     operand: &Operand,
@@ -72,6 +73,14 @@ fn interpret_mir_function(function: &Function, args: &[i64]) -> Result<Option<i6
 
         for instruction in &block.instructions {
             match instruction {
+                Instruction::Copy { dst, src, .. } => {
+                    let value = match src {
+                        Operand::Immediate(Immediate::F32(value)) => i64::from(value.to_bits()),
+                        Operand::Immediate(Immediate::F64(value)) => value.to_bits() as i64,
+                        _ => evaluate_operand(src, &register_values)?,
+                    };
+                    register_values.insert(dst.clone(), value);
+                }
                 Instruction::IntBinary {
                     op, dst, lhs, rhs, ..
                 } => {

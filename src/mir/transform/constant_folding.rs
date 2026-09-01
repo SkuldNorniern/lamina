@@ -1,8 +1,8 @@
 //! Constant folding transform for MIR.
 
-use crate::mir::transform::{Transform, TransformCategory, TransformError, TransformLevel};
 use crate::mir::{
     FloatBinOp, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, ScalarType,
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 
 /// Constant folding that evaluates constant expressions at compile time.
@@ -51,7 +51,11 @@ impl ConstantFolding {
 
     fn try_fold_int(&self, instr: &mut Instruction) -> bool {
         if let Instruction::IntBinary {
-            op, dst, lhs, rhs, ..
+            op,
+            ty,
+            dst,
+            lhs,
+            rhs,
         } = instr
             && let (Some(lhs_val), Some(rhs_val)) = (self.extract_i64(lhs), self.extract_i64(rhs))
         {
@@ -101,12 +105,10 @@ impl ConstantFolding {
                 _ => return false,
             };
 
-            *instr = Instruction::IntBinary {
-                op: IntBinOp::Add,
+            *instr = Instruction::Copy {
                 dst: dst.clone(),
-                ty: MirType::Scalar(ScalarType::I64),
-                lhs: Operand::Immediate(Immediate::I64(result)),
-                rhs: Operand::Immediate(Immediate::I64(0)),
+                ty: *ty,
+                src: Operand::Immediate(Immediate::I64(result)),
             };
             return true;
         }
@@ -139,12 +141,14 @@ impl ConstantFolding {
             }
             let saved_ty = *ty;
             let saved_dst = dst.clone();
-            *instr = Instruction::FloatBinary {
-                op: FloatBinOp::FAdd,
+            let immediate = match saved_ty {
+                MirType::Scalar(ScalarType::F32) => Immediate::F32(result as f32),
+                _ => Immediate::F64(result),
+            };
+            *instr = Instruction::Copy {
                 dst: saved_dst,
                 ty: saved_ty,
-                lhs: Operand::Immediate(Immediate::F64(result)),
-                rhs: Operand::Immediate(Immediate::F64(0.0)),
+                src: Operand::Immediate(immediate),
             };
             return true;
         }
@@ -170,12 +174,10 @@ impl ConstantFolding {
                 IntCmpOp::UGe => (lhs_val as u64) >= (rhs_val as u64),
             };
             let saved_dst = dst.clone();
-            *instr = Instruction::IntBinary {
-                op: IntBinOp::Add,
+            *instr = Instruction::Copy {
                 dst: saved_dst,
                 ty: MirType::Scalar(ScalarType::I1),
-                lhs: Operand::Immediate(Immediate::I64(result as i64)),
-                rhs: Operand::Immediate(Immediate::I64(0)),
+                src: Operand::Immediate(Immediate::I64(result as i64)),
             };
             return true;
         }
@@ -205,8 +207,7 @@ impl ConstantFolding {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::function::Signature;
-    use crate::mir::{Block, Register, VirtualReg};
+    use crate::mir::{Block, Register, VirtualReg, function::Signature};
 
     #[test]
     fn test_signed_division_overflow_prevention() {
@@ -305,11 +306,11 @@ mod tests {
 
         // Check the result: (u64::MAX - 1) / 2 = 0x7FFFFFFFFFFFFFFE
         match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary { lhs, .. } => {
+            Instruction::Copy { src, .. } => {
                 let expected = ((-2i64 as u64) / 2) as i64;
-                assert_eq!(lhs, &Operand::Immediate(Immediate::I64(expected)));
+                assert_eq!(src, &Operand::Immediate(Immediate::I64(expected)));
             }
-            _ => panic!("Expected IntBinary"),
+            _ => panic!("Expected Copy"),
         }
     }
 
@@ -332,11 +333,11 @@ mod tests {
         };
 
         let extract = |func: &Function| match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary {
-                lhs: Operand::Immediate(Immediate::I64(v)),
+            Instruction::Copy {
+                src: Operand::Immediate(Immediate::I64(v)),
                 ..
             } => *v,
-            _ => panic!("Expected folded IntBinary"),
+            _ => panic!("Expected folded Copy"),
         };
 
         let mut f = mk(IntBinOp::And, 0b1100, 0b1010);
@@ -383,11 +384,11 @@ mod tests {
         };
 
         let extract = |func: &Function| match &func.blocks[0].instructions[0] {
-            Instruction::FloatBinary {
-                lhs: Operand::Immediate(Immediate::F64(v)),
+            Instruction::Copy {
+                src: Operand::Immediate(Immediate::F64(v)),
                 ..
             } => *v,
-            _ => panic!("Expected folded FloatBinary"),
+            _ => panic!("Expected folded Copy"),
         };
 
         let mut f = mk(FloatBinOp::FAdd, 1.5, 2.5);
@@ -421,11 +422,11 @@ mod tests {
         };
 
         let extract = |func: &Function| match &func.blocks[0].instructions[0] {
-            Instruction::IntBinary {
-                lhs: Operand::Immediate(Immediate::I64(v)),
+            Instruction::Copy {
+                src: Operand::Immediate(Immediate::I64(v)),
                 ..
             } => *v,
-            _ => panic!("Expected folded to IntBinary"),
+            _ => panic!("Expected folded to Copy"),
         };
 
         let mut f = mk(IntCmpOp::Eq, 5, 5);

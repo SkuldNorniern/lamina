@@ -5,17 +5,21 @@
 //! scalar GPR operations, base+offset loads/stores, calls, branches, and returns.
 //! Unsupported MIR ops fail loudly instead of being silently lowered wrong.
 
-use std::cmp::Ordering as CmpOrdering;
-use std::collections::{BTreeMap, HashMap};
-use std::io::{Error as IoError, Write};
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-use crate::error::LaminaError;
-use crate::mir::{
-    AddressMode, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType,
-    Module as MirModule, Operand, Register, ScalarType,
+use std::{
+    cmp::Ordering as CmpOrdering,
+    collections::{BTreeMap, HashMap},
+    io::{Error as IoError, Write},
+    sync::atomic::{AtomicUsize, Ordering},
 };
-use crate::mir_codegen::{CodegenError, MirCodegenSettings, validate_module_call_parameters};
+
+use crate::{
+    error::LaminaError,
+    mir::{
+        AddressMode, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType,
+        Module as MirModule, Operand, Register, ScalarType,
+    },
+    mir_codegen::{CodegenError, MirCodegenSettings, validate_module_call_parameters},
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 const RA: &str = "r1";
@@ -121,6 +125,38 @@ fn emit_instruction<W: Write>(
 ) -> Result<(), LaminaError> {
     match inst {
         Instruction::Comment { text } => writeln!(writer, "    # {text}").map_err(io_error),
+        Instruction::Copy { ty, dst, src } => {
+            if matches!(ty, MirType::Vector(_)) {
+                return unsupported(format!(
+                    "ARX64 backend does not support vector Copy of type {ty}"
+                ));
+            }
+            match src {
+                Operand::Register(register @ Register::Virtual(_)) => {
+                    let offset = stack.slot_for(register)?;
+                    emit_load(writer, copy_load_mnemonic(ty), SCR0, offset, FP)?;
+                }
+                Operand::Register(Register::Physical(physical)) => {
+                    writeln!(writer, "    mv {SCR0}, {}", physical.name).map_err(io_error)?;
+                }
+                Operand::Immediate(Immediate::F32(value)) => {
+                    emit_li(writer, SCR0, i64::from(value.to_bits()))?;
+                }
+                Operand::Immediate(Immediate::F64(_)) => {
+                    return unsupported("ARX64 backend cannot materialize an f64 Copy immediate");
+                }
+                Operand::Immediate(_) => emit_operand_to_reg(writer, src, SCR0, stack)?,
+            }
+            match dst {
+                Register::Virtual(_) => {
+                    let offset = stack.slot_for(dst)?;
+                    emit_store(writer, copy_store_mnemonic(ty), SCR0, offset, FP)
+                }
+                Register::Physical(physical) => {
+                    writeln!(writer, "    mv {}, {SCR0}", physical.name).map_err(io_error)
+                }
+            }
+        }
         Instruction::IntBinary {
             op,
             ty,
@@ -519,6 +555,26 @@ fn store_mnemonic(ty: &MirType) -> Result<&'static str, LaminaError> {
     }
 }
 
+fn copy_load_mnemonic(ty: &MirType) -> &'static str {
+    match ty {
+        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lb",
+        MirType::Scalar(ScalarType::I16) => "lh",
+        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lw",
+        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        | MirType::Vector(_) => "ld",
+    }
+}
+
+fn copy_store_mnemonic(ty: &MirType) -> &'static str {
+    match ty {
+        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "sb",
+        MirType::Scalar(ScalarType::I16) => "sh",
+        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "sw",
+        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        | MirType::Vector(_) => "sd",
+    }
+}
+
 fn ensure_gpr_scalar(ty: &MirType) -> Result<(), LaminaError> {
     match ty {
         MirType::Scalar(
@@ -585,7 +641,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
-    use crate::mir::{Block, Signature, VirtualReg};
+    use crate::mir::{Block, Parameter, Signature, VirtualReg};
 
     #[test]
     fn emits_minimal_integer_return_function() {
@@ -642,5 +698,38 @@ mod tests {
         assert!(asm.contains("sb r11, 0(r12)"));
         assert!(asm.contains("ebreak"));
         assert!(asm.contains("sd r10, "));
+    }
+
+    #[test]
+    fn float_copy_emits_bit_load_store_not_add() {
+        let ty = MirType::Scalar(ScalarType::F64);
+        let src = Register::Virtual(VirtualReg::fpr(0));
+        let dst = Register::Virtual(VirtualReg::fpr(1));
+        let mut module = MirModule::new("arx64_copy_test");
+        let mut function = Function::new(Signature::new("main").with_return(ty));
+        function.sig.params.push(Parameter::new(src.clone(), ty));
+        let mut entry = Block::new("entry");
+        entry.push(Instruction::Copy {
+            ty,
+            dst: dst.clone(),
+            src: Operand::Register(src),
+        });
+        entry.push(Instruction::Ret {
+            value: Some(Operand::Register(dst)),
+        });
+        function.add_block(entry);
+        module.add_function(function);
+
+        let mut output = Vec::new();
+        generate_mir_arx64(&module, &mut output, TargetOperatingSystem::Unknown)
+            .expect("ARX64 codegen should succeed");
+        let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
+
+        assert!(assembly.contains("ld r11"), "expected bit load: {assembly}");
+        assert!(
+            assembly.contains("sd r11"),
+            "expected bit store: {assembly}"
+        );
+        assert!(!assembly.contains("    add "), "unexpected add: {assembly}");
     }
 }

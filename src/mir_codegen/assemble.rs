@@ -8,8 +8,10 @@
 use crate::error::LaminaError;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use ras::{ObjectWriteOptions, Ras, is_object_file_supported};
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 /// Assembler backend type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
