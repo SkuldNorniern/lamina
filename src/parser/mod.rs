@@ -6,6 +6,7 @@
 mod functions;
 mod globals;
 mod instructions;
+mod offsets;
 pub mod state;
 mod types;
 mod values;
@@ -240,6 +241,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
         }
     }
 
+    offsets::resolve_field_offsets(&mut module);
     Ok(module)
 }
 
