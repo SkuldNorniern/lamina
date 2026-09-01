@@ -847,11 +847,10 @@ fn emit_instruction_x86_64(
                 let num_stack_args = args.len().saturating_sub(arg_regs.len());
 
                 if target_os == TargetOperatingSystem::Windows {
-                    let shadow_space = if num_reg_args > 0 {
-                        windows::SHADOW_SPACE_SIZE as usize
-                    } else {
-                        0
-                    };
+                    // Every Windows call gets home space, argument count aside:
+                    // the callee may spill into it whether or not it was passed
+                    // register arguments.
+                    let shadow_space = windows::SHADOW_SPACE_SIZE as usize;
                     // Rounded up so rsp stays 16-aligned at the call; the
                     // padding lands above the arguments, leaving their offsets
                     // from rsp unchanged.
@@ -891,11 +890,10 @@ fn emit_instruction_x86_64(
                 writeln!(writer, "    call {mangled_name}")?;
 
                 if target_os == TargetOperatingSystem::Windows {
-                    let shadow_space = if num_reg_args > 0 {
-                        windows::SHADOW_SPACE_SIZE as usize
-                    } else {
-                        0
-                    };
+                    // Every Windows call gets home space, argument count aside:
+                    // the callee may spill into it whether or not it was passed
+                    // register arguments.
+                    let shadow_space = windows::SHADOW_SPACE_SIZE as usize;
                     let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
                         .div_ceil(stack::ALIGNMENT)
                         * stack::ALIGNMENT;
