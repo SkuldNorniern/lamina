@@ -10,14 +10,22 @@ impl X86Frame {
     pub fn generate_prologue<W: Write>(writer: &mut W, stack_size: usize) -> Result<(), Error> {
         writeln!(writer, "    pushq %rbp")?;
         writeln!(writer, "    movq %rsp, %rbp")?;
+        let stack_size = Self::aligned_frame_size(stack_size);
         if stack_size > 0 {
             writeln!(writer, "    subq ${stack_size}, %rsp")?;
         }
         Ok(())
     }
 
+    /// Frames are a multiple of 16 so rsp stays aligned at every call, which
+    /// SSE code in the C library relies on.
+    pub fn aligned_frame_size(stack_size: usize) -> usize {
+        stack_size.div_ceil(16) * 16
+    }
+
     /// Generates the function epilogue: restores stack and frame pointer, then returns.
     pub fn generate_epilogue<W: Write>(writer: &mut W, stack_size: usize) -> Result<(), Error> {
+        let stack_size = Self::aligned_frame_size(stack_size);
         if stack_size > 0 {
             writeln!(writer, "    addq ${stack_size}, %rsp")?;
         }
