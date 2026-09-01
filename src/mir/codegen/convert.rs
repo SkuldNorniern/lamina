@@ -233,19 +233,15 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
         let mut mir_block = Block::new(label);
 
         for instr in &ir_block.instructions {
-            match convert_instruction(
+            let mir_instrs = convert_instruction(
                 instr,
                 &mut vreg_alloc,
                 &mut var_to_reg,
                 &mut stack_allocs,
                 &mut reservations,
-            ) {
-                Ok(mir_instrs) => {
-                    for mir_instr in mir_instrs {
-                        mir_block.push(mir_instr);
-                    }
-                }
-                Err(e) => return Err(e),
+            )?;
+            for mir_instr in mir_instrs {
+                mir_block.push(mir_instr);
             }
         }
 
