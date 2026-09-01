@@ -35,8 +35,12 @@ impl FrameMap {
         let mut slots = HashMap::new();
         let mut offset: i32 = -8;
         for r in reg_vec {
-            if matches!(r, Register::Virtual(_)) {
-                slots.insert(r, offset);
+            if let Register::Virtual(v) = &r {
+                // A register with a reservation addresses the lowest byte of a
+                // multi-slot block, so it sits at the deepest slot of that block.
+                let extra = f.stack_reservations.get(v).copied().unwrap_or(0) as i32;
+                offset -= 8 * extra;
+                slots.insert(r.clone(), offset);
                 offset -= 8;
             }
         }
