@@ -47,6 +47,14 @@ use crate::mir_codegen::MAX_MIR_CALL_PARAMETERS;
 /// Upper bound for [`call_function_dynamic`] on AArch64 and SysV x86_64 (stack shim).
 pub const MAX_JIT_ARGS: usize = MAX_MIR_CALL_PARAMETERS;
 
+/// Room left below the switched stack pointer for the callee's own frame.
+///
+/// The outgoing arguments only occupy memory at and above the new `sp`; the
+/// callee builds its frame downwards from there. Without headroom that frame
+/// lands in unrelated heap, which macOS libmalloc detects and turns into a
+/// `SIGTRAP` well after the call returns.
+const CALLEE_FRAME_HEADROOM: usize = 64 * 1024;
+
 #[cfg(not(any(
     target_arch = "aarch64",
     all(target_arch = "x86_64", not(target_os = "windows")),
@@ -79,6 +87,12 @@ pub unsafe fn call_function_dynamic(
     }
     if !(function_ptr as usize).is_multiple_of(4) {
         return None;
+    }
+    // Let the compiler emit the call for every arity the host policy allows,
+    // as the x86_64 path does. The hand-rolled sequences below repoint sp at a
+    // heap buffer, which the callee's own frame then grows out of.
+    if args.len() <= MAX_JIT_ARGS {
+        return unsafe { transmute_dynamic_call(function_ptr, args, returns_value) };
     }
 
     let n = args.len();
@@ -132,10 +146,10 @@ pub unsafe fn call_function_dynamic(
         // Keep the saved sp in x20 and declare `lateout("x20") _`: (1) addresses passed via
         // `in(reg)` are in caller-saved registers and the JIT callee may clobber them before we
         // reload; (2) AArch64 Rust reserves x19 for LLVM, so it cannot be an asm operand.
-        let byte_len = stack_n * size_of::<i64>() + 16;
+        let byte_len = CALLEE_FRAME_HEADROOM + stack_n * size_of::<i64>() + 16;
         let backing = vec![0u8; byte_len];
         let base = backing.as_ptr() as usize;
-        let call_sp = (base + 15) & !15;
+        let call_sp = (base + CALLEE_FRAME_HEADROOM) & !15;
         let dst = call_sp as *mut i64;
         unsafe {
             copy_nonoverlapping(args.as_ptr().add(8), dst, stack_n);
@@ -240,9 +254,9 @@ pub unsafe fn call_function_dynamic(
         // Copy outgoing stack args into a heap buffer and point rsp at it for the
         // call, then restore the host sp. Same rationale as the AArch64 path:
         // adjusting rsp in asm alone can clobber Rust stack slots below the frame.
-        let byte_len = stack_n * size_of::<i64>() + 16;
+        let byte_len = CALLEE_FRAME_HEADROOM + stack_n * size_of::<i64>() + 16;
         let backing = vec![0u8; byte_len];
-        let call_sp = (backing.as_ptr() as usize + 15) & !15;
+        let call_sp = (backing.as_ptr() as usize + CALLEE_FRAME_HEADROOM) & !15;
         let dst = call_sp as *mut i64;
         unsafe {
             copy_nonoverlapping(stack_src, dst, stack_n);
