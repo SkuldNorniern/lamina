@@ -193,6 +193,7 @@ def run_tests(use_mir=False):
     
     passed = 0
     failed = 0
+    failures = []
     
     # Discover tests
     test_files = sorted(glob.glob("testcases/*.lamina"))
@@ -211,7 +212,8 @@ def run_tests(use_mir=False):
         success, result = compile_and_run_test(test_path, use_mir)
         
         if not success:
-            print_colored(f"\n❌ FAILED: {result}", Colors.RED)
+            print_colored(f"\n❌ FAILED {test_name}: {result}", Colors.RED)
+            failures.append((test_name, result))
             failed += 1
             continue
         
@@ -222,9 +224,12 @@ def run_tests(use_mir=False):
             # print(f"   Output: {actual_output}")
             passed += 1
         else:
-            print_colored(f"\n❌ FAILED: Output mismatch", Colors.RED)
+            print_colored(f"\n❌ FAILED {test_name}: Output mismatch", Colors.RED)
             print(f"   Expected: {expected_output}")
             print(f"   Actual:   {actual_output}")
+            failures.append(
+                (test_name, f"Output mismatch; expected {expected_output}, got {actual_output}")
+            )
             failed += 1
     
     # Summary
@@ -234,6 +239,10 @@ def run_tests(use_mir=False):
         print_colored(f"🎉 All {total} tests PASSED!", Colors.GREEN + Colors.BOLD)
     else:
         print_colored(f"📊 Results: {passed}/{total} passed, {failed} failed", Colors.YELLOW)
+        # Repeated at the end so CI logs that elide the middle still show them.
+        print_colored("Failed tests:", Colors.RED + Colors.BOLD)
+        for name, reason in failures:
+            print_colored(f"  {name}: {reason}", Colors.RED)
         if failed > 0:
             sys.exit(1)
 
