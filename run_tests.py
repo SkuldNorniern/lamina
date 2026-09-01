@@ -11,6 +11,14 @@ import glob
 import argparse
 from pathlib import Path
 
+# Windows consoles default to cp1252, which cannot encode the emoji below.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        pass
+
+
 class Colors:
     GREEN = '\033[92m'
     RED = '\033[91m'
