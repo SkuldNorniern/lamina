@@ -674,6 +674,9 @@ fn emit_instruction_x86_64(
                         TargetOperatingSystem::MacOS => {
                             writeln!(writer, "    leaq .L_mir_fmt_int(%rip), %rdi")?;
                             writeln!(writer, "    movq %rax, %rsi")?;
+                            // al carries the vector-register count for variadic
+                            // calls; printf reads it before saving xmm state.
+                            writeln!(writer, "    xorl %eax, %eax")?;
                             writeln!(writer, "    call _printf")?;
                             writeln!(writer, "    movq $0, %rdi")?;
                             writeln!(writer, "    call _fflush")?;
