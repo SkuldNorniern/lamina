@@ -163,7 +163,8 @@ fn compile_single_function_x86_64(
         X64RegAlloc::new(target_os)
     };
 
-    let (mut stack_slots, def_regs) = assign_stack_slots(func, X86Frame::calculate_stack_offset);
+    let (mut stack_slots, def_regs, total_slots) =
+        assign_stack_slots(func, X86Frame::calculate_stack_offset);
 
     if settings.regalloc != RegallocStrategy::Incremental {
         let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
@@ -188,7 +189,7 @@ fn compile_single_function_x86_64(
         }
     }
 
-    let stack_size = stack_slots.len() * 8;
+    let stack_size = total_slots.max(stack_slots.len()) * 8;
     X86Frame::generate_prologue(&mut output, stack_size)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
