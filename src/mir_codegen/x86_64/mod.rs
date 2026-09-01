@@ -754,7 +754,11 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
                         writeln!(writer, "    call getchar")?;
                         writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        // getchar reports EOF as -1; the syscall paths report 0.
                         writeln!(writer, "    movslq %eax, %rax")?;
+                        writeln!(writer, "    xorl %ecx, %ecx")?;
+                        writeln!(writer, "    cmpq $-1, %rax")?;
+                        writeln!(writer, "    cmoveq %rcx, %rax")?;
                     }
                     _ => {
                         writeln!(writer, "    movq ${}, %rax", linux::SYS_READ)?;
