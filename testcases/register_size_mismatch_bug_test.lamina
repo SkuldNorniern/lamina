@@ -103,7 +103,7 @@ fn @main() -> i64 {
     # Combine all results with different scaling
     %i16_scaled = mul.i64 %i16_result, 1000000000000
     %mixed_scaled = mul.i64 %mixed_result, 1000000000000000000
-    %div_scaled = mul.i64 %div_result, 1000000000000000000000
+    %div_scaled = mul.i64 %div_result, 1000000000
 
     %s1 = add.i64 %i8_result, %i16_scaled
     %s2 = add.i64 %s1, %mixed_scaled
