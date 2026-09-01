@@ -168,7 +168,8 @@ fn @test_i64_operations() -> i64 {
 
     # Boundary values
     %max_i64 = add.i64 9223372036854775807, 0 # Maximum i64 value
-    %min_i64 = sub.i64 0, 9223372036854775808 # Minimum i64 value
+    %neg_max_i64 = sub.i64 0, 9223372036854775807
+    %min_i64 = sub.i64 %neg_max_i64, 1 # Minimum i64 value
 
     # Comparisons
     %cmp1 = eq.i64 %a, 3000000          # true
