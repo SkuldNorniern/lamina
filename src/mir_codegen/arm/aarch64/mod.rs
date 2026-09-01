@@ -660,9 +660,11 @@ fn emit_block<W: Write>(
             }
             MirInst::Lea { dst, base, offset } => {
                 let t = ra.alloc_scratch().unwrap_or("x19");
-                // LEA computes address of base's stack slot + offset
                 match base {
-                    Register::Virtual(_) => {
+                    // A placeholder's slot is the storage itself, so its
+                    // address is the value; any other register holds a pointer
+                    // that has to be loaded first.
+                    Register::Virtual(_) if !frame.holds_value(base) => {
                         if let Some(slot_off) = frame.slot_of(base) {
                             // Compute address: x29 + slot_off + offset
                             let total = slot_off as i64 + (*offset as i64);
