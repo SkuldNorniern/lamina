@@ -837,7 +837,12 @@ fn emit_instruction_x86_64(
                     } else {
                         0
                     };
-                    let total_stack = shadow_space + (num_stack_args * stack::SLOT_SIZE);
+                    // Rounded up so rsp stays 16-aligned at the call; the
+                    // padding lands above the arguments, leaving their offsets
+                    // from rsp unchanged.
+                    let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
+                        .div_ceil(stack::ALIGNMENT)
+                        * stack::ALIGNMENT;
                     if total_stack > 0 {
                         writeln!(writer, "    subq ${total_stack}, %rsp")?;
                     }
@@ -849,6 +854,10 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %rax, {stack_offset}(%rsp)")?;
                     }
                 } else {
+                    // An odd number of pushes would leave rsp 8 off at the call.
+                    if num_stack_args % 2 == 1 {
+                        writeln!(writer, "    subq $8, %rsp")?;
+                    }
                     for i in (0..num_stack_args).rev() {
                         let arg_idx = num_reg_args + i;
                         let arg = &args[arg_idx];
@@ -872,16 +881,16 @@ fn emit_instruction_x86_64(
                     } else {
                         0
                     };
-                    let total_stack = shadow_space + (num_stack_args * stack::SLOT_SIZE);
+                    let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
+                        .div_ceil(stack::ALIGNMENT)
+                        * stack::ALIGNMENT;
                     if total_stack > 0 {
                         writeln!(writer, "    addq ${total_stack}, %rsp")?;
                     }
                 } else if num_stack_args > 0 {
-                    writeln!(
-                        writer,
-                        "    addq ${}, %rsp",
-                        num_stack_args * stack::SLOT_SIZE
-                    )?;
+                    let pushed = num_stack_args * stack::SLOT_SIZE;
+                    let padded = pushed.div_ceil(stack::ALIGNMENT) * stack::ALIGNMENT;
+                    writeln!(writer, "    addq ${padded}, %rsp")?;
                 }
 
                 if let Some(ret_reg) = ret
