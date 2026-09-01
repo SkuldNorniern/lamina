@@ -9,7 +9,7 @@
 use lamina_ir::function::Function;
 use lamina_ir::instruction::Instruction;
 use lamina_ir::module::{Module, TypeDeclaration};
-use lamina_ir::types::{Identifier, StructField, Type, Value};
+use lamina_ir::types::{Identifier, StructField, Type, Value, struct_field_byte_offset};
 use std::collections::HashMap;
 
 pub fn resolve_field_offsets(module: &mut Module<'_>) {
@@ -65,8 +65,7 @@ fn resolve_in_function<'a>(
                         continue;
                     };
                     if field_byte_offset.is_none() {
-                        *field_byte_offset =
-                            lamina_ir::types::struct_field_byte_offset(&fields, *field_index);
+                        *field_byte_offset = struct_field_byte_offset(&fields, *field_index);
                     }
                     if let Some(field) = fields.get(*field_index) {
                         pointee.insert(*result, field.ty.clone());
