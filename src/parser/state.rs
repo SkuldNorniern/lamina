@@ -261,12 +261,14 @@ impl<'a> ParserState<'a> {
         if start == self.position {
             return Err(self.error("Expected an unsigned integer literal"));
         }
-        self.input[start..self.position].parse::<u64>().map_err(|e| {
-            self.error(format!(
+        self.input[start..self.position]
+            .parse::<u64>()
+            .map_err(|e| {
+                self.error(format!(
                 "Failed to parse integer: {e}\n  Hint: Unsigned literals must be between 0 and {}",
                 u64::MAX
             ))
-        })
+            })
     }
 
     /// Parses a float literal.
