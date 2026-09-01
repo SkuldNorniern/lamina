@@ -75,9 +75,9 @@ fn @test_person_operations() -> i64 {
     %height_ptr = getfieldptr %person, 2
 
     # Store name (first 3 characters)
-    %name0 = getelementptr %name_ptr, 0
-    %name1 = getelementptr %name_ptr, 1
-    %name2 = getelementptr %name_ptr, 2
+    %name0 = getelementptr %name_ptr, 0, char
+    %name1 = getelementptr %name_ptr, 1, char
+    %name2 = getelementptr %name_ptr, 2, char
     store.char %name0, 74  # 'J'
     store.char %name1, 79  # 'O'
     store.char %name2, 72  # 'H'
@@ -259,9 +259,9 @@ fn @test_struct_array_operations() -> i64 {
     %points = alloc.stack [3 x struct { x: i32, y: i32 }]
 
     # Initialize each point
-    %point0 = getelementptr %points, 0
-    %point1 = getelementptr %points, 1
-    %point2 = getelementptr %points, 2
+    %point0 = getelementptr %points, 0, ptr
+    %point1 = getelementptr %points, 1, ptr
+    %point2 = getelementptr %points, 2, ptr
 
     # Set point 0: (1, 1)
     %p0_x_ptr = getfieldptr %point0, 0
