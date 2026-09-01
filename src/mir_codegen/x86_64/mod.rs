@@ -208,7 +208,15 @@ fn compile_single_function_x86_64(
                     })?;
                 } else {
                     let stack_index = index - arg_regs.len();
-                    let caller_off = 16 + (stack_index as i32) * 8;
+                    // Saved rbp and the return address sit at rbp+0 and rbp+8;
+                    // on Windows the caller's home space follows before the
+                    // first stack argument.
+                    let home = if target_os == TargetOperatingSystem::Windows {
+                        windows::SHADOW_SPACE_SIZE
+                    } else {
+                        0
+                    };
+                    let caller_off = 16 + home + (stack_index as i32) * 8;
                     writeln!(output, "    movq {caller_off}(%rbp), %rax").map_err(|e| {
                         CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
                     })?;
