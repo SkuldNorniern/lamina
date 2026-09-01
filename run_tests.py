@@ -39,6 +39,9 @@ def run_command(cmd, cwd=None):
             capture_output=True,
             text=True,
             cwd=cwd,
+            # Tests that read stdin without declared input must see EOF rather
+            # than inherit a terminal and block until the timeout.
+            stdin=subprocess.DEVNULL,
             timeout=60,
             errors='replace'
         )
