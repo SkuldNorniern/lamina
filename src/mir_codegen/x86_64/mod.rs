@@ -723,6 +723,14 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
                         writeln!(writer, "    call putchar")?;
                         writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        // putchar yields the character written; the syscall
+                        // paths yield the byte count, so report 1 or -1.
+                        writeln!(writer, "    movl %eax, %ecx")?;
+                        writeln!(writer, "    movl $1, %eax")?;
+                        writeln!(writer, "    movl $-1, %edx")?;
+                        writeln!(writer, "    cmpl $-1, %ecx")?;
+                        writeln!(writer, "    cmovel %edx, %eax")?;
+                        writeln!(writer, "    cltq")?;
                     }
                     _ => {
                         writeln!(writer, "    movq ${}, %rax", linux::SYS_WRITE)?;
@@ -807,7 +815,14 @@ fn emit_instruction_x86_64(
                         writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
                         writeln!(writer, "    call putchar")?;
                         writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        writeln!(writer, "    movslq %eax, %rax")?;
+                        // putchar yields the character written; the syscall
+                        // paths yield the byte count, so report 1 or -1.
+                        writeln!(writer, "    movl %eax, %ecx")?;
+                        writeln!(writer, "    movl $1, %eax")?;
+                        writeln!(writer, "    movl $-1, %edx")?;
+                        writeln!(writer, "    cmpl $-1, %ecx")?;
+                        writeln!(writer, "    cmovel %edx, %eax")?;
+                        writeln!(writer, "    cltq")?;
                     }
                     _ => {
                         writeln!(writer, "    movq ${}, %rax", linux::SYS_WRITE)?;
