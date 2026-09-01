@@ -3,9 +3,10 @@
 //! This module defines the structures for representing functions in LUMIR,
 //! including function signatures, parameters, and basic blocks.
 use crate::{
-    block::Block, instruction::Instruction, register::Register, types::MirType,
-    verify::verify_function,
+    block::Block, instruction::Instruction, register::Register, register::VirtualReg,
+    types::MirType, verify::verify_function,
 };
+use std::collections::HashMap;
 use std::fmt;
 
 /// Function parameter
@@ -76,6 +77,11 @@ pub struct Function {
 
     /// Entry block label
     pub entry: String,
+
+    /// Extra 8-byte stack slots a virtual register needs beyond its own, for
+    /// stack allocations larger than one slot. The register addresses the
+    /// lowest byte of the reservation.
+    pub stack_reservations: HashMap<VirtualReg, usize>,
 }
 
 impl Function {
@@ -85,6 +91,7 @@ impl Function {
             sig,
             blocks: Vec::new(),
             entry: "entry".to_string(),
+            stack_reservations: HashMap::new(),
         }
     }
 
