@@ -175,7 +175,7 @@ fn compile_single_function_ppc64(
     let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
 
     if settings.regalloc != RegallocStrategy::Incremental {
-        (stack_slots, _) = assign_stack_slots(func, Ppc64Frame::calculate_stack_offset);
+        (stack_slots, _, _) = assign_stack_slots(func, Ppc64Frame::calculate_stack_offset);
         let pool = Ppc64RegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()

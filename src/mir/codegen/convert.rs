@@ -201,6 +201,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
 
     let mut var_to_reg: HashMap<&'a str, Register> = HashMap::new();
     let mut stack_allocs: HashSet<&'a str> = HashSet::new();
+    let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
 
     for param in &f.signature.params {
         let class = reg_class_for_type(&param.ty);
@@ -232,7 +233,13 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
         let mut mir_block = Block::new(label);
 
         for instr in &ir_block.instructions {
-            match convert_instruction(instr, &mut vreg_alloc, &mut var_to_reg, &mut stack_allocs) {
+            match convert_instruction(
+                instr,
+                &mut vreg_alloc,
+                &mut var_to_reg,
+                &mut stack_allocs,
+                &mut reservations,
+            ) {
                 Ok(mir_instrs) => {
                     for mir_instr in mir_instrs {
                         mir_block.push(mir_instr);
@@ -404,6 +411,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
     }
 
     add_missing_initializations(&mut mir_func);
+    mir_func.stack_reservations = reservations;
 
     Ok(mir_func)
 }
@@ -523,6 +531,7 @@ fn convert_instruction<'a>(
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut HashMap<&'a str, Register>,
     stack_allocs: &mut HashSet<&'a str>,
+    reservations: &mut HashMap<VirtualReg, usize>,
 ) -> Result<Vec<Instruction>, FromIRError> {
     #[cfg(feature = "nightly")]
     fn ir_address_mode_to_mir<'b>(
@@ -1305,11 +1314,12 @@ fn convert_instruction<'a>(
             match alloc_type {
                 AllocType::Stack => {
                     stack_allocs.insert(result);
-                    let storage = Register::Virtual(vreg_alloc.allocate_gpr());
+                    let storage_vreg = vreg_alloc.allocate_gpr();
+                    let storage = Register::Virtual(storage_vreg);
                     if let Some(sz) = sizeof_ir_type(allocated_ty) {
                         let slots_needed = sz.div_ceil(8) as usize;
-                        for _ in 1..slots_needed {
-                            vreg_alloc.allocate_gpr();
+                        if slots_needed > 1 {
+                            reservations.insert(storage_vreg, slots_needed - 1);
                         }
                     }
                     // Lea computes address of storage's stack slot into dst

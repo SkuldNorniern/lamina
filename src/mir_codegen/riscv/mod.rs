@@ -162,7 +162,7 @@ fn compile_single_function_riscv(
     let mut live_across_calls = HashMap::new();
 
     if settings.regalloc != RegallocStrategy::Incremental {
-        (stack_slots, _) =
+        (stack_slots, _, _) =
             assign_stack_slots(func, |i| RiscVFrame::calculate_stack_offset(i, target));
         let pool = RiscVRegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
