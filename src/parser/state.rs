@@ -250,6 +250,25 @@ impl<'a> ParserState<'a> {
         }
     }
 
+    /// Parses a non-negative integer that may exceed `i64::MAX`, for `u64`
+    /// literals such as `18446744073709551615`.
+    pub fn parse_u64(&mut self) -> Result<u64, LaminaError> {
+        self.skip_whitespace_and_comments();
+        let start = self.position;
+        while !self.is_eof() && self.bytes[self.position].is_ascii_digit() {
+            self.advance();
+        }
+        if start == self.position {
+            return Err(self.error("Expected an unsigned integer literal"));
+        }
+        self.input[start..self.position].parse::<u64>().map_err(|e| {
+            self.error(format!(
+                "Failed to parse integer: {e}\n  Hint: Unsigned literals must be between 0 and {}",
+                u64::MAX
+            ))
+        })
+    }
+
     /// Parses a float literal.
     pub fn parse_float(&mut self) -> Result<f64, LaminaError> {
         self.skip_whitespace_and_comments();

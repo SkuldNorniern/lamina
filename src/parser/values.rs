@@ -65,7 +65,15 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
                         Ok(Value::Constant(Literal::I64(i_val)))
                     };
                 }
-                Err(e) if is_pure_integer => return Err(e),
+                Err(e) if is_pure_integer => {
+                    // Values above i64::MAX are still valid u64 literals.
+                    state.set_position(start_pos);
+                    if let Ok(u_val) = state.parse_u64() {
+                        return Ok(Value::Constant(Literal::U64(u_val)));
+                    }
+                    state.set_position(start_pos);
+                    return Err(e);
+                }
                 Err(_) => {}
             }
 
