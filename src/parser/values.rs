@@ -47,16 +47,26 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
                 && temp_pos + 1 < bytes.len()
                 && bytes[temp_pos + 1].is_ascii_digit();
 
+            // A digit run with no '.' or exponent is an integer literal. If it
+            // does not fit, that is an error: falling through to the float
+            // parser would silently turn it into an f64.
+            let is_pure_integer = has_digits
+                && (temp_pos >= bytes.len() || !matches!(bytes[temp_pos], b'.' | b'e' | b'E'));
+
             if looks_like_float && let Ok(f_val) = state.parse_float() {
                 return Ok(Value::Constant(Literal::F64(f_val)));
             }
 
-            if let Ok(i_val) = state.parse_integer() {
-                return if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
-                    Ok(Value::Constant(Literal::I32(i_val as i32)))
-                } else {
-                    Ok(Value::Constant(Literal::I64(i_val)))
-                };
+            match state.parse_integer() {
+                Ok(i_val) => {
+                    return if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
+                        Ok(Value::Constant(Literal::I32(i_val as i32)))
+                    } else {
+                        Ok(Value::Constant(Literal::I64(i_val)))
+                    };
+                }
+                Err(e) if is_pure_integer => return Err(e),
+                Err(_) => {}
             }
 
             state.set_position(start_pos);
