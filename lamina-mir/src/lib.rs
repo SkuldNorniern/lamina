@@ -27,7 +27,7 @@ pub mod verify;
 
 // Re-exports for convenience
 pub use block::Block;
-pub use function::{Function, FunctionBuilder, Parameter, Signature};
+pub use function::{Function, FunctionBuilder, KernelMetadata, Parameter, Signature};
 pub use instruction::{
     AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp,
     MemoryAttrs, Operand, VectorOp,
