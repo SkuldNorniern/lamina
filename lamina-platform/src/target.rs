@@ -18,6 +18,18 @@ impl Target {
         }
     }
 
+    pub fn gpu_triple(&self) -> Option<&'static str> {
+        match (self.architecture, self.operating_system) {
+            (TargetArchitecture::Nvptx64, TargetOperatingSystem::Cuda) => {
+                Some("nvptx64-nvidia-cuda")
+            }
+            (TargetArchitecture::Amdgcn, TargetOperatingSystem::AmdHsa) => {
+                Some("amdgcn-amd-amdhsa")
+            }
+            _ => None,
+        }
+    }
+
     pub fn to_str(&self) -> String {
         format!("{}_{}", self.architecture, self.operating_system)
     }
@@ -75,6 +87,8 @@ pub enum TargetArchitecture {
     Wasm32,
     Wasm64,
     PowerPC64,
+    Nvptx64,
+    Amdgcn,
     #[cfg(feature = "nightly")]
     Lisa,
     Unknown,
@@ -85,6 +99,8 @@ impl FromStr for TargetArchitecture {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "nvptx64" => Ok(Self::Nvptx64),
+            "amdgcn" => Ok(Self::Amdgcn),
             "x86_64" => Ok(Self::X86_64),
             "aarch64" => Ok(Self::Aarch64),
             "arx64" => Ok(Self::Arx64),
@@ -106,6 +122,8 @@ impl FromStr for TargetArchitecture {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetOperatingSystem {
+    Cuda,
+    AmdHsa,
     Linux,
     MacOS,
     Windows,
@@ -135,6 +153,8 @@ impl FromStr for TargetOperatingSystem {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "cuda" => Ok(Self::Cuda),
+            "amdhsa" => Ok(Self::AmdHsa),
             "linux" => Ok(Self::Linux),
             "macos" => Ok(Self::MacOS),
             "windows" => Ok(Self::Windows),
@@ -166,6 +186,8 @@ impl FromStr for TargetOperatingSystem {
 impl fmt::Display for TargetArchitecture {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
+            Self::Nvptx64 => "nvptx64",
+            Self::Amdgcn => "amdgcn",
             Self::X86_64 => "x86_64",
             Self::Aarch64 => "aarch64",
             Self::Arx64 => "arx64",
@@ -188,6 +210,8 @@ impl fmt::Display for TargetArchitecture {
 impl fmt::Display for TargetOperatingSystem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
+            Self::Cuda => "cuda",
+            Self::AmdHsa => "amdhsa",
             Self::Linux => "linux",
             Self::MacOS => "macos",
             Self::Windows => "windows",
@@ -216,6 +240,8 @@ impl fmt::Display for TargetOperatingSystem {
 }
 
 pub const HOST_ARCH_LIST: &[&str] = &[
+    "nvptx64_cuda",
+    "amdgcn_amdhsa",
     "x86_64_unknown",
     "x86_64_linux",
     "x86_64_windows",
