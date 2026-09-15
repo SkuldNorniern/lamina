@@ -943,20 +943,27 @@ impl ModuleInlining {
         register_mapping: &HashMap<Register, Register>,
     ) -> Result<AddressMode, TransformError> {
         match addr {
-            AddressMode::BaseOffset { base, offset } => Ok(AddressMode::BaseOffset {
+            AddressMode::BaseOffset {
+                base,
+                offset,
+                address_space,
+            } => Ok(AddressMode::BaseOffset {
                 base: self.map_register(base, register_mapping)?,
                 offset: *offset,
+                address_space: *address_space,
             }),
             AddressMode::BaseIndexScale {
                 base,
                 index,
                 scale,
                 offset,
+                address_space,
             } => Ok(AddressMode::BaseIndexScale {
                 base: self.map_register(base, register_mapping)?,
                 index: self.map_register(index, register_mapping)?,
                 scale: *scale,
                 offset: *offset,
+                address_space: *address_space,
             }),
         }
     }

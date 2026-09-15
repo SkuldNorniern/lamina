@@ -930,7 +930,10 @@ fn emit_instruction_x86_64(
             ty,
             attrs: _,
         } => {
-            if let AddressMode::BaseOffset { base, offset: 0 } = addr {
+            if let AddressMode::BaseOffset {
+                base, offset: 0, ..
+            } = addr
+            {
                 match base {
                     Register::Virtual(vreg) => {
                         load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
@@ -957,7 +960,10 @@ fn emit_instruction_x86_64(
         } => {
             // Simple direct store for now
             load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
-            if let AddressMode::BaseOffset { base, offset: 0 } = addr {
+            if let AddressMode::BaseOffset {
+                base, offset: 0, ..
+            } = addr
+            {
                 let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
                 match base {
                     Register::Virtual(vreg) => {

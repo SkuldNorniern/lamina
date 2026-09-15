@@ -343,15 +343,20 @@ impl AutoVectorization {
     /// Check if two address modes represent sequential access
     /// More aggressive: permits larger offset differences and different base registers
     fn is_sequential_access(&self, load_addr: &AddressMode, store_addr: &AddressMode) -> bool {
+        if load_addr.address_space() != store_addr.address_space() {
+            return false;
+        }
         match (load_addr, store_addr) {
             (
                 AddressMode::BaseOffset {
                     base: lb,
                     offset: lo,
+                    ..
                 },
                 AddressMode::BaseOffset {
                     base: sb,
                     offset: so,
+                    ..
                 },
             ) => {
                 // Same base register and reasonable offset differences
@@ -449,7 +454,12 @@ impl AutoVectorization {
 
         // For now, we'll create a basic vectorized version
         // Replace the scalar load with a vector load
-        if let AddressMode::BaseOffset { base, offset } = load_addr {
+        if let AddressMode::BaseOffset {
+            base,
+            offset,
+            address_space,
+        } = load_addr
+        {
             let vector_dst = self.allocate_vector_register();
             let vector_op = self.int_binop_to_vector_op(pattern.operation)?;
 
@@ -460,6 +470,7 @@ impl AutoVectorization {
                 addr: AddressMode::BaseOffset {
                     base: base.clone(),
                     offset,
+                    address_space,
                 },
                 attrs: Default::default(),
             };
@@ -493,6 +504,7 @@ impl AutoVectorization {
                                 + (MirType::Scalar(pattern.element_type).size_bytes()
                                     * vectorization_factor)
                                     as i16,
+                            address_space,
                         },
                         attrs: Default::default(),
                     },
@@ -513,6 +525,7 @@ impl AutoVectorization {
             if let AddressMode::BaseOffset {
                 base: sbase,
                 offset: soffset,
+                address_space,
             } = store_addr
             {
                 block.instructions[pattern.store_idx + 1] = Instruction::Store {
@@ -521,6 +534,7 @@ impl AutoVectorization {
                     addr: AddressMode::BaseOffset {
                         base: sbase,
                         offset: soffset,
+                        address_space,
                     },
                     attrs: Default::default(),
                 };

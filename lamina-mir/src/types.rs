@@ -13,6 +13,18 @@
 //! memory layout and register allocation decisions.
 use std::fmt;
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AddressSpace {
+    #[default]
+    Generic,
+    Global,
+    Region,
+    Local,
+    Constant,
+    Private,
+    Parameter,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScalarType {
     I8,
@@ -22,6 +34,7 @@ pub enum ScalarType {
     F32,
     F64,
     Ptr,
+    PtrIn(AddressSpace),
     I1,
 }
 
@@ -55,7 +68,7 @@ impl MirType {
                 ScalarType::I1 | ScalarType::I8 => 1,
                 ScalarType::I16 => 2,
                 ScalarType::I32 | ScalarType::F32 => 4,
-                ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr => 8,
+                ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_) => 8,
             },
             MirType::Vector(v) => match v {
                 VectorType::V128(_) => 16,
@@ -71,7 +84,7 @@ impl MirType {
                 ScalarType::I1 | ScalarType::I8 => 1,
                 ScalarType::I16 => 2,
                 ScalarType::I32 | ScalarType::F32 => 4,
-                ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr => 8,
+                ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_) => 8,
             },
             MirType::Vector(v) => match v {
                 VectorType::V128(_) => 16,
@@ -130,6 +143,10 @@ impl MirType {
         MirType::Scalar(ScalarType::F64)
     }
 
+    pub fn ptr_in(space: AddressSpace) -> Self {
+        Self::Scalar(ScalarType::PtrIn(space))
+    }
+
     /// Shorthand for `MirType::Scalar(ScalarType::Ptr)`.
     pub fn ptr() -> Self {
         MirType::Scalar(ScalarType::Ptr)
@@ -147,6 +164,7 @@ impl fmt::Display for ScalarType {
             ScalarType::F32 => write!(f, "f32"),
             ScalarType::F64 => write!(f, "f64"),
             ScalarType::Ptr => write!(f, "ptr"),
+            ScalarType::PtrIn(space) => write!(f, "ptr<{space:?}>"),
         }
     }
 }
@@ -185,6 +203,27 @@ impl fmt::Display for MirType {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pointer_spaces_preserve_layout() {
+        for space in [
+            AddressSpace::Generic,
+            AddressSpace::Global,
+            AddressSpace::Region,
+            AddressSpace::Local,
+            AddressSpace::Constant,
+            AddressSpace::Private,
+            AddressSpace::Parameter,
+        ] {
+            let ty = MirType::ptr_in(space);
+            assert_eq!(ty.size_bytes(), MirType::ptr().size_bytes());
+            assert_eq!(ty.alignment(), MirType::ptr().alignment());
+        }
+        assert_ne!(
+            MirType::ptr_in(AddressSpace::Global),
+            MirType::ptr_in(AddressSpace::Local)
+        );
+    }
 
     #[test]
     fn test_scalar_sizes() {

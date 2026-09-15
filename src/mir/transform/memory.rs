@@ -1,7 +1,7 @@
 //! Memory optimization transforms for MIR.
 
 use crate::mir::{
-    AddressMode, Function, Instruction, Operand, Register,
+    AddressMode, AddressSpace, Function, Instruction, Operand, Register,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use std::collections::HashMap;
@@ -48,8 +48,8 @@ impl MemoryOptimization {
         let mut changed = false;
 
         for block in &mut func.blocks {
-            let mut last_store: HashMap<(Register, i16), Operand> = HashMap::new();
-            let mut last_load: HashMap<(Register, i16), Register> = HashMap::new();
+            let mut last_store: HashMap<(Register, i16, AddressSpace), Operand> = HashMap::new();
+            let mut last_load: HashMap<(Register, i16, AddressSpace), Register> = HashMap::new();
 
             for inst in &mut block.instructions {
                 let mut replacement: Option<Instruction> = None;
@@ -57,8 +57,12 @@ impl MemoryOptimization {
                     Instruction::Store {
                         src, addr, attrs, ..
                     } => match addr {
-                        AddressMode::BaseOffset { base, offset } if !attrs.volatile => {
-                            last_store.insert((base.clone(), *offset), src.clone());
+                        AddressMode::BaseOffset {
+                            base,
+                            offset,
+                            address_space,
+                        } if !attrs.volatile => {
+                            last_store.insert((base.clone(), *offset, *address_space), src.clone());
                             last_load.clear();
                         }
                         _ => {
@@ -76,8 +80,13 @@ impl MemoryOptimization {
                         if attrs.volatile {
                             last_store.clear();
                             last_load.clear();
-                        } else if let AddressMode::BaseOffset { base, offset } = addr {
-                            let key = (base.clone(), *offset);
+                        } else if let AddressMode::BaseOffset {
+                            base,
+                            offset,
+                            address_space,
+                        } = addr
+                        {
+                            let key = (base.clone(), *offset, *address_space);
                             if let Some(stored_val) = last_store.get(&key) {
                                 // store-to-load forwarding: replace load with a copy of stored_val
                                 replacement = Some(Instruction::Copy {
@@ -138,7 +147,11 @@ mod tests {
     }
 
     fn base_offset(base: Register, offset: i16) -> AddressMode {
-        AddressMode::BaseOffset { base, offset }
+        AddressMode::BaseOffset {
+            base,
+            offset,
+            address_space: Default::default(),
+        }
     }
 
     fn non_volatile() -> MemoryAttrs {
