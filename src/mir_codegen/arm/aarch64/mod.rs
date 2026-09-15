@@ -1312,7 +1312,7 @@ fn materialize_address<W: Write>(
     ra: &mut A64RegAlloc,
 ) -> Result<(), LaminaError> {
     match addr {
-        AddressMode::BaseOffset { base, offset } => {
+        AddressMode::BaseOffset { base, offset, .. } => {
             // Materialize base value (should be an address) into dest
             load_reg_to(w, base, dest, frame, ra)?;
             if *offset != 0 {
@@ -1351,6 +1351,7 @@ fn materialize_address<W: Write>(
             index,
             scale,
             offset,
+            ..
         } => {
             // dest = base (base holds an address)
             load_reg_to(w, base, dest, frame, ra)?;

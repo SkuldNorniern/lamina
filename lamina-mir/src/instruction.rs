@@ -3,6 +3,7 @@
 //! LUMIR instructions are low-level, machine-friendly operations that map
 //! closely to actual assembly instructions. This design enables efficient
 //! code generation and optimization.
+use crate::types::AddressSpace;
 use crate::{register::Register, types::MirType};
 use std::fmt;
 
@@ -432,11 +433,13 @@ impl Operand {
 pub enum AddressMode {
     /// [base + imm12]
     BaseOffset {
+        address_space: AddressSpace,
         base: Register,
         offset: i16, // 12-bit signed, extended to i16
     },
     /// [base + index<<scale + imm4]
     BaseIndexScale {
+        address_space: AddressSpace,
         base: Register,
         index: Register,
         scale: u8,  // 1, 2, 4, or 8
@@ -444,10 +447,20 @@ pub enum AddressMode {
     },
 }
 
+impl AddressMode {
+    pub fn address_space(&self) -> AddressSpace {
+        match self {
+            Self::BaseOffset { address_space, .. } | Self::BaseIndexScale { address_space, .. } => {
+                *address_space
+            }
+        }
+    }
+}
+
 impl fmt::Display for AddressMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AddressMode::BaseOffset { base, offset } => {
+            AddressMode::BaseOffset { base, offset, .. } => {
                 if *offset == 0 {
                     write!(f, "[{base}]")
                 } else {
@@ -459,6 +472,7 @@ impl fmt::Display for AddressMode {
                 index,
                 scale,
                 offset,
+                ..
             } => {
                 if *offset == 0 {
                     write!(f, "[{base} + {index}<<{scale}]")

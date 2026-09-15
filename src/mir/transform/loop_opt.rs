@@ -1197,6 +1197,7 @@ mod tests {
                 addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(0).into(),
                     offset: 0,
+                    address_space: Default::default(),
                 },
                 attrs: MemoryAttrs::default(),
             })

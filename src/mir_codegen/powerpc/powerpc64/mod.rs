@@ -629,7 +629,8 @@ fn emit_instruction_ppc64<W: Write>(
                 MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lbz",
                 MirType::Scalar(ScalarType::I16) => "lhz",
                 MirType::Scalar(ScalarType::I32) => "lwz",
-                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "ld",
+                MirType::Scalar(ScalarType::I64)
+                | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => "ld",
                 MirType::Scalar(ScalarType::F32) => "lfs",
                 MirType::Scalar(ScalarType::F64) => "lfd",
                 other => {
@@ -639,7 +640,7 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             };
             match addr {
-                AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset, .. } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "5")?;
@@ -668,7 +669,8 @@ fn emit_instruction_ppc64<W: Write>(
                 MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "stb",
                 MirType::Scalar(ScalarType::I16) => "sth",
                 MirType::Scalar(ScalarType::I32) => "stw",
-                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "std",
+                MirType::Scalar(ScalarType::I64)
+                | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => "std",
                 MirType::Scalar(ScalarType::F32) => "stfs",
                 MirType::Scalar(ScalarType::F64) => "stfd",
                 other => {
@@ -679,7 +681,7 @@ fn emit_instruction_ppc64<W: Write>(
             };
             load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
             match addr {
-                AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset, .. } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "5")?;
@@ -753,7 +755,9 @@ fn copy_load_mnemonic(ty: &MirType) -> &'static str {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lbz",
         MirType::Scalar(ScalarType::I16) => "lhz",
         MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lwz",
-        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        MirType::Scalar(
+            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
+        )
         | MirType::Vector(_) => "ld",
     }
 }
@@ -763,7 +767,9 @@ fn copy_store_mnemonic(ty: &MirType) -> &'static str {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "stb",
         MirType::Scalar(ScalarType::I16) => "sth",
         MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "stw",
-        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        MirType::Scalar(
+            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
+        )
         | MirType::Vector(_) => "std",
     }
 }

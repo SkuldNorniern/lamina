@@ -544,7 +544,11 @@ fn convert_instruction<'a>(
                     var_to_reg.insert(*id, r.clone());
                     r
                 };
-                Ok(AddressMode::BaseOffset { base, offset: 0 })
+                Ok(AddressMode::BaseOffset {
+                    base,
+                    offset: 0,
+                    address_space: Default::default(),
+                })
             }
             IRVal::Constant(_) | IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
         }
@@ -859,7 +863,11 @@ fn convert_instruction<'a>(
                     .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            let addr = AddressMode::BaseOffset { base, offset: 0 };
+            let addr = AddressMode::BaseOffset {
+                base,
+                offset: 0,
+                address_space: Default::default(),
+            };
             Ok(vec![Instruction::Load {
                 ty: mir_ty,
                 dst,
@@ -880,7 +888,11 @@ fn convert_instruction<'a>(
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             let src = resolve_operand(value, vreg_alloc, var_to_reg)?;
-            let addr = AddressMode::BaseOffset { base, offset: 0 };
+            let addr = AddressMode::BaseOffset {
+                base,
+                offset: 0,
+                address_space: Default::default(),
+            };
             Ok(vec![Instruction::Store {
                 ty: mir_ty,
                 src,

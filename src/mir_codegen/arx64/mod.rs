@@ -524,7 +524,7 @@ fn emit_store<W: Write>(
 
 fn base_offset(addr: &AddressMode) -> Result<(&Register, i64), LaminaError> {
     match addr {
-        AddressMode::BaseOffset { base, offset } => Ok((base, i64::from(*offset))),
+        AddressMode::BaseOffset { base, offset, .. } => Ok((base, i64::from(*offset))),
         AddressMode::BaseIndexScale { .. } => {
             unsupported("ARX64 backend does not support indexed addressing yet")
         }
@@ -536,7 +536,7 @@ fn load_mnemonic(ty: &MirType) -> Result<&'static str, LaminaError> {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => Ok("lb"),
         MirType::Scalar(ScalarType::I16) => Ok("lh"),
         MirType::Scalar(ScalarType::I32) => Ok("lw"),
-        MirType::Scalar(ScalarType::I64 | ScalarType::Ptr) => Ok("ld"),
+        MirType::Scalar(ScalarType::I64 | ScalarType::Ptr | ScalarType::PtrIn(_)) => Ok("ld"),
         MirType::Scalar(ScalarType::F32 | ScalarType::F64) | MirType::Vector(_) => {
             unsupported(format!("ARX64 load unsupported type {ty}"))
         }
@@ -548,7 +548,7 @@ fn store_mnemonic(ty: &MirType) -> Result<&'static str, LaminaError> {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => Ok("sb"),
         MirType::Scalar(ScalarType::I16) => Ok("sh"),
         MirType::Scalar(ScalarType::I32) => Ok("sw"),
-        MirType::Scalar(ScalarType::I64 | ScalarType::Ptr) => Ok("sd"),
+        MirType::Scalar(ScalarType::I64 | ScalarType::Ptr | ScalarType::PtrIn(_)) => Ok("sd"),
         MirType::Scalar(ScalarType::F32 | ScalarType::F64) | MirType::Vector(_) => {
             unsupported(format!("ARX64 store unsupported type {ty}"))
         }
@@ -560,7 +560,9 @@ fn copy_load_mnemonic(ty: &MirType) -> &'static str {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lb",
         MirType::Scalar(ScalarType::I16) => "lh",
         MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lw",
-        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        MirType::Scalar(
+            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
+        )
         | MirType::Vector(_) => "ld",
     }
 }
@@ -570,7 +572,9 @@ fn copy_store_mnemonic(ty: &MirType) -> &'static str {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "sb",
         MirType::Scalar(ScalarType::I16) => "sh",
         MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "sw",
-        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        MirType::Scalar(
+            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
+        )
         | MirType::Vector(_) => "sd",
     }
 }
@@ -583,7 +587,8 @@ fn ensure_gpr_scalar(ty: &MirType) -> Result<(), LaminaError> {
             | ScalarType::I16
             | ScalarType::I32
             | ScalarType::I64
-            | ScalarType::Ptr,
+            | ScalarType::Ptr
+            | ScalarType::PtrIn(_),
         ) => Ok(()),
         _ => unsupported(format!(
             "ARX64 backend supports integer scalar MIR only, got {ty}"

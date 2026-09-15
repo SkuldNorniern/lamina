@@ -105,7 +105,11 @@ impl AddressingCanonicalization {
         instructions: &[Instruction],
     ) -> bool {
         match addr {
-            AddressMode::BaseOffset { base, offset } => {
+            AddressMode::BaseOffset {
+                base,
+                offset,
+                address_space,
+            } => {
                 if let Some(def_pos) = def_index.get(base) {
                     if *def_pos >= instructions.len() {
                         return false;
@@ -128,6 +132,7 @@ impl AddressingCanonicalization {
                                 index: index_reg,
                                 scale,
                                 offset: clamped_off,
+                                address_space: *address_space,
                             };
                             return true;
                         }
@@ -288,6 +293,7 @@ mod tests {
                 addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(0).into(),
                     offset: 8,
+                    address_space: Default::default(),
                 },
                 attrs: MemoryAttrs::default(),
             })
@@ -333,6 +339,7 @@ mod tests {
                 addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(3).into(),
                     offset: 0,
+                    address_space: Default::default(),
                 },
                 attrs: MemoryAttrs::default(),
             })
@@ -391,6 +398,7 @@ mod tests {
                 addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(3).into(),
                     offset: 0,
+                    address_space: Default::default(),
                 },
                 attrs: MemoryAttrs::default(),
             })
@@ -444,6 +452,7 @@ mod tests {
                 addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(3).into(),
                     offset: 0,
+                    address_space: Default::default(),
                 },
                 attrs: MemoryAttrs::default(),
             })
@@ -484,7 +493,8 @@ mod tests {
                 dst: VirtualReg::gpr(4).into(),
                 addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(3).into(),
-                    offset: 256, // > i8::MAX
+                    offset: 256,
+                    address_space: Default::default(),
                 },
                 attrs: MemoryAttrs::default(),
             })
@@ -526,6 +536,7 @@ mod tests {
                 addr: AddressMode::BaseOffset {
                     base: VirtualReg::gpr(3).into(),
                     offset: 0,
+                    address_space: Default::default(),
                 },
                 attrs: MemoryAttrs::default(),
             })
@@ -568,6 +579,7 @@ mod tests {
                     addr: AddressMode::BaseOffset {
                         base: VirtualReg::gpr(0).into(),
                         offset: (i as i16) * 8,
+                        address_space: Default::default(),
                     },
                     attrs: MemoryAttrs::default(),
                 },

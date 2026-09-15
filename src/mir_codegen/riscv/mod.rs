@@ -777,7 +777,8 @@ fn emit_instruction_riscv<W: Write>(
                 MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lb",
                 MirType::Scalar(ScalarType::I16) => "lh",
                 MirType::Scalar(ScalarType::I32) => "lw",
-                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "ld",
+                MirType::Scalar(ScalarType::I64)
+                | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => "ld",
                 MirType::Scalar(ScalarType::F32) => "flw",
                 MirType::Scalar(ScalarType::F64) => "fld",
                 MirType::Vector(_) => {
@@ -796,7 +797,7 @@ fn emit_instruction_riscv<W: Write>(
             );
 
             match addr {
-                AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset, .. } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?
@@ -846,7 +847,8 @@ fn emit_instruction_riscv<W: Write>(
                 MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "sb",
                 MirType::Scalar(ScalarType::I16) => "sh",
                 MirType::Scalar(ScalarType::I32) => "sw",
-                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => "sd",
+                MirType::Scalar(ScalarType::I64)
+                | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => "sd",
                 MirType::Scalar(ScalarType::F32) => "fsw",
                 MirType::Scalar(ScalarType::F64) => "fsd",
                 MirType::Vector(_) => {
@@ -872,7 +874,7 @@ fn emit_instruction_riscv<W: Write>(
             }
 
             match addr {
-                AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset, .. } => {
                     match base {
                         Register::Virtual(v) => {
                             load_register_to_register(v, writer, reg_alloc, stack_slots, "t0")?
@@ -1128,7 +1130,9 @@ fn copy_load_mnemonic(ty: &MirType) -> &'static str {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lbu",
         MirType::Scalar(ScalarType::I16) => "lhu",
         MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lwu",
-        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        MirType::Scalar(
+            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
+        )
         | MirType::Vector(_) => "ld",
     }
 }
@@ -1138,7 +1142,9 @@ fn copy_store_mnemonic(ty: &MirType) -> &'static str {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "sb",
         MirType::Scalar(ScalarType::I16) => "sh",
         MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "sw",
-        MirType::Scalar(ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr)
+        MirType::Scalar(
+            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
+        )
         | MirType::Vector(_) => "sd",
     }
 }

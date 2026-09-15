@@ -442,7 +442,7 @@ fn emit_instruction_wasm(
         } => {
             // Compute address: base + offset
             match addr {
-                AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset, .. } => {
                     // Load base address onto stack
                     load_register_wasm(base, writer, vreg_to_local)?;
 
@@ -463,7 +463,8 @@ fn emit_instruction_wasm(
                         MirType::Scalar(ScalarType::I32) => {
                             writeln!(writer, "      i64.load32_u")?;
                         }
-                        MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => {
+                        MirType::Scalar(ScalarType::I64)
+                        | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => {
                             writeln!(writer, "      i64.load")?;
                         }
                         MirType::Scalar(ScalarType::F32) => {
@@ -488,6 +489,7 @@ fn emit_instruction_wasm(
                     index,
                     scale,
                     offset,
+                    ..
                 } => {
                     // Load base address
                     load_register_wasm(base, writer, vreg_to_local)?;
@@ -551,7 +553,7 @@ fn emit_instruction_wasm(
 
             // Compute address: base + offset
             match addr {
-                AddressMode::BaseOffset { base, offset } => {
+                AddressMode::BaseOffset { base, offset, .. } => {
                     // Load base address onto stack
                     load_register_wasm(base, writer, vreg_to_local)?;
 
@@ -566,6 +568,7 @@ fn emit_instruction_wasm(
                     index,
                     scale,
                     offset,
+                    ..
                 } => {
                     // Load base address
                     load_register_wasm(base, writer, vreg_to_local)?;
@@ -603,7 +606,8 @@ fn emit_instruction_wasm(
                 MirType::Scalar(ScalarType::I32) => {
                     writeln!(writer, "      i64.store32")?;
                 }
-                MirType::Scalar(ScalarType::I64) | MirType::Scalar(ScalarType::Ptr) => {
+                MirType::Scalar(ScalarType::I64)
+                | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => {
                     writeln!(writer, "      i64.store")?;
                 }
                 MirType::Scalar(ScalarType::F32) => {
