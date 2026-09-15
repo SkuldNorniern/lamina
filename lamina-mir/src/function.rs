@@ -25,6 +25,12 @@ impl Parameter {
     }
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KernelMetadata {
+    pub required_workgroup_size: Option<[u32; 3]>,
+    pub max_threads: Option<u32>,
+}
+
 /// Function signature
 #[derive(Debug, Clone, PartialEq)]
 pub struct Signature {
@@ -36,6 +42,8 @@ pub struct Signature {
 
     /// Return type (None for void)
     pub ret_ty: Option<MirType>,
+
+    pub kernel: Option<KernelMetadata>,
 }
 
 impl Signature {
@@ -44,7 +52,13 @@ impl Signature {
             name: name.into(),
             params: Vec::new(),
             ret_ty: None,
+            kernel: None,
         }
+    }
+
+    pub fn with_kernel(mut self, metadata: KernelMetadata) -> Self {
+        self.kernel = Some(metadata);
+        self
     }
 
     pub fn with_params(mut self, params: Vec<Parameter>) -> Self {
