@@ -18,6 +18,7 @@
 
 pub mod block;
 pub mod function;
+pub mod gpu;
 pub mod instruction;
 pub mod module;
 pub mod register;
