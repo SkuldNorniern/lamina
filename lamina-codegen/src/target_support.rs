@@ -11,6 +11,8 @@ use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 /// Cross-compilation: pass the desired target, not the host.
 pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem) -> bool {
     match arch {
+        TargetArchitecture::Nvptx64 => os == TargetOperatingSystem::Cuda,
+        TargetArchitecture::Amdgcn => os == TargetOperatingSystem::AmdHsa,
         TargetArchitecture::X86_64 => os_supported_for_x86_64(os),
         TargetArchitecture::Aarch64 => os_supported_for_aarch64(os),
         TargetArchitecture::Arx64 => os_supported_for_arx64(os),
