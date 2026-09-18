@@ -187,6 +187,44 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     Ok(mir_module)
 }
 
+fn normalize_immediate(operand: &mut Operand, ty: MirType) {
+    let Operand::Immediate(immediate) = operand else {
+        return;
+    };
+    let value = match *immediate {
+        Immediate::I8(v) => i64::from(v),
+        Immediate::I16(v) => i64::from(v),
+        Immediate::I32(v) => i64::from(v),
+        Immediate::I64(v) => v,
+        _ => return,
+    };
+    *immediate = match ty {
+        MirType::Scalar(ScalarType::I8) => Immediate::I8(value as i8),
+        MirType::Scalar(ScalarType::I16) => Immediate::I16(value as i16),
+        MirType::Scalar(ScalarType::I32) => Immediate::I32(value as i32),
+        MirType::Scalar(ScalarType::I64) => Immediate::I64(value),
+        _ => return,
+    };
+}
+
+fn normalize_immediates(instruction: &mut Instruction, return_type: Option<MirType>) {
+    match instruction {
+        Instruction::IntBinary { ty, lhs, rhs, .. } | Instruction::IntCmp { ty, lhs, rhs, .. } => {
+            normalize_immediate(lhs, *ty);
+            normalize_immediate(rhs, *ty);
+        }
+        Instruction::Store { ty, src, .. } | Instruction::Copy { ty, src, .. } => {
+            normalize_immediate(src, *ty);
+        }
+        Instruction::Ret { value: Some(value) } => {
+            if let Some(ty) = return_type {
+                normalize_immediate(value, ty);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, FromIRError> {
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
@@ -243,7 +281,8 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
                 &mut stack_allocs,
                 &mut reservations,
             )?;
-            for mir_instr in mir_instrs {
+            for mut mir_instr in mir_instrs {
+                normalize_immediates(&mut mir_instr, mir_func.sig.ret_ty);
                 mir_block.push(mir_instr);
             }
         }
@@ -306,7 +345,9 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
                     if let Some(dst_reg) = var_to_reg.get(result).cloned() {
                         let mir_ty = map_ir_type(ty)?;
                         for (val, pred_label) in incoming {
-                            let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
+                            let mut src_op =
+                                resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
+                            normalize_immediate(&mut src_op, mir_ty);
                             let mov_like = Instruction::Copy {
                                 ty: mir_ty,
                                 dst: dst_reg.clone(),
@@ -1538,6 +1579,18 @@ mod tests {
         },
         parser::parse_module,
     };
+
+    #[test]
+    fn integer_immediates_follow_consuming_type() {
+        for ty in ["i8", "i16", "i32", "i64"] {
+            let source = format!(
+                "fn @check(ptr %p) -> {ty} {{\nentry:\n%x = add.{ty} 1, -1\n%c = eq.{ty} %x, 0\nstore.{ty} %p, 7\nret.{ty} 0\n}}"
+            );
+            let ir = parse_module(&source).expect("parse typed operands");
+            let mir = from_ir(&ir, "widths").expect("lower typed operands");
+            mir.validate().expect("immediates match consuming types");
+        }
+    }
 
     #[test]
     fn test_from_ir_simple_add() {
