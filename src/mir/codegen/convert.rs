@@ -190,6 +190,9 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
 fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, FromIRError> {
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
+    if f.annotations.contains(&FunctionAnnotation::Kernel) {
+        mir_sig.kernel = Some(Default::default());
+    }
 
     match &f.signature.return_type {
         IRType::Void => {}

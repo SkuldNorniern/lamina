@@ -248,6 +248,7 @@ use crate::{
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FunctionAnnotation {
+    Kernel,
     /// Hint to the compiler to inline this function at call sites.
     ///
     /// Inlining can improve performance by eliminating function call overhead,
@@ -730,6 +731,7 @@ impl<'a> Function<'a> {
 impl fmt::Display for FunctionAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            FunctionAnnotation::Kernel => write!(f, "@kernel"),
             FunctionAnnotation::Inline => write!(f, "@inline"),
             FunctionAnnotation::Export => write!(f, "@export"),
             FunctionAnnotation::Extern => write!(f, "@extern"),

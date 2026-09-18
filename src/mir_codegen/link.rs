@@ -757,6 +757,8 @@ pub fn get_output_extension(
     target_os: TargetOperatingSystem,
 ) -> &'static str {
     match target_arch {
+        TargetArchitecture::Nvptx64 => "ptx",
+        TargetArchitecture::Amdgcn => "s",
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "wasm",
         _ => {
             if target_os == TargetOperatingSystem::Windows {

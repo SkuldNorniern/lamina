@@ -194,6 +194,9 @@ impl ModuleInlining {
         }
 
         if let Some(callee_func) = module.functions.get(&call_site.callee) {
+            if callee_func.sig.kernel.is_some() {
+                return false;
+            }
             // Never inline a function that contains a recursive call to itself
             let is_recursive = callee_func.blocks.iter().any(|block| {
                 block.instructions.iter().any(|instr| {

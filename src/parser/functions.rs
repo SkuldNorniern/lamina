@@ -20,6 +20,7 @@ pub fn parse_annotations(
             state.advance();
             let name = state.parse_identifier_str()?;
             let annotation = match name {
+                "kernel" => FunctionAnnotation::Kernel,
                 "inline" => FunctionAnnotation::Inline,
                 "export" => FunctionAnnotation::Export,
                 "extern" => FunctionAnnotation::Extern,

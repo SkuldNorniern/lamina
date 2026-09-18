@@ -280,6 +280,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn gpu_targets_round_trip() {
+        for (name, triple) in [
+            ("nvptx64_cuda", "nvptx64-nvidia-cuda"),
+            ("amdgcn_amdhsa", "amdgcn-amd-amdhsa"),
+        ] {
+            let target: Target = name.parse().unwrap();
+            assert_eq!(target.to_string(), name);
+            assert_eq!(target.gpu_triple(), Some(triple));
+            assert!(HOST_ARCH_LIST.contains(&name));
+        }
+    }
+
+    #[test]
     fn parses_known_mobile_and_console_targets() {
         assert_eq!(
             Target::from_str("aarch64_ios").unwrap(),

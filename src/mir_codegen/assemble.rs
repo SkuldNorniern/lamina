@@ -9,6 +9,7 @@ use crate::error::LaminaError;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use ras::{ObjectWriteOptions, Ras, is_object_file_supported};
 use std::{
+    fs,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -78,6 +79,26 @@ pub fn assemble_with_ras_object_options(
     }
 
     match target_arch {
+        TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn => {
+            let expected_os = if target_arch == TargetArchitecture::Nvptx64 {
+                TargetOperatingSystem::Cuda
+            } else {
+                TargetOperatingSystem::AmdHsa
+            };
+            if target_os != expected_os || backend.is_some() || !additional_flags.is_empty() {
+                return Err(LaminaError::ValidationError(
+                    "GPU text artifacts require the matching GPU OS and no assembler options"
+                        .into(),
+                ));
+            }
+            if input_path != output_path {
+                fs::copy(input_path, output_path)?;
+            }
+            Ok(AssembleResult {
+                output_path: output_path.to_path_buf(),
+                needs_linking: false,
+            })
+        }
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
             assemble_wasm(input_path, output_path, backend, additional_flags, verbose)
         }
@@ -331,6 +352,8 @@ pub fn detect_assembler_backend(
 /// Get the appropriate file extension for assembly output
 pub fn get_assembly_output_extension(target_arch: TargetArchitecture) -> &'static str {
     match target_arch {
+        TargetArchitecture::Nvptx64 => "ptx",
+        TargetArchitecture::Amdgcn => "s",
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "wasm",
         _ => "o", // Object file for native targets
     }
@@ -342,6 +365,7 @@ pub fn get_intermediate_extension(
     target_os: TargetOperatingSystem,
 ) -> &'static str {
     match target_arch {
+        TargetArchitecture::Nvptx64 => "ptx",
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "wat",
         _ => {
             if target_os == TargetOperatingSystem::Windows {
