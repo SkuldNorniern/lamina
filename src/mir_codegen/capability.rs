@@ -257,8 +257,15 @@ impl CapabilitySet {
             TargetArchitecture::Riscv128 => Self::standard_native(),
             TargetArchitecture::PowerPC64 => Self::standard_native(),
             TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => Self::wasm(),
+            TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn => Self::gpu(),
             _ => Self::core(),
         }
+    }
+
+    pub fn gpu() -> Self {
+        [CodegenCapability::ControlFlow, CodegenCapability::Threading]
+            .into_iter()
+            .collect()
     }
 
     /// Extended native backend capabilities (includes SIMD).
@@ -303,6 +310,22 @@ mod tests {
         assert!(caps.supports(&CodegenCapability::IntegerArithmetic));
         assert!(caps.supports(&CodegenCapability::Print));
         assert!(!caps.supports(&CodegenCapability::HeapAllocation));
+    }
+
+    #[test]
+    fn gpu_capabilities_exclude_host_runtime() {
+        for arch in [TargetArchitecture::Nvptx64, TargetArchitecture::Amdgcn] {
+            let caps = CapabilitySet::for_architecture(arch);
+            for cap in [
+                CodegenCapability::HeapAllocation,
+                CodegenCapability::SystemCalls,
+                CodegenCapability::Recursion,
+                CodegenCapability::Print,
+            ] {
+                assert!(!caps.supports(&cap));
+            }
+            assert!(caps.supports(&CodegenCapability::Threading));
+        }
     }
 
     #[test]
