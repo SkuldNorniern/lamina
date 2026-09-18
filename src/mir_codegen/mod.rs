@@ -25,7 +25,7 @@ use std::{collections::HashMap, fmt, io::Write};
 
 use crate::{
     error::LaminaError,
-    mir::{Global, MirType, Module, Signature},
+    mir::{Global, Instruction, MirType, Module, Signature},
 };
 use lamina_codegen::riscv::{RiscVTarget, Xlen};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
@@ -100,7 +100,27 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
         ));
     }
 
+    let gpu_target = matches!(
+        target_arch,
+        TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn
+    );
+    if !gpu_target {
+        for function in module.functions.values() {
+            if function.sig.kernel.is_some() || function.blocks.iter().flat_map(|b| &b.instructions).any(|i| {
+                matches!(i, Instruction::Call { name, .. } if name.trim_start_matches('@').starts_with("__lamina_gpu_"))
+            }) {
+                return Err(LaminaError::ValidationError("GPU kernels and intrinsics require a GPU target".into()));
+            }
+        }
+    }
+
     match target_arch {
+        TargetArchitecture::Nvptx64 if target_os == TargetOperatingSystem::Cuda => {
+            ptx::emit(module, writer)?
+        }
+        TargetArchitecture::Amdgcn if target_os == TargetOperatingSystem::AmdHsa => {
+            amdgpu::emit(module, writer)?
+        }
         TargetArchitecture::Aarch64 => {
             arm::aarch64::generate_mir_aarch64_with_units_and_settings(
                 module,

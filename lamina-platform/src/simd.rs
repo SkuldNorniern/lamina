@@ -168,7 +168,10 @@ impl SimdCapabilities {
             #[cfg(feature = "nightly")]
             TargetArchitecture::Lisa => Self::detect_lisa(),
             TargetArchitecture::Unknown => Self::default(),
-            TargetArchitecture::Arx64 | TargetArchitecture::PowerPC64 => Self::default(),
+            TargetArchitecture::Arx64
+            | TargetArchitecture::PowerPC64
+            | TargetArchitecture::Nvptx64
+            | TargetArchitecture::Amdgcn => Self::default(),
         }
     }
 

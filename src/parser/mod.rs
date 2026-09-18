@@ -148,7 +148,9 @@ pub fn get_alloc_type_names() -> &'static [&'static str] {
 ///
 /// Update this list when adding new annotations to the parser match arm.
 pub fn get_annotation_names() -> &'static [&'static str] {
-    &["inline", "export", "extern", "noreturn", "noinline", "cold"]
+    &[
+        "kernel", "inline", "export", "extern", "noreturn", "noinline", "cold",
+    ]
 }
 
 /// Returns all valid instruction opcodes that can appear after an assignment.

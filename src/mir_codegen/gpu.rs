@@ -1,13 +1,18 @@
 use crate::{
     error::LaminaError,
-    mir::{Function, Instruction, KernelMetadata, Module},
+    mir::{Function, Instruction, KernelMetadata, Module, gpu::GpuIntrinsic},
 };
 use std::collections::HashSet;
 
 pub(super) fn kernels(
     module: &Module,
 ) -> Result<Vec<(&Function, &str, &KernelMetadata)>, LaminaError> {
-    if !module.globals.is_empty() || !module.external_functions.is_empty() {
+    if !module.globals.is_empty()
+        || module
+            .external_functions
+            .iter()
+            .any(|name| GpuIntrinsic::from_name(name).is_none())
+    {
         return Err(error("globals and external declarations are unsupported"));
     }
     if module.functions.is_empty() {

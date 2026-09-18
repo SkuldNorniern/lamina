@@ -169,16 +169,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .unwrap_or(&default_target_str);
             let target = Target::from_str(target_str).unwrap_or_else(|_| Target::detect_host());
 
-            let asm_extension = match target.architecture {
-                TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "wat",
-                _ => {
-                    if target.operating_system == TargetOperatingSystem::Windows {
-                        "asm"
-                    } else {
-                        "s"
-                    }
-                }
-            };
+            let asm_extension =
+                get_intermediate_extension(target.architecture, target.operating_system);
             let mut mir_asm_path = output_stem;
             mir_asm_path.set_extension(asm_extension);
 
@@ -196,6 +188,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             .map_err(|e| format!("MIR→{} emission failed: {}", target.architecture, e))?;
 
             let arch_name = match target.architecture {
+                TargetArchitecture::Nvptx64 => "PTX",
+                TargetArchitecture::Amdgcn => "AMDGPU",
                 TargetArchitecture::X86_64 => "x86_64",
                 TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => "WASM",
                 TargetArchitecture::Aarch64 => "AArch64",
@@ -339,6 +333,17 @@ fn main() -> Result<(), Box<dyn Error>> {
             options.ras_object_write_options(target.operating_system),
         )
         .map_err(|e| format!("Assembly failed: {e}"))?;
+
+        if matches!(
+            target.architecture,
+            TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn
+        ) {
+            println!(
+                "[INFO] GPU text artifact written to {}",
+                assemble_result.output_path.display()
+            );
+            return Ok(());
+        }
 
         println!(
             "[INFO] {} assembled successfully.",
