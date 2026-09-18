@@ -1,11 +1,14 @@
 //! MIR-based code generation for multiple target architectures.
 
+pub mod amdgpu;
 pub mod arx64;
 pub mod assemble;
 pub mod capability;
 pub mod common;
+mod gpu;
 pub mod limits;
 pub mod link;
+pub mod ptx;
 pub mod settings;
 
 pub mod arm;
