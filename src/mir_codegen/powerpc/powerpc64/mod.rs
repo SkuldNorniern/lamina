@@ -16,6 +16,8 @@
 
 mod util;
 
+use crate::mir_codegen::common::integer_conversion;
+
 use std::{collections::HashMap, io::Write, sync::Arc};
 use util::{
     load_operand_to_register, load_register_to_r3, load_register_to_register, store_r3_to_register,
@@ -319,6 +321,20 @@ fn emit_instruction_ppc64<W: Write>(
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
+    }
+    if let Some(operations) = integer_conversion(inst) {
+        for operation in operations {
+            emit_instruction_ppc64(
+                &operation,
+                writer,
+                reg_alloc,
+                stack_slots,
+                target_os,
+                settings,
+                debug_line,
+            )?;
+        }
+        return Ok(());
     }
     match inst {
         MirInst::Copy { ty, dst, src } => {

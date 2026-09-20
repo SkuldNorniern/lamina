@@ -526,7 +526,7 @@ impl ModuleInlining {
         F: FnMut(&Register) -> Register,
     {
         match instr {
-            Instruction::Copy { dst, src, .. } => {
+            Instruction::IntConvert { dst, src, .. } | Instruction::Copy { dst, src, .. } => {
                 *dst = map_reg(dst);
                 self.map_operand_register(src, map_reg);
             }
@@ -845,6 +845,7 @@ impl ModuleInlining {
             | Instruction::FloatCmp { dst, .. }
             | Instruction::Select { dst, .. }
             | Instruction::Load { dst, .. }
+            | Instruction::IntConvert { dst, .. }
             | Instruction::Lea { dst, .. }
             | Instruction::VectorOp { dst, .. } => {
                 *dst = new_dst;
@@ -864,7 +865,7 @@ impl ModuleInlining {
         param_mapping: &HashMap<Register, Operand>,
     ) -> Result<(), TransformError> {
         match instr {
-            Instruction::Copy { src, .. } => {
+            Instruction::IntConvert { src, .. } | Instruction::Copy { src, .. } => {
                 *src = self.map_operand(src, register_mapping, param_mapping)?;
             }
             Instruction::IntBinary { lhs, rhs, .. }

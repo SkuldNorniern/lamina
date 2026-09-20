@@ -5,6 +5,8 @@
 
 mod util;
 
+use crate::mir_codegen::common::integer_conversion;
+
 use std::{collections::HashMap, io::Write, sync::Arc};
 
 use util::{emit_mov_imm64, imm_to_u64};
@@ -304,6 +306,21 @@ fn emit_block<W: Write>(
             writeln!(w, "    .loc 1 {} 0", *debug_line)?;
         }
         match inst {
+            MirInst::IntConvert { .. } => {
+                if let Some(operations) = integer_conversion(inst) {
+                    emit_block(
+                        &operations,
+                        w,
+                        frame,
+                        abi,
+                        ra,
+                        epilogue_label,
+                        settings,
+                        debug_line,
+                    )?;
+                }
+            }
+
             MirInst::Copy { ty, dst, src } => {
                 if matches!(ty, MirType::Vector(_)) {
                     return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(

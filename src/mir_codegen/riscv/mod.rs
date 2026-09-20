@@ -1,5 +1,7 @@
 mod util;
 
+use crate::mir_codegen::common::integer_conversion;
+
 use util::{
     emit_int_cmp_op, load_fp_operand_to_register, load_operand_to_register,
     load_register_to_register, store_fp_register_to_register, store_register_to_register,
@@ -501,6 +503,19 @@ fn emit_instruction_riscv<W: Write>(
     stack_slots: &HashMap<VirtualReg, i32>,
     ctx: &mut EmitCtx<'_>,
 ) -> Result<(), LaminaError> {
+    if let Some(operations) = integer_conversion(inst) {
+        for operation in operations {
+            emit_instruction_riscv(
+                &operation,
+                instruction_index,
+                writer,
+                reg_alloc,
+                stack_slots,
+                ctx,
+            )?;
+        }
+        return Ok(());
+    }
     let target_os = ctx.target_os;
     let settings = ctx.settings;
     let func_name = ctx.func_name;
