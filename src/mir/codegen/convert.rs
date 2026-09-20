@@ -274,13 +274,37 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
         let mut mir_block = Block::new(label);
 
         for instr in &ir_block.instructions {
-            let mir_instrs = convert_instruction(
+            let mut mir_instrs = convert_instruction(
                 instr,
                 &mut vreg_alloc,
                 &mut var_to_reg,
                 &mut stack_allocs,
                 &mut reservations,
             )?;
+            if f.basic_blocks.len() == 1
+                && let IRInst::Binary { result, .. } | IRInst::WriteByte { result, .. } = instr
+                && let Some(last) = mir_instrs.last_mut()
+                && let Some(old_dst) = last.def_reg().cloned()
+                && mir_block
+                    .instructions
+                    .iter()
+                    .any(|previous| previous.def_reg() == Some(&old_dst))
+            {
+                let fresh = Register::Virtual(match &old_dst {
+                    Register::Virtual(vreg) if vreg.class == RegisterClass::Fpr => {
+                        vreg_alloc.allocate_fpr()
+                    }
+                    _ => vreg_alloc.allocate_gpr(),
+                });
+                match last {
+                    Instruction::IntBinary { dst, .. } | Instruction::FloatBinary { dst, .. } => {
+                        *dst = fresh.clone()
+                    }
+                    Instruction::Call { ret, .. } => *ret = Some(fresh.clone()),
+                    _ => return Err(FromIRError::UnsupportedInstruction),
+                }
+                var_to_reg.insert(result, fresh);
+            }
             for mut mir_instr in mir_instrs {
                 normalize_immediates(&mut mir_instr, mir_func.sig.ret_ty);
                 mir_block.push(mir_instr);
@@ -1576,6 +1600,30 @@ mod tests {
         },
         parser::parse_module,
     };
+
+    #[test]
+    fn straight_line_reassignment_reads_previous_definition() {
+        let ir = parse_module(
+            "fn @sum() -> i64 {\nentry:\n%total = add.i64 1, 2\n%total = add.i64 %total, 3\n%total = add.i64 %total, 4\nret.i64 %total\n}",
+        ).expect("parse reassignments");
+        let mir = from_ir(&ir, "sum").expect("lower reassignments");
+        mir.validate()
+            .expect("reassignments have unique definitions");
+        let function = mir.get_function("sum").expect("sum function");
+        let instructions = &function.blocks[0].instructions;
+        for pair in instructions[..3].windows(2) {
+            let Instruction::IntBinary {
+                lhs: Operand::Register(source),
+                dst,
+                ..
+            } = &pair[1]
+            else {
+                panic!("expected dependent add");
+            };
+            assert_eq!(Some(source), pair[0].def_reg());
+            assert_ne!(source, dst);
+        }
+    }
 
     #[test]
     fn stack_storage_is_not_a_register_use() {
