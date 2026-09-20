@@ -188,6 +188,19 @@ impl ModuleInlining {
 
     /// Decides whether a function call should be inlined.
     fn should_inline(&self, call_site: &CallSite, module: &Module) -> bool {
+        if module
+            .functions
+            .get(&call_site.callee)
+            .is_some_and(|function| {
+                function
+                    .blocks
+                    .iter()
+                    .flat_map(|block| &block.instructions)
+                    .any(|instruction| matches!(instruction, Instruction::StackAddr { .. }))
+            })
+        {
+            return false;
+        }
         // Never inline a function that calls itself (direct recursion)
         if call_site.callee == call_site.caller {
             return false;

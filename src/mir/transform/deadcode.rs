@@ -235,7 +235,8 @@ impl DeadCodeElimination {
             | Instruction::FloatCmp { .. }
             | Instruction::Select { .. }
             | Instruction::VectorOp { .. }
-            | Instruction::Lea { .. } => true,
+            | Instruction::StackAddr { .. }
+                | Instruction::Lea { .. } => true,
 
             // SIMD register-only ops are also pure (nightly only)
             #[cfg(feature = "nightly")]

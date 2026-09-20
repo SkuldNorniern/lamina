@@ -217,6 +217,7 @@ fn interpret_mir_function(function: &Function, args: &[i64]) -> Result<Option<i6
                 Instruction::Comment { .. } => {}
                 Instruction::Load { .. }
                 | Instruction::Store { .. }
+                | Instruction::StackAddr { .. }
                 | Instruction::Lea { .. }
                 | Instruction::FloatBinary { .. }
                 | Instruction::FloatUnary { .. }

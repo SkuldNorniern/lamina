@@ -2,7 +2,7 @@
 //!
 //! This module provides frame mapping for virtual registers to stack slots.
 
-use lamina_mir::{Function, Register};
+use lamina_mir::{Function, Instruction, Register};
 use std::collections::{HashMap, HashSet};
 
 /// Maps virtual registers to stack slot offsets.
@@ -29,6 +29,9 @@ impl FrameMap {
                 if let Some(d) = ins.def_reg() {
                     regs.insert(d.clone());
                     defined.insert(d.clone());
+                }
+                if let Instruction::StackAddr { slot, .. } = ins {
+                    regs.insert(Register::Virtual(*slot));
                 }
                 for u in ins.use_regs() {
                     regs.insert(u.clone());

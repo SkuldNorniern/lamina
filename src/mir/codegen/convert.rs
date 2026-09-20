@@ -1367,18 +1367,15 @@ fn convert_instruction<'a>(
                 AllocType::Stack => {
                     stack_allocs.insert(result);
                     let storage_vreg = vreg_alloc.allocate_gpr();
-                    let storage = Register::Virtual(storage_vreg);
                     if let Some(sz) = sizeof_ir_type(allocated_ty) {
                         let slots_needed = sz.div_ceil(8) as usize;
                         if slots_needed > 1 {
                             reservations.insert(storage_vreg, slots_needed - 1);
                         }
                     }
-                    // Lea computes address of storage's stack slot into dst
-                    Ok(vec![Instruction::Lea {
+                    Ok(vec![Instruction::StackAddr {
                         dst,
-                        base: storage,
-                        offset: 0,
+                        slot: storage_vreg,
                     }])
                 }
                 AllocType::Heap => {
@@ -1579,6 +1576,22 @@ mod tests {
         },
         parser::parse_module,
     };
+
+    #[test]
+    fn stack_storage_is_not_a_register_use() {
+        let ir =
+            parse_module("fn @stack() -> ptr {\nentry:\n%p = alloc.stack [24 x i8]\nret.ptr %p\n}")
+                .expect("parse stack allocation");
+        let mir = from_ir(&ir, "stack").expect("lower stack allocation");
+        mir.validate().expect("stack allocation verifies");
+        let function = mir.get_function("stack").expect("stack function");
+        let instruction = &function.blocks[0].instructions[0];
+        let Instruction::StackAddr { slot, .. } = instruction else {
+            panic!("expected stack address");
+        };
+        assert!(instruction.use_regs().is_empty());
+        assert_eq!(function.stack_reservations[slot], 2);
+    }
 
     #[test]
     fn integer_immediates_follow_consuming_type() {
