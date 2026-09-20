@@ -579,6 +579,14 @@ pub enum Instruction {
         attrs: MemoryAttrs,
     },
 
+    IntConvert {
+        from: MirType,
+        to: MirType,
+        signed: bool,
+        dst: Register,
+        src: Operand,
+    },
+
     StackAddr {
         dst: Register,
         slot: VirtualReg,
@@ -776,6 +784,7 @@ impl Instruction {
             | Instruction::FloatCmp { dst, .. }
             | Instruction::Select { dst, .. }
             | Instruction::Load { dst, .. }
+            | Instruction::IntConvert { dst, .. }
             | Instruction::StackAddr { dst, .. }
             | Instruction::Lea { dst, .. }
             | Instruction::VectorOp { dst, .. } => Some(dst),
@@ -800,7 +809,11 @@ impl Instruction {
         let mut regs = Vec::new();
 
         match self {
-            Instruction::Copy {
+            Instruction::IntConvert {
+                src: Operand::Register(r),
+                ..
+            }
+            | Instruction::Copy {
                 src: Operand::Register(r),
                 ..
             } => regs.push(r),
@@ -1101,6 +1114,15 @@ impl fmt::Display for Instruction {
                     "st.{} {}, {} {{align={}, volatile={}}}",
                     ty, src, addr, attrs.align, attrs.volatile
                 )
+            }
+            Instruction::IntConvert {
+                from,
+                to,
+                signed,
+                dst,
+                src,
+            } => {
+                write!(f, "{dst} = intconvert.{from}.{to} signed={signed} {src}")
             }
             Instruction::StackAddr { dst, slot } => write!(f, "{dst} = stackaddr {slot}"),
             Instruction::Lea { dst, base, offset } => {

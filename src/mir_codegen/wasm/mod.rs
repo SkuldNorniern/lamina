@@ -1,5 +1,7 @@
 pub mod util;
 
+use crate::mir_codegen::common::integer_conversion;
+
 use std::{
     collections::{HashMap, HashSet},
     env::temp_dir,
@@ -353,6 +355,12 @@ fn emit_instruction_wasm(
     vreg_to_local: &HashMap<VirtualReg, usize>,
     block_labels: &HashMap<&str, usize>,
 ) -> Result<(), LaminaError> {
+    if let Some(operations) = integer_conversion(inst) {
+        for operation in operations {
+            emit_instruction_wasm(&operation, writer, vreg_to_local, block_labels)?;
+        }
+        return Ok(());
+    }
     match inst {
         MirInst::Copy { ty, dst, src } => {
             if matches!(ty, MirType::Vector(_)) {

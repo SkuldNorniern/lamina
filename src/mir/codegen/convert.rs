@@ -147,17 +147,6 @@ fn sizeof_ir_type(ty: &IRType<'_>) -> Option<u64> {
     }
 }
 
-/// Bit-width for sign-extension: returns 0 for float types (unsupported).
-fn int_bits_for_sext(ty: &IRPrim) -> u32 {
-    match ty {
-        IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
-        IRPrim::I16 | IRPrim::U16 => 16,
-        IRPrim::I32 | IRPrim::U32 => 32,
-        IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr => 64,
-        IRPrim::F32 | IRPrim::F64 => 0,
-    }
-}
-
 /// Bit-width for bitcast: F32 = 32 bits, F64 = 64 bits (valid bitcast widths).
 fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
     match ty {
@@ -199,7 +188,7 @@ fn normalize_immediate(operand: &mut Operand, ty: MirType) {
         _ => return,
     };
     *immediate = match ty {
-        MirType::Scalar(ScalarType::I8) => Immediate::I8(value as i8),
+        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => Immediate::I8(value as i8),
         MirType::Scalar(ScalarType::I16) => Immediate::I16(value as i16),
         MirType::Scalar(ScalarType::I32) => Immediate::I32(value as i32),
         MirType::Scalar(ScalarType::I64) => Immediate::I64(value),
@@ -241,6 +230,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
     }
 
     let mut var_to_reg: HashMap<&'a str, Register> = HashMap::new();
+    let mut register_types = HashMap::new();
     let mut stack_allocs: HashSet<&'a str> = HashSet::new();
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
 
@@ -252,6 +242,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
             _ => Register::Virtual(vreg_alloc.allocate_gpr()),
         };
         let mir_ty = map_ir_type(&param.ty)?;
+        register_types.insert(v.clone(), mir_ty);
         mir_sig.params.push(Parameter::new(v.clone(), mir_ty));
         var_to_reg.insert(param.name, v);
     }
@@ -280,6 +271,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
                 &mut var_to_reg,
                 &mut stack_allocs,
                 &mut reservations,
+                &register_types,
             )?;
             if f.basic_blocks.len() == 1
                 && let IRInst::Binary { result, .. } | IRInst::WriteByte { result, .. } = instr
@@ -307,6 +299,25 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
             }
             for mut mir_instr in mir_instrs {
                 normalize_immediates(&mut mir_instr, mir_func.sig.ret_ty);
+                if let Some(dst) = mir_instr.def_reg() {
+                    let ty = match &mir_instr {
+                        Instruction::IntConvert { to, .. } => Some(*to),
+                        Instruction::Copy { ty, .. }
+                        | Instruction::IntBinary { ty, .. }
+                        | Instruction::FloatBinary { ty, .. }
+                        | Instruction::Load { ty, .. } => Some(*ty),
+                        Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
+                            Some(MirType::i1())
+                        }
+                        Instruction::Lea { .. } | Instruction::StackAddr { .. } => {
+                            Some(MirType::ptr())
+                        }
+                        _ => None,
+                    };
+                    if let Some(ty) = ty {
+                        register_types.insert(dst.clone(), ty);
+                    }
+                }
                 mir_block.push(mir_instr);
             }
         }
@@ -596,6 +607,7 @@ fn convert_instruction<'a>(
     var_to_reg: &mut HashMap<&'a str, Register>,
     stack_allocs: &mut HashSet<&'a str>,
     reservations: &mut HashMap<VirtualReg, usize>,
+    register_types: &HashMap<Register, MirType>,
 ) -> Result<Vec<Instruction>, FromIRError> {
     #[cfg(feature = "nightly")]
     fn ir_address_mode_to_mir<'b>(
@@ -992,99 +1004,36 @@ fn convert_instruction<'a>(
             source_type,
             target_type,
             value,
-        } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-            // Compute mask based on source type bit-width
-            let (mask, mir_ty) = match (source_type, target_type) {
-                (IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char, _) => {
-                    (0xFFu64, map_ir_prim(*target_type)?)
-                }
-                (IRPrim::I16 | IRPrim::U16, _) => (0xFFFFu64, map_ir_prim(*target_type)?),
-                (IRPrim::I32 | IRPrim::U32, _) => (0xFFFF_FFFFu64, map_ir_prim(*target_type)?),
-                _ => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
-            };
-            let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
-            let mask_op = Operand::Immediate(Immediate::I64(mask as i64));
-            Ok(vec![Instruction::IntBinary {
-                op: IntBinOp::And,
-                ty: mir_ty,
-                dst,
-                lhs: val_op,
-                rhs: mask_op,
-            }])
         }
-        IRInst::Trunc {
+        | IRInst::Trunc {
             result,
-            source_type: _,
+            source_type,
             target_type,
             value,
-        } => {
-            // Lower truncation as an AND with a mask of the target width.
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-            let (mask, mir_ty) = match target_type {
-                IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => {
-                    (0xFFu64, map_ir_prim(*target_type)?)
-                }
-                IRPrim::I16 | IRPrim::U16 => (0xFFFFu64, map_ir_prim(*target_type)?),
-                IRPrim::I32 | IRPrim::U32 => (0xFFFF_FFFFu64, map_ir_prim(*target_type)?),
-                IRPrim::I64 | IRPrim::U64 | IRPrim::Ptr => {
-                    (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?)
-                }
-                _ => (0xFFFF_FFFF_FFFF_FFFFu64, map_ir_prim(*target_type)?),
-            };
-            let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
-            let mask_op = Operand::Immediate(Immediate::I64(mask as i64));
-            Ok(vec![Instruction::IntBinary {
-                op: IntBinOp::And,
-                ty: mir_ty,
-                dst,
-                lhs: val_op,
-                rhs: mask_op,
-            }])
         }
-        IRInst::SignExtend {
+        | IRInst::SignExtend {
             result,
             source_type,
             target_type,
             value,
         } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-
-            let src_bits = int_bits_for_sext(source_type);
-            let dst_bits = int_bits_for_sext(target_type);
-
-            if src_bits == 0 || dst_bits == 0 || src_bits >= dst_bits {
+            let from = map_ir_prim(*source_type)?;
+            let to = map_ir_prim(*target_type)?;
+            let signed = matches!(instr, IRInst::SignExtend { .. });
+            if from.is_float() || to.is_float() || (signed && from.size_bytes() >= to.size_bytes())
+            {
                 return Err(FromIRError::UnsupportedType);
             }
-
-            let mir_ty = map_ir_prim(*target_type)?;
-            let shift = (dst_bits - src_bits) as i64;
-
-            let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
-
-            // temp = (val << shift)
-            let temp_reg = Register::Virtual(vreg_alloc.allocate_gpr());
-            let shift_imm = Operand::Immediate(Immediate::I64(shift));
-
-            let instrs = vec![
-                Instruction::IntBinary {
-                    op: IntBinOp::Shl,
-                    ty: mir_ty,
-                    dst: temp_reg.clone(),
-                    lhs: val_op,
-                    rhs: shift_imm,
-                },
-                // dst = temp >> shift (arithmetic shift right propagates sign)
-                Instruction::IntBinary {
-                    op: IntBinOp::AShr,
-                    ty: mir_ty,
-                    dst,
-                    lhs: Operand::Register(temp_reg),
-                    rhs: Operand::Immediate(Immediate::I64(shift)),
-                },
-            ];
-
-            Ok(instrs)
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            normalize_immediate(&mut src, from);
+            Ok(vec![Instruction::IntConvert {
+                from,
+                to,
+                signed,
+                dst,
+                src,
+            }])
         }
         IRInst::Bitcast {
             result,
@@ -1167,8 +1116,10 @@ fn convert_instruction<'a>(
         } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg)?;
-            Ok(vec![Instruction::Copy {
-                ty: map_ir_prim(*target_type)?,
+            Ok(vec![Instruction::IntConvert {
+                from: MirType::ptr(),
+                to: map_ir_prim(*target_type)?,
+                signed: false,
                 dst,
                 src: val_op,
             }])
@@ -1180,8 +1131,11 @@ fn convert_instruction<'a>(
         } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg)?;
-            Ok(vec![Instruction::Copy {
-                ty: MirType::Scalar(ScalarType::Ptr),
+            let from = operand_type(&val_op, register_types);
+            Ok(vec![Instruction::IntConvert {
+                from,
+                to: MirType::ptr(),
+                signed: false,
                 dst,
                 src: val_op,
             }])
@@ -1281,37 +1235,49 @@ fn convert_instruction<'a>(
                 let offset = (iv as i32).saturating_mul(elem_size);
                 Ok(vec![Instruction::Lea { dst, base, offset }])
             } else {
-                // Variable index: emit two instructions
-                // 1. temp = index * elem_size
-                // 2. result = base + temp
-
-                // Get the index operand
                 let index_op = resolve_operand(index, vreg_alloc, var_to_reg)?;
-
-                // Allocate a temp register for the scaled index
-                let temp_scaled = Register::Virtual(vreg_alloc.allocate_gpr());
-
-                // Create instructions
-                let instrs = vec![
-                    // Instruction 1: temp_scaled = index * elem_size
+                let from = operand_type(&index_op, register_types);
+                let wide_index = Register::Virtual(vreg_alloc.allocate_gpr());
+                let scaled = Register::Virtual(vreg_alloc.allocate_gpr());
+                let address = Register::Virtual(vreg_alloc.allocate_gpr());
+                let sum = Register::Virtual(vreg_alloc.allocate_gpr());
+                Ok(vec![
+                    Instruction::IntConvert {
+                        from,
+                        to: MirType::i64(),
+                        signed: from.size_bytes() < 8,
+                        dst: wide_index.clone(),
+                        src: index_op,
+                    },
                     Instruction::IntBinary {
                         op: IntBinOp::Mul,
-                        ty: MirType::Scalar(ScalarType::I64),
-                        dst: temp_scaled.clone(),
-                        lhs: index_op,
-                        rhs: Operand::Immediate(Immediate::I64(elem_size as i64)),
+                        ty: MirType::i64(),
+                        dst: scaled.clone(),
+                        lhs: Operand::Register(wide_index),
+                        rhs: Operand::Immediate(Immediate::I64(i64::from(elem_size))),
                     },
-                    // Instruction 2: result = base + temp_scaled
+                    Instruction::IntConvert {
+                        from: MirType::ptr(),
+                        to: MirType::i64(),
+                        signed: false,
+                        dst: address.clone(),
+                        src: Operand::Register(base),
+                    },
                     Instruction::IntBinary {
                         op: IntBinOp::Add,
-                        ty: MirType::Scalar(ScalarType::I64),
-                        dst,
-                        lhs: Operand::Register(base),
-                        rhs: Operand::Register(temp_scaled),
+                        ty: MirType::i64(),
+                        dst: sum.clone(),
+                        lhs: Operand::Register(address),
+                        rhs: Operand::Register(scaled),
                     },
-                ];
-
-                Ok(instrs)
+                    Instruction::IntConvert {
+                        from: MirType::i64(),
+                        to: MirType::ptr(),
+                        signed: false,
+                        dst,
+                        src: Operand::Register(sum),
+                    },
+                ])
             }
         }
         // Debug and I/O operations: lower to calls with conventional names
@@ -1581,6 +1547,16 @@ fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
     Ok(imm)
 }
 
+fn operand_type(operand: &Operand, types: &HashMap<Register, MirType>) -> MirType {
+    match operand {
+        Operand::Register(register) => types.get(register).copied().unwrap_or(MirType::i64()),
+        Operand::Immediate(Immediate::I8(_)) => MirType::Scalar(ScalarType::I8),
+        Operand::Immediate(Immediate::I16(_)) => MirType::Scalar(ScalarType::I16),
+        Operand::Immediate(Immediate::I32(_)) => MirType::i32(),
+        _ => MirType::i64(),
+    }
+}
+
 fn reg_class_for_type(ty: &IRType<'_>) -> RegisterClass {
     match ty {
         IRType::Primitive(IRPrim::F32) | IRType::Primitive(IRPrim::F64) => RegisterClass::Fpr,
@@ -1600,6 +1576,15 @@ mod tests {
         },
         parser::parse_module,
     };
+
+    #[test]
+    fn conversions_and_variable_addresses_verify() {
+        let ir = parse_module(
+            "fn @convert(ptr %p, i32 %index, i8 %byte) -> ptr {\nentry:\n%wide = zext.i8.i64 %byte\n%signed = sext.i8.i64 %byte\n%narrow = trunc.i64.i32 %wide\n%address = ptrtoint %p, .i64\n%back = inttoptr %address, .i64\n%element = getelem.ptr %back, %index, i32\nret.ptr %element\n}",
+        ).expect("parse conversions");
+        let mir = from_ir(&ir, "conversions").expect("lower conversions");
+        mir.validate().expect("conversion types match definitions");
+    }
 
     #[test]
     fn straight_line_reassignment_reads_previous_definition() {

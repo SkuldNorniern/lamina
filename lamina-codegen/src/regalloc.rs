@@ -221,6 +221,7 @@ impl LinearScanAllocator {
             | Instruction::FloatCmp { dst, .. }
             | Instruction::Select { dst, .. }
             | Instruction::Load { dst, .. }
+            | Instruction::IntConvert { dst, .. }
             | Instruction::StackAddr { dst, .. }
             | Instruction::Lea { dst, .. }
             | Instruction::VectorOp { dst, .. } => Some(dst.clone()),
@@ -294,6 +295,7 @@ impl LinearScanAllocator {
                 push_addr(&mut uses, addr);
             }
 
+            Instruction::IntConvert { src, .. } => push_op(&mut uses, src),
             Instruction::Lea { base, .. } => uses.push(base.clone()),
 
             Instruction::VectorOp { operands, .. } => {

@@ -235,6 +235,7 @@ impl DeadCodeElimination {
             | Instruction::FloatCmp { .. }
             | Instruction::Select { .. }
             | Instruction::VectorOp { .. }
+            | Instruction::IntConvert { .. }
             | Instruction::StackAddr { .. }
                 | Instruction::Lea { .. } => true,
 

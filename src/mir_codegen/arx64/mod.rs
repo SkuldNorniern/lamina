@@ -5,6 +5,8 @@
 //! scalar GPR operations, base+offset loads/stores, calls, branches, and returns.
 //! Unsupported MIR ops fail loudly instead of being silently lowered wrong.
 
+use crate::mir_codegen::common::integer_conversion;
+
 use std::{
     cmp::Ordering as CmpOrdering,
     collections::{BTreeMap, HashMap},
@@ -123,6 +125,12 @@ fn emit_instruction<W: Write>(
     frame_size: usize,
     writer: &mut W,
 ) -> Result<(), LaminaError> {
+    if let Some(operations) = integer_conversion(inst) {
+        for operation in operations {
+            emit_instruction(func_name, &operation, stack, frame_size, writer)?;
+        }
+        return Ok(());
+    }
     match inst {
         Instruction::Comment { text } => writeln!(writer, "    # {text}").map_err(io_error),
         Instruction::Copy { ty, dst, src } => {

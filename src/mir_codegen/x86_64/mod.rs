@@ -6,6 +6,8 @@
 pub mod constants;
 pub mod util;
 
+use crate::mir_codegen::common::integer_conversion;
+
 use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame};
 use std::{
@@ -351,6 +353,23 @@ fn emit_instruction_x86_64(
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
+    }
+    if let Some(operations) = integer_conversion(inst) {
+        for operation in operations {
+            emit_instruction_x86_64(
+                &operation,
+                writer,
+                reg_alloc,
+                stack_slots,
+                stack_size,
+                target_os,
+                func_name,
+                def_regs,
+                settings,
+                debug_line,
+            )?;
+        }
+        return Ok(());
     }
     match inst {
         MirInst::Copy { ty, dst, src } => {

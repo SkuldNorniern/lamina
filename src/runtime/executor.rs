@@ -81,6 +81,24 @@ fn interpret_mir_function(function: &Function, args: &[i64]) -> Result<Option<i6
                     };
                     register_values.insert(dst.clone(), value);
                 }
+                Instruction::IntConvert {
+                    from,
+                    to,
+                    signed,
+                    dst,
+                    src,
+                } => {
+                    let value = evaluate_operand(src, &register_values)?;
+                    let width = from.size_bytes().min(to.size_bytes()) * 8;
+                    let value = if *signed {
+                        (value << (64 - width)) >> (64 - width)
+                    } else if width < 64 {
+                        (value as u64 & ((1u64 << width) - 1)) as i64
+                    } else {
+                        value
+                    };
+                    register_values.insert(dst.clone(), value);
+                }
                 Instruction::IntBinary {
                     op, dst, lhs, rhs, ..
                 } => {

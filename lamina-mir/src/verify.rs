@@ -397,6 +397,29 @@ fn verify_instruction_types(
                         &mut instruction_errors,
                     );
                 }
+                Instruction::IntConvert {
+                    from,
+                    to,
+                    signed,
+                    dst,
+                    src,
+                } => {
+                    if !is_integer_or_pointer(*from)
+                        || !is_integer_or_pointer(*to)
+                        || (*signed && from.size_bytes() >= to.size_bytes())
+                    {
+                        instruction_errors.push("expected a valid integer conversion".into());
+                    }
+                    verify_destination(dst, *to, "IntConvert", config, &mut instruction_errors);
+                    verify_operand(
+                        src,
+                        *from,
+                        "IntConvert source",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
                 Instruction::IntBinary {
                     ty, dst, lhs, rhs, ..
                 } => {
@@ -695,6 +718,7 @@ fn instruction_definition_type(instruction: &Instruction) -> Option<MirType> {
         | Instruction::Load { ty, .. }
         | Instruction::VectorOp { ty, .. } => Some(*ty),
         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => Some(MirType::i1()),
+        Instruction::IntConvert { to, .. } => Some(*to),
         Instruction::Lea { .. } | Instruction::StackAddr { .. } => Some(MirType::ptr()),
         _ => None,
     }

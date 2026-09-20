@@ -12,8 +12,8 @@ use std::{
 use crate::{
     error::LaminaError,
     mir::{
-        Function, Global, Instruction, MirType, Module as MirModule, Register, Signature,
-        VirtualReg,
+        Function, Global, Immediate, Instruction, IntBinOp, MirType, Module as MirModule, Operand,
+        Register, Signature, VirtualReg,
     },
     mir_codegen::{CodegenError, CodegenOptions},
 };
@@ -78,6 +78,53 @@ pub fn assign_stack_slots(
         }
     }
     (stack_slots, def_regs, next_slot)
+}
+
+pub(super) fn integer_conversion(instruction: &Instruction) -> Option<Vec<Instruction>> {
+    let Instruction::IntConvert {
+        from,
+        to,
+        signed,
+        dst,
+        src,
+    } = instruction
+    else {
+        return None;
+    };
+    let width = from.size_bytes().min(to.size_bytes()) * 8;
+    if *signed {
+        let shift = (64 - width) as i64;
+        Some(vec![
+            Instruction::IntBinary {
+                op: IntBinOp::Shl,
+                ty: MirType::i64(),
+                dst: dst.clone(),
+                lhs: src.clone(),
+                rhs: Operand::Immediate(Immediate::I64(shift)),
+            },
+            Instruction::IntBinary {
+                op: IntBinOp::AShr,
+                ty: MirType::i64(),
+                dst: dst.clone(),
+                lhs: Operand::Register(dst.clone()),
+                rhs: Operand::Immediate(Immediate::I64(shift)),
+            },
+        ])
+    } else if width == 64 {
+        Some(vec![Instruction::Copy {
+            ty: MirType::i64(),
+            dst: dst.clone(),
+            src: src.clone(),
+        }])
+    } else {
+        Some(vec![Instruction::IntBinary {
+            op: IntBinOp::And,
+            ty: MirType::i64(),
+            dst: dst.clone(),
+            lhs: src.clone(),
+            rhs: Operand::Immediate(Immediate::I64(((1u64 << width) - 1) as i64)),
+        }])
+    }
 }
 
 /// Base structure for codegen backends with common fields.
