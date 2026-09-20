@@ -221,6 +221,7 @@ impl LinearScanAllocator {
             | Instruction::FloatCmp { dst, .. }
             | Instruction::Select { dst, .. }
             | Instruction::Load { dst, .. }
+            | Instruction::StackAddr { dst, .. }
             | Instruction::Lea { dst, .. }
             | Instruction::VectorOp { dst, .. } => Some(dst.clone()),
 

@@ -658,6 +658,16 @@ fn emit_block<W: Write>(
                 ra.free_scratch(a);
                 ra.free_scratch(t);
             }
+            MirInst::StackAddr { dst, slot } => {
+                let offset = frame.slot_of(&Register::Virtual(*slot)).ok_or_else(|| {
+                    LaminaError::ValidationError("stack address has no frame slot".into())
+                })?;
+                let t = ra.alloc_scratch().unwrap_or("x19");
+                emit_mov_imm64(w, t, i64::from(offset) as u64)?;
+                writeln!(w, "    add {t}, x29, {t}")?;
+                store_result(w, dst, t, frame, ra)?;
+                ra.free_scratch(t);
+            }
             MirInst::Lea { dst, base, offset } => {
                 let t = ra.alloc_scratch().unwrap_or("x19");
                 match base {

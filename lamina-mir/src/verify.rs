@@ -695,7 +695,7 @@ fn instruction_definition_type(instruction: &Instruction) -> Option<MirType> {
         | Instruction::Load { ty, .. }
         | Instruction::VectorOp { ty, .. } => Some(*ty),
         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => Some(MirType::i1()),
-        Instruction::Lea { .. } => Some(MirType::ptr()),
+        Instruction::Lea { .. } | Instruction::StackAddr { .. } => Some(MirType::ptr()),
         _ => None,
     }
 }

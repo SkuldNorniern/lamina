@@ -4,7 +4,10 @@
 //! closely to actual assembly instructions. This design enables efficient
 //! code generation and optimization.
 use crate::types::AddressSpace;
-use crate::{register::Register, types::MirType};
+use crate::{
+    register::{Register, VirtualReg},
+    types::MirType,
+};
 use std::fmt;
 
 /// Integer binary operations
@@ -576,6 +579,11 @@ pub enum Instruction {
         attrs: MemoryAttrs,
     },
 
+    StackAddr {
+        dst: Register,
+        slot: VirtualReg,
+    },
+
     // LEA (Load Effective Address)
     Lea {
         dst: Register,
@@ -768,6 +776,7 @@ impl Instruction {
             | Instruction::FloatCmp { dst, .. }
             | Instruction::Select { dst, .. }
             | Instruction::Load { dst, .. }
+            | Instruction::StackAddr { dst, .. }
             | Instruction::Lea { dst, .. }
             | Instruction::VectorOp { dst, .. } => Some(dst),
             #[cfg(feature = "nightly")]
@@ -1093,6 +1102,7 @@ impl fmt::Display for Instruction {
                     ty, src, addr, attrs.align, attrs.volatile
                 )
             }
+            Instruction::StackAddr { dst, slot } => write!(f, "{dst} = stackaddr {slot}"),
             Instruction::Lea { dst, base, offset } => {
                 write!(f, "lea {dst}, {base}, {offset}")
             }

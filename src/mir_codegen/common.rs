@@ -11,7 +11,10 @@ use std::{
 
 use crate::{
     error::LaminaError,
-    mir::{Function, Global, MirType, Module as MirModule, Register, Signature, VirtualReg},
+    mir::{
+        Function, Global, Instruction, MirType, Module as MirModule, Register, Signature,
+        VirtualReg,
+    },
     mir_codegen::{CodegenError, CodegenOptions},
 };
 use lamina_platform::TargetOperatingSystem;
@@ -43,6 +46,9 @@ pub fn assign_stack_slots(
         for inst in &block.instructions {
             if let Some(Register::Virtual(vreg)) = inst.def_reg() {
                 def_regs.insert(*vreg);
+            }
+            if let Instruction::StackAddr { slot, .. } = inst {
+                used_regs.insert(*slot);
             }
             for reg in inst.use_regs() {
                 if let Register::Virtual(vreg) = reg {
@@ -514,10 +520,9 @@ mod tests {
     fn reserved_slots_are_not_handed_to_other_registers() {
         let mut func = Function::new(Signature::new("f"));
         let mut block = Block::new("entry");
-        block.push(Instruction::Lea {
+        block.push(Instruction::StackAddr {
             dst: Register::Virtual(vreg(1)),
-            base: Register::Virtual(vreg(0)),
-            offset: 0,
+            slot: vreg(0),
         });
         func.add_block(block);
         func.stack_reservations.insert(vreg(0), 4);
