@@ -6,7 +6,7 @@
 use crate::types::AddressSpace;
 use crate::{
     register::{Register, VirtualReg},
-    types::MirType,
+    types::{MirType, ScalarType},
 };
 use std::fmt;
 
@@ -773,6 +773,27 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    pub fn normalize_integer_immediates(&mut self, return_type: Option<MirType>) {
+        match self {
+            Instruction::IntBinary { ty, lhs, rhs, .. }
+            | Instruction::IntCmp { ty, lhs, rhs, .. } => {
+                normalize_immediate(lhs, *ty);
+                normalize_immediate(rhs, *ty);
+            }
+            Instruction::Store { ty, src, .. }
+            | Instruction::Copy { ty, src, .. }
+            | Instruction::IntConvert { from: ty, src, .. } => {
+                normalize_immediate(src, *ty);
+            }
+            Instruction::Ret { value: Some(value) } => {
+                if let Some(ty) = return_type {
+                    normalize_immediate(value, ty);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// Get the destination register if this instruction defines one
     pub fn def_reg(&self) -> Option<&Register> {
         match self {
@@ -1300,6 +1321,28 @@ impl fmt::Display for Instruction {
             Instruction::Comment { text } => write!(f, "; {text}"),
         }
     }
+}
+
+fn normalize_immediate(operand: &mut Operand, ty: MirType) {
+    let Operand::Immediate(immediate) = operand else {
+        return;
+    };
+    let value = match *immediate {
+        Immediate::I8(v) => i64::from(v),
+        Immediate::I16(v) => i64::from(v),
+        Immediate::I32(v) => i64::from(v),
+        Immediate::I64(v) => v,
+        _ => return,
+    };
+    *immediate = match ty {
+        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => Immediate::I8(value as i8),
+        MirType::Scalar(ScalarType::I16) => Immediate::I16(value as i16),
+        MirType::Scalar(ScalarType::I32) => Immediate::I32(value as i32),
+        MirType::Scalar(ScalarType::I64 | ScalarType::Ptr | ScalarType::PtrIn(_)) => {
+            Immediate::I64(value)
+        }
+        _ => return,
+    };
 }
 
 #[cfg(test)]

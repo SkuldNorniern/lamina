@@ -44,6 +44,7 @@ impl StrengthReduction {
         for block in &mut func.blocks {
             for instr in &mut block.instructions {
                 if self.try_reduce_strength(instr) {
+                    instr.normalize_integer_immediates(None);
                     changed = true;
                 }
             }

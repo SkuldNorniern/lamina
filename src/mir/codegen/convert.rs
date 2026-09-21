@@ -176,44 +176,6 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     Ok(mir_module)
 }
 
-fn normalize_immediate(operand: &mut Operand, ty: MirType) {
-    let Operand::Immediate(immediate) = operand else {
-        return;
-    };
-    let value = match *immediate {
-        Immediate::I8(v) => i64::from(v),
-        Immediate::I16(v) => i64::from(v),
-        Immediate::I32(v) => i64::from(v),
-        Immediate::I64(v) => v,
-        _ => return,
-    };
-    *immediate = match ty {
-        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => Immediate::I8(value as i8),
-        MirType::Scalar(ScalarType::I16) => Immediate::I16(value as i16),
-        MirType::Scalar(ScalarType::I32) => Immediate::I32(value as i32),
-        MirType::Scalar(ScalarType::I64) => Immediate::I64(value),
-        _ => return,
-    };
-}
-
-fn normalize_immediates(instruction: &mut Instruction, return_type: Option<MirType>) {
-    match instruction {
-        Instruction::IntBinary { ty, lhs, rhs, .. } | Instruction::IntCmp { ty, lhs, rhs, .. } => {
-            normalize_immediate(lhs, *ty);
-            normalize_immediate(rhs, *ty);
-        }
-        Instruction::Store { ty, src, .. } | Instruction::Copy { ty, src, .. } => {
-            normalize_immediate(src, *ty);
-        }
-        Instruction::Ret { value: Some(value) } => {
-            if let Some(ty) = return_type {
-                normalize_immediate(value, ty);
-            }
-        }
-        _ => {}
-    }
-}
-
 fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, FromIRError> {
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
@@ -298,7 +260,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
                 var_to_reg.insert(result, fresh);
             }
             for mut mir_instr in mir_instrs {
-                normalize_immediates(&mut mir_instr, mir_func.sig.ret_ty);
+                mir_instr.normalize_integer_immediates(mir_func.sig.ret_ty);
                 if let Some(dst) = mir_instr.def_reg() {
                     let ty = match &mir_instr {
                         Instruction::IntConvert { to, .. } => Some(*to),
@@ -380,14 +342,13 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
                     if let Some(dst_reg) = var_to_reg.get(result).cloned() {
                         let mir_ty = map_ir_type(ty)?;
                         for (val, pred_label) in incoming {
-                            let mut src_op =
-                                resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
-                            normalize_immediate(&mut src_op, mir_ty);
-                            let mov_like = Instruction::Copy {
+                            let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
+                            let mut mov_like = Instruction::Copy {
                                 ty: mir_ty,
                                 dst: dst_reg.clone(),
                                 src: src_op,
                             };
+                            mov_like.normalize_integer_immediates(None);
                             edge_moves
                                 .entry(((*pred_label).to_string(), (*succ_label).to_string()))
                                 .or_default()
@@ -1025,8 +986,7 @@ fn convert_instruction<'a>(
                 return Err(FromIRError::UnsupportedType);
             }
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
-            normalize_immediate(&mut src, from);
+            let src = resolve_operand(value, vreg_alloc, var_to_reg)?;
             Ok(vec![Instruction::IntConvert {
                 from,
                 to,
@@ -1569,6 +1529,7 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use crate::mir::TransformPipeline;
     use crate::{
         ir::{
             FunctionParameter, IRBuilder,
@@ -1576,6 +1537,19 @@ mod tests {
         },
         parser::parse_module,
     };
+
+    #[test]
+    fn arithmetic_optimizations_preserve_immediate_widths() {
+        let source = "fn @optimized(i32 %x) -> i32 {\nentry:\n%c = add.i32 1, 2\n%m = mul.i32 %x, 4\n%r = rem.u32 %x, 8\n%a = add.i32 %m, %r\n%b = add.i32 %a, %c\nret.i32 %b\n}";
+        let ir = parse_module(source).expect("parse arithmetic");
+        for level in 0..=3 {
+            let mut mir = from_ir(&ir, "optimized").expect("lower arithmetic");
+            TransformPipeline::default_for_opt_level(level)
+                .apply_to_module(&mut mir)
+                .expect("optimize arithmetic");
+            mir.validate().expect("optimized widths match consumers");
+        }
+    }
 
     #[test]
     fn conversions_and_variable_addresses_verify() {

@@ -67,6 +67,7 @@ impl Peephole {
         // First pass: optimize individual instructions
         for inst in &mut block.instructions {
             if self.try_optimize_instruction(inst, in_loop_block) {
+                inst.normalize_integer_immediates(None);
                 changed = true;
             }
         }
@@ -634,7 +635,7 @@ mod tests {
         match &bb.instructions[0] {
             Instruction::Copy { ty, src, .. } => {
                 assert_eq!(*ty, MirType::Scalar(ScalarType::I1));
-                assert_eq!(src, &Operand::Immediate(Immediate::I64(1)));
+                assert_eq!(src, &Operand::Immediate(Immediate::I8(1)));
             }
             _ => panic!("Expected Copy"),
         }
@@ -896,7 +897,7 @@ mod tests {
         // Should fold to 1 (true)
         match &func.blocks[0].instructions[0] {
             Instruction::Copy { src, .. } => {
-                assert_eq!(src, &Operand::Immediate(Immediate::I64(1)));
+                assert_eq!(src, &Operand::Immediate(Immediate::I8(1)));
             }
             _ => panic!("Expected Copy"),
         }
@@ -922,7 +923,7 @@ mod tests {
 
         match &func.blocks[0].instructions[0] {
             Instruction::Copy { src, .. } => {
-                assert_eq!(src, &Operand::Immediate(Immediate::I64(1))); // true
+                assert_eq!(src, &Operand::Immediate(Immediate::I8(1))); // true
             }
             _ => panic!("Expected Copy"),
         }
