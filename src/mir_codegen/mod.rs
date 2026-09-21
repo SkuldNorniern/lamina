@@ -119,7 +119,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             ptx::emit(module, writer)?
         }
         TargetArchitecture::Amdgcn if target_os == TargetOperatingSystem::AmdHsa => {
-            amdgpu::emit(module, writer)?
+            amdgpu::emit_with_target(module, writer, settings.amdgpu_target)?
         }
         TargetArchitecture::Aarch64 => {
             arm::aarch64::generate_mir_aarch64_with_units_and_settings(
@@ -352,6 +352,7 @@ mod tests {
             regalloc: RegallocStrategy::GraphColorGlobal,
             emit_asm_debug_lines: true,
             debug_file_tag: "add.lamina".to_string(),
+            ..Default::default()
         };
         let mut output = Vec::new();
         generate_mir_to_target_with_settings(
