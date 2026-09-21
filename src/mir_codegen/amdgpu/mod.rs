@@ -3,7 +3,7 @@ use crate::{
     error::LaminaError,
     mir::{
         AddressSpace, Function, Instruction, MirType, Module, Register, RegisterClass, ScalarType,
-        gpu::GpuIntrinsic,
+        gpu::{GpuAxis, GpuIntrinsic},
     },
 };
 use std::{collections::HashMap, io::Write};
@@ -51,6 +51,7 @@ struct Kernel {
     vgprs: u32,
     sgprs: u32,
     target: AmdGpuTarget,
+    group_ids: bool,
 }
 
 impl Kernel {
@@ -64,6 +65,7 @@ impl Kernel {
             vgprs: if target == AmdGpuTarget::Gfx900 { 3 } else { 1 },
             sgprs: 0,
             target,
+            group_ids: false,
         };
         for parameter in &function.sig.params {
             let ty = parameter.ty;
@@ -152,6 +154,51 @@ impl Kernel {
                     )?,
                 }
             }
+            Instruction::Call {
+                name,
+                args,
+                ret: Some(dst),
+            } if args.is_empty() => {
+                let intrinsic = GpuIntrinsic::from_name(name)
+                    .ok_or_else(|| error("unsupported AMDGPU call"))?;
+                let value = self.allocate(dst, MirType::i32())?;
+                let axis_index = |axis| match axis {
+                    GpuAxis::X => 0,
+                    GpuAxis::Y => 1,
+                    GpuAxis::Z => 2,
+                };
+                match intrinsic {
+                    GpuIntrinsic::ThreadId(axis) => {
+                        let axis = axis_index(axis);
+                        if self.target == AmdGpuTarget::Gfx900 {
+                            writeln!(self.body, "    v_mov_b32 v{}, v{axis}", value.start)?;
+                        } else {
+                            writeln!(
+                                self.body,
+                                "    v_bfe_u32 v{}, v0, {}, 10",
+                                value.start,
+                                axis * 10
+                            )?;
+                        }
+                    }
+                    GpuIntrinsic::BlockId(axis) => {
+                        self.group_ids = true;
+                        let base = if self.arguments.is_empty() { 0 } else { 2 };
+                        self.sgprs = self.sgprs.max(base + 3);
+                        writeln!(
+                            self.body,
+                            "    v_mov_b32 v{}, s{}",
+                            value.start,
+                            base + axis_index(axis)
+                        )?;
+                    }
+                    _ => {
+                        return Err(error(
+                            "AMDGPU supports work-item and workgroup ID intrinsics only",
+                        ));
+                    }
+                }
+            }
             _ => return Err(error("unsupported AMDGPU instruction")),
         }
         Ok(())
@@ -197,11 +244,12 @@ pub fn emit_with_target<W: Write>(
         if target == AmdGpuTarget::Gfx1200 {
             writeln!(output, "    .amdhsa_wavefront_size32 1")?;
         }
+        let group_ids = u8::from(kernel.group_ids);
         writeln!(
             output,
-            "    .amdhsa_user_sgpr_kernarg_segment_ptr {}\n    .amdhsa_system_sgpr_workgroup_id_x 0\n    .amdhsa_system_sgpr_workgroup_id_y 0\n    .amdhsa_system_sgpr_workgroup_id_z 0\n    .amdhsa_system_vgpr_workitem_id {}\n    .amdhsa_next_free_vgpr {}\n    .amdhsa_next_free_sgpr {}\n    .amdhsa_reserve_vcc 0\n.end_amdhsa_kernel",
+            "    .amdhsa_user_sgpr_kernarg_segment_ptr {}\n    .amdhsa_system_sgpr_workgroup_id_x {group_ids}\n    .amdhsa_system_sgpr_workgroup_id_y {group_ids}\n    .amdhsa_system_sgpr_workgroup_id_z {group_ids}\n    .amdhsa_system_vgpr_workitem_id {}\n    .amdhsa_next_free_vgpr {}\n    .amdhsa_next_free_sgpr {}\n    .amdhsa_reserve_vcc 0\n.end_amdhsa_kernel",
             u8::from(!kernel.arguments.is_empty()),
-            if target == AmdGpuTarget::Gfx900 { 2 } else { 0 },
+            2,
             kernel.vgprs,
             kernel.sgprs
         )?;
