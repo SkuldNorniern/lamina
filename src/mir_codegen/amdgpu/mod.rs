@@ -2,7 +2,8 @@ use super::gpu::{error, kernels};
 use crate::{
     error::LaminaError,
     mir::{
-        AddressSpace, Function, Instruction, MirType, Module, Register, RegisterClass, ScalarType,
+        AddressSpace, Function, Immediate, Instruction, IntBinOp, MirType, Module, Operand,
+        Register, RegisterClass, ScalarType,
         gpu::{GpuAxis, GpuIntrinsic},
     },
 };
@@ -119,6 +120,23 @@ impl Kernel {
                 "AMDGPU values require unique virtual GPR definitions",
             ));
         }
+        let value = self.temporary(ty)?;
+        self.values.insert(register.clone(), value);
+        Ok(value)
+    }
+
+    fn temporary(&mut self, ty: MirType) -> Result<Value, LaminaError> {
+        if !matches!(
+            ty,
+            MirType::Scalar(
+                ScalarType::I32
+                    | ScalarType::I64
+                    | ScalarType::Ptr
+                    | ScalarType::PtrIn(AddressSpace::Global)
+            )
+        ) {
+            return Err(error("AMDGPU values require i32, i64, or global pointers"));
+        }
         let words = (ty.size_bytes() / 4) as u32;
         self.vgprs = self.vgprs.next_multiple_of(words);
         let value = Value {
@@ -131,12 +149,209 @@ impl Kernel {
                 "AMDGPU kernel exceeds 128 VGPRs; spilling is unsupported",
             ));
         }
-        self.values.insert(register.clone(), value);
         Ok(value)
+    }
+
+    fn operand(&mut self, operand: &Operand, ty: MirType) -> Result<Value, LaminaError> {
+        match operand {
+            Operand::Register(register) => self
+                .values
+                .get(register)
+                .copied()
+                .filter(|value| value.ty == ty)
+                .ok_or_else(|| error("AMDGPU operand has an undefined or mismatched type")),
+            Operand::Immediate(immediate) => {
+                let bits = match (immediate, ty) {
+                    (Immediate::I32(value), MirType::Scalar(ScalarType::I32)) => {
+                        u64::from(*value as u32)
+                    }
+                    (Immediate::I64(value), MirType::Scalar(ScalarType::I64)) => *value as u64,
+                    _ => return Err(error("unsupported AMDGPU immediate")),
+                };
+                let value = self.temporary(ty)?;
+                writeln!(
+                    self.body,
+                    "    v_mov_b32 v{}, 0x{:08x}",
+                    value.start, bits as u32
+                )?;
+                if ty.size_bytes() == 8 {
+                    writeln!(
+                        self.body,
+                        "    v_mov_b32 v{}, 0x{:08x}",
+                        value.start + 1,
+                        (bits >> 32) as u32
+                    )?;
+                }
+                Ok(value)
+            }
+        }
+    }
+
+    fn copy(&mut self, dst: Value, src: Value) -> Result<(), LaminaError> {
+        for word in 0..(dst.ty.size_bytes() / 4) as u32 {
+            writeln!(
+                self.body,
+                "    v_mov_b32 v{}, v{}",
+                dst.start + word,
+                src.start + word
+            )?;
+        }
+        Ok(())
+    }
+
+    fn binary(
+        &mut self,
+        op: IntBinOp,
+        dst: Value,
+        lhs: Value,
+        rhs: Value,
+    ) -> Result<(), LaminaError> {
+        let (d, l, r) = (dst.start, lhs.start, rhs.start);
+        let mnemonic = match op {
+            IntBinOp::Add => "v_add_u32",
+            IntBinOp::Sub => "v_sub_u32",
+            IntBinOp::Mul => "v_mul_lo_u32",
+            IntBinOp::And => "v_and_b32",
+            IntBinOp::Or => "v_or_b32",
+            IntBinOp::Xor => "v_xor_b32",
+            _ => return Err(error("unsupported AMDGPU integer operation")),
+        };
+        if dst.ty.size_bytes() == 4 {
+            writeln!(self.body, "    {mnemonic} v{d}, v{l}, v{r}")?;
+        } else {
+            match op {
+                IntBinOp::Add | IntBinOp::Sub => {
+                    let (low, high) = match (op, self.target) {
+                        (IntBinOp::Add, AmdGpuTarget::Gfx900) => ("v_add_co_u32", "v_addc_co_u32"),
+                        (IntBinOp::Sub, AmdGpuTarget::Gfx900) => ("v_sub_co_u32", "v_subb_co_u32"),
+                        (IntBinOp::Add, AmdGpuTarget::Gfx1200) => {
+                            ("v_add_co_u32", "v_add_co_ci_u32")
+                        }
+                        _ => ("v_sub_co_u32", "v_sub_co_ci_u32"),
+                    };
+                    let carry = if self.target == AmdGpuTarget::Gfx900 {
+                        "s[6:7]"
+                    } else {
+                        "s6"
+                    };
+                    self.sgprs = self.sgprs.max(if self.target == AmdGpuTarget::Gfx900 {
+                        8
+                    } else {
+                        7
+                    });
+                    writeln!(
+                        self.body,
+                        "    {low} v{d}, {carry}, v{l}, v{r}\n    {high} v{}, {carry}, v{}, v{}, {carry}",
+                        d + 1,
+                        l + 1,
+                        r + 1
+                    )?;
+                }
+                IntBinOp::Mul => {
+                    let t = self.temporary(MirType::i32())?.start;
+                    writeln!(
+                        self.body,
+                        "    v_mul_hi_u32 v{}, v{l}, v{r}\n    v_mul_lo_u32 v{t}, v{l}, v{}\n    v_add_u32 v{}, v{}, v{t}\n    v_mul_lo_u32 v{t}, v{}, v{r}\n    v_add_u32 v{}, v{}, v{t}\n    v_mul_lo_u32 v{d}, v{l}, v{r}",
+                        d + 1,
+                        r + 1,
+                        d + 1,
+                        d + 1,
+                        l + 1,
+                        d + 1,
+                        d + 1
+                    )?;
+                }
+                _ => {
+                    for word in 0..2 {
+                        writeln!(
+                            self.body,
+                            "    {mnemonic} v{}, v{}, v{}",
+                            d + word,
+                            l + word,
+                            r + word
+                        )?;
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn instruction(&mut self, instruction: &Instruction) -> Result<(), LaminaError> {
         match instruction {
+            Instruction::Copy { ty, dst, src } => {
+                let src = self.operand(src, *ty)?;
+                let dst = self.allocate(dst, *ty)?;
+                self.copy(dst, src)?;
+            }
+            Instruction::IntConvert {
+                from,
+                to,
+                signed,
+                dst,
+                src,
+            } => {
+                let source = self.operand(src, *from)?;
+                let destination = self.allocate(dst, *to)?;
+                writeln!(
+                    self.body,
+                    "    v_mov_b32 v{}, v{}",
+                    destination.start, source.start
+                )?;
+                if to.size_bytes() == 8 {
+                    if from.size_bytes() == 8 {
+                        writeln!(
+                            self.body,
+                            "    v_mov_b32 v{}, v{}",
+                            destination.start + 1,
+                            source.start + 1
+                        )?;
+                    } else if *signed {
+                        writeln!(
+                            self.body,
+                            "    v_ashrrev_i32 v{}, 31, v{}",
+                            destination.start + 1,
+                            source.start
+                        )?;
+                    } else {
+                        writeln!(self.body, "    v_mov_b32 v{}, 0", destination.start + 1)?;
+                    }
+                }
+            }
+            Instruction::IntBinary {
+                op,
+                ty,
+                dst,
+                lhs,
+                rhs,
+            } => {
+                if !matches!(ty, MirType::Scalar(ScalarType::I32 | ScalarType::I64)) {
+                    return Err(error("AMDGPU arithmetic requires i32 or i64"));
+                }
+                let lhs = self.operand(lhs, *ty)?;
+                let dst = self.allocate(dst, *ty)?;
+                if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) {
+                    let Operand::Immediate(Immediate::I32(shift)) = rhs else {
+                        return Err(error("AMDGPU shifts require an immediate i32 count"));
+                    };
+                    if *ty != MirType::i32() || !(0..32).contains(shift) {
+                        return Err(error("AMDGPU shifts require i32 and a count below 32"));
+                    }
+                    let mnemonic = match op {
+                        IntBinOp::Shl => "v_lshlrev_b32",
+                        IntBinOp::LShr => "v_lshrrev_b32",
+                        _ => "v_ashrrev_i32",
+                    };
+                    writeln!(
+                        self.body,
+                        "    {mnemonic} v{}, {shift}, v{}",
+                        dst.start, lhs.start
+                    )?;
+                } else {
+                    let rhs = self.operand(rhs, *ty)?;
+                    self.binary(*op, dst, lhs, rhs)?;
+                }
+            }
             Instruction::Ret { value: None } => writeln!(self.body, "    s_endpgm")?,
             Instruction::Call { name, args, ret }
                 if args.is_empty()
