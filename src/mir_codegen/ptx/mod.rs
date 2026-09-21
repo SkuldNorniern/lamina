@@ -11,7 +11,7 @@ use std::{collections::BTreeSet, io::Write};
 pub fn emit<W: Write>(module: &Module, writer: &mut W) -> Result<(), LaminaError> {
     let mut output = Vec::new();
     writeln!(output, ".version 6.0\n.target sm_60\n.address_size 64")?;
-    for (function, name, metadata) in kernels(module)? {
+    for (function, name, metadata) in kernels(module, false)? {
         if metadata.max_threads.is_some() {
             return Err(error(
                 "PTX max_threads lowering is not implemented; use required_workgroup_size",

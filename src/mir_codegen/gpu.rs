@@ -6,6 +6,7 @@ use std::collections::HashSet;
 
 pub(super) fn kernels(
     module: &Module,
+    allow_parameters: bool,
 ) -> Result<Vec<(&Function, &str, &KernelMetadata)>, LaminaError> {
     if !module.globals.is_empty()
         || module
@@ -29,7 +30,7 @@ pub(super) fn kernels(
             || name.starts_with("__lamina_gpu_") || !names.insert(name) {
             return Err(error("invalid or duplicate kernel symbol"));
         }
-        if !function.sig.params.is_empty() || !function.sig.is_void()
+        if (!allow_parameters && !function.sig.params.is_empty()) || !function.sig.is_void()
             || !function.stack_reservations.is_empty() || function.blocks.len() != 1 {
             return Err(error("only single-block void kernels without parameters or stack storage are supported"));
         }
