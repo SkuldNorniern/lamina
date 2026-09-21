@@ -41,6 +41,7 @@ impl ConstantFolding {
                     || self.try_fold_float(instr)
                     || self.try_fold_cmp(instr)
                 {
+                    instr.normalize_integer_immediates(None);
                     changed = true;
                 }
             }
@@ -423,7 +424,7 @@ mod tests {
 
         let extract = |func: &Function| match &func.blocks[0].instructions[0] {
             Instruction::Copy {
-                src: Operand::Immediate(Immediate::I64(v)),
+                src: Operand::Immediate(Immediate::I8(v)),
                 ..
             } => *v,
             _ => panic!("Expected folded to Copy"),
