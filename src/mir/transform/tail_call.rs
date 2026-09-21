@@ -3,6 +3,7 @@
 use crate::mir::{
     Block, Function, Immediate, Instruction, Operand, Register,
     function::Signature,
+    gpu::GpuIntrinsic,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
     types::{MirType, ScalarType},
 };
@@ -147,10 +148,13 @@ impl TailCallOptimization {
     fn is_tail_call_safe(
         &self,
         func_sig: &Signature,
-        _call_name: &str,
+        call_name: &str,
         call_args: &[Operand],
         call_ret: &Option<Register>,
     ) -> bool {
+        if GpuIntrinsic::from_name(call_name).is_some() {
+            return false;
+        }
         // 1. Check return type compatibility
         match (&func_sig.ret_ty, call_ret) {
             (Some(_func_ty), Some(_ret_reg)) => {
@@ -205,6 +209,26 @@ mod tests {
     use crate::mir::{
         FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
     };
+
+    #[test]
+    fn gpu_barrier_keeps_its_return() {
+        let mut function = FunctionBuilder::new("barrier")
+            .block("entry")
+            .instr(Instruction::Call {
+                name: "__lamina_gpu_workgroup_barrier".into(),
+                args: vec![],
+                ret: None,
+            })
+            .instr(Instruction::Ret { value: None })
+            .build();
+        let optimization = TailCallOptimization;
+        assert!(!optimization.apply(&mut function).expect("optimize barrier"));
+        function.validate().expect("barrier retains one terminator");
+        assert!(matches!(
+            function.blocks[0].instructions[0],
+            Instruction::Call { .. }
+        ));
+    }
 
     #[test]
     fn test_tail_call_detection() {
