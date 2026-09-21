@@ -100,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn ptx_ids_use_virtual_registers_and_amd_rejects_them() -> Result<(), LaminaError> {
+    fn gpu_ids_use_virtual_registers() -> Result<(), LaminaError> {
         let module = module(vec![
             Instruction::Call {
                 name: "__lamina_gpu_thread_id_x".into(),
@@ -115,8 +115,8 @@ mod tests {
         assert!(output.contains(".reg .b32 %r4000;"));
         assert!(output.contains("mov.u32 %r4000, %tid.x;"));
         let mut output = Vec::new();
-        assert!(amdgpu::emit(&module, &mut output).is_err());
-        assert!(output.is_empty());
+        amdgpu::emit(&module, &mut output)?;
+        assert!(String::from_utf8(output)?.contains("v_bfe_u32"));
         Ok(())
     }
 
