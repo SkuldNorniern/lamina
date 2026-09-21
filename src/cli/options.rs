@@ -3,7 +3,8 @@
 use std::{env::args, path::PathBuf, process::exit};
 
 use lamina::mir_codegen::{
-    MirCodegenSettings, RegallocStrategy, assemble::AssemblerBackend, link::LinkerBackend,
+    MirCodegenSettings, RegallocStrategy, amdgpu::AmdGpuTarget, assemble::AssemblerBackend,
+    link::LinkerBackend,
 };
 use lamina_platform::{HOST_ARCH_LIST, TargetOperatingSystem};
 use ras::ObjectWriteOptions;
@@ -96,6 +97,7 @@ pub fn print_usage() {
     eprintln!("  -Wl,<flag>              Pass flag(s) to linker (GCC/Clang compatible)");
     eprintln!("  -Wa,<flag>              Pass flag(s) to assembler (GCC/Clang compatible)");
     eprintln!("  --emit-asm              Only emit assembly file without compiling");
+    eprintln!("  --mcpu <gpu>            AMDGPU processor: gfx900 | gfx1200 (default: gfx1200)");
     eprintln!("  --target <arch_os>      Specify target (e.g., x86_64_linux)");
     eprintln!("  --emit-mir              Only emit MIR (.lumir) and exit");
     eprintln!(
@@ -187,6 +189,15 @@ pub fn parse_args() -> Result<CompileOptions, String> {
             "--emit-mir-asm" => {
                 options.emit_mir_asm = Some("default".to_string());
                 i += 1;
+            }
+            "--mcpu" => {
+                options.mir_codegen_settings.amdgpu_target =
+                    match args.get(i + 1).map(String::as_str) {
+                        Some("gfx900") => AmdGpuTarget::Gfx900,
+                        Some("gfx1200") => AmdGpuTarget::Gfx1200,
+                        _ => return Err("--mcpu requires gfx900 or gfx1200".into()),
+                    };
+                i += 2;
             }
             "--target" => {
                 if i + 1 >= args.len() {
