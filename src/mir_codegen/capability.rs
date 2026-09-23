@@ -257,7 +257,13 @@ impl CapabilitySet {
             TargetArchitecture::Riscv128 => Self::standard_native(),
             TargetArchitecture::PowerPC64 => Self::standard_native(),
             TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => Self::wasm(),
-            TargetArchitecture::Nvptx64 | TargetArchitecture::Amdgcn => Self::gpu(),
+            TargetArchitecture::Nvptx64 => Self::gpu(),
+            TargetArchitecture::Amdgcn => {
+                let mut capabilities = Self::gpu();
+                capabilities.add(CodegenCapability::IntegerArithmetic);
+                capabilities.add(CodegenCapability::MemoryOperations);
+                capabilities
+            }
             _ => Self::core(),
         }
     }
