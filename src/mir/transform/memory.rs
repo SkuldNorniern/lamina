@@ -1,7 +1,7 @@
 //! Memory optimization transforms for MIR.
 
 use crate::mir::{
-    AddressMode, AddressSpace, Function, Instruction, Operand, Register,
+    AddressMode, AddressSpace, Function, Instruction, MirType, Operand, Register,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use std::collections::HashMap;
@@ -48,21 +48,28 @@ impl MemoryOptimization {
         let mut changed = false;
 
         for block in &mut func.blocks {
-            let mut last_store: HashMap<(Register, i16, AddressSpace), Operand> = HashMap::new();
-            let mut last_load: HashMap<(Register, i16, AddressSpace), Register> = HashMap::new();
+            let mut last_store: HashMap<(Register, i16, AddressSpace, MirType), Operand> =
+                HashMap::new();
+            let mut last_load: HashMap<(Register, i16, AddressSpace, MirType), Register> =
+                HashMap::new();
 
             for inst in &mut block.instructions {
                 let mut replacement: Option<Instruction> = None;
                 match &*inst {
                     Instruction::Store {
-                        src, addr, attrs, ..
+                        ty,
+                        src,
+                        addr,
+                        attrs,
                     } => match addr {
                         AddressMode::BaseOffset {
                             base,
                             offset,
                             address_space,
                         } if !attrs.volatile => {
-                            last_store.insert((base.clone(), *offset, *address_space), src.clone());
+                            last_store.clear();
+                            last_store
+                                .insert((base.clone(), *offset, *address_space, *ty), src.clone());
                             last_load.clear();
                         }
                         _ => {
@@ -86,7 +93,7 @@ impl MemoryOptimization {
                             address_space,
                         } = addr
                         {
-                            let key = (base.clone(), *offset, *address_space);
+                            let key = (base.clone(), *offset, *address_space, *ty);
                             if let Some(stored_val) = last_store.get(&key) {
                                 // store-to-load forwarding: replace load with a copy of stored_val
                                 replacement = Some(Instruction::Copy {
@@ -234,6 +241,64 @@ mod tests {
         );
         let entry = func.get_block("entry").unwrap();
         assert!(matches!(&entry.instructions[1], Instruction::Copy { .. }));
+    }
+
+    #[test]
+    fn aliasing_stores_and_mismatched_types_prevent_forwarding() {
+        for (second_base, offset, load_ty, store_ty) in [
+            (1, 0, i64(), i64()),
+            (0, 4, i64(), MirType::i32()),
+            (0, 0, MirType::i32(), i64()),
+        ] {
+            let base: Register = VirtualReg::gpr(0).into();
+            let mut func = FunctionBuilder::new("f")
+                .block("entry")
+                .instr(Instruction::Store {
+                    ty: i64(),
+                    src: Operand::Immediate(Immediate::I64(99)),
+                    addr: base_offset(base.clone(), 0),
+                    attrs: non_volatile(),
+                })
+                .instr(Instruction::Store {
+                    ty: store_ty,
+                    src: Operand::Register(VirtualReg::gpr(2).into()),
+                    addr: base_offset(VirtualReg::gpr(second_base).into(), offset),
+                    attrs: non_volatile(),
+                })
+                .instr(Instruction::Load {
+                    ty: load_ty,
+                    dst: VirtualReg::gpr(3).into(),
+                    addr: base_offset(base, 0),
+                    attrs: non_volatile(),
+                })
+                .build();
+            assert!(!apply_pass(&MemoryOptimization, &mut func));
+            assert!(matches!(
+                func.blocks[0].instructions[2],
+                Instruction::Load { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn mixed_width_loads_prevent_redundant_load_forwarding() {
+        let base: Register = VirtualReg::gpr(0).into();
+        let mut func = FunctionBuilder::new("f")
+            .block("entry")
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: VirtualReg::gpr(1).into(),
+                addr: base_offset(base.clone(), 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Load {
+                ty: MirType::i32(),
+                dst: VirtualReg::gpr(2).into(),
+                addr: base_offset(base, 0),
+                attrs: non_volatile(),
+            })
+            .build();
+        assert!(!apply_pass(&MemoryOptimization, &mut func));
     }
 
     #[test]
