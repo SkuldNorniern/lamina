@@ -535,7 +535,11 @@ fn emit_instruction_riscv<W: Write>(
                     if let Some(physical) = reg_alloc.get_mapping(vreg) {
                         writeln!(writer, "    mv a0, {physical}")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        writeln!(writer, "    {} a0, {offset}(fp)", copy_load_mnemonic(ty))?;
+                        writeln!(
+                            writer,
+                            "    {} a0, {offset}(fp)",
+                            copy_load_mnemonic(ty, ctx.target)
+                        )?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!("RISC-V Copy source {vreg:?} has no register or stack slot"),
@@ -789,9 +793,12 @@ fn emit_instruction_riscv<W: Write>(
             attrs: _,
         } => {
             let load_op = match ty {
-                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lb",
-                MirType::Scalar(ScalarType::I16) => "lh",
-                MirType::Scalar(ScalarType::I32) => "lw",
+                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lbu",
+                MirType::Scalar(ScalarType::I16) => "lhu",
+                MirType::Scalar(ScalarType::I32) => match ctx.target.xlen {
+                    Xlen::Rv32 => "lw",
+                    Xlen::Rv64 => "lwu",
+                },
                 MirType::Scalar(ScalarType::I64)
                 | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => "ld",
                 MirType::Scalar(ScalarType::F32) => "flw",
@@ -1140,11 +1147,14 @@ fn reload_caller_saved<W: Write>(
     Ok(())
 }
 
-fn copy_load_mnemonic(ty: &MirType) -> &'static str {
+fn copy_load_mnemonic(ty: &MirType, target: RiscVTarget) -> &'static str {
     match ty {
         MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lbu",
         MirType::Scalar(ScalarType::I16) => "lhu",
-        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lwu",
+        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => match target.xlen {
+            Xlen::Rv32 => "lw",
+            Xlen::Rv64 => "lwu",
+        },
         MirType::Scalar(
             ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
         )
@@ -1169,6 +1179,60 @@ mod tests {
     use super::*;
     use crate::mir::FunctionBuilder;
     use std::error::Error;
+
+    #[test]
+    fn narrow_loads_zero_extend_on_both_register_widths() -> Result<(), Box<dyn Error>> {
+        for xlen in [Xlen::Rv32, Xlen::Rv64] {
+            for (ty, mnemonic) in [
+                (MirType::i8(), "lbu"),
+                (MirType::i16(), "lhu"),
+                (
+                    MirType::i32(),
+                    if xlen == Xlen::Rv32 { "lw" } else { "lwu" },
+                ),
+            ] {
+                let base = Register::Virtual(VirtualReg::gpr(0));
+                let dst = Register::Virtual(VirtualReg::gpr(1));
+                let mut module = MirModule::new("loads");
+                module.add_function(
+                    FunctionBuilder::new("load_bits")
+                        .param(base.clone(), MirType::ptr())
+                        .returns(ty)
+                        .block("entry")
+                        .instr(MirInst::Load {
+                            ty,
+                            dst: dst.clone(),
+                            addr: AddressMode::BaseOffset {
+                                base,
+                                offset: 0,
+                                address_space: Default::default(),
+                            },
+                            attrs: Default::default(),
+                        })
+                        .instr(MirInst::Ret {
+                            value: Some(Operand::Register(dst)),
+                        })
+                        .build(),
+                );
+                let mut output = Vec::new();
+                generate_mir_riscv_with_units_and_settings(
+                    &module,
+                    &mut output,
+                    RiscVTarget::general(xlen),
+                    TargetOperatingSystem::Linux,
+                    1,
+                    &MirCodegenSettings::default(),
+                )?;
+                let assembly = String::from_utf8(output)?;
+                assert!(
+                    assembly.contains(&format!("    {mnemonic} a0, 0(t0)")),
+                    "{assembly}"
+                );
+                assert!(!assembly.contains("    lwu ") || xlen == Xlen::Rv64);
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn rv32_uses_word_memory_ops_not_doubleword() {
