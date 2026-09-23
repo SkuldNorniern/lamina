@@ -1191,9 +1191,35 @@ fn convert_instruction<'a>(
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             if let Some(iv) = idx_const {
-                // Constant index: use simple LEA with offset
-                let offset = (iv as i32).saturating_mul(elem_size);
-                Ok(vec![Instruction::Lea { dst, base, offset }])
+                let offset = iv.wrapping_mul(i64::from(elem_size));
+                if let Ok(offset) = i32::try_from(offset) {
+                    return Ok(vec![Instruction::Lea { dst, base, offset }]);
+                }
+                let address = Register::Virtual(vreg_alloc.allocate_gpr());
+                let sum = Register::Virtual(vreg_alloc.allocate_gpr());
+                Ok(vec![
+                    Instruction::IntConvert {
+                        from: MirType::ptr(),
+                        to: MirType::i64(),
+                        signed: false,
+                        dst: address.clone(),
+                        src: Operand::Register(base),
+                    },
+                    Instruction::IntBinary {
+                        op: IntBinOp::Add,
+                        ty: MirType::i64(),
+                        dst: sum.clone(),
+                        lhs: Operand::Register(address),
+                        rhs: Operand::Immediate(Immediate::I64(offset)),
+                    },
+                    Instruction::IntConvert {
+                        from: MirType::i64(),
+                        to: MirType::ptr(),
+                        signed: false,
+                        dst,
+                        src: Operand::Register(sum),
+                    },
+                ])
             } else {
                 let index_op = resolve_operand(index, vreg_alloc, var_to_reg)?;
                 let from = operand_type(&index_op, register_types);
@@ -1537,6 +1563,38 @@ mod tests {
         },
         parser::parse_module,
     };
+
+    #[test]
+    fn constant_gep_preserves_pointer_width_offsets() {
+        for (index, expected) in [
+            (4294967297_i64, 34359738376_i64),
+            (536870912, 4294967296),
+            (-536870913, -4294967304),
+            (i64::MIN, 0),
+        ] {
+            let source = format!(
+                "fn @gep(ptr %p) -> ptr {{\nentry:\n%q = getelem.ptr %p, {index}, i64\nret.ptr %q\n}}"
+            );
+            let ir = parse_module(&source).expect("parse wide index");
+            let mir = from_ir(&ir, "gep").expect("lower wide index");
+            mir.validate().expect("address arithmetic verifies");
+            let function = mir.get_function("gep").expect("gep function");
+            let offset = function.blocks[0]
+                .instructions
+                .iter()
+                .find_map(|inst| match inst {
+                    Instruction::Lea { offset, .. } => Some(i64::from(*offset)),
+                    Instruction::IntBinary {
+                        op: IntBinOp::Add,
+                        ty,
+                        rhs: Operand::Immediate(Immediate::I64(offset)),
+                        ..
+                    } if *ty == MirType::i64() => Some(*offset),
+                    _ => None,
+                });
+            assert_eq!(offset, Some(expected), "index {index}");
+        }
+    }
 
     #[test]
     fn arithmetic_optimizations_preserve_immediate_widths() {
