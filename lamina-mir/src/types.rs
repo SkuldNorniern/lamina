@@ -7,6 +7,10 @@
 //! - **Vector types**: SIMD vector types for parallel operations
 //! - **Pointer types**: Memory addresses
 //!
+//! Integer scalars carry width-specific bit patterns without signedness. Memory loads
+//! zero-extend integer bits when host registers are wider than the access. Signed
+//! interpretation belongs to signed operations and explicit `IntConvert` extension.
+//!
 //! ## Type Sizes
 //!
 //! All type sizes are fixed and known at compile time, enabling efficient
