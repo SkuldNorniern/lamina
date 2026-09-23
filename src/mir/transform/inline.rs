@@ -502,6 +502,9 @@ impl ModuleInlining {
         let mut max_id = 0;
         for block in &func.blocks {
             for instr in &block.instructions {
+                if let Instruction::StackAddr { slot, .. } = instr {
+                    max_id = max_id.max(slot.id);
+                }
                 if let Some(reg) = instr.def_reg()
                     && let Register::Virtual(vreg) = reg
                     && vreg.class == RegisterClass::Gpr
@@ -999,6 +1002,41 @@ struct CallSite {
 mod tests {
     use super::*;
     use crate::mir::{FunctionBuilder, Immediate, IntBinOp, MirType, ScalarType};
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+
+    #[test]
+    fn inlining_keeps_values_out_of_stack_storage() {
+        let ir = parse_module(
+            "fn @main() -> void {\nentry:\n%p = alloc.stack i64\ncall @leaf(%p)\nret.void\n}\nfn @leaf(ptr %p) -> i64 {\nentry:\n%x = add.i64 1, 2\nstore.i64 %p, %x\nret.i64 %x\n}",
+        ).expect("parse stack caller");
+        let mut module = from_ir(&ir, "stack caller").expect("lower stack caller");
+        let count = ModuleInlining::new()
+            .inline_functions(&mut module)
+            .expect("inline leaf");
+        assert!(count > 0);
+        let caller = module.get_function("main").expect("caller");
+        let instructions: Vec<_> = caller
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .collect();
+        let slots: Vec<_> = instructions
+            .iter()
+            .filter_map(|instruction| {
+                if let Instruction::StackAddr { slot, .. } = instruction {
+                    Some(Register::Virtual(*slot))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(instructions.iter().all(|instruction| {
+            instruction
+                .def_reg()
+                .is_none_or(|register| !slots.contains(register))
+        }));
+        caller.validate().expect("inlined caller verifies");
+    }
 
     #[test]
     fn test_inline_multi_block() {
