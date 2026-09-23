@@ -98,9 +98,14 @@ impl Kernel {
             } else {
                 writeln!(kernel.body, "    s_load_dword s8, s[0:1], {offset}")?;
             }
+            let wait = if target == AmdGpuTarget::Gfx1200 {
+                "s_wait_kmcnt 0"
+            } else {
+                "s_waitcnt lgkmcnt(0)"
+            };
             writeln!(
                 kernel.body,
-                "    s_waitcnt lgkmcnt(0)\n    v_mov_b32 v{}, s8",
+                "    {wait}\n    v_mov_b32 v{}, s8",
                 value.start
             )?;
             if size == 8 {
@@ -398,14 +403,31 @@ impl Kernel {
                     }
                     GpuIntrinsic::BlockId(axis) => {
                         self.group_ids = true;
-                        let base = if self.arguments.is_empty() { 0 } else { 2 };
-                        self.sgprs = self.sgprs.max(base + 3);
-                        writeln!(
-                            self.body,
-                            "    v_mov_b32 v{}, s{}",
-                            value.start,
-                            base + axis_index(axis)
-                        )?;
+                        if self.target == AmdGpuTarget::Gfx900 {
+                            let base = if self.arguments.is_empty() { 0 } else { 2 };
+                            self.sgprs = self.sgprs.max(base + 3);
+                            writeln!(
+                                self.body,
+                                "    v_mov_b32 v{}, s{}",
+                                value.start,
+                                base + axis_index(axis)
+                            )?;
+                        } else {
+                            match axis {
+                                GpuAxis::X => {
+                                    writeln!(self.body, "    v_mov_b32 v{}, ttmp9", value.start)?
+                                }
+                                GpuAxis::Y | GpuAxis::Z => {
+                                    self.sgprs = self.sgprs.max(6);
+                                    if axis == GpuAxis::Y {
+                                        writeln!(self.body, "    s_and_b32 s5, ttmp7, 0xffff")?;
+                                    } else {
+                                        writeln!(self.body, "    s_lshr_b32 s5, ttmp7, 16")?;
+                                    }
+                                    writeln!(self.body, "    v_mov_b32 v{}, s5", value.start)?;
+                                }
+                            }
+                        }
                     }
                     _ => {
                         return Err(error(
