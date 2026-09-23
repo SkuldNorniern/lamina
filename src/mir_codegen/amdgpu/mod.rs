@@ -2,8 +2,8 @@ use super::gpu::{error, kernels};
 use crate::{
     error::LaminaError,
     mir::{
-        AddressSpace, Function, Immediate, Instruction, IntBinOp, MirType, Module, Operand,
-        Register, RegisterClass, ScalarType,
+        AddressMode, AddressSpace, Function, Immediate, Instruction, IntBinOp, MemoryAttrs,
+        MirType, Module, Operand, Register, RegisterClass, ScalarType,
         gpu::{GpuAxis, GpuIntrinsic},
     },
 };
@@ -36,6 +36,16 @@ impl AmdGpuTarget {
 struct Value {
     start: u32,
     ty: MirType,
+}
+
+impl Value {
+    fn assembly(self) -> String {
+        if self.ty.size_bytes() == 8 {
+            format!("v[{}:{}]", self.start, self.start + 1)
+        } else {
+            format!("v{}", self.start)
+        }
+    }
 }
 
 struct Argument {
@@ -282,8 +292,122 @@ impl Kernel {
         Ok(())
     }
 
+    fn memory_address(
+        &self,
+        address: &AddressMode,
+        attrs: &MemoryAttrs,
+        ty: MirType,
+    ) -> Result<Value, LaminaError> {
+        if !matches!(ty, MirType::Scalar(ScalarType::I32 | ScalarType::I64))
+            || attrs.volatile
+            || usize::from(attrs.align) < ty.size_bytes()
+            || !attrs.align.is_power_of_two()
+        {
+            return Err(error(
+                "AMDGPU memory requires aligned, non-volatile i32 or i64 accesses",
+            ));
+        }
+        let AddressMode::BaseOffset {
+            base,
+            offset: 0,
+            address_space: AddressSpace::Generic | AddressSpace::Global,
+        } = address
+        else {
+            return Err(error(
+                "AMDGPU memory requires a global pointer with zero instruction offset",
+            ));
+        };
+        self.values
+            .get(base)
+            .copied()
+            .filter(|value| {
+                matches!(
+                    value.ty,
+                    MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(AddressSpace::Global))
+                )
+            })
+            .ok_or_else(|| error("AMDGPU memory base must be a global pointer"))
+    }
+
+    fn wait_memory(&mut self, store: bool) -> Result<(), LaminaError> {
+        let instruction = match (self.target, store) {
+            (AmdGpuTarget::Gfx900, _) => "s_waitcnt vmcnt(0)",
+            (AmdGpuTarget::Gfx1200, false) => "s_wait_loadcnt 0",
+            (AmdGpuTarget::Gfx1200, true) => "s_wait_storecnt 0",
+        };
+        writeln!(self.body, "    {instruction}")?;
+        Ok(())
+    }
+
     fn instruction(&mut self, instruction: &Instruction) -> Result<(), LaminaError> {
         match instruction {
+            Instruction::Lea { dst, base, offset } => {
+                let base = self
+                    .values
+                    .get(base)
+                    .copied()
+                    .filter(|value| {
+                        matches!(
+                            value.ty,
+                            MirType::Scalar(
+                                ScalarType::Ptr | ScalarType::PtrIn(AddressSpace::Global)
+                            )
+                        )
+                    })
+                    .ok_or_else(|| error("AMDGPU address calculation requires a global pointer"))?;
+                let dst = self.allocate(dst, MirType::ptr())?;
+                if *offset == 0 {
+                    self.copy(dst, base)?;
+                } else {
+                    let offset = self.operand(
+                        &Operand::Immediate(Immediate::I64(i64::from(*offset))),
+                        MirType::i64(),
+                    )?;
+                    self.binary(IntBinOp::Add, dst, base, offset)?;
+                }
+            }
+            Instruction::Load {
+                ty,
+                dst,
+                addr,
+                attrs,
+            } => {
+                let address = self.memory_address(addr, attrs, *ty)?;
+                let dst = self.allocate(dst, *ty)?;
+                let mnemonic = if ty.size_bytes() == 8 {
+                    "global_load_dwordx2"
+                } else {
+                    "global_load_dword"
+                };
+                writeln!(
+                    self.body,
+                    "    {mnemonic} {}, {}, off",
+                    dst.assembly(),
+                    address.assembly()
+                )?;
+                self.wait_memory(false)?;
+            }
+            Instruction::Store {
+                ty,
+                src,
+                addr,
+                attrs,
+            } => {
+                let address = self.memory_address(addr, attrs, *ty)?;
+                let src = self.operand(src, *ty)?;
+                let mnemonic = if ty.size_bytes() == 8 {
+                    "global_store_dwordx2"
+                } else {
+                    "global_store_dword"
+                };
+                writeln!(
+                    self.body,
+                    "    {mnemonic} {}, {}, off",
+                    address.assembly(),
+                    src.assembly()
+                )?;
+                self.wait_memory(true)?;
+            }
             Instruction::Copy { ty, dst, src } => {
                 let src = self.operand(src, *ty)?;
                 let dst = self.allocate(dst, *ty)?;
@@ -336,21 +460,33 @@ impl Kernel {
                 let lhs = self.operand(lhs, *ty)?;
                 let dst = self.allocate(dst, *ty)?;
                 if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) {
-                    let Operand::Immediate(Immediate::I32(shift)) = rhs else {
-                        return Err(error("AMDGPU shifts require an immediate i32 count"));
+                    let shift = match (rhs, *ty) {
+                        (
+                            Operand::Immediate(Immediate::I32(value)),
+                            MirType::Scalar(ScalarType::I32),
+                        ) => i64::from(*value),
+                        (
+                            Operand::Immediate(Immediate::I64(value)),
+                            MirType::Scalar(ScalarType::I64),
+                        ) => *value,
+                        _ => return Err(error("AMDGPU shifts require a matching immediate count")),
                     };
-                    if *ty != MirType::i32() || !(0..32).contains(shift) {
-                        return Err(error("AMDGPU shifts require i32 and a count below 32"));
+                    if !(0..(ty.size_bytes() * 8) as i64).contains(&shift) {
+                        return Err(error("AMDGPU shift count must be below the value width"));
                     }
-                    let mnemonic = match op {
-                        IntBinOp::Shl => "v_lshlrev_b32",
-                        IntBinOp::LShr => "v_lshrrev_b32",
-                        _ => "v_ashrrev_i32",
+                    let mnemonic = match (op, ty.size_bytes()) {
+                        (IntBinOp::Shl, 4) => "v_lshlrev_b32",
+                        (IntBinOp::LShr, 4) => "v_lshrrev_b32",
+                        (IntBinOp::AShr, 4) => "v_ashrrev_i32",
+                        (IntBinOp::Shl, _) => "v_lshlrev_b64",
+                        (IntBinOp::LShr, _) => "v_lshrrev_b64",
+                        _ => "v_ashrrev_i64",
                     };
                     writeln!(
                         self.body,
-                        "    {mnemonic} v{}, {shift}, v{}",
-                        dst.start, lhs.start
+                        "    {mnemonic} {}, {shift}, {}",
+                        dst.assembly(),
+                        lhs.assembly()
                     )?;
                 } else {
                     let rhs = self.operand(rhs, *ty)?;
