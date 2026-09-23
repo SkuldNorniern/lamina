@@ -665,7 +665,18 @@ fn emit_instruction_ppc64<W: Write>(
                     }
                     writeln!(writer, "    {load_op} 3, {offset}(5)")?;
                     if let Register::Virtual(vreg) = dst {
-                        store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                        if matches!(ty, MirType::Scalar(ScalarType::F32 | ScalarType::F64)) {
+                            emit_store_fp_result(
+                                "3",
+                                vreg,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                                *ty == MirType::Scalar(ScalarType::F32),
+                            )?;
+                        } else {
+                            store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                        }
                     }
                 }
                 _ => {
@@ -695,7 +706,18 @@ fn emit_instruction_ppc64<W: Write>(
                     )));
                 }
             };
-            load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
+            if matches!(ty, MirType::Scalar(ScalarType::F32 | ScalarType::F64)) {
+                emit_load_fp_operand(
+                    src,
+                    writer,
+                    reg_alloc,
+                    stack_slots,
+                    "3",
+                    *ty == MirType::Scalar(ScalarType::F32),
+                )?;
+            } else {
+                load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
+            }
             match addr {
                 AddressMode::BaseOffset { base, offset, .. } => {
                     match base {
@@ -877,6 +899,68 @@ mod tests {
             .build();
         m.add_function(f);
         m
+    }
+
+    #[test]
+    fn float_memory_transfers_use_fpr_bits() {
+        for (ty, load, store) in [
+            (MirType::Scalar(ScalarType::F32), "lfs", "stfs"),
+            (MirType::Scalar(ScalarType::F64), "lfd", "stfd"),
+        ] {
+            let base = Register::Virtual(VirtualReg::gpr(0));
+            let value = Register::Virtual(VirtualReg::fpr(1));
+            let mut module = MirModule::new("float_memory");
+            module.add_function(
+                FunctionBuilder::new("transfer")
+                    .param(base.clone(), MirType::ptr())
+                    .block("entry")
+                    .instr(MirInst::Load {
+                        ty,
+                        dst: value.clone(),
+                        addr: AddressMode::BaseOffset {
+                            base: base.clone(),
+                            offset: 0,
+                            address_space: Default::default(),
+                        },
+                        attrs: Default::default(),
+                    })
+                    .instr(MirInst::Store {
+                        ty,
+                        src: Operand::Register(value),
+                        addr: AddressMode::BaseOffset {
+                            base,
+                            offset: 8,
+                            address_space: Default::default(),
+                        },
+                        attrs: Default::default(),
+                    })
+                    .instr(MirInst::Ret { value: None })
+                    .build(),
+            );
+            let mut output = Vec::new();
+            generate_mir_ppc64(&module, &mut output, TargetOperatingSystem::Linux).unwrap();
+            let assembly = String::from_utf8(output).unwrap();
+            let lines: Vec<_> = assembly.lines().collect();
+            let start = lines
+                .iter()
+                .position(|line| line.contains(&format!("{load} 3, 0(5)")))
+                .unwrap();
+            assert!(
+                lines[start + 1].contains(&format!("{store} 3,")),
+                "{assembly}"
+            );
+            assert!(lines[start + 1].ends_with("(1)"), "{assembly}");
+            let end = lines
+                .iter()
+                .position(|line| line.contains(&format!("{store} 3, 8(5)")))
+                .unwrap();
+            assert!(
+                lines[start + 2..end]
+                    .iter()
+                    .any(|line| line.contains(&format!("{load} 3,")) && line.ends_with("(1)")),
+                "{assembly}"
+            );
+        }
     }
 
     #[test]
