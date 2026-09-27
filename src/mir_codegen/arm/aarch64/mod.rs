@@ -168,6 +168,7 @@ fn compile_single_function_aarch64(
     }
 
     let epilogue_label = format!(".Lret_{}", label.trim_start_matches('_'));
+    let block_prefix = format!(".L_{}_", label.trim_start_matches('_'));
 
     let has_complex_function =
         func.blocks.len() > 50 || func.blocks.iter().any(|b| b.instructions.len() > 100);
@@ -193,6 +194,7 @@ fn compile_single_function_aarch64(
             &abi,
             &mut ra,
             &epilogue_label,
+            &block_prefix,
             settings,
             &mut debug_line,
         )
@@ -202,7 +204,7 @@ fn compile_single_function_aarch64(
         if b.label != entry_key {
             writeln!(output, "    .align 2")
                 .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-            writeln!(output, "{}:", b.label)
+            writeln!(output, "{}{}:", block_prefix, b.label)
                 .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
             emit_block(
                 b.instructions.as_slice(),
@@ -211,6 +213,7 @@ fn compile_single_function_aarch64(
                 &abi,
                 &mut ra,
                 &epilogue_label,
+                &block_prefix,
                 settings,
                 &mut debug_line,
             )
@@ -297,6 +300,7 @@ fn emit_block<W: Write>(
     abi: &AArch64ABI,
     ra: &mut A64RegAlloc,
     epilogue_label: &str,
+    block_prefix: &str,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
 ) -> Result<(), LaminaError> {
@@ -315,6 +319,7 @@ fn emit_block<W: Write>(
                         abi,
                         ra,
                         epilogue_label,
+                        block_prefix,
                         settings,
                         debug_line,
                     )?;
@@ -998,7 +1003,7 @@ fn emit_block<W: Write>(
                 writeln!(w, "    b {epilogue_label}")?;
             }
             MirInst::Jmp { target } => {
-                writeln!(w, "    b {target}")?;
+                writeln!(w, "    b {block_prefix}{target}")?;
             }
             MirInst::Br {
                 cond,
@@ -1008,8 +1013,8 @@ fn emit_block<W: Write>(
                 let t = ra.alloc_scratch().unwrap_or("x19");
                 load_reg_to(w, cond, t, frame, ra)?;
                 writeln!(w, "    cmp {}, #0", x_alias(t))?;
-                writeln!(w, "    b.ne {true_target}")?;
-                writeln!(w, "    b {false_target}")?;
+                writeln!(w, "    b.ne {block_prefix}{true_target}")?;
+                writeln!(w, "    b {block_prefix}{false_target}")?;
                 ra.free_scratch(t);
             }
             MirInst::Switch {
@@ -1022,9 +1027,9 @@ fn emit_block<W: Write>(
                 for (case_val, case_label) in cases {
                     writeln!(w, "    mov x9, #{case_val}")?;
                     writeln!(w, "    cmp {}, x9", x_alias(t))?;
-                    writeln!(w, "    b.eq {case_label}")?;
+                    writeln!(w, "    b.eq {block_prefix}{case_label}")?;
                 }
-                writeln!(w, "    b {default}")?;
+                writeln!(w, "    b {block_prefix}{default}")?;
                 ra.free_scratch(t);
             }
             MirInst::Comment { text } => {
