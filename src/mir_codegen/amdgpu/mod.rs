@@ -63,6 +63,7 @@ struct Kernel {
     sgprs: u32,
     target: AmdGpuTarget,
     group_ids: bool,
+    dispatch_ptr: bool,
 }
 
 impl Kernel {
@@ -77,6 +78,17 @@ impl Kernel {
             sgprs: 0,
             target,
             group_ids: false,
+            dispatch_ptr: function.blocks.iter().flat_map(|block| &block.instructions).any(|inst|
+                matches!(inst, Instruction::Call { name, .. }
+                    if matches!(GpuIntrinsic::from_name(name), Some(GpuIntrinsic::BlockDim(_) | GpuIntrinsic::GridDim(_))))),
+        };
+        if kernel.dispatch_ptr {
+            kernel.sgprs = 2;
+        }
+        let kernarg = if kernel.dispatch_ptr {
+            "s[2:3]"
+        } else {
+            "s[0:1]"
         };
         for parameter in &function.sig.params {
             let ty = parameter.ty;
@@ -104,9 +116,12 @@ impl Kernel {
             let value = kernel.allocate(&parameter.reg, ty)?;
             kernel.sgprs = 10;
             if value.ty.size_bytes() == 8 {
-                writeln!(kernel.body, "    s_load_dwordx2 s[8:9], s[0:1], {offset}")?;
+                writeln!(
+                    kernel.body,
+                    "    s_load_dwordx2 s[8:9], {kernarg}, {offset}"
+                )?;
             } else {
-                writeln!(kernel.body, "    s_load_dword s8, s[0:1], {offset}")?;
+                writeln!(kernel.body, "    s_load_dword s8, {kernarg}, {offset}")?;
             }
             let wait = if target == AmdGpuTarget::Gfx1200 {
                 "s_wait_kmcnt 0"
@@ -245,14 +260,14 @@ impl Kernel {
                         _ => ("v_sub_co_u32", "v_sub_co_ci_u32"),
                     };
                     let carry = if self.target == AmdGpuTarget::Gfx900 {
-                        "s[6:7]"
+                        "s[16:17]"
                     } else {
-                        "s6"
+                        "s16"
                     };
                     self.sgprs = self.sgprs.max(if self.target == AmdGpuTarget::Gfx900 {
-                        8
+                        18
                     } else {
-                        7
+                        17
                     });
                     writeln!(
                         self.body,
@@ -540,7 +555,8 @@ impl Kernel {
                     GpuIntrinsic::BlockId(axis) => {
                         self.group_ids = true;
                         if self.target == AmdGpuTarget::Gfx900 {
-                            let base = if self.arguments.is_empty() { 0 } else { 2 };
+                            let base = u32::from(self.dispatch_ptr) * 2
+                                + if self.arguments.is_empty() { 0 } else { 2 };
                             self.sgprs = self.sgprs.max(base + 3);
                             writeln!(
                                 self.body,
@@ -565,10 +581,43 @@ impl Kernel {
                             }
                         }
                     }
+                    GpuIntrinsic::BlockDim(axis) | GpuIntrinsic::GridDim(axis) => {
+                        self.sgprs = self.sgprs.max(13);
+                        let axis = axis_index(axis);
+                        let size_offset = if axis == 2 { 8 } else { 4 };
+                        writeln!(self.body, "    s_load_dword s9, s[0:1], {size_offset}")?;
+                        let grid = matches!(intrinsic, GpuIntrinsic::GridDim(_));
+                        if grid {
+                            writeln!(self.body, "    s_load_dword s8, s[0:1], {}", 12 + axis * 4)?;
+                        }
+                        let wait = if self.target == AmdGpuTarget::Gfx1200 {
+                            "s_wait_kmcnt 0"
+                        } else {
+                            "s_waitcnt lgkmcnt(0)"
+                        };
+                        writeln!(
+                            self.body,
+                            "    {wait}\n    s_bfe_u32 s9, s9, {}",
+                            (16 << 16) | if axis == 1 { 16 } else { 0 }
+                        )?;
+                        if grid {
+                            writeln!(self.body, "    s_mov_b32 s10, 0\n    s_mov_b32 s11, 0")?;
+                            for bit in (0..32).rev() {
+                                writeln!(
+                                    self.body,
+                                    "    s_lshl_b32 s11, s11, 1\n    s_bfe_u32 s12, s8, {}\n    s_or_b32 s11, s11, s12\n    s_sub_u32 s12, s11, s9\n    s_cmp_ge_u32 s11, s9\n    s_cselect_b32 s11, s12, s11\n    s_cselect_b32 s12, 1, 0\n    s_lshl_b32 s10, s10, 1\n    s_or_b32 s10, s10, s12",
+                                    (1 << 16) | bit
+                                )?;
+                            }
+                            writeln!(
+                                self.body,
+                                "    s_cmp_lg_u32 s11, 0\n    s_cselect_b32 s12, 1, 0\n    s_add_u32 s9, s10, s12"
+                            )?;
+                        }
+                        writeln!(self.body, "    v_mov_b32 v{}, s9", value.start)?;
+                    }
                     _ => {
-                        return Err(error(
-                            "AMDGPU supports work-item and workgroup ID intrinsics only",
-                        ));
+                        return Err(error("unsupported AMDGPU intrinsic"));
                     }
                 }
             }
@@ -617,6 +666,11 @@ pub fn emit_with_target<W: Write>(
         if target == AmdGpuTarget::Gfx1200 {
             writeln!(output, "    .amdhsa_wavefront_size32 1")?;
         }
+        writeln!(
+            output,
+            "    .amdhsa_user_sgpr_dispatch_ptr {}",
+            u8::from(kernel.dispatch_ptr)
+        )?;
         let group_ids = u8::from(kernel.group_ids);
         writeln!(
             output,
