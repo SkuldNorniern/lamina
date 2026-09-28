@@ -164,6 +164,7 @@ fn compile_single_function_ppc64(
     let abi = Ppc64Abi::new(target_os);
 
     let label = abi.mangle_function_name(func_name);
+    let block_prefix = format!(".L_{}_", label.trim_start_matches('.'));
     writeln!(output, "{label}:")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
 
@@ -231,7 +232,7 @@ fn compile_single_function_ppc64(
 
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
-        writeln!(output, ".L_{}:", block.label)
+        writeln!(output, "{}{}:", block_prefix, block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
 
         for inst in &block.instructions {
@@ -240,8 +241,11 @@ fn compile_single_function_ppc64(
                 &mut output,
                 &mut reg_alloc,
                 &stack_slots,
-                target_os,
-                settings,
+                &Ppc64Emit {
+                    target_os,
+                    block_prefix: &block_prefix,
+                    settings,
+                },
                 &mut debug_line,
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -309,30 +313,32 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
 }
 
 #[allow(clippy::too_many_lines)]
+struct Ppc64Emit<'a> {
+    target_os: TargetOperatingSystem,
+    block_prefix: &'a str,
+    settings: &'a MirCodegenSettings,
+}
+
 fn emit_instruction_ppc64<W: Write>(
     inst: &MirInst,
     writer: &mut W,
     reg_alloc: &mut Ppc64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
-    target_os: TargetOperatingSystem,
-    settings: &MirCodegenSettings,
+    emit: &Ppc64Emit<'_>,
     debug_line: &mut u32,
 ) -> Result<(), LaminaError> {
+    let Ppc64Emit {
+        target_os,
+        block_prefix,
+        settings,
+    } = *emit;
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
     }
     if let Some(operations) = integer_conversion(inst) {
         for operation in operations {
-            emit_instruction_ppc64(
-                &operation,
-                writer,
-                reg_alloc,
-                stack_slots,
-                target_os,
-                settings,
-                debug_line,
-            )?;
+            emit_instruction_ppc64(&operation, writer, reg_alloc, stack_slots, emit, debug_line)?;
         }
         return Ok(());
     }
@@ -560,9 +566,9 @@ fn emit_instruction_ppc64<W: Write>(
             }
             for (case_val, case_label) in cases {
                 writeln!(writer, "    cmpdi 3, {case_val}")?;
-                writeln!(writer, "    beq .L_{case_label}")?;
+                writeln!(writer, "    beq {block_prefix}{case_label}")?;
             }
-            writeln!(writer, "    b .L_{default}")?;
+            writeln!(writer, "    b {block_prefix}{default}")?;
         }
         MirInst::Call { name, args, ret } => {
             let abi = Ppc64Abi::new(target_os);
@@ -750,7 +756,7 @@ fn emit_instruction_ppc64<W: Write>(
             }
         }
         MirInst::Jmp { target } => {
-            writeln!(writer, "    b .L_{target}")?;
+            writeln!(writer, "    b {block_prefix}{target}")?;
         }
         MirInst::Br {
             cond,
@@ -764,8 +770,8 @@ fn emit_instruction_ppc64<W: Write>(
                 Register::Physical(p) => writeln!(writer, "    mr 3, {}", p.name)?,
             }
             writeln!(writer, "    cmpdi 3, 0")?;
-            writeln!(writer, "    bne .L_{true_target}")?;
-            writeln!(writer, "    b .L_{false_target}")?;
+            writeln!(writer, "    bne {block_prefix}{true_target}")?;
+            writeln!(writer, "    b {block_prefix}{false_target}")?;
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
@@ -1027,7 +1033,14 @@ mod tests {
         generate_mir_ppc64(&m, &mut output, TargetOperatingSystem::Linux).unwrap();
         let s = String::from_utf8(output).unwrap();
         assert!(s.contains("bne"), "Expected bne in output: {s}");
-        assert!(s.contains(".L_then"), "Expected .L_then in output: {s}");
+        assert!(
+            s.contains(".L_cf_fn_then:"),
+            "Expected function-qualified .L_cf_fn_then in output: {s}"
+        );
+        assert!(
+            !s.contains("\n.L_then:"),
+            "block labels must be qualified by function: {s}"
+        );
     }
 
     #[test]
