@@ -1055,9 +1055,9 @@ fn emit_instruction_riscv<W: Write>(
             // If condition is zero (false), replace a0 with a1.
             let sel = ctx.label_seq;
             ctx.label_seq = ctx.label_seq.saturating_add(1);
-            writeln!(writer, "    bnez t0, .L_{func_name}_sel_{sel}")?;
+            writeln!(writer, "    bnez t0, .L_{func_name}.sel.{sel}")?;
             writeln!(writer, "    mv a0, a1")?;
-            writeln!(writer, ".L_{func_name}_sel_{sel}:")?;
+            writeln!(writer, ".L_{func_name}.sel.{sel}:")?;
             if let Register::Virtual(vreg) = dst {
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
