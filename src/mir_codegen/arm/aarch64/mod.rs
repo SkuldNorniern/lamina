@@ -187,6 +187,8 @@ fn compile_single_function_aarch64(
     let mut debug_line: u32 = 0;
 
     if let Some(entry_block) = func.get_block(&entry_key) {
+        writeln!(output, "{}{}:", block_prefix, entry_key)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
         emit_block(
             entry_block.instructions.as_slice(),
             &mut output,
