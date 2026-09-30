@@ -230,12 +230,12 @@ fn compile_single_function_x86_64(
         }
     }
 
-    writeln!(output, "    jmp .L_{}_{}", func_name, func.entry)
+    writeln!(output, "    jmp .L_{}.{}", func_name, func.entry)
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
-        writeln!(output, ".L_{}_{}:", func_name, block.label)
+        writeln!(output, ".L_{}.{}:", func_name, block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
         for inst in &block.instructions {
@@ -1258,9 +1258,9 @@ fn emit_instruction_x86_64(
             }
             for (case_val, case_label) in cases {
                 writeln!(writer, "    cmpq ${case_val}, %rax")?;
-                writeln!(writer, "    je .L_{func_name}_{case_label}")?;
+                writeln!(writer, "    je .L_{func_name}.{case_label}")?;
             }
-            writeln!(writer, "    jmp .L_{func_name}_{default}")?;
+            writeln!(writer, "    jmp .L_{func_name}.{default}")?;
         }
         MirInst::Comment { text } => {
             writeln!(writer, "    # {text}")?;
@@ -1274,7 +1274,7 @@ fn emit_instruction_x86_64(
         }
         MirInst::Jmp { target } => {
             // Use function-scoped label to avoid collisions
-            writeln!(writer, "    jmp .L_{func_name}_{target}")?;
+            writeln!(writer, "    jmp .L_{func_name}.{target}")?;
         }
         MirInst::Br {
             cond,
@@ -1286,8 +1286,8 @@ fn emit_instruction_x86_64(
             }
             writeln!(writer, "    testq %rax, %rax")?;
             // Use function-scoped labels to avoid collisions
-            writeln!(writer, "    jnz .L_{func_name}_{true_target}")?;
-            writeln!(writer, "    jmp .L_{func_name}_{false_target}")?;
+            writeln!(writer, "    jnz .L_{func_name}.{true_target}")?;
+            writeln!(writer, "    jmp .L_{func_name}.{false_target}")?;
         }
         other => {
             return Err(LaminaError::ValidationError(format!(

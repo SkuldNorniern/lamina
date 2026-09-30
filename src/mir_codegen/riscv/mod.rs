@@ -485,7 +485,7 @@ fn emit_block_riscv<W: Write>(
     stack_slots: &HashMap<VirtualReg, i32>,
     ctx: &mut EmitCtx<'_>,
 ) -> Result<(), CodegenError> {
-    writeln!(writer, ".L_{}_{}:", ctx.func_name, block.label)
+    writeln!(writer, ".L_{}.{}:", ctx.func_name, block.label)
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     for (block_instruction_index, inst) in block.instructions.iter().enumerate() {
         let instruction_index = block_start + block_instruction_index;
@@ -932,7 +932,7 @@ fn emit_instruction_riscv<W: Write>(
             )?;
         }
         MirInst::Jmp { target } => {
-            writeln!(writer, "    j .L_{func_name}_{target}")?;
+            writeln!(writer, "    j .L_{func_name}.{target}")?;
         }
         MirInst::Br {
             cond,
@@ -941,8 +941,8 @@ fn emit_instruction_riscv<W: Write>(
         } => {
             if let Register::Virtual(vreg) = cond {
                 load_register_to_register(vreg, writer, reg_alloc, stack_slots, "t0")?;
-                writeln!(writer, "    bnez t0, .L_{func_name}_{true_target}")?;
-                writeln!(writer, "    j .L_{func_name}_{false_target}")?;
+                writeln!(writer, "    bnez t0, .L_{func_name}.{true_target}")?;
+                writeln!(writer, "    j .L_{func_name}.{false_target}")?;
             }
         }
         MirInst::FloatBinary {
@@ -1075,9 +1075,9 @@ fn emit_instruction_riscv<W: Write>(
             }
             for (case_val, case_label) in cases {
                 writeln!(writer, "    li t0, {case_val}")?;
-                writeln!(writer, "    beq a0, t0, .L_{func_name}_{case_label}")?;
+                writeln!(writer, "    beq a0, t0, .L_{func_name}.{case_label}")?;
             }
-            writeln!(writer, "    j .L_{func_name}_{default}")?;
+            writeln!(writer, "    j .L_{func_name}.{default}")?;
         }
         MirInst::Comment { text } => {
             writeln!(writer, "    # {text}")?;

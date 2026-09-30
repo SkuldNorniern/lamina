@@ -168,7 +168,7 @@ fn compile_single_function_aarch64(
     }
 
     let epilogue_label = format!(".Lret_{}", label.trim_start_matches('_'));
-    let block_prefix = format!(".L_{}_", label.trim_start_matches('_'));
+    let block_prefix = format!(".L_{}.", label.trim_start_matches('_'));
 
     let has_complex_function =
         func.blocks.len() > 50 || func.blocks.iter().any(|b| b.instructions.len() > 100);
