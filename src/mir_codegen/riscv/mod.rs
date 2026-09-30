@@ -600,6 +600,28 @@ fn emit_instruction_riscv<W: Write>(
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
         }
+        MirInst::Lea { dst, base, offset } => {
+            let Register::Virtual(base_vreg) = base else {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!("RISC-V lea base {base:?} is not a virtual register"),
+                )));
+            };
+            if let Some(physical) = reg_alloc.get_mapping(base_vreg) {
+                writeln!(writer, "    mv a0, {physical}")?;
+            } else if let Some(slot) = stack_slots.get(base_vreg) {
+                writeln!(writer, "    {} a0, {slot}(fp)", ctx.target.load_word())?;
+            } else {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!("RISC-V lea base {base_vreg:?} has no register or stack slot"),
+                )));
+            }
+            if *offset != 0 {
+                writeln!(writer, "    addi a0, a0, {offset}")?;
+            }
+            if let Register::Virtual(vreg) = dst {
+                store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
+            }
+        }
         MirInst::IntBinary {
             op,
             dst,
