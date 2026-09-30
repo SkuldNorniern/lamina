@@ -367,14 +367,14 @@ where
 
     let mut results: Vec<CompilationResult> = Vec::new();
     let mut worker_errors = Vec::new();
+    let mut lost_results = false;
 
     for _ in 0..functions.len() {
         match result_receiver.recv() {
             Ok(result) => results.push(result),
             Err(_) => {
-                worker_errors.push(CodegenError::InvalidCodegenOptions(
-                    "Worker thread communication error".to_string(),
-                ));
+                lost_results = true;
+                break;
             }
         }
     }
@@ -393,8 +393,15 @@ where
         }
     }
 
+    // A worker that fails to compile sends no result, so the receiver closes
+    // early. Report what the worker actually hit, not the closed channel.
     if let Some(first_error) = worker_errors.into_iter().next() {
         return Err(first_error);
+    }
+    if lost_results {
+        return Err(CodegenError::InvalidCodegenOptions(
+            "Worker thread communication error".to_string(),
+        ));
     }
 
     results.sort_by_key(|r| r.func_index);
