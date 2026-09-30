@@ -207,6 +207,14 @@ fn compile_single_function_riscv(
                         next_slot += 1;
                     }
                 }
+                // use_regs omits the slot a StackAddr names.
+                if let MirInst::StackAddr { slot, .. } = inst
+                    && !stack_slots.contains_key(slot)
+                {
+                    stack_slots
+                        .insert(*slot, RiscVFrame::calculate_stack_offset(next_slot, target));
+                    next_slot += 1;
+                }
             }
         }
     }
@@ -579,6 +587,17 @@ fn emit_instruction_riscv<W: Write>(
                     writeln!(writer, "    mv {}, a0", phys.name)?;
                 }
                 Register::Physical(_) => {}
+            }
+        }
+        MirInst::StackAddr { dst, slot } => {
+            let offset = stack_slots.get(slot).ok_or_else(|| {
+                LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+                    "RISC-V stack address {slot:?} has no frame slot"
+                )))
+            })?;
+            writeln!(writer, "    addi a0, fp, {offset}")?;
+            if let Register::Virtual(vreg) = dst {
+                store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
         }
         MirInst::IntBinary {
