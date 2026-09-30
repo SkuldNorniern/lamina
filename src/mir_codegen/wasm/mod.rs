@@ -194,6 +194,10 @@ fn compile_single_function_wasm(
                     local_vregs.insert(vreg);
                 }
             }
+            // use_regs omits the slot a StackAddr names, so claim it here.
+            if let MirInst::StackAddr { slot, .. } = inst {
+                local_vregs.insert(slot);
+            }
         }
     }
 
@@ -796,6 +800,14 @@ fn emit_instruction_wasm(
         }
         MirInst::Comment { text } => {
             writeln!(writer, "        ;; {text}")?;
+        }
+        MirInst::StackAddr { dst, slot } => {
+            // Locals stand in for frame slots here, so the slot's local carries
+            // the address the rest of the lowering expects.
+            load_register_wasm(&Register::Virtual(*slot), writer, vreg_to_local)?;
+            if let Register::Virtual(vreg) = dst {
+                store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
+            }
         }
         MirInst::Lea { dst, base, offset } => {
             // In WASM linear memory there are no general-purpose effective-address
