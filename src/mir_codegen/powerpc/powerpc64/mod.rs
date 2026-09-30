@@ -164,7 +164,7 @@ fn compile_single_function_ppc64(
     let abi = Ppc64Abi::new(target_os);
 
     let label = abi.mangle_function_name(func_name);
-    let block_prefix = format!(".L_{}_", label.trim_start_matches('.'));
+    let block_prefix = format!(".L_{}.", label.trim_start_matches('.'));
     writeln!(output, "{label}:")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
 
@@ -1034,8 +1034,8 @@ mod tests {
         let s = String::from_utf8(output).unwrap();
         assert!(s.contains("bne"), "Expected bne in output: {s}");
         assert!(
-            s.contains(".L_cf_fn_then:"),
-            "Expected function-qualified .L_cf_fn_then in output: {s}"
+            s.contains(".L_cf_fn.then:"),
+            "Expected function-qualified .L_cf_fn.then in output: {s}"
         );
         assert!(
             !s.contains("\n.L_then:"),
