@@ -1172,12 +1172,9 @@ fn convert_instruction<'a>(
                     .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            let elem_size: i32 = match element_type {
-                IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 1,
-                IRPrim::I16 | IRPrim::U16 => 2,
-                IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 4,
-                IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 8,
-            };
+            let elem_size = sizeof_ir_type(element_type)
+                .and_then(|size| i64::try_from(size).ok())
+                .ok_or(FromIRError::UnsupportedInstruction)?;
             let idx_const = match index {
                 IRVal::Constant(lit) => match lit {
                     IRLit::I64(v) => Some(*v),
@@ -1191,7 +1188,7 @@ fn convert_instruction<'a>(
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             if let Some(iv) = idx_const {
-                let offset = iv.wrapping_mul(i64::from(elem_size));
+                let offset = iv.wrapping_mul(elem_size);
                 if let Ok(offset) = i32::try_from(offset) {
                     return Ok(vec![Instruction::Lea { dst, base, offset }]);
                 }
@@ -1240,7 +1237,7 @@ fn convert_instruction<'a>(
                         ty: MirType::i64(),
                         dst: scaled.clone(),
                         lhs: Operand::Register(wide_index),
-                        rhs: Operand::Immediate(Immediate::I64(i64::from(elem_size))),
+                        rhs: Operand::Immediate(Immediate::I64(elem_size)),
                     },
                     Instruction::IntConvert {
                         from: MirType::ptr(),
@@ -1563,6 +1560,42 @@ mod tests {
         },
         parser::parse_module,
     };
+
+    #[test]
+    fn composite_gep_scales_constant_and_variable_indices() {
+        for (element_type, stride) in [("[3 x i32]", 12), ("struct { x: i64, y: i64 }", 16)] {
+            let source = format!(
+                "fn @gep(ptr %p, i64 %index) -> ptr {{
+entry:
+%constant = getelem.ptr %p, 2, {element_type}
+%variable = getelem.ptr %constant, %index, {element_type}
+ret.ptr %variable
+}}"
+            );
+            let ir = parse_module(&source).expect("parse composite elements");
+            let entry = &ir.functions["gep"].basic_blocks["entry"];
+            assert_eq!(
+                entry.instructions[0].to_string(),
+                format!("%constant = getelem.ptr %p, 2, {element_type}")
+            );
+            let mir = from_ir(&ir, "gep").expect("lower composite elements");
+            mir.validate().expect("composite addresses verify");
+            let instructions =
+                &mir.get_function("gep").expect("gep function").blocks[0].instructions;
+            assert!(instructions.iter().any(|inst| matches!(
+                inst,
+                Instruction::Lea { offset, .. } if i64::from(*offset) == 2 * stride
+            )));
+            assert!(instructions.iter().any(|inst| matches!(
+                inst,
+                Instruction::IntBinary {
+                    op: IntBinOp::Mul,
+                    rhs: Operand::Immediate(Immediate::I64(size)),
+                    ..
+                } if *size == stride
+            )));
+        }
+    }
 
     #[test]
     fn constant_gep_preserves_pointer_width_offsets() {

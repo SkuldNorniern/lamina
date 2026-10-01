@@ -29,6 +29,12 @@ pub enum OwnedType {
     Tuple(Vec<OwnedType>),
 }
 
+impl From<PrimitiveType> for OwnedType {
+    fn from(ty: PrimitiveType) -> Self {
+        Self::Primitive(ty)
+    }
+}
+
 /// A named field inside an [`OwnedType::Struct`].
 #[derive(Debug, Clone)]
 pub struct OwnedStructField {
@@ -453,14 +459,14 @@ impl OwnedIRBuilder {
         result: impl AsRef<str>,
         array_ptr: &OwnedValue,
         index: &OwnedValue,
-        element_type: PrimitiveType,
+        element_type: impl Into<OwnedType>,
     ) -> &mut Self {
         let t = format!(
             "%{} = getelem.ptr {}, {}, {}",
             result.as_ref(),
             array_ptr,
             index,
-            element_type.as_str()
+            element_type.into()
         );
         self.push(t);
         self
@@ -816,6 +822,28 @@ mod tests {
         assert!(ir.contains("fn @add(i64 %a, i64 %b) -> i64"), "got: {}", ir);
         assert!(ir.contains("%result = add.i64 %a, %b"), "got: {}", ir);
         assert!(ir.contains("ret.i64 %result"), "got: {}", ir);
+    }
+
+    #[test]
+    fn element_pointer_text_preserves_composite_and_primitive_types() {
+        let mut builder = OwnedIRBuilder::new();
+        let array = OwnedValue::Variable("matrix".to_string());
+        let index = OwnedValue::I32(1);
+        builder
+            .function("row", OwnedType::Primitive(PrimitiveType::Ptr))
+            .getelementptr(
+                "row_ptr",
+                &array,
+                &index,
+                OwnedType::Array {
+                    element_type: Box::new(OwnedType::Primitive(PrimitiveType::I32)),
+                    size: 3,
+                },
+            )
+            .getelementptr("element", &array, &index, PrimitiveType::I32);
+        let text = builder.build_ir_text();
+        assert!(text.contains("%row_ptr = getelem.ptr %matrix, 1, [3 x i32]"));
+        assert!(text.contains("%element = getelem.ptr %matrix, 1, i32"));
     }
 
     #[test]

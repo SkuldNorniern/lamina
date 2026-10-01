@@ -300,6 +300,12 @@ pub enum Type<'a> {
     Void,
 }
 
+impl From<PrimitiveType> for Type<'_> {
+    fn from(ty: PrimitiveType) -> Self {
+        Self::Primitive(ty)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)] // Float comparison requires PartialEq only
 pub enum Literal<'a> {
     I8(i8),

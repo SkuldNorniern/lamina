@@ -725,10 +725,10 @@ pub enum Instruction<'a> {
     },
     GetElemPtr {
         // Get pointer to array element
-        result: Identifier<'a>,      // Result is always ptr
-        array_ptr: Value<'a>,        // Must be a ptr to an array or named array type
-        index: Value<'a>,            // Must be an integer type
-        element_type: PrimitiveType, // Type of elements in the array (for proper sizing)
+        result: Identifier<'a>, // Result is always ptr
+        array_ptr: Value<'a>,   // Must be a ptr to an array or named array type
+        index: Value<'a>,       // Must be an integer type
+        element_type: Type<'a>,
     },
     // Convert pointer to integer for pointer arithmetic
     PtrToInt {
@@ -1499,7 +1499,7 @@ mod tests {
             result: "elem_ptr",
             array_ptr: Value::Variable("array_data_ptr"),
             index: Value::Constant(Literal::I64(3)),
-            element_type: PrimitiveType::I64,
+            element_type: Type::Primitive(PrimitiveType::I64),
         };
         assert_eq!(
             format!("{}", instr12),

@@ -344,10 +344,9 @@ fn parse_getelem<'a>(
     let index = parse_value(state)?;
     state.expect_char(',')?;
     let element_type = if state.current_char() == Some('.') {
-        parse_primitive_type_suffix(state)?
+        Type::Primitive(parse_primitive_type_suffix(state)?)
     } else {
-        let type_str = state.parse_identifier_str()?;
-        parse_primitive_from_ident(state, type_str)?
+        parse_type(state)?
     };
 
     Ok(Instruction::GetElemPtr {
