@@ -271,6 +271,8 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "wasm64_unknown",
     "riscv32_unknown",
     "riscv64_unknown",
+    "ppc64_linux",
+    "ppc64_unknown",
     #[cfg(feature = "nightly")]
     "riscv128_unknown",
 ];
