@@ -6,7 +6,7 @@
 use crate::{
     builder::IRBuilder,
     instruction::Instruction,
-    types::{PrimitiveType, StructField, Value, struct_field_byte_offset},
+    types::{PrimitiveType, StructField, Type, Value, struct_field_byte_offset},
 };
 
 impl<'a> IRBuilder<'a> {
@@ -16,13 +16,13 @@ impl<'a> IRBuilder<'a> {
         result: &'a str,
         array_ptr: Value<'a>,
         index: Value<'a>,
-        element_type: PrimitiveType,
+        element_type: impl Into<Type<'a>>,
     ) -> &mut Self {
         self.inst(Instruction::GetElemPtr {
             result,
             array_ptr,
             index,
-            element_type,
+            element_type: element_type.into(),
         })
     }
 

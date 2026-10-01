@@ -539,10 +539,31 @@ mod tests {
         {
             assert_eq!(*result, "elem_ptr");
             assert_eq!(*index, i32(5));
-            assert_eq!(*element_type, PrimitiveType::I32);
+            assert_eq!(*element_type, Type::Primitive(PrimitiveType::I32));
         } else {
             panic!("Expected GetElemPtr instruction");
         }
+    }
+
+    #[test]
+    fn composite_element_pointer_preserves_type() {
+        let row = Type::Array {
+            element_type: Box::new(Type::Primitive(PrimitiveType::I32)),
+            size: 3,
+        };
+        let mut builder = IRBuilder::new();
+        builder
+            .function("row", Type::Primitive(PrimitiveType::Ptr))
+            .getelementptr("row_ptr", var("matrix"), i32(1), row.clone());
+        let module = builder.build();
+        let inst = &module.functions["row"].basic_blocks["entry"].instructions[0];
+        assert!(
+            matches!(inst, Instruction::GetElemPtr { element_type, .. } if *element_type == row)
+        );
+        assert_eq!(
+            inst.to_string(),
+            "%row_ptr = getelem.ptr %matrix, 1, [3 x i32]"
+        );
     }
 
     #[test]

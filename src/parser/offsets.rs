@@ -45,13 +45,11 @@ fn resolve_in_function<'a>(
                     element_type,
                     ..
                 } => {
-                    // The array's own element type is authoritative; the
-                    // written suffix cannot name a struct.
                     let elem = pointee_of(array_ptr, &pointee, types).and_then(|t| match t {
                         Type::Array { element_type, .. } => Some((*element_type).clone()),
                         _ => None,
                     });
-                    pointee.insert(*result, elem.unwrap_or(Type::Primitive(*element_type)));
+                    pointee.insert(*result, elem.unwrap_or_else(|| element_type.clone()));
                 }
                 Instruction::GetFieldPtr {
                     result,
