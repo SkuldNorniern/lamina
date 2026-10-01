@@ -22,7 +22,7 @@ fn @create_person(i64 %id, i64 %age) -> ptr {
 fn @factorial(i64 %n) -> i64 {
   entry:
     %is_zero = eq.i64 %n, 0
-    br %is_zero, @base_case, @recursive_case
+    br %is_zero, base_case, recursive_case
 
   base_case:
     ret.i64 1
@@ -38,11 +38,11 @@ fn @factorial(i64 %n) -> i64 {
 fn @fibonacci(i64 %n) -> i64 {
   entry:
     %is_zero = eq.i64 %n, 0
-    br %is_zero, @fib_base, @check_one
+    br %is_zero, fib_base, check_one
 
   check_one:
     %is_one = eq.i64 %n, 1
-    br %is_one, @fib_base, @fib_recursive
+    br %is_one, fib_base, fib_recursive
 
   fib_base:
     ret.i64 %n
@@ -63,18 +63,18 @@ fn @sum_array(ptr %arr, i64 %size) -> i64 {
   entry:
     %sum = add.i64 0, 0
     %i = add.i64 0, 0
-    br @loop_condition
+    jmp loop_condition
 
   loop_condition:
     %i_lt_size = lt.i64 %i, %size
-    br %i_lt_size, @loop_body, @loop_end
+    br %i_lt_size, loop_body, loop_end
 
   loop_body:
     %elem_ptr = getelem.ptr %arr, %i, i64
     %elem = load.i64 %elem_ptr
     %sum = add.i64 %sum, %elem
     %i = add.i64 %i, 1
-    br @loop_condition
+    jmp loop_condition
 
   loop_end:
     ret.i64 %sum
@@ -136,9 +136,9 @@ fn @number_to_digits(i64 %num) -> i64 {
     # For example, 123 -> 1*100 + 2*10 + 3*1 = 123
 
     %hundreds = div.i64 %num, 100
-    %remainder = mod.i64 %num, 100
+    %remainder = rem.i64 %num, 100
     %tens = div.i64 %remainder, 10
-    %ones = mod.i64 %remainder, 10
+    %ones = rem.i64 %remainder, 10
 
     # Reconstruct number from digits
     %hundreds_scaled = mul.i64 %hundreds, 100
