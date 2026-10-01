@@ -326,6 +326,9 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         }
     }
 
+    // Memory must follow the imports; loads and stores need it declared.
+    writeln!(writer, "  (memory (export \"memory\") 1)")?;
+
     for i in 0..global_count {
         writeln!(writer, "{}", abi.generate_global_decl(i))?;
     }
@@ -463,6 +466,8 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
+                    // wasm32 memory takes i32 addresses.
+                    writeln!(writer, "      i32.wrap_i64")?;
 
                     // Emit load instruction based on type
                     match ty {
@@ -521,6 +526,7 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
+                    writeln!(writer, "      i32.wrap_i64")?;
 
                     // Emit load instruction based on type (same as BaseOffset)
                     match ty {
@@ -574,6 +580,7 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
+                    writeln!(writer, "      i32.wrap_i64")?;
                 }
                 AddressMode::BaseIndexScale {
                     base,
@@ -600,6 +607,7 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
+                    writeln!(writer, "      i32.wrap_i64")?;
                 }
             }
 
