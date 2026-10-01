@@ -222,6 +222,12 @@ fn compile_single_function_ppc64(
                         next_slot += 1;
                     }
                 }
+                if let MirInst::StackAddr { slot, .. } = inst
+                    && !stack_slots.contains_key(slot)
+                {
+                    stack_slots.insert(*slot, Ppc64Frame::calculate_stack_offset(next_slot));
+                    next_slot += 1;
+                }
             }
         }
     }
@@ -741,6 +747,23 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             }
         }
+        MirInst::StackAddr { dst, slot } => {
+            let offset = stack_slots.get(slot).ok_or_else(|| {
+                LaminaError::CodegenError(CodegenError::UnsupportedFeature(format!(
+                    "PowerPC64 stack address {slot:?} has no frame slot"
+                )))
+            })?;
+            writeln!(writer, "    addi 3, 1, {offset}")?;
+            match dst {
+                Register::Virtual(vreg) => {
+                    store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
+                Register::Physical(phys) if phys.name != "3" => {
+                    writeln!(writer, "    mr {}, 3", phys.name)?;
+                }
+                Register::Physical(_) => {}
+            }
+        }
         MirInst::Lea { dst, base, offset } => {
             match base {
                 Register::Virtual(v) => {
@@ -905,6 +928,60 @@ mod tests {
             .build();
         m.add_function(f);
         m
+    }
+
+    #[test]
+    fn stack_address_reserves_slot_without_register_use() {
+        let slot = VirtualReg::gpr(10);
+        let address = Register::Virtual(VirtualReg::gpr(0));
+        let stack_addr = MirInst::StackAddr {
+            dst: address.clone(),
+            slot,
+        };
+        assert!(stack_addr.use_regs().is_empty());
+        let mut module = MirModule::new("stack_address");
+        module.add_function(
+            FunctionBuilder::new("address")
+                .returns(MirType::ptr())
+                .block("entry")
+                .instr(stack_addr)
+                .instr(MirInst::Ret {
+                    value: Some(Operand::Register(address)),
+                })
+                .build(),
+        );
+        for regalloc in [
+            RegallocStrategy::Incremental,
+            RegallocStrategy::LinearScanGlobal,
+            RegallocStrategy::GraphColorGlobal,
+        ] {
+            let settings = MirCodegenSettings {
+                regalloc,
+                ..Default::default()
+            };
+            let mut output = Vec::new();
+            generate_mir_ppc64_with_units_and_settings(
+                &module,
+                &mut output,
+                TargetOperatingSystem::Linux,
+                1,
+                &settings,
+            )
+            .unwrap();
+            let assembly = String::from_utf8(output).unwrap();
+            assert!(
+                assembly.contains("    stdu 1, -48(1)"),
+                "{regalloc:?}: {assembly}"
+            );
+            assert!(
+                assembly.contains("    addi 3, 1, 40"),
+                "{regalloc:?}: {assembly}"
+            );
+            assert!(
+                !assembly.contains("    ld 3, 40(1)"),
+                "{regalloc:?}: {assembly}"
+            );
+        }
     }
 
     #[test]
