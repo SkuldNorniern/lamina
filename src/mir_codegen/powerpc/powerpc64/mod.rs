@@ -480,7 +480,8 @@ fn emit_instruction_ppc64<W: Write>(
             ty,
         } => {
             let is_f32 = ty.size_bytes() == 4;
-            let suffix = if is_f32 { "s" } else { "d" };
+            // Double has no suffix on PowerPC; only single takes the s form.
+            let suffix = if is_f32 { "s" } else { "" };
             // Load float operands from integer stack slots into FPRs via memory.
             emit_load_fp_operand(lhs, writer, reg_alloc, stack_slots, "1", is_f32)?;
             emit_load_fp_operand(rhs, writer, reg_alloc, stack_slots, "2", is_f32)?;
@@ -884,11 +885,30 @@ fn emit_load_fp_operand<W: Write>(
                     )));
                 }
             };
-            writeln!(writer, "    li 11, {bits}")?;
+            emit_load_imm64(writer, 11, bits)?;
             writeln!(writer, "    std 11, -8(1)")?;
             writeln!(writer, "    {load_fp} {fpr}, -8(1)")?;
         }
     }
+    Ok(())
+}
+
+/// Materialise a full 64-bit constant. `li` only carries a signed 16-bit field.
+fn emit_load_imm64<W: Write>(writer: &mut W, reg: u8, value: i64) -> Result<(), LaminaError> {
+    if (-0x8000..0x8000).contains(&value) {
+        writeln!(writer, "    li {reg}, {value}")?;
+        return Ok(());
+    }
+    let v = value as u64;
+    let hi = ((v >> 48) & 0xffff) as u16;
+    let hm = ((v >> 32) & 0xffff) as u16;
+    let lm = ((v >> 16) & 0xffff) as u16;
+    let lo = (v & 0xffff) as u16;
+    writeln!(writer, "    lis {reg}, {}", hi as i16)?;
+    writeln!(writer, "    ori {reg}, {reg}, {hm}")?;
+    writeln!(writer, "    rldicr {reg}, {reg}, 32, 31")?;
+    writeln!(writer, "    oris {reg}, {reg}, {lm}")?;
+    writeln!(writer, "    ori {reg}, {reg}, {lo}")?;
     Ok(())
 }
 
