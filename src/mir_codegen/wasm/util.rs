@@ -32,10 +32,10 @@ pub fn load_operand_wasm<W: Write>(
                 writeln!(writer, "      i64.const {val}")?;
             }
             Immediate::F32(val) => {
-                writeln!(writer, "      f32.const {val}")?;
+                writeln!(writer, "      i64.const {}", u64::from(val.to_bits()))?;
             }
             Immediate::F64(val) => {
-                writeln!(writer, "      f64.const {val}")?;
+                writeln!(writer, "      i64.const {}", val.to_bits() as i64)?;
             }
         },
         #[allow(unreachable_patterns)]
