@@ -30,6 +30,17 @@ impl WasmABI {
         "(import \"console\" \"log\" (func $log (param i64)))"
     }
 
+    /// Runtime helpers the backend calls but does not emit bodies for.
+    pub fn get_runtime_imports(&self) -> &'static [&'static str] {
+        &[
+            "(import \"env\" \"writebyte\" (func $writebyte (param i64) (result i64)))",
+            "(import \"env\" \"readbyte\" (func $readbyte (result i64)))",
+            "(import \"env\" \"writeptr\" (func $writeptr (param i64) (result i64)))",
+            "(import \"env\" \"malloc\" (func $malloc (param i64) (result i64)))",
+            "(import \"env\" \"free\" (func $free (param i64)))",
+        ]
+    }
+
     /// Get the WASM type for MIR types (currently only i64).
     pub fn get_wasm_type(&self, ty: &MirType) -> &'static str {
         let _ = ty;

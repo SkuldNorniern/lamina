@@ -288,6 +288,9 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     // WASM module header
     writeln!(writer, "(module")?;
     writeln!(writer, "  {}", abi.get_print_import())?;
+    for decl in abi.get_runtime_imports() {
+        writeln!(writer, "  {decl}")?;
+    }
 
     // Emit import declarations for external functions
     for func_name in &module.external_functions {
