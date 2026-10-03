@@ -1,4 +1,4 @@
-use lamina_mir::{AddressMode, Function, Instruction, Operand, Register, VirtualReg};
+use lamina_mir::{Function, Instruction, Register, VirtualReg};
 use std::{
     collections::{HashMap, HashSet},
     hash::Hash,
@@ -140,186 +140,100 @@ pub struct LiveInterval {
 pub struct LinearScanAllocator;
 
 impl LinearScanAllocator {
-    /// Compute live intervals for all virtual registers in a function.
-    ///
-    /// Performs a single forward pass over all blocks (in `function.blocks`
-    /// order) counting instructions globally.  Each `VirtualReg`:
-    /// - `start` is set at its first *definition*,
-    /// - `end` is updated at every *use*.
-    ///
-    /// Function parameters are treated as defined at instruction 0.
+    /// Compute interval hulls from instruction operands and control-flow liveness.
     pub fn compute_intervals(function: &Function) -> Vec<LiveInterval> {
         let mut intervals: HashMap<VirtualReg, LiveInterval> = HashMap::new();
-        let mut pos: usize = 0;
-
-        // Parameters are live from the start of the function.
-        for param in &function.sig.params {
-            if let Register::Virtual(v) = &param.reg {
-                intervals.entry(*v).or_insert(LiveInterval {
-                    vreg: *v,
-                    start: 0,
-                    end: 0,
-                });
-            }
-        }
-
-        for block in &function.blocks {
-            for instr in &block.instructions {
-                Self::scan_instruction(instr, pos, &mut intervals);
-                pos += 1;
-            }
-        }
-
-        let mut result: Vec<LiveInterval> = intervals.into_values().collect();
-        result.sort_by_key(|i| i.start);
-        result
-    }
-
-    fn scan_instruction(
-        instr: &Instruction,
-        pos: usize,
-        intervals: &mut HashMap<VirtualReg, LiveInterval>,
-    ) {
-        // Record definition (sets `start` if unseen, extends `end` to `pos`).
-        if let Some(def) = Self::def_reg(instr)
-            && let Register::Virtual(v) = def
-        {
-            let entry = intervals.entry(v).or_insert(LiveInterval {
-                vreg: v,
+        let mut positions = Vec::new();
+        let mut uses = Vec::new();
+        let mut defs = Vec::new();
+        let mut pos = 0;
+        let record = |intervals: &mut HashMap<VirtualReg, LiveInterval>, vreg, pos| {
+            let interval = intervals.entry(vreg).or_insert(LiveInterval {
+                vreg,
                 start: pos,
                 end: pos,
             });
-            // If we see a re-definition extend the interval to cover this point.
-            if pos > entry.end {
-                entry.end = pos;
-            }
-        }
-
-        // Record all uses (extend `end`).
-        for used in Self::use_regs(instr) {
-            if let Register::Virtual(v) = used {
-                let entry = intervals.entry(v).or_insert(LiveInterval {
-                    vreg: v,
-                    start: pos,
-                    end: pos,
-                });
-                if pos > entry.end {
-                    entry.end = pos;
-                }
-            }
-        }
-    }
-
-    /// Returns the single register *defined* by an instruction (if any).
-    fn def_reg(instr: &Instruction) -> Option<Register> {
-        match instr {
-            Instruction::Copy { dst, .. }
-            | Instruction::IntBinary { dst, .. }
-            | Instruction::FloatBinary { dst, .. }
-            | Instruction::FloatUnary { dst, .. }
-            | Instruction::IntCmp { dst, .. }
-            | Instruction::FloatCmp { dst, .. }
-            | Instruction::Select { dst, .. }
-            | Instruction::Load { dst, .. }
-            | Instruction::IntConvert { dst, .. }
-            | Instruction::StackAddr { dst, .. }
-            | Instruction::Lea { dst, .. }
-            | Instruction::VectorOp { dst, .. } => Some(dst.clone()),
-
-            Instruction::Call { ret: Some(ret), .. } => Some(ret.clone()),
-
-            #[cfg(feature = "nightly")]
-            Instruction::SimdBinary { dst, .. }
-            | Instruction::SimdUnary { dst, .. }
-            | Instruction::SimdTernary { dst, .. }
-            | Instruction::SimdShuffle { dst, .. }
-            | Instruction::SimdExtract { dst, .. }
-            | Instruction::SimdInsert { dst, .. }
-            | Instruction::SimdLoad { dst, .. } => Some(dst.clone()),
-
-            #[cfg(feature = "nightly")]
-            Instruction::AtomicLoad { dst, .. }
-            | Instruction::AtomicBinary { dst, .. }
-            | Instruction::AtomicCompareExchange { dst, .. } => Some(dst.clone()),
-
-            _ => None,
-        }
-    }
-
-    /// Returns all registers *used* (read) by an instruction.
-    fn use_regs(instr: &Instruction) -> Vec<Register> {
-        let mut uses = Vec::new();
-
-        let push_op = |uses: &mut Vec<Register>, op: &Operand| {
-            if let Operand::Register(r) = op {
-                uses.push(r.clone());
-            }
+            interval.start = interval.start.min(pos);
+            interval.end = interval.end.max(pos);
         };
-
-        let push_addr = |uses: &mut Vec<Register>, addr: &AddressMode| match addr {
-            AddressMode::BaseOffset { base, .. } => uses.push(base.clone()),
-            AddressMode::BaseIndexScale { base, index, .. } => {
-                uses.push(base.clone());
-                uses.push(index.clone());
+        for param in &function.sig.params {
+            if let Register::Virtual(vreg) = param.reg {
+                record(&mut intervals, vreg, 0);
             }
-        };
-
-        match instr {
-            Instruction::Copy { src, .. } => push_op(&mut uses, src),
-
-            Instruction::IntBinary { lhs, rhs, .. }
-            | Instruction::FloatBinary { lhs, rhs, .. }
-            | Instruction::IntCmp { lhs, rhs, .. }
-            | Instruction::FloatCmp { lhs, rhs, .. } => {
-                push_op(&mut uses, lhs);
-                push_op(&mut uses, rhs);
-            }
-
-            Instruction::FloatUnary { src, .. } => push_op(&mut uses, src),
-
-            Instruction::Select {
-                cond,
-                true_val,
-                false_val,
-                ..
-            } => {
-                uses.push(cond.clone());
-                push_op(&mut uses, true_val);
-                push_op(&mut uses, false_val);
-            }
-
-            Instruction::Load { addr, .. } => push_addr(&mut uses, addr),
-
-            Instruction::Store { src, addr, .. } => {
-                push_op(&mut uses, src);
-                push_addr(&mut uses, addr);
-            }
-
-            Instruction::IntConvert { src, .. } => push_op(&mut uses, src),
-            Instruction::Lea { base, .. } => uses.push(base.clone()),
-
-            Instruction::VectorOp { operands, .. } => {
-                for op in operands {
-                    push_op(&mut uses, op);
-                }
-            }
-
-            Instruction::Call { args, .. } | Instruction::TailCall { args, .. } => {
-                for op in args {
-                    push_op(&mut uses, op);
-                }
-            }
-
-            Instruction::Ret { value: Some(v) } => push_op(&mut uses, v),
-
-            Instruction::Br { cond, .. } | Instruction::Switch { value: cond, .. } => {
-                uses.push(cond.clone());
-            }
-
-            _ => {}
         }
-
-        uses
+        for block in &function.blocks {
+            let start = pos;
+            let mut block_uses = HashSet::new();
+            let mut block_defs = HashSet::new();
+            for instr in &block.instructions {
+                let mut used: Vec<_> = instr
+                    .use_regs()
+                    .into_iter()
+                    .filter_map(|reg| {
+                        if let Register::Virtual(vreg) = reg {
+                            Some(*vreg)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                if let Instruction::StackAddr { slot, .. } = instr {
+                    used.push(*slot);
+                }
+                for vreg in used {
+                    record(&mut intervals, vreg, pos);
+                    if !block_defs.contains(&vreg) {
+                        block_uses.insert(vreg);
+                    }
+                }
+                if let Some(Register::Virtual(vreg)) = instr.def_reg() {
+                    record(&mut intervals, *vreg, pos);
+                    block_defs.insert(*vreg);
+                }
+                pos += 1;
+            }
+            positions.push((start, pos.saturating_sub(1).max(start)));
+            uses.push(block_uses);
+            defs.push(block_defs);
+        }
+        let labels: HashMap<_, _> = function
+            .blocks
+            .iter()
+            .enumerate()
+            .map(|(index, block)| (block.label.as_str(), index))
+            .collect();
+        let mut live_in = vec![HashSet::new(); function.blocks.len()];
+        let mut live_out = live_in.clone();
+        loop {
+            let mut changed = false;
+            for (index, block) in function.blocks.iter().enumerate().rev() {
+                let out: HashSet<_> = block
+                    .successors()
+                    .iter()
+                    .filter_map(|label| labels.get(label))
+                    .flat_map(|successor| live_in[*successor].iter().copied())
+                    .collect();
+                let mut input = uses[index].clone();
+                input.extend(out.difference(&defs[index]).copied());
+                changed |= input != live_in[index] || out != live_out[index];
+                live_in[index] = input;
+                live_out[index] = out;
+            }
+            if !changed {
+                break;
+            }
+        }
+        for (index, (start, end)) in positions.into_iter().enumerate() {
+            for vreg in &live_in[index] {
+                record(&mut intervals, *vreg, start);
+            }
+            for vreg in &live_out[index] {
+                record(&mut intervals, *vreg, end);
+            }
+        }
+        let mut result: Vec<_> = intervals.into_values().collect();
+        result.sort_by_key(|interval| (interval.start, interval.vreg));
+        result
     }
 
     /// Run the linear scan allocation algorithm.
@@ -533,8 +447,8 @@ where
 mod tests {
     use super::*;
     use lamina_mir::{
-        Block, FunctionBuilder, Instruction, IntBinOp, MirType, Operand, Register, ScalarType,
-        VirtualReg,
+        Block, FunctionBuilder, Immediate, Instruction, IntBinOp, MirType, Operand, Register,
+        ScalarType, VirtualReg,
     };
 
     fn make_add_function() -> Function {
@@ -613,6 +527,73 @@ mod tests {
         let ids: Vec<u32> = intervals.iter().map(|interval| interval.vreg.id).collect();
         assert!(ids.contains(&0));
         assert!(ids.contains(&1));
+    }
+
+    #[test]
+    fn intervals_cover_values_live_across_back_edges() {
+        let invariant = VirtualReg::gpr(0);
+        let temporary = VirtualReg::gpr(1);
+        let mut function = FunctionBuilder::new("loop")
+            .param(Register::Virtual(invariant), MirType::i64())
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "header".into(),
+            })
+            .build();
+        let mut header = Block::new("header");
+        header.push(Instruction::Br {
+            cond: Register::Virtual(invariant),
+            true_target: "body".into(),
+            false_target: "exit".into(),
+        });
+        function.add_block(header);
+        let mut exit = Block::new("exit");
+        exit.push(Instruction::Ret { value: None });
+        function.add_block(exit);
+        let mut body = Block::new("body");
+        body.push(Instruction::Copy {
+            ty: MirType::i64(),
+            dst: Register::Virtual(temporary),
+            src: Operand::Immediate(Immediate::I64(42)),
+        });
+        body.push(Instruction::Jmp {
+            target: "header".into(),
+        });
+        function.add_block(body);
+        let intervals = LinearScanAllocator::compute_intervals(&function);
+        let live = intervals
+            .iter()
+            .find(|interval| interval.vreg == invariant)
+            .expect("invariant");
+        assert_eq!((live.start, live.end), (0, 4));
+        for plan in [
+            LinearScanAllocator::allocate(&intervals, &["r12"]),
+            GraphColorAllocator::allocate(&intervals, &["r12"]),
+        ] {
+            assert!(
+                matches!(plan[&invariant], Allocation::Spill(_))
+                    || matches!(plan[&temporary], Allocation::Spill(_))
+            );
+        }
+    }
+
+    #[test]
+    fn stack_address_slots_participate_in_intervals() {
+        let slot = VirtualReg::gpr(0);
+        let pointer = VirtualReg::gpr(1);
+        let function = FunctionBuilder::new("address")
+            .block("entry")
+            .instr(Instruction::StackAddr {
+                dst: Register::Virtual(pointer),
+                slot,
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(Register::Virtual(pointer))),
+            })
+            .build();
+        let intervals = LinearScanAllocator::compute_intervals(&function);
+        assert_eq!(intervals.len(), 2);
+        assert!(intervals.iter().any(|interval| interval.vreg == slot));
     }
 
     #[test]
