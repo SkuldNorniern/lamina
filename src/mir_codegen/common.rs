@@ -92,9 +92,9 @@ pub(super) fn integer_conversion(instruction: &Instruction) -> Option<Vec<Instru
         return None;
     };
     let width = from.size_bytes().min(to.size_bytes()) * 8;
-    if *signed {
+    let mut operations = if *signed {
         let shift = (64 - width) as i64;
-        Some(vec![
+        vec![
             Instruction::IntBinary {
                 op: IntBinOp::Shl,
                 ty: MirType::i64(),
@@ -109,22 +109,30 @@ pub(super) fn integer_conversion(instruction: &Instruction) -> Option<Vec<Instru
                 lhs: Operand::Register(dst.clone()),
                 rhs: Operand::Immediate(Immediate::I64(shift)),
             },
-        ])
+        ]
     } else if width == 64 {
-        Some(vec![Instruction::Copy {
+        vec![Instruction::Copy {
             ty: MirType::i64(),
             dst: dst.clone(),
             src: src.clone(),
-        }])
+        }]
     } else {
-        Some(vec![Instruction::IntBinary {
+        vec![Instruction::IntBinary {
             op: IntBinOp::And,
             ty: MirType::i64(),
             dst: dst.clone(),
             lhs: src.clone(),
             rhs: Operand::Immediate(Immediate::I64(((1u64 << width) - 1) as i64)),
-        }])
+        }]
+    };
+    if to.size_bytes() < 8 {
+        operations.push(Instruction::Copy {
+            ty: *to,
+            dst: dst.clone(),
+            src: Operand::Register(dst.clone()),
+        });
     }
+    Some(operations)
 }
 
 /// Base structure for codegen backends with common fields.
