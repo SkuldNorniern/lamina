@@ -6,10 +6,8 @@
 pub mod constants;
 pub mod util;
 
-use crate::mir_codegen::common::integer_conversion;
-
 use constants::{fd, linux, macos, stack, windows};
-use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame};
+use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame, extend_integer, register_for_size};
 use std::{
     collections::{BTreeSet, HashMap},
     io::{Error, Write},
@@ -397,21 +395,27 @@ fn emit_instruction_x86_64(
         *debug_line = debug_line.saturating_add(1);
         writeln!(writer, "    .loc 1 {} 0", *debug_line)?;
     }
-    if let Some(operations) = integer_conversion(inst) {
-        for operation in operations {
-            emit_instruction_x86_64(
-                &operation,
-                writer,
-                reg_alloc,
-                stack_slots,
-                stack_size,
-                saved_regs,
-                target_os,
-                func_name,
-                def_regs,
-                settings,
-                debug_line,
-            )?;
+    if let MirInst::IntConvert {
+        from,
+        to,
+        signed,
+        dst,
+        src,
+    } = inst
+    {
+        load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
+        extend_integer(
+            writer,
+            "rax",
+            from.size_bytes().min(to.size_bytes()),
+            *signed,
+        )?;
+        if to.size_bytes() < 8 {
+            extend_integer(writer, "rax", to.size_bytes(), true)?;
+        }
+        match dst {
+            Register::Virtual(vreg) => store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?,
+            Register::Physical(physical) => writeln!(writer, "    movq %rax, %{}", physical.name)?,
         }
         return Ok(());
     }
@@ -438,7 +442,7 @@ fn emit_instruction_x86_64(
             dst,
             lhs,
             rhs,
-            ty: _,
+            ty,
         } => {
             // Get dst physical register if available
             let dst_phys = match dst {
@@ -452,6 +456,9 @@ fn emit_instruction_x86_64(
                     IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr => {
                         // Load lhs into dp
                         load_operand_to_register(lhs, writer, reg_alloc, stack_slots, dp)?;
+                        if matches!(op, IntBinOp::LShr) {
+                            extend_integer(writer, dp, ty.size_bytes(), false)?;
+                        }
                         match rhs {
                             Operand::Immediate(imm) => {
                                 let sv: u64 = match imm {
@@ -494,6 +501,10 @@ fn emit_instruction_x86_64(
                         // Division always goes through rax/rdx; use rcx for divisor to avoid conflicts
                         load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "rax")?;
                         load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
+                        if matches!(op, IntBinOp::UDiv | IntBinOp::URem) {
+                            extend_integer(writer, "rax", ty.size_bytes(), false)?;
+                            extend_integer(writer, "rcx", ty.size_bytes(), false)?;
+                        }
                         match op {
                             IntBinOp::SDiv => {
                                 writeln!(writer, "    cqto")?;
@@ -608,9 +619,13 @@ fn emit_instruction_x86_64(
                         // No store needed — result already in dp!
                     }
                 }
+                extend_integer(writer, dp, ty.size_bytes(), true)?;
             } else {
                 // No physical register for dst — fall back to rax accumulator path
                 load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
+                if matches!(op, IntBinOp::LShr) {
+                    extend_integer(writer, "rax", ty.size_bytes(), false)?;
+                }
 
                 match op {
                     IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr => match rhs {
@@ -650,6 +665,10 @@ fn emit_instruction_x86_64(
                     },
                     IntBinOp::SDiv | IntBinOp::UDiv | IntBinOp::SRem | IntBinOp::URem => {
                         load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "rcx")?;
+                        if matches!(op, IntBinOp::UDiv | IntBinOp::URem) {
+                            extend_integer(writer, "rax", ty.size_bytes(), false)?;
+                            extend_integer(writer, "rcx", ty.size_bytes(), false)?;
+                        }
                         match op {
                             IntBinOp::SDiv => {
                                 writeln!(writer, "    cqto")?;
@@ -692,6 +711,7 @@ fn emit_instruction_x86_64(
                     }
                 }
 
+                extend_integer(writer, "rax", ty.size_bytes(), true)?;
                 if let Register::Virtual(vreg) = dst {
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
@@ -702,12 +722,19 @@ fn emit_instruction_x86_64(
             dst,
             lhs,
             rhs,
-            ty: _,
+            ty,
         } => {
             load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
             let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
 
+            if matches!(
+                op,
+                IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
+            ) {
+                extend_integer(writer, "rax", ty.size_bytes(), false)?;
+                extend_integer(writer, scratch, ty.size_bytes(), false)?;
+            }
             writeln!(writer, "    cmpq %{scratch}, %rax")?;
             match op {
                 IntCmpOp::Eq => writeln!(writer, "    sete %al")?,
@@ -1365,17 +1392,12 @@ fn rax_for(ty: &MirType) -> &'static str {
     }
 }
 
-/// Load through `rax`, reading only the bytes the type occupies.
-///
-/// Narrow loads zero-extend. Signedness lives in the operations (SDiv against UDiv,
-/// AShr against LShr) rather than in MirType, so a load cannot know which to pick, and
-/// zero-extension at least leaves the register with a defined value. Writing `movl`
-/// into `eax` already clears the top half.
+/// Narrow integers in 64-bit registers are sign-extended; loads read only their type width.
 fn load_insn_for(ty: &MirType) -> &'static str {
     match ty.size_bytes() {
-        1 => "movzbq (%rax), %rax",
-        2 => "movzwq (%rax), %rax",
-        4 => "movl (%rax), %eax",
+        1 => "movsbq (%rax), %rax",
+        2 => "movswq (%rax), %rax",
+        4 => "movslq (%rax), %rax",
         _ => "movq (%rax), %rax",
     }
 }
@@ -1394,9 +1416,9 @@ fn load_copy_operand_to_rax(
                 emit_copy_register_load(writer, physical, size)?;
             } else if let Some(offset) = stack_slots.get(vreg) {
                 match size {
-                    1 => writeln!(writer, "    movzbq {offset}(%rbp), %rax")?,
-                    2 => writeln!(writer, "    movzwq {offset}(%rbp), %rax")?,
-                    4 => writeln!(writer, "    movl {offset}(%rbp), %eax")?,
+                    1 => writeln!(writer, "    movsbq {offset}(%rbp), %rax")?,
+                    2 => writeln!(writer, "    movswq {offset}(%rbp), %rax")?,
+                    4 => writeln!(writer, "    movslq {offset}(%rbp), %rax")?,
                     _ => writeln!(writer, "    movq {offset}(%rbp), %rax")?,
                 }
             } else {
@@ -1417,16 +1439,9 @@ fn load_copy_operand_to_rax(
                 Immediate::F32(value) => u64::from(value.to_bits()),
                 Immediate::F64(value) => value.to_bits(),
             };
-            if size <= 4 {
-                let mask = if size == 4 {
-                    u64::from(u32::MAX)
-                } else {
-                    (1u64 << (size * 8)) - 1
-                };
-                writeln!(writer, "    movl ${}, %eax", bits & mask)?;
-            } else {
-                writeln!(writer, "    movq ${}, %rax", bits as i64)?;
-            }
+            let shift = 64 - size * 8;
+            let value = ((bits << shift) as i64) >> shift;
+            writeln!(writer, "    movq ${value}, %rax")?;
         }
     }
     Ok(())
@@ -1437,74 +1452,18 @@ fn emit_copy_register_load(
     register: &str,
     size: usize,
 ) -> Result<(), LaminaError> {
-    let narrowed = x86_register_for_size(register, size).ok_or_else(|| {
+    let narrowed = register_for_size(register, size).ok_or_else(|| {
         LaminaError::ValidationError(format!(
             "x86_64 backend cannot select a {size}-byte alias for register {register}"
         ))
     })?;
     match size {
-        1 => writeln!(writer, "    movzbq %{narrowed}, %rax")?,
-        2 => writeln!(writer, "    movzwq %{narrowed}, %rax")?,
-        4 => writeln!(writer, "    movl %{narrowed}, %eax")?,
+        1 => writeln!(writer, "    movsbq %{narrowed}, %rax")?,
+        2 => writeln!(writer, "    movswq %{narrowed}, %rax")?,
+        4 => writeln!(writer, "    movslq %{narrowed}, %rax")?,
         _ => writeln!(writer, "    movq %{narrowed}, %rax")?,
     }
     Ok(())
-}
-
-fn x86_register_for_size(register: &str, size: usize) -> Option<String> {
-    let alias = match (register, size) {
-        ("rax", 1) => "al".to_string(),
-        ("rax", 2) => "ax".to_string(),
-        ("rax", 4) => "eax".to_string(),
-        ("rbx", 1) => "bl".to_string(),
-        ("rbx", 2) => "bx".to_string(),
-        ("rbx", 4) => "ebx".to_string(),
-        ("rcx", 1) => "cl".to_string(),
-        ("rcx", 2) => "cx".to_string(),
-        ("rcx", 4) => "ecx".to_string(),
-        ("rdx", 1) => "dl".to_string(),
-        ("rdx", 2) => "dx".to_string(),
-        ("rdx", 4) => "edx".to_string(),
-        ("rsi", 1) => "sil".to_string(),
-        ("rsi", 2) => "si".to_string(),
-        ("rsi", 4) => "esi".to_string(),
-        ("rdi", 1) => "dil".to_string(),
-        ("rdi", 2) => "di".to_string(),
-        ("rdi", 4) => "edi".to_string(),
-        ("rbp", 1) => "bpl".to_string(),
-        ("rbp", 2) => "bp".to_string(),
-        ("rbp", 4) => "ebp".to_string(),
-        ("rsp", 1) => "spl".to_string(),
-        ("rsp", 2) => "sp".to_string(),
-        ("rsp", 4) => "esp".to_string(),
-        (name, 1)
-            if matches!(
-                name,
-                "r8" | "r9" | "r10" | "r11" | "r12" | "r13" | "r14" | "r15"
-            ) =>
-        {
-            format!("{name}b")
-        }
-        (name, 2)
-            if matches!(
-                name,
-                "r8" | "r9" | "r10" | "r11" | "r12" | "r13" | "r14" | "r15"
-            ) =>
-        {
-            format!("{name}w")
-        }
-        (name, 4)
-            if matches!(
-                name,
-                "r8" | "r9" | "r10" | "r11" | "r12" | "r13" | "r14" | "r15"
-            ) =>
-        {
-            format!("{name}d")
-        }
-        (name, 8) => name.to_string(),
-        _ => return None,
-    };
-    Some(alias)
 }
 
 #[cfg(test)]
