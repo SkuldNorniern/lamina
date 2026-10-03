@@ -15,8 +15,8 @@ use crate::{
     error::LaminaError,
     mir::{
         AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
-        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, Signature, VirtualReg,
-        register::RegisterClass,
+        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
+        VirtualReg, register::RegisterClass,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
@@ -335,27 +335,17 @@ fn emit_block<W: Write>(
                     )));
                 }
                 let scratch = ra.alloc_scratch().unwrap_or("x19");
-                let value = if ty.size_bytes() <= 4 {
-                    w_alias(scratch)
-                } else {
-                    x_alias(scratch)
-                };
+                let value = x_alias(scratch);
                 match src {
                     Operand::Immediate(immediate) => {
-                        let bits = imm_to_u64(immediate);
-                        let masked = match ty.size_bytes() {
-                            1 => bits & u64::from(u8::MAX),
-                            2 => bits & u64::from(u16::MAX),
-                            4 => bits & u64::from(u32::MAX),
-                            _ => bits,
-                        };
-                        emit_mov_imm64(w, &value, masked)?;
+                        emit_mov_imm64(w, &value, imm_to_u64(immediate))?
                     }
                     Operand::Register(register) => {
-                        load_copy_reg_to(w, register, &value, ty.size_bytes(), frame, ra)?;
+                        load_copy_reg_to(w, register, &value, ty.size_bytes(), frame, ra)?
                     }
                 }
-                store_copy_result(w, dst, &value, ty.size_bytes(), frame, ra)?;
+                extend_integer(w, &value, ty, true)?;
+                store_result(w, dst, &value, frame, ra)?;
                 ra.free_scratch(scratch);
             }
             MirInst::IntBinary {
@@ -369,100 +359,79 @@ fn emit_block<W: Write>(
                 let s_r = ra.alloc_scratch().unwrap_or("x20");
                 let s_d = ra.alloc_scratch().unwrap_or("x21");
                 emit_materialize_operand(w, lhs, s_l, frame, ra)?;
-                let is32 = ty.size_bytes() == 4;
-                let dl = if is32 { w_alias(s_d) } else { x_alias(s_d) };
-                let rl = if is32 { w_alias(s_l) } else { x_alias(s_l) };
-                let _lhs_is_reg = matches!(lhs, Operand::Register(_));
+                emit_materialize_operand(w, rhs, s_r, frame, ra)?;
+                if matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr) {
+                    extend_integer(w, s_l, ty, false)?;
+                    extend_integer(w, s_r, ty, false)?;
+                }
+                let dl = x_alias(s_d);
+                let rl = x_alias(s_l);
+                let rr = x_alias(s_r);
                 match op {
                     IntBinOp::Add => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    add {dl}, {rl}, {rr}")?;
                     }
                     IntBinOp::Sub => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sub {dl}, {rl}, {rr}")?;
                     }
                     IntBinOp::Mul => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    mul {dl}, {rl}, {rr}")?;
                     }
                     IntBinOp::UDiv => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
                     }
                     IntBinOp::SDiv => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
                     }
                     IntBinOp::URem => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    udiv {dl}, {rl}, {rr}")?;
                         writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
                     }
                     IntBinOp::SRem => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    sdiv {dl}, {rl}, {rr}")?;
                         writeln!(w, "    msub {dl}, {dl}, {rr}, {rl}")?;
                     }
                     IntBinOp::And => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    and {dl}, {rl}, {rr}")?;
                     }
                     IntBinOp::Or => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    orr {dl}, {rl}, {rr}")?;
                     }
                     IntBinOp::Xor => {
-                        emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                        let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                         writeln!(w, "    eor {dl}, {rl}, {rr}")?;
                     }
                     IntBinOp::Shl => match rhs {
                         Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
-                            sh &= if is32 { 31 } else { 63 };
+                            sh &= 63;
                             writeln!(w, "    lsl {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
-                            emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                            let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                             writeln!(w, "    lslv {dl}, {rl}, {rr}")?;
                         }
                     },
                     IntBinOp::LShr => match rhs {
                         Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
-                            sh &= if is32 { 31 } else { 63 };
+                            sh &= 63;
                             writeln!(w, "    lsr {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
-                            emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                            let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                             writeln!(w, "    lsrv {dl}, {rl}, {rr}")?;
                         }
                     },
                     IntBinOp::AShr => match rhs {
                         Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
-                            sh &= if is32 { 31 } else { 63 };
+                            sh &= 63;
                             writeln!(w, "    asr {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
-                            emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                            let rr = if is32 { w_alias(s_r) } else { x_alias(s_r) };
                             writeln!(w, "    asrv {dl}, {rl}, {rr}")?;
                         }
                     },
                 }
+                extend_integer(w, s_d, ty, true)?;
                 store_result(w, dst, &x_alias(s_d), frame, ra)?;
                 ra.free_scratch(s_l);
                 ra.free_scratch(s_r);
@@ -551,11 +520,14 @@ fn emit_block<W: Write>(
                 let s_d = ra.alloc_scratch().unwrap_or("x21");
                 emit_materialize_operand(w, lhs, s_l, frame, ra)?;
                 emit_materialize_operand(w, rhs, s_r, frame, ra)?;
-                if ty.size_bytes() == 4 {
-                    writeln!(w, "    cmp {}, {}", w_alias(s_l), w_alias(s_r))?;
-                } else {
-                    writeln!(w, "    cmp {}, {}", x_alias(s_l), x_alias(s_r))?;
+                if matches!(
+                    op,
+                    IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
+                ) {
+                    extend_integer(w, s_l, ty, false)?;
+                    extend_integer(w, s_r, ty, false)?;
                 }
+                writeln!(w, "    cmp {}, {}", x_alias(s_l), x_alias(s_r))?;
                 let cond = match op {
                     IntCmpOp::Eq => "eq",
                     IntCmpOp::Ne => "ne",
@@ -619,9 +591,9 @@ fn emit_block<W: Write>(
                 let t = ra.alloc_scratch().unwrap_or("x20");
                 materialize_address(w, addr, a, frame, ra)?;
                 match ty.size_bytes() {
-                    1 => writeln!(w, "    ldrb {}, [{}]", w_alias(t), a)?,
-                    2 => writeln!(w, "    ldrh {}, [{}]", w_alias(t), a)?,
-                    4 => writeln!(w, "    ldr {}, [{}]", w_alias(t), a)?,
+                    1 => writeln!(w, "    ldrsb {}, [{}]", x_alias(t), a)?,
+                    2 => writeln!(w, "    ldrsh {}, [{}]", x_alias(t), a)?,
+                    4 => writeln!(w, "    ldrsw {}, [{}]", x_alias(t), a)?,
                     8 => writeln!(w, "    ldr {}, [{}]", x_alias(t), a)?,
                     _ => writeln!(w, "    // Unhandled load size: {}", ty.size_bytes())?,
                 }
@@ -1209,18 +1181,15 @@ fn load_copy_reg_to<W: Write>(
     match register {
         Register::Virtual(vreg) => {
             if let Some(physical) = ra.get_mapping_for(vreg) {
-                let source = if size <= 4 {
-                    w_alias(physical)
-                } else {
-                    x_alias(physical)
-                };
+                let source = x_alias(physical);
                 if source != dest {
                     writeln!(w, "    mov {dest}, {source}")?;
                 }
             } else if let Some(offset) = frame.slot_of(register) {
                 let mnemonic = match size {
-                    1 => "ldurb",
-                    2 => "ldurh",
+                    1 => "ldursb",
+                    2 => "ldursh",
+                    4 => "ldursw",
                     _ => "ldur",
                 };
                 if (-256..=255).contains(&offset) {
@@ -1230,8 +1199,9 @@ fn load_copy_reg_to<W: Write>(
                     let address = allocated.unwrap_or("x12");
                     emit_frame_slot_address(w, address, offset)?;
                     let mnemonic = match size {
-                        1 => "ldrb",
-                        2 => "ldrh",
+                        1 => "ldrsb",
+                        2 => "ldrsh",
+                        4 => "ldrsw",
                         _ => "ldr",
                     };
                     writeln!(w, "    {mnemonic} {dest}, [{address}]")?;
@@ -1246,74 +1216,9 @@ fn load_copy_reg_to<W: Write>(
             }
         }
         Register::Physical(physical) => {
-            let source = if size <= 4 {
-                w_alias(physical.name)
-            } else {
-                x_alias(physical.name)
-            };
+            let source = x_alias(physical.name);
             if source != dest {
                 writeln!(w, "    mov {dest}, {source}")?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn store_copy_result<W: Write>(
-    w: &mut W,
-    dst: &Register,
-    src: &str,
-    size: usize,
-    frame: &FrameMap,
-    ra: &mut A64RegAlloc,
-) -> Result<(), LaminaError> {
-    match dst {
-        Register::Virtual(vreg) => {
-            if let Some(physical) = ra.get_mapping_for(vreg) {
-                let target = if size <= 4 {
-                    w_alias(physical)
-                } else {
-                    x_alias(physical)
-                };
-                if target != src {
-                    writeln!(w, "    mov {target}, {src}")?;
-                }
-            } else if let Some(offset) = frame.slot_of(dst) {
-                let mnemonic = match size {
-                    1 => "sturb",
-                    2 => "sturh",
-                    _ => "stur",
-                };
-                if (-256..=255).contains(&offset) {
-                    writeln!(w, "    {mnemonic} {src}, [x29, #{offset}]")?;
-                } else {
-                    let allocated = ra.alloc_scratch();
-                    let address = allocated.unwrap_or("x12");
-                    emit_frame_slot_address(w, address, offset)?;
-                    let mnemonic = match size {
-                        1 => "strb",
-                        2 => "strh",
-                        _ => "str",
-                    };
-                    writeln!(w, "    {mnemonic} {src}, [{address}]")?;
-                    if allocated.is_some() {
-                        ra.free_scratch(address);
-                    }
-                }
-            } else {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    format!("AArch64 Copy destination {dst} has no register or stack slot"),
-                )));
-            }
-        }
-        Register::Physical(physical) => {
-            let target = if size <= 4 {
-                w_alias(physical.name)
-            } else {
-                x_alias(physical.name)
-            };
-            if target != src {
-                writeln!(w, "    mov {target}, {src}")?;
             }
         }
     }
@@ -1532,6 +1437,24 @@ impl<'a> Codegen for AArch64Codegen<'a> {
             "Binary emission not implemented for AArch64 MIR backend".into(),
         ))
     }
+}
+
+fn extend_integer(
+    w: &mut impl Write,
+    register: &str,
+    ty: &MirType,
+    signed: bool,
+) -> Result<(), LaminaError> {
+    if !matches!(
+        ty,
+        MirType::Scalar(ScalarType::I8 | ScalarType::I16 | ScalarType::I32)
+    ) {
+        return Ok(());
+    }
+    let bits = ty.size_bytes() * 8;
+    let instruction = if signed { "sbfx" } else { "ubfx" };
+    writeln!(w, "    {instruction} {register}, {register}, #0, #{bits}")?;
+    Ok(())
 }
 
 #[cfg(test)]
