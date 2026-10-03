@@ -12,7 +12,7 @@ use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame};
 use std::{
     collections::{BTreeSet, HashMap},
-    io::Write,
+    io::{Error, Write},
 };
 use util::*;
 
@@ -165,14 +165,24 @@ fn compile_single_function_x86_64(
         X64RegAlloc::new(target_os)
     };
 
-    let (mut stack_slots, def_regs, total_slots) =
+    let (stack_slots, def_regs, total_slots) =
         assign_stack_slots(func, X86Frame::calculate_stack_offset);
 
+    let mut saved_regs = Vec::new();
     if settings.regalloc != RegallocStrategy::Incremental {
         let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
+        let address_taken: BTreeSet<_> = func
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .filter_map(|inst| match inst {
+                MirInst::StackAddr { slot, .. } => Some(*slot),
+                _ => None,
+            })
+            .collect();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()
-            .filter(|i| i.vreg.class == RegisterClass::Gpr)
+            .filter(|i| i.vreg.class == RegisterClass::Gpr && !address_taken.contains(&i.vreg))
             .collect();
         let plan = match settings.regalloc {
             RegallocStrategy::LinearScanGlobal => {
@@ -184,16 +194,30 @@ fn compile_single_function_x86_64(
             RegallocStrategy::Incremental => unreachable!(),
         };
         reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);
-        for (v, a) in &plan {
-            if let MirAllocation::Spill(off) = a {
-                stack_slots.insert(*v, *off);
+        for allocation in plan.values() {
+            if let MirAllocation::Register(reg) = allocation
+                && !matches!(*reg, "r10" | "r11")
+            {
+                saved_regs.push(*reg);
             }
         }
+        saved_regs.push("rbx");
+        if target_os == TargetOperatingSystem::Windows {
+            saved_regs.extend(["rsi", "rdi"]);
+        }
+        saved_regs.sort_unstable();
+        saved_regs.dedup();
     }
 
-    let stack_size = total_slots.max(stack_slots.len()) * 8;
+    let stack_size = (total_slots + saved_regs.len()) * 8;
     X86Frame::generate_prologue(&mut output, stack_size)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+
+    for (index, reg) in saved_regs.iter().enumerate() {
+        let offset = X86Frame::calculate_stack_offset(total_slots + index);
+        writeln!(output, "    movq %{reg}, {offset}(%rbp)")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
 
     if !func.sig.params.is_empty() {
         let abi_for_func = X86ABI::new(target_os);
@@ -205,7 +229,11 @@ fn compile_single_function_x86_64(
             {
                 if index < arg_regs.len() {
                     let phys_arg = arg_regs[index];
-                    writeln!(output, "    movq %{phys_arg}, {slot_off}(%rbp)").map_err(|e| {
+                    let destination = reg_alloc
+                        .get_mapping_for(vreg)
+                        .map(|reg| format!("%{reg}"))
+                        .unwrap_or_else(|| format!("{slot_off}(%rbp)"));
+                    writeln!(output, "    movq %{phys_arg}, {destination}").map_err(|e| {
                         CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
                     })?;
                 } else {
@@ -222,9 +250,9 @@ fn compile_single_function_x86_64(
                     writeln!(output, "    movq {caller_off}(%rbp), %rax").map_err(|e| {
                         CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
                     })?;
-                    writeln!(output, "    movq %rax, {slot_off}(%rbp)").map_err(|e| {
-                        CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                    })?;
+                    store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots).map_err(
+                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                    )?;
                 }
             }
         }
@@ -245,6 +273,7 @@ fn compile_single_function_x86_64(
                 &mut reg_alloc,
                 &stack_slots,
                 stack_size,
+                &saved_regs,
                 target_os,
                 func_name,
                 &def_regs,
@@ -337,6 +366,19 @@ fn ensure_type_supported(ty: &MirType, context: &str) -> Result<(), LaminaError>
     Ok(())
 }
 
+fn restore_saved_registers<W: Write>(
+    writer: &mut W,
+    stack_size: usize,
+    saved_regs: &[&str],
+) -> Result<(), Error> {
+    let first_slot = stack_size / 8 - saved_regs.len();
+    for (index, reg) in saved_regs.iter().enumerate() {
+        let offset = X86Frame::calculate_stack_offset(first_slot + index);
+        writeln!(writer, "    movq {offset}(%rbp), %{reg}")?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn emit_instruction_x86_64(
     inst: &MirInst,
@@ -344,6 +386,7 @@ fn emit_instruction_x86_64(
     reg_alloc: &mut X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     stack_size: usize,
+    saved_regs: &[&str],
     target_os: TargetOperatingSystem,
     func_name: &str,
     def_regs: &BTreeSet<VirtualReg>,
@@ -362,6 +405,7 @@ fn emit_instruction_x86_64(
                 reg_alloc,
                 stack_slots,
                 stack_size,
+                saved_regs,
                 target_os,
                 func_name,
                 def_regs,
@@ -1062,6 +1106,7 @@ fn emit_instruction_x86_64(
                 }
             }
 
+            restore_saved_registers(writer, stack_size, saved_regs)?;
             // 3. Teardown Frame (Epilogue without ret)
             // Restore Stack Pointer
             writeln!(writer, "    movq %rbp, %rsp")?;
@@ -1270,6 +1315,7 @@ fn emit_instruction_x86_64(
                 load_operand_to_rax(val, writer, reg_alloc, stack_slots)?;
             }
             // Epilogue
+            restore_saved_registers(writer, stack_size, saved_regs)?;
             X86Frame::generate_epilogue(writer, stack_size)?;
         }
         MirInst::Jmp { target } => {

@@ -17,6 +17,7 @@ pub struct X64RegAlloc {
     vreg_to_preg: HashMap<VirtualReg, &'static str>,
     scratch_free: VecDeque<&'static str>,
     scratch_used: HashSet<&'static str>,
+    global_plan: bool,
 }
 
 const SYSV_MAP_GPRS: &[&str] = &["r12", "r13", "r14", "r15", "rbx"];
@@ -71,6 +72,7 @@ impl X64RegAlloc {
             vreg_to_preg: HashMap::new(),
             scratch_free,
             scratch_used: HashSet::new(),
+            global_plan: false,
         }
     }
 
@@ -96,21 +98,20 @@ impl X64RegAlloc {
             vreg_to_preg: HashMap::new(),
             scratch_free,
             scratch_used: HashSet::new(),
+            global_plan: false,
         }
     }
 
-    /// GPRs available for global allocation, in the same order as the initial `free_gprs` deque.
+    /// GPRs disjoint from emitter temporaries and ABI arguments.
     pub fn gpr_pool_for_global_allocation(
-        target_os: TargetOperatingSystem,
+        _target_os: TargetOperatingSystem,
         leaf: bool,
     ) -> Vec<&'static str> {
-        let map_gprs = match (target_os, leaf) {
-            (TargetOperatingSystem::Windows, true) => WIN64_LEAF_MAP_GPRS,
-            (TargetOperatingSystem::Windows, false) => WIN64_MAP_GPRS,
-            (_, true) => SYSV_LEAF_MAP_GPRS,
-            (_, false) => SYSV_MAP_GPRS,
-        };
-        map_gprs.to_vec()
+        let mut pool = vec!["r12", "r13", "r14", "r15"];
+        if leaf {
+            pool.extend(["r10", "r11"]);
+        }
+        pool
     }
 
     /// Rebuild allocator state from a precomputed GPR plan (global linear scan or graph coloring).
@@ -124,6 +125,8 @@ impl X64RegAlloc {
         } else {
             Self::new(target_os)
         };
+        s.free_gprs.clear();
+        s.global_plan = true;
         for (&vreg, alloc) in plan {
             if vreg.class != RegisterClass::Gpr {
                 continue;
@@ -239,7 +242,7 @@ impl MirRegisterAllocator for X64RegAlloc {
             return Some(phys);
         }
 
-        if vreg.class != RegisterClass::Gpr {
+        if self.global_plan || vreg.class != RegisterClass::Gpr {
             return None;
         }
 
@@ -291,7 +294,6 @@ mod tests {
     fn new_linux_has_sysv_pool() {
         let ra = X64RegAlloc::new(TargetOperatingSystem::Linux);
         let pool = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
-        assert_eq!(ra.free_gprs.len(), pool.len());
         for r in &pool {
             assert!(ra.free_gprs.contains(r));
         }
@@ -302,7 +304,7 @@ mod tests {
         let ra = X64RegAlloc::new(TargetOperatingSystem::Windows);
         let pool =
             X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Windows, false);
-        assert_eq!(ra.free_gprs.len(), pool.len());
+        assert!(pool.iter().all(|reg| ra.free_gprs.contains(reg)));
     }
 
     #[test]
@@ -339,11 +341,37 @@ mod tests {
     }
 
     #[test]
-    fn leaf_mode_expands_pool_vs_non_leaf() {
+    fn global_pool_excludes_emitter_temporaries_in_leaf_functions() {
         let non_leaf =
             X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
         let leaf = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, true);
         assert!(leaf.len() > non_leaf.len());
+        assert!(!non_leaf.contains(&"r10"));
+        assert!(!non_leaf.contains(&"r11"));
+        for reg in [
+            "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", "r8", "r9",
+        ] {
+            assert!(!leaf.contains(&reg));
+        }
+    }
+
+    #[test]
+    fn global_plan_keeps_shared_mappings_and_spills_fixed() {
+        let first = VirtualReg::gpr(0);
+        let second = VirtualReg::gpr(1);
+        let spilled = VirtualReg::gpr(2);
+        let plan = HashMap::from([
+            (first, Allocation::Register("r12")),
+            (second, Allocation::Register("r12")),
+            (spilled, Allocation::Spill(-8)),
+        ]);
+        let mut ra = X64RegAlloc::from_global_plan(TargetOperatingSystem::Linux, true, &plan);
+        assert_eq!(ra.ensure_mapping(spilled), None);
+        assert_eq!(ra.ensure_mapping(VirtualReg::gpr(3)), None);
+        assert_eq!(ra.get_mapping_for(&first), Some("r12"));
+        assert_eq!(ra.get_mapping_for(&second), Some("r12"));
+        assert_eq!(ra.alloc_scratch(), Some("rcx"));
+        assert_eq!(ra.alloc_scratch(), Some("rdx"));
     }
 
     #[test]
