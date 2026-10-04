@@ -1236,15 +1236,12 @@ mod tests {
     use std::error::Error;
 
     #[test]
-    fn narrow_loads_zero_extend_on_both_register_widths() -> Result<(), Box<dyn Error>> {
+    fn narrow_loads_sign_extend_on_both_register_widths() -> Result<(), Box<dyn Error>> {
         for xlen in [Xlen::Rv32, Xlen::Rv64] {
             for (ty, mnemonic) in [
-                (MirType::i8(), "lbu"),
-                (MirType::i16(), "lhu"),
-                (
-                    MirType::i32(),
-                    if xlen == Xlen::Rv32 { "lw" } else { "lwu" },
-                ),
+                (MirType::i8(), "lb"),
+                (MirType::i16(), "lh"),
+                (MirType::i32(), "lw"),
             ] {
                 let base = Register::Virtual(VirtualReg::gpr(0));
                 let dst = Register::Virtual(VirtualReg::gpr(1));
