@@ -94,32 +94,25 @@ pub fn load_operand_to_register<W: Write, RA: RegisterAllocator<PhysReg = &'stat
                 Immediate::F32(v) => v.to_bits() as i64,
                 Immediate::F64(v) => v.to_bits() as i64,
             };
-            // PowerPC uses `li` for 16-bit signed immediates, `lis`+`ori` for 32-bit,
-            // and a full 4-instruction sequence for 64-bit.  We use the assembler
-            // pseudo-instruction `li` which GAS handles as needed.
-            if (-32768..=32767).contains(&val) {
+            if i16::try_from(val).is_ok() {
                 writeln!(writer, "    li {dest_reg}, {val}")
-            } else if (-2147483648..=2147483647).contains(&val) {
-                writeln!(writer, "    lis {}, {}@ha", dest_reg, val >> 16)?;
-                writeln!(writer, "    addi {dest_reg}, {dest_reg}, {val}@l")
+            } else if i32::try_from(val).is_ok() {
+                writeln!(writer, "    lis {dest_reg}, {}", val >> 16)?;
+                writeln!(writer, "    ori {dest_reg}, {dest_reg}, {}", val & 0xFFFF)
             } else {
-                // 64-bit: lis + ori + rldicr + oris + ori
-                writeln!(writer, "    lis {}, {}@highest", dest_reg, val >> 48)?;
+                writeln!(writer, "    lis {dest_reg}, {}", val >> 48)?;
                 writeln!(
                     writer,
-                    "    ori {}, {}, {}@higher",
-                    dest_reg,
-                    dest_reg,
+                    "    ori {dest_reg}, {dest_reg}, {}",
                     (val >> 32) & 0xFFFF
                 )?;
                 writeln!(writer, "    rldicr {dest_reg}, {dest_reg}, 32, 31")?;
                 writeln!(
                     writer,
-                    "    oris {0}, {0}, {1}",
-                    dest_reg,
+                    "    oris {dest_reg}, {dest_reg}, {}",
                     (val >> 16) & 0xFFFF
                 )?;
-                writeln!(writer, "    ori {0}, {0}, {1}", dest_reg, val & 0xFFFF)
+                writeln!(writer, "    ori {dest_reg}, {dest_reg}, {}", val & 0xFFFF)
             }
         }
     }
