@@ -11,8 +11,8 @@ use crate::{
     error::LaminaError,
     mir::{
         Block as MirBlock, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
-        Instruction as MirInst, IntBinOp, MirType, Module as MirModule, Operand, Register,
-        ScalarType, Signature, VirtualReg,
+        Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
+        Register, ScalarType, Signature, VirtualReg,
         instruction::{AddressMode, Immediate},
         register::RegisterClass,
     },
@@ -543,11 +543,7 @@ fn emit_instruction_riscv<W: Write>(
                     if let Some(physical) = reg_alloc.get_mapping(vreg) {
                         writeln!(writer, "    mv a0, {physical}")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        writeln!(
-                            writer,
-                            "    {} a0, {offset}(fp)",
-                            copy_load_mnemonic(ty, ctx.target)
-                        )?;
+                        writeln!(writer, "    {} a0, {offset}(fp)", copy_load_mnemonic(ty))?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!("RISC-V Copy source {vreg:?} has no register or stack slot"),
@@ -566,15 +562,16 @@ fn emit_instruction_riscv<W: Write>(
                         Immediate::F32(value) => u64::from(value.to_bits()),
                         Immediate::F64(value) => value.to_bits(),
                     };
-                    writeln!(writer, "    li a0, {bits}")?;
+                    writeln!(writer, "    li a0, {}", bits as i64)?;
                 }
             }
+            extend_integer(writer, "a0", ty, ctx.target, true)?;
             match dst {
                 Register::Virtual(vreg) => {
                     if let Some(physical) = reg_alloc.get_mapping(vreg) {
                         writeln!(writer, "    mv {physical}, a0")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        writeln!(writer, "    {} a0, {offset}(fp)", copy_store_mnemonic(ty))?;
+                        writeln!(writer, "    {} a0, {offset}(fp)", ctx.target.store_word())?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!(
@@ -627,7 +624,7 @@ fn emit_instruction_riscv<W: Write>(
             dst,
             lhs,
             rhs,
-            ty: _,
+            ty,
         } => {
             // Load lhs to a0
             load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "a0")?;
@@ -635,6 +632,10 @@ fn emit_instruction_riscv<W: Write>(
             // Load rhs to a1
             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "a1")?;
 
+            if matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr) {
+                extend_integer(writer, "a0", ty, ctx.target, false)?;
+                extend_integer(writer, "a1", ty, ctx.target, false)?;
+            }
             // Perform operation
             match op {
                 IntBinOp::Add => writeln!(writer, "    add a0, a0, a1")?,
@@ -666,6 +667,7 @@ fn emit_instruction_riscv<W: Write>(
                 IntBinOp::LShr => writeln!(writer, "    srl a0, a0, a1")?,
             }
 
+            extend_integer(writer, "a0", ty, ctx.target, true)?;
             // Store result
             if let Register::Virtual(vreg) = dst {
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
@@ -676,7 +678,7 @@ fn emit_instruction_riscv<W: Write>(
             dst,
             lhs,
             rhs,
-            ty: _,
+            ty,
         } => {
             // Load lhs to a0
             load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "a0")?;
@@ -684,6 +686,13 @@ fn emit_instruction_riscv<W: Write>(
             // Load rhs to a1
             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "a1")?;
 
+            if matches!(
+                op,
+                IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
+            ) {
+                extend_integer(writer, "a0", ty, ctx.target, false)?;
+                extend_integer(writer, "a1", ty, ctx.target, false)?;
+            }
             // Perform comparison
             emit_int_cmp_op(op, writer)?;
 
@@ -834,12 +843,9 @@ fn emit_instruction_riscv<W: Write>(
             attrs: _,
         } => {
             let load_op = match ty {
-                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lbu",
-                MirType::Scalar(ScalarType::I16) => "lhu",
-                MirType::Scalar(ScalarType::I32) => match ctx.target.xlen {
-                    Xlen::Rv32 => "lw",
-                    Xlen::Rv64 => "lwu",
-                },
+                MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lb",
+                MirType::Scalar(ScalarType::I16) => "lh",
+                MirType::Scalar(ScalarType::I32) => "lw",
                 MirType::Scalar(ScalarType::I64)
                 | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => "ld",
                 MirType::Scalar(ScalarType::F32) => "flw",
@@ -1188,14 +1194,11 @@ fn reload_caller_saved<W: Write>(
     Ok(())
 }
 
-fn copy_load_mnemonic(ty: &MirType, target: RiscVTarget) -> &'static str {
+fn copy_load_mnemonic(ty: &MirType) -> &'static str {
     match ty {
-        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lbu",
-        MirType::Scalar(ScalarType::I16) => "lhu",
-        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => match target.xlen {
-            Xlen::Rv32 => "lw",
-            Xlen::Rv64 => "lwu",
-        },
+        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lb",
+        MirType::Scalar(ScalarType::I16) => "lh",
+        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lw",
         MirType::Scalar(
             ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
         )
@@ -1203,16 +1206,27 @@ fn copy_load_mnemonic(ty: &MirType, target: RiscVTarget) -> &'static str {
     }
 }
 
-fn copy_store_mnemonic(ty: &MirType) -> &'static str {
-    match ty {
-        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "sb",
-        MirType::Scalar(ScalarType::I16) => "sh",
-        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "sw",
-        MirType::Scalar(
-            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
-        )
-        | MirType::Vector(_) => "sd",
+fn extend_integer(
+    w: &mut impl Write,
+    register: &str,
+    ty: &MirType,
+    target: RiscVTarget,
+    signed: bool,
+) -> Result<(), LaminaError> {
+    if !matches!(
+        ty,
+        MirType::Scalar(ScalarType::I8 | ScalarType::I16 | ScalarType::I32)
+    ) {
+        return Ok(());
     }
+    let bits = ty.size_bytes() as u32 * 8;
+    let shift = target.xlen.bits().saturating_sub(bits);
+    if shift != 0 {
+        writeln!(w, "    slli {register}, {register}, {shift}")?;
+        let instruction = if signed { "srai" } else { "srli" };
+        writeln!(w, "    {instruction} {register}, {register}, {shift}")?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
