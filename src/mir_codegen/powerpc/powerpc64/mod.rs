@@ -374,12 +374,13 @@ fn emit_instruction_ppc64<W: Write>(
                     load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
                 }
             }
+            extend_integer(writer, "3", ty, true)?;
             match dst {
                 Register::Virtual(vreg) => {
                     if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
                         writeln!(writer, "    mr {physical}, 3")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        writeln!(writer, "    {} 3, {offset}(1)", copy_store_mnemonic(ty))?;
+                        writeln!(writer, "    std 3, {offset}(1)")?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!(
@@ -399,10 +400,14 @@ fn emit_instruction_ppc64<W: Write>(
             dst,
             lhs,
             rhs,
-            ty: _,
+            ty,
         } => {
             load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "3")?;
             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "4")?;
+            if matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr) {
+                extend_integer(writer, "3", ty, false)?;
+                extend_integer(writer, "4", ty, false)?;
+            }
             match op {
                 IntBinOp::Add => writeln!(writer, "    add 3, 3, 4")?,
                 IntBinOp::Sub => writeln!(writer, "    sub 3, 3, 4")?,
@@ -427,6 +432,7 @@ fn emit_instruction_ppc64<W: Write>(
                 IntBinOp::AShr => writeln!(writer, "    srad 3, 3, 4")?,
                 IntBinOp::LShr => writeln!(writer, "    srd 3, 3, 4")?,
             }
+            extend_integer(writer, "3", ty, true)?;
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
@@ -436,10 +442,17 @@ fn emit_instruction_ppc64<W: Write>(
             dst,
             lhs,
             rhs,
-            ty: _,
+            ty,
         } => {
             load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "3")?;
             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "4")?;
+            if matches!(
+                op,
+                IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
+            ) {
+                extend_integer(writer, "3", ty, false)?;
+                extend_integer(writer, "4", ty, false)?;
+            }
             // cmpd sets CR0; use branch + li to materialise 0/1 into r3.
             writeln!(writer, "    cmpd 3, 4")?;
             let (set_true, set_false) = match op {
@@ -677,6 +690,7 @@ fn emit_instruction_ppc64<W: Write>(
                         Register::Physical(p) => writeln!(writer, "    mr 5, {}", p.name)?,
                     }
                     writeln!(writer, "    {load_op} 3, {offset}(5)")?;
+                    extend_integer(writer, "3", ty, true)?;
                     if let Register::Virtual(vreg) = dst {
                         if matches!(ty, MirType::Scalar(ScalarType::F32 | ScalarType::F64)) {
                             emit_store_fp_result(
@@ -830,18 +844,6 @@ fn copy_load_mnemonic(ty: &MirType) -> &'static str {
     }
 }
 
-fn copy_store_mnemonic(ty: &MirType) -> &'static str {
-    match ty {
-        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "stb",
-        MirType::Scalar(ScalarType::I16) => "sth",
-        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "stw",
-        MirType::Scalar(
-            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
-        )
-        | MirType::Vector(_) => "std",
-    }
-}
-
 /// Load a float operand (stored as integer bits in a stack slot) into FPR `fN`.
 ///
 /// Strategy: store the integer bits to a temp stack slot and then `lfs`/`lfd` them
@@ -927,6 +929,27 @@ fn emit_store_fp_result<W: Write>(
     } else if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
         writeln!(writer, "    {store_fp} {fpr}, -8(1)")?;
         writeln!(writer, "    ld {phys}, -8(1)")?;
+    }
+    Ok(())
+}
+
+fn extend_integer(
+    w: &mut impl Write,
+    register: &str,
+    ty: &MirType,
+    signed: bool,
+) -> Result<(), LaminaError> {
+    let instruction = match ty {
+        MirType::Scalar(ScalarType::I8) => "extsb",
+        MirType::Scalar(ScalarType::I16) => "extsh",
+        MirType::Scalar(ScalarType::I32) => "extsw",
+        _ => return Ok(()),
+    };
+    if signed {
+        writeln!(w, "    {instruction} {register}, {register}")?;
+    } else {
+        let clear = 64 - ty.size_bytes() * 8;
+        writeln!(w, "    clrldi {register}, {register}, {clear}")?;
     }
     Ok(())
 }
