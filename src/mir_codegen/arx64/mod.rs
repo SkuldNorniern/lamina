@@ -564,26 +564,20 @@ fn store_mnemonic(ty: &MirType) -> Result<&'static str, LaminaError> {
 }
 
 fn copy_load_mnemonic(ty: &MirType) -> &'static str {
-    match ty {
-        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lb",
-        MirType::Scalar(ScalarType::I16) => "lh",
-        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lw",
-        MirType::Scalar(
-            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
-        )
-        | MirType::Vector(_) => "ld",
+    match ty.size_bytes() {
+        1 => "lb",
+        2 => "lh",
+        4 => "lw",
+        _ => "ld",
     }
 }
 
 fn copy_store_mnemonic(ty: &MirType) -> &'static str {
-    match ty {
-        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "sb",
-        MirType::Scalar(ScalarType::I16) => "sh",
-        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "sw",
-        MirType::Scalar(
-            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
-        )
-        | MirType::Vector(_) => "sd",
+    match ty.size_bytes() {
+        1 => "sb",
+        2 => "sh",
+        4 => "sw",
+        _ => "sd",
     }
 }
 

@@ -1195,14 +1195,11 @@ fn reload_caller_saved<W: Write>(
 }
 
 fn copy_load_mnemonic(ty: &MirType) -> &'static str {
-    match ty {
-        MirType::Scalar(ScalarType::I1 | ScalarType::I8) => "lb",
-        MirType::Scalar(ScalarType::I16) => "lh",
-        MirType::Scalar(ScalarType::I32 | ScalarType::F32) => "lw",
-        MirType::Scalar(
-            ScalarType::I64 | ScalarType::F64 | ScalarType::Ptr | ScalarType::PtrIn(_),
-        )
-        | MirType::Vector(_) => "ld",
+    match ty.size_bytes() {
+        1 => "lb",
+        2 => "lh",
+        4 => "lw",
+        _ => "ld",
     }
 }
 
