@@ -237,6 +237,7 @@ fn compile_single_function_ppc64(
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     let mut debug_line: u32 = 0;
+    let mut cmp_seq: u32 = 0;
     for block in &func.blocks {
         writeln!(output, "{}{}:", block_prefix, block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
@@ -253,6 +254,7 @@ fn compile_single_function_ppc64(
                     settings,
                 },
                 &mut debug_line,
+                &mut cmp_seq,
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
@@ -332,6 +334,7 @@ fn emit_instruction_ppc64<W: Write>(
     stack_slots: &HashMap<VirtualReg, i32>,
     emit: &Ppc64Emit<'_>,
     debug_line: &mut u32,
+    cmp_seq: &mut u32,
 ) -> Result<(), LaminaError> {
     let Ppc64Emit {
         target_os,
@@ -344,7 +347,15 @@ fn emit_instruction_ppc64<W: Write>(
     }
     if let Some(operations) = integer_conversion(inst) {
         for operation in operations {
-            emit_instruction_ppc64(&operation, writer, reg_alloc, stack_slots, emit, debug_line)?;
+            emit_instruction_ppc64(
+                &operation,
+                writer,
+                reg_alloc,
+                stack_slots,
+                emit,
+                debug_line,
+                cmp_seq,
+            )?;
         }
         return Ok(());
     }
@@ -474,12 +485,15 @@ fn emit_instruction_ppc64<W: Write>(
                     }
                 }
             };
-            writeln!(writer, "    {set_true} .L_ppc_cmp_true_{lhs:p}")?;
+            let seq = *cmp_seq;
+            *cmp_seq = cmp_seq.saturating_add(1);
+            let prefix = emit.block_prefix;
+            writeln!(writer, "    {set_true} {prefix}cmp{seq}.true")?;
             writeln!(writer, "    li 3, 0")?;
-            writeln!(writer, "    b .L_ppc_cmp_end_{lhs:p}")?;
-            writeln!(writer, ".L_ppc_cmp_true_{lhs:p}:")?;
+            writeln!(writer, "    b {prefix}cmp{seq}.end")?;
+            writeln!(writer, "{prefix}cmp{seq}.true:")?;
             writeln!(writer, "    li 3, 1")?;
-            writeln!(writer, ".L_ppc_cmp_end_{lhs:p}:")?;
+            writeln!(writer, "{prefix}cmp{seq}.end:")?;
             let _ = set_false; // used in branch selection above
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
