@@ -28,7 +28,7 @@ pub fn is_float(ty: &MirType) -> bool {
 /// Strategy: integers hold float bit patterns via `movd` (f32) or `movq` (f64) into xmm.
 pub fn load_float_operand_to_xmm<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     operand: &Operand,
-    writer: &mut W,
+    writer: &mut super::RaxTrackingWriter<W>,
     reg_alloc: &RA,
     stack_slots: &HashMap<VirtualReg, i32>,
     xmm: &str,
@@ -64,7 +64,7 @@ pub fn load_float_operand_to_xmm<W: Write, RA: LocalRegisterAllocator<PhysReg = 
 pub fn store_xmm_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     xmm: &str,
     reg: &VirtualReg,
-    writer: &mut W,
+    writer: &mut super::RaxTrackingWriter<W>,
     reg_alloc: &RA,
     stack_slots: &HashMap<VirtualReg, i32>,
     ty: &MirType,
@@ -77,10 +77,13 @@ pub fn store_xmm_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'st
 /// Load a virtual register into RAX
 pub fn load_register_to_rax<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     reg: &VirtualReg,
-    writer: &mut W,
+    writer: &mut super::RaxTrackingWriter<W>,
     reg_alloc: &RA,
     stack_slots: &HashMap<VirtualReg, i32>,
 ) -> Result<(), Error> {
+    if writer.rax_value == Some(*reg) {
+        return Ok(());
+    }
     if let Some(phys) = reg_alloc.get_mapping(reg) {
         writeln!(writer, "    movq %{phys}, %rax")?;
     } else if let Some(offset) = stack_slots.get(reg) {
@@ -97,7 +100,7 @@ pub fn load_register_to_rax<W: Write, RA: LocalRegisterAllocator<PhysReg = &'sta
 /// Store RAX to a virtual register
 pub fn store_rax_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     reg: &VirtualReg,
-    writer: &mut W,
+    writer: &mut super::RaxTrackingWriter<W>,
     reg_alloc: &RA,
     stack_slots: &HashMap<VirtualReg, i32>,
 ) -> Result<(), Error> {
@@ -111,6 +114,7 @@ pub fn store_rax_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &'st
             format!("Virtual register {reg:?} has no mapping or stack slot"),
         ));
     }
+    writer.rax_value = Some(*reg);
     Ok(())
 }
 
@@ -138,7 +142,7 @@ pub fn load_register_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = 
 /// Load an operand into RAX
 pub fn load_operand_to_rax<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
     operand: &Operand,
-    writer: &mut W,
+    writer: &mut super::RaxTrackingWriter<W>,
     reg_alloc: &RA,
     stack_slots: &HashMap<VirtualReg, i32>,
 ) -> Result<(), Error> {
