@@ -10,7 +10,7 @@ use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame, extend_integer, register_for_size};
 use std::{
     collections::{BTreeSet, HashMap},
-    io::{Error, Write},
+    io::{self, Error, Write},
 };
 use util::*;
 
@@ -128,13 +128,32 @@ impl<'a> Codegen for X86Codegen<'a> {
     }
 }
 
+pub struct RaxTrackingWriter<W> {
+    inner: W,
+    rax_value: Option<VirtualReg>,
+}
+
+impl<W: Write> Write for RaxTrackingWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.rax_value = None;
+        self.inner.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
+}
+
 fn compile_single_function_x86_64(
     func_name: &str,
     func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
-    let mut output = Vec::new();
+    let mut output = RaxTrackingWriter {
+        inner: Vec::new(),
+        rax_value: None,
+    };
     let abi = X86ABI::new(target_os);
 
     ensure_signature_support(&func.sig)
@@ -261,6 +280,7 @@ fn compile_single_function_x86_64(
 
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
+        output.rax_value = None;
         writeln!(output, ".L_{}.{}:", func_name, block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
@@ -280,9 +300,10 @@ fn compile_single_function_x86_64(
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
+        output.rax_value = None;
     }
 
-    Ok(output)
+    Ok(output.inner)
 }
 
 pub fn generate_mir_x86_64<W: Write>(
@@ -380,7 +401,7 @@ fn restore_saved_registers<W: Write>(
 #[allow(clippy::too_many_arguments)]
 fn emit_instruction_x86_64(
     inst: &MirInst,
-    writer: &mut impl Write,
+    writer: &mut RaxTrackingWriter<impl Write>,
     reg_alloc: &mut X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     stack_size: usize,
@@ -1506,6 +1527,46 @@ fn emit_copy_register_load(
 mod tests {
     use super::*;
     use crate::mir::{FunctionBuilder, ScalarType};
+
+    #[test]
+    fn rax_round_trip_requires_no_intervening_emission() {
+        let reg = VirtualReg::gpr(0);
+        let other = VirtualReg::gpr(1);
+        let slots = HashMap::from([(reg, -8), (other, -16)]);
+        let alloc = X64RegAlloc::new(TargetOperatingSystem::Linux);
+        for emission in [
+            "    addq $1, %rax\n",
+            "    sete %al\n",
+            "    call unknown\n",
+            "    movq %rcx, (%rdx)\n",
+            "    jmp .L_join\n",
+            ".L_join:\n",
+        ] {
+            let mut writer = RaxTrackingWriter {
+                inner: Vec::new(),
+                rax_value: None,
+            };
+            store_rax_to_register(&reg, &mut writer, &alloc, &slots).unwrap();
+            let stored_len = writer.inner.len();
+            load_operand_to_rax(
+                &Operand::Register(Register::Virtual(reg)),
+                &mut writer,
+                &alloc,
+                &slots,
+            )
+            .unwrap();
+            assert_eq!(writer.inner.len(), stored_len);
+            writer.write_all(emission.as_bytes()).unwrap();
+            assert_eq!(writer.rax_value, None);
+            let invalidated_len = writer.inner.len();
+            load_register_to_rax(&reg, &mut writer, &alloc, &slots).unwrap();
+            assert!(writer.inner.len() > invalidated_len);
+
+            store_rax_to_register(&reg, &mut writer, &alloc, &slots).unwrap();
+            load_register_to_rax(&other, &mut writer, &alloc, &slots).unwrap();
+            assert_eq!(writer.rax_value, None);
+        }
+    }
 
     #[test]
     fn float_copy_emits_bit_move_not_add() {
