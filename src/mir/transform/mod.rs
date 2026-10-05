@@ -273,11 +273,13 @@ pub struct TransformStats {
     pub transforms_changed: usize,
     /// Total number of iterations performed (for fixed-point transforms)
     pub iterations: usize,
+    pub functions_inlined: usize,
 }
 
 pub struct TransformPipeline {
     transforms: Vec<Box<dyn Transform>>,
     max_total_iterations: usize,
+    inline: bool,
 }
 
 impl TransformPipeline {
@@ -285,6 +287,7 @@ impl TransformPipeline {
         Self {
             transforms: Vec::new(),
             max_total_iterations: 1000,
+            inline: false,
         }
     }
 
@@ -306,10 +309,11 @@ impl TransformPipeline {
     /// |-------|-----------------|
     /// | O0    | (none) |
     /// | O1    | CFG simplify, jump threading, branch opt, DCE |
-    /// | O2    | + constant folding, copy propagation, memory opt, tail-call opt, peephole |
+    /// | O2    | + constant folding, copy propagation, memory opt, tail-call opt, peephole, module inlining |
     /// | O3    | + LICM, strength reduction, CSE, instruction scheduling |
     pub fn default_for_opt_level(opt_level: u8) -> Self {
         let mut pipeline = Self::new();
+        pipeline.inline = opt_level >= 2;
 
         if opt_level == 0 {
             return pipeline;
@@ -396,6 +400,20 @@ impl TransformPipeline {
     }
 
     pub fn apply_to_module(&self, module: &mut Module) -> Result<TransformStats, TransformError> {
+        let mut total_stats = self.apply_function_stages(module)?;
+        if self.inline {
+            total_stats.functions_inlined = ModuleInlining::new().inline_functions(module)?;
+        }
+        if total_stats.functions_inlined > 0 {
+            let stats = self.apply_function_stages(module)?;
+            total_stats.transforms_run += stats.transforms_run;
+            total_stats.transforms_changed += stats.transforms_changed;
+            total_stats.iterations += stats.iterations;
+        }
+        Ok(total_stats)
+    }
+
+    fn apply_function_stages(&self, module: &mut Module) -> Result<TransformStats, TransformError> {
         let mut total_stats = TransformStats::default();
         let mut failed_functions = Vec::new();
 
@@ -477,6 +495,42 @@ mod tests {
         instruction::{Immediate, Instruction, IntBinOp, Operand},
         register::Register,
     };
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+
+    #[test]
+    fn module_inlining_runs_only_at_o2_and_reoptimizes_copies() {
+        let ir = parse_module(
+            "fn @identity(i64 %x) -> i64 {
+entry:
+ret.i64 %x
+}
+fn @caller(i64 %x) -> i64 {
+entry:
+%r = call @identity(%x)
+%s = add.i64 %r, 1
+ret.i64 %s
+}",
+        )
+        .unwrap();
+        for level in 0..=3 {
+            let mut module = from_ir(&ir, "pipeline").unwrap();
+            let stats = TransformPipeline::default_for_opt_level(level)
+                .apply_to_module(&mut module)
+                .unwrap();
+            assert_eq!(stats.functions_inlined, usize::from(level >= 2));
+            if level >= 2 {
+                let caller = &module.functions["caller"];
+                assert!(
+                    caller
+                        .blocks
+                        .iter()
+                        .flat_map(|b| &b.instructions)
+                        .all(|i| !matches!(i, Instruction::Copy { .. } | Instruction::Call { .. }))
+                );
+                assert!(caller.blocks.iter().flat_map(|b| &b.instructions).any(|i| matches!(i, Instruction::IntBinary { lhs: Operand::Register(reg), .. } if reg == &caller.sig.params[0].reg)));
+            }
+        }
+    }
 
     #[test]
     fn test_transform_pipeline_empty() {

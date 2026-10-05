@@ -5,7 +5,7 @@ use cli::{
     options::{parse_args, print_usage, toolchain_backends},
 };
 use lamina::{
-    mir::{ModuleInlining, TransformPipeline, codegen::from_ir},
+    mir::{TransformPipeline, codegen::from_ir},
     mir_codegen::{
         assemble::{
             assemble_with_ras_object_options, get_assembly_output_extension,
@@ -131,20 +131,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                 .apply_to_module(&mut mir_mod)
                 .map_err(|e| format!("MIR optimization failed: {e}"))?;
 
-            let mut inlined_count = 0;
-            if options.opt_level >= 2 {
-                let inliner = ModuleInlining::new();
-                inlined_count = inliner
-                    .inline_functions(&mut mir_mod)
-                    .map_err(|e| format!("MIR inlining failed: {e}"))?;
-            }
-
             if options.verbose {
                 println!(
                     "[VERBOSE] MIR optimizations: {} transforms run, {} made changes, {} functions inlined",
                     transform_stats.transforms_run,
                     transform_stats.transforms_changed,
-                    inlined_count
+                    transform_stats.functions_inlined
                 );
             }
         }
@@ -248,8 +240,10 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             if options.verbose {
                 println!(
-                    "[VERBOSE] MIR optimizations: {} transforms run, {} made changes",
-                    transform_stats.transforms_run, transform_stats.transforms_changed
+                    "[VERBOSE] MIR optimizations: {} transforms run, {} made changes, {} functions inlined",
+                    transform_stats.transforms_run,
+                    transform_stats.transforms_changed,
+                    transform_stats.functions_inlined
                 );
             }
         }
