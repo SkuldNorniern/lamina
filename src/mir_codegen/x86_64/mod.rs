@@ -724,18 +724,27 @@ fn emit_instruction_x86_64(
             rhs,
             ty,
         } => {
-            load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
-            let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
-            load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
-
-            if matches!(
+            let unsigned = matches!(
                 op,
                 IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
-            ) {
-                extend_integer(writer, "rax", ty.size_bytes(), false)?;
-                extend_integer(writer, scratch, ty.size_bytes(), false)?;
+            );
+            load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
+            let imm_rhs = cmp_immediate(rhs, ty, unsigned);
+            let mut scratch = "";
+            if let Some(v) = imm_rhs {
+                if unsigned {
+                    extend_integer(writer, "rax", ty.size_bytes(), false)?;
+                }
+                writeln!(writer, "    cmpq ${v}, %rax")?;
+            } else {
+                scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+                load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
+                if unsigned {
+                    extend_integer(writer, "rax", ty.size_bytes(), false)?;
+                    extend_integer(writer, scratch, ty.size_bytes(), false)?;
+                }
+                writeln!(writer, "    cmpq %{scratch}, %rax")?;
             }
-            writeln!(writer, "    cmpq %{scratch}, %rax")?;
             match op {
                 IntCmpOp::Eq => writeln!(writer, "    sete %al")?,
                 IntCmpOp::Ne => writeln!(writer, "    setne %al")?,
@@ -760,7 +769,7 @@ fn emit_instruction_x86_64(
                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
 
-            if scratch != "rbx" {
+            if !scratch.is_empty() && scratch != "rbx" {
                 reg_alloc.free_scratch(scratch);
             }
         }
@@ -1393,6 +1402,33 @@ fn rax_for(ty: &MirType) -> &'static str {
 }
 
 /// Narrow integers in 64-bit registers are sign-extended; loads read only their type width.
+/// Value for `cmpq $imm, %rax`, or None when the operand is not an immediate that fits
+/// a sign-extended imm32. Unsigned compares see the operand zero-extended to the type
+/// width, matching the `extend_integer` the register path performs.
+fn cmp_immediate(rhs: &Operand, ty: &MirType, unsigned: bool) -> Option<i64> {
+    let Operand::Immediate(imm) = rhs else {
+        return None;
+    };
+    let raw = match imm {
+        Immediate::I8(v) => i64::from(*v),
+        Immediate::I16(v) => i64::from(*v),
+        Immediate::I32(v) => i64::from(*v),
+        Immediate::I64(v) => *v,
+        _ => return None,
+    };
+    let value = if unsigned {
+        match ty.size_bytes() {
+            1 => raw & 0xff,
+            2 => raw & 0xffff,
+            4 => raw & 0xffff_ffff,
+            _ => raw,
+        }
+    } else {
+        raw
+    };
+    i32::try_from(value).ok().map(i64::from)
+}
+
 fn load_insn_for(ty: &MirType) -> &'static str {
     match ty.size_bytes() {
         1 => "movsbq (%rax), %rax",
