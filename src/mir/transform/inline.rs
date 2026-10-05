@@ -1,18 +1,15 @@
 //! Function inlining transforms for MIR.
 
 use crate::mir::{
-    AddressMode, Block, Function, Instruction, Module, Operand, Register, RegisterClass,
-    VirtualReg,
+    AddressMode, Block, Function, Instruction, Module, Operand, Register, VirtualReg,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
-use std::{cell::Cell, collections::HashMap};
+use std::{
+    cell::Cell,
+    collections::{HashMap, HashSet},
+};
 
-/// Function-level inlining transform.
-///
-/// Without module context this pass can only detect direct self-recursive tail
-/// calls that were not already handled by `TailCallOptimization` and mark them.
-/// Full cross-function inlining is done by `ModuleInlining` which operates on
-/// the whole module before per-function transforms run.
+/// Compatibility placeholder; cross-function inlining requires module context.
 #[derive(Default)]
 pub struct FunctionInlining;
 
@@ -33,525 +30,293 @@ impl Transform for FunctionInlining {
         TransformLevel::Experimental
     }
 
-    fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
-        // Without access to the module we cannot inline callees.  However, we can
-        // detect and remove trivially dead self-calls: a call to the same function
-        // whose return value is never used and whose block already has a return.
-        let func_name = func.sig.name.clone();
-        let mut changed = false;
-
-        for block in &mut func.blocks {
-            let mut to_remove = Vec::new();
-            for (i, instr) in block.instructions.iter().enumerate() {
-                if let Instruction::Call { name, ret, .. } = instr
-                    && *name == func_name
-                    && ret.is_none()
-                {
-                    // Self-call with no return value — check if next instruction is Ret
-                    if let Some(next) = block.instructions.get(i + 1)
-                        && matches!(next, Instruction::Ret { value: None })
-                    {
-                        to_remove.push(i);
-                    }
-                }
-            }
-            // Remove in reverse order so indices stay valid
-            for idx in to_remove.iter().rev() {
-                block.instructions.remove(*idx);
-                changed = true;
-            }
-        }
-
-        Ok(changed)
+    fn apply(&self, _func: &mut Function) -> Result<bool, TransformError> {
+        Ok(false)
     }
 }
 
 /// Module-level function inlining that analyzes the entire program.
+#[derive(Default)]
 pub struct ModuleInlining {
-    /// Counter to ensure unique inline block labels
     inline_counter: Cell<usize>,
-}
-
-impl Default for ModuleInlining {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl ModuleInlining {
     pub fn new() -> Self {
-        Self {
-            inline_counter: Cell::new(0),
-        }
+        Self::default()
     }
 
-    /// Get next unique inline ID
-    fn next_inline_id(&self) -> usize {
+    pub fn inline_functions(&self, module: &mut Module) -> Result<usize, TransformError> {
+        module
+            .validate_in_pipeline()
+            .map_err(|errors| TransformError::VerificationFailed { errors })?;
+        let mut count = 0;
+        loop {
+            let mut sites = Vec::new();
+            let mut names: Vec<_> = module.functions.keys().cloned().collect();
+            names.sort();
+            for name in names {
+                let caller = &module.functions[&name];
+                if caller.instruction_count() > 1000 {
+                    continue;
+                }
+                for (block_index, block) in caller.blocks.iter().enumerate() {
+                    for (index, instruction) in block.instructions.iter().enumerate() {
+                        if let Instruction::Call {
+                            name: callee, args, ..
+                        } = instruction
+                            && let Some(function) = module.functions.get(callee)
+                            && function.sig.kernel.is_none()
+                            && function.instruction_count() <= 30
+                            && function.sig.params.len() == args.len()
+                            && !Self::is_recursive(callee, callee, module, &mut HashSet::new())
+                            && function
+                                .blocks
+                                .iter()
+                                .flat_map(|b| &b.instructions)
+                                .all(|i| {
+                                    let mut clone = i.clone();
+                                    !matches!(i, Instruction::TailCall { .. })
+                                        && Self::map_registers(&mut clone, &mut Clone::clone)
+                                })
+                        {
+                            sites.push((name.clone(), block_index, index, callee.clone()));
+                        }
+                    }
+                }
+            }
+            let Some((caller_name, block_index, index, callee_name)) = sites.into_iter().next()
+            else {
+                break;
+            };
+            let callee = module.functions[&callee_name].clone();
+            let caller = module
+                .functions
+                .get_mut(&caller_name)
+                .ok_or(TransformError::InvalidState("missing caller"))?;
+            self.expand(caller, block_index, index, &callee)?;
+            count += 1;
+            if count >= 1000 {
+                break;
+            }
+        }
+        module
+            .validate_in_pipeline()
+            .map_err(|errors| TransformError::VerificationFailed { errors })?;
+        Ok(count)
+    }
+
+    fn is_recursive(
+        root: &str,
+        current: &str,
+        module: &Module,
+        seen: &mut HashSet<String>,
+    ) -> bool {
+        if !seen.insert(current.to_string()) {
+            return false;
+        }
+        module.functions.get(current).is_some_and(|function| {
+            function
+                .blocks
+                .iter()
+                .flat_map(|b| &b.instructions)
+                .any(|i| {
+                    if let Instruction::Call { name, .. } | Instruction::TailCall { name, .. } = i {
+                        name == root || Self::is_recursive(root, name, module, seen)
+                    } else {
+                        false
+                    }
+                })
+        })
+    }
+
+    fn expand(
+        &self,
+        caller: &mut Function,
+        block_index: usize,
+        index: usize,
+        callee: &Function,
+    ) -> Result<(), TransformError> {
+        let Instruction::Call { args, ret, .. } =
+            caller.blocks[block_index].instructions[index].clone()
+        else {
+            return Err(TransformError::InvalidState("expected call"));
+        };
+        let mut max_id = 0;
+        let mut record = |reg: &Register| {
+            if let Register::Virtual(v) = reg {
+                max_id = max_id.max(v.id);
+            }
+            reg.clone()
+        };
+        for param in &caller.sig.params {
+            record(&param.reg);
+        }
+        for slot in caller.stack_reservations.keys() {
+            record(&Register::Virtual(*slot));
+        }
+        for block in &caller.blocks {
+            for instruction in &block.instructions {
+                if let Some(dst) = instruction.def_reg() {
+                    record(dst);
+                }
+                for used in instruction.use_regs() {
+                    record(used);
+                }
+                if let Instruction::StackAddr { slot, .. } = instruction {
+                    record(&Register::Virtual(*slot));
+                }
+            }
+        }
+        let mut next_id = max_id + 1;
+        let mut registers = HashMap::new();
+        let mut rename = |reg: &Register| -> Register {
+            match reg {
+                Register::Virtual(v) => registers
+                    .entry(reg.clone())
+                    .or_insert_with(|| {
+                        let fresh = Register::Virtual(VirtualReg::new(next_id, v.class));
+                        next_id += 1;
+                        fresh
+                    })
+                    .clone(),
+                Register::Physical(_) => reg.clone(),
+            }
+        };
+        let mut copies = Vec::new();
+        for (param, arg) in callee.sig.params.iter().zip(args) {
+            let mut copy = Instruction::Copy {
+                ty: param.ty,
+                dst: rename(&param.reg),
+                src: arg,
+            };
+            copy.normalize_integer_immediates(None);
+            copies.push(copy);
+        }
+        for (slot, size) in &callee.stack_reservations {
+            if let Register::Virtual(fresh) = rename(&Register::Virtual(*slot)) {
+                caller.stack_reservations.insert(fresh, *size);
+            }
+        }
         let id = self.inline_counter.get();
         self.inline_counter.set(id + 1);
-        id
-    }
-
-    /// Analyze the entire module and perform function inlining
-    pub fn inline_functions(&self, module: &mut Module) -> Result<usize, TransformError> {
-        let mut inlined_count = 0;
-        const MAX_INLINE_ITERATIONS: usize = 20;
-        const MAX_TOTAL_INSTRUCTIONS: usize = 50_000;
-
-        let total_instructions: usize = module
-            .functions
-            .values()
-            .map(|f| f.blocks.iter().map(|b| b.instructions.len()).sum::<usize>())
-            .sum();
-        if total_instructions > MAX_TOTAL_INSTRUCTIONS {
-            return Err(TransformError::InliningModuleTooLarge {
-                count: total_instructions,
-                limit: MAX_TOTAL_INSTRUCTIONS,
-            });
-        }
-
-        // Collect all function call sites
-        let mut call_sites = Vec::new();
-
-        for (func_name, func) in &module.functions {
-            for block in &func.blocks {
-                for (instr_idx, instr) in block.instructions.iter().enumerate() {
-                    if let Instruction::Call { name, .. } = instr {
-                        call_sites.push(CallSite {
-                            caller: func_name.clone(),
-                            callee: name.clone(),
-                            block_label: block.label.clone(),
-                            instr_idx,
-                        });
-                    }
-                }
+        let prefix = format!("__inline_{id}_");
+        let mut labels = HashMap::new();
+        for block in &callee.blocks {
+            let mut label = format!("{prefix}{}", block.label);
+            while caller.blocks.iter().any(|b| b.label == label)
+                || labels.values().any(|l| l == &label)
+            {
+                label.push('_');
             }
+            labels.insert(block.label.clone(), label);
         }
-
-        // Process call sites for inlining with iteration limit
-        let mut iterations = 0;
-        while iterations < MAX_INLINE_ITERATIONS {
-            let mut made_progress = false;
-            let mut new_call_sites = Vec::new();
-
-            // Re-collect call sites after each iteration (new calls may have been introduced)
-            for (func_name, func) in &module.functions {
-                for block in &func.blocks {
-                    for (instr_idx, instr) in block.instructions.iter().enumerate() {
-                        if let Instruction::Call { name, .. } = instr {
-                            new_call_sites.push(CallSite {
-                                caller: func_name.clone(),
-                                callee: name.clone(),
-                                block_label: block.label.clone(),
-                                instr_idx,
-                            });
-                        }
-                    }
-                }
-            }
-
-            for call_site in new_call_sites {
-                if self.should_inline(&call_site, module) {
-                    match self.perform_inline(&call_site, module) {
-                        Ok(()) => {
-                            inlined_count += 1;
-                            made_progress = true;
-                        }
-                        Err(_e) => {
-                            // Skip this inlining attempt and continue with others
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            if !made_progress {
-                break; // No more inlining possible
-            }
-
-            iterations += 1;
-        }
-
-        if iterations >= MAX_INLINE_ITERATIONS {
-            return Err(TransformError::InliningStalled {
-                limit: MAX_INLINE_ITERATIONS,
-            });
-        }
-
-        if cfg!(debug_assertions) {
-            module
-                .validate_in_pipeline()
-                .map_err(|errors| TransformError::VerificationFailed { errors })?;
-        }
-        Ok(inlined_count)
-    }
-
-    /// Decides whether a function call should be inlined.
-    fn should_inline(&self, call_site: &CallSite, module: &Module) -> bool {
-        if module
-            .functions
-            .get(&call_site.callee)
-            .is_some_and(|function| {
-                function
-                    .blocks
-                    .iter()
-                    .flat_map(|block| &block.instructions)
-                    .any(|instruction| matches!(instruction, Instruction::StackAddr { .. }))
-            })
+        let mut continuation = format!("{prefix}continuation");
+        while caller.blocks.iter().any(|b| b.label == continuation)
+            || labels.values().any(|l| l == &continuation)
         {
-            return false;
+            continuation.push('_');
         }
-        // Never inline a function that calls itself (direct recursion)
-        if call_site.callee == call_site.caller {
-            return false;
-        }
-
-        if let Some(callee_func) = module.functions.get(&call_site.callee) {
-            if callee_func.sig.kernel.is_some() {
-                return false;
-            }
-            // Never inline a function that contains a recursive call to itself
-            let is_recursive = callee_func.blocks.iter().any(|block| {
-                block.instructions.iter().any(|instr| {
-                    matches!(instr, Instruction::Call { name, .. } if name == &call_site.callee)
-                })
-            });
-            if is_recursive {
-                return false;
-            }
-
-            let total_instructions = callee_func.instruction_count();
-            if total_instructions > 50 {
-                return false;
-            }
-
-            // 2. Function has no calls to other functions (leaf function)
-            let has_calls = callee_func.blocks.iter().any(|block| {
-                block
-                    .instructions
-                    .iter()
-                    .any(|instr| matches!(instr, Instruction::Call { .. }))
-            });
-
-            if has_calls && total_instructions > 30 {
-                return false; // Avoid inlining functions that call others unless reasonably small
-            }
-
-            // 3. Function doesn't have complex control flow (Switch)
-            let has_complex_cf = callee_func.blocks.iter().any(|block| {
-                block
-                    .instructions
-                    .iter()
-                    .any(|instr| matches!(instr, Instruction::Switch { .. }))
-            });
-
-            if has_complex_cf {
-                return false; // Avoid inlining Switch for now
-            }
-
-            // 4. Function is reasonably small (multi-block ok)
-            if callee_func.blocks.len() > 20 || total_instructions > 100 {
-                return false;
-            }
-
-            // 6. Function is called from a small caller function?
-            // Aggressive inlining: inline small functions regardless of caller size
-
-            // ... existing logic ...
-            if let Some(_caller_func) = module.functions.get(&call_site.caller) {
-                // If caller is huge, don't inline huge things?
-            }
-
-            // Default: inline small functions
-            total_instructions <= 30
-        } else {
-            false // Can't inline if we can't find the function
-        }
-    }
-
-    /// Perform the actual inlining operation
-    fn perform_inline(
-        &self,
-        call_site: &CallSite,
-        module: &mut Module,
-    ) -> Result<(), TransformError> {
-        // Clone the callee function to avoid borrowing issues
-        let callee_func = module
-            .functions
-            .get(&call_site.callee)
-            .ok_or_else(|| TransformError::NotFound {
-                kind: "callee function",
-                name: call_site.callee.clone(),
-            })?
-            .clone();
-
-        // should_inline already validated the function, so we can proceed
-
-        // Extract call information before mutating
-        let call_args = {
-            let caller_func = module.functions.get(&call_site.caller).ok_or_else(|| {
-                TransformError::NotFound {
-                    kind: "caller function",
-                    name: call_site.caller.clone(),
-                }
-            })?;
-
-            let call_block = caller_func
-                .blocks
-                .iter()
-                .find(|b| b.label == call_site.block_label)
-                .ok_or_else(|| TransformError::NotFound {
-                    kind: "call block",
-                    name: call_site.block_label.clone(),
-                })?;
-
-            if call_site.instr_idx >= call_block.instructions.len() {
-                return Err(TransformError::InvalidState(
-                    "call instruction index out of bounds",
-                ));
-            }
-
-            let call_instr = &call_block.instructions[call_site.instr_idx];
-            if let Instruction::Call { args, .. } = call_instr {
-                args.clone()
-            } else {
-                return Err(TransformError::InvalidState("expected call instruction"));
-            }
-        };
-
-        // Create a mapping from callee parameters to caller arguments
-        let param_mapping = self.create_param_mapping(&callee_func, &call_args)?;
-
-        // Only use single-block optimized path if strictly 1 block
-        if callee_func.blocks.len() == 1 {
-            self.inline_single_block_function(call_site, module, &callee_func, &param_mapping)?;
-        } else {
-            self.inline_multi_block_function(call_site, module, &callee_func, &param_mapping)?;
-        }
-
-        Ok(())
-    }
-
-    /// Inline a single-block function
-    fn inline_single_block_function(
-        &self,
-        call_site: &CallSite,
-        module: &mut Module,
-        callee_func: &Function,
-        param_mapping: &HashMap<Register, Operand>,
-    ) -> Result<(), TransformError> {
-        // Get the call instruction details first
-        let (call_result_reg, _call_instr) = {
-            let caller_func = module.functions.get(&call_site.caller).ok_or_else(|| {
-                TransformError::NotFound {
-                    kind: "caller function",
-                    name: call_site.caller.clone(),
-                }
-            })?;
-            let call_block = caller_func
-                .blocks
-                .iter()
-                .find(|b| b.label == call_site.block_label)
-                .ok_or_else(|| TransformError::NotFound {
-                    kind: "call block",
-                    name: call_site.block_label.clone(),
-                })?;
-
-            let call_instr = call_block.instructions[call_site.instr_idx].clone();
-            let call_result_reg = if let Instruction::Call { ret, .. } = &call_instr {
-                ret.clone()
-            } else {
-                return Err(TransformError::InvalidState("expected call instruction"));
-            };
-
-            (call_result_reg, call_instr)
-        };
-
-        // Get the single block from the callee
-        let callee_block = callee_func
-            .blocks
-            .first()
-            .ok_or(TransformError::InvalidState(
-                "callee function has no blocks",
-            ))?;
-
-        // Create new instructions for the inlined code
-        let mut inlined_instructions = Vec::new();
-
-        // Get caller function for register ID calculation
-        let caller_func =
-            module
-                .functions
-                .get(&call_site.caller)
-                .ok_or_else(|| TransformError::NotFound {
-                    kind: "caller function",
-                    name: call_site.caller.clone(),
-                })?;
-
-        // Process each instruction in the callee, substituting parameters and renaming registers
-        for instr in &callee_block.instructions {
-            let mut new_instr = instr.clone();
-
-            // Handle return instructions specially
-            if let Instruction::Ret { value } = &new_instr
-                && let Some(ret_val) = value
-            {
-                // Replace return with assignment to call result register
-                if let Some(ref result_reg) = call_result_reg {
-                    // Extract the return type from the function signature
-                    let return_type =
-                        *callee_func
-                            .sig
-                            .ret_ty
-                            .as_ref()
-                            .ok_or(TransformError::InvalidState(
-                                "function has return value but no return type in signature",
-                            ))?;
-
-                    let mut assign_instr = Instruction::Copy {
-                        dst: result_reg.clone(),
-                        ty: return_type,
-                        src: ret_val.clone(),
-                    };
-                    // Apply parameter substitution and renaming to the operand(s)
-                    // Then restore destination to the intended call result register
-                    self.substitute_parameters_and_rename(
-                        &mut assign_instr,
-                        param_mapping,
-                        caller_func,
-                    )?;
-                    if let Instruction::Copy { dst, .. } = &mut assign_instr {
-                        *dst = result_reg.clone();
+        let mut blocks = callee.blocks.clone();
+        for block in &mut blocks {
+            block.label = labels[&block.label].clone();
+            let mut instructions = Vec::new();
+            for mut instruction in block.instructions.drain(..) {
+                Self::map_registers(&mut instruction, &mut rename);
+                match &mut instruction {
+                    Instruction::Jmp { target } => *target = labels[target].clone(),
+                    Instruction::Br {
+                        true_target,
+                        false_target,
+                        ..
+                    } => {
+                        *true_target = labels[true_target].clone();
+                        *false_target = labels[false_target].clone();
                     }
-                    inlined_instructions.push(assign_instr);
-                }
-                // Skip the original return instruction
-                continue;
-            }
-
-            // Substitute parameters and rename registers
-            self.substitute_parameters_and_rename(&mut new_instr, param_mapping, caller_func)?;
-
-            inlined_instructions.push(new_instr);
-        }
-
-        // Now modify the caller function
-        let caller_func = module.functions.get_mut(&call_site.caller).ok_or_else(|| {
-            TransformError::NotFound {
-                kind: "caller function",
-                name: call_site.caller.clone(),
-            }
-        })?;
-        let call_block = caller_func
-            .blocks
-            .iter_mut()
-            .find(|b| b.label == call_site.block_label)
-            .ok_or_else(|| TransformError::NotFound {
-                kind: "call block",
-                name: call_site.block_label.clone(),
-            })?;
-
-        // Replace the call instruction with the inlined instructions
-        call_block.instructions.splice(
-            call_site.instr_idx..=call_site.instr_idx,
-            inlined_instructions,
-        );
-
-        Ok(())
-    }
-
-    /// Substitute parameters and rename registers in an instruction
-    fn substitute_parameters_and_rename(
-        &self,
-        instr: &mut Instruction,
-        param_mapping: &HashMap<Register, Operand>,
-        caller_func: &Function,
-    ) -> Result<(), TransformError> {
-        // Generate unique register names to avoid conflicts
-        let mut register_map: HashMap<Register, Register> = HashMap::new();
-        let mut next_reg_id = self.find_max_register_id(caller_func) + 1;
-
-        // Helper function to map a register
-        let mut map_register = |reg: &Register| -> Register {
-            if let Some(mapped) = register_map.get(reg) {
-                return mapped.clone();
-            }
-
-            // Check if this register should be substituted with a parameter
-            if let Some(param_operand) = param_mapping.get(reg)
-                && let Operand::Register(param_reg) = param_operand
-            {
-                return param_reg.clone();
-            }
-
-            // Generate a new unique register name
-            let new_reg = Register::Virtual(VirtualReg::gpr(next_reg_id));
-            register_map.insert(reg.clone(), new_reg.clone());
-            next_reg_id += 1;
-            new_reg
-        };
-
-        // Apply register mapping to the instruction
-        self.map_instruction_registers(instr, &mut map_register);
-
-        Ok(())
-    }
-
-    /// Find the maximum register ID currently used in a function
-    fn find_max_register_id(&self, func: &Function) -> u32 {
-        let mut max_id = 0;
-        for block in &func.blocks {
-            for instr in &block.instructions {
-                if let Instruction::StackAddr { slot, .. } = instr {
-                    max_id = max_id.max(slot.id);
-                }
-                if let Some(reg) = instr.def_reg()
-                    && let Register::Virtual(vreg) = reg
-                    && vreg.class == RegisterClass::Gpr
-                {
-                    max_id = max_id.max(vreg.id);
-                }
-                for use_reg in instr.use_regs() {
-                    if let Register::Virtual(vreg) = use_reg
-                        && vreg.class == RegisterClass::Gpr
-                    {
-                        max_id = max_id.max(vreg.id);
+                    Instruction::Switch { cases, default, .. } => {
+                        for (_, target) in cases {
+                            *target = labels[target].clone();
+                        }
+                        *default = labels[default].clone();
                     }
+                    Instruction::Ret { value } => {
+                        if let (Some(dst), Some(src), Some(ty)) = (&ret, value, callee.sig.ret_ty) {
+                            let mut copy = Instruction::Copy {
+                                dst: dst.clone(),
+                                src: src.clone(),
+                                ty,
+                            };
+                            copy.normalize_integer_immediates(None);
+                            instructions.push(copy);
+                        }
+                        instruction = Instruction::Jmp {
+                            target: continuation.clone(),
+                        };
+                    }
+                    _ => {}
+                }
+                instruction.normalize_integer_immediates(callee.sig.ret_ty);
+                instructions.push(instruction);
+            }
+            block.instructions = instructions;
+        }
+        let block = &mut caller.blocks[block_index];
+        if blocks.len() == 1
+            && matches!(blocks[0].instructions.last(), Some(Instruction::Jmp { target }) if target == &continuation)
+        {
+            blocks[0].instructions.pop();
+            copies.append(&mut blocks[0].instructions);
+            block.instructions.splice(index..=index, copies);
+            return Ok(());
+        }
+        let after = block.instructions.split_off(index + 1);
+        block.instructions.pop();
+        block.instructions.extend(copies);
+        block.instructions.push(Instruction::Jmp {
+            target: labels[&callee.entry].clone(),
+        });
+        blocks.push(Block {
+            label: continuation,
+            instructions: after,
+        });
+        caller
+            .blocks
+            .splice(block_index + 1..block_index + 1, blocks);
+        Ok(())
+    }
+
+    fn map_registers(
+        instruction: &mut Instruction,
+        map: &mut impl FnMut(&Register) -> Register,
+    ) -> bool {
+        fn operand(value: &mut Operand, map: &mut impl FnMut(&Register) -> Register) {
+            if let Operand::Register(reg) = value {
+                *reg = map(reg);
+            }
+        }
+        fn address(addr: &mut AddressMode, map: &mut impl FnMut(&Register) -> Register) {
+            match addr {
+                AddressMode::BaseOffset { base, .. } => *base = map(base),
+                AddressMode::BaseIndexScale { base, index, .. } => {
+                    *base = map(base);
+                    *index = map(index);
                 }
             }
         }
-        max_id
-    }
-
-    /// Map registers in an instruction using a mapping function
-    fn map_instruction_registers<F>(&self, instr: &mut Instruction, map_reg: &mut F)
-    where
-        F: FnMut(&Register) -> Register,
-    {
-        match instr {
-            Instruction::IntConvert { dst, src, .. } | Instruction::Copy { dst, src, .. } => {
-                *dst = map_reg(dst);
-                self.map_operand_register(src, map_reg);
+        match instruction {
+            Instruction::Copy { dst, src, .. }
+            | Instruction::IntConvert { dst, src, .. }
+            | Instruction::FloatUnary { dst, src, .. } => {
+                *dst = map(dst);
+                operand(src, map);
             }
             Instruction::IntBinary { dst, lhs, rhs, .. }
-            | Instruction::FloatBinary { dst, lhs, rhs, .. } => {
-                *dst = map_reg(dst);
-                self.map_operand_register(lhs, map_reg);
-                self.map_operand_register(rhs, map_reg);
-            }
-            Instruction::FloatUnary { dst, src, .. } => {
-                *dst = map_reg(dst);
-                self.map_operand_register(src, map_reg);
-            }
-            Instruction::IntCmp { dst, lhs, rhs, .. } => {
-                *dst = map_reg(dst);
-                self.map_operand_register(lhs, map_reg);
-                self.map_operand_register(rhs, map_reg);
-            }
-            Instruction::FloatCmp { dst, lhs, rhs, .. } => {
-                *dst = map_reg(dst);
-                self.map_operand_register(lhs, map_reg);
-                self.map_operand_register(rhs, map_reg);
+            | Instruction::FloatBinary { dst, lhs, rhs, .. }
+            | Instruction::IntCmp { dst, lhs, rhs, .. }
+            | Instruction::FloatCmp { dst, lhs, rhs, .. } => {
+                *dst = map(dst);
+                operand(lhs, map);
+                operand(rhs, map);
             }
             Instruction::Select {
                 dst,
@@ -560,441 +325,67 @@ impl ModuleInlining {
                 false_val,
                 ..
             } => {
-                *dst = map_reg(dst);
-                *cond = map_reg(cond);
-                self.map_operand_register(true_val, map_reg);
-                self.map_operand_register(false_val, map_reg);
+                *dst = map(dst);
+                *cond = map(cond);
+                operand(true_val, map);
+                operand(false_val, map);
             }
             Instruction::Load { dst, addr, .. } => {
-                *dst = map_reg(dst);
-                if let AddressMode::BaseOffset { base, .. } = addr {
-                    *base = map_reg(base);
-                }
-                if let AddressMode::BaseIndexScale { base, index, .. } = addr {
-                    *base = map_reg(base);
-                    *index = map_reg(index);
-                }
+                *dst = map(dst);
+                address(addr, map);
             }
             Instruction::Store { src, addr, .. } => {
-                self.map_operand_register(src, map_reg);
-                if let AddressMode::BaseOffset { base, .. } = addr {
-                    *base = map_reg(base);
-                }
-                if let AddressMode::BaseIndexScale { base, index, .. } = addr {
-                    *base = map_reg(base);
-                    *index = map_reg(index);
+                operand(src, map);
+                address(addr, map);
+            }
+            Instruction::StackAddr { dst, slot } => {
+                *dst = map(dst);
+                if let Register::Virtual(fresh) = map(&Register::Virtual(*slot)) {
+                    *slot = fresh;
                 }
             }
             Instruction::Lea { dst, base, .. } => {
-                *dst = map_reg(dst);
-                *base = map_reg(base);
+                *dst = map(dst);
+                *base = map(base);
             }
             Instruction::VectorOp { dst, operands, .. } => {
-                *dst = map_reg(dst);
-                for operand in operands {
-                    self.map_operand_register(operand, map_reg);
+                *dst = map(dst);
+                for value in operands {
+                    operand(value, map);
                 }
             }
-            _ => {} // Other instructions don't need register mapping
-        }
-    }
-
-    /// Map registers in an operand
-    fn map_operand_register<F>(&self, operand: &mut Operand, map_reg: &mut F)
-    where
-        F: FnMut(&Register) -> Register,
-    {
-        if let Operand::Register(reg) = operand {
-            *reg = map_reg(reg);
-        }
-    }
-
-    /// Create mapping from callee parameters to caller arguments
-    fn create_param_mapping(
-        &self,
-        callee_func: &Function,
-        call_args: &[Operand],
-    ) -> Result<HashMap<Register, Operand>, TransformError> {
-        if callee_func.sig.params.len() != call_args.len() {
-            return Err(TransformError::ParamCountMismatch {
-                expected: callee_func.sig.params.len(),
-                got: call_args.len(),
-            });
-        }
-
-        let mut mapping = HashMap::new();
-        for (param, arg) in callee_func.sig.params.iter().zip(call_args.iter()) {
-            mapping.insert(param.reg.clone(), arg.clone());
-        }
-
-        Ok(mapping)
-    }
-
-    /// Clone callee blocks and rename registers to avoid conflicts.
-    ///
-    /// `caller_max_reg` must be the highest virtual register ID currently in use
-    /// by the caller function so that new registers start above that, preventing
-    /// any collisions.
-    fn clone_and_rename_blocks(
-        &self,
-        blocks: &[Block],
-        param_mapping: &HashMap<Register, Operand>,
-        suffix: &str,
-        caller_max_reg: u32,
-    ) -> Result<Vec<Block>, TransformError> {
-        let mut renamed_blocks = Vec::new();
-        let mut register_mapping = HashMap::new();
-
-        // Start new register IDs above the caller's highest register to avoid all conflicts.
-        let base_reg_offset = caller_max_reg as usize + 1;
-
-        // First pass: collect all registers that need renaming
-        for block in blocks {
-            for instr in &block.instructions {
-                if let Some(dst) = instr.def_reg()
-                    && !register_mapping.contains_key(dst)
-                {
-                    // Generate a new virtual register for this destination
-                    let new_reg = Register::Virtual(VirtualReg::gpr(
-                        (base_reg_offset + register_mapping.len()) as u32,
-                    ));
-                    register_mapping.insert(dst.clone(), new_reg);
+            Instruction::Br { cond, .. } | Instruction::Switch { value: cond, .. } => {
+                *cond = map(cond)
+            }
+            Instruction::Call { args, ret, .. } => {
+                for value in args {
+                    operand(value, map);
                 }
-
-                for use_reg in instr.use_regs() {
-                    if !register_mapping.contains_key(use_reg)
-                        && !param_mapping.contains_key(use_reg)
-                    {
-                        let new_reg = Register::Virtual(VirtualReg::gpr(
-                            (base_reg_offset + register_mapping.len()) as u32,
-                        ));
-                        register_mapping.insert(use_reg.clone(), new_reg);
-                    }
+                if let Some(dst) = ret {
+                    *dst = map(dst);
                 }
             }
-        }
-
-        // Second pass: clone and rename instructions
-        for block in blocks {
-            let mut new_block = Block::new(format!("{}{}", block.label, suffix));
-
-            for instr in &block.instructions {
-                let mut new_instr = instr.clone();
-
-                // Rename destination register
-                if let Some(dst) = new_instr.def_reg()
-                    && let Some(new_dst) = register_mapping.get(dst)
-                {
-                    self.rename_instruction_dst(&mut new_instr, new_dst.clone());
-                }
-
-                // Rename used registers
-                self.rename_instruction_uses(&mut new_instr, &register_mapping, param_mapping)?;
-
-                // Rename jump targets to match the new block names
-                match &mut new_instr {
-                    Instruction::Jmp { target } => {
-                        *target = format!("{target}{suffix}");
-                    }
-                    Instruction::Br {
-                        true_target,
-                        false_target,
-                        ..
-                    } => {
-                        *true_target = format!("{true_target}{suffix}");
-                        *false_target = format!("{false_target}{suffix}");
-                    }
-                    _ => {}
-                }
-
-                new_block.push(new_instr);
-            }
-
-            renamed_blocks.push(new_block);
-        }
-
-        Ok(renamed_blocks)
-    }
-
-    /// Inline a multi-block function
-    fn inline_multi_block_function(
-        &self,
-        call_site: &CallSite,
-        module: &mut Module,
-        callee_func: &Function,
-        param_mapping: &HashMap<Register, Operand>,
-    ) -> Result<(), TransformError> {
-        let inline_id = self.next_inline_id();
-        let suffix = format!("_inline_{}_{}", call_site.callee, inline_id);
-
-        let caller_max_reg = module
-            .functions
-            .get(&call_site.caller)
-            .map_or(0, |f| self.find_max_register_id(f));
-
-        let mut inlined_blocks = self.clone_and_rename_blocks(
-            &callee_func.blocks,
-            param_mapping,
-            &suffix,
-            caller_max_reg,
-        )?;
-
-        if inlined_blocks.is_empty() {
-            return Err(TransformError::InvalidState("callee has no blocks"));
-        }
-
-        // Get call details and split block
-        let caller_func = module.functions.get_mut(&call_site.caller).ok_or_else(|| {
-            TransformError::NotFound {
-                kind: "caller function",
-                name: call_site.caller.clone(),
-            }
-        })?;
-        let call_block_idx = caller_func
-            .blocks
-            .iter()
-            .position(|b| b.label == call_site.block_label)
-            .ok_or(TransformError::InvalidState("call block not found"))?;
-
-        let call_block = &mut caller_func.blocks[call_block_idx];
-
-        // Extract return register (before removing instruction)
-        let ret_reg =
-            if let Instruction::Call { ret, .. } = &call_block.instructions[call_site.instr_idx] {
-                ret.clone()
-            } else {
-                return Err(TransformError::InvalidState("expected call instruction"));
-            };
-
-        // Split instructions
-        let mut post_call_instrs = call_block.instructions.split_off(call_site.instr_idx + 1);
-        call_block.instructions.pop(); // Remove the Call instruction
-
-        // Create split block (continuation) - use inline_id for uniqueness
-        let split_label = format!("{}_split_{}", call_site.block_label, inline_id);
-        let mut split_block = Block::new(split_label.clone());
-        split_block.instructions.append(&mut post_call_instrs);
-
-        // 1. Wire Caller -> Callee Entry
-        // Find the actual entry block by looking for "entry" (the standard entry block name in lamina)
-        let expected_entry = format!("entry{suffix}");
-        let callee_entry_target = inlined_blocks
-            .iter()
-            .find(|b| b.label == expected_entry)
-            .map_or_else(|| inlined_blocks[0].label.clone(), |b| b.label.clone());
-        call_block.instructions.push(Instruction::Jmp {
-            target: callee_entry_target,
-        });
-
-        // 2. Wire Callee Returns -> Split Block
-        for block in &mut inlined_blocks {
-            if let Some(last_instr) = block.instructions.pop() {
-                if let Instruction::Ret { value } = last_instr {
-                    if let Some(val) = value
-                        && let Some(dst) = &ret_reg
-                    {
-                        // Assign return value to call result register
-                        let return_type =
-                            callee_func
-                                .sig
-                                .ret_ty
-                                .as_ref()
-                                .ok_or(TransformError::InvalidState(
-                                    "function has return value but no return type in signature",
-                                ))?;
-                        block.instructions.push(Instruction::Copy {
-                            ty: *return_type,
-                            dst: dst.clone(),
-                            src: val,
-                        });
-                    }
-                    // Jump to split block
-                    block.instructions.push(Instruction::Jmp {
-                        target: split_label.clone(),
-                    });
-                } else {
-                    // Not a return? Put it back.
-                    block.instructions.push(last_instr);
-
-                    // If it was a terminator like Br/Jmp, it stays.
-                    // But if it was Ret, we replaced it.
-                    // If it ends with something else (impossible in valid MIR? Block must terminate),
-                    // we assume valid MIR.
+            Instruction::TailCall { args, .. } => {
+                for value in args {
+                    operand(value, map);
                 }
             }
-        }
-
-        // Insert new blocks into caller
-        // Order: [Caller Part 1] -> [Inlined Blocks...] -> [Caller Part 2 (Split)]
-        // We insert split_block first at idx+1
-        caller_func.blocks.insert(call_block_idx + 1, split_block);
-
-        // Insert inlined blocks
-        for (insert_pos, block) in (call_block_idx + 1..).zip(inlined_blocks) {
-            caller_func.blocks.insert(insert_pos, block);
-        }
-
-        Ok(())
-    }
-
-    /// Rename the destination register in an instruction
-    fn rename_instruction_dst(&self, instr: &mut Instruction, new_dst: Register) {
-        match instr {
-            Instruction::Copy { dst, .. }
-            | Instruction::IntBinary { dst, .. }
-            | Instruction::FloatBinary { dst, .. }
-            | Instruction::FloatUnary { dst, .. }
-            | Instruction::IntCmp { dst, .. }
-            | Instruction::FloatCmp { dst, .. }
-            | Instruction::Select { dst, .. }
-            | Instruction::Load { dst, .. }
-            | Instruction::IntConvert { dst, .. }
-            | Instruction::Lea { dst, .. }
-            | Instruction::VectorOp { dst, .. } => {
-                *dst = new_dst;
-            }
-            Instruction::Call { ret, .. } => {
-                *ret = Some(new_dst);
-            }
-            _ => {} // Other instructions don't have destination registers
-        }
-    }
-
-    /// Rename used registers in an instruction
-    fn rename_instruction_uses(
-        &self,
-        instr: &mut Instruction,
-        register_mapping: &HashMap<Register, Register>,
-        param_mapping: &HashMap<Register, Operand>,
-    ) -> Result<(), TransformError> {
-        match instr {
-            Instruction::IntConvert { src, .. } | Instruction::Copy { src, .. } => {
-                *src = self.map_operand(src, register_mapping, param_mapping)?;
-            }
-            Instruction::IntBinary { lhs, rhs, .. }
-            | Instruction::FloatBinary { lhs, rhs, .. }
-            | Instruction::IntCmp { lhs, rhs, .. }
-            | Instruction::FloatCmp { lhs, rhs, .. } => {
-                *lhs = self.map_operand(lhs, register_mapping, param_mapping)?;
-                *rhs = self.map_operand(rhs, register_mapping, param_mapping)?;
-            }
-            Instruction::FloatUnary { src, .. } => {
-                *src = self.map_operand(src, register_mapping, param_mapping)?;
-            }
-            Instruction::Select {
-                cond,
-                true_val,
-                false_val,
-                ..
-            } => {
-                *cond = self.map_register(cond, register_mapping)?;
-                *true_val = self.map_operand(true_val, register_mapping, param_mapping)?;
-                *false_val = self.map_operand(false_val, register_mapping, param_mapping)?;
-            }
-            Instruction::Load { addr, .. } => {
-                *addr = self.map_address_mode(addr, register_mapping)?;
-            }
-            Instruction::Store { src, addr, .. } => {
-                *src = self.map_operand(src, register_mapping, param_mapping)?;
-                *addr = self.map_address_mode(addr, register_mapping)?;
-            }
-            Instruction::Lea { base, .. } => {
-                *base = self.map_register(base, register_mapping)?;
-            }
-            Instruction::VectorOp { operands, .. } => {
-                for operand in operands {
-                    *operand = self.map_operand(operand, register_mapping, param_mapping)?;
+            Instruction::Ret { value } => {
+                if let Some(value) = value {
+                    operand(value, map);
                 }
             }
-            Instruction::Call { args, .. } => {
-                for arg in args {
-                    *arg = self.map_operand(arg, register_mapping, param_mapping)?;
-                }
-            }
-            Instruction::Br { cond, .. } => {
-                *cond = self.map_register(cond, register_mapping)?;
-            }
-            Instruction::Switch { value, .. } => {
-                *value = self.map_register(value, register_mapping)?;
-            }
-            Instruction::Ret { value: Some(val) } => {
-                *val = self.map_operand(val, register_mapping, param_mapping)?;
-            }
-            _ => {} // Other instructions don't use registers or are handled elsewhere
+            Instruction::Jmp { .. }
+            | Instruction::Unreachable
+            | Instruction::SafePoint
+            | Instruction::StackMap { .. }
+            | Instruction::PatchPoint { .. }
+            | Instruction::Comment { .. } => {}
+            #[cfg(feature = "nightly")]
+            _ => return false,
         }
-        Ok(())
+        true
     }
-
-    fn map_operand(
-        &self,
-        operand: &Operand,
-        register_mapping: &HashMap<Register, Register>,
-        param_mapping: &HashMap<Register, Operand>,
-    ) -> Result<Operand, TransformError> {
-        match operand {
-            Operand::Register(reg) => {
-                if let Some(param_operand) = param_mapping.get(reg) {
-                    Ok(param_operand.clone())
-                } else if let Some(mapped_reg) = register_mapping.get(reg) {
-                    Ok(Operand::Register(mapped_reg.clone()))
-                } else {
-                    Ok(operand.clone())
-                }
-            }
-            _ => Ok(operand.clone()),
-        }
-    }
-
-    fn map_register(
-        &self,
-        reg: &Register,
-        register_mapping: &HashMap<Register, Register>,
-    ) -> Result<Register, TransformError> {
-        if let Some(mapped) = register_mapping.get(reg) {
-            Ok(mapped.clone())
-        } else {
-            Ok(reg.clone())
-        }
-    }
-
-    fn map_address_mode(
-        &self,
-        addr: &AddressMode,
-        register_mapping: &HashMap<Register, Register>,
-    ) -> Result<AddressMode, TransformError> {
-        match addr {
-            AddressMode::BaseOffset {
-                base,
-                offset,
-                address_space,
-            } => Ok(AddressMode::BaseOffset {
-                base: self.map_register(base, register_mapping)?,
-                offset: *offset,
-                address_space: *address_space,
-            }),
-            AddressMode::BaseIndexScale {
-                base,
-                index,
-                scale,
-                offset,
-                address_space,
-            } => Ok(AddressMode::BaseIndexScale {
-                base: self.map_register(base, register_mapping)?,
-                index: self.map_register(index, register_mapping)?,
-                scale: *scale,
-                offset: *offset,
-                address_space: *address_space,
-            }),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct CallSite {
-    caller: String,
-    callee: String,
-    block_label: String,
-    instr_idx: usize,
 }
 
 #[cfg(test)]
@@ -1036,6 +427,90 @@ mod tests {
                 .is_none_or(|register| !slots.contains(register))
         }));
         caller.validate().expect("inlined caller verifies");
+    }
+
+    #[test]
+    fn repeated_stack_callees_keep_distinct_storage_and_reservations() {
+        let ir = parse_module(
+            "fn @leaf(i64 %x) -> i64 {
+entry:
+%p = alloc.stack [8 x i64]
+store.i64 %p, %x
+%r = load.i64 %p
+ret.i64 %r
+}
+fn @main() -> i64 {
+entry:
+%p = alloc.stack [8 x i64]
+%a = call @leaf(11)
+%b = call @leaf(22)
+%c = add.i64 %a, %b
+ret.i64 %c
+}",
+        )
+        .unwrap();
+        let mut module = from_ir(&ir, "stack").unwrap();
+        assert_eq!(
+            ModuleInlining::new().inline_functions(&mut module).unwrap(),
+            2
+        );
+        let caller = &module.functions["main"];
+        assert_eq!(caller.stack_reservations.len(), 3);
+        let slots: HashSet<_> = caller
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instructions)
+            .filter_map(|i| {
+                if let Instruction::StackAddr { slot, .. } = i {
+                    Some(*slot)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(slots.len(), 3);
+        assert!(
+            caller
+                .stack_reservations
+                .keys()
+                .all(|slot| slots.contains(slot))
+        );
+        assert!(
+            caller.blocks.iter().flat_map(|b| &b.instructions).all(|i| {
+                !matches!(i.def_reg(), Some(Register::Virtual(v)) if slots.contains(v))
+            })
+        );
+        caller.validate().unwrap();
+    }
+
+    #[test]
+    fn direct_and_mutual_recursion_remain_calls() {
+        for source in [
+            "fn @a() -> void {
+entry:
+call @a()
+ret.void
+}",
+            "fn @a() -> void {
+entry:
+call @b()
+ret.void
+}
+fn @b() -> void {
+entry:
+call @a()
+ret.void
+}",
+        ] {
+            let ir = parse_module(source).unwrap();
+            let mut module = from_ir(&ir, "recursion").unwrap();
+            let original = module.clone();
+            assert_eq!(
+                ModuleInlining::new().inline_functions(&mut module).unwrap(),
+                0
+            );
+            assert_eq!(module, original);
+        }
     }
 
     #[test]
