@@ -553,12 +553,15 @@ fn emit_instruction_ppc64<W: Write>(
                 FloatCmpOp::Gt => "bgt",
                 FloatCmpOp::Ge => "bge",
             };
-            writeln!(writer, "    {branch} .L_ppc_fcmp_true_{lhs:p}")?;
+            let seq = *cmp_seq;
+            *cmp_seq = cmp_seq.saturating_add(1);
+            let prefix = emit.block_prefix;
+            writeln!(writer, "    {branch} {prefix}fcmp{seq}.true")?;
             writeln!(writer, "    li 3, 0")?;
-            writeln!(writer, "    b .L_ppc_fcmp_end_{lhs:p}")?;
-            writeln!(writer, ".L_ppc_fcmp_true_{lhs:p}:")?;
+            writeln!(writer, "    b {prefix}fcmp{seq}.end")?;
+            writeln!(writer, "{prefix}fcmp{seq}.true:")?;
             writeln!(writer, "    li 3, 1")?;
-            writeln!(writer, ".L_ppc_fcmp_end_{lhs:p}:")?;
+            writeln!(writer, "{prefix}fcmp{seq}.end:")?;
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
             }
