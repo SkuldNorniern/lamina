@@ -102,14 +102,14 @@ impl X64RegAlloc {
         }
     }
 
-    /// GPRs disjoint from emitter temporaries and ABI arguments.
+    /// GPR candidates for global allocation; emitter constraints apply separately.
     pub fn gpr_pool_for_global_allocation(
         _target_os: TargetOperatingSystem,
         leaf: bool,
     ) -> Vec<&'static str> {
-        let mut pool = vec!["r12", "r13", "r14", "r15"];
+        let mut pool = vec!["r12", "r13", "r14", "r15", "rbx"];
         if leaf {
-            pool.extend(["r10", "r11"]);
+            pool.extend(["r10", "r11", "rcx", "rdx", "rsi", "rdi", "r8", "r9"]);
         }
         pool
     }
@@ -341,17 +341,18 @@ mod tests {
     }
 
     #[test]
-    fn global_pool_excludes_emitter_temporaries_in_leaf_functions() {
+    fn global_pool_expands_leaf_candidates() {
         let non_leaf =
             X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
         let leaf = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, true);
         assert!(leaf.len() > non_leaf.len());
         assert!(!non_leaf.contains(&"r10"));
         assert!(!non_leaf.contains(&"r11"));
-        for reg in [
-            "rax", "rbx", "rcx", "rdx", "rsi", "rdi", "rbp", "rsp", "r8", "r9",
-        ] {
+        for reg in ["rax", "rbp", "rsp"] {
             assert!(!leaf.contains(&reg));
+        }
+        for reg in ["rbx", "rcx", "rdx", "rsi", "rdi", "r8", "r9"] {
+            assert!(leaf.contains(&reg));
         }
     }
 
