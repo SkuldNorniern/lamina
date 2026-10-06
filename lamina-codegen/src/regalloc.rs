@@ -248,6 +248,15 @@ impl LinearScanAllocator {
         intervals: &[LiveInterval],
         available_regs: &[R],
     ) -> HashMap<VirtualReg, Allocation<R>> {
+        Self::allocate_with_constraints(intervals, available_regs, |_, _| true)
+    }
+
+    /// Allocate registers permitted by each interval's target constraints.
+    pub fn allocate_with_constraints<R: Copy + Eq>(
+        intervals: &[LiveInterval],
+        available_regs: &[R],
+        allowed: impl Fn(&LiveInterval, R) -> bool,
+    ) -> HashMap<VirtualReg, Allocation<R>> {
         let mut result: HashMap<VirtualReg, Allocation<R>> = HashMap::new();
         // Active intervals: sorted by end point (ascending).
         let mut active: Vec<(&LiveInterval, R)> = Vec::new();
@@ -268,7 +277,8 @@ impl LinearScanAllocator {
             });
             free.extend(freed);
 
-            if let Some(reg) = free.pop() {
+            if let Some(index) = free.iter().rposition(|reg| allowed(interval, *reg)) {
+                let reg = free.remove(index);
                 // Assign a free register.
                 result.insert(interval.vreg, Allocation::Register(reg));
                 // Insert into active, keeping it sorted by end point.
@@ -279,12 +289,15 @@ impl LinearScanAllocator {
             } else {
                 // Spill the interval with the longest remaining lifetime (last in
                 // `active` since it's sorted by end point).
-                match active.last().cloned() {
-                    Some((spill_interval, spill_reg)) if spill_interval.end > interval.end => {
+                let candidate = active.iter().rposition(|(_, reg)| allowed(interval, *reg));
+                match candidate.map(|index| (index, active[index])) {
+                    Some((index, (spill_interval, spill_reg)))
+                        if spill_interval.end > interval.end =>
+                    {
                         // Spill the existing active interval; give its register to `interval`.
                         result.insert(spill_interval.vreg, Allocation::Spill(next_spill));
                         next_spill -= 8;
-                        active.pop();
+                        active.remove(index);
                         result.insert(interval.vreg, Allocation::Register(spill_reg));
                         let pos = active
                             .binary_search_by_key(&interval.end, |(ai, _)| ai.end)
@@ -326,6 +339,15 @@ impl GraphColorAllocator {
         intervals: &[LiveInterval],
         available_regs: &[R],
     ) -> HashMap<VirtualReg, Allocation<R>> {
+        Self::allocate_with_constraints(intervals, available_regs, |_, _| true)
+    }
+
+    /// Color intervals using registers permitted by target constraints.
+    pub fn allocate_with_constraints<R: Copy + Eq + Hash>(
+        intervals: &[LiveInterval],
+        available_regs: &[R],
+        allowed: impl Fn(&LiveInterval, R) -> bool,
+    ) -> HashMap<VirtualReg, Allocation<R>> {
         if intervals.is_empty() {
             return HashMap::new();
         }
@@ -362,7 +384,7 @@ impl GraphColorAllocator {
 
             let mut picked: Option<R> = None;
             for reg in available_regs {
-                if !blocked.contains(reg) {
+                if !blocked.contains(reg) && allowed(interval, *reg) {
                     picked = Some(*reg);
                     break;
                 }
@@ -478,6 +500,68 @@ mod tests {
                 value: Some(Operand::Register(v2)),
             })
             .build()
+    }
+
+    #[test]
+    fn constrained_allocators_respect_fixed_registers_and_eviction() {
+        let intervals = [
+            LiveInterval {
+                vreg: VirtualReg::gpr(0),
+                start: 0,
+                end: 10,
+            },
+            LiveInterval {
+                vreg: VirtualReg::gpr(1),
+                start: 1,
+                end: 9,
+            },
+            LiveInterval {
+                vreg: VirtualReg::gpr(2),
+                start: 2,
+                end: 3,
+            },
+            LiveInterval {
+                vreg: VirtualReg::gpr(3),
+                start: 3,
+                end: 4,
+            },
+        ];
+        let allowed = |interval: &LiveInterval, reg| match interval.vreg.id {
+            0 | 2 => reg == "callee",
+            1 => reg == "caller",
+            _ => false,
+        };
+        for plan in [
+            LinearScanAllocator::allocate_with_constraints(
+                &intervals,
+                &["callee", "caller"],
+                allowed,
+            ),
+            GraphColorAllocator::allocate_with_constraints(
+                &intervals,
+                &["callee", "caller"],
+                allowed,
+            ),
+        ] {
+            assert!(matches!(plan[&intervals[3].vreg], Allocation::Spill(_)));
+            for interval in &intervals {
+                if let Allocation::Register(reg) = plan[&interval.vreg] {
+                    assert!(allowed(interval, reg));
+                    for other in &intervals {
+                        if other.vreg != interval.vreg && intervals_interfere(interval, other) {
+                            assert_ne!(plan[&other.vreg], Allocation::Register(reg));
+                        }
+                    }
+                }
+            }
+        }
+        let linear = LinearScanAllocator::allocate_with_constraints(
+            &intervals,
+            &["callee", "caller"],
+            allowed,
+        );
+        assert!(matches!(linear[&intervals[0].vreg], Allocation::Spill(_)));
+        assert_eq!(linear[&intervals[2].vreg], Allocation::Register("callee"));
     }
 
     #[test]
