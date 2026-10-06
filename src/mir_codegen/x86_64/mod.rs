@@ -144,6 +144,50 @@ impl<W: Write> Write for RaxTrackingWriter<W> {
     }
 }
 
+fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
+    matches!(reg, "rbx" | "r12" | "r13" | "r14" | "r15")
+        || (target_os == TargetOperatingSystem::Windows && matches!(reg, "rsi" | "rdi"))
+}
+
+fn instruction_clobbers(
+    inst: &MirInst,
+    leaf: bool,
+    target_os: TargetOperatingSystem,
+) -> Vec<&'static str> {
+    let scratch = if leaf {
+        vec!["rcx", "rdx"]
+    } else {
+        vec!["r10", "r11"]
+    };
+    match inst {
+        MirInst::Call { .. } | MirInst::TailCall { .. } => {
+            let mut regs = vec!["rcx", "rdx", "r8", "r9", "r10", "r11"];
+            if target_os != TargetOperatingSystem::Windows {
+                regs.extend(["rsi", "rdi"]);
+            }
+            regs
+        }
+        MirInst::IntBinary { op, rhs, .. } => match op {
+            IntBinOp::SDiv | IntBinOp::UDiv | IntBinOp::SRem | IntBinOp::URem => {
+                vec!["rcx", "rdx"]
+            }
+            IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr
+                if matches!(rhs, Operand::Register(_)) =>
+            {
+                let mut regs = scratch;
+                regs.push("rcx");
+                regs
+            }
+            _ => scratch,
+        },
+        MirInst::IntCmp { .. }
+        | MirInst::Store { .. }
+        | MirInst::Lea { .. }
+        | MirInst::Select { .. } => scratch,
+        _ => Vec::new(),
+    }
+}
+
 fn compile_single_function_x86_64(
     func_name: &str,
     func: &Function,
@@ -187,7 +231,10 @@ fn compile_single_function_x86_64(
 
     let mut saved_regs = Vec::new();
     if settings.regalloc != RegallocStrategy::Incremental {
-        let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
+        let mut pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
+        for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
+            pool.retain(|reg| !instruction_clobbers(inst, is_leaf, target_os).contains(reg));
+        }
         let address_taken: BTreeSet<_> = func
             .blocks
             .iter()
@@ -213,7 +260,7 @@ fn compile_single_function_x86_64(
         reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);
         for allocation in plan.values() {
             if let MirAllocation::Register(reg) = allocation
-                && !matches!(*reg, "r10" | "r11")
+                && callee_saved(reg, target_os)
             {
                 saved_regs.push(*reg);
             }
@@ -240,6 +287,17 @@ fn compile_single_function_x86_64(
         let abi_for_func = X86ABI::new(target_os);
         let arg_regs = abi_for_func.arg_registers();
 
+        if settings.regalloc != RegallocStrategy::Incremental {
+            for (param, phys) in func.sig.params.iter().zip(arg_regs.iter()) {
+                if let Register::Virtual(vreg) = &param.reg
+                    && let Some(offset) = stack_slots.get(vreg)
+                {
+                    writeln!(output, "    movq %{phys}, {offset}(%rbp)")
+                        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                }
+            }
+        }
+
         for (index, param) in func.sig.params.iter().enumerate() {
             if let Register::Virtual(vreg) = &param.reg
                 && let Some(slot_off) = stack_slots.get(vreg)
@@ -250,7 +308,15 @@ fn compile_single_function_x86_64(
                         .get_mapping_for(vreg)
                         .map(|reg| format!("%{reg}"))
                         .unwrap_or_else(|| format!("{slot_off}(%rbp)"));
-                    writeln!(output, "    movq %{phys_arg}, {destination}").map_err(|e| {
+                    let source = if settings.regalloc == RegallocStrategy::Incremental {
+                        format!("%{phys_arg}")
+                    } else {
+                        format!("{slot_off}(%rbp)")
+                    };
+                    if source == destination {
+                        continue;
+                    }
+                    writeln!(output, "    movq {source}, {destination}").map_err(|e| {
                         CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
                     })?;
                 } else {
