@@ -231,10 +231,26 @@ fn compile_single_function_x86_64(
 
     let mut saved_regs = Vec::new();
     if settings.regalloc != RegallocStrategy::Incremental {
-        let mut pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
-        for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
-            pool.retain(|reg| !instruction_clobbers(inst, is_leaf, target_os).contains(reg));
-        }
+        let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
+        let clobbers: Vec<_> = func
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .map(|inst| {
+                let mut regs = instruction_clobbers(inst, is_leaf, target_os);
+                for reg in inst.use_regs().into_iter().chain(inst.def_reg()) {
+                    if let Register::Physical(phys) = reg {
+                        regs.push(phys.name);
+                    }
+                }
+                regs
+            })
+            .collect();
+        let allowed = |interval: &lamina_codegen::LiveInterval, reg| {
+            clobbers[interval.start..=interval.end]
+                .iter()
+                .all(|regs| !regs.contains(&reg))
+        };
         let address_taken: BTreeSet<_> = func
             .blocks
             .iter()
@@ -250,10 +266,10 @@ fn compile_single_function_x86_64(
             .collect();
         let plan = match settings.regalloc {
             RegallocStrategy::LinearScanGlobal => {
-                LinearScanAllocator::allocate(&intervals, pool.as_slice())
+                LinearScanAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
             }
             RegallocStrategy::GraphColorGlobal => {
-                GraphColorAllocator::allocate(&intervals, pool.as_slice())
+                GraphColorAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
             }
             RegallocStrategy::Incremental => unreachable!(),
         };

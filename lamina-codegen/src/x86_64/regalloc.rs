@@ -105,13 +105,11 @@ impl X64RegAlloc {
     /// GPR candidates for global allocation; emitter constraints apply separately.
     pub fn gpr_pool_for_global_allocation(
         _target_os: TargetOperatingSystem,
-        leaf: bool,
+        _leaf: bool,
     ) -> Vec<&'static str> {
-        let mut pool = vec!["r12", "r13", "r14", "r15", "rbx"];
-        if leaf {
-            pool.extend(["r10", "r11", "rcx", "rdx", "rsi", "rdi", "r8", "r9"]);
-        }
-        pool
+        vec![
+            "r12", "r13", "r14", "r15", "rbx", "rsi", "rdi", "r8", "r9", "r10", "r11", "rdx", "rcx",
+        ]
     }
 
     /// Rebuild allocator state from a precomputed GPR plan (global linear scan or graph coloring).
@@ -293,8 +291,7 @@ mod tests {
     #[test]
     fn new_linux_has_sysv_pool() {
         let ra = X64RegAlloc::new(TargetOperatingSystem::Linux);
-        let pool = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
-        for r in &pool {
+        for r in SYSV_MAP_GPRS {
             assert!(ra.free_gprs.contains(r));
         }
     }
@@ -302,9 +299,7 @@ mod tests {
     #[test]
     fn new_windows_has_win64_pool() {
         let ra = X64RegAlloc::new(TargetOperatingSystem::Windows);
-        let pool =
-            X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Windows, false);
-        assert!(pool.iter().all(|reg| ra.free_gprs.contains(reg)));
+        assert!(WIN64_MAP_GPRS.iter().all(|reg| ra.free_gprs.contains(reg)));
     }
 
     #[test]
@@ -341,13 +336,13 @@ mod tests {
     }
 
     #[test]
-    fn global_pool_expands_leaf_candidates() {
+    fn global_pool_includes_caller_saved_candidates() {
         let non_leaf =
             X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, false);
         let leaf = X64RegAlloc::gpr_pool_for_global_allocation(TargetOperatingSystem::Linux, true);
-        assert!(leaf.len() > non_leaf.len());
-        assert!(!non_leaf.contains(&"r10"));
-        assert!(!non_leaf.contains(&"r11"));
+        assert_eq!(leaf, non_leaf);
+        assert!(non_leaf.contains(&"r10"));
+        assert!(non_leaf.contains(&"r11"));
         for reg in ["rax", "rbp", "rsp"] {
             assert!(!leaf.contains(&reg));
         }
