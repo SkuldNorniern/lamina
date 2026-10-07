@@ -188,6 +188,21 @@ fn instruction_clobbers(
     }
 }
 
+fn layout_global_stack_slots(
+    plan: &HashMap<VirtualReg, MirAllocation<&'static str>>,
+    slots: &mut HashMap<VirtualReg, i32>,
+    local_slots: usize,
+) -> usize {
+    let mut spill_slots = 0;
+    for (&vreg, allocation) in plan {
+        if let MirAllocation::Spill(offset) = allocation {
+            spill_slots = spill_slots.max((-offset / 8) as usize);
+            slots.insert(vreg, offset - (local_slots * 8) as i32);
+        }
+    }
+    local_slots + spill_slots
+}
+
 fn compile_single_function_x86_64(
     func_name: &str,
     func: &Function,
@@ -226,7 +241,7 @@ fn compile_single_function_x86_64(
         X64RegAlloc::new(target_os)
     };
 
-    let (stack_slots, def_regs, total_slots) =
+    let (mut stack_slots, def_regs, mut total_slots) =
         assign_stack_slots(func, X86Frame::calculate_stack_offset);
 
     let mut saved_regs = Vec::new();
@@ -251,7 +266,7 @@ fn compile_single_function_x86_64(
                 .iter()
                 .all(|regs| !regs.contains(&reg))
         };
-        let address_taken: BTreeSet<_> = func
+        let mut address_taken: BTreeSet<_> = func
             .blocks
             .iter()
             .flat_map(|block| &block.instructions)
@@ -260,6 +275,7 @@ fn compile_single_function_x86_64(
                 _ => None,
             })
             .collect();
+        address_taken.extend(func.stack_reservations.keys());
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()
             .filter(|i| i.vreg.class == RegisterClass::Gpr && !address_taken.contains(&i.vreg))
@@ -273,6 +289,7 @@ fn compile_single_function_x86_64(
             }
             RegallocStrategy::Incremental => unreachable!(),
         };
+        total_slots = layout_global_stack_slots(&plan, &mut stack_slots, total_slots);
         reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);
         for allocation in plan.values() {
             if let MirAllocation::Register(reg) = allocation
@@ -1609,6 +1626,27 @@ fn emit_copy_register_load(
 mod tests {
     use super::*;
     use crate::mir::{FunctionBuilder, ScalarType};
+
+    #[test]
+    fn global_frame_separates_spills_parameters_and_reserved_arrays() {
+        let param = VirtualReg::gpr(0);
+        let spilled = VirtualReg::gpr(1);
+        let array = VirtualReg::gpr(2);
+        let mapped = VirtualReg::gpr(3);
+        let mut slots = HashMap::from([(param, -8), (spilled, -16), (array, -48), (mapped, -56)]);
+        let plan = HashMap::from([
+            (param, MirAllocation::Register("rdi")),
+            (spilled, MirAllocation::Spill(-8)),
+            (mapped, MirAllocation::Register("r12")),
+        ]);
+        let total = layout_global_stack_slots(&plan, &mut slots, 7);
+        assert_eq!(slots[&spilled], -64);
+        assert_eq!(slots[&param], -8);
+        assert_eq!(slots[&array], -48);
+        assert_eq!(slots[&mapped], -56);
+        assert_eq!(total, 8);
+        assert_eq!(X86Frame::calculate_stack_offset(total), -72);
+    }
 
     #[test]
     fn rax_round_trip_requires_no_intervening_emission() {
