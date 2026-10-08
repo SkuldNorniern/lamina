@@ -318,6 +318,12 @@ fn compile_single_function_x86_64(
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
 
+    // A self tail call re-enters here with its arguments already in the ABI argument
+    // registers, so it reuses the parameter homing below and skips frame teardown and
+    // setup entirely.
+    writeln!(output, "{}:", self_tail_entry_label(func_name))
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+
     if !func.sig.params.is_empty() {
         let abi_for_func = X86ABI::new(target_os);
         let arg_regs = abi_for_func.arg_registers();
@@ -1277,16 +1283,15 @@ fn emit_instruction_x86_64(
                 }
             }
 
-            restore_saved_registers(writer, stack_size, saved_regs)?;
-            // 3. Teardown Frame (Epilogue without ret)
-            // Restore Stack Pointer
-            writeln!(writer, "    movq %rbp, %rsp")?;
-            // Restore Base Pointer
-            writeln!(writer, "    popq %rbp")?;
-
-            // 4. Jump to target
-            let mangled_name = abi.mangle_function_name(name);
-            writeln!(writer, "    jmp {mangled_name}")?;
+            if name == func_name {
+                writeln!(writer, "    jmp {}", self_tail_entry_label(func_name))?;
+            } else {
+                restore_saved_registers(writer, stack_size, saved_regs)?;
+                writeln!(writer, "    movq %rbp, %rsp")?;
+                writeln!(writer, "    popq %rbp")?;
+                let mangled_name = abi.mangle_function_name(name);
+                writeln!(writer, "    jmp {mangled_name}")?;
+            }
         }
         MirInst::StackAddr { dst, slot } => {
             let offset = stack_slots.get(slot).ok_or_else(|| {
@@ -1562,6 +1567,11 @@ fn cmp_immediate(rhs: &Operand, ty: &MirType, unsigned: bool) -> Option<i64> {
         raw
     };
     i32::try_from(value).ok().map(i64::from)
+}
+
+/// Label just past the prologue, where a self tail call re-enters the function.
+fn self_tail_entry_label(func_name: &str) -> String {
+    format!(".L_{func_name}.tailentry")
 }
 
 fn load_insn_for(ty: &MirType) -> &'static str {
