@@ -51,22 +51,6 @@ impl TailCallOptimization {
         }
 
         let mut changed = false;
-        // Borrow signature separately from blocks to avoid borrow checker issues
-        let _sig = &func.sig;
-        // We need to bypass the borrow checker restriction on `func` being borrowed mutably for blocks
-        // while we need `sig`. Since `sig` and `blocks` are disjoint fields, we can destructure or just clone signature if needed.
-        // Cloning signature is safe but not ideal.
-        // However, `Function` struct definition:
-        // struct Function { sig, blocks, entry }
-        // We can't easily iterate `func.blocks` mutably while holding `&func.sig` because `func` is borrowed.
-        // Actually, we can if we split borrows, but `apply_internal` takes `&mut Function`.
-        // Rust's split borrow works if we do `let Function { sig, blocks, .. } = func`.
-        // But `blocks` is Vec<Block>.
-        // Let's rely on disjoint fields if the compiler is smart enough, OR just clone the signature since it's small metadata.
-        // Signature contains a Vec<Parameter>, so it allocates.
-        // Let's try to be smart.
-        // But `func.blocks` access is via `func` reference.
-        // Workaround: Clone signature. It is not huge.
         let func_sig = func.sig.clone();
 
         for block in &mut func.blocks {
@@ -95,11 +79,12 @@ impl TailCallOptimization {
                     // Check if this is a tail call (return value matches call result)
                     if self.is_tail_call(value, ret)
                         && self.is_tail_call_safe(func_sig, name, args, ret)
+                        && self.convert_to_tail_call(&mut block.instructions[second_last_idx])
                     {
-                        // Convert the call to a tail call jump
-                        if self.convert_to_tail_call(&mut block.instructions[second_last_idx]) {
-                            changed = true;
-                        }
+                        // The call no longer defines the returned register, so the return
+                        // that followed it is both unreachable and undefined.
+                        block.instructions.pop();
+                        changed = true;
                     }
                 }
             }
