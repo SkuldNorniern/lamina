@@ -115,7 +115,7 @@ pub fn print_usage() {
         "  -g                      Emit assembler .file/.loc and minimal ELF DWARF when using ras"
     );
     eprintln!(
-        "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: incremental)"
+        "  --regalloc <m>          MIR regalloc: incremental | linear | graph (default: linear at O2+ on x86_64, incremental otherwise)"
     );
     eprintln!("  -h, --help              Display this help message");
 }
@@ -150,6 +150,7 @@ pub fn parse_args() -> Result<CompileOptions, String> {
         mir_codegen_settings: MirCodegenSettings::default(),
     };
 
+    let mut regalloc_explicit = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -236,6 +237,7 @@ pub fn parse_args() -> Result<CompileOptions, String> {
                 i += 1;
             }
             "--regalloc" => {
+                regalloc_explicit = true;
                 if i + 1 >= args.len() {
                     return Err("Missing argument for --regalloc".to_string());
                 }
@@ -317,5 +319,14 @@ pub fn parse_args() -> Result<CompileOptions, String> {
         return Err("No input file specified".to_string());
     }
 
+    let x86_64 = options
+        .target_arch
+        .as_deref()
+        .map_or(cfg!(target_arch = "x86_64"), |target| {
+            target.starts_with("x86_64_")
+        });
+    if !regalloc_explicit && x86_64 {
+        options.mir_codegen_settings.regalloc = RegallocStrategy::for_opt_level(options.opt_level);
+    }
     Ok(options)
 }
