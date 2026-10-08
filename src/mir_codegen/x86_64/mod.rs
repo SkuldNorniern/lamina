@@ -398,13 +398,54 @@ fn compile_single_function_x86_64(
     writeln!(output, "    jmp .L_{}.{}", func_name, func.entry)
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
+    // A comparison whose only consumer is the branch right after it needs no setCC and no
+    // materialised 0/1: the flags from cmpq drive jCC directly.
+    let mut use_counts: HashMap<VirtualReg, usize> = HashMap::new();
+    for block in &func.blocks {
+        for inst in &block.instructions {
+            for reg in inst.use_regs() {
+                if let Register::Virtual(vreg) = reg {
+                    *use_counts.entry(*vreg).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
     let mut debug_line: u32 = 0;
     for block in &func.blocks {
         output.rax_value = None;
         writeln!(output, ".L_{}.{}:", func_name, block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
-        for inst in &block.instructions {
+        let mut skip_next = false;
+        for (position, inst) in block.instructions.iter().enumerate() {
+            if skip_next {
+                skip_next = false;
+                continue;
+            }
+            if let MirInst::IntCmp { op, dst, lhs, rhs, ty } = inst
+                && let Register::Virtual(cmp_dst) = dst
+                && let Some(MirInst::Br { cond: Register::Virtual(cond), true_target, false_target }) =
+                    block.instructions.get(position + 1)
+                && cond == cmp_dst
+                && use_counts.get(cmp_dst).copied() == Some(1)
+            {
+                let scratch =
+                    emit_int_compare(op, ty, lhs, rhs, &mut output, &mut reg_alloc, &stack_slots)
+                        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                let suffix = cmp_suffix(op)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                writeln!(output, "    j{suffix} .L_{func_name}.{true_target}")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                writeln!(output, "    jmp .L_{func_name}.{false_target}")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                if !scratch.is_empty() && scratch != "rbx" {
+                    reg_alloc.free_scratch(scratch);
+                }
+                output.rax_value = None;
+                skip_next = true;
+                continue;
+            }
             emit_instruction_x86_64(
                 inst,
                 &mut output,
@@ -865,45 +906,9 @@ fn emit_instruction_x86_64(
             rhs,
             ty,
         } => {
-            let unsigned = matches!(
-                op,
-                IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
-            );
-            load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
-            let imm_rhs = cmp_immediate(rhs, ty, unsigned);
-            let mut scratch = "";
-            if let Some(v) = imm_rhs {
-                if unsigned {
-                    extend_integer(writer, "rax", ty.size_bytes(), false)?;
-                }
-                writeln!(writer, "    cmpq ${v}, %rax")?;
-            } else {
-                scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
-                load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
-                if unsigned {
-                    extend_integer(writer, "rax", ty.size_bytes(), false)?;
-                    extend_integer(writer, scratch, ty.size_bytes(), false)?;
-                }
-                writeln!(writer, "    cmpq %{scratch}, %rax")?;
-            }
-            match op {
-                IntCmpOp::Eq => writeln!(writer, "    sete %al")?,
-                IntCmpOp::Ne => writeln!(writer, "    setne %al")?,
-                IntCmpOp::SLt => writeln!(writer, "    setl %al")?,
-                IntCmpOp::SLe => writeln!(writer, "    setle %al")?,
-                IntCmpOp::SGt => writeln!(writer, "    setg %al")?,
-                IntCmpOp::SGe => writeln!(writer, "    setge %al")?,
-                IntCmpOp::ULt => writeln!(writer, "    setb %al")?,
-                IntCmpOp::ULe => writeln!(writer, "    setbe %al")?,
-                IntCmpOp::UGt => writeln!(writer, "    seta %al")?,
-                IntCmpOp::UGe => writeln!(writer, "    setae %al")?,
-                #[allow(unreachable_patterns)]
-                other => {
-                    return Err(LaminaError::ValidationError(format!(
-                        "x86_64 backend does not support integer comparison {other:?}"
-                    )));
-                }
-            }
+            let scratch = emit_int_compare(op, ty, lhs, rhs, writer, reg_alloc, stack_slots)?;
+            let suffix = cmp_suffix(op)?;
+            writeln!(writer, "    set{suffix} %al")?;
             writeln!(writer, "    movzbq %al, %rax")?;
 
             if let Register::Virtual(vreg) = dst {
@@ -1567,6 +1572,72 @@ fn cmp_immediate(rhs: &Operand, ty: &MirType, unsigned: bool) -> Option<i64> {
         raw
     };
     i32::try_from(value).ok().map(i64::from)
+}
+
+/// Condition-code suffix for an integer comparison, as used by `setCC` and `jCC`.
+fn cmp_suffix(op: &IntCmpOp) -> Result<&'static str, LaminaError> {
+    Ok(match op {
+        IntCmpOp::Eq => "e",
+        IntCmpOp::Ne => "ne",
+        IntCmpOp::SLt => "l",
+        IntCmpOp::SLe => "le",
+        IntCmpOp::SGt => "g",
+        IntCmpOp::SGe => "ge",
+        IntCmpOp::ULt => "b",
+        IntCmpOp::ULe => "be",
+        IntCmpOp::UGt => "a",
+        IntCmpOp::UGe => "ae",
+        #[allow(unreachable_patterns)]
+        other => {
+            return Err(LaminaError::ValidationError(format!(
+                "x86_64 backend does not support integer comparison {other:?}"
+            )));
+        }
+    })
+}
+
+/// Emit the `cmpq` for an integer comparison, leaving the flags set. Returns the scratch
+/// register that must be released, or "" when the right operand folded into an immediate.
+fn emit_int_compare(
+    op: &IntCmpOp,
+    ty: &MirType,
+    lhs: &Operand,
+    rhs: &Operand,
+    writer: &mut RaxTrackingWriter<impl Write>,
+    reg_alloc: &mut X64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<&'static str, LaminaError> {
+    let unsigned = matches!(
+        op,
+        IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
+    );
+    // Both sides already in registers at full width: compare them where they sit.
+    if !unsigned || ty.size_bytes() == 8 {
+        let physical = |value: &Operand| match value {
+            Operand::Register(Register::Virtual(vreg)) => reg_alloc.get_mapping_for(vreg),
+            _ => None,
+        };
+        if let (Some(left), Some(right)) = (physical(lhs), physical(rhs)) {
+            writeln!(writer, "    cmpq %{right}, %{left}")?;
+            return Ok("");
+        }
+    }
+    load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
+    if let Some(v) = cmp_immediate(rhs, ty, unsigned) {
+        if unsigned {
+            extend_integer(writer, "rax", ty.size_bytes(), false)?;
+        }
+        writeln!(writer, "    cmpq ${v}, %rax")?;
+        return Ok("");
+    }
+    let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+    load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
+    if unsigned {
+        extend_integer(writer, "rax", ty.size_bytes(), false)?;
+        extend_integer(writer, scratch, ty.size_bytes(), false)?;
+    }
+    writeln!(writer, "    cmpq %{scratch}, %rax")?;
+    Ok(scratch)
 }
 
 /// Label just past the prologue, where a self tail call re-enters the function.
