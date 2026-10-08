@@ -320,7 +320,20 @@ fn compile_single_function_x86_64(
         let abi_for_func = X86ABI::new(target_os);
         let arg_regs = abi_for_func.arg_registers();
 
-        if settings.regalloc != RegallocStrategy::Incremental {
+        let stage_params = settings.regalloc != RegallocStrategy::Incremental
+            && func.sig.params.iter().enumerate().any(|(index, param)| {
+                if let Register::Virtual(vreg) = &param.reg
+                    && let Some(destination) = reg_alloc.get_mapping_for(vreg)
+                {
+                    return arg_regs
+                        .iter()
+                        .take(func.sig.params.len())
+                        .skip(index + 1)
+                        .any(|source| *source == destination);
+                }
+                false
+            });
+        if stage_params {
             for (param, phys) in func.sig.params.iter().zip(arg_regs.iter()) {
                 if let Register::Virtual(vreg) = &param.reg
                     && let Some(offset) = stack_slots.get(vreg)
@@ -341,7 +354,7 @@ fn compile_single_function_x86_64(
                         .get_mapping_for(vreg)
                         .map(|reg| format!("%{reg}"))
                         .unwrap_or_else(|| format!("{slot_off}(%rbp)"));
-                    let source = if settings.regalloc == RegallocStrategy::Incremental {
+                    let source = if !stage_params {
                         format!("%{phys_arg}")
                     } else {
                         format!("{slot_off}(%rbp)")
