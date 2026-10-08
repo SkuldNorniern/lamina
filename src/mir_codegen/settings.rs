@@ -15,6 +15,16 @@ pub enum RegallocStrategy {
     GraphColorGlobal,
 }
 
+impl RegallocStrategy {
+    pub fn for_opt_level(opt_level: u8) -> Self {
+        if opt_level >= 2 {
+            Self::LinearScanGlobal
+        } else {
+            Self::Incremental
+        }
+    }
+}
+
 /// Tunables for `generate_mir_to_target_with_settings`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MirCodegenSettings {

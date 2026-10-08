@@ -27,7 +27,9 @@ use crate::{
     },
 };
 
-use lamina_codegen::{Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator};
+use lamina_codegen::{
+    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator, LiveInterval,
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::sync::Arc;
 
@@ -261,7 +263,7 @@ fn compile_single_function_x86_64(
                 regs
             })
             .collect();
-        let allowed = |interval: &lamina_codegen::LiveInterval, reg| {
+        let allowed = |interval: &LiveInterval, reg| {
             clobbers[interval.start..=interval.end]
                 .iter()
                 .all(|regs| !regs.contains(&reg))
