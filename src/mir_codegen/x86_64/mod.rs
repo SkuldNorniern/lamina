@@ -9,7 +9,7 @@ pub mod util;
 use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame, extend_integer, register_for_size};
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, VecDeque},
     io::{self, Error, Write},
 };
 use util::*;
@@ -395,8 +395,11 @@ fn compile_single_function_x86_64(
         }
     }
 
-    writeln!(output, "    jmp .L_{}.{}", func_name, func.entry)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    let layout = block_layout(func);
+    if layout.first().map(|&i| func.blocks[i].label.as_str()) != Some(func.entry.as_str()) {
+        writeln!(output, "    jmp .L_{}.{}", func_name, func.entry)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    }
 
     // A comparison whose only consumer is the branch right after it needs no setCC and no
     // materialised 0/1: the flags from cmpq drive jCC directly.
@@ -412,7 +415,12 @@ fn compile_single_function_x86_64(
     }
 
     let mut debug_line: u32 = 0;
-    for block in &func.blocks {
+    for (slot, &block_index) in layout.iter().enumerate() {
+        let block = &func.blocks[block_index];
+        let next_label = layout
+            .get(slot + 1)
+            .map(|&i| func.blocks[i].label.as_str())
+            .unwrap_or("");
         output.rax_value = None;
         writeln!(output, ".L_{}.{}:", func_name, block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
@@ -437,8 +445,12 @@ fn compile_single_function_x86_64(
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 writeln!(output, "    j{suffix} .L_{func_name}.{true_target}")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                writeln!(output, "    jmp .L_{func_name}.{false_target}")
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                if false_target != next_label {
+                    writeln!(output, "    jmp .L_{func_name}.{false_target}")
+                        .map_err(|e| {
+                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                        })?;
+                }
                 if !scratch.is_empty() && scratch != "rbx" {
                     reg_alloc.free_scratch(scratch);
                 }
@@ -458,6 +470,7 @@ fn compile_single_function_x86_64(
                 &def_regs,
                 settings,
                 &mut debug_line,
+                next_label,
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
@@ -572,6 +585,7 @@ fn emit_instruction_x86_64(
     def_regs: &BTreeSet<VirtualReg>,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
+    next_label: &str,
 ) -> Result<(), LaminaError> {
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
@@ -1500,8 +1514,9 @@ fn emit_instruction_x86_64(
             X86Frame::generate_epilogue(writer, stack_size)?;
         }
         MirInst::Jmp { target } => {
-            // Use function-scoped label to avoid collisions
-            writeln!(writer, "    jmp .L_{func_name}.{target}")?;
+            if target != next_label {
+                writeln!(writer, "    jmp .L_{func_name}.{target}")?;
+            }
         }
         MirInst::Br {
             cond,
@@ -1512,9 +1527,10 @@ fn emit_instruction_x86_64(
                 load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
             }
             writeln!(writer, "    testq %rax, %rax")?;
-            // Use function-scoped labels to avoid collisions
             writeln!(writer, "    jnz .L_{func_name}.{true_target}")?;
-            writeln!(writer, "    jmp .L_{func_name}.{false_target}")?;
+            if false_target != next_label {
+                writeln!(writer, "    jmp .L_{func_name}.{false_target}")?;
+            }
         }
         other => {
             return Err(LaminaError::ValidationError(format!(
@@ -1638,6 +1654,58 @@ fn emit_int_compare(
     }
     writeln!(writer, "    cmpq %{scratch}, %rax")?;
     Ok(scratch)
+}
+
+/// Emission order for a function's blocks: entry first, then each block's fall-through
+/// successor next whenever it has not been placed yet. A branch whose target follows it
+/// immediately needs no jump at all.
+fn block_layout(func: &Function) -> Vec<usize> {
+    let index_of: HashMap<&str, usize> = func
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.label.as_str(), i))
+        .collect();
+    let mut placed = vec![false; func.blocks.len()];
+    let mut order = Vec::with_capacity(func.blocks.len());
+    let mut queue: VecDeque<usize> = VecDeque::new();
+    if let Some(&entry) = index_of.get(func.entry.as_str()) {
+        queue.push_back(entry);
+    }
+    while let Some(start) = queue.pop_front() {
+        let mut current = start;
+        loop {
+            if placed[current] {
+                break;
+            }
+            placed[current] = true;
+            order.push(current);
+            let successors = func.blocks[current].successors();
+            // The last successor is the one the backend would fall out to: Jmp's target,
+            // or Br's false target. Place it next and queue the rest.
+            for label in successors.iter().rev().skip(1) {
+                if let Some(&next) = index_of.get(label)
+                    && !placed[next]
+                {
+                    queue.push_back(next);
+                }
+            }
+            match successors
+                .last()
+                .and_then(|label| index_of.get(label))
+                .copied()
+            {
+                Some(next) if !placed[next] => current = next,
+                _ => break,
+            }
+        }
+    }
+    for (index, done) in placed.iter().enumerate() {
+        if !done {
+            order.push(index);
+        }
+    }
+    order
 }
 
 /// Label just past the prologue, where a self tail call re-enters the function.
