@@ -155,6 +155,7 @@ fn instruction_clobbers(
     inst: &MirInst,
     leaf: bool,
     target_os: TargetOperatingSystem,
+    func_name: &str,
 ) -> Vec<&'static str> {
     let scratch = if leaf {
         vec!["rcx", "rdx"]
@@ -162,6 +163,11 @@ fn instruction_clobbers(
         vec!["r10", "r11"]
     };
     match inst {
+        MirInst::TailCall { name, args } if name == func_name => {
+            let abi = X86ABI::new(target_os);
+            let arg_regs = abi.arg_registers();
+            arg_regs[..args.len().min(arg_regs.len())].to_vec()
+        }
         MirInst::Call { .. } | MirInst::TailCall { .. } => {
             let mut regs = vec!["rcx", "rdx", "r8", "r9", "r10", "r11"];
             if target_os != TargetOperatingSystem::Windows {
@@ -230,11 +236,14 @@ fn compile_single_function_x86_64(
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
-    // Detect leaf function (no Call/TailCall instructions)
+    // A self tail call lowers to a jump back past the prologue, so it neither needs a
+    // frame nor clobbers anything a real call would.
     let is_leaf = !func.blocks.iter().any(|b| {
-        b.instructions
-            .iter()
-            .any(|i| matches!(i, MirInst::Call { .. } | MirInst::TailCall { .. }))
+        b.instructions.iter().any(|i| match i {
+            MirInst::Call { .. } => true,
+            MirInst::TailCall { name, .. } => name != func_name,
+            _ => false,
+        })
     });
 
     let mut reg_alloc = if is_leaf {
@@ -254,7 +263,7 @@ fn compile_single_function_x86_64(
             .iter()
             .flat_map(|block| &block.instructions)
             .map(|inst| {
-                let mut regs = instruction_clobbers(inst, is_leaf, target_os);
+                let mut regs = instruction_clobbers(inst, is_leaf, target_os, func_name);
                 for reg in inst.use_regs().into_iter().chain(inst.def_reg()) {
                     if let Register::Physical(phys) = reg {
                         regs.push(phys.name);
