@@ -56,6 +56,5 @@ nightly = [
 ]
 
 [patch.crates-io]
-lamina-ras = { path = "vendor/lamina-ras" }
 lamina-platform = { path = "lamina-platform" }
 lamina-mir = { path = "lamina-mir" }

@@ -152,3 +152,6 @@ benchmarks/*/_*
 # lamina-c example binaries
 /lamina-c/examples/builder_aot
 /lamina-c/examples/raw_ir
+
+# Local-only cargo config (points lamina-ras at the sibling ras checkout)
+.cargo/
