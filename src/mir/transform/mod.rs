@@ -11,6 +11,7 @@ mod constant_folding;
 mod copy_propagation;
 mod cse;
 mod deadcode;
+mod induction_strength_reduction;
 mod inline;
 mod loop_opt;
 mod memory;
@@ -30,6 +31,7 @@ pub use constant_folding::ConstantFolding;
 pub use copy_propagation::CopyPropagation;
 pub use cse::CommonSubexpressionElimination;
 pub use deadcode::DeadCodeElimination;
+pub use induction_strength_reduction::InductionStrengthReduction;
 pub use inline::{FunctionInlining, ModuleInlining};
 pub use loop_opt::{LoopInvariantCodeMotion, LoopUnrolling};
 pub use memory::MemoryOptimization;
@@ -337,6 +339,7 @@ impl TransformPipeline {
 
         if opt_level >= 3 {
             pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
+            pipeline = pipeline.add_transform(InductionStrengthReduction);
             pipeline = pipeline.add_transform(StrengthReduction);
             pipeline = pipeline.add_transform(DeadCodeElimination);
             pipeline = pipeline.add_transform(CommonSubexpressionElimination);
