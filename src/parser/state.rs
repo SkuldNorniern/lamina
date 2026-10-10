@@ -188,6 +188,37 @@ impl<'a> ParserState<'a> {
         self.parse_identifier_str()
     }
 
+    /// True when an identifier followed by ':' starts here. Speculating with
+    /// `parse_label_identifier` instead would build and discard an error for every
+    /// ordinary instruction, and building one scans the input from the start.
+    pub fn at_block_label(&self) -> bool {
+        let mut at = self.position;
+        loop {
+            match self.bytes.get(at) {
+                Some(b) if b.is_ascii_whitespace() => at += 1,
+                Some(b'#') => {
+                    while at < self.bytes.len() && self.bytes[at] != b'\n' {
+                        at += 1;
+                    }
+                }
+                _ => break,
+            }
+        }
+        let start = at;
+        match self.bytes.get(at) {
+            Some(b) if b.is_ascii_alphabetic() || *b == b'_' => at += 1,
+            _ => return false,
+        }
+        while let Some(b) = self.bytes.get(at) {
+            if b.is_ascii_alphanumeric() || *b == b'_' || *b == b'.' {
+                at += 1;
+            } else {
+                break;
+            }
+        }
+        at > start && self.bytes.get(at) == Some(&b':')
+    }
+
     /// Parses an integer literal.
     pub fn parse_integer(&mut self) -> Result<i64, LaminaError> {
         self.skip_whitespace_and_comments();
@@ -389,10 +420,8 @@ impl<'a> ParserState<'a> {
     /// Gets a context string showing the line where the error occurred.
     fn get_error_context(&self) -> String {
         let (line_num, _) = self.get_line_column();
-        let lines: Vec<&str> = self.input.lines().collect();
 
-        if line_num > 0 && line_num <= lines.len() {
-            let line = lines[line_num - 1];
+        if let Some(line) = line_num.checked_sub(1).and_then(|n| self.input.lines().nth(n)) {
             // Truncate very long lines for readability
             if line.len() > 80 {
                 format!("{}...", &line[..77])
