@@ -404,6 +404,21 @@ fn compile_single_function_x86_64(
         }
     }
 
+    // Where this function's own parameters live, so a self tail call can write straight
+    // into them instead of staging through the ABI argument registers.
+    let self_param_homes: Vec<Option<String>> = func
+        .sig
+        .params
+        .iter()
+        .map(|param| match &param.reg {
+            Register::Virtual(vreg) => reg_alloc
+                .get_mapping_for(vreg)
+                .map(|reg| format!("%{reg}"))
+                .or_else(|| stack_slots.get(vreg).map(|off| format!("{off}(%rbp)"))),
+            Register::Physical(reg) => Some(format!("%{reg}")),
+        })
+        .collect();
+
     let layout = block_layout(func);
     if layout.first().map(|&i| func.blocks[i].label.as_str()) != Some(func.entry.as_str()) {
         writeln!(output, "    jmp .L_{}.{}", func_name, func.entry)
@@ -480,6 +495,8 @@ fn compile_single_function_x86_64(
                 settings,
                 &mut debug_line,
                 next_label,
+                &self_param_homes,
+                &func.entry,
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
@@ -595,6 +612,8 @@ fn emit_instruction_x86_64(
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
     next_label: &str,
+    self_param_homes: &[Option<String>],
+    entry_label: &str,
 ) -> Result<(), LaminaError> {
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
@@ -1256,6 +1275,61 @@ fn emit_instruction_x86_64(
                 )));
             }
         }
+        MirInst::TailCall { name, args } if name == func_name => {
+            // Self tail call: move the arguments straight into the parameter homes as a
+            // parallel copy and jump to the entry block, skipping the ABI registers, the
+            // prologue and the epilogue entirely.
+            let direct = args.len() == self_param_homes.len()
+                && self_param_homes.iter().all(|home| home.is_some())
+                && args.iter().all(|arg| match arg {
+                    Operand::Register(Register::Virtual(vreg)) => {
+                        reg_alloc.get_mapping_for(vreg).is_some()
+                            || stack_slots.contains_key(vreg)
+                    }
+                    Operand::Register(Register::Physical(_)) => true,
+                    Operand::Immediate(Immediate::I8(_) | Immediate::I16(_))
+                    | Operand::Immediate(Immediate::I32(_) | Immediate::I64(_)) => true,
+                    _ => false,
+                });
+            if direct {
+                let mut pairs = Vec::with_capacity(args.len());
+                for (arg, home) in args.iter().zip(self_param_homes) {
+                    let source = match arg {
+                        Operand::Register(Register::Virtual(vreg)) => reg_alloc
+                            .get_mapping_for(vreg)
+                            .map(|reg| format!("%{reg}"))
+                            .unwrap_or_else(|| format!("{}(%rbp)", stack_slots[vreg])),
+                        Operand::Register(Register::Physical(reg)) => format!("%{reg}"),
+                        Operand::Immediate(imm) => {
+                            let value = match imm {
+                                Immediate::I8(v) => i64::from(*v),
+                                Immediate::I16(v) => i64::from(*v),
+                                Immediate::I32(v) => i64::from(*v),
+                                Immediate::I64(v) => *v,
+                                other => {
+                                    return Err(LaminaError::ValidationError(format!(
+                                        "self tail call argument {other:?} is not an integer"
+                                    )));
+                                }
+                            };
+                            format!("${value}")
+                        }
+                    };
+                    pairs.push((source, home.clone().unwrap_or_default()));
+                }
+                emit_parallel_copy(&pairs, writer)?;
+                if entry_label != next_label {
+                    writeln!(writer, "    jmp .L_{func_name}.{entry_label}")?;
+                }
+                return Ok(());
+            }
+            let abi = X86ABI::new(target_os);
+            let arg_regs = abi.arg_registers();
+            for (index, arg) in args.iter().enumerate().take(arg_regs.len()) {
+                load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[index])?;
+            }
+            writeln!(writer, "    jmp {}", self_tail_entry_label(func_name))?;
+        }
         MirInst::TailCall { name, args } => {
             let abi = X86ABI::new(target_os);
             let arg_regs = abi.arg_registers();
@@ -1311,15 +1385,11 @@ fn emit_instruction_x86_64(
                 }
             }
 
-            if name == func_name {
-                writeln!(writer, "    jmp {}", self_tail_entry_label(func_name))?;
-            } else {
-                restore_saved_registers(writer, stack_size, saved_regs)?;
-                writeln!(writer, "    movq %rbp, %rsp")?;
-                writeln!(writer, "    popq %rbp")?;
-                let mangled_name = abi.mangle_function_name(name);
-                writeln!(writer, "    jmp {mangled_name}")?;
-            }
+            restore_saved_registers(writer, stack_size, saved_regs)?;
+            writeln!(writer, "    movq %rbp, %rsp")?;
+            writeln!(writer, "    popq %rbp")?;
+            let mangled_name = abi.mangle_function_name(name);
+            writeln!(writer, "    jmp {mangled_name}")?;
         }
         MirInst::StackAddr { dst, slot } => {
             let offset = stack_slots.get(slot).ok_or_else(|| {
@@ -1715,6 +1785,48 @@ fn block_layout(func: &Function) -> Vec<usize> {
         }
     }
     order
+}
+
+/// Emit a parallel copy into `dsts`, honouring the fact that a source may itself be one
+/// of the destinations. Identity moves are dropped; a cycle is broken through rax.
+fn emit_parallel_copy(
+    pairs: &[(String, String)],
+    writer: &mut RaxTrackingWriter<impl Write>,
+) -> Result<(), LaminaError> {
+    let mut pending: Vec<(String, String)> = pairs
+        .iter()
+        .filter(|(src, dst)| src != dst)
+        .cloned()
+        .collect();
+    while !pending.is_empty() {
+        let ready = pending
+            .iter()
+            .position(|(_, dst)| !pending.iter().any(|(src, _)| src == dst));
+        let index = match ready {
+            Some(index) => index,
+            None => {
+                // Every remaining destination is still somebody's source: break the cycle
+                // by parking one value in rax.
+                let (src, dst) = pending[0].clone();
+                writeln!(writer, "    movq {src}, %rax")?;
+                for entry in pending.iter_mut() {
+                    if entry.0 == src {
+                        entry.0 = "%rax".to_string();
+                    }
+                }
+                pending[0] = ("%rax".to_string(), dst);
+                0
+            }
+        };
+        let (src, dst) = pending.remove(index);
+        if src.ends_with("(%rbp)") && dst.ends_with("(%rbp)") {
+            writeln!(writer, "    movq {src}, %rax")?;
+            writeln!(writer, "    movq %rax, {dst}")?;
+        } else {
+            writeln!(writer, "    movq {src}, {dst}")?;
+        }
+    }
+    Ok(())
 }
 
 /// Label just past the prologue, where a self tail call re-enters the function.
