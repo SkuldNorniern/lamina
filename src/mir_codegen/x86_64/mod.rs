@@ -146,6 +146,29 @@ impl<W: Write> Write for RaxTrackingWriter<W> {
     }
 }
 
+/// True for `movq %r, %r`. Several lowering paths pick the same register for source and
+/// destination, and the move that results does nothing.
+fn is_self_move(line: &str) -> bool {
+    let Some(operands) = line.trim_start().strip_prefix("movq ") else {
+        return false;
+    };
+    matches!(operands.split_once(", "), Some((src, dst)) if src.starts_with('%') && src == dst)
+}
+
+/// Drop `movq %r, %r` from finished assembly.
+fn strip_self_moves(asm: Vec<u8>) -> Vec<u8> {
+    let Ok(text) = String::from_utf8(asm) else {
+        return Vec::new();
+    };
+    let mut out = String::with_capacity(text.len());
+    for line in text.split_inclusive('\n') {
+        if !is_self_move(line.trim_end_matches('\n')) {
+            out.push_str(line);
+        }
+    }
+    out.into_bytes()
+}
+
 fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
     matches!(reg, "rbx" | "r12" | "r13" | "r14" | "r15")
         || (target_os == TargetOperatingSystem::Windows && matches!(reg, "rsi" | "rdi"))
@@ -535,7 +558,7 @@ fn compile_single_function_x86_64(
         output.rax_value = None;
     }
 
-    Ok(output.inner)
+    Ok(strip_self_moves(output.inner))
 }
 
 pub fn generate_mir_x86_64<W: Write>(
