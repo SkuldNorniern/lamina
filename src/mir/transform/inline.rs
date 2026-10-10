@@ -285,7 +285,7 @@ impl ModuleInlining {
         Ok(())
     }
 
-    fn map_registers(
+    pub(crate) fn map_registers(
         instruction: &mut Instruction,
         map: &mut impl FnMut(&Register) -> Register,
     ) -> bool {

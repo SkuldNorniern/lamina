@@ -64,6 +64,40 @@ fn invariant(operand: &Operand, defs: &HashMap<Register, Vec<(usize, usize)>>) -
     }
 }
 
+/// Registers a block defines whose every use sits in that same block, so a clone of the
+/// block can rename them without touching anything else.
+fn block_local_defs(func: &Function, block: &Block) -> Vec<Register> {
+    let mut defined: Vec<Register> = Vec::new();
+    for instr in &block.instructions {
+        if let Some(Register::Virtual(v)) = instr.def_reg()
+            && !defined.iter().any(|d| d == &Register::Virtual(*v))
+        {
+            defined.push(Register::Virtual(*v));
+        }
+    }
+    defined.retain(|reg| {
+        func.blocks.iter().all(|other| {
+            other.label == block.label
+                || other.instructions.iter().all(|instr| {
+                    !instr.use_regs().contains(&reg)
+                        && instr.def_reg() != Some(reg)
+                        && !matches!(instr, Instruction::StackAddr { slot, .. }
+                            if Register::Virtual(*slot) == *reg)
+                })
+        })
+    });
+    defined
+}
+
+/// Replace every mention of `from` with `to` inside one block.
+fn rename_in_block(block: &mut Block, from: &Register, to: &Register) {
+    for instr in &mut block.instructions {
+        super::inline::ModuleInlining::map_registers(instr, &mut |reg: &Register| {
+            if reg == from { to.clone() } else { reg.clone() }
+        });
+    }
+}
+
 fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
     let Some(header_idx) = func.blocks.iter().position(|b| b.label == info.header) else {
         return false;
@@ -365,6 +399,17 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
         if let Some(label) = labels.get(&block.label) {
             let mut first = block.clone();
             first.label = label.clone();
+            // Peeling clones a block verbatim, which would give a second definition to
+            // every value it defines. For one that never escapes the block, that extra
+            // definition only hides it from later passes, so the copy gets its own.
+            for local in block_local_defs(func, block) {
+                let fresh: Register = VirtualReg::gpr(next_id).into();
+                next_id = match next_id.checked_add(1) {
+                    Some(id) => id,
+                    None => return false,
+                };
+                rename_in_block(&mut first, &local, &fresh);
+            }
             redirect(&mut first, &|target| {
                 if target == product_label {
                     Some(init_label.clone())
