@@ -16,7 +16,9 @@ use crate::{
         Module as IRModule,
         function::{Function as IRFunction, FunctionAnnotation},
         instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst},
-        types::{Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal},
+        types::{
+            Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal, sizeof_type,
+        },
     },
     mir::{
         AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction,
@@ -121,29 +123,6 @@ fn resolve_or_alloc_gpr<'a>(
         let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
         var_to_reg.insert(result, fresh.clone());
         fresh
-    }
-}
-
-/// Compute the byte size of an IR type; returns `None` for unsized/void types.
-fn sizeof_ir_type(ty: &IRType<'_>) -> Option<u64> {
-    match ty {
-        IRType::Primitive(p) => Some(match p {
-            IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 1,
-            IRPrim::I16 | IRPrim::U16 => 2,
-            IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 4,
-            IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 8,
-        }),
-        IRType::Array { element_type, size } => {
-            sizeof_ir_type(element_type).map(|es| es.saturating_mul(*size))
-        }
-        IRType::Struct(fields) => {
-            let mut total = 0u64;
-            for f in fields {
-                total = total.saturating_add(sizeof_ir_type(&f.ty)?);
-            }
-            Some(total)
-        }
-        _ => None,
     }
 }
 
@@ -1172,7 +1151,7 @@ fn convert_instruction<'a>(
                     .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            let elem_size = sizeof_ir_type(element_type)
+            let elem_size = sizeof_type(element_type)
                 .and_then(|size| i64::try_from(size).ok())
                 .ok_or(FromIRError::UnsupportedInstruction)?;
             let idx_const = match index {
@@ -1340,7 +1319,7 @@ fn convert_instruction<'a>(
                 AllocType::Stack => {
                     stack_allocs.insert(result);
                     let storage_vreg = vreg_alloc.allocate_gpr();
-                    if let Some(sz) = sizeof_ir_type(allocated_ty) {
+                    if let Some(sz) = sizeof_type(allocated_ty) {
                         let slots_needed = sz.div_ceil(8) as usize;
                         if slots_needed > 1 {
                             reservations.insert(storage_vreg, slots_needed - 1);
@@ -1352,7 +1331,7 @@ fn convert_instruction<'a>(
                     }])
                 }
                 AllocType::Heap => {
-                    if let Some(sz) = sizeof_ir_type(allocated_ty) {
+                    if let Some(sz) = sizeof_type(allocated_ty) {
                         Ok(vec![Instruction::Call {
                             name: "malloc".to_string(),
                             args: vec![Operand::Immediate(Immediate::I64(sz as i64))],
@@ -1673,6 +1652,23 @@ ret.ptr %variable
             assert_eq!(Some(source), pair[0].def_reg());
             assert_ne!(source, dst);
         }
+    }
+
+    #[test]
+    fn padded_struct_allocations_use_abi_size() {
+        let ir = parse_module(
+            "fn @sizes() -> ptr {\nentry:\n%stack = alloc.stack struct { a: i8, b: i64, c: i8 }\n%heap = alloc.heap [2 x struct { a: i8, b: i64, c: i8 }]\nret.ptr %heap\n}",
+        ).expect("parse padded allocations");
+        let mir = from_ir(&ir, "sizes").expect("lower padded allocations");
+        let function = mir.get_function("sizes").expect("sizes function");
+        let Instruction::StackAddr { slot, .. } = &function.blocks[0].instructions[0] else {
+            panic!("expected stack allocation");
+        };
+        assert_eq!(function.stack_reservations[slot], 2);
+        let Instruction::Call { args, .. } = &function.blocks[0].instructions[1] else {
+            panic!("expected heap allocation");
+        };
+        assert_eq!(args, &[Operand::Immediate(Immediate::I64(48))]);
     }
 
     #[test]
