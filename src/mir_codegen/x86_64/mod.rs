@@ -31,11 +31,11 @@ use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator, LiveInterval,
 };
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::sync::Arc;
+use std::{collections::hash_map::Entry, sync::Arc};
 
 use crate::mir_codegen::common::{
-    CodegenBase, assign_stack_slots, compile_functions_parallel, emit_print_format_section,
-    parallel_codegen_error,
+    CodegenBase, assign_stack_slots, assign_stack_slots_where, compile_functions_parallel,
+    emit_print_format_section, parallel_codegen_error,
 };
 
 /// MIR to x86_64 code generator implementing the `Codegen` trait.
@@ -197,18 +197,28 @@ fn instruction_clobbers(
 }
 
 fn layout_global_stack_slots(
+    func: &Function,
     plan: &HashMap<VirtualReg, MirAllocation<&'static str>>,
-    slots: &mut HashMap<VirtualReg, i32>,
-    local_slots: usize,
-) -> usize {
-    let mut spill_slots = 0;
-    for (&vreg, allocation) in plan {
-        if let MirAllocation::Spill(offset) = allocation {
-            spill_slots = spill_slots.max((-offset / 8) as usize);
-            slots.insert(vreg, offset - (local_slots * 8) as i32);
+) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>, usize) {
+    let mut address_taken: BTreeSet<_> = func.stack_reservations.keys().copied().collect();
+    for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
+        if let MirInst::StackAddr { slot, .. } = inst {
+            address_taken.insert(*slot);
         }
     }
-    local_slots + spill_slots
+    let (mut slots, defs, mut total) =
+        assign_stack_slots_where(func, X86Frame::calculate_stack_offset, |reg| {
+            address_taken.contains(reg)
+                || !matches!(plan.get(reg), Some(MirAllocation::Register(_)))
+        });
+    for reg in address_taken {
+        if let Entry::Vacant(entry) = slots.entry(reg) {
+            let extra = func.stack_reservations.get(&reg).copied().unwrap_or(0);
+            entry.insert(X86Frame::calculate_stack_offset(total + extra));
+            total += extra + 1;
+        }
+    }
+    (slots, defs, total)
 }
 
 fn compile_single_function_x86_64(
@@ -252,8 +262,7 @@ fn compile_single_function_x86_64(
         X64RegAlloc::new(target_os)
     };
 
-    let (mut stack_slots, def_regs, mut total_slots) =
-        assign_stack_slots(func, X86Frame::calculate_stack_offset);
+    let (stack_slots, def_regs, total_slots);
 
     let mut saved_regs = Vec::new();
     if settings.regalloc != RegallocStrategy::Incremental {
@@ -300,7 +309,7 @@ fn compile_single_function_x86_64(
             }
             RegallocStrategy::Incremental => unreachable!(),
         };
-        total_slots = layout_global_stack_slots(&plan, &mut stack_slots, total_slots);
+        (stack_slots, def_regs, total_slots) = layout_global_stack_slots(func, &plan);
         reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);
         for allocation in plan.values() {
             if let MirAllocation::Register(reg) = allocation
@@ -309,17 +318,22 @@ fn compile_single_function_x86_64(
                 saved_regs.push(*reg);
             }
         }
-        saved_regs.push("rbx");
-        if target_os == TargetOperatingSystem::Windows {
-            saved_regs.extend(["rsi", "rdi"]);
-        }
         saved_regs.sort_unstable();
         saved_regs.dedup();
+    } else {
+        (stack_slots, def_regs, total_slots) =
+            assign_stack_slots(func, X86Frame::calculate_stack_offset);
     }
 
     let stack_size = (total_slots + saved_regs.len()) * 8;
-    X86Frame::generate_prologue(&mut output, stack_size)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    let has_frame = settings.regalloc == RegallocStrategy::Incremental
+        || !is_leaf
+        || stack_size != 0
+        || func.sig.params.len() > abi.arg_registers().len();
+    if has_frame {
+        X86Frame::generate_prologue(&mut output, stack_size)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
 
     for (index, reg) in saved_regs.iter().enumerate() {
         let offset = X86Frame::calculate_stack_offset(total_slots + index);
@@ -337,70 +351,79 @@ fn compile_single_function_x86_64(
         let abi_for_func = X86ABI::new(target_os);
         let arg_regs = abi_for_func.arg_registers();
 
-        let stage_params = settings.regalloc != RegallocStrategy::Incremental
-            && func.sig.params.iter().enumerate().any(|(index, param)| {
+        if settings.regalloc == RegallocStrategy::Incremental {
+            for (index, param) in func.sig.params.iter().enumerate() {
                 if let Register::Virtual(vreg) = &param.reg
-                    && let Some(destination) = reg_alloc.get_mapping_for(vreg)
+                    && let Some(slot_off) = stack_slots.get(vreg)
                 {
-                    return arg_regs
-                        .iter()
-                        .take(func.sig.params.len())
-                        .skip(index + 1)
-                        .any(|source| *source == destination);
-                }
-                false
-            });
-        if stage_params {
-            for (param, phys) in func.sig.params.iter().zip(arg_regs.iter()) {
-                if let Register::Virtual(vreg) = &param.reg
-                    && let Some(offset) = stack_slots.get(vreg)
-                {
-                    writeln!(output, "    movq %{phys}, {offset}(%rbp)")
-                        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                    if index < arg_regs.len() {
+                        let phys_arg = arg_regs[index];
+                        let destination = reg_alloc
+                            .get_mapping_for(vreg)
+                            .map(|reg| format!("%{reg}"))
+                            .unwrap_or_else(|| format!("{slot_off}(%rbp)"));
+                        let source = format!("%{phys_arg}");
+                        if source == destination {
+                            continue;
+                        }
+                        writeln!(output, "    movq {source}, {destination}").map_err(|e| {
+                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                        })?;
+                    } else {
+                        let stack_index = index - arg_regs.len();
+                        // Saved rbp and the return address sit at rbp+0 and rbp+8;
+                        // on Windows the caller's home space follows before the
+                        // first stack argument.
+                        let home = if target_os == TargetOperatingSystem::Windows {
+                            windows::SHADOW_SPACE_SIZE
+                        } else {
+                            0
+                        };
+                        let caller_off = 16 + home + (stack_index as i32) * 8;
+                        writeln!(output, "    movq {caller_off}(%rbp), %rax").map_err(|e| {
+                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                        })?;
+                        store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
+                            .map_err(|e| {
+                                CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                            })?;
+                    }
                 }
             }
-        }
-
-        for (index, param) in func.sig.params.iter().enumerate() {
-            if let Register::Virtual(vreg) = &param.reg
-                && let Some(slot_off) = stack_slots.get(vreg)
-            {
-                if index < arg_regs.len() {
-                    let phys_arg = arg_regs[index];
+        } else {
+            let pairs: Vec<_> = func
+                .sig
+                .params
+                .iter()
+                .enumerate()
+                .filter_map(|(index, param)| {
+                    let Register::Virtual(vreg) = &param.reg else {
+                        return None;
+                    };
                     let destination = reg_alloc
                         .get_mapping_for(vreg)
                         .map(|reg| format!("%{reg}"))
-                        .unwrap_or_else(|| format!("{slot_off}(%rbp)"));
-                    let source = if !stage_params {
-                        format!("%{phys_arg}")
+                        .or_else(|| {
+                            stack_slots
+                                .get(vreg)
+                                .map(|offset| format!("{offset}(%rbp)"))
+                        })?;
+                    let source = if let Some(reg) = arg_regs.get(index) {
+                        format!("%{reg}")
                     } else {
-                        format!("{slot_off}(%rbp)")
+                        let home = if target_os == TargetOperatingSystem::Windows {
+                            windows::SHADOW_SPACE_SIZE
+                        } else {
+                            0
+                        };
+                        let offset = 16 + home + ((index - arg_regs.len()) as i32) * 8;
+                        format!("{offset}(%rbp)")
                     };
-                    if source == destination {
-                        continue;
-                    }
-                    writeln!(output, "    movq {source}, {destination}").map_err(|e| {
-                        CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                    })?;
-                } else {
-                    let stack_index = index - arg_regs.len();
-                    // Saved rbp and the return address sit at rbp+0 and rbp+8;
-                    // on Windows the caller's home space follows before the
-                    // first stack argument.
-                    let home = if target_os == TargetOperatingSystem::Windows {
-                        windows::SHADOW_SPACE_SIZE
-                    } else {
-                        0
-                    };
-                    let caller_off = 16 + home + (stack_index as i32) * 8;
-                    writeln!(output, "    movq {caller_off}(%rbp), %rax").map_err(|e| {
-                        CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                    })?;
-                    store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots).map_err(
-                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
-                    )?;
-                }
-            }
+                    Some((source, destination))
+                })
+                .collect();
+            emit_parallel_copy(&pairs, &mut output)
+                .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
     }
 
@@ -455,10 +478,19 @@ fn compile_single_function_x86_64(
                 skip_next = false;
                 continue;
             }
-            if let MirInst::IntCmp { op, dst, lhs, rhs, ty } = inst
+            if let MirInst::IntCmp {
+                op,
+                dst,
+                lhs,
+                rhs,
+                ty,
+            } = inst
                 && let Register::Virtual(cmp_dst) = dst
-                && let Some(MirInst::Br { cond: Register::Virtual(cond), true_target, false_target }) =
-                    block.instructions.get(position + 1)
+                && let Some(MirInst::Br {
+                    cond: Register::Virtual(cond),
+                    true_target,
+                    false_target,
+                }) = block.instructions.get(position + 1)
                 && cond == cmp_dst
                 && use_counts.get(cmp_dst).copied() == Some(1)
             {
@@ -470,10 +502,9 @@ fn compile_single_function_x86_64(
                 writeln!(output, "    j{suffix} .L_{func_name}.{true_target}")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 if false_target != next_label {
-                    writeln!(output, "    jmp .L_{func_name}.{false_target}")
-                        .map_err(|e| {
-                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                        })?;
+                    writeln!(output, "    jmp .L_{func_name}.{false_target}").map_err(|e| {
+                        CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                    })?;
                 }
                 if !scratch.is_empty() && scratch != "rbx" {
                     reg_alloc.free_scratch(scratch);
@@ -488,6 +519,7 @@ fn compile_single_function_x86_64(
                 &mut reg_alloc,
                 &stack_slots,
                 stack_size,
+                has_frame,
                 &saved_regs,
                 target_os,
                 func_name,
@@ -605,6 +637,7 @@ fn emit_instruction_x86_64(
     reg_alloc: &mut X64RegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     stack_size: usize,
+    has_frame: bool,
     saved_regs: &[&str],
     target_os: TargetOperatingSystem,
     func_name: &str,
@@ -1283,8 +1316,7 @@ fn emit_instruction_x86_64(
                 && self_param_homes.iter().all(|home| home.is_some())
                 && args.iter().all(|arg| match arg {
                     Operand::Register(Register::Virtual(vreg)) => {
-                        reg_alloc.get_mapping_for(vreg).is_some()
-                            || stack_slots.contains_key(vreg)
+                        reg_alloc.get_mapping_for(vreg).is_some() || stack_slots.contains_key(vreg)
                     }
                     Operand::Register(Register::Physical(_)) => true,
                     Operand::Immediate(Immediate::I8(_) | Immediate::I16(_))
@@ -1590,7 +1622,11 @@ fn emit_instruction_x86_64(
             }
             // Epilogue
             restore_saved_registers(writer, stack_size, saved_regs)?;
-            X86Frame::generate_epilogue(writer, stack_size)?;
+            if has_frame {
+                X86Frame::generate_epilogue(writer, stack_size)?;
+            } else {
+                writeln!(writer, "    ret")?;
+            }
         }
         MirInst::Jmp { target } => {
             if target != next_label {
@@ -1815,7 +1851,7 @@ fn emit_parallel_copy(
                     }
                 }
                 pending[0] = ("%rax".to_string(), dst);
-                0
+                continue;
             }
         };
         let (src, dst) = pending.remove(index);
@@ -1910,27 +1946,113 @@ fn emit_copy_register_load(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, ScalarType};
+    use crate::{
+        mir::{FunctionBuilder, ScalarType, codegen::from_ir},
+        parser::parse_module,
+    };
 
     #[test]
-    fn global_frame_separates_spills_parameters_and_reserved_arrays() {
-        let param = VirtualReg::gpr(0);
-        let spilled = VirtualReg::gpr(1);
-        let array = VirtualReg::gpr(2);
-        let mapped = VirtualReg::gpr(3);
-        let mut slots = HashMap::from([(param, -8), (spilled, -16), (array, -48), (mapped, -56)]);
+    fn global_frame_keeps_only_dense_storage() {
+        let spilled = VirtualReg::gpr(0);
+        let array = VirtualReg::gpr(1);
+        let mapped = VirtualReg::gpr(2);
+        let mut func = FunctionBuilder::new("dense")
+            .block("entry")
+            .instr(MirInst::Copy {
+                ty: MirType::i64(),
+                dst: Register::Virtual(spilled),
+                src: Operand::Immediate(Immediate::I64(1)),
+            })
+            .instr(MirInst::StackAddr {
+                dst: Register::Virtual(mapped),
+                slot: array,
+            })
+            .build();
+        func.stack_reservations.insert(array, 3);
         let plan = HashMap::from([
-            (param, MirAllocation::Register("rdi")),
-            (spilled, MirAllocation::Spill(-8)),
+            (spilled, MirAllocation::Spill(-80)),
             (mapped, MirAllocation::Register("r12")),
         ]);
-        let total = layout_global_stack_slots(&plan, &mut slots, 7);
-        assert_eq!(slots[&spilled], -64);
-        assert_eq!(slots[&param], -8);
-        assert_eq!(slots[&array], -48);
-        assert_eq!(slots[&mapped], -56);
-        assert_eq!(total, 8);
-        assert_eq!(X86Frame::calculate_stack_offset(total), -72);
+        let (slots, _, total) = layout_global_stack_slots(&func, &plan);
+        assert_eq!(slots.len(), 2);
+        assert_eq!(slots[&spilled], -8);
+        assert_eq!(slots[&array], -40);
+        assert_eq!(total, 5);
+    }
+
+    #[test]
+    fn global_leaf_omits_empty_frame_but_keeps_stack_argument_base() {
+        for strategy in [
+            RegallocStrategy::LinearScanGlobal,
+            RegallocStrategy::GraphColorGlobal,
+        ] {
+            let settings = MirCodegenSettings {
+                regalloc: strategy,
+                ..Default::default()
+            };
+            for (source, frame) in [
+                ("fn @f() -> i64 {\nentry:\nret.i64 42\n}", false),
+                (
+                    "fn @f(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g) -> i64 {\nentry:\nret.i64 %g\n}",
+                    true,
+                ),
+                (
+                    "fn @f() -> ptr {\nentry:\n%p = alloc.stack [24 x i8]\nret.ptr %p\n}",
+                    true,
+                ),
+            ] {
+                let ir = parse_module(source).expect("parse frame case");
+                let mir = from_ir(&ir, "frame").expect("lower frame case");
+                let function = mir.get_function("f").expect("frame function");
+                let assembly = compile_single_function_x86_64(
+                    "f",
+                    function,
+                    TargetOperatingSystem::Linux,
+                    &settings,
+                )
+                .expect("emit frame case");
+                let assembly = String::from_utf8(assembly).expect("assembly text");
+                assert_eq!(assembly.contains("pushq %rbp"), frame, "{assembly}");
+                assert_eq!(assembly.contains("popq %rbp"), frame, "{assembly}");
+                if !frame {
+                    assert!(
+                        !assembly.contains("%rsp") && !assembly.contains("%rbp"),
+                        "{assembly}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parameter_cycle_preserves_both_sources() {
+        let mut writer = RaxTrackingWriter {
+            inner: Vec::new(),
+            rax_value: None,
+        };
+        emit_parallel_copy(
+            &[
+                ("%rdi".into(), "%rsi".into()),
+                ("%rsi".into(), "%rdi".into()),
+            ],
+            &mut writer,
+        )
+        .expect("emit parameter swap");
+        assert_eq!(
+            String::from_utf8(writer.inner).expect("assembly text"),
+            "    movq %rdi, %rax\n    movq %rsi, %rdi\n    movq %rax, %rsi\n"
+        );
+    }
+
+    #[test]
+    fn global_frame_keeps_unreferenced_reservations() {
+        let mut func = Function::new(Signature::new("reserved"));
+        let slot = VirtualReg::gpr(10);
+        func.stack_reservations.insert(slot, 2);
+        let plan = HashMap::from([(slot, MirAllocation::Register("r12"))]);
+        let (slots, _, total) = layout_global_stack_slots(&func, &plan);
+        assert_eq!(slots[&slot], -24);
+        assert_eq!(total, 3);
     }
 
     #[test]

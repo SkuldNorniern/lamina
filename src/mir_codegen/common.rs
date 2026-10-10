@@ -40,6 +40,14 @@ pub fn assign_stack_slots(
     func: &Function,
     offset_for_slot: impl Fn(usize) -> i32,
 ) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>, usize) {
+    assign_stack_slots_where(func, offset_for_slot, |_| true)
+}
+
+pub(super) fn assign_stack_slots_where(
+    func: &Function,
+    offset_for_slot: impl Fn(usize) -> i32,
+    needs_slot: impl Fn(&VirtualReg) -> bool,
+) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>, usize) {
     let mut def_regs: BTreeSet<VirtualReg> = BTreeSet::new();
     let mut used_regs: BTreeSet<VirtualReg> = BTreeSet::new();
     for block in &func.blocks {
@@ -68,12 +76,12 @@ pub fn assign_stack_slots(
         *next += extra + 1;
     };
     for vreg in &def_regs {
-        if !stack_slots.contains_key(vreg) {
+        if needs_slot(vreg) && !stack_slots.contains_key(vreg) {
             claim(vreg, &mut stack_slots, &mut next_slot);
         }
     }
     for vreg in &used_regs {
-        if !def_regs.contains(vreg) && !stack_slots.contains_key(vreg) {
+        if needs_slot(vreg) && !def_regs.contains(vreg) && !stack_slots.contains_key(vreg) {
             claim(vreg, &mut stack_slots, &mut next_slot);
         }
     }
