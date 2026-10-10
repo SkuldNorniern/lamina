@@ -197,12 +197,9 @@ pub fn parse_basic_block<'a>(
     let mut instructions = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
-        let pos = state.position();
-        if state.parse_label_identifier().is_ok() && state.current_char() == Some(':') {
-            state.set_position(pos);
+        if state.at_block_label() {
             break;
         }
-        state.set_position(pos);
 
         if state.current_char() == Some('}') {
             break;
