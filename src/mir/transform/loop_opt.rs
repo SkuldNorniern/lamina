@@ -166,7 +166,7 @@ impl LoopInvariantCodeMotion {
         Ok(changed)
     }
 
-    fn find_loops(&self, func: &Function) -> Vec<LoopInfo> {
+    pub(super) fn find_loops(&self, func: &Function) -> Vec<LoopInfo> {
         let mut loops = Vec::new();
 
         let dominators = calculate_dominators(func);
@@ -559,9 +559,9 @@ impl LoopInvariantCodeMotion {
 }
 
 #[derive(Debug)]
-struct LoopInfo {
-    header: String,
-    blocks: HashSet<String>,
+pub(super) struct LoopInfo {
+    pub(super) header: String,
+    pub(super) blocks: HashSet<String>,
 }
 
 #[derive(Debug)]
