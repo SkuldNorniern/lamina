@@ -205,6 +205,9 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
         let ir_block = &f.basic_blocks[label];
         let mut mir_block = Block::new(label);
 
+        // Registers already defined in this block. A scan of the emitted instructions per
+        // instruction made conversion quadratic in the size of a single-block function.
+        let mut defined_in_block: HashSet<Register> = HashSet::new();
         for instr in &ir_block.instructions {
             let mut mir_instrs = convert_instruction(
                 instr,
@@ -218,10 +221,7 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
                 && let IRInst::Binary { result, .. } | IRInst::WriteByte { result, .. } = instr
                 && let Some(last) = mir_instrs.last_mut()
                 && let Some(old_dst) = last.def_reg().cloned()
-                && mir_block
-                    .instructions
-                    .iter()
-                    .any(|previous| previous.def_reg() == Some(&old_dst))
+                && defined_in_block.contains(&old_dst)
             {
                 let fresh = Register::Virtual(match &old_dst {
                     Register::Virtual(vreg) if vreg.class == RegisterClass::Fpr => {
@@ -258,6 +258,9 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
                     if let Some(ty) = ty {
                         register_types.insert(dst.clone(), ty);
                     }
+                }
+                if let Some(dst) = mir_instr.def_reg() {
+                    defined_in_block.insert(dst.clone());
                 }
                 mir_block.push(mir_instr);
             }
