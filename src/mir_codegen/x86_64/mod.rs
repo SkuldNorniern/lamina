@@ -484,29 +484,12 @@ fn compile_single_function_x86_64(
         }
     }
 
-    // A block reached from later in the layout is a loop header. Aligning one keeps a
-    // large loop off a bad decode boundary, but a short loop already fits the fetch
-    // window and only pays for the padding, so only loops past the threshold get it.
+    // Natural loops from the CFG, not from layout position: a back edge is an edge into
+    // a block already on the DFS stack. Aligning a large loop header keeps it off a bad
+    // decode boundary; a short loop already fits the fetch window and only pays for the
+    // padding, so only loops past the threshold get it.
     const ALIGN_LOOP_MIN_INSTRUCTIONS: usize = 24;
-    let loop_headers: HashSet<usize> = layout
-        .iter()
-        .enumerate()
-        .filter(|&(slot, &index)| {
-            let label = func.blocks[index].label.as_str();
-            let Some(last) = layout[slot + 1..]
-                .iter()
-                .rposition(|&later| func.blocks[later].successors().contains(&label))
-            else {
-                return false;
-            };
-            let body: usize = layout[slot..=slot + 1 + last]
-                .iter()
-                .map(|&b| func.blocks[b].instructions.len())
-                .sum();
-            body >= ALIGN_LOOP_MIN_INSTRUCTIONS
-        })
-        .map(|(_, &index)| index)
-        .collect();
+    let loop_headers = aligned_loop_headers(func, ALIGN_LOOP_MIN_INSTRUCTIONS);
 
     let mut debug_line: u32 = 0;
     for (slot, &block_index) in layout.iter().enumerate() {
@@ -1767,6 +1750,79 @@ fn cmp_immediate(rhs: &Operand, ty: &MirType, unsigned: bool) -> Option<i64> {
         raw
     };
     i32::try_from(value).ok().map(i64::from)
+}
+
+/// Headers of natural loops whose body is at least `min_instructions` long.
+///
+/// Back edges come from a depth-first walk of the CFG, so the result does not depend on
+/// the order blocks happen to be laid out in.
+fn aligned_loop_headers(func: &Function, min_instructions: usize) -> HashSet<usize> {
+    let index_of: HashMap<&str, usize> = func
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(i, b)| (b.label.as_str(), i))
+        .collect();
+    let Some(&entry) = index_of.get(func.entry.as_str()) else {
+        return HashSet::new();
+    };
+
+    let mut predecessors: Vec<Vec<usize>> = vec![Vec::new(); func.blocks.len()];
+    for (index, block) in func.blocks.iter().enumerate() {
+        for successor in block.successors() {
+            if let Some(&target) = index_of.get(successor) {
+                predecessors[target].push(index);
+            }
+        }
+    }
+
+    // Iterative DFS keeping the current path, so an edge back into the path is a back edge.
+    let mut back_edges: Vec<(usize, usize)> = Vec::new();
+    let mut on_path = vec![false; func.blocks.len()];
+    let mut visited = vec![false; func.blocks.len()];
+    let mut stack = vec![(entry, 0usize)];
+    visited[entry] = true;
+    on_path[entry] = true;
+    while let Some(&mut (node, ref mut next)) = stack.last_mut() {
+        let successors = func.blocks[node].successors();
+        if *next < successors.len() {
+            let edge = successors[*next];
+            *next += 1;
+            if let Some(&target) = index_of.get(edge) {
+                if on_path[target] {
+                    back_edges.push((node, target));
+                } else if !visited[target] {
+                    visited[target] = true;
+                    on_path[target] = true;
+                    stack.push((target, 0));
+                }
+            }
+        } else {
+            on_path[node] = false;
+            stack.pop();
+        }
+    }
+
+    let mut headers = HashSet::new();
+    for (latch, header) in back_edges {
+        // Natural loop body: everything that reaches the latch without passing the header.
+        let mut body = HashSet::from([header]);
+        let mut work = vec![latch];
+        while let Some(node) = work.pop() {
+            if !body.insert(node) {
+                continue;
+            }
+            work.extend(predecessors[node].iter().copied());
+        }
+        let size: usize = body
+            .iter()
+            .map(|&b| func.blocks[b].instructions.len())
+            .sum();
+        if size >= min_instructions {
+            headers.insert(header);
+        }
+    }
+    headers
 }
 
 /// Condition-code suffix for the negation of a comparison.
