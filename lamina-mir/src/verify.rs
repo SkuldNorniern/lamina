@@ -243,7 +243,8 @@ fn collect_definitions(
     definitions
 }
 
-fn calculate_dominators(
+/// Compute dominator sets by block index; unreachable blocks have no set.
+pub fn calculate_dominators(
     function: &Function,
     block_indices: &HashMap<&str, usize>,
 ) -> Vec<Option<HashSet<usize>>> {
