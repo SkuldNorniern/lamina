@@ -45,6 +45,45 @@ mod tests_licm {
     use crate::mir::{FunctionBuilder, MirType, ScalarType, VirtualReg};
 
     #[test]
+    fn loop_discovery_follows_block_order() {
+        let mut function = FunctionBuilder::new("nested")
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "outer".into(),
+            })
+            .block("outer")
+            .instr(Instruction::Jmp {
+                target: "inner".into(),
+            })
+            .block("inner")
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(0).into(),
+                true_target: "inner".into(),
+                false_target: "latch".into(),
+            })
+            .block("latch")
+            .instr(Instruction::Jmp {
+                target: "outer".into(),
+            })
+            .build();
+        for _ in 0..32 {
+            let headers: Vec<_> = LoopInvariantCodeMotion
+                .find_loops(&function)
+                .into_iter()
+                .map(|info| info.header)
+                .collect();
+            assert_eq!(headers, ["outer", "inner"]);
+        }
+        function.blocks.swap(1, 2);
+        let headers: Vec<_> = LoopInvariantCodeMotion
+            .find_loops(&function)
+            .into_iter()
+            .map(|info| info.header)
+            .collect();
+        assert_eq!(headers, ["inner", "outer"]);
+    }
+
+    #[test]
     fn test_licm_basic() {
         // Create a loop with invariant calculation
         // entry:
@@ -217,9 +256,14 @@ impl LoopInvariantCodeMotion {
             }
         }
 
-        merged_loops
-            .into_iter()
-            .map(|(header, blocks)| LoopInfo { header, blocks })
+        func.blocks
+            .iter()
+            .filter_map(|block| {
+                merged_loops.remove(&block.label).map(|blocks| LoopInfo {
+                    header: block.label.clone(),
+                    blocks,
+                })
+            })
             .collect()
     }
 
