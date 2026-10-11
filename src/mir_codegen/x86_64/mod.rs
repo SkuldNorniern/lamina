@@ -9,7 +9,7 @@ pub mod util;
 use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame, extend_integer, register_for_size};
 use std::{
-    collections::{BTreeSet, HashMap, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     io::{self, Error, Write},
 };
 use util::*;
@@ -484,6 +484,30 @@ fn compile_single_function_x86_64(
         }
     }
 
+    // A block reached from later in the layout is a loop header. Aligning one keeps a
+    // large loop off a bad decode boundary, but a short loop already fits the fetch
+    // window and only pays for the padding, so only loops past the threshold get it.
+    const ALIGN_LOOP_MIN_INSTRUCTIONS: usize = 24;
+    let loop_headers: HashSet<usize> = layout
+        .iter()
+        .enumerate()
+        .filter(|&(slot, &index)| {
+            let label = func.blocks[index].label.as_str();
+            let Some(last) = layout[slot + 1..]
+                .iter()
+                .rposition(|&later| func.blocks[later].successors().contains(&label))
+            else {
+                return false;
+            };
+            let body: usize = layout[slot..=slot + 1 + last]
+                .iter()
+                .map(|&b| func.blocks[b].instructions.len())
+                .sum();
+            body >= ALIGN_LOOP_MIN_INSTRUCTIONS
+        })
+        .map(|(_, &index)| index)
+        .collect();
+
     let mut debug_line: u32 = 0;
     for (slot, &block_index) in layout.iter().enumerate() {
         let block = &func.blocks[block_index];
@@ -492,6 +516,10 @@ fn compile_single_function_x86_64(
             .map(|&i| func.blocks[i].label.as_str())
             .unwrap_or("");
         output.rax_value = None;
+        if loop_headers.contains(&block_index) {
+            writeln!(output, "    .p2align 4,,10")
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        }
         writeln!(output, ".L_{}.{}:", func_name, block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
