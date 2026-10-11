@@ -550,12 +550,21 @@ fn compile_single_function_x86_64(
                         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 let suffix = cmp_suffix(op)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                writeln!(output, "    j{suffix} .L_{func_name}.{true_target}")
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                if false_target != next_label {
-                    writeln!(output, "    jmp .L_{func_name}.{false_target}").map_err(|e| {
-                        CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                    })?;
+                if true_target == next_label {
+                    let inverted = inverted_cmp_suffix(op)
+                        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                    writeln!(output, "    j{inverted} .L_{func_name}.{false_target}").map_err(
+                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                    )?;
+                } else {
+                    writeln!(output, "    j{suffix} .L_{func_name}.{true_target}").map_err(
+                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                    )?;
+                    if false_target != next_label {
+                        writeln!(output, "    jmp .L_{func_name}.{false_target}").map_err(|e| {
+                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                        })?;
+                    }
                 }
                 if !scratch.is_empty() && scratch != "rbx" {
                     reg_alloc.free_scratch(scratch);
@@ -1693,9 +1702,13 @@ fn emit_instruction_x86_64(
                 load_register_to_rax(vreg, writer, reg_alloc, stack_slots)?;
             }
             writeln!(writer, "    testq %rax, %rax")?;
-            writeln!(writer, "    jnz .L_{func_name}.{true_target}")?;
-            if false_target != next_label {
-                writeln!(writer, "    jmp .L_{func_name}.{false_target}")?;
+            if true_target == next_label {
+                writeln!(writer, "    jz .L_{func_name}.{false_target}")?;
+            } else {
+                writeln!(writer, "    jnz .L_{func_name}.{true_target}")?;
+                if false_target != next_label {
+                    writeln!(writer, "    jmp .L_{func_name}.{false_target}")?;
+                }
             }
         }
         other => {
@@ -1754,6 +1767,28 @@ fn cmp_immediate(rhs: &Operand, ty: &MirType, unsigned: bool) -> Option<i64> {
         raw
     };
     i32::try_from(value).ok().map(i64::from)
+}
+
+/// Condition-code suffix for the negation of a comparison.
+fn inverted_cmp_suffix(op: &IntCmpOp) -> Result<&'static str, LaminaError> {
+    Ok(match op {
+        IntCmpOp::Eq => "ne",
+        IntCmpOp::Ne => "e",
+        IntCmpOp::SLt => "ge",
+        IntCmpOp::SLe => "g",
+        IntCmpOp::SGt => "le",
+        IntCmpOp::SGe => "l",
+        IntCmpOp::ULt => "ae",
+        IntCmpOp::ULe => "a",
+        IntCmpOp::UGt => "be",
+        IntCmpOp::UGe => "b",
+        #[allow(unreachable_patterns)]
+        other => {
+            return Err(LaminaError::ValidationError(format!(
+                "x86_64 backend does not support integer comparison {other:?}"
+            )));
+        }
+    })
 }
 
 /// Condition-code suffix for an integer comparison, as used by `setCC` and `jCC`.
@@ -1856,13 +1891,17 @@ fn block_layout(func: &Function) -> Vec<usize> {
                     queue.push_back(next);
                 }
             }
-            match successors
-                .last()
-                .and_then(|label| index_of.get(label))
-                .copied()
-            {
-                Some(next) if !placed[next] => current = next,
-                _ => break,
+            // Prefer the last successor (a Jmp's target, or a Br's false arm). When it is
+            // already placed the edge runs backwards, so falling through to the other
+            // successor lets the branch invert and the extra jump disappear.
+            let fallthrough = successors
+                .iter()
+                .rev()
+                .filter_map(|label| index_of.get(label).copied())
+                .find(|&next| !placed[next]);
+            match fallthrough {
+                Some(next) => current = next,
+                None => break,
             }
         }
     }
