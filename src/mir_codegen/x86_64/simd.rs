@@ -153,6 +153,15 @@ fn binary_mnemonic(op: VectorOp, lane: VectorLane) -> Result<&'static str, Lamin
         (VMul, I32) => "pmulld",
         (VMul, F32) => "mulps",
         (VMul, F64) => "mulpd",
+        (VAnd, F32) => "andps",
+        (VAnd, F64) => "andpd",
+        (VAnd, _) => "pand",
+        (VOr, F32) => "orps",
+        (VOr, F64) => "orpd",
+        (VOr, _) => "por",
+        (VXor, F32) => "xorps",
+        (VXor, F64) => "xorpd",
+        (VXor, _) => "pxor",
         _ => {
             return Err(unsupported(format!(
                 "x86_64 unsupported {op:?} for {lane:?}"
