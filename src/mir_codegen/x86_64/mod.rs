@@ -4,6 +4,7 @@
 //! supporting System V AMD64 and Microsoft x64 calling conventions.
 
 pub mod constants;
+mod simd;
 pub mod util;
 
 use constants::{fd, linux, macos, stack, windows};
@@ -250,6 +251,8 @@ fn compile_single_function_x86_64(
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
+    let reserved = simd::reserve_vector_slots(func);
+    let func = reserved.as_ref().unwrap_or(func);
     let mut output = RaxTrackingWriter {
         inner: Vec::new(),
         rax_value: None,
