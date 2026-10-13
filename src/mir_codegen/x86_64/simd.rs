@@ -132,3 +132,54 @@ pub(super) fn memory<W: Write>(
     }
     Ok(())
 }
+
+fn binary_mnemonic(op: VectorOp, lane: VectorLane) -> Result<&'static str, LaminaError> {
+    use VectorLane::*;
+    use VectorOp::*;
+    let mnemonic = match (op, lane) {
+        (VAdd, I8) => "paddb",
+        (VAdd, I16) => "paddw",
+        (VAdd, I32) => "paddd",
+        (VAdd, I64) => "paddq",
+        (VAdd, F32) => "addps",
+        (VAdd, F64) => "addpd",
+        (VSub, I8) => "psubb",
+        (VSub, I16) => "psubw",
+        (VSub, I32) => "psubd",
+        (VSub, I64) => "psubq",
+        (VSub, F32) => "subps",
+        (VSub, F64) => "subpd",
+        (VMul, I16) => "pmullw",
+        (VMul, I32) => "pmulld",
+        (VMul, F32) => "mulps",
+        (VMul, F64) => "mulpd",
+        _ => {
+            return Err(unsupported(format!(
+                "x86_64 unsupported {op:?} for {lane:?}"
+            )));
+        }
+    };
+    Ok(mnemonic)
+}
+
+pub(super) fn operation<W: Write>(
+    op: VectorOp,
+    ty: MirType,
+    dst: &Register,
+    operands: &[Operand],
+    writer: &mut RaxTrackingWriter<W>,
+    _ra: &X64RegAlloc,
+    slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    let lane = lane(ty)?;
+    if operands.len() != 2 {
+        return Err(unsupported(format!("{op:?} requires two operands")));
+    }
+    let mnemonic = binary_mnemonic(op, lane)?;
+    load_vector(&operands[0], "xmm0", writer, slots)?;
+    load_vector(&operands[1], "xmm1", writer, slots)?;
+    writeln!(writer, "    {mnemonic} %xmm1, %xmm0")?;
+    let offset = slot(dst, slots)?;
+    writeln!(writer, "    movdqu %xmm0, {offset}(%rbp)")?;
+    Ok(())
+}

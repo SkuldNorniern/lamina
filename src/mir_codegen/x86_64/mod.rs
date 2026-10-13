@@ -1290,6 +1290,14 @@ fn emit_instruction_x86_64(
                 }
             }
         }
+        MirInst::VectorOp {
+            op,
+            ty,
+            dst,
+            operands,
+        } => {
+            simd::operation(*op, *ty, dst, operands, writer, reg_alloc, stack_slots)?;
+        }
         MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
             simd::memory(inst, writer, reg_alloc, stack_slots)?;
         }
