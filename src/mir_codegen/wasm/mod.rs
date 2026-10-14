@@ -1,6 +1,8 @@
+mod simd;
 pub mod util;
 
 use crate::mir_codegen::common::integer_conversion;
+use crate::mir_codegen::simd::vector_slots;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -181,7 +183,13 @@ fn compile_single_function_wasm(
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
+    let vectors: HashSet<_> = vector_slots(func).into_iter().map(|(v, _)| v).collect();
     let mut local_vregs = HashSet::new();
+    for param in &func.sig.params {
+        if let Register::Virtual(v) = &param.reg {
+            local_vregs.insert(v);
+        }
+    }
     for block in &func.blocks {
         for inst in &block.instructions {
             if let Some(dst) = inst.def_reg()
@@ -204,7 +212,12 @@ fn compile_single_function_wasm(
     let mut vreg_to_local: HashMap<VirtualReg, usize> = HashMap::new();
     for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
         vreg_to_local.insert(*vreg, local_idx);
-        writeln!(output, "{}", abi.generate_local_decl(local_idx))
+        let declaration = if vectors.contains(vreg) {
+            format!("    (local $l{local_idx} v128)")
+        } else {
+            abi.generate_local_decl(local_idx)
+        };
+        writeln!(output, "{declaration}")
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
@@ -215,6 +228,12 @@ fn compile_single_function_wasm(
 
     writeln!(output, "    (local $pc i64)")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    for (i, param) in func.sig.params.iter().enumerate() {
+        writeln!(output, "    local.get $p{i}")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        store_to_register_wasm(&param.reg, &mut output, &vreg_to_local)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
     writeln!(output, "    i64.const 0")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    local.set $pc")
@@ -283,6 +302,14 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     codegen_units: usize,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::Wasm64)?;
+    let results = compile_functions_parallel(
+        module,
+        target_os,
+        codegen_units,
+        compile_single_function_wasm,
+    )
+    .map_err(parallel_codegen_error)?;
+
     let abi = WasmABI::new(target_os);
 
     // WASM module header
@@ -336,14 +363,6 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         writeln!(writer, "{}", abi.generate_global_decl(i))?;
     }
 
-    let results = compile_functions_parallel(
-        module,
-        target_os,
-        codegen_units,
-        compile_single_function_wasm,
-    )
-    .map_err(parallel_codegen_error)?;
-
     for result in results {
         writer.write_all(&result.assembly)?;
     }
@@ -372,6 +391,11 @@ fn emit_instruction_wasm(
         return Ok(());
     }
     match inst {
+        MirInst::VectorOp { .. } => simd::emit(inst, writer, vreg_to_local)?,
+        MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
+            simd::emit(inst, writer, vreg_to_local)?
+        }
+
         MirInst::Copy { ty, dst, src } => {
             if matches!(ty, MirType::Vector(_)) {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
