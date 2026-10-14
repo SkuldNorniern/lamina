@@ -57,7 +57,10 @@ pub(super) fn reserve_vector_slots(func: &Function) -> Option<Function> {
     Some(reserved)
 }
 
-use super::{RaxTrackingWriter, util::load_operand_to_rax};
+use super::{
+    RaxTrackingWriter,
+    util::{load_operand_to_rax, store_rax_to_register},
+};
 use crate::{
     error::LaminaError,
     mir::{AddressMode, VectorLane, VectorType, VirtualReg},
@@ -189,6 +192,9 @@ pub(super) fn operation<W: Write>(
     slots: &HashMap<VirtualReg, i32>,
 ) -> Result<(), LaminaError> {
     let lane = lane(ty)?;
+    if matches!(op, VectorOp::VExtractLane | VectorOp::VInsertLane) {
+        return lane_access(op, lane, dst, operands, writer, ra, slots);
+    }
     if op == VectorOp::VSplat {
         if operands.len() != 1 {
             return Err(unsupported("VSplat requires one operand"));
@@ -250,6 +256,59 @@ fn load_scalar<W: Write>(
         load_operand_to_rax(&Operand::imm_i64(bits), writer, ra, slots)?;
     } else {
         load_operand_to_rax(operand, writer, ra, slots)?;
+    }
+    Ok(())
+}
+
+fn lane_access<W: Write>(
+    op: VectorOp,
+    lane: VectorLane,
+    dst: &Register,
+    operands: &[Operand],
+    writer: &mut RaxTrackingWriter<W>,
+    ra: &X64RegAlloc,
+    slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    use crate::mir::Immediate;
+    let extract = op == VectorOp::VExtractLane;
+    let count = if extract { 2 } else { 3 };
+    if operands.len() != count {
+        return Err(unsupported(format!("{op:?} requires {count} operands")));
+    }
+    let index = match &operands[count - 1] {
+        Operand::Immediate(Immediate::I8(v)) => i64::from(*v),
+        Operand::Immediate(Immediate::I16(v)) => i64::from(*v),
+        Operand::Immediate(Immediate::I32(v)) => i64::from(*v),
+        Operand::Immediate(Immediate::I64(v)) => *v,
+        _ => {
+            return Err(unsupported(format!(
+                "{op:?} {lane:?} lane index must be integer immediate"
+            )));
+        }
+    };
+    let (suffix, lanes, gpr) = match lane {
+        VectorLane::I8 => ("b", 16, "eax"),
+        VectorLane::I16 => ("w", 8, "eax"),
+        VectorLane::I32 | VectorLane::F32 => ("d", 4, "eax"),
+        VectorLane::I64 | VectorLane::F64 => ("q", 2, "rax"),
+    };
+    if !(0..lanes).contains(&index) {
+        return Err(unsupported(format!(
+            "{op:?} {lane:?} lane index {index} out of range"
+        )));
+    }
+    load_vector(&operands[0], "xmm0", writer, slots)?;
+    if extract {
+        writeln!(writer, "    pextr{suffix} ${index}, %xmm0, %{gpr}")?;
+        match dst {
+            Register::Virtual(v) => store_rax_to_register(v, writer, ra, slots)?,
+            Register::Physical(p) => writeln!(writer, "    movq %rax, %{}", p.name)?,
+        }
+    } else {
+        load_scalar(&operands[1], writer, ra, slots)?;
+        writeln!(writer, "    pinsr{suffix} ${index}, %{gpr}, %xmm0")?;
+        let offset = slot(dst, slots)?;
+        writeln!(writer, "    movdqu %xmm0, {offset}(%rbp)")?;
     }
     Ok(())
 }
