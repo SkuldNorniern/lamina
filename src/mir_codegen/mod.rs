@@ -10,6 +10,7 @@ pub mod limits;
 pub mod link;
 pub mod ptx;
 pub mod settings;
+mod simd;
 
 pub mod arm;
 pub mod powerpc;
