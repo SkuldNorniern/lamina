@@ -1,3 +1,5 @@
+mod simd;
+use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
 
 use crate::mir_codegen::common::integer_conversion;
@@ -146,6 +148,8 @@ fn compile_single_function_riscv(
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
+    let reserved = reserve_vector_slots(func);
+    let func = reserved.as_ref().unwrap_or(func);
     let mut output = Vec::new();
     let abi = RiscVAbi::new(target_os);
 
@@ -169,7 +173,9 @@ fn compile_single_function_riscv(
         let pool = RiscVRegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()
-            .filter(|i| i.vreg.class == RegisterClass::Gpr)
+            .filter(|i| {
+                i.vreg.class == RegisterClass::Gpr && !func.stack_reservations.contains_key(&i.vreg)
+            })
             .collect();
         let plan = match settings.regalloc {
             RegallocStrategy::LinearScanGlobal => {
@@ -186,6 +192,9 @@ fn compile_single_function_riscv(
         };
         live_across_calls = live_vregs_across_calls(func, &intervals);
         reg_alloc = RiscVRegAlloc::from_global_plan(target_os, target, &plan, &stack_slots);
+    } else if reserved.is_some() {
+        (stack_slots, _, _) =
+            assign_stack_slots(func, |i| RiscVFrame::calculate_stack_offset(i, target));
     } else {
         let mut next_slot = 0usize;
         for block in &func.blocks {
@@ -219,7 +228,15 @@ fn compile_single_function_riscv(
         }
     }
 
-    let stack_size = stack_slots.len() * target.word_bytes() as usize;
+    let stack_size = if reserved.is_some() {
+        stack_slots
+            .values()
+            .map(|offset| (-offset - 16) as usize)
+            .max()
+            .unwrap_or(0)
+    } else {
+        stack_slots.len() * target.word_bytes() as usize
+    };
     let callee_saved_registers = reg_alloc.used_callee_saved_registers();
     RiscVFrame::generate_prologue(&mut output, stack_size, &callee_saved_registers, target)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -445,6 +462,13 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     };
     validate_module_call_parameters(module, arch)?;
     validate_rv32_i64(module, target)?;
+    let settings_arc = Arc::new(settings.clone());
+    let results =
+        compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
+            compile_single_function_riscv(name, func, target, os, settings_arc.as_ref())
+        })
+        .map_err(parallel_codegen_error)?;
+
     let abi = RiscVAbi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;
@@ -456,13 +480,6 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, ".extern {label}")?;
     }
-
-    let settings_arc = Arc::new(settings.clone());
-    let results =
-        compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
-            compile_single_function_riscv(name, func, target, os, settings_arc.as_ref())
-        })
-        .map_err(parallel_codegen_error)?;
 
     for result in results {
         writer.write_all(&result.assembly)?;
@@ -532,6 +549,10 @@ fn emit_instruction_riscv<W: Write>(
         writeln!(writer, "    .loc 1 {} 0", ctx.debug_line)?;
     }
     match inst {
+        MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
+            simd::emit(inst, writer, reg_alloc, stack_slots, ctx.target)?
+        }
+
         MirInst::Copy { ty, dst, src } => {
             if matches!(ty, MirType::Vector(_)) {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
@@ -1137,11 +1158,7 @@ fn emit_instruction_riscv<W: Write>(
         MirInst::SafePoint | MirInst::StackMap { .. } | MirInst::PatchPoint { .. } => {
             // No-op in AOT path.
         }
-        MirInst::VectorOp { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "VectorOp is not yet supported by the RISC-V backend".to_string(),
-            )));
-        }
+        MirInst::VectorOp { .. } => simd::emit(inst, writer, reg_alloc, stack_slots, ctx.target)?,
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 format!("RISC-V backend: instruction not yet supported: {other}"),
