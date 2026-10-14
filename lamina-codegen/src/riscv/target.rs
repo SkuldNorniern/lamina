@@ -36,6 +36,7 @@ pub struct RiscVTarget {
     pub d: bool,
     /// C: compressed encodings.
     pub c: bool,
+    pub v: bool,
 }
 
 impl RiscVTarget {
@@ -48,6 +49,7 @@ impl RiscVTarget {
             f: false,
             d: false,
             c: false,
+            v: false,
         }
     }
 
@@ -60,6 +62,7 @@ impl RiscVTarget {
             f: true,
             d: true,
             c: false,
+            v: false,
         }
     }
 
@@ -115,6 +118,17 @@ impl RiscVTarget {
         ))
     }
 
+    pub fn require_vector(self) -> Result<(), String> {
+        if self.v {
+            Ok(())
+        } else {
+            Err(format!(
+                "V extension is required for vectors on {}",
+                self.isa_name()
+            ))
+        }
+    }
+
     pub fn require_i64(self) -> Result<(), String> {
         if self.xlen == Xlen::Rv64 {
             return Ok(());
@@ -135,6 +149,7 @@ impl RiscVTarget {
             (self.f, 'f'),
             (self.d, 'd'),
             (self.c, 'c'),
+            (self.v, 'v'),
         ] {
             if present {
                 s.push(letter);
@@ -147,6 +162,15 @@ impl RiscVTarget {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vectors_require_explicit_extension() {
+        let mut target = RiscVTarget::general(Xlen::Rv64);
+        assert!(target.require_vector().is_err());
+        target.v = true;
+        assert!(target.require_vector().is_ok());
+        assert_eq!(target.isa_name(), "rv64imafdv");
+    }
 
     #[test]
     fn base_has_no_multiply() {
