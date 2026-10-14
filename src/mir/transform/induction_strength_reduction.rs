@@ -40,7 +40,9 @@ impl Transform for InductionStrengthReduction {
                 .into_iter()
                 .find(|info| info.header == original.header)
             {
-                changed |= reduce_loop(func, &info);
+                while reduce_loop(func, &info) {
+                    changed = true;
+                }
             }
         }
         Ok(changed)
@@ -105,14 +107,6 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
     if func.entry == info.header {
         return false;
     }
-    if func.blocks.iter().any(|b| {
-        !info.blocks.contains(&b.label)
-            && b.successors()
-                .iter()
-                .any(|s| info.blocks.contains(*s) && *s != info.header)
-    }) {
-        return false;
-    }
     let dominators = calculate_dominators(func);
     let dominates = |a: &str, b: &str| dominators.get(b).is_some_and(|ds| ds.contains(a));
     let latches: Vec<_> = func
@@ -126,7 +120,11 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
     let nested: HashSet<_> = LoopInvariantCodeMotion
         .find_loops(func)
         .into_iter()
-        .filter(|other| other.header != info.header && info.blocks.contains(&other.header))
+        .filter(|other| {
+            other.header != info.header
+                && info.blocks.contains(&other.header)
+                && other.blocks != info.blocks
+        })
         .flat_map(|other| other.blocks)
         .collect();
     let mut defs: HashMap<Register, Vec<(usize, usize)>> = HashMap::new();
@@ -191,6 +189,33 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
                 (m, Operand::Register(iv)) if invariant(m, &defs) => (iv, m),
                 _ => continue,
             };
+            let mut offset = None;
+            let iv = if let Some(locations) = defs.get(iv)
+                && locations.len() == 1
+                && let (ab, ai) = locations[0]
+                && ab == bi
+                && ai < ii
+                && let Instruction::IntBinary {
+                    op: IntBinOp::Add,
+                    ty: at,
+                    lhs: al,
+                    rhs: ar,
+                    ..
+                } = &block.instructions[ai]
+                && at == ty
+            {
+                match (al, ar) {
+                    (Operand::Register(base), addend) | (addend, Operand::Register(base))
+                        if base != iv && invariant(addend, &defs) =>
+                    {
+                        offset = Some(addend.clone());
+                        base
+                    }
+                    _ => iv,
+                }
+            } else {
+                iv
+            };
             let Some(locations) = defs.get(iv) else {
                 continue;
             };
@@ -200,6 +225,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
             // Shared induction registers can extend recurrences across sibling loops.
             if func.blocks.iter().any(|b| {
                 !info.blocks.contains(&b.label)
+                    && !dominates(&b.label, &block.label)
                     && b.instructions
                         .iter()
                         .any(|i| i.def_reg() == Some(iv) && i.use_regs().contains(&iv))
@@ -303,11 +329,23 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
             };
             let delta: Register = VirtualReg::gpr(next_id + 1).into();
             next_id = following_id;
+            let initial = if let Some(offset) = offset {
+                init.push(Instruction::IntBinary {
+                    op: IntBinOp::Add,
+                    dst: accumulator.clone(),
+                    ty: *ty,
+                    lhs: Operand::Register(iv.clone()),
+                    rhs: offset,
+                });
+                Operand::Register(accumulator.clone())
+            } else {
+                Operand::Register(iv.clone())
+            };
             init.push(Instruction::IntBinary {
                 op: IntBinOp::Mul,
                 dst: accumulator.clone(),
                 ty: *ty,
-                lhs: Operand::Register(iv.clone()),
+                lhs: initial,
                 rhs: multiplier.clone(),
             });
             if let Some(offset) = affine {
@@ -382,6 +420,21 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
     let Some(prefix) = entry_prefix(func, info, &product_label) else {
         return false;
     };
+    if func.blocks.iter().any(|b| {
+        !info.blocks.contains(&b.label)
+            && b.successors()
+                .iter()
+                .any(|s| info.blocks.contains(*s) && !prefix.contains(*s) && *s != product_label)
+    }) {
+        return false;
+    }
+    let prefix = if func.blocks.iter().any(|b| {
+        !info.blocks.contains(&b.label) && b.successors().iter().any(|s| prefix.contains(*s))
+    }) {
+        prefix
+    } else {
+        HashSet::new()
+    };
     let init_label = unique_label("sr_init");
     let labels: HashMap<_, _> = prefix
         .iter()
@@ -393,7 +446,6 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
             (label.clone(), fresh)
         })
         .collect();
-    let first_label = labels[&info.header].clone();
     let mut first_blocks = Vec::new();
     for block in &func.blocks {
         if let Some(label) = labels.get(&block.label) {
@@ -421,7 +473,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
         }
     }
     init.push(Instruction::Jmp {
-        target: product_label,
+        target: product_label.clone(),
     });
     for (bi, block) in func.blocks.iter_mut().enumerate() {
         let mut instructions = Vec::new();
@@ -441,7 +493,11 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
         block.instructions = instructions;
         if !info.blocks.contains(&block.label) {
             redirect(block, &|target| {
-                (target == info.header).then(|| first_label.clone())
+                if target == product_label {
+                    Some(init_label.clone())
+                } else {
+                    labels.get(target).cloned()
+                }
             });
         }
     }
@@ -803,6 +859,117 @@ mod tests {
         assert!(InductionStrengthReduction.apply(&mut func).unwrap());
         let actual = execute(&func);
         assert_eq!((actual.0, actual.2), (expected.0, expected.2));
+    }
+
+    fn two_level(trips: i64, escapes: bool) -> Function {
+        let ty = MirType::i64();
+        let mut func = example(ty, trips);
+        func.get_block_mut("entry").unwrap().instructions.insert(
+            0,
+            Instruction::Copy {
+                dst: reg(5),
+                ty,
+                src: constant(99),
+            },
+        );
+        for (id, value) in [(7, 7), (8, 5), (9, 3)] {
+            func.get_block_mut("entry").unwrap().instructions.insert(
+                0,
+                Instruction::Copy {
+                    dst: reg(id),
+                    ty,
+                    src: constant(value),
+                },
+            );
+        }
+        let body = func.get_block_mut("body").unwrap();
+        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(0), operand(7));
+        body.instructions[3] = binary(IntBinOp::Add, 0, ty, operand(0), operand(9));
+        body.instructions[1] = binary(IntBinOp::Add, 6, ty, operand(4), constant(11));
+        body.instructions
+            .insert(2, binary(IntBinOp::Mul, 5, ty, operand(6), operand(8)));
+        body.instructions[3] = binary(IntBinOp::Add, 2, ty, operand(2), operand(5));
+        if escapes {
+            func.get_block_mut("exit").unwrap().instructions[0] = Instruction::Ret {
+                value: Some(operand(5)),
+            };
+        }
+        func
+    }
+
+    #[test]
+    fn reduces_two_level_products_to_fixed_point() {
+        for (trips, escapes) in [(20, false), (20, true), (0, false), (0, true)] {
+            let mut func = two_level(trips, escapes);
+            let expected = execute(&func);
+            assert!(InductionStrengthReduction.apply(&mut func).unwrap());
+            let actual = execute(&func);
+            assert_eq!((actual.0, actual.2), (expected.0, expected.2));
+            assert_eq!(actual.1, if trips == 0 { 0 } else { 4 });
+            assert!(
+                !func
+                    .get_block("body")
+                    .unwrap()
+                    .instructions
+                    .iter()
+                    .any(|i| {
+                        matches!(
+                            i,
+                            Instruction::IntBinary {
+                                op: IntBinOp::Mul,
+                                ..
+                            }
+                        )
+                    })
+            );
+            assert!(!InductionStrengthReduction.apply(&mut func).unwrap());
+        }
+    }
+
+    fn two_level_blocks() -> Function {
+        let ty = MirType::i64();
+        let mut func = example(ty, 20);
+        let body = func.get_block_mut("body").unwrap();
+        let mut tail = body.instructions.split_off(2);
+        tail[0] = binary(IntBinOp::Add, 2, ty, operand(2), operand(5));
+        tail.insert(0, binary(IntBinOp::Mul, 5, ty, operand(4), constant(5)));
+        body.instructions.push(Instruction::Jmp {
+            target: "product".into(),
+        });
+        func.blocks.push(Block {
+            label: "product".into(),
+            instructions: tail,
+        });
+        func
+    }
+
+    #[test]
+    fn reduces_dependent_product_in_later_block() {
+        let mut func = two_level_blocks();
+        let expected = execute(&func);
+        assert!(InductionStrengthReduction.apply(&mut func).unwrap());
+        let actual = execute(&func);
+        assert_eq!((actual.0, actual.2), (expected.0, expected.2));
+        assert_eq!(actual.1, 4);
+        assert!(!InductionStrengthReduction.apply(&mut func).unwrap());
+    }
+
+    #[test]
+    fn repeated_peeling_keeps_local_comparisons_unique() {
+        let mut func = two_level_blocks();
+        assert!(InductionStrengthReduction.apply(&mut func).unwrap());
+        for instr in func.blocks.iter().flat_map(|b| &b.instructions) {
+            if let Instruction::IntCmp { dst, .. } = instr {
+                assert_eq!(
+                    func.blocks
+                        .iter()
+                        .flat_map(|b| &b.instructions)
+                        .filter(|i| i.def_reg() == Some(dst))
+                        .count(),
+                    1
+                );
+            }
+        }
     }
 
     #[test]
