@@ -185,18 +185,71 @@ pub(super) fn operation<W: Write>(
     dst: &Register,
     operands: &[Operand],
     writer: &mut RaxTrackingWriter<W>,
-    _ra: &X64RegAlloc,
+    ra: &X64RegAlloc,
     slots: &HashMap<VirtualReg, i32>,
 ) -> Result<(), LaminaError> {
     let lane = lane(ty)?;
-    if operands.len() != 2 {
-        return Err(unsupported(format!("{op:?} requires two operands")));
+    if op == VectorOp::VSplat {
+        if operands.len() != 1 {
+            return Err(unsupported("VSplat requires one operand"));
+        }
+        load_scalar(&operands[0], writer, ra, slots)?;
+        match lane {
+            VectorLane::I64 | VectorLane::F64 => {
+                writeln!(writer, "    movq %rax, %xmm0")?;
+                let mnemonic = if lane == VectorLane::I64 {
+                    "punpcklqdq"
+                } else {
+                    "unpcklpd"
+                };
+                writeln!(writer, "    {mnemonic} %xmm0, %xmm0")?;
+            }
+            _ => {
+                writeln!(writer, "    movd %eax, %xmm0")?;
+                if lane == VectorLane::I8 {
+                    writeln!(writer, "    punpcklbw %xmm0, %xmm0")?;
+                }
+                if matches!(lane, VectorLane::I8 | VectorLane::I16) {
+                    writeln!(writer, "    punpcklwd %xmm0, %xmm0")?;
+                }
+                let shuffle = if lane == VectorLane::F32 {
+                    "shufps $0, %xmm0"
+                } else {
+                    "pshufd $0, %xmm0"
+                };
+                writeln!(writer, "    {shuffle}, %xmm0")?;
+            }
+        }
+    } else {
+        if operands.len() != 2 {
+            return Err(unsupported(format!("{op:?} requires two operands")));
+        }
+        let mnemonic = binary_mnemonic(op, lane)?;
+        load_vector(&operands[0], "xmm0", writer, slots)?;
+        load_vector(&operands[1], "xmm1", writer, slots)?;
+        writeln!(writer, "    {mnemonic} %xmm1, %xmm0")?;
     }
-    let mnemonic = binary_mnemonic(op, lane)?;
-    load_vector(&operands[0], "xmm0", writer, slots)?;
-    load_vector(&operands[1], "xmm1", writer, slots)?;
-    writeln!(writer, "    {mnemonic} %xmm1, %xmm0")?;
     let offset = slot(dst, slots)?;
     writeln!(writer, "    movdqu %xmm0, {offset}(%rbp)")?;
+    Ok(())
+}
+
+fn load_scalar<W: Write>(
+    operand: &Operand,
+    writer: &mut RaxTrackingWriter<W>,
+    ra: &X64RegAlloc,
+    slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    use crate::mir::Immediate;
+    let bits = match operand {
+        Operand::Immediate(Immediate::F32(v)) => Some(i64::from(v.to_bits())),
+        Operand::Immediate(Immediate::F64(v)) => Some(v.to_bits() as i64),
+        _ => None,
+    };
+    if let Some(bits) = bits {
+        load_operand_to_rax(&Operand::imm_i64(bits), writer, ra, slots)?;
+    } else {
+        load_operand_to_rax(operand, writer, ra, slots)?;
+    }
     Ok(())
 }
