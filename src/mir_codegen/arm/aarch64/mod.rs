@@ -3,9 +3,11 @@
 //! Code generation from MIR to AArch64 assembly,
 //! following the AAPCS64 calling convention.
 
+mod simd;
 mod util;
 
 use crate::mir_codegen::common::integer_conversion;
+use crate::mir_codegen::simd::reserve_vector_slots;
 
 use std::{collections::HashMap, io::Write, sync::Arc};
 
@@ -59,6 +61,8 @@ fn compile_single_function_aarch64(
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
 ) -> Result<Vec<u8>, CodegenError> {
+    let reserved = reserve_vector_slots(func);
+    let func = reserved.as_ref().unwrap_or(func);
     let mut output = Vec::new();
     let abi = AArch64ABI::new(target_os);
 
@@ -91,36 +95,41 @@ fn compile_single_function_aarch64(
 
     let mut frame = FrameMap::from_function(func);
 
-    let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> =
-        if settings.regalloc != RegallocStrategy::Incremental {
-            let pool = A64RegAlloc::gpr_pool_for_global_allocation();
-            let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
-                .into_iter()
-                .filter(|i| i.vreg.class == RegisterClass::Gpr)
-                .collect();
-            let plan = match settings.regalloc {
-                RegallocStrategy::LinearScanGlobal => {
-                    LinearScanAllocator::allocate(&intervals, pool.as_slice())
-                }
-                RegallocStrategy::GraphColorGlobal => {
-                    GraphColorAllocator::allocate(&intervals, pool.as_slice())
-                }
-                RegallocStrategy::Incremental => {
-                    return Err(CodegenError::InvalidCodegenOptions(
-                        "internal: incremental in global branch".to_string(),
-                    ));
-                }
-            };
-            for (v, a) in &plan {
-                if let MirAllocation::Spill(off) = a {
-                    frame.slots.insert(Register::Virtual(*v), *off);
-                }
+    let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> = if settings.regalloc
+        != RegallocStrategy::Incremental
+    {
+        let pool = A64RegAlloc::gpr_pool_for_global_allocation();
+        let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
+            .into_iter()
+            .filter(|i| {
+                i.vreg.class == RegisterClass::Gpr && !func.stack_reservations.contains_key(&i.vreg)
+            })
+            .collect();
+        let plan = match settings.regalloc {
+            RegallocStrategy::LinearScanGlobal => {
+                LinearScanAllocator::allocate(&intervals, pool.as_slice())
             }
-            frame.recompute_frame_size_from_slots();
-            Some(plan)
-        } else {
-            None
+            RegallocStrategy::GraphColorGlobal => {
+                GraphColorAllocator::allocate(&intervals, pool.as_slice())
+            }
+            RegallocStrategy::Incremental => {
+                return Err(CodegenError::InvalidCodegenOptions(
+                    "internal: incremental in global branch".to_string(),
+                ));
+            }
         };
+        for (v, a) in &plan {
+            if reserved.is_none()
+                && let MirAllocation::Spill(off) = a
+            {
+                frame.slots.insert(Register::Virtual(*v), *off);
+            }
+        }
+        frame.recompute_frame_size_from_slots();
+        Some(plan)
+    } else {
+        None
+    };
 
     let has_many_vars = func
         .blocks
@@ -269,6 +278,13 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
+    let settings_arc = Arc::new(settings.clone());
+    let results =
+        compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
+            compile_single_function_aarch64(name, func, os, settings_arc.as_ref())
+        })
+        .map_err(parallel_codegen_error)?;
+
     emit_print_format_section(writer, target_os)?;
     writeln!(writer, ".text")?;
 
@@ -278,13 +294,6 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, ".extern {label}")?;
     }
-
-    let settings_arc = Arc::new(settings.clone());
-    let results =
-        compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
-            compile_single_function_aarch64(name, func, os, settings_arc.as_ref())
-        })
-        .map_err(parallel_codegen_error)?;
 
     for result in results {
         writer.write_all(&result.assembly)?;
@@ -312,6 +321,9 @@ fn emit_block<W: Write>(
             writeln!(w, "    .loc 1 {} 0", *debug_line)?;
         }
         match inst {
+            MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
+                simd::emit(inst, w, frame, ra)?
+            }
             MirInst::IntConvert { .. } => {
                 if let Some(operations) = integer_conversion(inst) {
                     emit_block(
@@ -1016,11 +1028,7 @@ fn emit_block<W: Write>(
             MirInst::SafePoint | MirInst::StackMap { .. } | MirInst::PatchPoint { .. } => {
                 // No-op in AOT path — only meaningful for JIT/GC runtimes.
             }
-            MirInst::VectorOp { .. } => {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "VectorOp is not yet supported by the AArch64 backend".to_string(),
-                )));
-            }
+            MirInst::VectorOp { .. } => simd::emit(inst, w, frame, ra)?,
             #[cfg(feature = "nightly")]
             MirInst::SimdBinary { .. }
             | MirInst::SimdUnary { .. }
