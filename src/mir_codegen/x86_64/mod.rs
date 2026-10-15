@@ -487,6 +487,32 @@ fn compile_single_function_x86_64(
         }
     }
 
+    let flag_producers: HashSet<_> = func
+        .blocks
+        .iter()
+        .enumerate()
+        .flat_map(|(b, block)| {
+            let use_counts = &use_counts;
+            block
+                .instructions
+                .windows(2)
+                .enumerate()
+                .filter_map(move |(i, pair)| match (&pair[0], &pair[1]) {
+                    (
+                        MirInst::IntCmp {
+                            dst: Register::Virtual(dst),
+                            ..
+                        },
+                        MirInst::Br {
+                            cond: Register::Virtual(cond),
+                            ..
+                        },
+                    ) if dst == cond && use_counts.get(dst) == Some(&1) => Some((b, i)),
+                    _ => None,
+                })
+        })
+        .collect();
+
     // Natural loops from the CFG, not from layout position: a back edge is an edge into
     // a block already on the DFS stack. Aligning a large loop header keeps it off a bad
     // decode boundary; a short loop already fits the fetch window and only pays for the
@@ -509,10 +535,21 @@ fn compile_single_function_x86_64(
         writeln!(output, ".L_{}.{}:", func_name, block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
-        let mut skip_next = false;
+        let mut skip = 0;
         for (position, inst) in block.instructions.iter().enumerate() {
-            if skip_next {
-                skip_next = false;
+            if skip > 0 {
+                skip -= 1;
+                continue;
+            }
+            if let Some((length, address, dst)) = select_lea(
+                &block.instructions[position..],
+                &reg_alloc,
+                &use_counts,
+                |offset| flag_producers.contains(&(block_index, position + offset)),
+            ) {
+                writeln!(output, "    leaq {address}, %{dst}")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                skip = length - 1;
                 continue;
             }
             if let MirInst::IntCmp {
@@ -529,7 +566,7 @@ fn compile_single_function_x86_64(
                     false_target,
                 }) = block.instructions.get(position + 1)
                 && cond == cmp_dst
-                && use_counts.get(cmp_dst).copied() == Some(1)
+                && flag_producers.contains(&(block_index, position))
             {
                 let scratch =
                     emit_int_compare(op, ty, lhs, rhs, &mut output, &mut reg_alloc, &stack_slots)
@@ -556,7 +593,7 @@ fn compile_single_function_x86_64(
                     reg_alloc.free_scratch(scratch);
                 }
                 output.rax_value = None;
-                skip_next = true;
+                skip = 1;
                 continue;
             }
             emit_instruction_x86_64(
@@ -1738,6 +1775,157 @@ fn rax_for(ty: &MirType) -> &'static str {
     }
 }
 
+fn mapped_register(reg: &Register, alloc: &X64RegAlloc) -> Option<&'static str> {
+    match reg {
+        Register::Virtual(v) => alloc.get_mapping_for(v),
+        Register::Physical(p) => Some(p.name),
+    }
+}
+
+fn integer_immediate(operand: &Operand) -> Option<i64> {
+    match operand {
+        Operand::Immediate(Immediate::I8(v)) => Some(i64::from(*v)),
+        Operand::Immediate(Immediate::I16(v)) => Some(i64::from(*v)),
+        Operand::Immediate(Immediate::I32(v)) => Some(i64::from(*v)),
+        Operand::Immediate(Immediate::I64(v)) => Some(*v),
+        _ => None,
+    }
+}
+
+fn select_lea(
+    instructions: &[MirInst],
+    alloc: &X64RegAlloc,
+    uses: &HashMap<VirtualReg, usize>,
+    flags_live: impl Fn(usize) -> bool,
+) -> Option<(usize, String, &'static str)> {
+    for length in (1..=instructions.len().min(3)).rev() {
+        let MirInst::IntBinary {
+            op: IntBinOp::Add,
+            dst,
+            lhs,
+            rhs,
+            ty,
+        } = &instructions[length - 1]
+        else {
+            continue;
+        };
+        let Some(dst) = mapped_register(dst, alloc) else {
+            continue;
+        };
+        if (0..length).any(&flags_live) || (length > 1 && ty.size_bytes() != 8) {
+            continue;
+        }
+        let mut terms = Vec::new();
+        let mut displacement = 0i64;
+        let mut expanded = HashSet::new();
+        fn collect(
+            value: &Operand,
+            prefix: &[MirInst],
+            alloc: &X64RegAlloc,
+            uses: &HashMap<VirtualReg, usize>,
+            terms: &mut Vec<(&'static str, i64)>,
+            displacement: &mut i64,
+            expanded: &mut HashSet<usize>,
+        ) -> Option<()> {
+            if let Some(imm) = integer_immediate(value) {
+                *displacement = displacement.checked_add(imm)?;
+                return Some(());
+            }
+            let Operand::Register(reg) = value else {
+                return None;
+            };
+            if let Register::Virtual(v) = reg
+                && uses.get(v) == Some(&1)
+                && let Some((
+                    index,
+                    MirInst::IntBinary {
+                        op, lhs, rhs, ty, ..
+                    },
+                )) = prefix
+                    .iter()
+                    .enumerate()
+                    .find(|(_, inst)| inst.def_reg() == Some(reg))
+                && ty.size_bytes() == 8
+            {
+                match op {
+                    IntBinOp::Add => {
+                        collect(
+                            lhs,
+                            &prefix[..index],
+                            alloc,
+                            uses,
+                            terms,
+                            displacement,
+                            expanded,
+                        )?;
+                        collect(
+                            rhs,
+                            &prefix[..index],
+                            alloc,
+                            uses,
+                            terms,
+                            displacement,
+                            expanded,
+                        )?;
+                    }
+                    IntBinOp::Shl => {
+                        let shift = integer_immediate(rhs)?;
+                        if !(1..=3).contains(&shift) {
+                            return None;
+                        }
+                        let Operand::Register(src) = lhs else {
+                            return None;
+                        };
+                        terms.push((mapped_register(src, alloc)?, 1 << shift));
+                    }
+                    _ => return None,
+                }
+                expanded.insert(index);
+                return Some(());
+            }
+            terms.push((mapped_register(reg, alloc)?, 1));
+            Some(())
+        }
+        let mut collect_operand = |value| {
+            collect(
+                value,
+                &instructions[..length - 1],
+                alloc,
+                uses,
+                &mut terms,
+                &mut displacement,
+                &mut expanded,
+            )
+        };
+        if collect_operand(lhs).is_none()
+            || collect_operand(rhs).is_none()
+            || expanded.len() != length - 1
+            || i32::try_from(displacement).is_err()
+        {
+            continue;
+        }
+        if length == 1 && terms.iter().any(|&(reg, _)| reg == dst) {
+            continue;
+        }
+        let address = match terms.as_slice() {
+            [(base, 1)] => format!("{displacement}(%{base})"),
+            [(a, sa), (b, sb)] => {
+                let (base, index, scale) = if *sa == 1 && *b != "rsp" {
+                    (a, b, sb)
+                } else if *sb == 1 && *a != "rsp" {
+                    (b, a, sa)
+                } else {
+                    continue;
+                };
+                format!("{displacement}(%{base},%{index},{scale})")
+            }
+            _ => continue,
+        };
+        return Some((length, address, dst));
+    }
+    None
+}
+
 /// Narrow integers in 64-bit registers are sign-extended; loads read only their type width.
 /// Value for `cmpq $imm, %rax`, or None when the operand is not an immediate that fits
 /// a sign-extended imm32. Unsigned compares see the operand zero-extended to the type
@@ -2106,10 +2294,59 @@ fn emit_copy_register_load(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::slice;
     use crate::{
         mir::{FunctionBuilder, ScalarType, codegen::from_ir},
         parser::parse_module,
     };
+
+    #[test]
+    fn lea_selection_respects_flags_uses_and_encoding() {
+        let regs: Vec<_> = (0..5).map(VirtualReg::gpr).collect();
+        let plan = regs
+            .iter()
+            .zip(["r8", "r9", "r10", "r11", "r12"])
+            .map(|(&v, r)| (v, MirAllocation::Register(r)))
+            .collect();
+        let alloc = X64RegAlloc::from_global_plan(TargetOperatingSystem::Linux, true, &plan);
+        let operand = |i: usize| Operand::Register(Register::Virtual(regs[i]));
+        let binary = |op, dst: usize, lhs, rhs| MirInst::IntBinary {
+            op,
+            dst: Register::Virtual(regs[dst]),
+            lhs,
+            rhs,
+            ty: MirType::i64(),
+        };
+        let imm = |v| Operand::Immediate(Immediate::I64(v));
+        let add = binary(IntBinOp::Add, 2, operand(0), operand(1));
+        assert_eq!(
+            select_lea(slice::from_ref(&add), &alloc, &HashMap::new(), |_| {
+                false
+            }),
+            Some((1, "0(%r8,%r9,1)".into(), "r10"))
+        );
+        assert!(select_lea(&[add], &alloc, &HashMap::new(), |_| true).is_none());
+        for displacement in [i64::from(i32::MIN), i64::from(i32::MAX)] {
+            let add = binary(IntBinOp::Add, 2, operand(0), imm(displacement));
+            assert!(select_lea(&[add], &alloc, &HashMap::new(), |_| false).is_some());
+        }
+        let add = binary(IntBinOp::Add, 2, operand(0), imm(i64::from(i32::MAX) + 1));
+        assert!(select_lea(&[add], &alloc, &HashMap::new(), |_| false).is_none());
+        let instructions = [
+            binary(IntBinOp::Shl, 2, operand(1), imm(3)),
+            binary(IntBinOp::Add, 3, operand(0), operand(2)),
+            binary(IntBinOp::Add, 4, operand(3), imm(24)),
+        ];
+        let mut uses = HashMap::from([(regs[2], 1), (regs[3], 1)]);
+        assert_eq!(
+            select_lea(&instructions, &alloc, &uses, |_| false),
+            Some((3, "24(%r8,%r9,8)".into(), "r12"))
+        );
+        uses.insert(regs[2], 2);
+        assert!(select_lea(&instructions, &alloc, &uses, |_| false).is_none());
+        let add = binary(IntBinOp::Add, 0, operand(0), imm(1));
+        assert!(select_lea(&[add], &alloc, &uses, |_| false).is_none());
+    }
 
     #[test]
     fn global_frame_keeps_only_dense_storage() {
