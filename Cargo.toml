@@ -34,7 +34,7 @@ name = "lamina"
 path = "src/main.rs"
 
 [dependencies]
-ras = { package = "lamina-ras", version = "0.1.2", features = ["encoder"] }
+ras = { package = "lamina-ras", version = "0.1.3", features = ["encoder"] }
 lamina-ir = { path = "lamina-ir", version = "0.1.0" }
 lamina-platform = { path = "lamina-platform", version = "0.1.1" }
 lamina-mir = { path = "lamina-mir", version = "0.1.0" }
