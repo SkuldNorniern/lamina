@@ -469,7 +469,9 @@ fn compile_single_function_x86_64(
         })
         .collect();
 
-    let layout = block_layout(func);
+    let loops = natural_loops(func);
+    let mut layout = block_layout(func);
+    let rotations = rotate_loops(func, &loops, &mut layout);
     if layout.first().map(|&i| func.blocks[i].label.as_str()) != Some(func.entry.as_str()) {
         writeln!(output, "    jmp .L_{}.{}", func_name, func.entry)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
@@ -519,7 +521,10 @@ fn compile_single_function_x86_64(
     // decode boundary; a short loop already fits the fetch window and only pays for the
     // padding, so only loops past the threshold get it.
     const ALIGN_LOOP_MIN_INSTRUCTIONS: usize = 24;
-    let loop_headers = aligned_loop_headers(func, ALIGN_LOOP_MIN_INSTRUCTIONS);
+    let loop_headers = aligned_loop_headers(func, &loops, ALIGN_LOOP_MIN_INSTRUCTIONS)
+        .into_iter()
+        .map(|header| rotations.get(&header).copied().unwrap_or(header))
+        .collect::<HashSet<_>>();
 
     let mut debug_line: u32 = 0;
     for (slot, &block_index) in layout.iter().enumerate() {
@@ -574,12 +579,20 @@ fn compile_single_function_x86_64(
                         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 let suffix = cmp_suffix(op)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                if true_target == next_label {
+                if true_target == next_label
+                    || rotations
+                        .get(&block_index)
+                        .is_some_and(|&body| func.blocks[body].label == *false_target)
+                {
                     let inverted = inverted_cmp_suffix(op)
                         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                     writeln!(output, "    j{inverted} .L_{func_name}.{false_target}").map_err(
                         |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
                     )?;
+                    if true_target != next_label {
+                        writeln!(output, "    jmp .L_{func_name}.{true_target}")
+                            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                    }
                 } else {
                     writeln!(output, "    j{suffix} .L_{func_name}.{true_target}").map_err(
                         |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
@@ -2103,11 +2116,20 @@ fn cmp_immediate(rhs: &Operand, ty: &MirType, unsigned: bool) -> Option<i64> {
     i32::try_from(value).ok().map(i64::from)
 }
 
-/// Headers of natural loops whose body is at least `min_instructions` long.
-///
-/// Back edges come from a depth-first walk of the CFG, so the result does not depend on
-/// the order blocks happen to be laid out in.
-fn aligned_loop_headers(func: &Function, min_instructions: usize) -> HashSet<usize> {
+struct NaturalLoop {
+    header: usize,
+    latch: usize,
+    body: HashSet<usize>,
+}
+
+fn loop_successors(func: &Function, index: usize) -> Vec<&str> {
+    match func.blocks[index].terminator() {
+        Some(MirInst::TailCall { name, .. }) if name == &func.sig.name => vec![&func.entry],
+        _ => func.blocks[index].successors(),
+    }
+}
+
+fn natural_loops(func: &Function) -> Vec<NaturalLoop> {
     let index_of: HashMap<&str, usize> = func
         .blocks
         .iter()
@@ -2115,12 +2137,12 @@ fn aligned_loop_headers(func: &Function, min_instructions: usize) -> HashSet<usi
         .map(|(i, b)| (b.label.as_str(), i))
         .collect();
     let Some(&entry) = index_of.get(func.entry.as_str()) else {
-        return HashSet::new();
+        return Vec::new();
     };
 
     let mut predecessors: Vec<Vec<usize>> = vec![Vec::new(); func.blocks.len()];
-    for (index, block) in func.blocks.iter().enumerate() {
-        for successor in block.successors() {
+    for index in 0..func.blocks.len() {
+        for successor in loop_successors(func, index) {
             if let Some(&target) = index_of.get(successor) {
                 predecessors[target].push(index);
             }
@@ -2135,7 +2157,7 @@ fn aligned_loop_headers(func: &Function, min_instructions: usize) -> HashSet<usi
     visited[entry] = true;
     on_path[entry] = true;
     while let Some(&mut (node, ref mut next)) = stack.last_mut() {
-        let successors = func.blocks[node].successors();
+        let successors = loop_successors(func, node);
         if *next < successors.len() {
             let edge = successors[*next];
             *next += 1;
@@ -2154,7 +2176,7 @@ fn aligned_loop_headers(func: &Function, min_instructions: usize) -> HashSet<usi
         }
     }
 
-    let mut headers = HashSet::new();
+    let mut loops = Vec::new();
     for (latch, header) in back_edges {
         // Natural loop body: everything that reaches the latch without passing the header.
         let mut body = HashSet::from([header]);
@@ -2165,15 +2187,112 @@ fn aligned_loop_headers(func: &Function, min_instructions: usize) -> HashSet<usi
             }
             work.extend(predecessors[node].iter().copied());
         }
-        let size: usize = body
-            .iter()
-            .map(|&b| func.blocks[b].instructions.len())
-            .sum();
-        if size >= min_instructions {
-            headers.insert(header);
-        }
+        loops.push(NaturalLoop {
+            header,
+            latch,
+            body,
+        });
     }
-    headers
+    loops
+}
+
+fn aligned_loop_headers(
+    func: &Function,
+    loops: &[NaturalLoop],
+    min_instructions: usize,
+) -> HashSet<usize> {
+    loops
+        .iter()
+        .filter(|natural_loop| {
+            natural_loop
+                .body
+                .iter()
+                .map(|&b| func.blocks[b].instructions.len())
+                .sum::<usize>()
+                >= min_instructions
+        })
+        .map(|natural_loop| natural_loop.header)
+        .collect()
+}
+
+fn rotate_loops(
+    func: &Function,
+    loops: &[NaturalLoop],
+    layout: &mut Vec<usize>,
+) -> HashMap<usize, usize> {
+    let mut rotations = HashMap::new();
+    let mut ordered: Vec<_> = loops.iter().collect();
+    ordered.sort_by_key(|natural_loop| natural_loop.body.len());
+    for natural_loop in ordered {
+        let NaturalLoop {
+            header,
+            latch,
+            body,
+        } = natural_loop;
+        if rotations.contains_key(header) || header == latch {
+            continue;
+        }
+        let instructions = &func.blocks[*header].instructions;
+        let [
+            MirInst::IntCmp { dst, .. },
+            MirInst::Br {
+                cond,
+                true_target,
+                false_target,
+            },
+        ] = instructions.as_slice()
+        else {
+            continue;
+        };
+        if dst != cond
+            || func
+                .blocks
+                .iter()
+                .flat_map(|block| &block.instructions)
+                .flat_map(MirInst::use_regs)
+                .filter(|reg| *reg == dst)
+                .count()
+                != 1
+        {
+            continue;
+        }
+        let inside: Vec<_> = [true_target, false_target]
+            .into_iter()
+            .filter_map(|label| {
+                func.blocks
+                    .iter()
+                    .position(|block| block.label == *label)
+                    .filter(|index| *index != *header && body.contains(index))
+            })
+            .collect();
+        let [body_entry] = inside.as_slice() else {
+            continue;
+        };
+        if !matches!(
+            func.blocks[*latch].terminator(),
+            Some(MirInst::Jmp { .. } | MirInst::TailCall { .. })
+        ) {
+            continue;
+        }
+        let Some(start) = layout.iter().position(|index| index == header) else {
+            continue;
+        };
+        let Some(end) = layout.iter().position(|index| index == latch) else {
+            continue;
+        };
+        if end <= start
+            || layout.get(start + 1) != Some(body_entry)
+            || layout[start + 1..=end]
+                .iter()
+                .any(|index| !body.contains(index))
+        {
+            continue;
+        }
+        layout.remove(start);
+        layout.insert(end, *header);
+        rotations.insert(*header, *body_entry);
+    }
+    rotations
 }
 
 /// Condition-code suffix for the negation of a comparison.
@@ -2448,6 +2567,210 @@ mod tests {
         parser::parse_module,
     };
     use std::slice;
+
+    #[test]
+    fn rotation_preserves_nested_loop_alignment() {
+        let condition = Register::Virtual(VirtualReg::gpr(0));
+        let comparison = |dst| MirInst::IntCmp {
+            op: IntCmpOp::SGt,
+            dst,
+            lhs: Operand::Immediate(Immediate::I64(1)),
+            rhs: Operand::Immediate(Immediate::I64(0)),
+            ty: MirType::i64(),
+        };
+        let mut builder = FunctionBuilder::new("nested")
+            .block("entry")
+            .instr(MirInst::Jmp {
+                target: "outer".into(),
+            })
+            .block("outer")
+            .instr(comparison(condition.clone()))
+            .instr(MirInst::Br {
+                cond: condition.clone(),
+                true_target: "exit".into(),
+                false_target: "inner_entry".into(),
+            })
+            .block("inner_entry")
+            .instr(MirInst::Jmp {
+                target: "inner".into(),
+            })
+            .block("inner")
+            .instr(comparison(VirtualReg::gpr(2).into()))
+            .instr(MirInst::Br {
+                cond: VirtualReg::gpr(2).into(),
+                true_target: "outer_latch".into(),
+                false_target: "body".into(),
+            })
+            .block("body");
+        for _ in 0..24 {
+            builder = builder.instr(MirInst::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(1).into(),
+                src: Operand::Immediate(Immediate::I64(0)),
+            });
+        }
+        let func = builder
+            .instr(MirInst::Jmp {
+                target: "inner".into(),
+            })
+            .block("outer_latch")
+            .instr(MirInst::Jmp {
+                target: "outer".into(),
+            })
+            .block("exit")
+            .instr(MirInst::Ret { value: None })
+            .build();
+        let loops = natural_loops(&func);
+        let aligned = aligned_loop_headers(&func, &loops, 24);
+        let labels = |set: &HashSet<usize>| {
+            set.iter()
+                .map(|&index| func.blocks[index].label.as_str())
+                .collect::<BTreeSet<_>>()
+        };
+        assert_eq!(labels(&aligned), BTreeSet::from(["inner", "outer"]));
+        let mut layout = block_layout(&func);
+        let rotations = rotate_loops(&func, &loops, &mut layout);
+        assert_eq!(rotations.len(), 1);
+        assert_eq!(
+            layout
+                .iter()
+                .map(|&i| func.blocks[i].label.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "entry",
+                "outer",
+                "inner_entry",
+                "body",
+                "inner",
+                "exit",
+                "outer_latch"
+            ]
+        );
+        assert_eq!(
+            aligned_loop_headers(&func, &natural_loops(&func), 24),
+            aligned
+        );
+        let aligned_after = aligned
+            .iter()
+            .map(|header| rotations.get(header).copied().unwrap_or(*header))
+            .collect();
+        assert_eq!(labels(&aligned_after), BTreeSet::from(["body", "outer"]));
+    }
+
+    #[test]
+    fn rotated_loops_with_shared_exit_branch_back_conditionally() {
+        let ir = parse_module(
+            r#"
+fn @two(i64 %i, i64 %n) -> i64 {
+entry:
+    %pick = eq.i64 %i, 0
+    br %pick, a, b
+a:
+    %stop_a = ge.i64 %i, %n
+    br %stop_a, exit, body_a
+body_a:
+    %i = add.i64 %i, 1
+    jmp a
+b:
+    %stop_b = ge.i64 %i, %n
+    br %stop_b, exit, body_b
+body_b:
+    %i = add.i64 %i, 1
+    jmp b
+exit:
+    ret.i64 %i
+}
+"#,
+        )
+        .unwrap();
+        let mir = from_ir(&ir, "shared_exit").unwrap();
+        let settings = MirCodegenSettings {
+            regalloc: RegallocStrategy::LinearScanGlobal,
+            ..Default::default()
+        };
+        let asm = String::from_utf8(
+            compile_single_function_x86_64(
+                "two",
+                mir.get_function("two").unwrap(),
+                TargetOperatingSystem::Linux,
+                &settings,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        for target in ["body_a", "body_b"] {
+            assert!(asm.contains(&format!("jl .L_two.{target}")), "{asm}");
+            assert!(!asm.contains(&format!("jmp .L_two.{target}")), "{asm}");
+        }
+    }
+
+    #[test]
+    fn self_tail_loop_rotates_with_initial_condition_check() {
+        let i = VirtualReg::gpr(0);
+        let n = VirtualReg::gpr(1);
+        let cond = VirtualReg::gpr(2);
+        let next = VirtualReg::gpr(3);
+        let func = FunctionBuilder::new("rotate")
+            .param(i.into(), MirType::i64())
+            .param(n.into(), MirType::i64())
+            .returns(MirType::i64())
+            .block("entry")
+            .instr(MirInst::IntCmp {
+                op: IntCmpOp::SGt,
+                dst: cond.into(),
+                lhs: Operand::Register(i.into()),
+                rhs: Operand::Register(n.into()),
+                ty: MirType::i64(),
+            })
+            .instr(MirInst::Br {
+                cond: cond.into(),
+                true_target: "exit".into(),
+                false_target: "body".into(),
+            })
+            .block("body")
+            .instr(MirInst::IntBinary {
+                op: IntBinOp::Add,
+                dst: next.into(),
+                lhs: Operand::Register(i.into()),
+                rhs: Operand::Immediate(Immediate::I64(1)),
+                ty: MirType::i64(),
+            })
+            .instr(MirInst::TailCall {
+                name: "rotate".into(),
+                args: vec![Operand::Register(next.into()), Operand::Register(n.into())],
+            })
+            .block("exit")
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(i.into())),
+            })
+            .build();
+        for strategy in [
+            RegallocStrategy::Incremental,
+            RegallocStrategy::LinearScanGlobal,
+            RegallocStrategy::GraphColorGlobal,
+        ] {
+            let settings = MirCodegenSettings {
+                regalloc: strategy,
+                ..Default::default()
+            };
+            let asm = String::from_utf8(
+                compile_single_function_x86_64(
+                    "rotate",
+                    &func,
+                    TargetOperatingSystem::Linux,
+                    &settings,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+            let body = asm.find(".L_rotate.body:").unwrap();
+            let header = asm.find(".L_rotate.entry:").unwrap();
+            assert!(body < header, "{asm}");
+            assert_eq!(asm.matches("jmp .L_rotate.entry").count(), 1, "{asm}");
+            assert!(asm[..body].contains("jmp .L_rotate.entry"), "{asm}");
+            assert!(asm[header..].contains("jle .L_rotate.body"), "{asm}");
+        }
+    }
 
     #[test]
     fn dying_input_coalescing_checks_cfg_liveness_and_constraints() {
