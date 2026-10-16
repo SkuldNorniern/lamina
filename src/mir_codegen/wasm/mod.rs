@@ -5,7 +5,7 @@ use crate::mir_codegen::common::integer_conversion;
 use crate::mir_codegen::simd::vector_slots;
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     env::temp_dir,
     fs,
 };
@@ -184,7 +184,7 @@ fn compile_single_function_wasm(
     }
 
     let vectors: HashSet<_> = vector_slots(func).into_iter().map(|(v, _)| v).collect();
-    let mut local_vregs = HashSet::new();
+    let mut local_vregs = BTreeSet::new();
     for param in &func.sig.params {
         if let Register::Virtual(v) = &param.reg {
             local_vregs.insert(v);
