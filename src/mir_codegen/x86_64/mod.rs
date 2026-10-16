@@ -326,7 +326,7 @@ fn compile_single_function_x86_64(
             .into_iter()
             .filter(|i| i.vreg.class == RegisterClass::Gpr && !address_taken.contains(&i.vreg))
             .collect();
-        let plan = match settings.regalloc {
+        let mut plan = match settings.regalloc {
             RegallocStrategy::LinearScanGlobal => {
                 LinearScanAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
             }
@@ -335,6 +335,7 @@ fn compile_single_function_x86_64(
             }
             RegallocStrategy::Incremental => unreachable!(),
         };
+        coalesce_dying_inputs(func, &intervals, &mut plan, allowed);
         (stack_slots, def_regs, total_slots) = layout_global_stack_slots(func, &plan);
         reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);
         for allocation in plan.values() {
@@ -1775,6 +1776,154 @@ fn rax_for(ty: &MirType) -> &'static str {
     }
 }
 
+fn dying_input(inst: &MirInst) -> Option<(VirtualReg, VirtualReg)> {
+    match inst {
+        MirInst::IntBinary {
+            op: IntBinOp::Add,
+            dst: Register::Virtual(dst),
+            lhs: Operand::Register(Register::Virtual(src)),
+            ..
+        }
+        | MirInst::Copy {
+            dst: Register::Virtual(dst),
+            src: Operand::Register(Register::Virtual(src)),
+            ..
+        } if dst != src => Some((*dst, *src)),
+        _ => None,
+    }
+}
+
+fn coalesce_dying_inputs(
+    func: &Function,
+    intervals: &[LiveInterval],
+    plan: &mut HashMap<VirtualReg, MirAllocation<&'static str>>,
+    allowed: impl Fn(&LiveInterval, &'static str) -> bool,
+) {
+    let virtual_reg = |reg: &Register| match reg {
+        Register::Virtual(v) => Some(*v),
+        _ => None,
+    };
+    let mut affinities = HashSet::new();
+    for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
+        match inst {
+            MirInst::Copy {
+                dst,
+                src: Operand::Register(src),
+                ..
+            } => {
+                if let (Some(dst), Some(src)) = (virtual_reg(dst), virtual_reg(src)) {
+                    affinities.insert((src, dst));
+                }
+            }
+            MirInst::TailCall { name, args } if name == &func.sig.name => {
+                for (arg, param) in args.iter().zip(&func.sig.params) {
+                    if let Operand::Register(arg) = arg
+                        && let (Some(src), Some(dst)) = (virtual_reg(arg), virtual_reg(&param.reg))
+                    {
+                        affinities.insert((src, dst));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let labels: HashMap<_, _> = func
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(index, block)| (block.label.as_str(), index))
+        .collect();
+    let mut live_in = vec![HashSet::new(); func.blocks.len()];
+    let mut live_out = live_in.clone();
+    loop {
+        let mut changed = false;
+        for (index, block) in func.blocks.iter().enumerate().rev() {
+            let out: HashSet<_> = block
+                .successors()
+                .iter()
+                .filter_map(|label| labels.get(label))
+                .flat_map(|&next| live_in[next].iter().copied())
+                .collect();
+            let mut input = out.clone();
+            for inst in block.instructions.iter().rev() {
+                if let Some(dst) = inst.def_reg().and_then(virtual_reg) {
+                    input.remove(&dst);
+                }
+                input.extend(inst.use_regs().into_iter().filter_map(virtual_reg));
+            }
+            changed |= input != live_in[index] || out != live_out[index];
+            live_in[index] = input;
+            live_out[index] = out;
+        }
+        if !changed {
+            break;
+        }
+    }
+    let mut points = Vec::new();
+    let mut definitions = HashMap::new();
+    for (index, block) in func.blocks.iter().enumerate() {
+        let mut live = live_out[index].clone();
+        let mut block_points = Vec::new();
+        for inst in block.instructions.iter().rev() {
+            let after = live.clone();
+            let dst = inst.def_reg().and_then(virtual_reg);
+            if let Some(dst) = dst {
+                live.remove(&dst);
+                *definitions.entry(dst).or_insert(0) += 1;
+            }
+            live.extend(inst.use_regs().into_iter().filter_map(virtual_reg));
+            block_points.push((inst, live.clone(), after, dst));
+        }
+        points.extend(block_points.into_iter().rev());
+    }
+    let by_reg: HashMap<_, _> = intervals
+        .iter()
+        .map(|interval| (interval.vreg, interval))
+        .collect();
+    for (inst, _, after, _) in &points {
+        let Some((dst, src)) = dying_input(inst) else {
+            continue;
+        };
+        if (matches!(inst, MirInst::IntBinary { .. }) && !affinities.contains(&(dst, src)))
+            || after.contains(&src)
+            || definitions.get(&dst) != Some(&1)
+            || func
+                .sig
+                .params
+                .iter()
+                .any(|param| virtual_reg(&param.reg) == Some(dst))
+        {
+            continue;
+        }
+        let (Some(output), Some(MirAllocation::Register(reg))) =
+            (by_reg.get(&dst), plan.get(&src).copied())
+        else {
+            continue;
+        };
+        if !allowed(output, reg) {
+            continue;
+        }
+        let interferes = |other| {
+            points.iter().any(|(inst, before, after, defined)| {
+                (before.contains(&dst) && before.contains(&other))
+                    || (after.contains(&dst) && after.contains(&other))
+                    || (*defined == Some(dst)
+                        && before.contains(&other)
+                        && dying_input(inst) != Some((dst, other)))
+                    || (*defined == Some(other)
+                        && before.contains(&dst)
+                        && dying_input(inst) != Some((other, dst)))
+            })
+        };
+        if plan.iter().any(|(&other, &allocation)| {
+            other != dst && allocation == MirAllocation::Register(reg) && interferes(other)
+        }) {
+            continue;
+        }
+        plan.insert(dst, MirAllocation::Register(reg));
+    }
+}
+
 fn mapped_register(reg: &Register, alloc: &X64RegAlloc) -> Option<&'static str> {
     match reg {
         Register::Virtual(v) => alloc.get_mapping_for(v),
@@ -2294,11 +2443,65 @@ fn emit_copy_register_load(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::slice;
     use crate::{
         mir::{FunctionBuilder, ScalarType, codegen::from_ir},
         parser::parse_module,
     };
+    use std::slice;
+
+    #[test]
+    fn dying_input_coalescing_checks_cfg_liveness_and_constraints() {
+        let a = VirtualReg::gpr(0);
+        let b = VirtualReg::gpr(1);
+        let c = VirtualReg::gpr(2);
+        for (live_source, conflict, permitted, expected) in [
+            (false, false, true, "r8"),
+            (true, false, true, "r9"),
+            (false, true, true, "r9"),
+            (false, false, false, "r9"),
+        ] {
+            let mut func = FunctionBuilder::new("increment")
+                .param(a.into(), MirType::i64())
+                .block("body")
+                .instr(MirInst::IntBinary {
+                    op: IntBinOp::Add,
+                    dst: b.into(),
+                    lhs: Operand::Register(a.into()),
+                    rhs: Operand::Immediate(Immediate::I64(1)),
+                    ty: MirType::i64(),
+                })
+                .instr(MirInst::TailCall {
+                    name: "increment".into(),
+                    args: [Some(b), live_source.then_some(a), conflict.then_some(c)]
+                        .into_iter()
+                        .flatten()
+                        .map(|v| Operand::Register(v.into()))
+                        .collect(),
+                })
+                .block("entry")
+                .instr(MirInst::Copy {
+                    ty: MirType::i64(),
+                    dst: c.into(),
+                    src: Operand::Register(a.into()),
+                })
+                .instr(MirInst::Jmp {
+                    target: "body".into(),
+                })
+                .build();
+            func.entry = "entry".into();
+            let intervals = LinearScanAllocator::compute_intervals(&func);
+            let mut plan = HashMap::from([
+                (a, MirAllocation::Register("r8")),
+                (b, MirAllocation::Register("r9")),
+                (
+                    c,
+                    MirAllocation::Register(if conflict { "r8" } else { "r10" }),
+                ),
+            ]);
+            coalesce_dying_inputs(&func, &intervals, &mut plan, |_, _| permitted);
+            assert_eq!(plan[&b], MirAllocation::Register(expected));
+        }
+    }
 
     #[test]
     fn lea_selection_respects_flags_uses_and_encoding() {
