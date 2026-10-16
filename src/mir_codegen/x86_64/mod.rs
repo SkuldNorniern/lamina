@@ -10,7 +10,7 @@ pub mod util;
 use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame, extend_integer, register_for_size};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeSet, HashMap, HashSet},
     io::{self, Error, Write},
 };
 use util::*;
@@ -35,8 +35,10 @@ use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{collections::hash_map::Entry, sync::Arc};
 
 use crate::mir_codegen::common::{
-    CodegenBase, assign_stack_slots, assign_stack_slots_where, compile_functions_parallel,
-    emit_print_format_section, parallel_codegen_error,
+    CodegenBase, CopyLocation, aligned_loop_headers, assign_stack_slots, assign_stack_slots_where,
+    block_layout, branch_comparisons, coalesce_dying_inputs, compile_functions_parallel,
+    emit_print_format_section, natural_loops, parallel_codegen_error, parallel_copy_schedule,
+    rotate_loops, self_tail_entry_label, use_counts,
 };
 
 /// MIR to x86_64 code generator implementing the `Codegen` trait.
@@ -479,42 +481,8 @@ fn compile_single_function_x86_64(
 
     // A comparison whose only consumer is the branch right after it needs no setCC and no
     // materialised 0/1: the flags from cmpq drive jCC directly.
-    let mut use_counts: HashMap<VirtualReg, usize> = HashMap::new();
-    for block in &func.blocks {
-        for inst in &block.instructions {
-            for reg in inst.use_regs() {
-                if let Register::Virtual(vreg) = reg {
-                    *use_counts.entry(*vreg).or_insert(0) += 1;
-                }
-            }
-        }
-    }
-
-    let flag_producers: HashSet<_> = func
-        .blocks
-        .iter()
-        .enumerate()
-        .flat_map(|(b, block)| {
-            let use_counts = &use_counts;
-            block
-                .instructions
-                .windows(2)
-                .enumerate()
-                .filter_map(move |(i, pair)| match (&pair[0], &pair[1]) {
-                    (
-                        MirInst::IntCmp {
-                            dst: Register::Virtual(dst),
-                            ..
-                        },
-                        MirInst::Br {
-                            cond: Register::Virtual(cond),
-                            ..
-                        },
-                    ) if dst == cond && use_counts.get(dst) == Some(&1) => Some((b, i)),
-                    _ => None,
-                })
-        })
-        .collect();
+    let use_counts = use_counts(func);
+    let flag_producers = branch_comparisons(func, &use_counts);
 
     // Natural loops from the CFG, not from layout position: a back edge is an edge into
     // a block already on the DFS stack. Aligning a large loop header keeps it off a bad
@@ -1789,154 +1757,6 @@ fn rax_for(ty: &MirType) -> &'static str {
     }
 }
 
-fn dying_input(inst: &MirInst) -> Option<(VirtualReg, VirtualReg)> {
-    match inst {
-        MirInst::IntBinary {
-            op: IntBinOp::Add,
-            dst: Register::Virtual(dst),
-            lhs: Operand::Register(Register::Virtual(src)),
-            ..
-        }
-        | MirInst::Copy {
-            dst: Register::Virtual(dst),
-            src: Operand::Register(Register::Virtual(src)),
-            ..
-        } if dst != src => Some((*dst, *src)),
-        _ => None,
-    }
-}
-
-fn coalesce_dying_inputs(
-    func: &Function,
-    intervals: &[LiveInterval],
-    plan: &mut HashMap<VirtualReg, MirAllocation<&'static str>>,
-    allowed: impl Fn(&LiveInterval, &'static str) -> bool,
-) {
-    let virtual_reg = |reg: &Register| match reg {
-        Register::Virtual(v) => Some(*v),
-        _ => None,
-    };
-    let mut affinities = HashSet::new();
-    for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
-        match inst {
-            MirInst::Copy {
-                dst,
-                src: Operand::Register(src),
-                ..
-            } => {
-                if let (Some(dst), Some(src)) = (virtual_reg(dst), virtual_reg(src)) {
-                    affinities.insert((src, dst));
-                }
-            }
-            MirInst::TailCall { name, args } if name == &func.sig.name => {
-                for (arg, param) in args.iter().zip(&func.sig.params) {
-                    if let Operand::Register(arg) = arg
-                        && let (Some(src), Some(dst)) = (virtual_reg(arg), virtual_reg(&param.reg))
-                    {
-                        affinities.insert((src, dst));
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    let labels: HashMap<_, _> = func
-        .blocks
-        .iter()
-        .enumerate()
-        .map(|(index, block)| (block.label.as_str(), index))
-        .collect();
-    let mut live_in = vec![HashSet::new(); func.blocks.len()];
-    let mut live_out = live_in.clone();
-    loop {
-        let mut changed = false;
-        for (index, block) in func.blocks.iter().enumerate().rev() {
-            let out: HashSet<_> = block
-                .successors()
-                .iter()
-                .filter_map(|label| labels.get(label))
-                .flat_map(|&next| live_in[next].iter().copied())
-                .collect();
-            let mut input = out.clone();
-            for inst in block.instructions.iter().rev() {
-                if let Some(dst) = inst.def_reg().and_then(virtual_reg) {
-                    input.remove(&dst);
-                }
-                input.extend(inst.use_regs().into_iter().filter_map(virtual_reg));
-            }
-            changed |= input != live_in[index] || out != live_out[index];
-            live_in[index] = input;
-            live_out[index] = out;
-        }
-        if !changed {
-            break;
-        }
-    }
-    let mut points = Vec::new();
-    let mut definitions = HashMap::new();
-    for (index, block) in func.blocks.iter().enumerate() {
-        let mut live = live_out[index].clone();
-        let mut block_points = Vec::new();
-        for inst in block.instructions.iter().rev() {
-            let after = live.clone();
-            let dst = inst.def_reg().and_then(virtual_reg);
-            if let Some(dst) = dst {
-                live.remove(&dst);
-                *definitions.entry(dst).or_insert(0) += 1;
-            }
-            live.extend(inst.use_regs().into_iter().filter_map(virtual_reg));
-            block_points.push((inst, live.clone(), after, dst));
-        }
-        points.extend(block_points.into_iter().rev());
-    }
-    let by_reg: HashMap<_, _> = intervals
-        .iter()
-        .map(|interval| (interval.vreg, interval))
-        .collect();
-    for (inst, _, after, _) in &points {
-        let Some((dst, src)) = dying_input(inst) else {
-            continue;
-        };
-        if (matches!(inst, MirInst::IntBinary { .. }) && !affinities.contains(&(dst, src)))
-            || after.contains(&src)
-            || definitions.get(&dst) != Some(&1)
-            || func
-                .sig
-                .params
-                .iter()
-                .any(|param| virtual_reg(&param.reg) == Some(dst))
-        {
-            continue;
-        }
-        let (Some(output), Some(MirAllocation::Register(reg))) =
-            (by_reg.get(&dst), plan.get(&src).copied())
-        else {
-            continue;
-        };
-        if !allowed(output, reg) {
-            continue;
-        }
-        let interferes = |other| {
-            points.iter().any(|(inst, before, after, defined)| {
-                (before.contains(&dst) && before.contains(&other))
-                    || (after.contains(&dst) && after.contains(&other))
-                    || (*defined == Some(dst)
-                        && before.contains(&other)
-                        && dying_input(inst) != Some((dst, other)))
-                    || (*defined == Some(other)
-                        && before.contains(&dst)
-                        && dying_input(inst) != Some((other, dst)))
-            })
-        };
-        if plan.iter().any(|(&other, &allocation)| {
-            other != dst && allocation == MirAllocation::Register(reg) && interferes(other)
-        }) {
-            continue;
-        }
-        plan.insert(dst, MirAllocation::Register(reg));
-    }
-}
-
 fn mapped_register(reg: &Register, alloc: &X64RegAlloc) -> Option<&'static str> {
     match reg {
         Register::Virtual(v) => alloc.get_mapping_for(v),
@@ -2116,185 +1936,6 @@ fn cmp_immediate(rhs: &Operand, ty: &MirType, unsigned: bool) -> Option<i64> {
     i32::try_from(value).ok().map(i64::from)
 }
 
-struct NaturalLoop {
-    header: usize,
-    latch: usize,
-    body: HashSet<usize>,
-}
-
-fn loop_successors(func: &Function, index: usize) -> Vec<&str> {
-    match func.blocks[index].terminator() {
-        Some(MirInst::TailCall { name, .. }) if name == &func.sig.name => vec![&func.entry],
-        _ => func.blocks[index].successors(),
-    }
-}
-
-fn natural_loops(func: &Function) -> Vec<NaturalLoop> {
-    let index_of: HashMap<&str, usize> = func
-        .blocks
-        .iter()
-        .enumerate()
-        .map(|(i, b)| (b.label.as_str(), i))
-        .collect();
-    let Some(&entry) = index_of.get(func.entry.as_str()) else {
-        return Vec::new();
-    };
-
-    let mut predecessors: Vec<Vec<usize>> = vec![Vec::new(); func.blocks.len()];
-    for index in 0..func.blocks.len() {
-        for successor in loop_successors(func, index) {
-            if let Some(&target) = index_of.get(successor) {
-                predecessors[target].push(index);
-            }
-        }
-    }
-
-    // Iterative DFS keeping the current path, so an edge back into the path is a back edge.
-    let mut back_edges: Vec<(usize, usize)> = Vec::new();
-    let mut on_path = vec![false; func.blocks.len()];
-    let mut visited = vec![false; func.blocks.len()];
-    let mut stack = vec![(entry, 0usize)];
-    visited[entry] = true;
-    on_path[entry] = true;
-    while let Some(&mut (node, ref mut next)) = stack.last_mut() {
-        let successors = loop_successors(func, node);
-        if *next < successors.len() {
-            let edge = successors[*next];
-            *next += 1;
-            if let Some(&target) = index_of.get(edge) {
-                if on_path[target] {
-                    back_edges.push((node, target));
-                } else if !visited[target] {
-                    visited[target] = true;
-                    on_path[target] = true;
-                    stack.push((target, 0));
-                }
-            }
-        } else {
-            on_path[node] = false;
-            stack.pop();
-        }
-    }
-
-    let mut loops = Vec::new();
-    for (latch, header) in back_edges {
-        // Natural loop body: everything that reaches the latch without passing the header.
-        let mut body = HashSet::from([header]);
-        let mut work = vec![latch];
-        while let Some(node) = work.pop() {
-            if !body.insert(node) {
-                continue;
-            }
-            work.extend(predecessors[node].iter().copied());
-        }
-        loops.push(NaturalLoop {
-            header,
-            latch,
-            body,
-        });
-    }
-    loops
-}
-
-fn aligned_loop_headers(
-    func: &Function,
-    loops: &[NaturalLoop],
-    min_instructions: usize,
-) -> HashSet<usize> {
-    loops
-        .iter()
-        .filter(|natural_loop| {
-            natural_loop
-                .body
-                .iter()
-                .map(|&b| func.blocks[b].instructions.len())
-                .sum::<usize>()
-                >= min_instructions
-        })
-        .map(|natural_loop| natural_loop.header)
-        .collect()
-}
-
-fn rotate_loops(
-    func: &Function,
-    loops: &[NaturalLoop],
-    layout: &mut Vec<usize>,
-) -> HashMap<usize, usize> {
-    let mut rotations = HashMap::new();
-    let mut ordered: Vec<_> = loops.iter().collect();
-    ordered.sort_by_key(|natural_loop| natural_loop.body.len());
-    for natural_loop in ordered {
-        let NaturalLoop {
-            header,
-            latch,
-            body,
-        } = natural_loop;
-        if rotations.contains_key(header) || header == latch {
-            continue;
-        }
-        let instructions = &func.blocks[*header].instructions;
-        let [
-            MirInst::IntCmp { dst, .. },
-            MirInst::Br {
-                cond,
-                true_target,
-                false_target,
-            },
-        ] = instructions.as_slice()
-        else {
-            continue;
-        };
-        if dst != cond
-            || func
-                .blocks
-                .iter()
-                .flat_map(|block| &block.instructions)
-                .flat_map(MirInst::use_regs)
-                .filter(|reg| *reg == dst)
-                .count()
-                != 1
-        {
-            continue;
-        }
-        let inside: Vec<_> = [true_target, false_target]
-            .into_iter()
-            .filter_map(|label| {
-                func.blocks
-                    .iter()
-                    .position(|block| block.label == *label)
-                    .filter(|index| *index != *header && body.contains(index))
-            })
-            .collect();
-        let [body_entry] = inside.as_slice() else {
-            continue;
-        };
-        if !matches!(
-            func.blocks[*latch].terminator(),
-            Some(MirInst::Jmp { .. } | MirInst::TailCall { .. })
-        ) {
-            continue;
-        }
-        let Some(start) = layout.iter().position(|index| index == header) else {
-            continue;
-        };
-        let Some(end) = layout.iter().position(|index| index == latch) else {
-            continue;
-        };
-        if end <= start
-            || layout.get(start + 1) != Some(body_entry)
-            || layout[start + 1..=end]
-                .iter()
-                .any(|index| !body.contains(index))
-        {
-            continue;
-        }
-        layout.remove(start);
-        layout.insert(end, *header);
-        rotations.insert(*header, *body_entry);
-    }
-    rotations
-}
-
 /// Condition-code suffix for the negation of a comparison.
 fn inverted_cmp_suffix(op: &IntCmpOp) -> Result<&'static str, LaminaError> {
     Ok(match op {
@@ -2386,91 +2027,18 @@ fn emit_int_compare(
 /// Emission order for a function's blocks: entry first, then each block's fall-through
 /// successor next whenever it has not been placed yet. A branch whose target follows it
 /// immediately needs no jump at all.
-fn block_layout(func: &Function) -> Vec<usize> {
-    let index_of: HashMap<&str, usize> = func
-        .blocks
-        .iter()
-        .enumerate()
-        .map(|(i, b)| (b.label.as_str(), i))
-        .collect();
-    let mut placed = vec![false; func.blocks.len()];
-    let mut order = Vec::with_capacity(func.blocks.len());
-    let mut queue: VecDeque<usize> = VecDeque::new();
-    if let Some(&entry) = index_of.get(func.entry.as_str()) {
-        queue.push_back(entry);
-    }
-    while let Some(start) = queue.pop_front() {
-        let mut current = start;
-        loop {
-            if placed[current] {
-                break;
-            }
-            placed[current] = true;
-            order.push(current);
-            let successors = func.blocks[current].successors();
-            // The last successor is the one the backend would fall out to: Jmp's target,
-            // or Br's false target. Place it next and queue the rest.
-            for label in successors.iter().rev().skip(1) {
-                if let Some(&next) = index_of.get(label)
-                    && !placed[next]
-                {
-                    queue.push_back(next);
-                }
-            }
-            // Prefer the last successor (a Jmp's target, or a Br's false arm). When it is
-            // already placed the edge runs backwards, so falling through to the other
-            // successor lets the branch invert and the extra jump disappear.
-            let fallthrough = successors
-                .iter()
-                .rev()
-                .filter_map(|label| index_of.get(label).copied())
-                .find(|&next| !placed[next]);
-            match fallthrough {
-                Some(next) => current = next,
-                None => break,
-            }
-        }
-    }
-    for (index, done) in placed.iter().enumerate() {
-        if !done {
-            order.push(index);
-        }
-    }
-    order
-}
-
 /// Emit a parallel copy into `dsts`, honouring the fact that a source may itself be one
 /// of the destinations. Identity moves are dropped; a cycle is broken through rax.
 fn emit_parallel_copy(
     pairs: &[(String, String)],
     writer: &mut RaxTrackingWriter<impl Write>,
 ) -> Result<(), LaminaError> {
-    let mut pending: Vec<(String, String)> = pairs
-        .iter()
-        .filter(|(src, dst)| src != dst)
-        .cloned()
-        .collect();
-    while !pending.is_empty() {
-        let ready = pending
-            .iter()
-            .position(|(_, dst)| !pending.iter().any(|(src, _)| src == dst));
-        let index = match ready {
-            Some(index) => index,
-            None => {
-                // Every remaining destination is still somebody's source: break the cycle
-                // by parking one value in rax.
-                let (src, dst) = pending[0].clone();
-                writeln!(writer, "    movq {src}, %rax")?;
-                for entry in pending.iter_mut() {
-                    if entry.0 == src {
-                        entry.0 = "%rax".to_string();
-                    }
-                }
-                pending[0] = ("%rax".to_string(), dst);
-                continue;
-            }
+    for (src, dst) in parallel_copy_schedule(pairs) {
+        let location = |location| match location {
+            CopyLocation::Value(value) => value,
+            CopyLocation::Scratch => "%rax".to_string(),
         };
-        let (src, dst) = pending.remove(index);
+        let (src, dst) = (location(src), location(dst));
         if src.ends_with("(%rbp)") && dst.ends_with("(%rbp)") {
             writeln!(writer, "    movq {src}, %rax")?;
             writeln!(writer, "    movq %rax, {dst}")?;
@@ -2479,11 +2047,6 @@ fn emit_parallel_copy(
         }
     }
     Ok(())
-}
-
-/// Label just past the prologue, where a self tail call re-enters the function.
-fn self_tail_entry_label(func_name: &str) -> String {
-    format!(".L_{func_name}.tailentry")
 }
 
 fn load_insn_for(ty: &MirType) -> &'static str {
