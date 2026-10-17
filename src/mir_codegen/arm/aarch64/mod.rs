@@ -13,7 +13,7 @@ use crate::mir_codegen::common::{
 };
 use crate::mir_codegen::simd::reserve_vector_slots;
 
-use std::{collections::HashMap, io::Write, sync::Arc};
+use std::{collections::HashMap, io::Write, slice, sync::Arc};
 
 use util::{emit_mov_imm64, imm_to_u64};
 
@@ -299,7 +299,7 @@ fn compile_single_function_aarch64(
                 } else if matches!(inst, MirInst::Jmp { target } if target == next) {
                 } else {
                     emit_block(
-                        std::slice::from_ref(inst),
+                        slice::from_ref(inst),
                         output,
                         &frame,
                         &abi,
