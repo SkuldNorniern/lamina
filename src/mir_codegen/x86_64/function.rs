@@ -1,0 +1,446 @@
+use super::*;
+use crate::mir_codegen::common::FunctionEmissionPlan;
+
+pub(super) fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
+    matches!(reg, "rbx" | "r12" | "r13" | "r14" | "r15")
+        || (target_os == TargetOperatingSystem::Windows && matches!(reg, "rsi" | "rdi"))
+}
+
+pub(super) fn instruction_clobbers(
+    inst: &MirInst,
+    leaf: bool,
+    target_os: TargetOperatingSystem,
+    func_name: &str,
+) -> Vec<&'static str> {
+    let scratch = if leaf {
+        vec!["rcx", "rdx"]
+    } else {
+        vec!["r10", "r11"]
+    };
+    match inst {
+        MirInst::TailCall { name, args } if name == func_name => {
+            let abi = X86ABI::new(target_os);
+            let arg_regs = abi.arg_registers();
+            arg_regs[..args.len().min(arg_regs.len())].to_vec()
+        }
+        MirInst::Call { .. } | MirInst::TailCall { .. } => {
+            let mut regs = vec!["rcx", "rdx", "r8", "r9", "r10", "r11"];
+            if target_os != TargetOperatingSystem::Windows {
+                regs.extend(["rsi", "rdi"]);
+            }
+            regs
+        }
+        MirInst::IntBinary { op, rhs, .. } => match op {
+            IntBinOp::SDiv | IntBinOp::UDiv | IntBinOp::SRem | IntBinOp::URem => {
+                vec!["rcx", "rdx"]
+            }
+            IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr
+                if matches!(rhs, Operand::Register(_)) =>
+            {
+                let mut regs = scratch;
+                regs.push("rcx");
+                regs
+            }
+            _ => scratch,
+        },
+        MirInst::IntCmp { .. }
+        | MirInst::Store { .. }
+        | MirInst::Lea { .. }
+        | MirInst::Select { .. } => scratch,
+        _ => Vec::new(),
+    }
+}
+
+pub(super) fn layout_global_stack_slots(
+    func: &Function,
+    plan: &HashMap<VirtualReg, MirAllocation<&'static str>>,
+) -> (HashMap<VirtualReg, i32>, BTreeSet<VirtualReg>, usize) {
+    let mut address_taken: BTreeSet<_> = func.stack_reservations.keys().copied().collect();
+    for inst in func.blocks.iter().flat_map(|block| &block.instructions) {
+        if let MirInst::StackAddr { slot, .. } = inst {
+            address_taken.insert(*slot);
+        }
+    }
+    let (mut slots, defs, mut total) =
+        assign_stack_slots_where(func, X86Frame::calculate_stack_offset, |reg| {
+            address_taken.contains(reg)
+                || !matches!(plan.get(reg), Some(MirAllocation::Register(_)))
+        });
+    for reg in address_taken {
+        if let Entry::Vacant(entry) = slots.entry(reg) {
+            let extra = func.stack_reservations.get(&reg).copied().unwrap_or(0);
+            entry.insert(X86Frame::calculate_stack_offset(total + extra));
+            total += extra + 1;
+        }
+    }
+    (slots, defs, total)
+}
+
+pub(super) fn compile_single_function_x86_64(
+    func_name: &str,
+    func: &Function,
+    target_os: TargetOperatingSystem,
+    settings: &MirCodegenSettings,
+) -> Result<Vec<u8>, CodegenError> {
+    let reserved = simd::reserve_vector_slots(func);
+    let func = reserved.as_ref().unwrap_or(func);
+    let mut output = RaxTrackingWriter {
+        inner: Vec::new(),
+        rax_value: None,
+    };
+    let abi = X86ABI::new(target_os);
+
+    ensure_signature_support(&func.sig)
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+
+    let label = abi.mangle_function_name(func_name);
+    writeln!(output, "{label}:")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+
+    if settings.emit_asm_debug_lines {
+        let tag = settings.debug_file_tag.replace('\"', "'");
+        writeln!(output, "    .file 1 \"{tag}\"")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    }
+
+    // A self tail call lowers to a jump back past the prologue, so it neither needs a
+    // frame nor clobbers anything a real call would.
+    let is_leaf = !func.blocks.iter().any(|b| {
+        b.instructions.iter().any(|i| match i {
+            MirInst::Call { .. } => true,
+            MirInst::TailCall { name, .. } => name != func_name,
+            _ => false,
+        })
+    });
+
+    let mut reg_alloc = if is_leaf {
+        X64RegAlloc::new_leaf(target_os)
+    } else {
+        X64RegAlloc::new(target_os)
+    };
+
+    let (stack_slots, def_regs, total_slots);
+
+    let mut saved_regs = Vec::new();
+    if settings.regalloc != RegallocStrategy::Incremental {
+        let pool = X64RegAlloc::gpr_pool_for_global_allocation(target_os, is_leaf);
+        let clobbers: Vec<_> = func
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .map(|inst| {
+                let mut regs = instruction_clobbers(inst, is_leaf, target_os, func_name);
+                for reg in inst.use_regs().into_iter().chain(inst.def_reg()) {
+                    if let Register::Physical(phys) = reg {
+                        regs.push(phys.name);
+                    }
+                }
+                regs
+            })
+            .collect();
+        let allowed = |interval: &LiveInterval, reg| {
+            clobbers[interval.start..=interval.end]
+                .iter()
+                .all(|regs| !regs.contains(&reg))
+        };
+        let mut address_taken: BTreeSet<_> = func
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .filter_map(|inst| match inst {
+                MirInst::StackAddr { slot, .. } => Some(*slot),
+                _ => None,
+            })
+            .collect();
+        address_taken.extend(func.stack_reservations.keys());
+        let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
+            .into_iter()
+            .filter(|i| i.vreg.class == RegisterClass::Gpr && !address_taken.contains(&i.vreg))
+            .collect();
+        let mut plan = match settings.regalloc {
+            RegallocStrategy::LinearScanGlobal => {
+                LinearScanAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
+            }
+            RegallocStrategy::GraphColorGlobal => {
+                GraphColorAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
+            }
+            RegallocStrategy::Incremental => unreachable!(),
+        };
+        coalesce_dying_inputs(func, &intervals, &mut plan, allowed);
+        (stack_slots, def_regs, total_slots) = layout_global_stack_slots(func, &plan);
+        reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);
+        for allocation in plan.values() {
+            if let MirAllocation::Register(reg) = allocation
+                && callee_saved(reg, target_os)
+            {
+                saved_regs.push(*reg);
+            }
+        }
+        saved_regs.sort_unstable();
+        saved_regs.dedup();
+    } else {
+        (stack_slots, def_regs, total_slots) =
+            assign_stack_slots(func, X86Frame::calculate_stack_offset);
+    }
+
+    let stack_size = (total_slots + saved_regs.len()) * 8;
+    let has_frame = settings.regalloc == RegallocStrategy::Incremental
+        || !is_leaf
+        || stack_size != 0
+        || func.sig.params.len() > abi.arg_registers().len();
+    if has_frame {
+        X86Frame::generate_prologue(&mut output, stack_size)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
+
+    for (index, reg) in saved_regs.iter().enumerate() {
+        let offset = X86Frame::calculate_stack_offset(total_slots + index);
+        writeln!(output, "    movq %{reg}, {offset}(%rbp)")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
+
+    // A self tail call re-enters here with its arguments already in the ABI argument
+    // registers, so it reuses the parameter homing below and skips frame teardown and
+    // setup entirely.
+    writeln!(output, "{}:", self_tail_entry_label(func_name))
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+
+    if !func.sig.params.is_empty() {
+        let abi_for_func = X86ABI::new(target_os);
+        let arg_regs = abi_for_func.arg_registers();
+
+        if settings.regalloc == RegallocStrategy::Incremental {
+            for (index, param) in func.sig.params.iter().enumerate() {
+                if let Register::Virtual(vreg) = &param.reg
+                    && let Some(slot_off) = stack_slots.get(vreg)
+                {
+                    if index < arg_regs.len() {
+                        let phys_arg = arg_regs[index];
+                        let destination = reg_alloc
+                            .get_mapping_for(vreg)
+                            .map(|reg| format!("%{reg}"))
+                            .unwrap_or_else(|| format!("{slot_off}(%rbp)"));
+                        let source = format!("%{phys_arg}");
+                        if source == destination {
+                            continue;
+                        }
+                        writeln!(output, "    movq {source}, {destination}").map_err(|e| {
+                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                        })?;
+                    } else {
+                        let stack_index = index - arg_regs.len();
+                        // Saved rbp and the return address sit at rbp+0 and rbp+8;
+                        // on Windows the caller's home space follows before the
+                        // first stack argument.
+                        let home = if target_os == TargetOperatingSystem::Windows {
+                            windows::SHADOW_SPACE_SIZE
+                        } else {
+                            0
+                        };
+                        let caller_off = 16 + home + (stack_index as i32) * 8;
+                        writeln!(output, "    movq {caller_off}(%rbp), %rax").map_err(|e| {
+                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                        })?;
+                        store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
+                            .map_err(|e| {
+                                CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                            })?;
+                    }
+                }
+            }
+        } else {
+            let pairs: Vec<_> = func
+                .sig
+                .params
+                .iter()
+                .enumerate()
+                .filter_map(|(index, param)| {
+                    let Register::Virtual(vreg) = &param.reg else {
+                        return None;
+                    };
+                    let destination = reg_alloc
+                        .get_mapping_for(vreg)
+                        .map(|reg| format!("%{reg}"))
+                        .or_else(|| {
+                            stack_slots
+                                .get(vreg)
+                                .map(|offset| format!("{offset}(%rbp)"))
+                        })?;
+                    let source = if let Some(reg) = arg_regs.get(index) {
+                        format!("%{reg}")
+                    } else {
+                        let home = if target_os == TargetOperatingSystem::Windows {
+                            windows::SHADOW_SPACE_SIZE
+                        } else {
+                            0
+                        };
+                        let offset = 16 + home + ((index - arg_regs.len()) as i32) * 8;
+                        format!("{offset}(%rbp)")
+                    };
+                    Some((source, destination))
+                })
+                .collect();
+            emit_parallel_copy(&pairs, &mut output)
+                .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        }
+    }
+
+    // Where this function's own parameters live, so a self tail call can write straight
+    // into them instead of staging through the ABI argument registers.
+    let self_param_homes: Vec<Option<String>> = func
+        .sig
+        .params
+        .iter()
+        .map(|param| match &param.reg {
+            Register::Virtual(vreg) => reg_alloc
+                .get_mapping_for(vreg)
+                .map(|reg| format!("%{reg}"))
+                .or_else(|| stack_slots.get(vreg).map(|off| format!("{off}(%rbp)"))),
+            Register::Physical(reg) => Some(format!("%{reg}")),
+        })
+        .collect();
+
+    let plan = FunctionEmissionPlan::new(func);
+    let layout = &plan.order;
+    let rotations = &plan.rotations;
+    if layout.first().map(|&i| func.blocks[i].label.as_str()) != Some(func.entry.as_str()) {
+        writeln!(output, "    jmp .L_{}.{}", func_name, func.entry)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    }
+
+    // A comparison whose only consumer is the branch right after it needs no setCC and no
+    // materialised 0/1: the flags from cmpq drive jCC directly.
+    let use_counts = use_counts(func);
+    let flag_producers = &plan.comparisons;
+
+    let loop_headers = &plan.aligned_headers;
+
+    let mut debug_line: u32 = 0;
+    for (slot, &block_index) in layout.iter().enumerate() {
+        let block = &func.blocks[block_index];
+        let next_label = layout
+            .get(slot + 1)
+            .map(|&i| func.blocks[i].label.as_str())
+            .unwrap_or("");
+        output.rax_value = None;
+        if loop_headers.contains(&block_index) {
+            writeln!(output, "    .p2align 4,,10")
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        }
+        writeln!(output, ".L_{}.{}:", func_name, block.label)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+
+        let mut skip = 0;
+        for (position, inst) in block.instructions.iter().enumerate() {
+            if skip > 0 {
+                skip -= 1;
+                continue;
+            }
+            if let Some((length, address, dst)) = select_lea(
+                &block.instructions[position..],
+                &reg_alloc,
+                &use_counts,
+                |offset| flag_producers.contains(&(block_index, position + offset)),
+            ) {
+                writeln!(output, "    leaq {address}, %{dst}")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                skip = length - 1;
+                continue;
+            }
+            if let MirInst::IntCmp {
+                op,
+                dst,
+                lhs,
+                rhs,
+                ty,
+            } = inst
+                && let Register::Virtual(cmp_dst) = dst
+                && let Some(MirInst::Br {
+                    cond: Register::Virtual(cond),
+                    true_target,
+                    false_target,
+                }) = block.instructions.get(position + 1)
+                && cond == cmp_dst
+                && flag_producers.contains(&(block_index, position))
+            {
+                let scratch =
+                    emit_int_compare(op, ty, lhs, rhs, &mut output, &mut reg_alloc, &stack_slots)
+                        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                let suffix = cmp_suffix(op)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                if true_target == next_label
+                    || rotations
+                        .get(&block_index)
+                        .is_some_and(|&body| func.blocks[body].label == *false_target)
+                {
+                    let inverted = inverted_cmp_suffix(op)
+                        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                    writeln!(output, "    j{inverted} .L_{func_name}.{false_target}").map_err(
+                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                    )?;
+                    if true_target != next_label {
+                        writeln!(output, "    jmp .L_{func_name}.{true_target}")
+                            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                    }
+                } else {
+                    writeln!(output, "    j{suffix} .L_{func_name}.{true_target}").map_err(
+                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                    )?;
+                    if false_target != next_label {
+                        writeln!(output, "    jmp .L_{func_name}.{false_target}").map_err(|e| {
+                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                        })?;
+                    }
+                }
+                if !scratch.is_empty() && scratch != "rbx" {
+                    reg_alloc.free_scratch(scratch);
+                }
+                output.rax_value = None;
+                skip = 1;
+                continue;
+            }
+            emit_instruction_x86_64(
+                inst,
+                &mut output,
+                &mut reg_alloc,
+                &stack_slots,
+                stack_size,
+                has_frame,
+                &saved_regs,
+                target_os,
+                func_name,
+                &def_regs,
+                settings,
+                &mut debug_line,
+                next_label,
+                &self_param_homes,
+                &func.entry,
+            )
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        }
+        output.rax_value = None;
+    }
+
+    Ok(strip_self_moves(output.inner))
+}
+
+pub(super) fn ensure_signature_support(sig: &Signature) -> Result<(), LaminaError> {
+    for (idx, param) in sig.params.iter().enumerate() {
+        ensure_type_supported(&param.ty, &format!("parameter {} of '{}'", idx, sig.name))?;
+    }
+
+    if let Some(ret_ty) = &sig.ret_ty {
+        ensure_type_supported(ret_ty, &format!("return type of '{}'", sig.name))?;
+    }
+
+    Ok(())
+}
+
+pub(super) fn ensure_type_supported(ty: &MirType, context: &str) -> Result<(), LaminaError> {
+    if ty.is_float() || ty.is_vector() {
+        return Err(LaminaError::ValidationError(format!(
+            "x86_64 backend does not support {context} (type {ty})"
+        )));
+    }
+    Ok(())
+}

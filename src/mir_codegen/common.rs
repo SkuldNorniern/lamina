@@ -1178,3 +1178,153 @@ mod copy_schedule_tests {
         assert!(parallel_copy_schedule(&[(1, 1), (2, 2)]).is_empty());
     }
 }
+
+#[cfg(test)]
+mod analysis_tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use crate::mir::{FunctionBuilder, Instruction as MirInst, IntCmpOp};
+    use lamina_codegen::{Allocation as MirAllocation, LinearScanAllocator};
+    #[test]
+    fn rotation_preserves_nested_loop_alignment() {
+        let condition = Register::Virtual(VirtualReg::gpr(0));
+        let comparison = |dst| MirInst::IntCmp {
+            op: IntCmpOp::SGt,
+            dst,
+            lhs: Operand::Immediate(Immediate::I64(1)),
+            rhs: Operand::Immediate(Immediate::I64(0)),
+            ty: MirType::i64(),
+        };
+        let mut builder = FunctionBuilder::new("nested")
+            .block("entry")
+            .instr(MirInst::Jmp {
+                target: "outer".into(),
+            })
+            .block("outer")
+            .instr(comparison(condition.clone()))
+            .instr(MirInst::Br {
+                cond: condition.clone(),
+                true_target: "exit".into(),
+                false_target: "inner_entry".into(),
+            })
+            .block("inner_entry")
+            .instr(MirInst::Jmp {
+                target: "inner".into(),
+            })
+            .block("inner")
+            .instr(comparison(VirtualReg::gpr(2).into()))
+            .instr(MirInst::Br {
+                cond: VirtualReg::gpr(2).into(),
+                true_target: "outer_latch".into(),
+                false_target: "body".into(),
+            })
+            .block("body");
+        for _ in 0..24 {
+            builder = builder.instr(MirInst::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(1).into(),
+                src: Operand::Immediate(Immediate::I64(0)),
+            });
+        }
+        let func = builder
+            .instr(MirInst::Jmp {
+                target: "inner".into(),
+            })
+            .block("outer_latch")
+            .instr(MirInst::Jmp {
+                target: "outer".into(),
+            })
+            .block("exit")
+            .instr(MirInst::Ret { value: None })
+            .build();
+        let loops = natural_loops(&func);
+        let aligned = aligned_loop_headers(&func, &loops, 24);
+        let labels = |set: &HashSet<usize>| {
+            set.iter()
+                .map(|&index| func.blocks[index].label.as_str())
+                .collect::<BTreeSet<_>>()
+        };
+        assert_eq!(labels(&aligned), BTreeSet::from(["inner", "outer"]));
+        let mut layout = block_layout(&func);
+        let rotations = rotate_loops(&func, &loops, &mut layout);
+        assert_eq!(rotations.len(), 1);
+        assert_eq!(
+            layout
+                .iter()
+                .map(|&i| func.blocks[i].label.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "entry",
+                "outer",
+                "inner_entry",
+                "body",
+                "inner",
+                "exit",
+                "outer_latch"
+            ]
+        );
+        assert_eq!(
+            aligned_loop_headers(&func, &natural_loops(&func), 24),
+            aligned
+        );
+        let aligned_after = aligned
+            .iter()
+            .map(|header| rotations.get(header).copied().unwrap_or(*header))
+            .collect();
+        assert_eq!(labels(&aligned_after), BTreeSet::from(["body", "outer"]));
+    }
+
+    #[test]
+    fn dying_input_coalescing_checks_cfg_liveness_and_constraints() {
+        let a = VirtualReg::gpr(0);
+        let b = VirtualReg::gpr(1);
+        let c = VirtualReg::gpr(2);
+        for (live_source, conflict, permitted, expected) in [
+            (false, false, true, "r8"),
+            (true, false, true, "r9"),
+            (false, true, true, "r9"),
+            (false, false, false, "r9"),
+        ] {
+            let mut func = FunctionBuilder::new("increment")
+                .param(a.into(), MirType::i64())
+                .block("body")
+                .instr(MirInst::IntBinary {
+                    op: IntBinOp::Add,
+                    dst: b.into(),
+                    lhs: Operand::Register(a.into()),
+                    rhs: Operand::Immediate(Immediate::I64(1)),
+                    ty: MirType::i64(),
+                })
+                .instr(MirInst::TailCall {
+                    name: "increment".into(),
+                    args: [Some(b), live_source.then_some(a), conflict.then_some(c)]
+                        .into_iter()
+                        .flatten()
+                        .map(|v| Operand::Register(v.into()))
+                        .collect(),
+                })
+                .block("entry")
+                .instr(MirInst::Copy {
+                    ty: MirType::i64(),
+                    dst: c.into(),
+                    src: Operand::Register(a.into()),
+                })
+                .instr(MirInst::Jmp {
+                    target: "body".into(),
+                })
+                .build();
+            func.entry = "entry".into();
+            let intervals = LinearScanAllocator::compute_intervals(&func);
+            let mut plan = HashMap::from([
+                (a, MirAllocation::Register("r8")),
+                (b, MirAllocation::Register("r9")),
+                (
+                    c,
+                    MirAllocation::Register(if conflict { "r8" } else { "r10" }),
+                ),
+            ]);
+            coalesce_dying_inputs(&func, &intervals, &mut plan, |_, _| permitted);
+            assert_eq!(plan[&b], MirAllocation::Register(expected));
+        }
+    }
+}
