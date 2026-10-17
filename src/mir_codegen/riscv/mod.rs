@@ -1,3 +1,8 @@
+use crate::mir::register::PhysicalReg;
+use crate::mir_codegen::common::{
+    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, self_tail_arguments,
+    self_tail_schedule,
+};
 mod simd;
 use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
@@ -12,9 +17,9 @@ use util::{
 use crate::{
     error::LaminaError,
     mir::{
-        Block as MirBlock, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
-        Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
-        Register, ScalarType, Signature, VirtualReg,
+        FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp,
+        IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
+        VirtualReg,
         instruction::{AddressMode, Immediate},
         register::RegisterClass,
     },
@@ -177,7 +182,7 @@ fn compile_single_function_riscv(
                 i.vreg.class == RegisterClass::Gpr && !func.stack_reservations.contains_key(&i.vreg)
             })
             .collect();
-        let plan = match settings.regalloc {
+        let mut plan = match settings.regalloc {
             RegallocStrategy::LinearScanGlobal => {
                 LinearScanAllocator::allocate(&intervals, pool.as_slice())
             }
@@ -190,6 +195,7 @@ fn compile_single_function_riscv(
                 ));
             }
         };
+        coalesce_dying_inputs(func, &intervals, &mut plan, |_, _| true);
         live_across_calls = live_vregs_across_calls(func, &intervals);
         reg_alloc = RiscVRegAlloc::from_global_plan(target_os, target, &plan, &stack_slots);
     } else if reserved.is_some() {
@@ -293,55 +299,39 @@ fn compile_single_function_riscv(
         stack_size,
         callee_saved_registers,
     };
-    let entry_block = func.entry_block().ok_or_else(|| {
-        CodegenError::InvalidFuncs(vec![format!(
-            "{func_name}: entry block {:?} is not present in the function",
-            func.entry
-        )])
-    })?;
-    let mut block_start = 0;
-    let mut block_starts = HashMap::new();
-    for block in &func.blocks {
-        block_starts.insert(block.label.as_str(), block_start);
-        block_start += block.instructions.len();
+    let plan = FunctionEmissionPlan::new(func);
+    if plan
+        .order
+        .first()
+        .is_some_and(|&i| func.blocks[i].label != func.entry)
+    {
+        writeln!(output, "    j .L_{func_name}.{}", func.entry)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
-    let entry_start = block_starts
-        .get(entry_block.label.as_str())
-        .copied()
-        .ok_or_else(|| {
-            CodegenError::InvalidFuncs(vec![format!(
-                "{func_name}: entry block position is unavailable"
-            )])
-        })?;
-    emit_block_riscv(
-        entry_block,
-        entry_start,
-        &mut output,
-        &mut reg_alloc,
-        &stack_slots,
-        &mut ctx,
-    )?;
+    let mut starts = Vec::new();
+    let mut start = 0;
     for block in &func.blocks {
-        if block == entry_block {
-            continue;
-        }
-        let start = block_starts
-            .get(block.label.as_str())
-            .copied()
-            .ok_or_else(|| {
-                CodegenError::InvalidFuncs(vec![format!(
-                    "{func_name}: block '{}' position is unavailable",
-                    block.label
-                )])
-            })?;
-        emit_block_riscv(
-            block,
-            start,
+        starts.push(start);
+        start += block.instructions.len();
+    }
+    for (slot, &index) in plan.order.iter().enumerate() {
+        let next = plan
+            .order
+            .get(slot + 1)
+            .map(|&i| func.blocks[i].label.as_str())
+            .unwrap_or("");
+        emit_planned_block_riscv(
+            func,
+            index,
+            starts[index],
+            next,
+            &plan,
             &mut output,
             &mut reg_alloc,
             &stack_slots,
             &mut ctx,
-        )?;
+        )
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
 
     Ok(output)
@@ -502,20 +492,112 @@ struct EmitCtx<'a> {
     callee_saved_registers: Vec<&'static str>,
 }
 
-fn emit_block_riscv<W: Write>(
-    block: &MirBlock,
+#[allow(clippy::too_many_arguments)]
+fn emit_planned_block_riscv<W: Write>(
+    func: &Function,
+    index: usize,
     block_start: usize,
+    next: &str,
+    plan: &FunctionEmissionPlan,
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     ctx: &mut EmitCtx<'_>,
-) -> Result<(), CodegenError> {
-    writeln!(writer, ".L_{}.{}:", ctx.func_name, block.label)
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    for (block_instruction_index, inst) in block.instructions.iter().enumerate() {
-        let instruction_index = block_start + block_instruction_index;
-        emit_instruction_riscv(inst, instruction_index, writer, reg_alloc, stack_slots, ctx)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+) -> Result<(), LaminaError> {
+    let block = &func.blocks[index];
+    let func_name = ctx.func_name;
+    if plan.aligned_headers.contains(&index) {
+        writeln!(writer, "    .p2align 4")?;
+    }
+    writeln!(writer, ".L_{func_name}.{}:", block.label)?;
+    let mut position = 0;
+    while position < block.instructions.len() {
+        let inst = &block.instructions[position];
+        if let Some(pairs) = self_tail_arguments(func, inst) {
+            let schedule = self_tail_schedule(&pairs, |reg| match reg {
+                Register::Virtual(v) => reg_alloc
+                    .get_mapping(v)
+                    .map(|name| Register::Physical(PhysicalReg::new(name, RegisterClass::Gpr)))
+                    .unwrap_or_else(|| reg.clone()),
+                _ => reg.clone(),
+            });
+            for (src, dst) in schedule {
+                let src = match src {
+                    CopyLocation::Value(src) => src,
+                    CopyLocation::Scratch => Operand::Register(Register::Physical(
+                        PhysicalReg::new("a2", RegisterClass::Gpr),
+                    )),
+                };
+                load_operand_to_register(&src, writer, reg_alloc, stack_slots, "a0")?;
+                match dst {
+                    CopyLocation::Value(Operand::Register(Register::Virtual(dst))) => {
+                        store_register_to_register("a0", &dst, writer, reg_alloc, stack_slots)?
+                    }
+                    CopyLocation::Value(Operand::Register(Register::Physical(dst))) => {
+                        writeln!(writer, "    mv {}, a0", dst.name)?
+                    }
+                    CopyLocation::Scratch => writeln!(writer, "    mv a2, a0")?,
+                    _ => unreachable!(),
+                }
+            }
+            if func.entry != next {
+                writeln!(writer, "    j .L_{func_name}.{}", func.entry)?;
+            }
+        } else if plan.comparisons.contains(&(index, position)) {
+            if let (
+                MirInst::IntCmp {
+                    op, lhs, rhs, ty, ..
+                },
+                MirInst::Br {
+                    true_target,
+                    false_target,
+                    ..
+                },
+            ) = (inst, &block.instructions[position + 1])
+            {
+                load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "a0")?;
+                load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "a1")?;
+                let unsigned = matches!(
+                    op,
+                    IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
+                );
+                extend_integer(writer, "a0", ty, ctx.target, !unsigned)?;
+                extend_integer(writer, "a1", ty, ctx.target, !unsigned)?;
+                let (invert, taken, other) =
+                    plan.branch(func, index, next, true_target, false_target);
+                let (mnemonic, lhs, rhs) = match (op, invert) {
+                    (IntCmpOp::Eq, false) | (IntCmpOp::Ne, true) => ("beq", "a0", "a1"),
+                    (IntCmpOp::Ne, false) | (IntCmpOp::Eq, true) => ("bne", "a0", "a1"),
+                    (IntCmpOp::SLt, false) | (IntCmpOp::SGe, true) => ("blt", "a0", "a1"),
+                    (IntCmpOp::SLe, false) | (IntCmpOp::SGt, true) => ("bge", "a1", "a0"),
+                    (IntCmpOp::SGt, false) | (IntCmpOp::SLe, true) => ("blt", "a1", "a0"),
+                    (IntCmpOp::SGe, false) | (IntCmpOp::SLt, true) => ("bge", "a0", "a1"),
+                    (IntCmpOp::ULt, false) | (IntCmpOp::UGe, true) => ("bltu", "a0", "a1"),
+                    (IntCmpOp::ULe, false) | (IntCmpOp::UGt, true) => ("bgeu", "a1", "a0"),
+                    (IntCmpOp::UGt, false) | (IntCmpOp::ULe, true) => ("bltu", "a1", "a0"),
+                    (IntCmpOp::UGe, false) | (IntCmpOp::ULt, true) => ("bgeu", "a0", "a1"),
+                };
+                writeln!(
+                    writer,
+                    "    {mnemonic} {lhs}, {rhs}, .L_{func_name}.{taken}"
+                )?;
+                if let Some(other) = other {
+                    writeln!(writer, "    j .L_{func_name}.{other}")?;
+                }
+            }
+            position += 1;
+        } else if matches!(inst, MirInst::Jmp { target } if target == next) {
+        } else {
+            emit_instruction_riscv(
+                inst,
+                block_start + position,
+                writer,
+                reg_alloc,
+                stack_slots,
+                ctx,
+            )?;
+        }
+        position += 1;
     }
     Ok(())
 }
