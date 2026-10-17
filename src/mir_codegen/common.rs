@@ -626,12 +626,56 @@ fn dying_input(inst: &Instruction) -> Option<(VirtualReg, VirtualReg)> {
     }
 }
 
+fn virtual_register(reg: &Register) -> Option<VirtualReg> {
+    match reg {
+        Register::Virtual(reg) => Some(*reg),
+        _ => None,
+    }
+}
+
+pub(super) fn block_live_out(func: &Function) -> Vec<HashSet<VirtualReg>> {
+    let labels: HashMap<_, _> = func
+        .blocks
+        .iter()
+        .enumerate()
+        .map(|(index, block)| (block.label.as_str(), index))
+        .collect();
+    let mut live_in = vec![HashSet::new(); func.blocks.len()];
+    let mut live_out = live_in.clone();
+    loop {
+        let mut changed = false;
+        for (index, block) in func.blocks.iter().enumerate().rev() {
+            let out: HashSet<_> = block
+                .successors()
+                .iter()
+                .filter_map(|label| labels.get(label))
+                .flat_map(|&next| live_in[next].iter().copied())
+                .collect();
+            let mut input = out.clone();
+            for inst in block.instructions.iter().rev() {
+                if let Some(dst) = inst.def_reg().and_then(virtual_register) {
+                    input.remove(&dst);
+                }
+                input.extend(inst.use_regs().into_iter().filter_map(virtual_register));
+            }
+            changed |= input != live_in[index] || out != live_out[index];
+            live_in[index] = input;
+            live_out[index] = out;
+        }
+        if !changed {
+            break;
+        }
+    }
+    live_out
+}
+
 pub(super) fn coalesce_dying_inputs<R: Copy + Eq>(
     func: &Function,
     intervals: &[LiveInterval],
-    plan: &mut HashMap<VirtualReg, Allocation<R>>,
+    original_plan: &HashMap<VirtualReg, Allocation<R>>,
     allowed: impl Fn(&LiveInterval, R) -> bool,
-) {
+) -> HashMap<VirtualReg, Allocation<R>> {
+    let mut plan = original_plan.clone();
     let virtual_reg = |reg: &Register| match reg {
         Register::Virtual(v) => Some(*v),
         _ => None,
@@ -660,38 +704,7 @@ pub(super) fn coalesce_dying_inputs<R: Copy + Eq>(
             _ => {}
         }
     }
-    let labels: HashMap<_, _> = func
-        .blocks
-        .iter()
-        .enumerate()
-        .map(|(index, block)| (block.label.as_str(), index))
-        .collect();
-    let mut live_in = vec![HashSet::new(); func.blocks.len()];
-    let mut live_out = live_in.clone();
-    loop {
-        let mut changed = false;
-        for (index, block) in func.blocks.iter().enumerate().rev() {
-            let out: HashSet<_> = block
-                .successors()
-                .iter()
-                .filter_map(|label| labels.get(label))
-                .flat_map(|&next| live_in[next].iter().copied())
-                .collect();
-            let mut input = out.clone();
-            for inst in block.instructions.iter().rev() {
-                if let Some(dst) = inst.def_reg().and_then(virtual_reg) {
-                    input.remove(&dst);
-                }
-                input.extend(inst.use_regs().into_iter().filter_map(virtual_reg));
-            }
-            changed |= input != live_in[index] || out != live_out[index];
-            live_in[index] = input;
-            live_out[index] = out;
-        }
-        if !changed {
-            break;
-        }
-    }
+    let live_out = block_live_out(func);
     let mut points = Vec::new();
     let mut definitions = HashMap::new();
     for (index, block) in func.blocks.iter().enumerate() {
@@ -755,6 +768,7 @@ pub(super) fn coalesce_dying_inputs<R: Copy + Eq>(
         }
         plan.insert(dst, Allocation::Register(reg));
     }
+    plan
 }
 
 pub(super) struct NaturalLoop {
@@ -1323,7 +1337,7 @@ mod analysis_tests {
                     MirAllocation::Register(if conflict { "r8" } else { "r10" }),
                 ),
             ]);
-            coalesce_dying_inputs(&func, &intervals, &mut plan, |_, _| permitted);
+            plan = coalesce_dying_inputs(&func, &intervals, &plan, |_, _| permitted);
             assert_eq!(plan[&b], MirAllocation::Register(expected));
         }
     }

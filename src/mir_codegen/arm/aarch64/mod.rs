@@ -122,7 +122,7 @@ fn compile_single_function_aarch64(
                 ));
             }
         };
-        coalesce_dying_inputs(func, &intervals, &mut plan, |_, _| true);
+        plan = coalesce_dying_inputs(func, &intervals, &plan, |_, _| true);
         for (v, a) in &plan {
             if reserved.is_none()
                 && let MirAllocation::Spill(off) = a

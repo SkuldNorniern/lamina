@@ -195,7 +195,7 @@ fn compile_single_function_riscv(
                 ));
             }
         };
-        coalesce_dying_inputs(func, &intervals, &mut plan, |_, _| true);
+        plan = coalesce_dying_inputs(func, &intervals, &plan, |_, _| true);
         live_across_calls = live_vregs_across_calls(func, &intervals);
         reg_alloc = RiscVRegAlloc::from_global_plan(target_os, target, &plan, &stack_slots);
     } else if reserved.is_some() {

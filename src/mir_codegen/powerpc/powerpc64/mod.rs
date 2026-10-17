@@ -202,7 +202,7 @@ fn compile_single_function_ppc64(
                 ));
             }
         };
-        coalesce_dying_inputs(func, &intervals, &mut plan, |_, _| true);
+        plan = coalesce_dying_inputs(func, &intervals, &plan, |_, _| true);
         reg_alloc = Ppc64RegAlloc::from_global_plan(target_os, &plan);
         for (v, a) in &plan {
             if let MirAllocation::Spill(off) = a {
