@@ -166,7 +166,7 @@ pub(super) fn compile_single_function_x86_64(
             }
             RegallocStrategy::Incremental => unreachable!(),
         };
-        coalesce_dying_inputs(func, &intervals, &mut plan, allowed);
+        plan = coalesce_dying_inputs(func, &intervals, &plan, allowed);
         (stack_slots, def_regs, total_slots) = layout_global_stack_slots(func, &plan);
         reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);
         for allocation in plan.values() {
