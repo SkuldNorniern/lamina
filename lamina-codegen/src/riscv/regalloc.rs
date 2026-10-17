@@ -35,6 +35,7 @@ pub struct RiscVRegAlloc {
     #[allow(dead_code)]
     target_os: TargetOperatingSystem,
     available_gprs: Vec<&'static str>,
+    global_mappings: HashMap<VirtualReg, &'static str>,
     allocated_gprs: HashMap<&'static str, VirtualReg>,
     stack_slots: HashMap<VirtualReg, i32>,
     next_stack_slot: i32,
@@ -131,6 +132,7 @@ impl RiscVRegAlloc {
             target,
             target_os,
             available_gprs: Self::AVAILABLE_REGISTERS.to_vec(),
+            global_mappings: HashMap::new(),
             allocated_gprs: HashMap::new(),
             stack_slots: HashMap::new(),
             next_stack_slot: RiscVFrame::calculate_stack_offset(0, target),
@@ -166,6 +168,7 @@ impl RiscVRegAlloc {
             match alloc {
                 Allocation::Register(phys) => {
                     if s.available_gprs.contains(phys) {
+                        s.global_mappings.insert(vreg, *phys);
                         s.allocated_gprs.insert(*phys, vreg);
                     }
                 }
@@ -204,6 +207,9 @@ impl MirRegisterAllocator for RiscVRegAlloc {
     }
 
     fn get_mapping(&self, vreg: &VirtualReg) -> Option<Self::PhysReg> {
+        if let Some(reg) = self.global_mappings.get(vreg) {
+            return Some(*reg);
+        }
         for (reg, allocated_vreg) in &self.allocated_gprs {
             if allocated_vreg == vreg {
                 return Some(*reg);
