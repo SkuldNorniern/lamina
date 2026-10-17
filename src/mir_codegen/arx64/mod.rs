@@ -690,9 +690,10 @@ mod tests {
 
     use super::*;
     use crate::mir::{Block, Parameter, Signature, VirtualReg};
+    use std::error::Error;
 
     #[test]
-    fn self_tail_swap_preserves_frame_and_parameters() -> Result<(), Box<dyn std::error::Error>> {
+    fn self_tail_swap_preserves_frame_and_parameters() -> Result<(), Box<dyn Error>> {
         use crate::mir::function::Parameter;
         let a = Register::Virtual(VirtualReg::gpr(0));
         let b = Register::Virtual(VirtualReg::gpr(1));
@@ -720,7 +721,7 @@ mod tests {
     }
 
     #[test]
-    fn general_tail_call_restores_frame_before_jump() -> Result<(), Box<dyn std::error::Error>> {
+    fn general_tail_call_restores_frame_before_jump() -> Result<(), Box<dyn Error>> {
         let mut func = Function::new(Signature::new("caller"));
         let mut entry = Block::new("entry");
         entry.push(Instruction::TailCall {
