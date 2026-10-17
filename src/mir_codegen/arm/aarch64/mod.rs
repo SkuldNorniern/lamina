@@ -6,7 +6,11 @@
 mod simd;
 mod util;
 
-use crate::mir_codegen::common::integer_conversion;
+use crate::mir::register::PhysicalReg;
+use crate::mir_codegen::common::{
+    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, integer_conversion,
+    self_tail_arguments, self_tail_schedule,
+};
 use crate::mir_codegen::simd::reserve_vector_slots;
 
 use std::{collections::HashMap, io::Write, sync::Arc};
@@ -105,7 +109,7 @@ fn compile_single_function_aarch64(
                 i.vreg.class == RegisterClass::Gpr && !func.stack_reservations.contains_key(&i.vreg)
             })
             .collect();
-        let plan = match settings.regalloc {
+        let mut plan = match settings.regalloc {
             RegallocStrategy::LinearScanGlobal => {
                 LinearScanAllocator::allocate(&intervals, pool.as_slice())
             }
@@ -118,6 +122,7 @@ fn compile_single_function_aarch64(
                 ));
             }
         };
+        coalesce_dying_inputs(func, &intervals, &mut plan, |_, _| true);
         for (v, a) in &plan {
             if reserved.is_none()
                 && let MirAllocation::Spill(off) = a
@@ -192,44 +197,125 @@ fn compile_single_function_aarch64(
         r
     };
 
-    let entry_key = func.entry.clone();
+    let plan = FunctionEmissionPlan::new(func);
     let mut debug_line: u32 = 0;
-
-    if let Some(entry_block) = func.get_block(&entry_key) {
-        writeln!(output, "{}{}:", block_prefix, entry_key)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-        emit_block(
-            entry_block.instructions.as_slice(),
-            &mut output,
-            &frame,
-            &abi,
-            &mut ra,
-            &epilogue_label,
-            &block_prefix,
-            settings,
-            &mut debug_line,
-        )
-        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-    }
-    for b in &func.blocks {
-        if b.label != entry_key {
-            writeln!(output, "    .align 2")
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-            writeln!(output, "{}{}:", block_prefix, b.label)
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-            emit_block(
-                b.instructions.as_slice(),
-                &mut output,
-                &frame,
-                &abi,
-                &mut ra,
-                &epilogue_label,
-                &block_prefix,
-                settings,
-                &mut debug_line,
-            )
+    if plan
+        .order
+        .first()
+        .is_some_and(|&i| func.blocks[i].label != func.entry)
+    {
+        writeln!(output, "    b {block_prefix}{}", func.entry)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-        }
+    }
+    for (slot, &index) in plan.order.iter().enumerate() {
+        let block = &func.blocks[index];
+        let next = plan
+            .order
+            .get(slot + 1)
+            .map(|&i| func.blocks[i].label.as_str())
+            .unwrap_or("");
+        let emit = |output: &mut Vec<u8>,
+                    ra: &mut A64RegAlloc,
+                    debug_line: &mut u32|
+         -> Result<(), LaminaError> {
+            if plan.aligned_headers.contains(&index) {
+                writeln!(output, "    .p2align 4,,12")?;
+            }
+            writeln!(output, "{block_prefix}{}:", block.label)?;
+            let mut position = 0;
+            while position < block.instructions.len() {
+                let inst = &block.instructions[position];
+                if let Some(pairs) = self_tail_arguments(func, inst) {
+                    let schedule = self_tail_schedule(&pairs, |reg| match reg {
+                        Register::Virtual(v) => ra
+                            .get_mapping_for(v)
+                            .map(|name| {
+                                Register::Physical(PhysicalReg::new(name, RegisterClass::Gpr))
+                            })
+                            .unwrap_or_else(|| reg.clone()),
+                        _ => reg.clone(),
+                    });
+                    for (src, dst) in schedule {
+                        let src = match src {
+                            CopyLocation::Value(src) => src,
+                            CopyLocation::Scratch => Operand::Register(Register::Physical(
+                                PhysicalReg::new("x17", RegisterClass::Gpr),
+                            )),
+                        };
+                        let dst = match dst {
+                            CopyLocation::Value(Operand::Register(dst)) => dst,
+                            CopyLocation::Scratch => {
+                                Register::Physical(PhysicalReg::new("x17", RegisterClass::Gpr))
+                            }
+                            _ => unreachable!(),
+                        };
+                        emit_materialize_operand(output, &src, "x16", &frame, ra)?;
+                        store_result(output, &dst, "x16", &frame, ra)?;
+                    }
+                    if func.entry != next {
+                        writeln!(output, "    b {block_prefix}{}", func.entry)?;
+                    }
+                } else if plan.comparisons.contains(&(index, position)) {
+                    if let (
+                        MirInst::IntCmp {
+                            op, lhs, rhs, ty, ..
+                        },
+                        MirInst::Br {
+                            true_target,
+                            false_target,
+                            ..
+                        },
+                    ) = (inst, &block.instructions[position + 1])
+                    {
+                        emit_materialize_operand(output, lhs, "x16", &frame, ra)?;
+                        emit_materialize_operand(output, rhs, "x17", &frame, ra)?;
+                        let unsigned = matches!(
+                            op,
+                            IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
+                        );
+                        extend_integer(output, "x16", ty, !unsigned)?;
+                        extend_integer(output, "x17", ty, !unsigned)?;
+                        writeln!(output, "    cmp x16, x17")?;
+                        let (invert, taken, other) =
+                            plan.branch(func, index, next, true_target, false_target);
+                        let cond = match (op, invert) {
+                            (IntCmpOp::Eq, false) | (IntCmpOp::Ne, true) => "eq",
+                            (IntCmpOp::Ne, false) | (IntCmpOp::Eq, true) => "ne",
+                            (IntCmpOp::SLt, false) | (IntCmpOp::SGe, true) => "lt",
+                            (IntCmpOp::SLe, false) | (IntCmpOp::SGt, true) => "le",
+                            (IntCmpOp::SGt, false) | (IntCmpOp::SLe, true) => "gt",
+                            (IntCmpOp::SGe, false) | (IntCmpOp::SLt, true) => "ge",
+                            (IntCmpOp::ULt, false) | (IntCmpOp::UGe, true) => "lo",
+                            (IntCmpOp::ULe, false) | (IntCmpOp::UGt, true) => "ls",
+                            (IntCmpOp::UGt, false) | (IntCmpOp::ULe, true) => "hi",
+                            (IntCmpOp::UGe, false) | (IntCmpOp::ULt, true) => "hs",
+                        };
+                        writeln!(output, "    b.{cond} {block_prefix}{taken}")?;
+                        if let Some(other) = other {
+                            writeln!(output, "    b {block_prefix}{other}")?;
+                        }
+                    }
+                    position += 1;
+                } else if matches!(inst, MirInst::Jmp { target } if target == next) {
+                } else {
+                    emit_block(
+                        std::slice::from_ref(inst),
+                        output,
+                        &frame,
+                        &abi,
+                        ra,
+                        &epilogue_label,
+                        &block_prefix,
+                        settings,
+                        debug_line,
+                    )?;
+                }
+                position += 1;
+            }
+            Ok(())
+        };
+        emit(&mut output, &mut ra, &mut debug_line)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
 
     writeln!(output, "{epilogue_label}:")
