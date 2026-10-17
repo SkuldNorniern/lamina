@@ -992,7 +992,7 @@ pub(super) enum CopyLocation<T> {
     Scratch,
 }
 
-pub(super) fn parallel_copy_schedule<T: Clone + Eq>(
+pub(super) fn parallel_copy_schedule<T: Clone + PartialEq>(
     pairs: &[(T, T)],
 ) -> Vec<(CopyLocation<T>, CopyLocation<T>)> {
     use CopyLocation::{Scratch, Value};
@@ -1060,4 +1060,121 @@ pub(super) fn branch_comparisons(
                 })
         })
         .collect()
+}
+
+pub(super) struct FunctionEmissionPlan {
+    pub order: Vec<usize>,
+    pub aligned_headers: HashSet<usize>,
+    pub rotations: HashMap<usize, usize>,
+    pub comparisons: HashSet<(usize, usize)>,
+}
+
+impl FunctionEmissionPlan {
+    pub fn new(func: &Function) -> Self {
+        let loops = natural_loops(func);
+        let mut order = block_layout(func);
+        let rotations = rotate_loops(func, &loops, &mut order);
+        let aligned_headers = aligned_loop_headers(func, &loops, 24)
+            .into_iter()
+            .map(|header| rotations.get(&header).copied().unwrap_or(header))
+            .collect();
+        let comparisons = branch_comparisons(func, &use_counts(func));
+        Self {
+            order,
+            aligned_headers,
+            rotations,
+            comparisons,
+        }
+    }
+
+    pub fn branch<'a>(
+        &self,
+        func: &'a Function,
+        block: usize,
+        next: &str,
+        true_target: &'a str,
+        false_target: &'a str,
+    ) -> (bool, &'a str, Option<&'a str>) {
+        let invert = true_target == next
+            || self
+                .rotations
+                .get(&block)
+                .is_some_and(|&body| func.blocks[body].label == false_target);
+        let (taken, fallthrough) = if invert {
+            (false_target, true_target)
+        } else {
+            (true_target, false_target)
+        };
+        (invert, taken, (fallthrough != next).then_some(fallthrough))
+    }
+}
+
+pub(super) fn self_tail_arguments(
+    func: &Function,
+    inst: &Instruction,
+) -> Option<Vec<(Operand, Register)>> {
+    match inst {
+        Instruction::TailCall { name, args }
+            if name == &func.sig.name && args.len() == func.sig.params.len() =>
+        {
+            Some(
+                args.iter()
+                    .cloned()
+                    .zip(func.sig.params.iter().map(|p| p.reg.clone()))
+                    .collect(),
+            )
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn self_tail_schedule(
+    pairs: &[(Operand, Register)],
+    map: impl Fn(&Register) -> Register,
+) -> Vec<(CopyLocation<Operand>, CopyLocation<Operand>)> {
+    let pairs: Vec<_> = pairs
+        .iter()
+        .map(|(src, dst)| {
+            let src = match src {
+                Operand::Register(reg) => Operand::Register(map(reg)),
+                _ => src.clone(),
+            };
+            (src, Operand::Register(map(dst)))
+        })
+        .collect();
+    parallel_copy_schedule(&pairs)
+}
+
+#[cfg(test)]
+mod copy_schedule_tests {
+    use super::{CopyLocation, parallel_copy_schedule};
+
+    #[test]
+    fn schedules_preserve_simultaneous_values() {
+        for encoded in 0..625 {
+            let mut choices = encoded;
+            let mut pairs = Vec::new();
+            for dst in 0..4 {
+                let src = choices % 5;
+                choices /= 5;
+                pairs.push((src, dst));
+            }
+            let mut values = [0, 1, 2, 3, 4];
+            let mut scratch = None;
+            for (src, dst) in parallel_copy_schedule(&pairs) {
+                let value = match src {
+                    CopyLocation::Value(src) => values[src],
+                    CopyLocation::Scratch => scratch.unwrap(),
+                };
+                match dst {
+                    CopyLocation::Value(dst) => values[dst] = value,
+                    CopyLocation::Scratch => scratch = Some(value),
+                }
+            }
+            for (src, dst) in pairs {
+                assert_eq!(values[dst], src);
+            }
+        }
+        assert!(parallel_copy_schedule(&[(1, 1), (2, 2)]).is_empty());
+    }
 }
