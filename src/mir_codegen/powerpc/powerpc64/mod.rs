@@ -16,7 +16,12 @@
 
 mod util;
 
+use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::integer_conversion;
+use crate::mir_codegen::common::{
+    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, self_tail_arguments,
+    self_tail_schedule,
+};
 
 use std::{collections::HashMap, io::Write, sync::Arc};
 use util::{
@@ -184,7 +189,7 @@ fn compile_single_function_ppc64(
             .into_iter()
             .filter(|i| i.vreg.class == RegisterClass::Gpr)
             .collect();
-        let plan = match settings.regalloc {
+        let mut plan = match settings.regalloc {
             RegallocStrategy::LinearScanGlobal => {
                 LinearScanAllocator::allocate(&intervals, pool.as_slice())
             }
@@ -197,6 +202,7 @@ fn compile_single_function_ppc64(
                 ));
             }
         };
+        coalesce_dying_inputs(func, &intervals, &mut plan, |_, _| true);
         reg_alloc = Ppc64RegAlloc::from_global_plan(target_os, &plan);
         for (v, a) in &plan {
             if let MirAllocation::Spill(off) = a {
@@ -236,28 +242,65 @@ fn compile_single_function_ppc64(
     Ppc64Frame::generate_prologue(&mut output, local_bytes)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
+    for (index, param) in func.sig.params.iter().enumerate() {
+        if let Register::Virtual(vreg) = &param.reg
+            && let Some(offset) = stack_slots.get(vreg)
+        {
+            if let Some(src) = Ppc64Abi::ARG_REGISTERS.get(index) {
+                writeln!(output, "    std {src}, {offset}(1)")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            } else {
+                let disp = Ppc64Frame::aligned_frame_size(local_bytes)
+                    + (index - Ppc64Abi::ARG_REGISTERS.len()) * 8;
+                writeln!(output, "    ld 0, {disp}(1)\n    std 0, {offset}(1)")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            }
+        }
+    }
+    for param in &func.sig.params {
+        if let Register::Virtual(vreg) = &param.reg
+            && let Some(reg) = reg_alloc.get_mapping_for(vreg)
+            && let Some(offset) = stack_slots.get(vreg)
+        {
+            writeln!(output, "    ld {reg}, {offset}(1)")
+                .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        }
+    }
+    let plan = FunctionEmissionPlan::new(func);
+    let emit = Ppc64Emit {
+        target_os,
+        block_prefix: &block_prefix,
+        settings,
+    };
     let mut debug_line: u32 = 0;
     let mut cmp_seq: u32 = 0;
-    for block in &func.blocks {
-        writeln!(output, "{}{}:", block_prefix, block.label)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
-
-        for inst in &block.instructions {
-            emit_instruction_ppc64(
-                inst,
-                &mut output,
-                &mut reg_alloc,
-                &stack_slots,
-                &Ppc64Emit {
-                    target_os,
-                    block_prefix: &block_prefix,
-                    settings,
-                },
-                &mut debug_line,
-                &mut cmp_seq,
-            )
+    if plan
+        .order
+        .first()
+        .is_some_and(|&i| func.blocks[i].label != func.entry)
+    {
+        writeln!(output, "    b {block_prefix}{}", func.entry)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-        }
+    }
+    for (slot, &index) in plan.order.iter().enumerate() {
+        let next = plan
+            .order
+            .get(slot + 1)
+            .map(|&i| func.blocks[i].label.as_str())
+            .unwrap_or("");
+        emit_planned_block_ppc64(
+            func,
+            index,
+            next,
+            &plan,
+            &mut output,
+            &mut reg_alloc,
+            &stack_slots,
+            &emit,
+            &mut debug_line,
+            &mut cmp_seq,
+        )
+        .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
 
     Ok(output)
@@ -325,6 +368,117 @@ struct Ppc64Emit<'a> {
     target_os: TargetOperatingSystem,
     block_prefix: &'a str,
     settings: &'a MirCodegenSettings,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_planned_block_ppc64<W: Write>(
+    func: &Function,
+    index: usize,
+    next: &str,
+    plan: &FunctionEmissionPlan,
+    writer: &mut W,
+    reg_alloc: &mut Ppc64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+    emit: &Ppc64Emit<'_>,
+    debug_line: &mut u32,
+    cmp_seq: &mut u32,
+) -> Result<(), LaminaError> {
+    let block = &func.blocks[index];
+    let prefix = emit.block_prefix;
+    if plan.aligned_headers.contains(&index) {
+        writeln!(writer, "    .p2align 4")?;
+    }
+    writeln!(writer, "{prefix}{}:", block.label)?;
+    let mut position = 0;
+    while position < block.instructions.len() {
+        let inst = &block.instructions[position];
+        if let Some(pairs) = self_tail_arguments(func, inst) {
+            let schedule = self_tail_schedule(&pairs, |reg| match reg {
+                Register::Virtual(v) => reg_alloc
+                    .get_mapping_for(v)
+                    .map(|name| Register::Physical(PhysicalReg::new(name, RegisterClass::Gpr)))
+                    .unwrap_or_else(|| reg.clone()),
+                _ => reg.clone(),
+            });
+            for (src, dst) in schedule {
+                let src = match src {
+                    CopyLocation::Value(src) => src,
+                    CopyLocation::Scratch => Operand::Register(Register::Physical(
+                        PhysicalReg::new("0", RegisterClass::Gpr),
+                    )),
+                };
+                load_operand_to_register(&src, writer, reg_alloc, stack_slots, "3")?;
+                match dst {
+                    CopyLocation::Value(Operand::Register(Register::Virtual(dst))) => {
+                        store_r3_to_register(&dst, writer, reg_alloc, stack_slots)?
+                    }
+                    CopyLocation::Value(Operand::Register(Register::Physical(dst))) => {
+                        writeln!(writer, "    mr {}, 3", dst.name)?
+                    }
+                    CopyLocation::Scratch => writeln!(writer, "    mr 0, 3")?,
+                    _ => unreachable!(),
+                }
+            }
+            if func.entry != next {
+                writeln!(writer, "    b {prefix}{}", func.entry)?;
+            }
+        } else if plan.comparisons.contains(&(index, position)) {
+            if let (
+                MirInst::IntCmp {
+                    op, lhs, rhs, ty, ..
+                },
+                MirInst::Br {
+                    true_target,
+                    false_target,
+                    ..
+                },
+            ) = (inst, &block.instructions[position + 1])
+            {
+                load_operand_to_register(lhs, writer, reg_alloc, stack_slots, "3")?;
+                load_operand_to_register(rhs, writer, reg_alloc, stack_slots, "4")?;
+                let unsigned = matches!(
+                    op,
+                    IntCmpOp::ULt | IntCmpOp::ULe | IntCmpOp::UGt | IntCmpOp::UGe
+                );
+                extend_integer(writer, "3", ty, !unsigned)?;
+                extend_integer(writer, "4", ty, !unsigned)?;
+                let compare = if unsigned { "cmpld" } else { "cmpd" };
+                writeln!(writer, "    {compare} 3, 4")?;
+                let (invert, taken, other) =
+                    plan.branch(func, index, next, true_target, false_target);
+                let mnemonic = match (op, invert) {
+                    (IntCmpOp::Eq, false) | (IntCmpOp::Ne, true) => "beq",
+                    (IntCmpOp::Ne, false) | (IntCmpOp::Eq, true) => "bne",
+                    (IntCmpOp::SLt | IntCmpOp::ULt, false)
+                    | (IntCmpOp::SGe | IntCmpOp::UGe, true) => "blt",
+                    (IntCmpOp::SLe | IntCmpOp::ULe, false)
+                    | (IntCmpOp::SGt | IntCmpOp::UGt, true) => "ble",
+                    (IntCmpOp::SGt | IntCmpOp::UGt, false)
+                    | (IntCmpOp::SLe | IntCmpOp::ULe, true) => "bgt",
+                    (IntCmpOp::SGe | IntCmpOp::UGe, false)
+                    | (IntCmpOp::SLt | IntCmpOp::ULt, true) => "bge",
+                };
+                writeln!(writer, "    {mnemonic} {prefix}{taken}")?;
+                if let Some(other) = other {
+                    writeln!(writer, "    b {prefix}{other}")?;
+                }
+            }
+            position += 1;
+        } else if matches!(inst, MirInst::Jmp { target } if target == next) {
+        } else {
+            emit_instruction_ppc64(
+                inst,
+                writer,
+                reg_alloc,
+                stack_slots,
+                emit,
+                debug_line,
+                cmp_seq,
+            )?;
+        }
+        position += 1;
+    }
+    Ok(())
 }
 
 fn emit_instruction_ppc64<W: Write>(
