@@ -5,7 +5,9 @@
 //! scalar GPR operations, base+offset loads/stores, calls, branches, and returns.
 //! Unsupported MIR ops fail loudly instead of being silently lowered wrong.
 
-use crate::mir_codegen::common::integer_conversion;
+use crate::mir_codegen::common::{
+    CopyLocation, integer_conversion, self_tail_arguments, self_tail_schedule,
+};
 
 use std::{
     cmp::Ordering as CmpOrdering,
@@ -111,7 +113,31 @@ fn emit_function<W: Write>(name: &str, func: &Function, writer: &mut W) -> Resul
     for block in blocks {
         writeln!(writer, "{}:", block_label(name, &block.label)).map_err(io_error)?;
         for inst in &block.instructions {
-            emit_instruction(name, inst, &mut stack, frame_size, writer)?;
+            if let Some(pairs) = self_tail_arguments(func, inst) {
+                for (src, dst) in self_tail_schedule(&pairs, Clone::clone) {
+                    match src {
+                        CopyLocation::Value(src) => {
+                            emit_operand_to_reg(writer, &src, SCR0, &mut stack)?
+                        }
+                        CopyLocation::Scratch => {
+                            writeln!(writer, "    mv {SCR0}, {SCR2}").map_err(io_error)?;
+                        }
+                    }
+                    match dst {
+                        CopyLocation::Value(Operand::Register(dst)) => {
+                            store_reg_to_dst(writer, SCR0, &dst, &mut stack)?
+                        }
+                        CopyLocation::Scratch => {
+                            writeln!(writer, "    mv {SCR2}, {SCR0}").map_err(io_error)?;
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                writeln!(writer, "    jal r0, {}", block_label(name, &func.entry))
+                    .map_err(io_error)?;
+            } else {
+                emit_instruction(name, inst, &mut stack, frame_size, writer)?;
+            }
         }
     }
 
@@ -343,6 +369,21 @@ fn emit_instruction<W: Write>(
                 store_reg_to_dst(writer, RET, dst, stack)?;
             }
             Ok(())
+        }
+        Instruction::TailCall { name, args } => {
+            if args.len() > ARG_REGS.len() {
+                return unsupported(format!(
+                    "ARX64 tail calls support up to {} integer args",
+                    ARG_REGS.len()
+                ));
+            }
+            for (arg, reg) in args.iter().zip(ARG_REGS) {
+                emit_operand_to_reg(writer, arg, reg, stack)?;
+            }
+            emit_load(writer, "ld", RA, frame_size as i64 - 8, SP)?;
+            emit_load(writer, "ld", FP, frame_size as i64 - 16, SP)?;
+            emit_addi(writer, SP, SP, frame_size as i64)?;
+            writeln!(writer, "    jal r0, {name}").map_err(io_error)
         }
         Instruction::Ret { value } => {
             if let Some(value) = value {
@@ -649,6 +690,53 @@ mod tests {
 
     use super::*;
     use crate::mir::{Block, Parameter, Signature, VirtualReg};
+
+    #[test]
+    fn self_tail_swap_preserves_frame_and_parameters() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::mir::function::Parameter;
+        let a = Register::Virtual(VirtualReg::gpr(0));
+        let b = Register::Virtual(VirtualReg::gpr(1));
+        let sig = Signature::new("swap").with_params(vec![
+            Parameter::new(a.clone(), MirType::i64()),
+            Parameter::new(b.clone(), MirType::i64()),
+        ]);
+        let mut func = Function::new(sig);
+        let mut entry = Block::new("start");
+        entry.push(Instruction::TailCall {
+            name: "swap".into(),
+            args: vec![Operand::Register(b), Operand::Register(a)],
+        });
+        func.add_block(entry);
+        func.entry = "start".into();
+        let mut asm = Vec::new();
+        emit_function("swap", &func, &mut asm)?;
+        let asm = String::from_utf8(asm)?;
+        assert!(asm.contains("mv r13, r11"), "{asm}");
+        assert!(asm.contains("mv r11, r13"), "{asm}");
+        assert!(asm.contains("jal r0, .L_swap_start"), "{asm}");
+        assert_eq!(asm.matches("sd r1,").count(), 1, "{asm}");
+        assert!(!asm.contains("ld r1,"), "{asm}");
+        Ok(())
+    }
+
+    #[test]
+    fn general_tail_call_restores_frame_before_jump() -> Result<(), Box<dyn std::error::Error>> {
+        let mut func = Function::new(Signature::new("caller"));
+        let mut entry = Block::new("entry");
+        entry.push(Instruction::TailCall {
+            name: "callee".into(),
+            args: vec![Operand::Immediate(Immediate::I64(7))],
+        });
+        func.add_block(entry);
+        let mut asm = Vec::new();
+        emit_function("caller", &func, &mut asm)?;
+        let asm = String::from_utf8(asm)?;
+        assert!(asm.contains("addi r5, r0, 7"), "{asm}");
+        assert!(asm.contains("ld r1,"), "{asm}");
+        assert!(asm.ends_with("jal r0, callee\n"), "{asm}");
+        assert!(!asm.contains("jalr"), "{asm}");
+        Ok(())
+    }
 
     #[test]
     fn emits_minimal_integer_return_function() {
