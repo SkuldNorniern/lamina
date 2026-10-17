@@ -18,6 +18,7 @@ const AVAILABLE_GPRS: &[&str] = &["5", "6", "7", "8", "9", "10", "11", "12"];
 pub struct Ppc64RegAlloc {
     #[allow(dead_code)]
     target_os: TargetOperatingSystem,
+    global_mappings: HashMap<VirtualReg, &'static str>,
     allocated_gprs: HashMap<&'static str, VirtualReg>,
     stack_slots: HashMap<VirtualReg, i32>,
     next_stack_slot: i32,
@@ -33,6 +34,7 @@ impl Ppc64RegAlloc {
     pub fn new(target_os: TargetOperatingSystem) -> Self {
         Self {
             target_os,
+            global_mappings: HashMap::new(),
             allocated_gprs: HashMap::new(),
             stack_slots: HashMap::new(),
             next_stack_slot: -8,
@@ -40,6 +42,9 @@ impl Ppc64RegAlloc {
     }
 
     pub fn get_mapping_for(&self, vreg: &VirtualReg) -> Option<&'static str> {
+        if let Some(reg) = self.global_mappings.get(vreg) {
+            return Some(*reg);
+        }
         for (reg, allocated_vreg) in &self.allocated_gprs {
             if allocated_vreg == vreg {
                 return Some(*reg);
@@ -64,6 +69,7 @@ impl Ppc64RegAlloc {
             if let Allocation::Register(phys) = alloc
                 && AVAILABLE_GPRS.contains(phys)
             {
+                s.global_mappings.insert(vreg, *phys);
                 s.allocated_gprs.insert(*phys, vreg);
             }
         }
