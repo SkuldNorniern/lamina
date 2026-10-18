@@ -3,7 +3,7 @@ use crate::{
     mir::{FunctionBuilder, ScalarType, codegen::from_ir},
     parser::parse_module,
 };
-use std::slice;
+use std::{error::Error as StdError, slice};
 
 #[test]
 fn rotated_loops_with_shared_exit_branch_back_conditionally() {
@@ -337,4 +337,47 @@ fn float_copy_emits_bit_move_not_add() {
         !assembly.contains("addsd"),
         "unexpected float add: {assembly}"
     );
+}
+
+#[test]
+fn stack_copy_cycle_preserves_saved_value() -> Result<(), Box<dyn StdError>> {
+    let pairs = [
+        ("-8(%rbp)".to_string(), "-16(%rbp)".to_string()),
+        ("-16(%rbp)".to_string(), "-24(%rbp)".to_string()),
+        ("-24(%rbp)".to_string(), "-8(%rbp)".to_string()),
+    ];
+    let mut writer = RaxTrackingWriter {
+        inner: Vec::new(),
+        rax_value: None,
+    };
+    emit_parallel_copy(&pairs, &mut writer)?;
+    let asm = String::from_utf8(writer.inner)?;
+    let mut values = HashMap::from([
+        ("-8(%rbp)", 11),
+        ("-16(%rbp)", 22),
+        ("-24(%rbp)", 33),
+        ("%rax", 0),
+    ]);
+    let mut stack = Vec::new();
+    for line in asm.lines() {
+        let (op, operands) = line.trim().split_once(' ').ok_or("missing operands")?;
+        match op {
+            "movq" => {
+                let (src, dst) = operands.split_once(", ").ok_or("missing destination")?;
+                values.insert(dst, values[src]);
+            }
+            "pushq" => stack.push(values[operands]),
+            "popq" => {
+                values.insert(operands, stack.pop().ok_or("empty stack")?);
+            }
+            _ => panic!("unexpected instruction: {line}"),
+        }
+    }
+    assert_eq!(
+        (values["-8(%rbp)"], values["-16(%rbp)"], values["-24(%rbp)"]),
+        (33, 11, 22),
+        "{asm}"
+    );
+    assert!(stack.is_empty());
+    Ok(())
 }
