@@ -45,15 +45,26 @@ pub(super) fn emit_parallel_copy(
     pairs: &[(String, String)],
     writer: &mut RaxTrackingWriter<impl Write>,
 ) -> Result<(), LaminaError> {
-    for (src, dst) in parallel_copy_schedule(pairs) {
-        let location = |location| match location {
-            CopyLocation::Value(value) => value,
+    let schedule = parallel_copy_schedule(pairs);
+    for (index, (src, dst)) in schedule.iter().enumerate() {
+        let preserve_scratch = schedule[index + 1..]
+            .iter()
+            .take_while(|(_, dst)| !matches!(dst, CopyLocation::Scratch))
+            .any(|(src, _)| matches!(src, CopyLocation::Scratch));
+        let location = |location: &CopyLocation<String>| match location {
+            CopyLocation::Value(value) => value.clone(),
             CopyLocation::Scratch => "%rax".to_string(),
         };
         let (src, dst) = (location(src), location(dst));
         if src.ends_with("(%rbp)") && dst.ends_with("(%rbp)") {
+            if preserve_scratch {
+                writeln!(writer, "    pushq %rax")?;
+            }
             writeln!(writer, "    movq {src}, %rax")?;
             writeln!(writer, "    movq %rax, {dst}")?;
+            if preserve_scratch {
+                writeln!(writer, "    popq %rax")?;
+            }
         } else {
             writeln!(writer, "    movq {src}, {dst}")?;
         }
