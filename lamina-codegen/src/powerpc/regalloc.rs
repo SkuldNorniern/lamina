@@ -137,6 +137,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn global_plan_preserves_reused_register_mappings() {
+        let first = VirtualReg::gpr(0);
+        let second = VirtualReg::gpr(1);
+        let plan = HashMap::from([
+            (first, Allocation::Register("5")),
+            (second, Allocation::Register("5")),
+        ]);
+        let allocator = Ppc64RegAlloc::from_global_plan(TargetOperatingSystem::Linux, &plan);
+        assert_eq!(allocator.get_mapping(&first), Some("5"));
+        assert_eq!(allocator.get_mapping(&second), Some("5"));
+    }
+
+    #[test]
     fn test_allocate_gpr_sequential() {
         let mut ra = Ppc64RegAlloc::new(TargetOperatingSystem::Linux);
         let v0 = VirtualReg::gpr(0);

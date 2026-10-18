@@ -1342,3 +1342,111 @@ mod analysis_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod backend_plan_tests {
+    use super::*;
+    use crate::mir::{FunctionBuilder, IntCmpOp};
+    use crate::mir_codegen::{
+        MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings,
+    };
+    use lamina_platform::TargetArchitecture;
+    use std::error::Error;
+
+    #[test]
+    fn native_backends_rotate_self_tail_loops_and_schedule_swaps() -> Result<(), Box<dyn Error>> {
+        let a = VirtualReg::gpr(0);
+        let b = VirtualReg::gpr(1);
+        let cond = VirtualReg::gpr(2);
+        let func = FunctionBuilder::new("swap")
+            .param(a.into(), MirType::i64())
+            .param(b.into(), MirType::i64())
+            .returns(MirType::i64())
+            .block("entry")
+            .instr(Instruction::IntCmp {
+                op: IntCmpOp::SGt,
+                dst: cond.into(),
+                lhs: Operand::Register(a.into()),
+                rhs: Operand::Register(b.into()),
+                ty: MirType::i64(),
+            })
+            .instr(Instruction::Br {
+                cond: cond.into(),
+                true_target: "exit".into(),
+                false_target: "body".into(),
+            })
+            .block("body")
+            .instr(Instruction::TailCall {
+                name: "swap".into(),
+                args: vec![Operand::Register(b.into()), Operand::Register(a.into())],
+            })
+            .block("exit")
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(a.into())),
+            })
+            .build();
+        let mut module = MirModule::new("swap_test");
+        module.add_function(func);
+        for (arch, save, restore, branch, materialize, external) in [
+            (
+                TargetArchitecture::Aarch64,
+                "mov x17, x16",
+                "mov x16, x17",
+                "b.le .L_swap.body",
+                "cset ",
+                "b swap",
+            ),
+            (
+                TargetArchitecture::Riscv64,
+                "mv a2, a0",
+                "mv a0, a2",
+                "bge a1, a0, .L_swap.body",
+                "slt ",
+                "tail swap",
+            ),
+            (
+                TargetArchitecture::PowerPC64,
+                "mr 0, 3",
+                "mr 3, 0",
+                "ble .L_swap.body",
+                "cmp0.true",
+                "b swap",
+            ),
+        ] {
+            for regalloc in [
+                RegallocStrategy::Incremental,
+                RegallocStrategy::LinearScanGlobal,
+                RegallocStrategy::GraphColorGlobal,
+            ] {
+                let settings = MirCodegenSettings {
+                    regalloc,
+                    ..Default::default()
+                };
+                let mut output = Vec::new();
+                generate_mir_to_target_with_settings(
+                    &module,
+                    &mut output,
+                    arch,
+                    TargetOperatingSystem::Linux,
+                    1,
+                    &settings,
+                )?;
+                let asm = String::from_utf8(output)?;
+                assert!(
+                    asm.contains(save) && asm.contains(restore),
+                    "{arch:?} {regalloc:?}: {asm}"
+                );
+                assert!(asm.contains(branch), "{arch:?} {regalloc:?}: {asm}");
+                assert!(
+                    !asm.contains(materialize) && !asm.contains(external),
+                    "{arch:?} {regalloc:?}: {asm}"
+                );
+                assert!(
+                    asm.find(".L_swap.body:") < asm.find(".L_swap.entry:"),
+                    "{asm}"
+                );
+            }
+        }
+        Ok(())
+    }
+}
