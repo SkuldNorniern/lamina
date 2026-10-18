@@ -266,6 +266,24 @@ mod tests {
     ];
 
     #[test]
+    fn global_plan_preserves_reused_register_mappings() {
+        let first = VirtualReg::gpr(0);
+        let second = VirtualReg::gpr(1);
+        let plan = HashMap::from([
+            (first, Allocation::Register("t1")),
+            (second, Allocation::Register("t1")),
+        ]);
+        let allocator = RiscVRegAlloc::from_global_plan(
+            TargetOperatingSystem::Linux,
+            RiscVTarget::general(Xlen::Rv64),
+            &plan,
+            &HashMap::new(),
+        );
+        assert_eq!(allocator.get_mapping(&first), Some("t1"));
+        assert_eq!(allocator.get_mapping(&second), Some("t1"));
+    }
+
+    #[test]
     fn pool_avoids_registers_the_emitter_uses_by_name() {
         for reg in RiscVRegAlloc::AVAILABLE_REGISTERS {
             assert!(
