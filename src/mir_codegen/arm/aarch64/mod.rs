@@ -197,6 +197,27 @@ fn compile_single_function_aarch64(
         r
     };
 
+    if let Some(global_plan) = &global_plan {
+        for param in &func.sig.params {
+            if let Register::Virtual(vreg) = &param.reg
+                && let Some(MirAllocation::Register(reg)) = global_plan.get(vreg)
+                && let Some(offset) = frame.slot_of(&param.reg)
+            {
+                let initialize = |output: &mut Vec<u8>| -> Result<(), LaminaError> {
+                    if (-256..=255).contains(&offset) {
+                        writeln!(output, "    ldur {reg}, [x29, #{offset}]")?;
+                    } else {
+                        emit_frame_slot_address(output, "x16", offset)?;
+                        writeln!(output, "    ldr {reg}, [x16]")?;
+                    }
+                    Ok(())
+                };
+                initialize(&mut output)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            }
+        }
+    }
+
     let plan = FunctionEmissionPlan::new(func);
     let mut debug_line: u32 = 0;
     if plan
@@ -1555,6 +1576,53 @@ fn extend_integer(
 mod tests {
     use super::*;
     use crate::mir::{FunctionBuilder, ScalarType};
+    use std::error::Error;
+
+    #[test]
+    fn global_parameters_are_initialized_before_entry() -> Result<(), Box<dyn Error>> {
+        use crate::mir::{Block, Parameter};
+        let reg = Register::Virtual(VirtualReg::gpr(0));
+        let mut func = Function::new(
+            Signature::new("identity")
+                .with_params(vec![Parameter::new(reg.clone(), MirType::i64())])
+                .with_return(MirType::i64()),
+        );
+        let mut block = Block::new("entry");
+        block.push(MirInst::Ret {
+            value: Some(Operand::Register(reg)),
+        });
+        func.add_block(block);
+        for regalloc in [
+            RegallocStrategy::LinearScanGlobal,
+            RegallocStrategy::GraphColorGlobal,
+        ] {
+            let settings = MirCodegenSettings {
+                regalloc,
+                ..Default::default()
+            };
+            let asm = String::from_utf8(
+                compile_single_function_aarch64(
+                    "identity",
+                    &func,
+                    TargetOperatingSystem::Linux,
+                    &settings,
+                )
+                .map_err(|error| error.to_string())?,
+            )?;
+            let (prologue, body) = asm
+                .split_once(".L_identity.entry:")
+                .ok_or("missing entry")?;
+            let reg = body
+                .lines()
+                .find_map(|line| line.strip_prefix("    mov x0, "))
+                .ok_or("missing return move")?;
+            assert!(
+                prologue.contains(&format!("ldur {reg}, [x29, #-8]")),
+                "{asm}"
+            );
+        }
+        Ok(())
+    }
 
     #[test]
     fn float_copy_emits_bit_move_not_add() {
