@@ -28,60 +28,43 @@ fn computeMatrixCell(i: usize, j: usize, k_dim: usize) usize {
 }
 
 /// Matrix multiplication benchmark
-pub fn main() !u8 {
-    const stdout = std.io.getStdOut().writer();
+pub fn main(init: std.process.Init) !void {
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
+
     const n = MATRIX_SIZE;
-    
-    // Create a result matrix to store values and prevent optimization from eliminating the work
-    var result: [MATRIX_SIZE][MATRIX_SIZE]usize = undefined;
     var total: usize = 0;
 
-    try stdout.print("Starting {d}×{d} matrix multiplication benchmark in Zig...\n", .{ n, n });
+    try stdout.print("Starting {d}x{d} matrix multiplication benchmark in Zig...\n", .{ n, n });
 
     // Start timing
-    const start_time = std.time.milliTimestamp();
+    const start_ns = std.Io.Clock.awake.now(init.io).nanoseconds;
 
-    // Progress tracking
-    const progress_step = @max(n / 10, 1);
-    var last_progress: usize = 0;
+    // Report progress every 5%, matching the C version
+    const result_size = n * n;
+    var cells_done: usize = 0;
+    var next_report = result_size / 20;
 
     var i: usize = 0;
     while (i < n) : (i += 1) {
-        // Show progress every 10% with a newline to ensure visibility
-        if (i % progress_step == 0) {
-            const progress = i * 100 / n;
-            try stdout.print("Progress: {d}%\n", .{progress});
-            last_progress = progress;
-        }
-
         var j: usize = 0;
         while (j < n) : (j += 1) {
-            // Compute the result cell [i,j]
-            result[i][j] = computeMatrixCell(i, j, n);
-            total += result[i][j];
-        }
-    }
+            total += computeMatrixCell(i, j, n);
 
-    // Make sure we show 100% progress if we didn't already
-    if (last_progress < 100) {
-        try stdout.print("Progress: 100%\n", .{});
+            cells_done += 1;
+            if (cells_done >= next_report) {
+                try stdout.print("Progress: {d}%\n", .{cells_done * 100 / result_size});
+                next_report += result_size / 20;
+            }
+        }
     }
 
     // End timing
-    // Using modern Zig syntax for type conversion
-    const elapsed = @as(f64, @floatFromInt(std.time.milliTimestamp() - start_time)) / 1000.0;
+    const end_ns = std.Io.Clock.awake.now(init.io).nanoseconds;
+    const elapsed = @as(f64, @floatFromInt(end_ns - start_ns)) / 1_000_000_000.0;
 
     try stdout.print("\nCompleted in {d:.4} seconds\n", .{elapsed});
     try stdout.print("Total sum: {d}\n", .{total});
-    
-    // Print some sample values from the result matrix
-    try stdout.print("\nSample result values:\n", .{});
-    try stdout.print("result[0][0] = {d}\n", .{result[0][0]});
-    try stdout.print("result[1][1] = {d}\n", .{result[1][1]});
-    try stdout.print("result[10][10] = {d}\n", .{result[10][10]});
-    try stdout.print("result[100][100] = {d}\n", .{result[100][100]});
-    try stdout.print("result[{d}][{d}] = {d}\n", .{n-1, n-1, result[n-1][n-1]});
-
-    // Return success
-    return 0;
-} 
+    try stdout.flush();
+}
