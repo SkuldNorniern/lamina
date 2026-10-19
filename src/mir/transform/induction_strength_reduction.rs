@@ -944,6 +944,36 @@ mod tests {
     }
 
     #[test]
+    fn dce_removes_unused_two_level_recurrences() {
+        let mut func = two_level_blocks();
+        let expected = execute(&func);
+        assert!(InductionStrengthReduction.apply(&mut func).unwrap());
+        assert!(super::super::DeadCodeElimination.apply(&mut func).unwrap());
+        let actual = execute(&func);
+        assert_eq!((actual.0, actual.2), (expected.0, expected.2));
+        assert_eq!(
+            func.get_block("body").unwrap().instructions,
+            vec![Instruction::Jmp {
+                target: "product".into(),
+            }]
+        );
+        let updates: Vec<_> = func
+            .get_block("product")
+            .unwrap()
+            .instructions
+            .iter()
+            .filter_map(|instr| match instr {
+                Instruction::IntBinary { dst, .. } => Some(dst.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(updates.len(), 3);
+        assert!(updates.contains(&reg(1)));
+        assert!(updates.contains(&reg(2)));
+        assert!(!super::super::DeadCodeElimination.apply(&mut func).unwrap());
+    }
+
+    #[test]
     fn reduces_dependent_product_in_later_block() {
         let mut func = two_level_blocks();
         let expected = execute(&func);

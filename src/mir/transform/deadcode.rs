@@ -140,6 +140,9 @@ impl DeadCodeElimination {
                 let mut current_live_in = current_live_out.clone();
                 // Iterate backwards through instructions
                 for instr in block.instructions.iter().rev() {
+                    if self.is_dead_instruction(instr, &current_live_in) {
+                        continue;
+                    }
                     if let Some(def) = instr.def_reg() {
                         current_live_in.remove(def);
                     }
