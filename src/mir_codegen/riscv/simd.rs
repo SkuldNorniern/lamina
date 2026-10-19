@@ -175,3 +175,120 @@ pub(super) fn emit(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+    use crate::mir::{VectorLane, VectorOp};
+    use crate::mir_codegen::simd_support::*;
+
+    #[test]
+    fn rvv_assembles_every_supported_pair() {
+        native(Backend::Rvv, |op, lane, index| {
+            use VectorOp::*;
+            let float = matches!(lane, VectorLane::F32 | VectorLane::F64);
+            match op {
+                VAdd | VSub | VMul => format!(
+                    "v{}{}.vv v0, v0, v1",
+                    if float { "f" } else { "" },
+                    match op {
+                        VAdd => "add",
+                        VSub => "sub",
+                        _ => "mul",
+                    }
+                ),
+                VAnd | VOr | VXor => format!(
+                    "v{}.vv v0, v0, v1",
+                    match op {
+                        VAnd => "and",
+                        VOr => "or",
+                        _ => "xor",
+                    }
+                ),
+                VShl | VLShr | VAShr => format!(
+                    "v{}.vx v0, v0, t0",
+                    match op {
+                        VShl => "sll",
+                        VLShr => "srl",
+                        _ => "sra",
+                    }
+                ),
+                VSplat => "vmv.v.x v0, t0".into(),
+                VExtractLane => format!("vslidedown.vi v1, v0, {index}"),
+                VInsertLane => format!("vslideup.vi v0, v1, {index}"),
+            }
+        });
+    }
+
+    #[test]
+    fn rvv_rejects_unsupported_pairs_and_missing_extension() {
+        negative(Backend::Rvv);
+    }
+
+    #[test]
+    fn rvv_checks_float_extensions_and_register_width() {
+        use crate::{
+            mir::{Instruction, MirType, Module, VectorType},
+            mir_codegen::{MirCodegenSettings, riscv::generate_mir_riscv_with_units_and_settings},
+        };
+        use lamina_codegen::riscv::{RiscVTarget, Xlen};
+        use lamina_platform::TargetOperatingSystem;
+        for (lane, extension) in [(VectorLane::F32, "F"), (VectorLane::F64, "D")] {
+            let mut module = Module::new("float");
+            module.add_function(function(
+                "bad",
+                MirType::Vector(VectorType::V128(lane)),
+                VectorOp::VAdd,
+                0,
+            ));
+            let mut output = Vec::new();
+            let error = generate_mir_riscv_with_units_and_settings(
+                &module,
+                &mut output,
+                RiscVTarget {
+                    v: true,
+                    ..RiscVTarget::base(Xlen::Rv64)
+                },
+                TargetOperatingSystem::Linux,
+                1,
+                &MirCodegenSettings::default(),
+            )
+            .expect_err("requires float extension");
+            assert!(
+                error
+                    .to_string()
+                    .contains(&format!("{extension} extension")),
+                "{error}"
+            );
+            assert!(output.is_empty());
+        }
+        for lane in LANES {
+            let mut module = Module::new("rv32");
+            let mut f = function(
+                "bad",
+                MirType::Vector(VectorType::V128(lane)),
+                VectorOp::VAdd,
+                0,
+            );
+            f.blocks[0]
+                .instructions
+                .retain(|i| matches!(i, Instruction::VectorOp { .. } | Instruction::Ret { .. }));
+            module.add_function(f);
+            let mut output = Vec::new();
+            let error = generate_mir_riscv_with_units_and_settings(
+                &module,
+                &mut output,
+                RiscVTarget {
+                    v: true,
+                    ..RiscVTarget::general(Xlen::Rv32)
+                },
+                TargetOperatingSystem::Linux,
+                1,
+                &MirCodegenSettings::default(),
+            )
+            .expect_err("requires RV64");
+            assert!(error.to_string().contains("RV64"), "{error}");
+            assert!(output.is_empty());
+        }
+    }
+}

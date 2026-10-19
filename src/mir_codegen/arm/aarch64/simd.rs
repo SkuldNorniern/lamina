@@ -154,3 +154,62 @@ fn emit_inner(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+    use crate::mir::{VectorLane, VectorOp};
+    use crate::mir_codegen::simd_support::*;
+
+    #[test]
+    fn neon_assembles_every_supported_pair() {
+        native(Backend::Neon, |op, lane, index| {
+            use VectorOp::*;
+            let bits = scalar(lane).size_bytes() * 8;
+            let arr = match bits {
+                8 => "16b",
+                16 => "8h",
+                32 => "4s",
+                _ => "2d",
+            };
+            let elem = match bits {
+                8 => "b",
+                16 => "h",
+                32 => "s",
+                _ => "d",
+            };
+            let float = matches!(lane, VectorLane::F32 | VectorLane::F64);
+            match op {
+                VAdd | VSub | VMul => format!(
+                    "{}{} v0.{arr}, v0.{arr}, v1.{arr}",
+                    if float { "f" } else { "" },
+                    match op {
+                        VAdd => "add",
+                        VSub => "sub",
+                        _ => "mul",
+                    }
+                ),
+                VAnd | VOr | VXor => format!(
+                    "{} v0.16b, v0.16b, v1.16b",
+                    match op {
+                        VAnd => "and",
+                        VOr => "orr",
+                        _ => "eor",
+                    }
+                ),
+                VShl | VLShr | VAShr => format!(
+                    "{} v0.{arr}, v0.{arr}, v1.{arr}",
+                    if op == VAShr { "sshl" } else { "ushl" }
+                ),
+                VSplat => format!("dup v0.{arr},"),
+                VExtractLane => format!("v0.{elem}[{index}]"),
+                VInsertLane => format!("ins v0.{elem}[{index}],"),
+            }
+        });
+    }
+
+    #[test]
+    fn neon_rejects_unsupported_pairs() {
+        negative(Backend::Neon);
+    }
+}
