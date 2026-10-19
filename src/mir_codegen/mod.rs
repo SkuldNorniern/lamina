@@ -516,4 +516,7 @@ mod tests {
 }
 
 #[cfg(test)]
+pub(crate) mod simd_support;
+
+#[cfg(test)]
 pub(crate) mod test_support;
