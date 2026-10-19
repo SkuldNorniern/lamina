@@ -2,7 +2,7 @@
 
 use crate::cli::options::{CompileOptions, toolchain_backends};
 
-use lamina::{
+use crate::{
     mir::{TransformPipeline, codegen::from_ir},
     mir_codegen::{
         assemble::{
@@ -17,7 +17,7 @@ use lamina::{
 };
 use lamina_platform::{Target, TargetArchitecture, cpu_count};
 
-use lamina::LaminaError;
+use crate::LaminaError;
 use std::{
     env,
     fs::{create_dir_all, remove_dir_all, write},
@@ -281,7 +281,7 @@ pub fn handle_jit_compilation(
 mod tests {
     use super::*;
     use crate::cli::options::CompileOptions;
-    use lamina::mir_codegen::MirCodegenSettings;
+    use crate::mir_codegen::MirCodegenSettings;
     use std::path::Path;
 
     fn minimal_options() -> CompileOptions {

@@ -2,7 +2,7 @@
 
 use std::{env::args, path::PathBuf, process::exit};
 
-use lamina::mir_codegen::{
+use crate::mir_codegen::{
     MirCodegenSettings, RegallocStrategy, amdgpu::AmdGpuTarget, assemble::AssemblerBackend,
     link::LinkerBackend,
 };
@@ -121,8 +121,10 @@ pub fn print_usage() {
 }
 
 pub fn parse_args() -> Result<CompileOptions, String> {
-    let args: Vec<String> = args().collect();
+    parse_args_from(args().collect())
+}
 
+pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, String> {
     if args.len() < 2 {
         return Err("Not enough arguments".to_string());
     }

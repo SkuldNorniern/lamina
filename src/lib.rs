@@ -287,6 +287,9 @@
 //! - **Standard library**: Common functions and data structures
 //! - **Language bindings**: C, Python, JavaScript, and other language interfaces
 
+#[doc(hidden)]
+pub mod cli;
+
 pub mod mir_codegen;
 pub mod target; // Re-exports from lamina-platform for backward compatibility
 
