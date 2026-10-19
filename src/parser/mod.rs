@@ -719,7 +719,7 @@ mod tests {
             0,
             "Should have no global declarations"
         );
-        assert_eq!(module.functions.len(), 4, "Should have 4 functions");
+        assert_eq!(module.functions.len(), 5, "Should have 5 functions");
 
         // Check @main function details
         let main_func = module
@@ -757,27 +757,27 @@ mod tests {
             "@main should end with ret"
         );
 
-        // Check @matmul_2d_optimized function details (more complex)
+        // Check @matmul_2d function details (more complex)
         let matmul_func = module
             .functions
-            .get("matmul_2d_optimized")
-            .expect("Missing @matmul_2d_optimized function");
-        assert_eq!(matmul_func.name, "matmul_2d_optimized");
+            .get("matmul_2d")
+            .expect("Missing @matmul_2d function");
+        assert_eq!(matmul_func.name, "matmul_2d");
         assert_eq!(
             matmul_func.signature.params.len(),
             3,
-            "@matmul_2d_optimized should have 3 parameters"
+            "@matmul_2d should have 3 parameters"
         );
         assert_eq!(
             matmul_func.signature.return_type,
             Type::Primitive(PrimitiveType::I64),
-            "@matmul_2d_optimized should return i64"
+            "@matmul_2d should return i64"
         );
 
         // Check that it has several basic blocks (it's a complex function)
         assert!(
             matmul_func.basic_blocks.len() >= 7,
-            "@matmul_2d_optimized should have at least 7 basic blocks"
+            "@matmul_2d should have at least 7 basic blocks"
         );
         assert!(matmul_func.basic_blocks.contains_key("entry"));
 
