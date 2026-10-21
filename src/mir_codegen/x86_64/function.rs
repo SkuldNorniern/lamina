@@ -444,3 +444,237 @@ pub(super) fn ensure_type_supported(ty: &MirType, context: &str) -> Result<(), L
     }
     Ok(())
 }
+
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+#[allow(clippy::expect_used)]
+mod global_regalloc_tests {
+    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use std::{
+        env, fs,
+        path::Path,
+        process::{self, Command},
+    };
+
+    #[test]
+    fn global_allocators_preserve_program_outputs() {
+        if !tools_available(&["as", "gcc", "timeout"]) {
+            return;
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let directory = env::temp_dir().join(format!("lamina-regalloc-{}", process::id()));
+        fs::create_dir_all(&directory).expect("create executable directory");
+        for allocator in ["linear", "graph"] {
+            for level in ["0", "3"] {
+                for case in [
+                    "recursive_fibonacci",
+                    "calling_convention_bug_test",
+                    "loops",
+                    "stack_frame_overflow_bug_test",
+                    "float_phi_copy",
+                    "gep_variable_indices",
+                    "function_call_isolation",
+                    "recursion_with_calculation",
+                    "type_conversions",
+                    "array_operations_comprehensive",
+                    "struct_operations_comprehensive",
+                ] {
+                    let executable = directory.join(format!("{case}-{allocator}-{level}"));
+                    compile(
+                        root.join(format!("testcases/{case}.lamina")),
+                        &executable,
+                        &["--opt-level", level, "--regalloc", allocator],
+                    )
+                    .expect("compile program");
+                    let output = Command::new("timeout")
+                        .arg("10")
+                        .arg(&executable)
+                        .output()
+                        .expect("run executable");
+                    assert!(
+                        output.status.success(),
+                        "{case}/{allocator}/O{level}: {output:?}"
+                    );
+                    let expected =
+                        fs::read_to_string(root.join(format!("testcases/{case}.expected")))
+                            .expect("read expected output");
+                    assert_eq!(
+                        String::from_utf8_lossy(&output.stdout).trim(),
+                        expected.trim(),
+                        "{case}/{allocator}/O{level}"
+                    );
+                }
+            }
+        }
+        fs::remove_dir_all(directory).expect("remove executable directory");
+    }
+
+    #[test]
+    fn global_allocators_preserve_argument_permutations_and_call_live_values() {
+        if !tools_available(&["as", "gcc", "timeout"]) {
+            return;
+        }
+        let directory = env::temp_dir().join(format!("lamina-regalloc-args-{}", process::id()));
+        fs::create_dir_all(&directory).expect("create executable directory");
+        let source = directory.join("arguments.lamina");
+        fs::write(
+            &source,
+            r#"
+@noinline
+fn @digits(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h) -> i64 {
+entry:
+    %b10 = mul.i64 %b, 10
+    %c100 = mul.i64 %c, 100
+    %d1000 = mul.i64 %d, 1000
+    %e10000 = mul.i64 %e, 10000
+    %f100000 = mul.i64 %f, 100000
+    %g1000000 = mul.i64 %g, 1000000
+    %h10000000 = mul.i64 %h, 10000000
+    %ab = add.i64 %a, %b10
+    %abc = add.i64 %ab, %c100
+    %abcd = add.i64 %abc, %d1000
+    %abcde = add.i64 %abcd, %e10000
+    %abcdef = add.i64 %abcde, %f100000
+    %abcdefg = add.i64 %abcdef, %g1000000
+    %all = add.i64 %abcdefg, %h10000000
+    ret.i64 %all
+}
+@noinline
+fn @probe(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h) -> i64 {
+entry:
+    %reversed = call @digits(%h, %g, %f, %e, %d, %c, %b, %a)
+    %forward = call @digits(%a, %b, %c, %d, %e, %f, %g, %h)
+    %sum = add.i64 %reversed, %forward
+    ret.i64 %sum
+}
+fn @main() -> i64 {
+entry:
+    %result = call @probe(1, 2, 3, 4, 5, 6, 7, 8)
+    print %result
+    ret.i64 0
+}
+"#,
+        )
+        .expect("write source");
+        for allocator in ["linear", "graph"] {
+            for level in ["0", "1", "2", "3"] {
+                let executable = directory.join(format!("arguments-{allocator}-{level}"));
+                compile(
+                    &source,
+                    &executable,
+                    &["--opt-level", level, "--regalloc", allocator],
+                )
+                .expect("compile program");
+                let output = Command::new("timeout")
+                    .arg("10")
+                    .arg(&executable)
+                    .output()
+                    .expect("run executable");
+                assert!(output.status.success(), "{allocator}/O{level}: {output:?}");
+                assert_eq!(output.stdout, b"99999999\n", "{allocator}/O{level}");
+            }
+        }
+        fs::remove_dir_all(directory).expect("remove executable directory");
+    }
+
+    #[test]
+    fn optimized_defaults_match_linear_scan_and_preserve_explicit_overrides() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let directory = env::temp_dir().join(format!("lamina-regalloc-defaults-{}", process::id()));
+        fs::create_dir_all(&directory).expect("create assembly directory");
+        for level in ["0", "1", "2", "3"] {
+            let default = if matches!(level, "2" | "3") {
+                "linear"
+            } else {
+                "incremental"
+            };
+            let compile = |name: &str, args: &[&str]| {
+                let assembly = directory.join(format!("{name}-{level}.s"));
+                compile(
+                    root.join("testcases/loops.lamina"),
+                    &assembly,
+                    &[args, &["--emit-asm"]].concat(),
+                )
+                .expect("compile assembly");
+                fs::read(assembly).expect("read assembly")
+            };
+            assert_eq!(
+                compile("default", &["--opt-level", level]),
+                compile("explicit", &["--opt-level", level, "--regalloc", default])
+            );
+            for allocator in ["incremental", "linear", "graph"] {
+                assert_eq!(
+                    compile("before", &["--regalloc", allocator, "--opt-level", level]),
+                    compile("after", &["--opt-level", level, "--regalloc", allocator])
+                );
+            }
+        }
+        fs::remove_dir_all(directory).expect("remove assembly directory");
+    }
+
+    #[test]
+    fn padded_struct_storage_preserves_adjacent_allocations_and_frames() {
+        if !tools_available(&["as", "gcc", "timeout"]) {
+            return;
+        }
+        let directory = env::temp_dir().join(format!("lamina-padded-storage-{}", process::id()));
+        fs::create_dir_all(&directory).expect("create executable directory");
+        let source = directory.join("padded.lamina");
+        fs::write(
+            &source,
+            r#"
+@noinline
+fn @padded() -> i64 {
+entry:
+    %stack = alloc.stack struct { a: i8, b: i64, c: i8 }
+    %other = alloc.stack [8 x i64]
+    store.i64 %other, 4321
+    %middle = getfieldptr %stack, 1
+    %last = getfieldptr %stack, 2
+    store.i64 %middle, 1234
+    store.i8 %last, 99
+    %heap = alloc.heap [2 x struct { a: i8, b: i64, c: i8 }]
+    %second = getelementptr %heap, 1, struct { a: i8, b: i64, c: i8 }
+    %heap_last = getfieldptr %second, 2
+    store.i8 %heap_last, 77
+    %x = load.i64 %middle
+    %y = load.i8 %last
+    %z = load.i8 %heap_last
+    %guard = load.i64 %other
+    dealloc.heap %heap
+    %wide_y = zext.i8.i64 %y
+    %wide_z = zext.i8.i64 %z
+    %sum = add.i64 %x, %wide_y
+    %sum2 = add.i64 %sum, %wide_z
+    %result = add.i64 %sum2, %guard
+    ret.i64 %result
+}
+fn @main() -> i64 {
+entry:
+    %result = call @padded()
+    print %result
+    ret.i64 0
+}
+"#,
+        )
+        .expect("write padded source");
+        for allocator in ["incremental", "linear", "graph"] {
+            for level in ["0", "1", "2", "3"] {
+                let executable = directory.join(format!("padded-{allocator}-{level}"));
+                compile(
+                    &source,
+                    &executable,
+                    &["--opt-level", level, "--regalloc", allocator],
+                )
+                .expect("compile program");
+                let output = Command::new("timeout")
+                    .arg("10")
+                    .arg(&executable)
+                    .output()
+                    .expect("run padded executable");
+                assert!(output.status.success(), "{allocator}/O{level}: {output:?}");
+                assert_eq!(output.stdout, b"5731\n", "{allocator}/O{level}");
+            }
+        }
+        fs::remove_dir_all(directory).expect("remove executable directory");
+    }
+}
