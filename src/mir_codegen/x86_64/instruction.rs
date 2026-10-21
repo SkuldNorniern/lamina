@@ -1162,3 +1162,252 @@ pub(super) fn emit_int_compare(
     writeln!(writer, "    cmpq %{scratch}, %rax")?;
     Ok(scratch)
 }
+
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+mod narrow_integer_tests {
+    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use std::{
+        env,
+        error::Error,
+        fmt::Write as _,
+        fs,
+        process::{self, Command},
+    };
+
+    #[test]
+    fn narrow_signed_operations_at_every_optimization_level() -> Result<(), Box<dyn Error>> {
+        if !tools_available(&["as", "gcc", "timeout"]) {
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-narrow-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let mut functions = String::new();
+        let mut body = String::new();
+        let mut expected = String::new();
+        let mut id = 0;
+        for width in [8, 16, 32] {
+            for (op, left, right, result) in [
+                ("div", -20, 3, -6),
+                ("rem", -20, 3, -2),
+                ("shr", -20, 3, -3),
+                ("div", 20, -3, -6),
+                ("rem", 20, -3, 2),
+                ("div", -20, -3, 6),
+                ("lt", -20, 3, 1),
+                ("le", -20, 3, 1),
+                ("gt", -20, 3, 0),
+                ("ge", -20, 3, 0),
+                ("lt", 3, -20, 0),
+                ("le", 3, -20, 0),
+                ("gt", 3, -20, 1),
+                ("ge", 3, -20, 1),
+                ("lt", -20, -20, 0),
+                ("le", -20, -20, 1),
+                ("gt", -20, -20, 0),
+                ("ge", -20, -20, 1),
+            ] {
+                let compare = matches!(op, "lt" | "le" | "gt" | "ge");
+                let conversion = if compare {
+                    "zext.bool.i64".to_string()
+                } else {
+                    format!("sext.i{width}.i64")
+                };
+                writeln!(
+                    functions,
+                    "fn @op{id}(i{width} %a, i{width} %b) -> i64 {{\nentry:\n%r = {op}.i{width} %a, %b\n%z = {conversion} %r\nret.i64 %z\n}}"
+                )?;
+                writeln!(
+                    body,
+                    "%a{id} = add.i{width} {left}, 0\n%b{id} = add.i{width} {right}, 0\n%r{id} = {op}.i{width} %a{id}, %b{id}\n%z{id} = {conversion} %r{id}\nprint %z{id}\n%c{id} = call @op{id}(%a{id}, %b{id})\nprint %c{id}"
+                )?;
+                writeln!(expected, "{result}\n{result}")?;
+                id += 1;
+            }
+            let maximum = (1_i64 << (width - 1)) - 1;
+            let minimum = -(1_i64 << (width - 1));
+            writeln!(
+                body,
+                "%overflow{width} = add.i{width} {maximum}, 1\n%negative{width} = shr.i{width} %overflow{width}, 3\n%wide{width} = sext.i{width}.i64 %negative{width}\nprint %wide{width}\n%unsigned{width} = zext.i{width}.i64 %overflow{width}\nprint %unsigned{width}"
+            )?;
+            writeln!(expected, "{}\n{}", minimum >> 3, 1_i64 << (width - 1))?;
+            // Adjacent elements catch stores that overwrite beyond their type width.
+            writeln!(
+                body,
+                "%array{width} = alloc.stack [2 x i{width}]\n%low{width} = getelem.ptr %array{width}, 0, i{width}\n%high{width} = getelem.ptr %array{width}, 1, i{width}\nstore.i{width} %high{width}, 99\nstore.i{width} %low{width}, -20\n%load{width} = load.i{width} %low{width}\n%div{width} = div.i{width} %load{width}, 3\n%loaded{width} = sext.i{width}.i64 %div{width}\nprint %loaded{width}\n%neighbor{width} = load.i{width} %high{width}\n%neighborwide{width} = sext.i{width}.i64 %neighbor{width}\nprint %neighborwide{width}"
+            )?;
+            writeln!(expected, "-6\n99")?;
+        }
+        let source = directory.join("narrow.lamina");
+        fs::write(
+            &source,
+            format!("{functions}\n@export\nfn @main() -> i64 {{\nentry:\n{body}\nret.i64 0\n}}\n"),
+        )?;
+        for level in ["0", "1", "2", "3"] {
+            for allocator in ["incremental", "linear", "graph"] {
+                let executable = directory.join(format!("narrow-{level}-{allocator}"));
+                compile(
+                    &source,
+                    &executable,
+                    &["--opt-level", level, "--regalloc", allocator],
+                )?;
+                let output = Command::new("timeout")
+                    .arg("10")
+                    .arg(&executable)
+                    .output()?;
+                assert!(output.status.success(), "O{level}/{allocator}: {output:?}");
+                assert_eq!(
+                    String::from_utf8_lossy(&output.stdout),
+                    expected,
+                    "O{level}/{allocator}"
+                );
+            }
+        }
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn narrow_unsigned_mir_operations_preserve_bit_patterns() -> Result<(), Box<dyn Error>> {
+        if !tools_available(&["cc", "timeout"]) {
+            return Ok(());
+        }
+        use crate::mir::{
+            FunctionBuilder, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Module, Operand,
+            Register, VirtualReg,
+        };
+        use crate::mir_codegen::{
+            MirCodegenSettings, RegallocStrategy,
+            x86_64::generate_mir_x86_64_with_units_and_settings,
+        };
+        use lamina_platform::TargetOperatingSystem;
+
+        let directory = env::temp_dir().join(format!("lamina-narrow-mir-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let mut main = FunctionBuilder::new("main")
+            .returns(MirType::i64())
+            .block("entry");
+        let mut expected = String::new();
+        let mut next = 0;
+        let mut register = || {
+            let reg = Register::Virtual(VirtualReg::gpr(next));
+            next += 1;
+            reg
+        };
+        for (width, ty, immediate) in [
+            (8, MirType::i8(), Immediate::I8(-20)),
+            (16, MirType::i16(), Immediate::I16(-20)),
+            (32, MirType::i32(), Immediate::I32(-20)),
+        ] {
+            let unsigned = (1_i64 << width) - 20;
+            for (binary, comparison, right, result) in [
+                (Some(IntBinOp::UDiv), None, 3, unsigned / 3),
+                (Some(IntBinOp::URem), None, 3, unsigned % 3),
+                (Some(IntBinOp::LShr), None, 3, unsigned >> 3),
+                (Some(IntBinOp::UDiv), None, -3, 0),
+                (Some(IntBinOp::URem), None, -3, unsigned),
+                (Some(IntBinOp::LShr), None, 0, unsigned),
+                (None, Some(IntCmpOp::ULt), 3, 0),
+                (None, Some(IntCmpOp::ULe), 3, 0),
+                (None, Some(IntCmpOp::UGt), 3, 1),
+                (None, Some(IntCmpOp::UGe), 3, 1),
+            ] {
+                let lhs = register();
+                let rhs = register();
+                let dst = register();
+                let wide = register();
+                let imm3 = match width {
+                    8 => Immediate::I8(right as i8),
+                    16 => Immediate::I16(right as i16),
+                    _ => Immediate::I32(right),
+                };
+                main = main
+                    .instr(Instruction::Copy {
+                        ty,
+                        dst: lhs.clone(),
+                        src: Operand::Immediate(immediate),
+                    })
+                    .instr(Instruction::Copy {
+                        ty,
+                        dst: rhs.clone(),
+                        src: Operand::Immediate(imm3),
+                    });
+                let operation = if let Some(op) = binary {
+                    Instruction::IntBinary {
+                        op,
+                        ty,
+                        dst: dst.clone(),
+                        lhs: Operand::Register(lhs),
+                        rhs: Operand::Register(rhs),
+                    }
+                } else {
+                    Instruction::IntCmp {
+                        op: comparison.ok_or("missing comparison")?,
+                        ty,
+                        dst: dst.clone(),
+                        lhs: Operand::Register(lhs),
+                        rhs: Operand::Register(rhs),
+                    }
+                };
+                main = main
+                    .instr(operation)
+                    .instr(Instruction::IntConvert {
+                        from: if binary.is_some() { ty } else { MirType::i8() },
+                        to: MirType::i64(),
+                        signed: false,
+                        dst: wide.clone(),
+                        src: Operand::Register(dst),
+                    })
+                    .instr(Instruction::Call {
+                        name: "print".into(),
+                        args: vec![Operand::Register(wide)],
+                        ret: None,
+                    });
+                writeln!(expected, "{result}")?;
+            }
+        }
+        main = main.instr(Instruction::Ret {
+            value: Some(Operand::Immediate(Immediate::I64(0))),
+        });
+        let mut module = Module::new("unsigned");
+        module.add_function(main.build());
+        for regalloc in [
+            RegallocStrategy::Incremental,
+            RegallocStrategy::LinearScanGlobal,
+            RegallocStrategy::GraphColorGlobal,
+        ] {
+            let settings = MirCodegenSettings {
+                regalloc,
+                ..MirCodegenSettings::default()
+            };
+            let mut assembly = Vec::new();
+            generate_mir_x86_64_with_units_and_settings(
+                &module,
+                &mut assembly,
+                TargetOperatingSystem::Linux,
+                1,
+                &settings,
+            )?;
+            let source = directory.join("unsigned.s");
+            let executable = directory.join("unsigned");
+            fs::write(&source, &assembly)?;
+            let compiled = Command::new("cc")
+                .arg(&source)
+                .args(["-no-pie", "-o"])
+                .arg(&executable)
+                .output()?;
+            assert!(compiled.status.success(), "{regalloc:?}: {compiled:?}");
+            let output = Command::new("timeout")
+                .arg("10")
+                .arg(&executable)
+                .output()?;
+            assert!(output.status.success(), "{regalloc:?}: {output:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout),
+                expected,
+                "{regalloc:?}"
+            );
+        }
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+}
