@@ -589,3 +589,79 @@ ret.void
         assert!(!has_call, "Call instruction should be removed");
     }
 }
+
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+mod execution_tests {
+    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use std::{
+        env,
+        error::Error,
+        fs,
+        process::{self, Command},
+    };
+
+    #[test]
+    fn inlining_preserves_native_and_mir_assembly_outputs() -> Result<(), Box<dyn Error>> {
+        if !tools_available(&["as", "gcc"]) {
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-inlining-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        for case in [
+            "nested_calls",
+            "functions",
+            "test_u8",
+            "stack_operations",
+            "type_conversions",
+            "edge_cases_bug_test",
+        ] {
+            let source = format!("testcases/{case}.lamina");
+            let expected = fs::read_to_string(format!("testcases/{case}.expected"))?;
+            for level in ["1", "2", "3"] {
+                for allocator in ["incremental", "linear", "graph"] {
+                    for mir in [false, true] {
+                        let executable =
+                            directory.join(format!("{case}-{level}-{allocator}-{mir}"));
+                        let mut flags = vec!["--opt-level", level, "--regalloc", allocator];
+                        if mir {
+                            flags.extend(["--emit-mir-asm", "--target", "x86_64_linux"]);
+                        }
+                        compile(&source, &executable, &flags)?;
+                        if mir {
+                            let assembled = Command::new("as")
+                                .arg("--64")
+                                .arg(executable.with_extension("s"))
+                                .arg("-o")
+                                .arg(executable.with_extension("o"))
+                                .output()?;
+                            assert!(
+                                assembled.status.success(),
+                                "{}",
+                                String::from_utf8_lossy(&assembled.stderr)
+                            );
+                            let linked = Command::new("gcc")
+                                .arg("-no-pie")
+                                .arg(executable.with_extension("o"))
+                                .arg("-o")
+                                .arg(&executable)
+                                .output()?;
+                            assert!(
+                                linked.status.success(),
+                                "{}",
+                                String::from_utf8_lossy(&linked.stderr)
+                            );
+                        }
+                        let output = Command::new(&executable).output()?;
+                        assert_eq!(
+                            String::from_utf8_lossy(&output.stdout).trim_end_matches('\n'),
+                            expected.trim_end_matches('\n'),
+                            "{case} O{level} {allocator} mir={mir}"
+                        );
+                    }
+                }
+            }
+        }
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+}
