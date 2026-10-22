@@ -327,3 +327,201 @@ pub fn emit<W: Write>(module: &Module, writer: &mut W) -> Result<(), LaminaError
     writer.write_all(&output)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod emission_tests {
+    use crate::mir_codegen::test_support::compile;
+    use std::{env, error::Error, fs, process};
+
+    #[test]
+    fn gpu_cli_emits_text_without_native_tools() -> Result<(), Box<dyn Error>> {
+        let directory = env::temp_dir().join(format!("lamina-ptx-cli-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let source = directory.join("kernel.lamina");
+        fs::write(
+            &source,
+            "@kernel fn @empty() -> void {\nentry:\ncall @__lamina_gpu_workgroup_barrier()\nret.void\n}\n",
+        )?;
+        for (target, extension, expected) in [("nvptx64_cuda", "ptx", ".visible .entry empty()")] {
+            for mode in [None, Some("--emit-asm"), Some("--emit-mir-asm")] {
+                let output_path = directory.join(target);
+                let mut flags = vec!["--target", target];
+                if let Some(mode) = mode {
+                    flags.push(mode);
+                }
+                compile(&source, &output_path, &flags)?;
+                let artifact = output_path.with_extension(extension);
+                assert!(fs::read_to_string(&artifact)?.contains(expected));
+                fs::remove_file(artifact)?;
+            }
+        }
+        fs::remove_file(source)?;
+        fs::remove_dir(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn ptx_scaffolding_declares_typed_registers_for_supported_kernels() -> Result<(), Box<dyn Error>>
+    {
+        use crate::{
+            mir::{TransformPipeline, codegen::from_ir},
+            mir_codegen::ptx,
+            parser::parse_module,
+        };
+        use std::collections::HashMap;
+
+        let ir = parse_module(include_str!("../amdgpu/amdgpu.lamina"))?;
+        for level in 0..=3 {
+            let mut mir = from_ir(&ir, "ptx").map_err(|error| format!("{error:?}"))?;
+            TransformPipeline::default_for_opt_level(level)
+                .apply_to_module(&mut mir)
+                .map_err(|error| format!("{error:?}"))?;
+            let mut output = Vec::new();
+            ptx::emit(&mir, &mut output)?;
+            let text = String::from_utf8(output)?;
+            assert!(text.starts_with(".version 6.0\n.target sm_60\n.address_size 64"));
+            for expected in [
+                ".param .u32 arg0",
+                ".param .u64 arg1",
+                ".param .u64 .ptr .global .align 1 arg0",
+                "ld.param.u32",
+                "ld.param.u64",
+                "bar.sync 0;",
+                "cvt.u64.u32",
+                "cvt.s64.s32",
+                "cvt.u32.u64",
+            ] {
+                assert!(text.contains(expected), "missing {expected}");
+            }
+            for bits in [32, 64] {
+                for opcode in [
+                    "add.u",
+                    "sub.u",
+                    "mul.lo.u",
+                    "and.b",
+                    "or.b",
+                    "xor.b",
+                    "shl.b",
+                    "shr.u",
+                    "shr.s",
+                    "ld.global.u",
+                    "st.global.u",
+                ] {
+                    assert!(
+                        text.contains(&format!("{opcode}{bits}")),
+                        "missing {opcode}{bits}"
+                    );
+                }
+            }
+            for special in ["tid", "ctaid", "ntid", "nctaid"] {
+                for axis in ["x", "y", "z"] {
+                    assert!(text.contains(&format!("%{special}.{axis};")));
+                }
+            }
+            for kernel in text.split(".visible .entry").skip(1) {
+                let mut registers = HashMap::new();
+                for line in kernel
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| line.starts_with(".reg "))
+                {
+                    let fields: Vec<_> = line.trim_end_matches(';').split_whitespace().collect();
+                    assert!(registers.insert(fields[2], fields[1]).is_none());
+                }
+                for line in kernel
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.starts_with(".reg "))
+                {
+                    for register in line
+                        .split(|c: char| !c.is_ascii_alphanumeric() && c != '%' && c != '_')
+                        .filter(|token| token.starts_with("%r"))
+                    {
+                        assert!(
+                            registers.contains_key(register),
+                            "undeclared {register}: {line}"
+                        );
+                    }
+                    let fields: Vec<_> = line.split_whitespace().collect();
+                    if fields.first().is_some_and(|op| {
+                        op.starts_with("ld.") || op.starts_with("cvt.") || op.starts_with("mov.")
+                    }) {
+                        let destination = fields[1].trim_end_matches(',');
+                        let width = if fields[0].starts_with("cvt.") {
+                            fields[0]
+                                .split('.')
+                                .nth(1)
+                                .ok_or("missing destination type")?
+                        } else {
+                            fields[0].rsplit('.').next().ok_or("missing load type")?
+                        };
+                        assert_eq!(registers[destination], format!(".b{}", &width[1..]));
+                    }
+                }
+            }
+            assert!(!text.contains(".local"));
+            assert!(!text.contains("%rsp"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ptx_scaffolding_rejects_unsupported_operations_without_partial_output()
+    -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, mir_codegen::ptx, parser::parse_module};
+        for source in [
+            "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = div.i32 %a, 2\nret.void\n}",
+            "@kernel fn @bad(i64 %a) -> void {\nentry:\n%x = shl.i64 %a, %a\nret.void\n}",
+            "@kernel fn @bad(i64 %a) -> void {\nentry:\n%x = shl.i64 %a, 64\nret.void\n}",
+            "@kernel fn @bad(f32 %a) -> void {\nentry:\nret.void\n}",
+            "@kernel fn @bad() -> void {\nentry:\n%p = alloc.stack i64\nret.void\n}",
+        ] {
+            let ir = parse_module(source)?;
+            let mir = from_ir(&ir, "unsupported").map_err(|error| format!("{error:?}"))?;
+            let mut output = Vec::new();
+            assert!(ptx::emit(&mir, &mut output).is_err());
+            assert!(output.is_empty());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gpu_backends_reject_local_unaligned_and_volatile_memory() {
+        use crate::{
+            mir::{
+                AddressMode, AddressSpace, FunctionBuilder, Instruction, KernelMetadata,
+                MemoryAttrs, MirType, Module, Register, VirtualReg,
+            },
+            mir_codegen::ptx,
+        };
+        for (space, align, volatile) in [
+            (AddressSpace::Local, 4, false),
+            (AddressSpace::Private, 4, false),
+            (AddressSpace::Global, 1, false),
+            (AddressSpace::Global, 4, true),
+        ] {
+            let base = Register::Virtual(VirtualReg::gpr(0));
+            let mut function = FunctionBuilder::new("bad")
+                .param(base.clone(), MirType::ptr_in(AddressSpace::Global))
+                .block("entry")
+                .instr(Instruction::Load {
+                    ty: MirType::i32(),
+                    dst: Register::Virtual(VirtualReg::gpr(1)),
+                    addr: AddressMode::BaseOffset {
+                        base,
+                        offset: 0,
+                        address_space: space,
+                    },
+                    attrs: MemoryAttrs { align, volatile },
+                })
+                .instr(Instruction::Ret { value: None })
+                .build();
+            function.sig.kernel = Some(KernelMetadata::default());
+            let mut module = Module::new("unsupported");
+            module.add_function(function);
+            let mut output = Vec::new();
+            assert!(ptx::emit(&module, &mut output).is_err());
+            assert!(output.is_empty());
+        }
+    }
+}

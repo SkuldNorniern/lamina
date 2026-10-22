@@ -724,3 +724,200 @@ pub fn emit_with_target<W: Write>(
     writer.write_all(&output)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod emission_tests {
+    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use std::{
+        env,
+        error::Error,
+        fs,
+        process::{self, Command},
+    };
+
+    #[test]
+    fn gpu_cli_emits_text_without_native_tools() -> Result<(), Box<dyn Error>> {
+        let directory = env::temp_dir().join(format!("lamina-amdgpu-cli-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let source = directory.join("kernel.lamina");
+        fs::write(
+            &source,
+            "@kernel fn @empty() -> void {\nentry:\ncall @__lamina_gpu_workgroup_barrier()\nret.void\n}\n",
+        )?;
+        for (target, extension, expected) in [("amdgcn_amdhsa", "s", ".amdhsa_kernel empty")] {
+            for mode in [None, Some("--emit-asm"), Some("--emit-mir-asm")] {
+                let output_path = directory.join(target);
+                let mut flags = vec!["--target", target];
+                if let Some(mode) = mode {
+                    flags.push(mode);
+                }
+                compile(&source, &output_path, &flags)?;
+                let artifact = output_path.with_extension(extension);
+                assert!(fs::read_to_string(&artifact)?.contains(expected));
+                fs::remove_file(artifact)?;
+            }
+        }
+        fs::remove_file(source)?;
+        fs::remove_dir(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn amdgpu_kernels_assemble_for_both_processors() -> Result<(), Box<dyn Error>> {
+        if !tools_available(&["clang"]) {
+            return Ok(());
+        }
+        let targets = Command::new("clang").arg("--print-targets").output()?;
+        if !String::from_utf8_lossy(&targets.stdout).contains("amdgcn") {
+            eprintln!("skipping AMDGPU assembly: clang lacks amdgcn target");
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-amdgpu-asm-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let source = directory.join("barrier.lamina");
+        fs::write(&source, include_str!("amdgpu.lamina"))?;
+        for cpu in ["gfx1200", "gfx900"] {
+            for level in 0..=3 {
+                let level = level.to_string();
+                let path = directory.join(format!("{cpu}-o{level}"));
+                compile(
+                    &source,
+                    &path,
+                    &[
+                        "--emit-asm",
+                        "--opt-level",
+                        &level,
+                        "--target",
+                        "amdgcn_amdhsa",
+                        "--mcpu",
+                        cpu,
+                    ],
+                )?;
+                let assembly = path.with_extension("s");
+                let object = path.with_extension("o");
+                let text = fs::read_to_string(&assembly)?;
+                assert!(text.contains(".amdhsa_user_sgpr_kernarg_segment_ptr 1"));
+                assert!(text.contains(".kernarg_segment_size: 24"));
+                assert!(text.contains(".offset: 8"));
+                assert!(text.contains(".offset: 16"));
+                assert!(text.contains(".value_kind: global_buffer"));
+                assert!(text.contains("global_load_dwordx2"));
+                assert!(text.contains("global_store_dwordx2"));
+                if cpu == "gfx1200" {
+                    assert!(text.contains("ttmp9"));
+                    assert!(text.contains("s_and_b32 s5, ttmp7, 0xffff"));
+                    assert!(text.contains("s_lshr_b32 s5, ttmp7, 16"));
+                    assert!(text.contains("s_wait_kmcnt 0"));
+                }
+                let dimensions = text
+                    .split("dimensions:\n")
+                    .nth(1)
+                    .ok_or("missing dimensions kernel")?
+                    .split(".Ldimensions_end:")
+                    .next()
+                    .ok_or("missing dimensions body")?;
+                assert!(dimensions.contains("s_load_dwordx2 s[8:9], s[2:3], 0"));
+                assert!(dimensions.contains("s_load_dwordx2 s[8:9], s[2:3], 8"));
+                for offset in [4, 8] {
+                    assert!(dimensions.contains(&format!("s_load_dword s9, s[0:1], {offset}")));
+                }
+                for offset in [12, 16, 20] {
+                    assert!(dimensions.contains(&format!("s_load_dword s8, s[0:1], {offset}")));
+                }
+                assert!(text.contains(".amdhsa_user_sgpr_dispatch_ptr 1"));
+                if cpu == "gfx900" {
+                    for register in [4, 5, 6] {
+                        assert!(dimensions.lines().any(|line| line.contains("v_mov_b32")
+                            && line.ends_with(&format!(", s{register}"))));
+                    }
+                    assert!(dimensions.contains("v_add_co_u32") && dimensions.contains("s[16:17]"));
+                }
+                assert!(text.contains("v_mul_hi_u32"));
+                assert!(text.contains("v_ashrrev_i32"));
+                assert!(text.contains(if cpu == "gfx1200" {
+                    "v_add_co_ci_u32"
+                } else {
+                    "v_addc_co_u32"
+                }));
+                let output = Command::new("clang")
+                    .args(["--target=amdgcn-amd-amdhsa", &format!("-mcpu={cpu}"), "-c"])
+                    .arg(&assembly)
+                    .arg("-o")
+                    .arg(&object)
+                    .output()?;
+                assert!(
+                    output.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                fs::remove_file(assembly)?;
+                fs::remove_file(object)?;
+            }
+        }
+        fs::remove_file(source)?;
+        fs::remove_dir(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn amdgpu_rejects_unsupported_kernels_without_partial_output() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, mir_codegen::amdgpu, parser::parse_module};
+
+        for source in [
+            "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = div.i32 %a, 2\nret.void\n}",
+            "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = shl.i32 %a, %a\nret.void\n}",
+            "@kernel fn @bad(f32 %a) -> void {\nentry:\nret.void\n}",
+            "@kernel fn @bad() -> void {\nentry:\n%p = alloc.stack i64\nret.void\n}",
+            "@kernel fn @bad() -> void {\nentry:\n%x = call @__lamina_gpu_lane_id()\nret.void\n}",
+        ] {
+            let ir = parse_module(source)?;
+            let mir = from_ir(&ir, "unsupported").map_err(|error| format!("{error:?}"))?;
+            for target in [amdgpu::AmdGpuTarget::Gfx900, amdgpu::AmdGpuTarget::Gfx1200] {
+                let mut output = Vec::new();
+                assert!(amdgpu::emit_with_target(&mir, &mut output, target).is_err());
+                assert!(output.is_empty());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gpu_backends_reject_local_unaligned_and_volatile_memory() {
+        use crate::{
+            mir::{
+                AddressMode, AddressSpace, FunctionBuilder, Instruction, KernelMetadata,
+                MemoryAttrs, MirType, Module, Register, VirtualReg,
+            },
+            mir_codegen::amdgpu,
+        };
+        for (space, align, volatile) in [
+            (AddressSpace::Local, 4, false),
+            (AddressSpace::Private, 4, false),
+            (AddressSpace::Global, 1, false),
+            (AddressSpace::Global, 4, true),
+        ] {
+            let base = Register::Virtual(VirtualReg::gpr(0));
+            let mut function = FunctionBuilder::new("bad")
+                .param(base.clone(), MirType::ptr_in(AddressSpace::Global))
+                .block("entry")
+                .instr(Instruction::Load {
+                    ty: MirType::i32(),
+                    dst: Register::Virtual(VirtualReg::gpr(1)),
+                    addr: AddressMode::BaseOffset {
+                        base,
+                        offset: 0,
+                        address_space: space,
+                    },
+                    attrs: MemoryAttrs { align, volatile },
+                })
+                .instr(Instruction::Ret { value: None })
+                .build();
+            function.sig.kernel = Some(KernelMetadata::default());
+            let mut module = Module::new("unsupported");
+            module.add_function(function);
+            let mut output = Vec::new();
+            assert!(amdgpu::emit(&module, &mut output).is_err());
+            assert!(output.is_empty());
+        }
+    }
+}
