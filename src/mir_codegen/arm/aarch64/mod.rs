@@ -486,6 +486,29 @@ fn emit_block<W: Write>(
                 let dl = x_alias(s_d);
                 let rl = x_alias(s_l);
                 let rr = x_alias(s_r);
+                let (zero, overflow) =
+                    op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+                if matches!(op, IntBinOp::SDiv | IntBinOp::SRem | IntBinOp::AShr) {
+                    extend_integer(w, s_l, ty, true)?;
+                    if !matches!(op, IntBinOp::AShr) {
+                        extend_integer(w, s_r, ty, true)?;
+                    }
+                }
+                if zero {
+                    writeln!(w, "    cbnz {rr}, 1f\n    udf #0\n1:")?;
+                }
+                if overflow {
+                    let minimum = 1u64 << (ty.size_bytes() * 8 - 1);
+                    writeln!(w, "    cmn {rr}, #1\n    b.ne 2f")?;
+                    emit_mov_imm64(w, &dl, ty.signed_integer(minimum as i64) as u64)?;
+                    writeln!(w, "    cmp {rl}, {dl}\n    b.ne 2f\n    udf #0\n2:")?;
+                }
+                if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr)
+                    && ty.size_bytes() < 8
+                {
+                    let mask = ty.size_bytes() * 8 - 1;
+                    writeln!(w, "    and {rr}, {rr}, #{mask}")?;
+                }
                 match op {
                     IntBinOp::Add => {
                         writeln!(w, "    add {dl}, {rl}, {rr}")?;
@@ -522,7 +545,7 @@ fn emit_block<W: Write>(
                     IntBinOp::Shl => match rhs {
                         Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
-                            sh &= 63;
+                            sh &= ty.size_bytes() as u32 * 8 - 1;
                             writeln!(w, "    lsl {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
@@ -532,7 +555,7 @@ fn emit_block<W: Write>(
                     IntBinOp::LShr => match rhs {
                         Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
-                            sh &= 63;
+                            sh &= ty.size_bytes() as u32 * 8 - 1;
                             writeln!(w, "    lsr {dl}, {rl}, #{sh}")?;
                         }
                         _ => {
@@ -542,7 +565,7 @@ fn emit_block<W: Write>(
                     IntBinOp::AShr => match rhs {
                         Operand::Immediate(imm) => {
                             let mut sh = imm_to_u64(imm) as u32;
-                            sh &= 63;
+                            sh &= ty.size_bytes() as u32 * 8 - 1;
                             writeln!(w, "    asr {dl}, {rl}, #{sh}")?;
                         }
                         _ => {

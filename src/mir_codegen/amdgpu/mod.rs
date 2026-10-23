@@ -486,9 +486,7 @@ impl Kernel {
                         ) => *value,
                         _ => return Err(error("AMDGPU shifts require a matching immediate count")),
                     };
-                    if !(0..(ty.size_bytes() * 8) as i64).contains(&shift) {
-                        return Err(error("AMDGPU shift count must be below the value width"));
-                    }
+                    let shift = shift & (ty.size_bytes() as i64 * 8 - 1);
                     let mnemonic = match (op, ty.size_bytes()) {
                         (IntBinOp::Shl, 4) => "v_lshlrev_b32",
                         (IntBinOp::LShr, 4) => "v_lshrrev_b32",

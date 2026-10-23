@@ -16,7 +16,7 @@ use crate::error::LaminaError;
 
 use crate::{
     mir::{
-        AddressMode, Function, Global, Immediate, Instruction as MirInst, MirType,
+        AddressMode, Function, Global, Immediate, Instruction as MirInst, IntBinOp, MirType,
         Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
     },
     mir_codegen::{
@@ -378,6 +378,22 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     Ok(())
 }
 
+fn extend_integer_wasm(
+    writer: &mut impl Write,
+    ty: MirType,
+    signed: bool,
+) -> Result<(), LaminaError> {
+    if ty.size_bytes() < 8 {
+        let shift = 64 - ty.size_bytes() * 8;
+        let right = if signed { "i64.shr_s" } else { "i64.shr_u" };
+        writeln!(
+            writer,
+            "      i64.const {shift}\n      i64.shl\n      i64.const {shift}\n      {right}"
+        )?;
+    }
+    Ok(())
+}
+
 fn emit_instruction_wasm(
     inst: &MirInst,
     writer: &mut impl Write,
@@ -411,6 +427,9 @@ fn emit_instruction_wasm(
                 }
                 _ => load_operand_wasm(src, writer, vreg_to_local)?,
             }
+            if !ty.is_float() {
+                extend_integer_wasm(writer, *ty, true)?;
+            }
             store_to_register_wasm(dst, writer, vreg_to_local)?;
         }
         MirInst::IntBinary {
@@ -418,16 +437,38 @@ fn emit_instruction_wasm(
             dst,
             lhs,
             rhs,
-            ty: _,
+            ty,
         } => {
-            load_operand_wasm(lhs, writer, vreg_to_local)?;
-            load_operand_wasm(rhs, writer, vreg_to_local)?;
-
-            emit_int_binary_op(op, writer)?;
-
-            if let Register::Virtual(vreg) = dst {
-                store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
+            let (_, overflow) =
+                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            if overflow {
+                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+                load_operand_wasm(lhs, writer, vreg_to_local)?;
+                extend_integer_wasm(writer, *ty, true)?;
+                writeln!(writer, "      i64.const {minimum}\n      i64.eq")?;
+                load_operand_wasm(rhs, writer, vreg_to_local)?;
+                extend_integer_wasm(writer, *ty, true)?;
+                writeln!(
+                    writer,
+                    "      i64.const -1\n      i64.eq\n      i32.and\n      if\n        unreachable\n      end"
+                )?;
             }
+            let unsigned = matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr);
+            load_operand_wasm(lhs, writer, vreg_to_local)?;
+            extend_integer_wasm(writer, *ty, !unsigned)?;
+            load_operand_wasm(rhs, writer, vreg_to_local)?;
+            if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) {
+                writeln!(
+                    writer,
+                    "      i64.const {}\n      i64.and",
+                    ty.size_bytes() * 8 - 1
+                )?;
+            } else {
+                extend_integer_wasm(writer, *ty, !unsigned)?;
+            }
+            emit_int_binary_op(op, writer)?;
+            extend_integer_wasm(writer, *ty, true)?;
+            store_to_register_wasm(dst, writer, vreg_to_local)?;
         }
         MirInst::IntCmp {
             op,

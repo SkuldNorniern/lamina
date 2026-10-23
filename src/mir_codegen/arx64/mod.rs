@@ -201,6 +201,36 @@ fn emit_instruction<W: Write>(
             ensure_gpr_scalar(ty)?;
             emit_operand_to_reg(writer, lhs, SCR0, stack)?;
             emit_operand_to_reg(writer, rhs, SCR1, stack)?;
+            let unsigned = matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr);
+            extend_integer(writer, SCR0, *ty, !unsigned)?;
+            if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) {
+                emit_li(writer, SCR2, (ty.size_bytes() * 8 - 1) as i64)?;
+                writeln!(writer, "    and {SCR1}, {SCR1}, {SCR2}").map_err(io_error)?;
+            } else {
+                extend_integer(writer, SCR1, *ty, !unsigned)?;
+            }
+            let (zero, overflow) =
+                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            if zero {
+                let safe = unique_local("div_nonzero");
+                writeln!(writer, "    bne {SCR1}, r0, {safe}\n    ebreak\n{safe}:")
+                    .map_err(io_error)?;
+            }
+            if overflow {
+                let safe = unique_local("div_no_overflow");
+                emit_li(writer, SCR2, -1)?;
+                writeln!(writer, "    bne {SCR1}, {SCR2}, {safe}").map_err(io_error)?;
+                emit_li(
+                    writer,
+                    SCR2,
+                    ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1)),
+                )?;
+                writeln!(
+                    writer,
+                    "    bne {SCR0}, {SCR2}, {safe}\n    ebreak\n{safe}:"
+                )
+                .map_err(io_error)?;
+            }
             let mnemonic = match op {
                 IntBinOp::Add => "add",
                 IntBinOp::Sub => "sub",
@@ -217,6 +247,7 @@ fn emit_instruction<W: Write>(
                 IntBinOp::AShr => "sra",
             };
             writeln!(writer, "    {mnemonic} {SCR2}, {SCR0}, {SCR1}").map_err(io_error)?;
+            extend_integer(writer, SCR2, *ty, true)?;
             store_reg_to_dst(writer, SCR2, dst, stack)
         }
         Instruction::IntCmp {
@@ -653,6 +684,21 @@ fn sanitize(s: &str) -> String {
             }
         })
         .collect()
+}
+
+fn extend_integer<W: Write>(
+    writer: &mut W,
+    register: &str,
+    ty: MirType,
+    signed: bool,
+) -> Result<(), LaminaError> {
+    if ty.size_bytes() < 8 {
+        let scratch = if register == SCR2 { SCR1 } else { SCR2 };
+        emit_li(writer, scratch, (64 - ty.size_bytes() * 8) as i64)?;
+        let right = if signed { "sra" } else { "srl" };
+        writeln!(writer, "    sll {register}, {register}, {scratch}\n    {right} {register}, {register}, {scratch}").map_err(io_error)?;
+    }
+    Ok(())
 }
 
 fn unique_local(prefix: &str) -> String {

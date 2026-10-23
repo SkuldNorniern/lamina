@@ -178,9 +178,7 @@ impl Kernel {
                                 return Err(error("PTX shifts require a matching immediate count"));
                             }
                         };
-                        if !(0..bits as i64).contains(&shift) {
-                            return Err(error("PTX shift count must be below the value width"));
-                        }
+                        let shift = shift & (bits as i64 - 1);
                         let mnemonic = match op {
                             IntBinOp::Shl => format!("shl.b{bits}"),
                             IntBinOp::LShr => format!("shr.u{bits}"),
@@ -472,7 +470,6 @@ mod emission_tests {
         for source in [
             "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = div.i32 %a, 2\nret.void\n}",
             "@kernel fn @bad(i64 %a) -> void {\nentry:\n%x = shl.i64 %a, %a\nret.void\n}",
-            "@kernel fn @bad(i64 %a) -> void {\nentry:\n%x = shl.i64 %a, 64\nret.void\n}",
             "@kernel fn @bad(f32 %a) -> void {\nentry:\nret.void\n}",
             "@kernel fn @bad() -> void {\nentry:\n%p = alloc.stack i64\nret.void\n}",
         ] {
@@ -481,6 +478,38 @@ mod emission_tests {
             let mut output = Vec::new();
             assert!(ptx::emit(&mir, &mut output).is_err());
             assert!(output.is_empty());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn gpu_immediate_shifts_mask_counts() -> Result<(), Box<dyn Error>> {
+        use crate::{
+            mir::codegen::from_ir,
+            mir_codegen::{amdgpu, ptx},
+            parser::parse_module,
+        };
+        for (width, count) in [(32, 32), (32, 1025), (64, 64), (64, 4097)] {
+            let source = format!(
+                "@kernel fn @shift(i{width} %a) -> void {{\nentry:\n%x = shl.i{width} %a, {count}\nret.void\n}}"
+            );
+            let ir = parse_module(&source)?;
+            let mir = from_ir(&ir, "masked_shift").map_err(|error| format!("{error:?}"))?;
+            let mut output = Vec::new();
+            ptx::emit(&mir, &mut output)?;
+            let assembly = String::from_utf8(output)?;
+            assert!(
+                assembly.contains(&format!(", {};", count & (width - 1))),
+                "{assembly}"
+            );
+            let mut output = Vec::new();
+            amdgpu::emit(&mir, &mut output)?;
+            let assembly = String::from_utf8(output)?;
+            assert!(
+                assembly.lines().any(|line| line.contains("v_lshlrev")
+                    && line.contains(&format!(", {},", count & (width - 1)))),
+                "{assembly}"
+            );
         }
         Ok(())
     }

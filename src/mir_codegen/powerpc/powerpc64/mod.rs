@@ -573,6 +573,27 @@ fn emit_instruction_ppc64<W: Write>(
                 extend_integer(writer, "3", ty, false)?;
                 extend_integer(writer, "4", ty, false)?;
             }
+            if matches!(op, IntBinOp::SDiv | IntBinOp::SRem | IntBinOp::AShr) {
+                extend_integer(writer, "3", ty, true)?;
+                if !matches!(op, IntBinOp::AShr) {
+                    extend_integer(writer, "4", ty, true)?;
+                }
+            }
+            let (zero, overflow) =
+                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            if zero {
+                writeln!(writer, "    tdi 4, 4, 0")?;
+            }
+            if overflow {
+                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+                writeln!(writer, "    cmpdi 4, -1\n    bne 2f")?;
+                emit_load_imm64(writer, 5, minimum)?;
+                writeln!(writer, "    td 4, 3, 5\n2:")?;
+            }
+            if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) {
+                let clear = 64 - (ty.size_bytes() * 8).trailing_zeros();
+                writeln!(writer, "    clrldi 4, 4, {clear}")?;
+            }
             match op {
                 IntBinOp::Add => writeln!(writer, "    add 3, 3, 4")?,
                 IntBinOp::Sub => writeln!(writer, "    sub 3, 3, 4")?,
