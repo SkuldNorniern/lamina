@@ -1,8 +1,8 @@
 #![allow(dead_code, clippy::expect_used)]
 use crate::{
     mir::{
-        AddressMode, AddressSpace, Block, Function, Instruction, IntBinOp, MemoryAttrs, MirType,
-        Module, Operand, Parameter, Register, ScalarType, Signature, VectorLane, VectorOp,
+        AddressMode, AddressSpace, Block, Function, Immediate, Instruction, IntBinOp, MemoryAttrs,
+        MirType, Module, Operand, Parameter, Register, ScalarType, Signature, VectorLane, VectorOp,
         VectorType, VirtualReg,
     },
     mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
@@ -357,7 +357,7 @@ pub fn immediate(f: &mut Function, lane: VectorLane) {
         VectorLane::F32 => Operand::imm_f32(-2.5),
         VectorLane::F64 => Operand::imm_f64(-2.5),
         VectorLane::I8 => Operand::imm_i8(-123),
-        VectorLane::I16 => Operand::Immediate(crate::mir::Immediate::I16(-123)),
+        VectorLane::I16 => Operand::Immediate(Immediate::I16(-123)),
         VectorLane::I32 => Operand::imm_i32(-123),
         _ => Operand::imm_i64(-123),
     };

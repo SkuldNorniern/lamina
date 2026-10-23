@@ -31,7 +31,7 @@ const STRICT_CONFIG: VerificationConfig = VerificationConfig {
     verify_register_classes: true,
     verify_immediate_widths: true,
 };
-const PIPELINE_CONFIG: VerificationConfig = VerificationConfig {
+const PHI_LOWERED_CONFIG: VerificationConfig = VerificationConfig {
     verify_terminator_placement: true,
     verify_ssa: false,
     verify_dominance: false,
@@ -39,6 +39,123 @@ const PIPELINE_CONFIG: VerificationConfig = VerificationConfig {
     verify_register_classes: false,
     verify_immediate_widths: true,
 };
+
+const PRE_PHI_CONFIG: VerificationConfig = VerificationConfig {
+    verify_ssa: true,
+    verify_dominance: true,
+    ..PHI_LOWERED_CONFIG
+};
+
+/// Phi definitions and edge uses retained until edge-copy insertion.
+pub struct PhiVerification {
+    pub block: String,
+    pub dst: Register,
+    pub ty: MirType,
+    pub incoming: Vec<(String, Operand)>,
+}
+
+/// Verify typed SSA before edge copies, exempting source-declared reassignments.
+/// Reassignment exemptions must come from source definitions, never verification failures.
+pub fn verify_before_phi_lowering(
+    function: &Function,
+    phis: &[PhiVerification],
+    reassignments: &HashSet<Register>,
+) -> Result<(), Vec<String>> {
+    let config = PRE_PHI_CONFIG;
+    let mut errors = Vec::new();
+    let block_indices = verify_structure(function, config, &mut errors);
+    let mut definitions = collect_definitions(function, PHI_LOWERED_CONFIG, None, &mut errors);
+    for phi in phis {
+        if let Some(&block_index) = block_indices.get(phi.block.as_str()) {
+            definitions
+                .entry(phi.dst.clone())
+                .or_default()
+                .push(Definition {
+                    block_index,
+                    instruction_index: None,
+                    ty: Some(phi.ty),
+                });
+        } else {
+            errors.push(format!("expected phi block '{}' to exist", phi.block));
+        }
+    }
+    verify_unique_definitions(function, &definitions, config, reassignments, &mut errors);
+    let dominators = calculate_dominators(function, &block_indices);
+    verify_dominance(function, &definitions, &dominators, &mut errors);
+    verify_instruction_types(function, &definitions, config, None, &mut errors);
+    let mut predecessors: HashMap<&str, HashSet<&str>> = HashMap::new();
+    for block in &function.blocks {
+        if let Some(terminator) = block.instructions.last() {
+            for target in instruction_targets(terminator) {
+                predecessors.entry(target).or_default().insert(&block.label);
+            }
+        }
+    }
+    for phi in phis {
+        let mut incoming = HashSet::new();
+        for (predecessor, operand) in &phi.incoming {
+            if !incoming.insert(predecessor.as_str()) {
+                errors.push(location(
+                    function,
+                    &phi.block,
+                    format!("expected unique phi predecessor, found duplicate '{predecessor}'"),
+                ));
+            }
+            let Some(&index) = block_indices.get(predecessor.as_str()) else {
+                errors.push(format!("expected phi predecessor '{predecessor}' to exist"));
+                continue;
+            };
+            let block = &function.blocks[index];
+            if !block
+                .instructions
+                .last()
+                .is_some_and(|term| instruction_targets(term).contains(&phi.block.as_str()))
+            {
+                errors.push(location(
+                    function,
+                    predecessor,
+                    format!("expected phi predecessor to branch to '{}'", phi.block),
+                ));
+            }
+            verify_operand(
+                operand,
+                phi.ty,
+                "phi incoming",
+                &definitions,
+                config,
+                &mut errors,
+            );
+            if let Operand::Register(register) = operand {
+                let dominates = definitions.get(register).is_some_and(|defs| {
+                    reassignments.contains(register)
+                        || (defs.len() == 1
+                            && (defs[0].block_index == index
+                                || dominators[index]
+                                    .as_ref()
+                                    .is_some_and(|set| set.contains(&defs[0].block_index))))
+                });
+                if !dominates {
+                    errors.push(location(function, predecessor, format!("expected phi incoming register {register} to have a dominating definition")));
+                }
+            }
+        }
+        if predecessors
+            .get(phi.block.as_str())
+            .is_some_and(|expected| *expected != incoming)
+        {
+            errors.push(location(
+                function,
+                &phi.block,
+                "expected phi inputs to cover every predecessor".into(),
+            ));
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
 
 /// Verify one MIR function and return every problem found.
 pub fn verify_function(function: &Function) -> Result<(), Vec<String>> {
@@ -55,10 +172,10 @@ pub fn verify_module(module: &Module) -> Result<(), Vec<String>> {
     module.validate()
 }
 
-/// Verify one MIR function at compiler pipeline boundaries.
+/// Verify phi-lowered MIR at optimizer and backend input boundaries.
 #[doc(hidden)]
 pub fn verify_function_in_pipeline(function: &Function) -> Result<(), Vec<String>> {
-    let errors = function_errors_with_config(function, PIPELINE_CONFIG, None);
+    let errors = function_errors_with_config(function, PHI_LOWERED_CONFIG, None);
     if errors.is_empty() {
         Ok(())
     } else {
@@ -66,14 +183,14 @@ pub fn verify_function_in_pipeline(function: &Function) -> Result<(), Vec<String
     }
 }
 
-/// Verify a MIR module at compiler pipeline boundaries.
+/// Verify phi-lowered modules at optimizer and backend input boundaries.
 #[doc(hidden)]
 pub fn verify_module_in_pipeline(module: &Module) -> Result<(), Vec<String>> {
     let mut errors = Vec::new();
     for function in module.functions.values() {
         errors.extend(function_errors_with_config(
             function,
-            PIPELINE_CONFIG,
+            PHI_LOWERED_CONFIG,
             Some(module),
         ));
     }
@@ -237,8 +354,34 @@ fn collect_definitions(
         }
     }
 
-    for (register, register_definitions) in &definitions {
-        if config.verify_ssa && register_definitions.len() > 1 {
+    if config.verify_register_types {
+        for (register, defs) in &definitions {
+            let mut types = defs.iter().filter_map(|definition| definition.ty);
+            if let Some(first) = types.next()
+                && types.any(|ty| ty != first)
+            {
+                errors.push(location(
+                    function,
+                    &function.entry,
+                    format!("expected register {register} definitions to have consistent types"),
+                ));
+            }
+        }
+    }
+    verify_unique_definitions(function, &definitions, config, &HashSet::new(), errors);
+    definitions
+}
+
+fn verify_unique_definitions(
+    function: &Function,
+    definitions: &HashMap<Register, Vec<Definition>>,
+    config: VerificationConfig,
+    reassignments: &HashSet<Register>,
+    errors: &mut Vec<String>,
+) {
+    for (register, register_definitions) in definitions {
+        if config.verify_ssa && register_definitions.len() > 1 && !reassignments.contains(register)
+        {
             for definition in register_definitions.iter().skip(1) {
                 let block_label = function
                     .blocks
@@ -255,8 +398,6 @@ fn collect_definitions(
             }
         }
     }
-
-    definitions
 }
 
 /// Compute dominator sets by block index; unreachable blocks have no set.
@@ -863,6 +1004,7 @@ fn is_integer_or_pointer(ty: MirType) -> bool {
                 | ScalarType::I32
                 | ScalarType::I64
                 | ScalarType::Ptr
+                | ScalarType::PtrIn(_)
         )
     )
 }
@@ -889,7 +1031,7 @@ fn immediate_matches_type(immediate: Immediate, ty: MirType) -> bool {
             | (Immediate::I32(_), MirType::Scalar(ScalarType::I32))
             | (
                 Immediate::I64(_),
-                MirType::Scalar(ScalarType::I64 | ScalarType::Ptr)
+                MirType::Scalar(ScalarType::I64 | ScalarType::Ptr | ScalarType::PtrIn(_))
             )
             | (Immediate::F32(_), MirType::Scalar(ScalarType::F32))
             | (Immediate::F64(_), MirType::Scalar(ScalarType::F64))
@@ -940,6 +1082,144 @@ mod tests {
             Ok(()) => vec!["function unexpectedly passed verification".to_string()],
             Err(errors) => errors,
         }
+    }
+
+    fn pre_phi_errors(function: Function) -> Vec<String> {
+        let mut module = Module::new("pre_phi");
+        module.add_function(function);
+        verify_before_phi_lowering(&module.functions["f"], &[], &HashSet::new())
+            .err()
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn pre_phi_rejects_duplicate_definitions_and_non_dominating_uses() {
+        let duplicate = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), MirType::i64())
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(0).into(),
+                src: Operand::imm_i64(1),
+            })
+            .instr(Instruction::Ret { value: None })
+            .build();
+        assert!(
+            pre_phi_errors(duplicate)
+                .iter()
+                .any(|e| e.contains("defined once"))
+        );
+        let forward = FunctionBuilder::new("f")
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(1).into(),
+                src: Operand::v_gpr(0),
+            })
+            .instr(Instruction::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(0).into(),
+                src: Operand::imm_i64(1),
+            })
+            .instr(Instruction::Ret { value: None })
+            .build();
+        assert!(
+            pre_phi_errors(forward)
+                .iter()
+                .any(|e| e.contains("non-dominating"))
+        );
+    }
+
+    #[test]
+    fn pre_phi_reassignment_exemptions_do_not_cover_temporaries() {
+        let function = FunctionBuilder::new("f")
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(0).into(),
+                src: Operand::imm_i64(0),
+            })
+            .instr(Instruction::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(0).into(),
+                src: Operand::imm_i64(1),
+            })
+            .instr(Instruction::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(1).into(),
+                src: Operand::imm_i64(2),
+            })
+            .instr(Instruction::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(1).into(),
+                src: Operand::imm_i64(3),
+            })
+            .instr(Instruction::Ret { value: None })
+            .build();
+        let reassignments = HashSet::from([VirtualReg::gpr(0).into()]);
+        let errors = verify_before_phi_lowering(&function, &[], &reassignments)
+            .err()
+            .unwrap_or_default();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert!(errors[0].contains("v1 to be defined once"), "{errors:?}");
+    }
+
+    #[test]
+    fn phi_inputs_are_checked_on_predecessor_edges() {
+        let function = FunctionBuilder::new("f")
+            .returns(MirType::i64())
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "merge".into(),
+            })
+            .block("merge")
+            .instr(Instruction::Ret {
+                value: Some(Operand::v_gpr(0)),
+            })
+            .build();
+        let mut phi = PhiVerification {
+            block: "merge".into(),
+            dst: VirtualReg::gpr(0).into(),
+            ty: MirType::i64(),
+            incoming: vec![("entry".into(), Operand::imm_i64(1))],
+        };
+        assert!(verify_before_phi_lowering(&function, &[phi], &HashSet::new()).is_ok());
+        phi = PhiVerification {
+            block: "merge".into(),
+            dst: VirtualReg::gpr(0).into(),
+            ty: MirType::i64(),
+            incoming: vec![("entry".into(), Operand::v_gpr(0))],
+        };
+        let errors = verify_before_phi_lowering(&function, &[phi], &HashSet::new())
+            .err()
+            .unwrap_or_default();
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("phi incoming register") && e.contains("dominating")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn pipeline_rejects_integer_immediate_width_mismatch() {
+        let mut module = Module::new("width");
+        module.add_function(
+            FunctionBuilder::new("f")
+                .block("entry")
+                .instr(Instruction::Copy {
+                    ty: MirType::i8(),
+                    dst: VirtualReg::gpr(0).into(),
+                    src: Operand::imm_i64(1),
+                })
+                .instr(Instruction::Ret { value: None })
+                .build(),
+        );
+        let errors = module.validate_in_pipeline().err().unwrap_or_default();
+        assert!(
+            errors.iter().any(|e| e.contains("match type i8")),
+            "{errors:?}"
+        );
     }
 
     #[test]

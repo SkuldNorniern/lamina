@@ -624,6 +624,13 @@ mod tests {
 
         builder
             .function("test", i64_ty.clone())
+            .binary(
+                ir::instruction::BinaryOp::Add,
+                "v0",
+                ir::types::PrimitiveType::I64,
+                ir::builder::i64(0),
+                ir::builder::i64(0),
+            )
             .jump("loop")
             .block("loop")
             .binary(
