@@ -963,16 +963,11 @@ fn emit_instruction_wasm(
             }
         }
         MirInst::TailCall { name, args } => {
-            // WASM does not have a guaranteed tail-call instruction in baseline WAT,
-            // so we emit a normal return_call if the target is known, otherwise
-            // a regular call followed by return.
-            for (i, arg) in args.iter().enumerate() {
-                let _ = i;
+            for arg in args.iter() {
                 load_operand_wasm(arg, writer, vreg_to_local)?;
             }
             release_stack_frame(writer, frame)?;
-            writeln!(writer, "        call ${name}")?;
-            writeln!(writer, "        return")?;
+            writeln!(writer, "        return_call ${name}")?;
         }
         MirInst::Unreachable => {
             writeln!(writer, "        unreachable")?;
@@ -995,8 +990,8 @@ fn emit_instruction_wasm(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::compile_lamina_ir_to_target_assembly;
-    use crate::mir::FunctionBuilder;
+    use crate::mir::{FunctionBuilder, TransformPipeline, codegen::from_ir};
+    use crate::parser::parse_module;
     use std::{env, fs, process::Command};
 
     #[test]
@@ -1082,9 +1077,14 @@ instance = linker.instantiate(store, module)
 print('main returned', instance.exports(store)['main'](store))
 "#;
 
-    fn run_wasm_main(test_name: &str, source: &str) -> String {
+    fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> String {
+        let ir = parse_module(source).expect("source should parse");
+        let mut mir = from_ir(&ir, "module").expect("source should lower");
+        TransformPipeline::default_for_opt_level(opt_level)
+            .apply_to_module(&mut mir)
+            .expect("transforms should apply");
         let mut wat = Vec::new();
-        compile_lamina_ir_to_target_assembly(source, &mut wat, "wasm32_unknown", 1)
+        generate_mir_wasm(&mir, &mut wat, TargetOperatingSystem::Unknown)
             .expect("WASM codegen should succeed");
         let dir = env::temp_dir().join(format!("lamina-wasm-{test_name}-{}", id()));
         fs::create_dir_all(&dir).expect("create test dir");
@@ -1112,6 +1112,7 @@ print('main returned', instance.exports(store)['main'](store))
         let stdout = run_wasm_main(
             "slots",
             "fn @main() -> i64 {\nentry:\n %p = alloc.stack i64\n %q = alloc.stack i64\n store.i64 %p, 11\n store.i64 %q, 22\n %x = load.i64 %p\n print %x\n ret.i64 0\n}",
+            0,
         );
         assert_eq!(stdout, "11\nmain returned 0\n");
     }
@@ -1121,6 +1122,7 @@ print('main returned', instance.exports(store)['main'](store))
         let stdout = run_wasm_main(
             "recursive",
             "fn @rec(i64 %n) -> i64 {\nentry:\n %p = alloc.stack i64\n store.i64 %p, %n\n %c = eq.i64 %n, 0\n br %c, base, step\nbase:\n ret.i64 0\nstep:\n %m = sub.i64 %n, 1\n %r = call @rec(%m)\n %x = load.i64 %p\n %s = add.i64 %x, %r\n ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n %r = call @rec(3)\n ret.i64 %r\n}",
+            0,
         );
         assert_eq!(stdout, "main returned 6\n");
     }
@@ -1130,6 +1132,7 @@ print('main returned', instance.exports(store)['main'](store))
         let stdout = run_wasm_main(
             "release",
             "fn @leaf(i64 %n) -> i64 {\nentry:\n %p = alloc.stack i64\n store.i64 %p, %n\n %x = load.i64 %p\n ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n %i = add.i64 0, 0\n jmp loop\nloop:\n %r = call @leaf(%i)\n %i = add.i64 %i, 1\n %c = lt.i64 %i, 6000\n br %c, loop, done\ndone:\n ret.i64 %i\n}",
+            0,
         );
         assert_eq!(stdout, "main returned 6000\n");
     }
@@ -1139,6 +1142,7 @@ print('main returned', instance.exports(store)['main'](store))
         let stdout = run_wasm_main(
             "cmp8",
             "fn @main() -> i64 {\nentry:\n %p = alloc.stack i8\n store.i8 %p, -1\n %x = load.i8 %p\n %a = lt.i8 %x, 0\n print %a\n %b = eq.i8 %x, -1\n print %b\n %c = lt.u8 %x, 1\n print %c\n %d = gt.i8 %x, -2\n print %d\n %e = gt.u8 %x, 1\n print %e\n %f = add.i8 %x, 0\n %g = lt.i8 %f, 0\n print %g\n ret.i64 0\n}",
+            0,
         );
         assert_eq!(stdout, "1\n1\n0\n1\n1\n1\nmain returned 0\n");
     }
@@ -1148,7 +1152,30 @@ print('main returned', instance.exports(store)['main'](store))
         let stdout = run_wasm_main(
             "cmpwidths",
             "fn @main() -> i64 {\nentry:\n %p8 = alloc.stack i8\n %p16 = alloc.stack i16\n %p32 = alloc.stack i32\n store.i8 %p8, -128\n store.i16 %p16, -32768\n store.i32 %p32, -2147483648\n %a8 = load.i8 %p8\n %a16 = load.i16 %p16\n %a32 = load.i32 %p32\n %s8 = lt.i8 %a8, 0\n print %s8\n %s16 = lt.i16 %a16, 0\n print %s16\n %s32 = le.i32 %a32, -2147483648\n print %s32\n %u8 = lt.u8 %a8, 127\n print %u8\n %u16 = gt.u16 %a16, 32767\n print %u16\n %e8 = eq.i8 %a8, -128\n print %e8\n %c8 = add.i8 %a8, 0\n %g8 = gt.i8 %c8, -127\n print %g8\n ret.i64 0\n}",
+            0,
         );
         assert_eq!(stdout, "1\n1\n1\n0\n1\n1\n0\nmain returned 0\n");
+    }
+
+    #[test]
+    fn entry_block_runs_first_after_block_reordering() {
+        for opt_level in [0, 1, 2] {
+            let stdout = run_wasm_main(
+                "entry_block",
+                "fn @main() -> i64 {\nentry:\n %v = readbyte\n %c = eq.i64 %v, 1\n br %c, a_wrong, z_right\na_wrong:\n ret.i64 7\nz_right:\n ret.i64 9\n}",
+                opt_level,
+            );
+            assert_eq!(stdout, "main returned 9\n", "opt level {opt_level}");
+        }
+    }
+
+    #[test]
+    fn optimized_tail_calls_run_in_constant_stack() {
+        let stdout = run_wasm_main(
+            "tail_calls",
+            "fn @count(i64 %n) -> i64 {\nentry:\n %c = eq.i64 %n, 0\n br %c, done, step\ndone:\n ret.i64 42\nstep:\n %m = sub.i64 %n, 1\n %r = call @count(%m)\n ret.i64 %r\n}\nfn @main() -> i64 {\nentry:\n %r = call @count(1000000)\n ret.i64 %r\n}",
+            2,
+        );
+        assert_eq!(stdout, "main returned 42\n");
     }
 }
