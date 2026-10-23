@@ -60,7 +60,10 @@ pub(super) fn emit_instruction_x86_64(
         return Ok(());
     }
     match inst {
-        MirInst::Copy { ty, dst, src } => {
+        MirInst::Copy { ty, dst, src }
+        | MirInst::Bitcast {
+            to: ty, dst, src, ..
+        } => {
             if matches!(ty, MirType::Vector(_)) {
                 return Err(LaminaError::ValidationError(format!(
                     "x86_64 backend does not support vector Copy of type {ty}"
@@ -1408,7 +1411,7 @@ mod narrow_integer_tests {
                 main = main
                     .instr(operation)
                     .instr(Instruction::IntConvert {
-                        from: if binary.is_some() { ty } else { MirType::i8() },
+                        from: if binary.is_some() { ty } else { MirType::i1() },
                         to: MirType::i64(),
                         signed: false,
                         dst: wide.clone(),

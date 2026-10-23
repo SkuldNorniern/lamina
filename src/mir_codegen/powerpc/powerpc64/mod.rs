@@ -514,7 +514,10 @@ fn emit_instruction_ppc64<W: Write>(
         return Ok(());
     }
     match inst {
-        MirInst::Copy { ty, dst, src } => {
+        MirInst::Copy { ty, dst, src }
+        | MirInst::Bitcast {
+            to: ty, dst, src, ..
+        } => {
             if matches!(ty, MirType::Vector(_)) {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     format!("PowerPC64 backend does not support vector Copy of type {ty}"),

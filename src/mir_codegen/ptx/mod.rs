@@ -113,6 +113,15 @@ impl Kernel {
     fn instruction(&mut self, instruction: &Instruction) -> Result<(), LaminaError> {
         match instruction {
             Instruction::Ret { value: None } => writeln!(self.body, "    ret;")?,
+            Instruction::Bitcast { from, to, dst, src } => {
+                let source = self.operand(src, *from)?;
+                let destination = self.allocate(dst, *to)?;
+                writeln!(
+                    self.body,
+                    "    mov.b{} {destination}, {source};",
+                    width(*to)?
+                )?;
+            }
             Instruction::Copy { ty, dst, src } => {
                 let source = self.operand(src, *ty)?;
                 let dst = self.allocate(dst, *ty)?;

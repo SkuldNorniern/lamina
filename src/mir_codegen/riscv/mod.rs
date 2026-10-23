@@ -663,7 +663,10 @@ fn emit_instruction_riscv<W: Write>(
             simd::emit(inst, writer, reg_alloc, stack_slots, ctx.target)?
         }
 
-        MirInst::Copy { ty, dst, src } => {
+        MirInst::Copy { ty, dst, src }
+        | MirInst::Bitcast {
+            to: ty, dst, src, ..
+        } => {
             if ctx.target.xlen == Xlen::Rv32 && *ty == MirType::f64() {
                 load_fp_operand_to_register(src, writer, reg_alloc, stack_slots, "fa0", false)?;
                 let Register::Virtual(dst) = dst else {
@@ -1523,6 +1526,15 @@ mod tests {
         });
         let mut id = 4;
         for ty in [MirType::i8(), MirType::i16(), MirType::i32()] {
+            let input = id;
+            instructions.push(MirInst::IntConvert {
+                from: MirType::i32(),
+                to: ty,
+                signed: false,
+                dst: reg(input),
+                src: operand(1),
+            });
+            id += 1;
             for op in [
                 IntBinOp::Add,
                 IntBinOp::Sub,
@@ -1542,7 +1554,7 @@ mod tests {
                     op,
                     ty,
                     dst: reg(id),
-                    lhs: operand(1),
+                    lhs: operand(input),
                     rhs: Operand::Immediate(Immediate::I32(2)),
                 });
                 id += 1;
@@ -1571,6 +1583,11 @@ mod tests {
         instructions.push(MirInst::Ret {
             value: Some(Operand::Immediate(Immediate::I32(0))),
         });
+        for block in &mut function.blocks {
+            for instruction in &mut block.instructions {
+                instruction.normalize_integer_immediates(function.sig.ret_ty);
+            }
+        }
         module.add_function(function);
         for allocator in [
             RegallocStrategy::Incremental,

@@ -468,7 +468,10 @@ fn emit_instruction_wasm(
             simd::emit(inst, writer, vreg_to_local)?
         }
 
-        MirInst::Copy { ty, dst, src } => {
+        MirInst::Copy { ty, dst, src }
+        | MirInst::Bitcast {
+            to: ty, dst, src, ..
+        } => {
             if matches!(ty, MirType::Vector(_)) {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     format!("WASM backend does not support vector Copy of type {ty}"),

@@ -261,7 +261,9 @@ fn convert_function<'a>(
                 mir_instr.normalize_integer_immediates(mir_func.sig.ret_ty);
                 if let Some(dst) = mir_instr.def_reg() {
                     let ty = match &mir_instr {
-                        Instruction::IntConvert { to, .. } => Some(*to),
+                        Instruction::IntConvert { to, .. } | Instruction::Bitcast { to, .. } => {
+                            Some(*to)
+                        }
                         Instruction::Copy { ty, .. }
                         | Instruction::IntBinary { ty, .. }
                         | Instruction::FloatBinary { ty, .. }
@@ -935,6 +937,12 @@ fn convert_instruction<'a>(
                 offset: 0,
                 address_space: Default::default(),
             };
+            let src = match (mir_ty, src) {
+                (MirType::Scalar(ScalarType::F32), Operand::Immediate(Immediate::F64(value))) => {
+                    Operand::imm_f32(value as f32)
+                }
+                (_, operand) => operand,
+            };
             Ok(vec![Instruction::Store {
                 ty: mir_ty,
                 src,
@@ -1006,39 +1014,18 @@ fn convert_instruction<'a>(
                 return Err(FromIRError::UnsupportedType);
             }
 
-            match value {
-                IRVal::Variable(id) => {
-                    // Reuse the same MIR register for the result; MIR is untyped and the
-                    // backend will see the result type through later uses.
-                    let src_reg = resolve_or_alloc_gpr(id, vreg_alloc, var_to_reg);
-                    var_to_reg.insert(*result, src_reg);
-                    Ok(vec![])
-                }
-                IRVal::Constant(lit) => {
-                    let mir_ty = map_ir_prim(*target_type)?;
-                    let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-
-                    let imm = match (source_type, target_type, lit) {
-                        (IRPrim::F32, IRPrim::I32, IRLit::F32(v)) => {
-                            Immediate::I32(v.to_bits() as i32)
-                        }
-                        (IRPrim::F64, IRPrim::I64, IRLit::F64(v)) => {
-                            Immediate::I64(v.to_bits() as i64)
-                        }
-                        (IRPrim::I32, IRPrim::F32, IRLit::I32(v)) => Immediate::I32(*v),
-                        (IRPrim::I64, IRPrim::F64, IRLit::I64(v)) => Immediate::I64(*v),
-                        _ => return Err(FromIRError::UnsupportedInstruction),
-                    };
-
-                    Ok(vec![Instruction::Copy {
-                        ty: mir_ty,
-                        dst,
-                        src: Operand::Immediate(imm),
-                    }])
-                }
-                IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
-            }
+            let from = map_ir_prim(*source_type)?;
+            let to = map_ir_prim(*target_type)?;
+            let src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let dst =
+                Register::Virtual(match reg_class_for_type(&IRType::Primitive(*target_type)) {
+                    RegisterClass::Fpr => vreg_alloc.allocate_fpr(),
+                    _ => vreg_alloc.allocate_gpr(),
+                });
+            var_to_reg.insert(result, dst.clone());
+            Ok(vec![Instruction::Bitcast { from, to, dst, src }])
         }
+
         IRInst::Select {
             result,
             ty,

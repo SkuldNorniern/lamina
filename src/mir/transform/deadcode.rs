@@ -242,6 +242,7 @@ impl DeadCodeElimination {
             | Instruction::Select { .. }
             | Instruction::VectorOp { .. }
             | Instruction::IntConvert { .. }
+            | Instruction::Bitcast { .. }
             | Instruction::StackAddr { .. }
                 | Instruction::Lea { .. } => true,
 
