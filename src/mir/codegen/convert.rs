@@ -258,6 +258,19 @@ fn convert_function<'a>(
                 var_to_reg.insert(result, fresh);
             }
             for mut mir_instr in mir_instrs {
+                if let Instruction::Call { name, args, .. } = &mut mir_instr
+                    && let Some(callee) = module.functions.get(name.as_str())
+                {
+                    for (argument, parameter) in args.iter_mut().zip(&callee.signature.params) {
+                        let ty = map_ir_type(&parameter.ty)?;
+                        argument.normalize_integer_immediate(ty);
+                        if ty == MirType::f32()
+                            && let Operand::Immediate(Immediate::F64(value)) = argument
+                        {
+                            *argument = Operand::imm_f32(*value as f32);
+                        }
+                    }
+                }
                 mir_instr.normalize_integer_immediates(mir_func.sig.ret_ty);
                 if let Some(dst) = mir_instr.def_reg() {
                     let ty = match &mir_instr {
@@ -271,6 +284,10 @@ fn convert_function<'a>(
                         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
                             Some(MirType::i1())
                         }
+                        Instruction::Call { name, .. } => module
+                            .functions
+                            .get(name.as_str())
+                            .and_then(|callee| map_ir_type(&callee.signature.return_type).ok()),
                         Instruction::Lea { .. } | Instruction::StackAddr { .. } => {
                             Some(MirType::ptr())
                         }

@@ -42,7 +42,7 @@ const PIPELINE_CONFIG: VerificationConfig = VerificationConfig {
 
 /// Verify one MIR function and return every problem found.
 pub fn verify_function(function: &Function) -> Result<(), Vec<String>> {
-    let errors = function_errors_with_config(function, STRICT_CONFIG);
+    let errors = function_errors_with_config(function, STRICT_CONFIG, None);
     if errors.is_empty() {
         Ok(())
     } else {
@@ -58,7 +58,7 @@ pub fn verify_module(module: &Module) -> Result<(), Vec<String>> {
 /// Verify one MIR function at compiler pipeline boundaries.
 #[doc(hidden)]
 pub fn verify_function_in_pipeline(function: &Function) -> Result<(), Vec<String>> {
-    let errors = function_errors_with_config(function, PIPELINE_CONFIG);
+    let errors = function_errors_with_config(function, PIPELINE_CONFIG, None);
     if errors.is_empty() {
         Ok(())
     } else {
@@ -71,7 +71,11 @@ pub fn verify_function_in_pipeline(function: &Function) -> Result<(), Vec<String
 pub fn verify_module_in_pipeline(module: &Module) -> Result<(), Vec<String>> {
     let mut errors = Vec::new();
     for function in module.functions.values() {
-        errors.extend(function_errors_with_config(function, PIPELINE_CONFIG));
+        errors.extend(function_errors_with_config(
+            function,
+            PIPELINE_CONFIG,
+            Some(module),
+        ));
     }
     if errors.is_empty() {
         Ok(())
@@ -80,19 +84,23 @@ pub fn verify_module_in_pipeline(module: &Module) -> Result<(), Vec<String>> {
     }
 }
 
-pub(crate) fn function_errors(function: &Function) -> Vec<String> {
-    function_errors_with_config(function, STRICT_CONFIG)
+pub(crate) fn function_errors(function: &Function, module: &Module) -> Vec<String> {
+    function_errors_with_config(function, STRICT_CONFIG, Some(module))
 }
 
-fn function_errors_with_config(function: &Function, config: VerificationConfig) -> Vec<String> {
+fn function_errors_with_config(
+    function: &Function,
+    config: VerificationConfig,
+    module: Option<&Module>,
+) -> Vec<String> {
     let mut errors = Vec::new();
     let block_indices = verify_structure(function, config, &mut errors);
-    let definitions = collect_definitions(function, config, &mut errors);
+    let definitions = collect_definitions(function, config, module, &mut errors);
     if config.verify_dominance {
         let dominators = calculate_dominators(function, &block_indices);
         verify_dominance(function, &definitions, &dominators, &mut errors);
     }
-    verify_instruction_types(function, &definitions, config, &mut errors);
+    verify_instruction_types(function, &definitions, config, module, &mut errors);
     errors
 }
 
@@ -184,6 +192,7 @@ fn verify_structure<'a>(
 fn collect_definitions(
     function: &Function,
     config: VerificationConfig,
+    module: Option<&Module>,
     errors: &mut Vec<String>,
 ) -> HashMap<Register, Vec<Definition>> {
     let mut definitions: HashMap<Register, Vec<Definition>> = HashMap::new();
@@ -217,7 +226,12 @@ fn collect_definitions(
                     .push(Definition {
                         block_index,
                         instruction_index: Some(instruction_index),
-                        ty: instruction_definition_type(instruction),
+                        ty: match instruction {
+                            Instruction::Call { name, .. } => module
+                                .and_then(|m| m.functions.get(name))
+                                .and_then(|callee| callee.sig.ret_ty),
+                            _ => instruction_definition_type(instruction),
+                        },
                     });
             }
         }
@@ -383,12 +397,49 @@ fn verify_instruction_types(
     function: &Function,
     definitions: &HashMap<Register, Vec<Definition>>,
     config: VerificationConfig,
+    module: Option<&Module>,
     errors: &mut Vec<String>,
 ) {
     for block in &function.blocks {
         for (instruction_index, instruction) in block.instructions.iter().enumerate() {
             let mut instruction_errors = Vec::new();
             match instruction {
+                Instruction::Call { name, args, .. } | Instruction::TailCall { name, args } => {
+                    if let Some(callee) = module.and_then(|m| m.functions.get(name)) {
+                        let op = if matches!(instruction, Instruction::TailCall { .. }) {
+                            "tailcall"
+                        } else {
+                            "call"
+                        };
+                        if args.len() != callee.sig.params.len() {
+                            instruction_errors.push(format!(
+                                "expected {op} '{name}' to have {} arguments, found {}",
+                                callee.sig.params.len(),
+                                args.len()
+                            ));
+                        }
+                        for (index, (argument, parameter)) in
+                            args.iter().zip(&callee.sig.params).enumerate()
+                        {
+                            verify_operand(
+                                argument,
+                                parameter.ty,
+                                &format!("{op} '{name}' argument {index}"),
+                                definitions,
+                                config,
+                                &mut instruction_errors,
+                            );
+                        }
+                        match instruction {
+                            Instruction::Call { ret: Some(dst), .. } => match callee.sig.ret_ty {
+                                Some(ty) => verify_destination(dst, ty, "call result", config, &mut instruction_errors),
+                                None => instruction_errors.push(format!("expected void call '{name}' to have no result")),
+                            },
+                            Instruction::TailCall { .. } if function.sig.ret_ty != callee.sig.ret_ty => instruction_errors.push(format!("expected tailcall '{name}' result {:?} to match caller result {:?}", callee.sig.ret_ty, function.sig.ret_ty)),
+                            _ => {},
+                        }
+                    }
+                }
                 Instruction::Copy { ty, dst, src } => {
                     verify_destination(dst, *ty, "Copy", config, &mut instruction_errors);
                     verify_operand(
@@ -889,6 +940,95 @@ mod tests {
             Ok(()) => vec!["function unexpectedly passed verification".to_string()],
             Err(errors) => errors,
         }
+    }
+
+    #[test]
+    fn signatures_check_call_arguments_results_and_tail_results() {
+        for tail in [false, true] {
+            let mut module = Module::new("calls");
+            module.add_function(
+                FunctionBuilder::new("callee")
+                    .param(VirtualReg::gpr(0).into(), MirType::i32())
+                    .returns(MirType::i32())
+                    .block("entry")
+                    .instr(Instruction::Ret {
+                        value: Some(Operand::v_gpr(0)),
+                    })
+                    .build(),
+            );
+            let call = if tail {
+                Instruction::TailCall {
+                    name: "callee".into(),
+                    args: vec![Operand::v_gpr(0)],
+                }
+            } else {
+                Instruction::Call {
+                    name: "callee".into(),
+                    args: vec![Operand::v_gpr(0)],
+                    ret: Some(VirtualReg::gpr(1).into()),
+                }
+            };
+            let mut caller = FunctionBuilder::new("caller")
+                .param(VirtualReg::gpr(0).into(), MirType::i64())
+                .returns(MirType::i64())
+                .block("entry")
+                .instr(call);
+            if !tail {
+                caller = caller.instr(Instruction::Ret {
+                    value: Some(Operand::v_gpr(1)),
+                });
+            }
+            module.add_function(caller.build());
+            for errors in [
+                module.validate().err().unwrap_or_default(),
+                module.validate_in_pipeline().err().unwrap_or_default(),
+            ] {
+                assert!(
+                    errors
+                        .iter()
+                        .any(|e| e.contains("argument 0") && e.contains("defined as i64")),
+                    "{errors:?}"
+                );
+                assert!(
+                    errors.iter().any(|e| if tail {
+                        e.contains("match caller result")
+                    } else {
+                        e.contains("return value") && e.contains("defined as i32")
+                    }),
+                    "{errors:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn signatures_reject_void_call_destinations() {
+        let mut module = Module::new("void");
+        module.add_function(
+            FunctionBuilder::new("callee")
+                .block("entry")
+                .instr(Instruction::Ret { value: None })
+                .build(),
+        );
+        module.add_function(
+            FunctionBuilder::new("caller")
+                .block("entry")
+                .instr(Instruction::Call {
+                    name: "callee".into(),
+                    args: vec![],
+                    ret: Some(VirtualReg::gpr(0).into()),
+                })
+                .instr(Instruction::Ret { value: None })
+                .build(),
+        );
+        assert!(
+            module
+                .validate_in_pipeline()
+                .err()
+                .unwrap_or_default()
+                .iter()
+                .any(|e| e.contains("void call"))
+        );
     }
 
     #[test]

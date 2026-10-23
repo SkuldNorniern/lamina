@@ -4,7 +4,6 @@
 //! top-level unit of organization in LUMIR and can be compiled independently.
 use crate::{
     function::Function,
-    instruction::Instruction,
     types::MirType,
     verify::{function_errors, verify_module_in_pipeline},
 };
@@ -137,7 +136,7 @@ impl Module {
         let mut errors = Vec::new();
 
         for func in self.functions.values() {
-            errors.extend(function_errors(func));
+            errors.extend(function_errors(func, self));
         }
 
         errors.extend(self.module_errors());
@@ -177,36 +176,7 @@ impl Module {
             }
         }
 
-        errors.extend(self.validate_internal_call_arities());
         errors
-    }
-
-    /// [`Call`](Instruction::Call) / [`TailCall`](Instruction::TailCall) arity vs in-module callee signatures.
-    fn validate_internal_call_arities(&self) -> Vec<String> {
-        let mut out = Vec::new();
-        for (caller_name, caller) in &self.functions {
-            for block in &caller.blocks {
-                for (instruction_index, inst) in block.instructions.iter().enumerate() {
-                    let (op, callee_name, argc) = match inst {
-                        Instruction::Call { name, args, .. } => ("call", name.as_str(), args.len()),
-                        Instruction::TailCall { name, args } => {
-                            ("tailcall", name.as_str(), args.len())
-                        }
-                        _ => continue,
-                    };
-                    if let Some(callee) = self.functions.get(callee_name) {
-                        let expected = callee.sig.params.len();
-                        if argc != expected {
-                            out.push(format!(
-                                "function '{caller_name}', block '{}': instruction {instruction_index}: expected {op} '{callee_name}' to have {expected} arguments, found {argc}",
-                                block.label
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-        out
     }
 }
 
