@@ -966,8 +966,14 @@ fn emit_instruction_wasm(
             for arg in args.iter() {
                 load_operand_wasm(arg, writer, vreg_to_local)?;
             }
-            release_stack_frame(writer, frame)?;
-            writeln!(writer, "        return_call ${name}")?;
+            if frame.size == 0 {
+                writeln!(writer, "        return_call ${name}")?;
+            } else {
+                // Arguments may point into this frame, so it stays live until the callee returns.
+                writeln!(writer, "        call ${name}")?;
+                release_stack_frame(writer, frame)?;
+                writeln!(writer, "        return")?;
+            }
         }
         MirInst::Unreachable => {
             writeln!(writer, "        unreachable")?;
@@ -1167,6 +1173,16 @@ print('main returned', instance.exports(store)['main'](store))
             );
             assert_eq!(stdout, "main returned 9\n", "opt level {opt_level}");
         }
+    }
+
+    #[test]
+    fn tail_call_with_caller_frame_argument_reads_caller_storage() {
+        let stdout = run_wasm_main(
+            "tail_frame_arg",
+            "fn @g(i64 %p, i64 %n) -> i64 {\nentry:\n %c = eq.i64 %n, 0\n br %c, base, step\nbase:\n %q = alloc.stack i64\n store.i64 %q, 99\n %x = load.i64 %p\n %y = load.i64 %q\n %z = add.i64 %x, %y\n ret.i64 %z\nstep:\n %m = sub.i64 %n, 1\n %r = call @g(%p, %m)\n ret.i64 %r\n}\nfn @top(i64 %n, i64 %d) -> i64 {\nentry:\n %p = alloc.stack i64\n store.i64 %p, 7\n %r = call @g(%p, %n)\n ret.i64 %r\n}\nfn @main() -> i64 {\nentry:\n %k = add.i64 0, 3\n %r = call @top(%k, %k)\n ret.i64 %r\n}",
+            2,
+        );
+        assert_eq!(stdout, "main returned 106\n");
     }
 
     #[test]
