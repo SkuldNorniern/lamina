@@ -22,13 +22,14 @@ use crate::{
         },
     },
     mir::{
-        AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction,
-        Instruction as MirInst, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand,
-        Parameter, Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
+        AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction, IntBinOp,
+        IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter, Register, RegisterClass,
+        ScalarType, Signature, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
             mapping::{map_ir_prim, map_ir_type},
         },
+        verify::{PhiVerification, verify_before_phi_lowering},
     },
 };
 
@@ -137,6 +138,15 @@ fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
     }
 }
 
+fn normalize_lowered_literal(operand: &mut Operand, ty: MirType) {
+    operand.normalize_integer_immediate(ty);
+    if ty == MirType::f32()
+        && let Operand::Immediate(Immediate::F64(value)) = operand
+    {
+        *operand = Operand::imm_f32(*value as f32);
+    }
+}
+
 pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     let mut mir_module = Module::new(name);
 
@@ -194,6 +204,18 @@ fn convert_function<'a>(
     }
 
     let mut mir_func = Function::new(mir_sig).with_entry(f.entry_block);
+
+    let mut names: HashSet<&str> = f.signature.params.iter().map(|p| p.name).collect();
+    let mut reassigned_names = HashSet::new();
+    for block in f.basic_blocks.values() {
+        for instruction in &block.instructions {
+            if let Some(name) = instruction.defined_var()
+                && !names.insert(name)
+            {
+                reassigned_names.insert(name);
+            }
+        }
+    }
 
     // BFS traversal starting from entry block, guard with visited to avoid cycles
     let mut visited: HashSet<&'a str> = HashSet::new();
@@ -263,12 +285,7 @@ fn convert_function<'a>(
                 {
                     for (argument, parameter) in args.iter_mut().zip(&callee.signature.params) {
                         let ty = map_ir_type(&parameter.ty)?;
-                        argument.normalize_integer_immediate(ty);
-                        if ty == MirType::f32()
-                            && let Operand::Immediate(Immediate::F64(value)) = argument
-                        {
-                            *argument = Operand::imm_f32(*value as f32);
-                        }
+                        normalize_lowered_literal(argument, ty);
                     }
                 }
                 mir_instr.normalize_integer_immediates(mir_func.sig.ret_ty);
@@ -280,6 +297,8 @@ fn convert_function<'a>(
                         Instruction::Copy { ty, .. }
                         | Instruction::IntBinary { ty, .. }
                         | Instruction::FloatBinary { ty, .. }
+                        | Instruction::FloatUnary { ty, .. }
+                        | Instruction::Select { ty, .. }
                         | Instruction::Load { ty, .. } => Some(*ty),
                         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
                             Some(MirType::i1())
@@ -349,6 +368,7 @@ fn convert_function<'a>(
     }
 
     {
+        let mut phis = Vec::new();
         let mut edge_moves: HashMap<(String, String), Vec<Instruction>> = HashMap::new();
 
         for (succ_label, ir_block) in &f.basic_blocks {
@@ -361,7 +381,16 @@ fn convert_function<'a>(
                 {
                     if let Some(dst_reg) = var_to_reg.get(result).cloned() {
                         let mir_ty = map_ir_type(ty)?;
+                        let mut phi = PhiVerification {
+                            block: (*succ_label).to_string(),
+                            dst: dst_reg.clone(),
+                            ty: mir_ty,
+                            incoming: Vec::new(),
+                        };
                         for (val, pred_label) in incoming {
+                            if !visited.contains(pred_label) {
+                                continue;
+                            }
                             let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
                             let mut mov_like = Instruction::Copy {
                                 ty: mir_ty,
@@ -369,11 +398,15 @@ fn convert_function<'a>(
                                 src: src_op,
                             };
                             mov_like.normalize_integer_immediates(None);
+                            if let Instruction::Copy { src, .. } = &mov_like {
+                                phi.incoming.push(((*pred_label).to_string(), src.clone()));
+                            }
                             edge_moves
                                 .entry(((*pred_label).to_string(), (*succ_label).to_string()))
                                 .or_default()
                                 .push(mov_like);
                         }
+                        phis.push(phi);
                     } else {
                         // Bind destination conservatively to avoid cascading unknowns
                         let new_dst = Register::Virtual(vreg_alloc.allocate_gpr());
@@ -382,6 +415,16 @@ fn convert_function<'a>(
                 }
             }
         }
+
+        verify_before_phi_lowering(
+            &mir_func,
+            &phis,
+            &reassigned_names
+                .iter()
+                .filter_map(|name| var_to_reg.get(name).cloned())
+                .collect(),
+        )
+        .map_err(FromIRError::InvalidMir)?;
 
         // Apply edge moves with edge-splitting when necessary.
         let mut trampoline_counter: u64 = 0;
@@ -466,120 +509,9 @@ fn convert_function<'a>(
         }
     }
 
-    add_missing_initializations(&mut mir_func);
     mir_func.stack_reservations = reservations;
 
     Ok(mir_func)
-}
-
-fn add_missing_initializations(func: &mut Function) {
-    // Collect all defined and used virtual registers
-    let mut defined_regs = HashSet::new();
-    let mut used_regs = HashSet::new();
-
-    // Collect parameter registers as defined
-    for param in &func.sig.params {
-        if let Register::Virtual(vreg) = &param.reg {
-            defined_regs.insert(*vreg);
-        }
-    }
-
-    for block in &func.blocks {
-        for instr in &block.instructions {
-            // Collect defined registers
-            if let Some(def_reg) = instr.def_reg()
-                && let Register::Virtual(vreg) = def_reg
-            {
-                defined_regs.insert(*vreg);
-            }
-
-            // Collect used registers from operands
-            collect_regs_from_instruction(instr, &mut used_regs);
-        }
-    }
-
-    // Find registers that are used but not defined
-    let undefined_regs: Vec<_> = used_regs.difference(&defined_regs).cloned().collect();
-
-    if !undefined_regs.is_empty()
-        && let Some(entry_block) = func.blocks.iter_mut().find(|b| b.label == func.entry)
-    {
-        // Insert initializations at the beginning of the entry block
-        let mut init_instrs = Vec::new();
-
-        for vreg in undefined_regs {
-            // Initialize undefined registers to 0
-            let init_instr = MirInst::IntBinary {
-                op: IntBinOp::Add,
-                ty: MirType::Scalar(ScalarType::I64),
-                dst: Register::Virtual(vreg),
-                lhs: Operand::Immediate(Immediate::I64(0)),
-                rhs: Operand::Immediate(Immediate::I64(0)),
-            };
-            init_instrs.push(init_instr);
-        }
-
-        // Insert at the beginning - use splice to insert all instructions at once
-        entry_block.instructions.splice(0..0, init_instrs);
-    }
-}
-
-fn collect_regs_from_instruction(instr: &Instruction, used_regs: &mut HashSet<VirtualReg>) {
-    match instr {
-        Instruction::Copy { src, .. } => collect_regs_from_operand(src, used_regs),
-        Instruction::IntBinary { lhs, rhs, .. }
-        | Instruction::FloatBinary { lhs, rhs, .. }
-        | Instruction::IntCmp { lhs, rhs, .. }
-        | Instruction::FloatCmp { lhs, rhs, .. } => {
-            collect_regs_from_operand(lhs, used_regs);
-            collect_regs_from_operand(rhs, used_regs);
-        }
-        Instruction::Load { addr, .. } => {
-            collect_regs_from_address_mode(addr, used_regs);
-        }
-        Instruction::Store { addr, src, .. } => {
-            collect_regs_from_address_mode(addr, used_regs);
-            collect_regs_from_operand(src, used_regs);
-        }
-        Instruction::Call { args, .. } => {
-            for arg in args {
-                collect_regs_from_operand(arg, used_regs);
-            }
-        }
-        Instruction::Ret { value: Some(val) } => {
-            collect_regs_from_operand(val, used_regs);
-        }
-        _ => {}
-    }
-}
-
-fn collect_regs_from_operand(operand: &Operand, used_regs: &mut HashSet<VirtualReg>) {
-    match operand {
-        Operand::Register(reg) => {
-            if let Register::Virtual(vreg) = reg {
-                used_regs.insert(*vreg);
-            }
-        }
-        Operand::Immediate(_) => {}
-    }
-}
-
-fn collect_regs_from_address_mode(addr: &AddressMode, used_regs: &mut HashSet<VirtualReg>) {
-    match addr {
-        AddressMode::BaseOffset { base, .. } => {
-            if let Register::Virtual(vreg) = base {
-                used_regs.insert(*vreg);
-            }
-        }
-        AddressMode::BaseIndexScale { base, index, .. } => {
-            if let Register::Virtual(vreg) = base {
-                used_regs.insert(*vreg);
-            }
-            if let Register::Virtual(vreg) = index {
-                used_regs.insert(*vreg);
-            }
-        }
-    }
 }
 
 fn convert_instruction<'a>(
@@ -948,17 +880,12 @@ fn convert_instruction<'a>(
                     .ok_or(FromIRError::UnknownVariable)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            let src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            normalize_lowered_literal(&mut src, mir_ty);
             let addr = AddressMode::BaseOffset {
                 base,
                 offset: 0,
                 address_space: Default::default(),
-            };
-            let src = match (mir_ty, src) {
-                (MirType::Scalar(ScalarType::F32), Operand::Immediate(Immediate::F64(value))) => {
-                    Operand::imm_f32(value as f32)
-                }
-                (_, operand) => operand,
             };
             Ok(vec![Instruction::Store {
                 ty: mir_ty,
@@ -1033,7 +960,8 @@ fn convert_instruction<'a>(
 
             let from = map_ir_prim(*source_type)?;
             let to = map_ir_prim(*target_type)?;
-            let src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            normalize_lowered_literal(&mut src, from);
             let dst =
                 Register::Virtual(match reg_class_for_type(&IRType::Primitive(*target_type)) {
                     RegisterClass::Fpr => vreg_alloc.allocate_fpr(),
@@ -1063,8 +991,10 @@ fn convert_instruction<'a>(
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
 
-            let tv = resolve_operand(true_val, vreg_alloc, var_to_reg)?;
-            let fv = resolve_operand(false_val, vreg_alloc, var_to_reg)?;
+            let mut tv = resolve_operand(true_val, vreg_alloc, var_to_reg)?;
+            let mut fv = resolve_operand(false_val, vreg_alloc, var_to_reg)?;
+            normalize_lowered_literal(&mut tv, mir_ty);
+            normalize_lowered_literal(&mut fv, mir_ty);
 
             Ok(vec![Instruction::Select {
                 dst,
@@ -1560,6 +1490,51 @@ mod tests {
         },
         parser::parse_module,
     };
+
+    #[test]
+    fn select_literals_match_declared_widths() {
+        for (ty, left, right) in [("i64", "11", "22"), ("f32", "1.5", "2.5")] {
+            let source = format!(
+                "fn @f(bool %c) -> {ty} {{ entry: %s = select.{ty} %c, {left}, {right} ret.{ty} %s }}"
+            );
+            let ir = parse_module(&source).expect("parse select");
+            let module = from_ir(&ir, "select").expect("lower typed literals");
+            assert!(module.validate_in_pipeline().is_ok());
+        }
+    }
+
+    #[test]
+    fn bitcasts_preserve_source_bindings_and_define_distinct_results() {
+        let ir = parse_module("fn @f(f64 %x) -> f64 { entry: %bits = bitcast.f64.i64 %x %back = bitcast.i64.f64 %bits ret.f64 %back }").expect("parse bitcasts");
+        let module = from_ir(&ir, "bitcasts").expect("lower bitcasts");
+        let function = &module.functions["f"];
+        let instructions = &function.blocks[0].instructions;
+        let Instruction::Bitcast { from, to, dst, src } = &instructions[0] else {
+            panic!("expected bitcast")
+        };
+        assert_eq!((*from, *to), (MirType::f64(), MirType::i64()));
+        assert_eq!(src, &Operand::reg(function.sig.params[0].reg.clone()));
+        assert_ne!(dst, &function.sig.params[0].reg);
+        let Instruction::Bitcast { dst: back, .. } = &instructions[1] else {
+            panic!("expected round trip")
+        };
+        assert_ne!(dst, back);
+        assert!(module.validate_in_pipeline().is_ok());
+    }
+
+    #[test]
+    fn lowering_rejects_undefined_and_forward_uses_before_initialization() {
+        for source in [
+            "fn @f() -> i64 { entry: %x = add.i64 %missing, 1 ret.i64 %x }",
+            "fn @f() -> i64 { entry: %x = add.i64 %later, 1 %later = add.i64 1, 2 ret.i64 %x }",
+        ] {
+            let ir = parse_module(source).expect("parse invalid definitions");
+            assert!(matches!(
+                from_ir(&ir, "invalid"),
+                Err(FromIRError::InvalidMir(_))
+            ));
+        }
+    }
 
     #[test]
     fn composite_gep_scales_constant_and_variable_indices() {

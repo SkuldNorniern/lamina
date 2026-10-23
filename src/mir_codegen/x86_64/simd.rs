@@ -266,9 +266,9 @@ mod tests {
 
     use crate::{
         mir::{
-            AddressMode, AddressSpace, Block, Function, Instruction, IntBinOp, MemoryAttrs,
-            MirType, Module, Operand, Parameter, Register, ScalarType, Signature, VectorLane,
-            VectorOp, VectorType, VirtualReg,
+            AddressMode, AddressSpace, Block, Function, Immediate, Instruction, IntBinOp,
+            MemoryAttrs, MirType, Module, Operand, Parameter, Register, ScalarType, Signature,
+            VectorLane, VectorOp, VectorType, VirtualReg,
         },
         mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
     };
@@ -604,9 +604,7 @@ mod tests {
                     VectorLane::F32 => Operand::imm_f32(f32::from_bits(bits(&c.b[..4]) as u32)),
                     VectorLane::F64 => Operand::imm_f64(f64::from_bits(bits(&c.b[..8]))),
                     VectorLane::I8 => Operand::imm_i8(bits(&c.b[..1]) as i8),
-                    VectorLane::I16 => {
-                        Operand::Immediate(crate::mir::Immediate::I16(bits(&c.b[..2]) as i16))
-                    }
+                    VectorLane::I16 => Operand::Immediate(Immediate::I16(bits(&c.b[..2]) as i16)),
                     VectorLane::I32 => Operand::imm_i32(bits(&c.b[..4]) as i32),
                     _ => Operand::imm_i64(bits(&c.b[..scalar(c.lane).size_bytes()]) as i64),
                 };

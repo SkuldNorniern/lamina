@@ -860,8 +860,18 @@ impl Instruction {
             }
             Instruction::Store { ty, src, .. }
             | Instruction::Copy { ty, src, .. }
-            | Instruction::IntConvert { from: ty, src, .. } => {
+            | Instruction::IntConvert { from: ty, src, .. }
+            | Instruction::Bitcast { from: ty, src, .. } => {
                 normalize_immediate(src, *ty);
+            }
+            Instruction::Select {
+                ty,
+                true_val,
+                false_val,
+                ..
+            } => {
+                normalize_immediate(true_val, *ty);
+                normalize_immediate(false_val, *ty);
             }
             Instruction::Ret { value: Some(value) } => {
                 if let Some(ty) = return_type {
