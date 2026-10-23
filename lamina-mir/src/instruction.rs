@@ -163,7 +163,8 @@ impl fmt::Display for IntCmpOp {
     }
 }
 
-/// Floating-point comparison operations
+/// Floating-point comparisons: equality and relational predicates are ordered;
+/// inequality is true for unordered operands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FloatCmpOp {
     Eq,
