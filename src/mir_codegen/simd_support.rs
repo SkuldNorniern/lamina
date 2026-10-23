@@ -86,7 +86,7 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
     if single {
         b.push(Instruction::IntBinary {
             op: IntBinOp::Add,
-            ty: MirType::i64(),
+            ty: MirType::ptr(),
             dst: reg(6),
             lhs: Operand::reg(reg(1)),
             rhs: Operand::imm_i64(1),
@@ -130,7 +130,7 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
     if op == VectorOp::VExtractLane {
         b.push(Instruction::IntBinary {
             op: IntBinOp::Add,
-            ty: MirType::i64(),
+            ty: MirType::ptr(),
             dst: reg(7),
             lhs: Operand::reg(reg(2)),
             rhs: Operand::imm_i64(1),
@@ -356,6 +356,9 @@ pub fn immediate(f: &mut Function, lane: VectorLane) {
     let value = match lane {
         VectorLane::F32 => Operand::imm_f32(-2.5),
         VectorLane::F64 => Operand::imm_f64(-2.5),
+        VectorLane::I8 => Operand::imm_i8(-123),
+        VectorLane::I16 => Operand::Immediate(crate::mir::Immediate::I16(-123)),
+        VectorLane::I32 => Operand::imm_i32(-123),
         _ => Operand::imm_i64(-123),
     };
     for inst in &mut f.blocks[0].instructions {

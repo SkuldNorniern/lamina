@@ -633,6 +633,13 @@ pub enum Instruction {
         attrs: MemoryAttrs,
     },
 
+    Bitcast {
+        from: MirType,
+        to: MirType,
+        dst: Register,
+        src: Operand,
+    },
+
     IntConvert {
         from: MirType,
         to: MirType,
@@ -873,6 +880,7 @@ impl Instruction {
             | Instruction::Select { dst, .. }
             | Instruction::Load { dst, .. }
             | Instruction::IntConvert { dst, .. }
+            | Instruction::Bitcast { dst, .. }
             | Instruction::StackAddr { dst, .. }
             | Instruction::Lea { dst, .. }
             | Instruction::VectorOp { dst, .. } => Some(dst),
@@ -897,7 +905,11 @@ impl Instruction {
         let mut regs = Vec::new();
 
         match self {
-            Instruction::IntConvert {
+            Instruction::Bitcast {
+                src: Operand::Register(r),
+                ..
+            }
+            | Instruction::IntConvert {
                 src: Operand::Register(r),
                 ..
             }
@@ -1202,6 +1214,9 @@ impl fmt::Display for Instruction {
                     "st.{} {}, {} {{align={}, volatile={}}}",
                     ty, src, addr, attrs.align, attrs.volatile
                 )
+            }
+            Instruction::Bitcast { from, to, dst, src } => {
+                write!(f, "{dst} = bitcast.{from}.{to} {src}")
             }
             Instruction::IntConvert {
                 from,

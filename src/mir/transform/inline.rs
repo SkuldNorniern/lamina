@@ -306,6 +306,7 @@ impl ModuleInlining {
         match instruction {
             Instruction::Copy { dst, src, .. }
             | Instruction::IntConvert { dst, src, .. }
+            | Instruction::Bitcast { dst, src, .. }
             | Instruction::FloatUnary { dst, src, .. } => {
                 *dst = map(dst);
                 operand(src, map);

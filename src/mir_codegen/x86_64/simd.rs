@@ -362,7 +362,7 @@ mod tests {
         if single {
             b.push(Instruction::IntBinary {
                 op: IntBinOp::Add,
-                ty: MirType::i64(),
+                ty: MirType::ptr(),
                 dst: reg(6),
                 lhs: Operand::reg(reg(1)),
                 rhs: Operand::imm_i64(1),
@@ -406,7 +406,7 @@ mod tests {
         if op == VectorOp::VExtractLane {
             b.push(Instruction::IntBinary {
                 op: IntBinOp::Add,
-                ty: MirType::i64(),
+                ty: MirType::ptr(),
                 dst: reg(7),
                 lhs: Operand::reg(reg(2)),
                 rhs: Operand::imm_i64(1),
@@ -603,6 +603,11 @@ mod tests {
                 let value = match c.lane {
                     VectorLane::F32 => Operand::imm_f32(f32::from_bits(bits(&c.b[..4]) as u32)),
                     VectorLane::F64 => Operand::imm_f64(f64::from_bits(bits(&c.b[..8]))),
+                    VectorLane::I8 => Operand::imm_i8(bits(&c.b[..1]) as i8),
+                    VectorLane::I16 => {
+                        Operand::Immediate(crate::mir::Immediate::I16(bits(&c.b[..2]) as i16))
+                    }
+                    VectorLane::I32 => Operand::imm_i32(bits(&c.b[..4]) as i32),
                     _ => Operand::imm_i64(bits(&c.b[..scalar(c.lane).size_bytes()]) as i64),
                 };
                 for inst in &mut f.blocks[0].instructions {

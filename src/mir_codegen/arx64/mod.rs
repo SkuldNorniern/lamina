@@ -159,7 +159,10 @@ fn emit_instruction<W: Write>(
     }
     match inst {
         Instruction::Comment { text } => writeln!(writer, "    # {text}").map_err(io_error),
-        Instruction::Copy { ty, dst, src } => {
+        Instruction::Copy { ty, dst, src }
+        | Instruction::Bitcast {
+            to: ty, dst, src, ..
+        } => {
             if matches!(ty, MirType::Vector(_)) {
                 return unsupported(format!(
                     "ARX64 backend does not support vector Copy of type {ty}"

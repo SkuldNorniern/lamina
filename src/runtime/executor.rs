@@ -76,7 +76,10 @@ pub(crate) fn interpret_mir_function(
 
         for instruction in &block.instructions {
             match instruction {
-                Instruction::Copy { ty, dst, src } => {
+                Instruction::Copy { ty, dst, src }
+                | Instruction::Bitcast {
+                    to: ty, dst, src, ..
+                } => {
                     let value = match src {
                         Operand::Immediate(Immediate::F32(value)) => i64::from(value.to_bits()),
                         Operand::Immediate(Immediate::F64(value)) => value.to_bits() as i64,

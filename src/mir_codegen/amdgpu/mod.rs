@@ -423,6 +423,11 @@ impl Kernel {
                 )?;
                 self.wait_memory(true)?;
             }
+            Instruction::Bitcast { from, to, dst, src } => {
+                let source = self.operand(src, *from)?;
+                let destination = self.allocate(dst, *to)?;
+                self.copy(destination, source)?;
+            }
             Instruction::Copy { ty, dst, src } => {
                 let src = self.operand(src, *ty)?;
                 let dst = self.allocate(dst, *ty)?;

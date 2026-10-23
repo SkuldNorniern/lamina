@@ -447,7 +447,10 @@ fn emit_block<W: Write>(
                 }
             }
 
-            MirInst::Copy { ty, dst, src } => {
+            MirInst::Copy { ty, dst, src }
+            | MirInst::Bitcast {
+                to: ty, dst, src, ..
+            } => {
                 if matches!(ty, MirType::Vector(_)) {
                     return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                         format!("AArch64 backend does not support vector Copy of type {ty}"),

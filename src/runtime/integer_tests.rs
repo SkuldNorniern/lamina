@@ -66,7 +66,10 @@ fn operation(
     dst
 }
 
-fn module(block: Block) -> Module {
+fn module(mut block: Block) -> Module {
+    for instruction in &mut block.instructions {
+        instruction.normalize_integer_immediates(Some(MirType::i64()));
+    }
     let mut function = Function::new(Signature::new("main").with_return(MirType::i64()));
     function.blocks.push(block);
     let mut module = Module::new("integer_semantics");
@@ -345,12 +348,21 @@ fn wrapping_arithmetic_and_masked_shifts_match_native_execution() -> TestResult 
                     lhs: Operand::Register(wide),
                     rhs: imm(expected),
                 });
+                let flag = reg(id);
+                id += 1;
+                block.push(Instruction::IntConvert {
+                    from: MirType::i1(),
+                    to: MirType::i64(),
+                    signed: false,
+                    dst: flag.clone(),
+                    src: Operand::Register(failed),
+                });
                 block.push(Instruction::IntBinary {
                     op: IntBinOp::Or,
                     ty: MirType::i64(),
                     dst: accumulated.clone(),
                     lhs: failures,
-                    rhs: Operand::Register(failed),
+                    rhs: Operand::Register(flag),
                 });
                 failures = Operand::Register(accumulated);
             }
@@ -634,17 +646,26 @@ fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
                         });
                         block.push(Instruction::IntCmp {
                             op: IntCmpOp::Ne,
-                            ty: MirType::i64(),
+                            ty: MirType::i1(),
                             dst: failed.clone(),
                             lhs: Operand::Register(result),
                             rhs: imm(i64::from(expected)),
+                        });
+                        let flag = reg(id);
+                        id += 1;
+                        block.push(Instruction::IntConvert {
+                            from: MirType::i1(),
+                            to: MirType::i64(),
+                            signed: false,
+                            dst: flag.clone(),
+                            src: Operand::Register(failed),
                         });
                         block.push(Instruction::IntBinary {
                             op: IntBinOp::Or,
                             ty: MirType::i64(),
                             dst: accumulated.clone(),
                             lhs: failures,
-                            rhs: Operand::Register(failed),
+                            rhs: Operand::Register(flag),
                         });
                         failures = Operand::Register(accumulated);
                     }
@@ -754,12 +775,21 @@ fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResul
                         lhs: Operand::Register(wide),
                         rhs: imm(expected),
                     });
+                    let flag = reg(id);
+                    id += 1;
+                    block.push(Instruction::IntConvert {
+                        from: MirType::i1(),
+                        to: MirType::i64(),
+                        signed: false,
+                        dst: flag.clone(),
+                        src: Operand::Register(failed),
+                    });
                     block.push(Instruction::IntBinary {
                         op: IntBinOp::Or,
                         ty: MirType::i64(),
                         dst: accumulated.clone(),
                         lhs: failures,
-                        rhs: Operand::Register(failed),
+                        rhs: Operand::Register(flag),
                     });
                     failures = Operand::Register(accumulated);
                 }

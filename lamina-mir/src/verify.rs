@@ -2,7 +2,7 @@
 
 use crate::{
     Function, Immediate, Instruction, MirType, Module, Operand, Register, RegisterClass,
-    ScalarType, VectorType,
+    ScalarType, VectorLane, VectorOp, VectorType,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -19,6 +19,7 @@ struct VerificationConfig {
     verify_ssa: bool,
     verify_dominance: bool,
     verify_register_types: bool,
+    verify_register_classes: bool,
     verify_immediate_widths: bool,
 }
 
@@ -27,14 +28,16 @@ const STRICT_CONFIG: VerificationConfig = VerificationConfig {
     verify_ssa: true,
     verify_dominance: true,
     verify_register_types: true,
+    verify_register_classes: true,
     verify_immediate_widths: true,
 };
 const PIPELINE_CONFIG: VerificationConfig = VerificationConfig {
     verify_terminator_placement: true,
     verify_ssa: false,
     verify_dominance: false,
-    verify_register_types: false,
-    verify_immediate_widths: false,
+    verify_register_types: true,
+    verify_register_classes: false,
+    verify_immediate_widths: true,
 };
 
 /// Verify one MIR function and return every problem found.
@@ -397,6 +400,20 @@ fn verify_instruction_types(
                         &mut instruction_errors,
                     );
                 }
+                Instruction::Bitcast { from, to, dst, src } => {
+                    if from.size_bytes() != to.size_bytes() || from.is_vector() || to.is_vector() {
+                        instruction_errors.push("expected equal-width scalar bitcast".into());
+                    }
+                    verify_destination(dst, *to, "Bitcast", config, &mut instruction_errors);
+                    verify_operand(
+                        src,
+                        *from,
+                        "Bitcast source",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
                 Instruction::IntConvert {
                     from,
                     to,
@@ -591,14 +608,37 @@ fn verify_instruction_types(
                     );
                 }
                 Instruction::VectorOp {
-                    ty, dst, operands, ..
+                    op,
+                    ty,
+                    dst,
+                    operands,
                 } => {
-                    verify_destination(dst, *ty, "VectorOp", config, &mut instruction_errors);
-                    for operand in operands {
+                    let scalar = vector_scalar(*ty);
+                    let dst_ty = if *op == VectorOp::VExtractLane {
+                        scalar
+                    } else {
+                        *ty
+                    };
+                    verify_destination(dst, dst_ty, "VectorOp", config, &mut instruction_errors);
+                    for (index, operand) in operands.iter().enumerate() {
+                        let operand_ty = match (op, index) {
+                            (VectorOp::VSplat, 0) | (VectorOp::VInsertLane, 1) => scalar,
+                            (VectorOp::VExtractLane, 1) | (VectorOp::VInsertLane, 2) => {
+                                MirType::i64()
+                            }
+                            _ => *ty,
+                        };
                         verify_operand(
                             operand,
-                            *ty,
-                            "VectorOp operand",
+                            operand_ty,
+                            if matches!(
+                                (op, index),
+                                (VectorOp::VExtractLane, 1) | (VectorOp::VInsertLane, 2)
+                            ) {
+                                "VectorOp lane index"
+                            } else {
+                                "VectorOp operand"
+                            },
                             definitions,
                             config,
                             &mut instruction_errors,
@@ -637,7 +677,7 @@ fn verify_destination(
         return;
     }
     let expected_class = register_class_for_type(expected_type);
-    if register.class() != expected_class {
+    if config.verify_register_classes && register.class() != expected_class {
         errors.push(format!(
             "expected {instruction_name} destination to have type {expected_type} ({expected_class:?} register), found {register} with {:?} register class",
             register.class()
@@ -688,7 +728,7 @@ fn verify_register(
         return;
     }
     let expected_class = register_class_for_type(expected_type);
-    if register.class() != expected_class {
+    if config.verify_register_classes && register.class() != expected_class {
         errors.push(format!(
             "expected {operand_name} to have type {expected_type} ({expected_class:?} register), found {register} with {:?} register class",
             register.class()
@@ -698,13 +738,14 @@ fn verify_register(
     let Some(register_definitions) = definitions.get(register) else {
         return;
     };
-    if register_definitions.len() == 1
-        && let Some(actual_type) = register_definitions[0].ty
-        && actual_type != expected_type
-    {
-        errors.push(format!(
+    for definition in register_definitions {
+        if let Some(actual_type) = definition.ty
+            && actual_type != expected_type
+        {
+            errors.push(format!(
             "expected {operand_name} to have type {expected_type}, found register {register} defined as {actual_type}"
         ));
+        }
     }
 }
 
@@ -715,10 +756,15 @@ fn instruction_definition_type(instruction: &Instruction) -> Option<MirType> {
         | Instruction::FloatBinary { ty, .. }
         | Instruction::FloatUnary { ty, .. }
         | Instruction::Select { ty, .. }
-        | Instruction::Load { ty, .. }
-        | Instruction::VectorOp { ty, .. } => Some(*ty),
+        | Instruction::Load { ty, .. } => Some(*ty),
+        Instruction::VectorOp {
+            op: VectorOp::VExtractLane,
+            ty,
+            ..
+        } => Some(vector_scalar(*ty)),
+        Instruction::VectorOp { ty, .. } => Some(*ty),
         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => Some(MirType::i1()),
-        Instruction::IntConvert { to, .. } => Some(*to),
+        Instruction::IntConvert { to, .. } | Instruction::Bitcast { to, .. } => Some(*to),
         Instruction::Lea { .. } | Instruction::StackAddr { .. } => Some(MirType::ptr()),
         _ => None,
     }
@@ -740,6 +786,20 @@ fn instruction_targets(instruction: &Instruction) -> Vec<&str> {
         }
         _ => Vec::new(),
     }
+}
+
+fn vector_scalar(ty: MirType) -> MirType {
+    let MirType::Vector(VectorType::V128(lane) | VectorType::V256(lane)) = ty else {
+        return ty;
+    };
+    MirType::Scalar(match lane {
+        VectorLane::I8 => ScalarType::I8,
+        VectorLane::I16 => ScalarType::I16,
+        VectorLane::I32 => ScalarType::I32,
+        VectorLane::I64 => ScalarType::I64,
+        VectorLane::F32 => ScalarType::F32,
+        VectorLane::F64 => ScalarType::F64,
+    })
 }
 
 fn is_integer_or_pointer(ty: MirType) -> bool {
@@ -829,6 +889,58 @@ mod tests {
             Ok(()) => vec!["function unexpectedly passed verification".to_string()],
             Err(errors) => errors,
         }
+    }
+
+    #[test]
+    fn pipeline_rejects_register_width_disagreements_with_multiple_definitions() {
+        let function = FunctionBuilder::new("bad_widths")
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty: MirType::i32(),
+                dst: VirtualReg::gpr(0).into(),
+                src: Operand::imm_i32(1),
+            })
+            .instr(Instruction::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(0).into(),
+                src: Operand::imm_i64(2),
+            })
+            .instr(Instruction::Copy {
+                ty: MirType::i64(),
+                dst: VirtualReg::gpr(1).into(),
+                src: Operand::v_gpr(0),
+            })
+            .instr(Instruction::Ret { value: None })
+            .build();
+        let mut module = Module::new("bad_widths");
+        module.add_function(function);
+        let errors = module.validate_in_pipeline().err().unwrap_or_default();
+        assert!(
+            errors.iter().any(|e| e.contains("defined as i32")),
+            "{errors:?}"
+        );
+    }
+
+    #[test]
+    fn pipeline_accepts_float_bits_in_general_register_storage() {
+        let function = FunctionBuilder::new("float_storage")
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty: MirType::f32(),
+                dst: VirtualReg::gpr(0).into(),
+                src: Operand::imm_f32(1.0),
+            })
+            .instr(Instruction::Bitcast {
+                from: MirType::f32(),
+                to: MirType::i32(),
+                dst: VirtualReg::gpr(1).into(),
+                src: Operand::v_gpr(0),
+            })
+            .instr(Instruction::Ret { value: None })
+            .build();
+        let mut module = Module::new("float_storage");
+        module.add_function(function);
+        assert!(module.validate_in_pipeline().is_ok());
     }
 
     #[test]
@@ -1113,6 +1225,9 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
+        let mut module = Module::new("bad_width");
+        module.add_function(function.clone());
+        assert!(module.validate_in_pipeline().is_err());
         let errors = verification_errors(&function);
         assert!(errors.iter().any(|error| {
             error.contains("expected FloatBinary rhs immediate to match type f64")
