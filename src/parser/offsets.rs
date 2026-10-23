@@ -9,7 +9,9 @@
 use lamina_ir::function::Function;
 use lamina_ir::instruction::Instruction;
 use lamina_ir::module::{Module, TypeDeclaration};
-use lamina_ir::types::{Identifier, StructField, Type, Value, struct_field_byte_offset};
+use lamina_ir::types::{
+    Identifier, StructField, Type, Value, resolve_type_names, struct_field_byte_offset,
+};
 use std::collections::HashMap;
 
 pub fn resolve_field_offsets(module: &mut Module<'_>) {
@@ -57,8 +59,8 @@ fn resolve_in_function<'a>(
                     field_index,
                     field_byte_offset,
                 } => {
-                    let Some(fields) = pointee_of(struct_ptr, &pointee, types)
-                        .and_then(|t| struct_fields(&t, types).cloned())
+                    let Some(fields) =
+                        pointee_of(struct_ptr, &pointee, types).and_then(|t| struct_fields(&t))
                     else {
                         continue;
                     };
@@ -84,32 +86,21 @@ fn pointee_of<'a>(
         return None;
     };
     let ty = pointee.get(name)?;
-    Some(resolve_named(ty, types))
+    resolve_type_names(ty, types)
 }
 
-fn resolve_named<'a>(
-    ty: &Type<'a>,
-    types: &HashMap<Identifier<'a>, TypeDeclaration<'a>>,
-) -> Type<'a> {
+fn struct_fields<'a>(ty: &Type<'a>) -> Option<Vec<StructField<'a>>> {
     match ty {
-        Type::Named(name) => types
-            .get(name)
-            .map(|d| d.ty.clone())
-            .unwrap_or_else(|| ty.clone()),
-        other => other.clone(),
-    }
-}
-
-fn struct_fields<'b, 'a>(
-    ty: &'b Type<'a>,
-    types: &'b HashMap<Identifier<'a>, TypeDeclaration<'a>>,
-) -> Option<&'b Vec<StructField<'a>>> {
-    match ty {
-        Type::Struct(fields) => Some(fields),
-        Type::Named(name) => match &types.get(name)?.ty {
-            Type::Struct(fields) => Some(fields),
-            _ => None,
-        },
+        Type::Struct(fields) => Some(fields.clone()),
+        Type::Tuple(elements) => Some(
+            elements
+                .iter()
+                .map(|ty| StructField {
+                    name: "",
+                    ty: ty.clone(),
+                })
+                .collect(),
+        ),
         _ => None,
     }
 }

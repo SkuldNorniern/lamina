@@ -17,7 +17,8 @@ use crate::{
         function::{Function as IRFunction, FunctionAnnotation},
         instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst},
         types::{
-            Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal, sizeof_type,
+            Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
+            resolve_type_names, sizeof_type,
         },
     },
     mir::{
@@ -145,7 +146,7 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
             mir_module.mark_external(*func_name);
         }
 
-        let mir_func = convert_function(func_name, ir_func)?;
+        let mir_func = convert_function(func_name, ir_func, ir)?;
         mir_module.add_function(mir_func);
     }
 
@@ -155,7 +156,11 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     Ok(mir_module)
 }
 
-fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, FromIRError> {
+fn convert_function<'a>(
+    name: &'a str,
+    f: &IRFunction<'a>,
+    module: &IRModule<'a>,
+) -> Result<Function, FromIRError> {
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
     if f.annotations.contains(&FunctionAnnotation::Kernel) {
@@ -209,6 +214,20 @@ fn convert_function<'a>(name: &'a str, f: &IRFunction<'a>) -> Result<Function, F
         // instruction made conversion quadratic in the size of a single-block function.
         let mut defined_in_block: HashSet<Register> = HashSet::new();
         for instr in &ir_block.instructions {
+            let mut resolved;
+            let instr = if matches!(instr, IRInst::Alloc { .. } | IRInst::GetElemPtr { .. }) {
+                resolved = instr.clone();
+                let ty = match &mut resolved {
+                    IRInst::Alloc { allocated_ty, .. } => allocated_ty,
+                    IRInst::GetElemPtr { element_type, .. } => element_type,
+                    _ => unreachable!(),
+                };
+                *ty = resolve_type_names(ty, &module.type_declarations)
+                    .ok_or(FromIRError::UnsupportedType)?;
+                &resolved
+            } else {
+                instr
+            };
             let mut mir_instrs = convert_instruction(
                 instr,
                 &mut vreg_alloc,
@@ -1318,32 +1337,27 @@ fn convert_instruction<'a>(
         } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
+            let size = sizeof_type(allocated_ty).ok_or(FromIRError::UnsupportedType)?;
+            let size = i64::try_from(size).map_err(|_| FromIRError::UnsupportedType)?;
             match alloc_type {
                 AllocType::Stack => {
                     stack_allocs.insert(result);
                     let storage_vreg = vreg_alloc.allocate_gpr();
-                    if let Some(sz) = sizeof_type(allocated_ty) {
-                        let slots_needed = sz.div_ceil(8) as usize;
-                        if slots_needed > 1 {
-                            reservations.insert(storage_vreg, slots_needed - 1);
-                        }
+                    let slots_needed = usize::try_from((size as u64).div_ceil(8))
+                        .map_err(|_| FromIRError::UnsupportedType)?;
+                    if slots_needed > 1 {
+                        reservations.insert(storage_vreg, slots_needed - 1);
                     }
                     Ok(vec![Instruction::StackAddr {
                         dst,
                         slot: storage_vreg,
                     }])
                 }
-                AllocType::Heap => {
-                    if let Some(sz) = sizeof_type(allocated_ty) {
-                        Ok(vec![Instruction::Call {
-                            name: "malloc".to_string(),
-                            args: vec![Operand::Immediate(Immediate::I64(sz as i64))],
-                            ret: Some(dst),
-                        }])
-                    } else {
-                        Err(FromIRError::UnsupportedType)
-                    }
-                }
+                AllocType::Heap => Ok(vec![Instruction::Call {
+                    name: "malloc".to_string(),
+                    args: vec![Operand::Immediate(Immediate::I64(size))],
+                    ret: Some(dst),
+                }]),
             }
         }
         IRInst::Dealloc { ptr } => {

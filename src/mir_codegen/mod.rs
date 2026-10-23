@@ -523,3 +523,6 @@ pub(crate) mod test_support;
 
 #[cfg(test)]
 mod float_tests;
+
+#[cfg(test)]
+mod allocation_tests;
