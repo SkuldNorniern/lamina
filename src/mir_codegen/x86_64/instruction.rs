@@ -96,6 +96,12 @@ pub(super) fn emit_instruction_x86_64(
                     IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr => {
                         // Load lhs into dp
                         load_operand_to_register(lhs, writer, reg_alloc, stack_slots, dp)?;
+                        if matches!(op, IntBinOp::AShr) {
+                            extend_integer(writer, dp, ty.size_bytes(), true)?;
+                        }
+                        if matches!(op, IntBinOp::AShr) {
+                            extend_integer(writer, "rax", ty.size_bytes(), true)?;
+                        }
                         if matches!(op, IntBinOp::LShr) {
                             extend_integer(writer, dp, ty.size_bytes(), false)?;
                         }
@@ -112,6 +118,7 @@ pub(super) fn emit_instruction_x86_64(
                                         ));
                                     }
                                 };
+                                let sv = sv & (ty.size_bytes() as u64 * 8 - 1);
                                 match op {
                                     IntBinOp::Shl => writeln!(writer, "    shlq ${sv}, %{dp}")?,
                                     IntBinOp::AShr => writeln!(writer, "    sarq ${sv}, %{dp}")?,
@@ -128,6 +135,13 @@ pub(super) fn emit_instruction_x86_64(
                                     stack_slots,
                                     "rcx",
                                 )?;
+                                if ty.size_bytes() < 8 {
+                                    writeln!(
+                                        writer,
+                                        "    andl ${}, %ecx",
+                                        ty.size_bytes() * 8 - 1
+                                    )?;
+                                }
                                 match op {
                                     IntBinOp::Shl => writeln!(writer, "    shlq %cl, %{dp}")?,
                                     IntBinOp::AShr => writeln!(writer, "    sarq %cl, %{dp}")?,
@@ -144,6 +158,22 @@ pub(super) fn emit_instruction_x86_64(
                         if matches!(op, IntBinOp::UDiv | IntBinOp::URem) {
                             extend_integer(writer, "rax", ty.size_bytes(), false)?;
                             extend_integer(writer, "rcx", ty.size_bytes(), false)?;
+                        }
+                        if matches!(op, IntBinOp::SDiv | IntBinOp::SRem) && ty.size_bytes() < 8 {
+                            extend_integer(writer, "rax", ty.size_bytes(), true)?;
+                            extend_integer(writer, "rcx", ty.size_bytes(), true)?;
+                            let (_, overflow) = op.division_checks(
+                                *ty,
+                                lhs.integer_constant(),
+                                rhs.integer_constant(),
+                            );
+                            if overflow {
+                                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+                                writeln!(
+                                    writer,
+                                    "    cmpq $-1, %rcx\n    jne 2f\n    cmpq ${minimum}, %rax\n    jne 2f\n    ud2\n2:"
+                                )?;
+                            }
                         }
                         match op {
                             IntBinOp::SDiv => {
@@ -281,6 +311,7 @@ pub(super) fn emit_instruction_x86_64(
                                     ));
                                 }
                             };
+                            let shift_val = shift_val & (ty.size_bytes() as u64 * 8 - 1);
                             match op {
                                 IntBinOp::Shl => writeln!(writer, "    shlq ${shift_val}, %rax")?,
                                 IntBinOp::AShr => writeln!(writer, "    sarq ${shift_val}, %rax")?,
@@ -292,6 +323,9 @@ pub(super) fn emit_instruction_x86_64(
                             let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
                             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
                             writeln!(writer, "    movq %{scratch}, %rcx")?;
+                            if ty.size_bytes() < 8 {
+                                writeln!(writer, "    andl ${}, %ecx", ty.size_bytes() * 8 - 1)?;
+                            }
                             match op {
                                 IntBinOp::Shl => writeln!(writer, "    shlq %cl, %rax")?,
                                 IntBinOp::AShr => writeln!(writer, "    sarq %cl, %rax")?,
@@ -308,6 +342,22 @@ pub(super) fn emit_instruction_x86_64(
                         if matches!(op, IntBinOp::UDiv | IntBinOp::URem) {
                             extend_integer(writer, "rax", ty.size_bytes(), false)?;
                             extend_integer(writer, "rcx", ty.size_bytes(), false)?;
+                        }
+                        if matches!(op, IntBinOp::SDiv | IntBinOp::SRem) && ty.size_bytes() < 8 {
+                            extend_integer(writer, "rax", ty.size_bytes(), true)?;
+                            extend_integer(writer, "rcx", ty.size_bytes(), true)?;
+                            let (_, overflow) = op.division_checks(
+                                *ty,
+                                lhs.integer_constant(),
+                                rhs.integer_constant(),
+                            );
+                            if overflow {
+                                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+                                writeln!(
+                                    writer,
+                                    "    cmpq $-1, %rcx\n    jne 2f\n    cmpq ${minimum}, %rax\n    jne 2f\n    ud2\n2:"
+                                )?;
+                            }
                         }
                         match op {
                             IntBinOp::SDiv => {

@@ -739,7 +739,29 @@ fn emit_instruction_riscv<W: Write>(
                 extend_integer(writer, "a0", ty, ctx.target, false)?;
                 extend_integer(writer, "a1", ty, ctx.target, false)?;
             }
-            // Perform operation
+            if matches!(op, IntBinOp::SDiv | IntBinOp::SRem | IntBinOp::AShr) {
+                extend_integer(writer, "a0", ty, ctx.target, true)?;
+                if !matches!(op, IntBinOp::AShr) {
+                    extend_integer(writer, "a1", ty, ctx.target, true)?;
+                }
+            }
+            let (zero, overflow) =
+                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            if zero {
+                writeln!(writer, "    bnez a1, 1f\n    .word 0\n1:")?;
+            }
+            if overflow {
+                let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+                writeln!(
+                    writer,
+                    "    li t0, -1\n    bne a1, t0, 2f\n    li t0, {minimum}\n    bne a0, t0, 2f\n    .word 0\n2:"
+                )?;
+            }
+            if matches!(op, IntBinOp::Shl | IntBinOp::LShr | IntBinOp::AShr) && ty.size_bytes() < 8
+            {
+                let mask = ty.size_bytes() * 8 - 1;
+                writeln!(writer, "    andi a1, a1, {mask}")?;
+            }
             match op {
                 IntBinOp::Add => writeln!(writer, "    add a0, a0, a1")?,
                 IntBinOp::Sub => writeln!(writer, "    sub a0, a0, a1")?,

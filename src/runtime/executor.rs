@@ -6,8 +6,8 @@
 use crate::{
     error::LaminaError,
     mir::{
-        Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register,
-        ScalarType, Signature,
+        Function, Immediate, Instruction, IntCmpOp, MirType, Operand, Register, ScalarType,
+        Signature,
     },
     runtime::c_abi_dynamic::{MAX_JIT_ARGS, call_function_dynamic},
 };
@@ -73,11 +73,16 @@ fn interpret_mir_function(function: &Function, args: &[i64]) -> Result<Option<i6
 
         for instruction in &block.instructions {
             match instruction {
-                Instruction::Copy { dst, src, .. } => {
+                Instruction::Copy { ty, dst, src } => {
                     let value = match src {
                         Operand::Immediate(Immediate::F32(value)) => i64::from(value.to_bits()),
                         Operand::Immediate(Immediate::F64(value)) => value.to_bits() as i64,
                         _ => evaluate_operand(src, &register_values)?,
+                    };
+                    let value = if ty.is_float() {
+                        value
+                    } else {
+                        ty.signed_integer(value)
                     };
                     register_values.insert(dst.clone(), value);
                 }
@@ -100,53 +105,19 @@ fn interpret_mir_function(function: &Function, args: &[i64]) -> Result<Option<i6
                     register_values.insert(dst.clone(), value);
                 }
                 Instruction::IntBinary {
-                    op, dst, lhs, rhs, ..
+                    op,
+                    ty,
+                    dst,
+                    lhs,
+                    rhs,
                 } => {
-                    let left_value = evaluate_operand(lhs, &register_values)?;
-                    let right_value = evaluate_operand(rhs, &register_values)?;
-                    let result = match op {
-                        IntBinOp::Add => left_value.wrapping_add(right_value),
-                        IntBinOp::Sub => left_value.wrapping_sub(right_value),
-                        IntBinOp::Mul => left_value.wrapping_mul(right_value),
-                        IntBinOp::UDiv => {
-                            if right_value == 0 {
-                                return Err(LaminaError::RuntimeError(
-                                    "Interpreter: division by zero".to_owned(),
-                                ));
-                            }
-                            (left_value as u64 / right_value as u64) as i64
-                        }
-                        IntBinOp::SDiv => {
-                            if right_value == 0 {
-                                return Err(LaminaError::RuntimeError(
-                                    "Interpreter: division by zero".to_owned(),
-                                ));
-                            }
-                            left_value.wrapping_div(right_value)
-                        }
-                        IntBinOp::URem => {
-                            if right_value == 0 {
-                                return Err(LaminaError::RuntimeError(
-                                    "Interpreter: remainder by zero".to_owned(),
-                                ));
-                            }
-                            (left_value as u64 % right_value as u64) as i64
-                        }
-                        IntBinOp::SRem => {
-                            if right_value == 0 {
-                                return Err(LaminaError::RuntimeError(
-                                    "Interpreter: remainder by zero".to_owned(),
-                                ));
-                            }
-                            left_value.wrapping_rem(right_value)
-                        }
-                        IntBinOp::And => left_value & right_value,
-                        IntBinOp::Or => left_value | right_value,
-                        IntBinOp::Xor => left_value ^ right_value,
-                        IntBinOp::Shl => left_value.wrapping_shl(right_value as u32),
-                        IntBinOp::LShr => ((left_value as u64) >> (right_value as u32)) as i64,
-                        IntBinOp::AShr => left_value.wrapping_shr(right_value as u32),
-                    };
+                    let left = evaluate_operand(lhs, &register_values)?;
+                    let right = evaluate_operand(rhs, &register_values)?;
+                    let result = op.evaluate(*ty, left, right).ok_or_else(|| {
+                        LaminaError::RuntimeError(format!(
+                            "Interpreter: {op} integer division trap"
+                        ))
+                    })?;
                     register_values.insert(dst.clone(), result);
                 }
                 Instruction::IntCmp {
