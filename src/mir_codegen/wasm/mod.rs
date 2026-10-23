@@ -202,12 +202,9 @@ fn compile_single_function_wasm(
                     local_vregs.insert(vreg);
                 }
             }
-            // use_regs omits the slot a StackAddr names, so claim it here.
-            if let MirInst::StackAddr { slot, .. } = inst {
-                local_vregs.insert(slot);
-            }
         }
     }
+    let frame = stack_frame_layout(func);
 
     let mut vreg_to_local: HashMap<VirtualReg, usize> = HashMap::new();
     for (local_idx, vreg) in local_vregs.into_iter().enumerate() {
@@ -228,11 +225,23 @@ fn compile_single_function_wasm(
 
     writeln!(output, "    (local $pc i64)")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    if frame.size > 0 {
+        writeln!(output, "    (local $fp i64)")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    }
     for (i, param) in func.sig.params.iter().enumerate() {
         writeln!(output, "    local.get $p{i}")
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         store_to_register_wasm(&param.reg, &mut output, &vreg_to_local)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
+    if frame.size > 0 {
+        let size = frame.size;
+        writeln!(
+            output,
+            "    global.get $sp\n    i32.const {size}\n    i32.lt_u\n    (if (then unreachable))\n    global.get $sp\n    i32.const {size}\n    i32.sub\n    global.set $sp\n    global.get $sp\n    i64.extend_i32_u\n    local.set $fp"
+        )
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
     let entry_idx = block_labels.get(func.entry.as_str()).copied().unwrap_or(0);
     writeln!(output, "    i64.const {entry_idx}")
@@ -267,7 +276,7 @@ fn compile_single_function_wasm(
         writeln!(output, "      ;; Block: {}", block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
         for inst in &block.instructions {
-            emit_instruction_wasm(inst, &mut output, &vreg_to_local, &block_labels)
+            emit_instruction_wasm(inst, &mut output, &vreg_to_local, &block_labels, &frame)
                 .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
         writeln!(output, "      br $dispatch_loop")
@@ -359,6 +368,10 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
     // Memory must follow the imports; loads and stores need it declared.
     writeln!(writer, "  (memory (export \"memory\") 1)")?;
+    writeln!(
+        writer,
+        "  (global $sp (mut i32) (i32.const {WASM_STACK_TOP}))"
+    )?;
 
     for i in 0..global_count {
         writeln!(writer, "{}", abi.generate_global_decl(i))?;
@@ -376,6 +389,47 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
     writeln!(writer, ")")?;
 
+    Ok(())
+}
+
+const WASM_STACK_TOP: u32 = 65536;
+
+struct StackFrame {
+    offsets: HashMap<VirtualReg, i64>,
+    size: i64,
+}
+
+fn stack_frame_layout(func: &Function) -> StackFrame {
+    let slots: BTreeSet<&VirtualReg> = func
+        .blocks
+        .iter()
+        .flat_map(|block| &block.instructions)
+        .filter_map(|inst| match inst {
+            MirInst::StackAddr { slot, .. } => Some(slot),
+            _ => None,
+        })
+        .collect();
+    let mut offsets = HashMap::new();
+    let mut size = 0i64;
+    for slot in slots {
+        let units = 1 + func.stack_reservations.get(slot).copied().unwrap_or(0);
+        offsets.insert(*slot, size);
+        size += 8 * units as i64;
+    }
+    StackFrame {
+        offsets,
+        size: (size + 15) / 16 * 16,
+    }
+}
+
+fn release_stack_frame(writer: &mut impl Write, frame: &StackFrame) -> Result<(), LaminaError> {
+    if frame.size > 0 {
+        let size = frame.size;
+        writeln!(
+            writer,
+            "        local.get $fp\n        i32.wrap_i64\n        i32.const {size}\n        i32.add\n        global.set $sp"
+        )?;
+    }
     Ok(())
 }
 
@@ -400,10 +454,11 @@ fn emit_instruction_wasm(
     writer: &mut impl Write,
     vreg_to_local: &HashMap<VirtualReg, usize>,
     block_labels: &HashMap<&str, usize>,
+    frame: &StackFrame,
 ) -> Result<(), LaminaError> {
     if let Some(operations) = integer_conversion(inst) {
         for operation in operations {
-            emit_instruction_wasm(&operation, writer, vreg_to_local, block_labels)?;
+            emit_instruction_wasm(&operation, writer, vreg_to_local, block_labels, frame)?;
         }
         return Ok(());
     }
@@ -724,7 +779,7 @@ fn emit_instruction_wasm(
                 // No return value - use 0
                 writeln!(writer, "        i64.const 0")?;
             }
-            // Return exits the function
+            release_stack_frame(writer, frame)?;
             writeln!(writer, "        return")?;
         }
         MirInst::Jmp { target } => {
@@ -879,9 +934,12 @@ fn emit_instruction_wasm(
             writeln!(writer, "        ;; {text}")?;
         }
         MirInst::StackAddr { dst, slot } => {
-            // Locals stand in for frame slots here, so the slot's local carries
-            // the address the rest of the lowering expects.
-            load_register_wasm(&Register::Virtual(*slot), writer, vreg_to_local)?;
+            writeln!(writer, "        local.get $fp")?;
+            let offset = frame.offsets[slot];
+            if offset != 0 {
+                writeln!(writer, "        i64.const {offset}")?;
+                writeln!(writer, "        i64.add")?;
+            }
             if let Register::Virtual(vreg) = dst {
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
             }
@@ -906,6 +964,7 @@ fn emit_instruction_wasm(
                 let _ = i;
                 load_operand_wasm(arg, writer, vreg_to_local)?;
             }
+            release_stack_frame(writer, frame)?;
             writeln!(writer, "        call ${name}")?;
             writeln!(writer, "        return")?;
         }
@@ -930,7 +989,9 @@ fn emit_instruction_wasm(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::compile_lamina_ir_to_target_assembly;
     use crate::mir::FunctionBuilder;
+    use std::{env, fs, process::Command};
 
     #[test]
     fn float_copy_emits_local_move_not_add() {
@@ -996,5 +1057,74 @@ mod tests {
             assembly.contains("i64.const 1\n    local.set $pc"),
             "dispatcher should start at the entry block index: {assembly}"
         );
+    }
+
+    const WASM_RUN_PY: &str = r#"import sys, wasmtime
+engine = wasmtime.Engine()
+store = wasmtime.Store(engine)
+module = wasmtime.Module.from_file(engine, sys.argv[1])
+linker = wasmtime.Linker(engine)
+for imp in module.imports:
+    def callback(*args, name=imp.name):
+        if name == 'log':
+            print(*args)
+            return None
+        return None if name == 'free' else 0
+    linker.define(store, imp.module, imp.name,
+                  wasmtime.Func(store, imp.type, callback))
+instance = linker.instantiate(store, module)
+print('main returned', instance.exports(store)['main'](store))
+"#;
+
+    fn run_wasm_main(test_name: &str, source: &str) -> String {
+        let mut wat = Vec::new();
+        compile_lamina_ir_to_target_assembly(source, &mut wat, "wasm32_unknown", 1)
+            .expect("WASM codegen should succeed");
+        let dir = env::temp_dir().join(format!("lamina-wasm-{test_name}-{}", id()));
+        fs::create_dir_all(&dir).expect("create test dir");
+        let wat_path = dir.join("module.wat");
+        let run_path = dir.join("run.py");
+        fs::write(&wat_path, wat).expect("write wat");
+        fs::write(&run_path, WASM_RUN_PY).expect("write runner");
+        let output = Command::new("uv")
+            .args(["run", "--with", "wasmtime", "python"])
+            .arg(&run_path)
+            .arg(&wat_path)
+            .output()
+            .expect("run uv");
+        fs::remove_dir_all(&dir).expect("cleanup");
+        assert!(
+            output.status.success(),
+            "wasm run failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).expect("stdout should be UTF-8")
+    }
+
+    #[test]
+    fn distinct_stack_slots_in_one_frame_do_not_alias() {
+        let stdout = run_wasm_main(
+            "slots",
+            "fn @main() -> i64 {\nentry:\n %p = alloc.stack i64\n %q = alloc.stack i64\n store.i64 %p, 11\n store.i64 %q, 22\n %x = load.i64 %p\n print %x\n ret.i64 0\n}",
+        );
+        assert_eq!(stdout, "11\nmain returned 0\n");
+    }
+
+    #[test]
+    fn recursive_invocations_keep_their_own_stack_slots() {
+        let stdout = run_wasm_main(
+            "recursive",
+            "fn @rec(i64 %n) -> i64 {\nentry:\n %p = alloc.stack i64\n store.i64 %p, %n\n %c = eq.i64 %n, 0\n br %c, base, step\nbase:\n ret.i64 0\nstep:\n %m = sub.i64 %n, 1\n %r = call @rec(%m)\n %x = load.i64 %p\n %s = add.i64 %x, %r\n ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n %r = call @rec(3)\n ret.i64 %r\n}",
+        );
+        assert_eq!(stdout, "main returned 6\n");
+    }
+
+    #[test]
+    fn stack_frames_are_released_on_every_return() {
+        let stdout = run_wasm_main(
+            "release",
+            "fn @leaf(i64 %n) -> i64 {\nentry:\n %p = alloc.stack i64\n store.i64 %p, %n\n %x = load.i64 %p\n ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n %i = add.i64 0, 0\n jmp loop\nloop:\n %r = call @leaf(%i)\n %i = add.i64 %i, 1\n %c = lt.i64 %i, 6000\n br %c, loop, done\ndone:\n ret.i64 %i\n}",
+        );
+        assert_eq!(stdout, "main returned 6000\n");
     }
 }
