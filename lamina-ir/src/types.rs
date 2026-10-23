@@ -171,7 +171,11 @@
 //!     .ret_void();
 //! ```
 
-use std::fmt;
+use crate::module::TypeDeclaration;
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 /// A type alias for identifiers in the IR.
 ///
@@ -445,44 +449,88 @@ pub const fn sizeof_primitive(ty: PrimitiveType) -> u64 {
     }
 }
 
-/// Returns the size in bytes of an IR type, or `None` for unsized/void types.
-pub fn sizeof_type(ty: &Type<'_>) -> Option<u64> {
-    match ty {
-        Type::Primitive(p) => Some(sizeof_primitive(*p)),
-        Type::Array { element_type, size } => {
-            sizeof_type(element_type).map(|es| es.saturating_mul(*size))
-        }
-        Type::Struct(fields) => {
-            let mut offset = 0u64;
-            for f in fields {
-                let align = align_of_type(&f.ty);
-                offset = (offset + align - 1) & !(align - 1);
-                offset = offset.saturating_add(sizeof_type(&f.ty)?);
+/// Resolves named types throughout an aggregate, rejecting unknown names and cycles.
+pub fn resolve_type_names<'a>(
+    ty: &Type<'a>,
+    declarations: &HashMap<Identifier<'a>, TypeDeclaration<'a>>,
+) -> Option<Type<'a>> {
+    fn resolve<'a>(
+        ty: &Type<'a>,
+        declarations: &HashMap<Identifier<'a>, TypeDeclaration<'a>>,
+        visiting: &mut HashSet<Identifier<'a>>,
+    ) -> Option<Type<'a>> {
+        Some(match ty {
+            Type::Named(name) => {
+                if !visiting.insert(name) {
+                    return None;
+                }
+                let resolved = resolve(&declarations.get(name)?.ty, declarations, visiting)?;
+                visiting.remove(name);
+                resolved
             }
-            // Round up total to the struct's own alignment (= max field alignment)
-            let struct_align = fields
-                .iter()
-                .map(|f| align_of_type(&f.ty))
-                .max()
-                .unwrap_or(1);
-            Some((offset + struct_align - 1) & !(struct_align - 1))
+            Type::Array { element_type, size } => Type::Array {
+                element_type: Box::new(resolve(element_type, declarations, visiting)?),
+                size: *size,
+            },
+            Type::Struct(fields) => Type::Struct(
+                fields
+                    .iter()
+                    .map(|field| {
+                        Some(StructField {
+                            name: field.name,
+                            ty: resolve(&field.ty, declarations, visiting)?,
+                        })
+                    })
+                    .collect::<Option<_>>()?,
+            ),
+            Type::Tuple(elements) => Type::Tuple(
+                elements
+                    .iter()
+                    .map(|ty| resolve(ty, declarations, visiting))
+                    .collect::<Option<_>>()?,
+            ),
+            other => other.clone(),
+        })
+    }
+    resolve(ty, declarations, &mut HashSet::new())
+}
+
+fn aggregate_layout<'a>(fields: impl Iterator<Item = &'a Type<'a>>) -> Option<(u64, u64)> {
+    let mut size = 0u64;
+    let mut alignment = 1;
+    for field in fields {
+        let (field_size, field_alignment) = type_layout(field)?;
+        alignment = alignment.max(field_alignment);
+        size = size.checked_add(field_alignment - 1)? & !(field_alignment - 1);
+        size = size.checked_add(field_size)?;
+    }
+    Some((
+        size.checked_add(alignment - 1)? & !(alignment - 1),
+        alignment,
+    ))
+}
+
+fn type_layout(ty: &Type<'_>) -> Option<(u64, u64)> {
+    match ty {
+        Type::Primitive(p) => Some((sizeof_primitive(*p), align_of_primitive(*p))),
+        Type::Array { element_type, size } => {
+            let (element_size, alignment) = type_layout(element_type)?;
+            Some((element_size.checked_mul(*size)?, alignment))
         }
+        Type::Struct(fields) => aggregate_layout(fields.iter().map(|field| &field.ty)),
+        Type::Tuple(elements) => aggregate_layout(elements.iter()),
         _ => None,
     }
 }
 
+/// Returns the size in bytes, or `None` for unsized types or overflowing layouts.
+pub fn sizeof_type(ty: &Type<'_>) -> Option<u64> {
+    type_layout(ty).map(|(size, _)| size)
+}
+
 /// Returns the ABI alignment in bytes of an IR type.
 pub fn align_of_type(ty: &Type<'_>) -> u64 {
-    match ty {
-        Type::Primitive(p) => align_of_primitive(*p),
-        Type::Array { element_type, .. } => align_of_type(element_type),
-        Type::Struct(fields) => fields
-            .iter()
-            .map(|f| align_of_type(&f.ty))
-            .max()
-            .unwrap_or(1),
-        _ => 8,
-    }
+    type_layout(ty).map_or(8, |(_, alignment)| alignment)
 }
 
 /// Computes the byte offset of `field_index` within a struct using standard ABI layout rules.
