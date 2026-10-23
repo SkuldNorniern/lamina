@@ -999,6 +999,13 @@ pub(super) fn emit_instruction_x86_64(
                 FloatCmpOp::Gt => writeln!(writer, "    seta %al")?,
                 FloatCmpOp::Ge => writeln!(writer, "    setae %al")?,
             }
+            if matches!(op, FloatCmpOp::Ne) {
+                writeln!(writer, "    setp %ah")?;
+                writeln!(writer, "    orb %ah, %al")?;
+            } else {
+                writeln!(writer, "    setnp %ah")?;
+                writeln!(writer, "    andb %ah, %al")?;
+            }
             writeln!(writer, "    movzbq %al, %rax")?;
             if let Register::Virtual(vreg) = dst {
                 store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
