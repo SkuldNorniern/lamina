@@ -30,7 +30,7 @@ const STRICT_CONFIG: VerificationConfig = VerificationConfig {
     verify_immediate_widths: true,
 };
 const PIPELINE_CONFIG: VerificationConfig = VerificationConfig {
-    verify_terminator_placement: false,
+    verify_terminator_placement: true,
     verify_ssa: false,
     verify_dominance: false,
     verify_register_types: false,
@@ -85,9 +85,8 @@ fn function_errors_with_config(function: &Function, config: VerificationConfig) 
     let mut errors = Vec::new();
     let block_indices = verify_structure(function, config, &mut errors);
     let definitions = collect_definitions(function, config, &mut errors);
-    let dominators = calculate_dominators(function, &block_indices);
-
     if config.verify_dominance {
+        let dominators = calculate_dominators(function, &block_indices);
         verify_dominance(function, &definitions, &dominators, &mut errors);
     }
     verify_instruction_types(function, &definitions, config, &mut errors);
@@ -849,6 +848,9 @@ mod tests {
             .instr(Instruction::Ret { value: None })
             .build();
 
+        let mut module = Module::new("bad_terminator");
+        module.add_function(function.clone());
+        assert!(module.validate_in_pipeline().is_err());
         let errors = verification_errors(&function);
         assert!(
             errors
