@@ -38,7 +38,10 @@ fn evaluate_operand(
     }
 }
 
-fn interpret_mir_function(function: &Function, args: &[i64]) -> Result<Option<i64>, LaminaError> {
+pub(crate) fn interpret_mir_function(
+    function: &Function,
+    args: &[i64],
+) -> Result<Option<i64>, LaminaError> {
     if function.sig.params.len() != args.len() {
         return Err(LaminaError::RuntimeError(format!(
             "Interpreter: expected {} arguments, got {}",
