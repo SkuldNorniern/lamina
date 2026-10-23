@@ -462,13 +462,14 @@ impl LoopInvariantCodeMotion {
     }
 
     fn has_side_effects(&self, instr: &Instruction) -> bool {
-        matches!(
-            instr,
-            Instruction::Load { .. }
-                | Instruction::Store { .. }
-                | Instruction::Call { .. }
-                | Instruction::Ret { .. }
-        )
+        instr.may_trap_integer()
+            || matches!(
+                instr,
+                Instruction::Load { .. }
+                    | Instruction::Store { .. }
+                    | Instruction::Call { .. }
+                    | Instruction::Ret { .. }
+            )
     }
 
     fn move_invariant_instructions(

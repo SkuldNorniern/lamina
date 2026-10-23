@@ -65,6 +65,16 @@ pub enum MirType {
 }
 
 impl MirType {
+    pub fn signed_integer(self, value: i64) -> i64 {
+        let shift = 64 - self.size_bytes() * 8;
+        (value << shift) >> shift
+    }
+
+    pub fn unsigned_integer(self, value: i64) -> u64 {
+        let shift = 64 - self.size_bytes() * 8;
+        ((value as u64) << shift) >> shift
+    }
+
     /// Size of the type in bytes
     pub fn size_bytes(&self) -> usize {
         match self {

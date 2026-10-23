@@ -1,7 +1,7 @@
 //! Constant folding transform for MIR.
 
 use crate::mir::{
-    FloatBinOp, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, ScalarType,
+    FloatBinOp, Function, Immediate, Instruction, IntCmpOp, MirType, Operand, ScalarType,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 
@@ -50,7 +50,7 @@ impl ConstantFolding {
         Ok(changed)
     }
 
-    fn try_fold_int(&self, instr: &mut Instruction) -> bool {
+    pub(super) fn try_fold_int(&self, instr: &mut Instruction) -> bool {
         if let Instruction::IntBinary {
             op,
             ty,
@@ -60,50 +60,8 @@ impl ConstantFolding {
         } = instr
             && let (Some(lhs_val), Some(rhs_val)) = (self.extract_i64(lhs), self.extract_i64(rhs))
         {
-            let result: i64 = match op {
-                IntBinOp::Add => match lhs_val.checked_add(rhs_val) {
-                    Some(r) => r,
-                    None => return false,
-                },
-                IntBinOp::Sub => match lhs_val.checked_sub(rhs_val) {
-                    Some(r) => r,
-                    None => return false,
-                },
-                IntBinOp::Mul => match lhs_val.checked_mul(rhs_val) {
-                    Some(r) => r,
-                    None => return false,
-                },
-                IntBinOp::UDiv if rhs_val != 0 => ((lhs_val as u64) / (rhs_val as u64)) as i64,
-                IntBinOp::SDiv if rhs_val != 0 => {
-                    if lhs_val == i64::MIN && rhs_val == -1 {
-                        return false;
-                    }
-                    lhs_val / rhs_val
-                }
-                IntBinOp::URem if rhs_val != 0 => ((lhs_val as u64) % (rhs_val as u64)) as i64,
-                IntBinOp::SRem if rhs_val != 0 => lhs_val % rhs_val,
-                IntBinOp::And => lhs_val & rhs_val,
-                IntBinOp::Or => lhs_val | rhs_val,
-                IntBinOp::Xor => lhs_val ^ rhs_val,
-                IntBinOp::Shl => {
-                    if !(0..64).contains(&rhs_val) {
-                        return false;
-                    }
-                    lhs_val << rhs_val
-                }
-                IntBinOp::LShr => {
-                    if !(0..64).contains(&rhs_val) {
-                        return false;
-                    }
-                    ((lhs_val as u64) >> rhs_val) as i64
-                }
-                IntBinOp::AShr => {
-                    if !(0..64).contains(&rhs_val) {
-                        return false;
-                    }
-                    lhs_val >> rhs_val
-                }
-                _ => return false,
+            let Some(result) = op.evaluate(*ty, lhs_val, rhs_val) else {
+                return false;
             };
 
             *instr = Instruction::Copy {
@@ -208,7 +166,55 @@ impl ConstantFolding {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{Block, Register, VirtualReg, function::Signature};
+    use crate::mir::{Block, IntBinOp, Register, VirtualReg, function::Signature};
+
+    #[test]
+    fn folds_wrapping_arithmetic_and_masked_shifts_preserving_traps() {
+        for ty in [
+            MirType::i8(),
+            MirType::i16(),
+            MirType::i32(),
+            MirType::i64(),
+        ] {
+            let width = ty.size_bytes() * 8;
+            let minimum = ty.signed_integer(1i64 << (width - 1));
+            let maximum = minimum.wrapping_sub(1);
+            for (op, lhs, rhs, expected) in [
+                (IntBinOp::Add, maximum, 1, Some(minimum)),
+                (IntBinOp::Add, maximum, 2, Some(minimum + 1)),
+                (IntBinOp::Sub, minimum, 1, Some(ty.signed_integer(maximum))),
+                (IntBinOp::Mul, minimum, 2, Some(0)),
+                (IntBinOp::Mul, minimum, 3, Some(minimum)),
+                (IntBinOp::Shl, 1, width as i64, Some(1)),
+                (IntBinOp::Shl, 1, width as i64 * 1024 + 1, Some(2)),
+                (IntBinOp::SDiv, minimum, -1, None),
+                (IntBinOp::SRem, minimum, -1, None),
+                (IntBinOp::SDiv, 1, 0, None),
+                (IntBinOp::SRem, 1, 0, None),
+                (IntBinOp::UDiv, 1, 0, None),
+                (IntBinOp::URem, 1, 0, None),
+            ] {
+                let mut instruction = Instruction::IntBinary {
+                    op,
+                    ty,
+                    dst: Register::Virtual(VirtualReg::gpr(0)),
+                    lhs: Operand::Immediate(Immediate::I64(lhs)),
+                    rhs: Operand::Immediate(Immediate::I64(rhs)),
+                };
+                assert_eq!(
+                    ConstantFolding.try_fold_int(&mut instruction),
+                    expected.is_some(),
+                    "{ty} {op}"
+                );
+                if let Some(expected) = expected {
+                    let Instruction::Copy { src, .. } = instruction else {
+                        panic!("expected copy")
+                    };
+                    assert_eq!(src.integer_constant(), Some(expected), "{ty} {op}");
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_signed_division_overflow_prevention() {
@@ -251,7 +257,6 @@ mod tests {
 
     #[test]
     fn test_constant_folding_overflow_sub() {
-        // Subtraction overflow should not be folded
         let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
@@ -265,12 +270,11 @@ mod tests {
 
         let cf = ConstantFolding;
         let changed = cf.apply(&mut func).expect("should not panic");
-        assert!(!changed); // Overflow, no fold
+        assert!(changed);
     }
 
     #[test]
     fn test_constant_folding_overflow_mul() {
-        // Multiplication overflow should not be folded
         let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
@@ -284,7 +288,7 @@ mod tests {
 
         let cf = ConstantFolding;
         let changed = cf.apply(&mut func).expect("should not panic");
-        assert!(!changed); // Overflow, no fold
+        assert!(changed);
     }
 
     #[test]

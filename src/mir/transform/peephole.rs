@@ -77,6 +77,12 @@ impl Peephole {
 
     /// Try to optimize a single instruction through various peephole patterns
     fn try_optimize_instruction(&self, inst: &mut Instruction, _in_loop_block: bool) -> bool {
+        if let Instruction::IntBinary { lhs, rhs, .. } = inst
+            && lhs.integer_constant().is_some()
+            && rhs.integer_constant().is_some()
+        {
+            return super::ConstantFolding.try_fold_int(inst);
+        }
         match inst {
             Instruction::IntBinary { op, lhs, rhs, .. } => {
                 let changed = self.try_fold_int_binary(op, lhs, rhs);
@@ -165,9 +171,8 @@ impl Peephole {
             return false;
         }
         // Constant folding
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
-            && let Some(result) = c1.checked_add(c2)
-        {
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
+            let result = c1.wrapping_add(c2);
             *lhs = Operand::Immediate(Immediate::I64(result));
             *rhs = Operand::Immediate(Immediate::I64(0));
             return true;
@@ -186,9 +191,8 @@ impl Peephole {
         if is_zero(rhs_imm) {
             return false;
         }
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
-            && let Some(result) = c1.checked_sub(c2)
-        {
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
+            let result = c1.wrapping_sub(c2);
             *lhs = Operand::Immediate(Immediate::I64(result));
             *rhs = Operand::Immediate(Immediate::I64(0));
             return true;
@@ -246,9 +250,8 @@ impl Peephole {
             return true;
         }
 
-        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
-            && let Some(result) = c1.checked_mul(c2)
-        {
+        if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm) {
+            let result = c1.wrapping_mul(c2);
             *lhs = Operand::Immediate(Immediate::I64(result));
             *rhs = Operand::Immediate(Immediate::I64(0));
             return true;
@@ -293,6 +296,7 @@ impl Peephole {
     ) -> bool {
         if let (Some(c1), Some(c2)) = (lhs_imm, rhs_imm)
             && c2 != 0
+            && !(signed && c1 == i64::MIN && c2 == -1)
         {
             let result = if signed {
                 c1 % c2
@@ -734,8 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn test_peephole_overflow_add_not_folded() {
-        // Overflow in constant folding should be skipped
+    fn test_peephole_overflow_add_wraps() {
         let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
@@ -750,8 +753,14 @@ mod tests {
         let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
 
-        // Checked_add returns None on overflow, so no fold
-        assert!(!changed);
+        assert!(changed);
+        assert!(matches!(
+            &func.blocks[0].instructions[0],
+            Instruction::Copy {
+                src: Operand::Immediate(Immediate::I64(i64::MIN)),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -835,7 +844,6 @@ mod tests {
 
     #[test]
     fn test_peephole_shift_bounds() {
-        // Shift by >= 64 should not be folded (undefined behavior)
         let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
         let mut bb = Block::new("entry");
         bb.push(Instruction::IntBinary {
@@ -843,15 +851,21 @@ mod tests {
             ty: MirType::Scalar(ScalarType::I64),
             dst: Register::Virtual(VirtualReg::gpr(0)),
             lhs: Operand::Immediate(Immediate::I64(1)),
-            rhs: Operand::Immediate(Immediate::I64(64)), // Out of bounds
+            rhs: Operand::Immediate(Immediate::I64(64)),
         });
         func.add_block(bb);
 
         let pass = Peephole;
         let changed = pass.run_on_function(&mut func);
 
-        // Should NOT fold shift by 64+
-        assert!(!changed);
+        assert!(changed);
+        assert!(matches!(
+            &func.blocks[0].instructions[0],
+            Instruction::Copy {
+                src: Operand::Immediate(Immediate::I64(1)),
+                ..
+            }
+        ));
     }
 
     #[test]

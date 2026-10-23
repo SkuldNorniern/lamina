@@ -28,6 +28,49 @@ pub enum IntBinOp {
     AShr,
 }
 
+impl IntBinOp {
+    /// Evaluate concrete operands, returning None when division would trap.
+    pub fn evaluate(self, ty: MirType, lhs: i64, rhs: i64) -> Option<i64> {
+        let left = ty.signed_integer(lhs);
+        let right = ty.signed_integer(rhs);
+        let unsigned_left = ty.unsigned_integer(lhs);
+        let unsigned_right = ty.unsigned_integer(rhs);
+        let shift = (rhs as u32) & (ty.size_bytes() as u32 * 8 - 1);
+        let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+        let result = match self {
+            Self::Add => left.wrapping_add(right),
+            Self::Sub => left.wrapping_sub(right),
+            Self::Mul => left.wrapping_mul(right),
+            Self::SDiv | Self::SRem if right == 0 || (left == minimum && right == -1) => {
+                return None;
+            }
+            Self::SDiv => left / right,
+            Self::SRem => left % right,
+            Self::UDiv => unsigned_left.checked_div(unsigned_right)? as i64,
+            Self::URem => unsigned_left.checked_rem(unsigned_right)? as i64,
+            Self::And => left & right,
+            Self::Or => left | right,
+            Self::Xor => left ^ right,
+            Self::Shl => left.wrapping_shl(shift),
+            Self::LShr => (unsigned_left >> shift) as i64,
+            Self::AShr => left >> shift,
+        };
+        Some(ty.signed_integer(result))
+    }
+
+    pub fn division_checks(self, ty: MirType, lhs: Option<i64>, rhs: Option<i64>) -> (bool, bool) {
+        if !matches!(self, Self::SDiv | Self::SRem | Self::UDiv | Self::URem) {
+            return (false, false);
+        }
+        let minimum = ty.signed_integer(1i64 << (ty.size_bytes() * 8 - 1));
+        let zero = rhs.is_none_or(|value| ty.signed_integer(value) == 0);
+        let overflow = matches!(self, Self::SDiv | Self::SRem)
+            && lhs.is_none_or(|value| ty.signed_integer(value) == minimum)
+            && rhs.is_none_or(|value| ty.signed_integer(value) == -1);
+        (zero, overflow)
+    }
+}
+
 impl fmt::Display for IntBinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
@@ -358,6 +401,16 @@ impl From<Immediate> for Operand {
 }
 
 impl Operand {
+    pub fn integer_constant(&self) -> Option<i64> {
+        match self {
+            Self::Immediate(Immediate::I8(value)) => Some(i64::from(*value)),
+            Self::Immediate(Immediate::I16(value)) => Some(i64::from(*value)),
+            Self::Immediate(Immediate::I32(value)) => Some(i64::from(*value)),
+            Self::Immediate(Immediate::I64(value)) => Some(*value),
+            _ => None,
+        }
+    }
+
     /// Create an immediate `i8` operand.
     pub fn imm_i8(v: i8) -> Self {
         Operand::Immediate(Immediate::I8(v))
@@ -773,6 +826,19 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    pub fn may_trap_integer(&self) -> bool {
+        if let Self::IntBinary {
+            op, ty, lhs, rhs, ..
+        } = self
+        {
+            let (zero, overflow) =
+                op.division_checks(*ty, lhs.integer_constant(), rhs.integer_constant());
+            zero || overflow
+        } else {
+            false
+        }
+    }
+
     pub fn normalize_integer_immediates(&mut self, return_type: Option<MirType>) {
         match self {
             Instruction::IntBinary { ty, lhs, rhs, .. }
