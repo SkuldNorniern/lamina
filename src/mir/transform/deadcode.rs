@@ -228,6 +228,9 @@ impl DeadCodeElimination {
 
     /// Check if an instruction has no side effects and can be safely removed
     fn has_no_side_effects(&self, instr: &Instruction) -> bool {
+        if instr.may_trap_integer() {
+            return false;
+        }
         match instr {
             // Pure arithmetic operations - safe to remove
             Instruction::Copy { .. }

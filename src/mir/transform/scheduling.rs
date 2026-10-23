@@ -116,7 +116,7 @@ impl InstructionScheduling {
             }
 
             // 3. Memory Dependencies
-            if self.is_memory_op(instr) {
+            if self.is_memory_op(instr) || instr.may_trap_integer() {
                 if let Some(prev_mem_idx) = last_memory_op {
                     graph.add_edge(prev_mem_idx, idx);
                 }
