@@ -10,6 +10,8 @@ use crate::mir::{
 
 use super::loop_opt::{LoopInfo, LoopInvariantCodeMotion};
 
+mod polynomial;
+
 #[derive(Default)]
 pub struct InductionStrengthReduction;
 
@@ -40,7 +42,7 @@ impl Transform for InductionStrengthReduction {
                 .into_iter()
                 .find(|info| info.header == original.header)
             {
-                while reduce_loop(func, &info) {
+                while reduce_loop(func, &info)? {
                     changed = true;
                 }
             }
@@ -100,15 +102,139 @@ fn rename_in_block(block: &mut Block, from: &Register, to: &Register) {
     }
 }
 
-fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
+fn following_offset(
+    block: &Block,
+    ii: usize,
+    dst: &Register,
+    ty: &MirType,
+    defs: &HashMap<Register, Vec<(usize, usize)>>,
+) -> Option<Operand> {
+    match block.instructions.get(ii + 1) {
+        Some(Instruction::IntBinary {
+            op: IntBinOp::Add,
+            dst: ad,
+            ty: at,
+            lhs: al,
+            rhs: ar,
+        }) if ad == dst && at == ty => match (al, ar) {
+            (Operand::Register(r), a) | (a, Operand::Register(r))
+                if r == dst && invariant(a, defs) =>
+            {
+                Some(a.clone())
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+struct Legality<'a> {
+    func: &'a Function,
+    info: &'a LoopInfo,
+    header_idx: usize,
+    dominators: &'a HashMap<String, HashSet<String>>,
+    latches: &'a [String],
+    nested: &'a HashSet<String>,
+}
+
+impl Legality<'_> {
+    fn update(
+        &self,
+        iv: &Register,
+        product: (usize, usize),
+        update: (usize, usize),
+    ) -> Option<HashSet<String>> {
+        let dominates = |a: &str, b: &str| self.dominators.get(b).is_some_and(|ds| ds.contains(a));
+        let (bi, ii) = product;
+        let (ub, ui) = update;
+        let block = &self.func.blocks[bi];
+        let update_block = &self.func.blocks[ub];
+        if self.func.blocks.iter().any(|b| {
+            !self.info.blocks.contains(&b.label)
+                && !dominates(&b.label, &block.label)
+                && b.instructions
+                    .iter()
+                    .any(|i| i.def_reg() == Some(iv) && i.use_regs().contains(&iv))
+        }) || ub == self.header_idx
+            || self.nested.contains(&update_block.label)
+            || self.latches.is_empty()
+            || !self
+                .latches
+                .iter()
+                .all(|l| dominates(&update_block.label, l))
+            || !dominates(&block.label, &update_block.label)
+            || (bi == ub && ii >= ui)
+            || (bi != ub && dominates(&update_block.label, &block.label))
+        {
+            return None;
+        }
+        let mut pending: Vec<_> = update_block
+            .successors()
+            .into_iter()
+            .filter(|s| *s != self.info.header)
+            .map(str::to_owned)
+            .collect();
+        let mut seen = HashSet::new();
+        while let Some(label) = pending.pop() {
+            if self.info.blocks.contains(&label)
+                && label != self.info.header
+                && seen.insert(label.clone())
+                && let Some(b) = self.func.get_block(&label)
+            {
+                pending.extend(
+                    b.successors()
+                        .into_iter()
+                        .filter(|s| *s != self.info.header)
+                        .map(str::to_owned),
+                );
+            }
+        }
+        if seen.contains(&block.label) || seen.contains(&update_block.label) {
+            return None;
+        }
+        Some(seen)
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reusable(
+    func: &Function,
+    info: &LoopInfo,
+    defs: &HashMap<Register, Vec<(usize, usize)>>,
+    dominators: &HashMap<String, HashSet<String>>,
+    dst: &Register,
+    product: (usize, usize),
+    update: (usize, usize),
+    seen: &HashSet<String>,
+    affine: bool,
+) -> bool {
+    let (bi, ii) = product;
+    let (ub, ui) = update;
+    let block = &func.blocks[bi];
+    defs.get(dst)
+        .is_some_and(|locations| locations.len() == 1 + usize::from(affine))
+        && func.blocks.iter().enumerate().all(|(use_bi, b)| {
+            b.instructions.iter().enumerate().all(|(use_ii, i)| {
+                !i.use_regs().contains(&dst)
+                    || (info.blocks.contains(&b.label)
+                        && dominators
+                            .get(&b.label)
+                            .is_some_and(|ds| ds.contains(&block.label))
+                        && !seen.contains(&b.label)
+                        && (use_bi != bi || use_ii > ii)
+                        && (use_bi != ub || use_ii < ui))
+            })
+        })
+}
+
+fn reduce_loop(func: &mut Function, info: &LoopInfo) -> Result<bool, TransformError> {
     let Some(header_idx) = func.blocks.iter().position(|b| b.label == info.header) else {
-        return false;
+        return Ok(false);
     };
     if func.entry == info.header {
-        return false;
+        return Ok(false);
     }
     let dominators = calculate_dominators(func);
-    let dominates = |a: &str, b: &str| dominators.get(b).is_some_and(|ds| ds.contains(a));
     let latches: Vec<_> = func
         .blocks
         .iter()
@@ -151,8 +277,17 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
         .unwrap_or(0)
         .checked_add(1)
     else {
-        return false;
+        return Ok(false);
     };
+    let legality = Legality {
+        func,
+        info,
+        header_idx,
+        dominators: &dominators,
+        latches: &latches,
+        nested: &nested,
+    };
+    let mut quadratic = false;
     let mut init = Vec::new();
     let mut product_block = None;
     let mut replacements = HashMap::new();
@@ -182,6 +317,104 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
                     ScalarType::I8 | ScalarType::I16 | ScalarType::I32 | ScalarType::I64
                 )
             ) {
+                continue;
+            }
+            let mut analysis = polynomial::Analysis::new(func, info, &defs, (bi, ii), *ty);
+            if let Some(polynomial) = analysis.product(lhs, rhs) {
+                let Some((_, update, _)) = polynomial.updates.first() else {
+                    continue;
+                };
+                let update = *update;
+                if !polynomial
+                    .updates
+                    .iter()
+                    .all(|(reg, position, _)| legality.update(reg, (bi, ii), *position).is_some())
+                {
+                    continue;
+                }
+                let Some(seen) = legality.update(&polynomial.updates[0].0, (bi, ii), update) else {
+                    continue;
+                };
+                let affine = following_offset(block, ii, dst, ty, &defs);
+                let reuse = reusable(
+                    func,
+                    info,
+                    &defs,
+                    &dominators,
+                    dst,
+                    (bi, ii),
+                    update,
+                    &seen,
+                    affine.is_some(),
+                );
+                let mut fresh = next_id;
+                let Some(after_state) = fresh.checked_add(2) else {
+                    continue;
+                };
+                let accumulator: Register = if reuse {
+                    dst.clone()
+                } else {
+                    VirtualReg::gpr(fresh).into()
+                };
+                let delta: Register = VirtualReg::gpr(fresh + 1).into();
+                fresh = after_state;
+                let mut initializers = Vec::new();
+                let Some([p, d, e]) = analysis.emit(&polynomial, &mut fresh, &mut initializers)
+                else {
+                    continue;
+                };
+                initializers.push(Instruction::Copy {
+                    dst: accumulator.clone(),
+                    ty: *ty,
+                    src: p,
+                });
+                if let Some(offset) = affine {
+                    initializers.push(Instruction::IntBinary {
+                        op: IntBinOp::Add,
+                        dst: accumulator.clone(),
+                        ty: *ty,
+                        lhs: Operand::Register(accumulator.clone()),
+                        rhs: offset,
+                    });
+                    removed.insert((bi, ii + 1));
+                }
+                initializers.push(Instruction::Copy {
+                    dst: delta.clone(),
+                    ty: *ty,
+                    src: d,
+                });
+                quadratic = true;
+                init.extend(initializers);
+                next_id = fresh;
+                product_block = Some(bi);
+                if reuse {
+                    removed.insert((bi, ii));
+                } else {
+                    replacements.insert(
+                        (bi, ii),
+                        Instruction::Copy {
+                            dst: dst.clone(),
+                            ty: *ty,
+                            src: Operand::Register(accumulator.clone()),
+                        },
+                    );
+                }
+                increments.entry(update).or_default().extend([
+                    Instruction::IntBinary {
+                        op: IntBinOp::Add,
+                        dst: accumulator.clone(),
+                        ty: *ty,
+                        lhs: Operand::Register(accumulator),
+                        rhs: Operand::Register(delta.clone()),
+                    },
+                    Instruction::IntBinary {
+                        op: IntBinOp::Add,
+                        dst: delta.clone(),
+                        ty: *ty,
+                        lhs: Operand::Register(delta),
+                        rhs: e,
+                    },
+                ]);
                 continue;
             }
             let (iv, multiplier) = match (lhs, rhs) {
@@ -222,16 +455,6 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
             if !iv.is_virtual() || locations.len() != 1 {
                 continue;
             }
-            // Shared induction registers can extend recurrences across sibling loops.
-            if func.blocks.iter().any(|b| {
-                !info.blocks.contains(&b.label)
-                    && !dominates(&b.label, &block.label)
-                    && b.instructions
-                        .iter()
-                        .any(|i| i.def_reg() == Some(iv) && i.use_regs().contains(&iv))
-            }) {
-                continue;
-            }
             let (ub, ui) = locations[0];
             let update_block = &func.blocks[ub];
             let Instruction::IntBinary {
@@ -252,76 +475,28 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
                 }
                 _ => continue,
             };
-            if update_ty != ty
-                || ub == header_idx
-                || nested.contains(&update_block.label)
-                || latches.is_empty()
-                || !latches.iter().all(|l| dominates(&update_block.label, l))
-                || !dominates(&block.label, &update_block.label)
-                || (bi == ub && ii >= ui)
-                || (bi != ub && dominates(&update_block.label, &block.label))
-            {
+            if update_ty != ty {
                 continue;
             }
-            // No path may revisit the product after updating the induction variable.
-            let mut pending: Vec<_> = update_block
-                .successors()
-                .into_iter()
-                .filter(|s| *s != info.header)
-                .map(str::to_owned)
-                .collect();
-            let mut seen = HashSet::new();
-            while let Some(label) = pending.pop() {
-                if info.blocks.contains(&label)
-                    && label != info.header
-                    && seen.insert(label.clone())
-                    && let Some(b) = func.get_block(&label)
-                {
-                    pending.extend(
-                        b.successors()
-                            .into_iter()
-                            .filter(|s| *s != info.header)
-                            .map(str::to_owned),
-                    );
-                }
-            }
-            if seen.contains(&block.label) || seen.contains(&update_block.label) {
+            let Some(seen) = legality.update(iv, (bi, ii), (ub, ui)) else {
                 continue;
-            }
+            };
             let Some(following_id) = next_id.checked_add(2) else {
                 continue;
             };
             product_block = Some(bi);
-            let affine = match block.instructions.get(ii + 1) {
-                Some(Instruction::IntBinary {
-                    op: IntBinOp::Add,
-                    dst: ad,
-                    ty: at,
-                    lhs: al,
-                    rhs: ar,
-                }) if ad == dst && at == ty => match (al, ar) {
-                    (Operand::Register(r), a) | (a, Operand::Register(r))
-                        if r == dst && invariant(a, &defs) =>
-                    {
-                        Some(a.clone())
-                    }
-                    _ => None,
-                },
-                _ => None,
-            };
-            let reuse = defs
-                .get(dst)
-                .is_some_and(|locations| locations.len() == 1 + usize::from(affine.is_some()))
-                && func.blocks.iter().enumerate().all(|(use_bi, b)| {
-                    b.instructions.iter().enumerate().all(|(use_ii, i)| {
-                        !i.use_regs().contains(&dst)
-                            || (info.blocks.contains(&b.label)
-                                && dominates(&block.label, &b.label)
-                                && !seen.contains(&b.label)
-                                && (use_bi != bi || use_ii > ii)
-                                && (use_bi != ub || use_ii < ui))
-                    })
-                });
+            let affine = following_offset(block, ii, dst, ty, &defs);
+            let reuse = reusable(
+                func,
+                info,
+                &defs,
+                &dominators,
+                dst,
+                (bi, ii),
+                (ub, ui),
+                &seen,
+                affine.is_some(),
+            );
             let accumulator: Register = if reuse {
                 dst.clone()
             } else {
@@ -405,7 +580,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
         }
     }
     if init.is_empty() {
-        return false;
+        return Ok(false);
     }
     let unique_label = |suffix: &str| {
         let mut label = format!("{}_{}", info.header, suffix);
@@ -418,7 +593,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
         .label
         .clone();
     let Some(prefix) = entry_prefix(func, info, &product_label) else {
-        return false;
+        return Ok(false);
     };
     if func.blocks.iter().any(|b| {
         !info.blocks.contains(&b.label)
@@ -426,7 +601,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
                 .iter()
                 .any(|s| info.blocks.contains(*s) && !prefix.contains(*s) && *s != product_label)
     }) {
-        return false;
+        return Ok(false);
     }
     let prefix = if func.blocks.iter().any(|b| {
         !info.blocks.contains(&b.label) && b.successors().iter().any(|s| prefix.contains(*s))
@@ -458,7 +633,7 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
                 let fresh: Register = VirtualReg::gpr(next_id).into();
                 next_id = match next_id.checked_add(1) {
                     Some(id) => id,
-                    None => return false,
+                    None => return Ok(false),
                 };
                 rename_in_block(&mut first, &local, &fresh);
             }
@@ -513,7 +688,10 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> bool {
         func.blocks.splice(header_idx..header_idx, first_blocks);
         func.blocks.insert(product_idx, init_block);
     }
-    true
+    if quadratic {
+        super::DeadCodeElimination.apply(func)?;
+    }
+    Ok(true)
 }
 
 fn redirect(block: &mut Block, replace: &impl Fn(&str) -> Option<String>) {
@@ -582,7 +760,10 @@ fn entry_prefix(func: &Function, info: &LoopInfo, product: &str) -> Option<HashS
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, Immediate, IntCmpOp};
+    use crate::{
+        mir::{FunctionBuilder, Immediate, IntCmpOp},
+        runtime::executor::interpret_mir_function,
+    };
 
     fn reg(id: u32) -> Register {
         VirtualReg::gpr(id).into()
@@ -1072,5 +1253,409 @@ mod tests {
             ],
         });
         assert!(!InductionStrengthReduction.apply(&mut func).unwrap());
+    }
+    fn quadratic(ty: MirType, trips: i64, a: i64, b: i64, square: bool) -> Function {
+        let mut func = example(ty, trips);
+        func.get_block_mut("entry").unwrap().instructions.insert(
+            0,
+            Instruction::Copy {
+                dst: reg(6),
+                ty,
+                src: constant(13),
+            },
+        );
+        let body = func.get_block_mut("body").unwrap();
+        body.instructions[0] = binary(
+            IntBinOp::Mul,
+            4,
+            ty,
+            operand(0),
+            operand(if square { 0 } else { 6 }),
+        );
+        body.instructions[3] = binary(IntBinOp::Add, 0, ty, operand(0), constant(a));
+        body.instructions
+            .insert(4, binary(IntBinOp::Add, 6, ty, operand(6), constant(b)));
+        func
+    }
+
+    fn equivalent(mut func: Function, reduce: bool) -> Function {
+        let oracle = interpret_mir_function(&func, &[]).unwrap();
+        let expected = execute(&func);
+        assert_eq!(InductionStrengthReduction.apply(&mut func).unwrap(), reduce);
+        let actual = execute(&func);
+        assert_eq!(interpret_mir_function(&func, &[]).unwrap(), oracle);
+        assert_eq!((actual.0, actual.2), (expected.0, expected.2));
+        func
+    }
+
+    #[test]
+    fn quadratic_differences_preserve_every_observed_sum_at_each_width() {
+        for ty in [
+            MirType::i8(),
+            MirType::i16(),
+            MirType::i32(),
+            MirType::i64(),
+        ] {
+            for trips in [0, 1, 2, 19, 100] {
+                for (a, b) in [(1, 1), (-3, 7), (5, -2), (127, 65), (0, -1)] {
+                    for square in [false, true] {
+                        let original = quadratic(ty, trips, a, b, square);
+                        let expected = execute(&original);
+                        let reduced = equivalent(original, true);
+                        assert!(execute(&reduced).1 <= if trips == 0 { 0 } else { 4 });
+                        assert_eq!(execute(&reduced).2, expected.2);
+                        assert!(
+                            !reduced
+                                .get_block("body")
+                                .unwrap()
+                                .instructions
+                                .iter()
+                                .any(|i| {
+                                    matches!(
+                                        i,
+                                        Instruction::IntBinary {
+                                            op: IntBinOp::Mul,
+                                            ..
+                                        }
+                                    )
+                                })
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn quadratic_sums_offsets_and_invariant_steps_preserve_observations() {
+        let ty = MirType::i8();
+        let mut func = quadratic(ty, 45, -7, 11, false);
+        let entry = func.get_block_mut("entry").unwrap();
+        for (id, value) in [(12, -7), (13, 11), (14, 93)] {
+            entry.instructions.insert(
+                0,
+                Instruction::Copy {
+                    dst: reg(id),
+                    ty,
+                    src: constant(value),
+                },
+            );
+        }
+        let body = func.get_block_mut("body").unwrap();
+        body.instructions[3] = binary(IntBinOp::Add, 0, ty, operand(0), operand(12));
+        body.instructions[4] = binary(IntBinOp::Add, 6, ty, operand(6), operand(13));
+        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(11), operand(6));
+        body.instructions
+            .insert(0, binary(IntBinOp::Add, 11, ty, operand(10), operand(14)));
+        body.instructions
+            .insert(0, binary(IntBinOp::Add, 10, ty, operand(0), operand(6)));
+        equivalent(func, true);
+    }
+
+    #[test]
+    fn quadratic_rewrite_preserves_escaping_factors_and_product() {
+        for trips in [0, 1, 2, 37] {
+            for escaped in [0, 6, 4] {
+                let ty = MirType::i64();
+                let mut func = quadratic(ty, trips, -3, 8, false);
+                func.get_block_mut("entry").unwrap().instructions.insert(
+                    0,
+                    Instruction::Copy {
+                        dst: reg(4),
+                        ty,
+                        src: constant(99),
+                    },
+                );
+                func.get_block_mut("exit").unwrap().instructions.insert(
+                    0,
+                    binary(IntBinOp::Add, 2, ty, operand(2), operand(escaped)),
+                );
+                equivalent(func, true);
+            }
+        }
+    }
+
+    #[test]
+    fn quadratic_rewrite_preserves_uses_before_and_after_factor_updates() {
+        let ty = MirType::i64();
+        let mut func = quadratic(ty, 27, 5, -3, false);
+        let body = func.get_block_mut("body").unwrap();
+        body.instructions
+            .insert(3, binary(IntBinOp::Add, 2, ty, operand(2), operand(0)));
+        body.instructions
+            .insert(5, binary(IntBinOp::Add, 2, ty, operand(2), operand(0)));
+        body.instructions
+            .insert(7, binary(IntBinOp::Add, 2, ty, operand(2), operand(6)));
+        equivalent(func, true);
+    }
+
+    #[test]
+    fn quadratic_rewrite_removes_only_unused_factor_state() {
+        let ty = MirType::i64();
+        let func = equivalent(quadratic(ty, 20, 3, 7, false), true);
+        let body = func.get_block("body").unwrap();
+        assert!(
+            !body
+                .instructions
+                .iter()
+                .any(|i| i.def_reg() == Some(&reg(0)) || i.def_reg() == Some(&reg(6)))
+        );
+        let mut func = quadratic(ty, 20, 3, 7, false);
+        func.get_block_mut("exit")
+            .unwrap()
+            .instructions
+            .insert(0, binary(IntBinOp::Add, 2, ty, operand(2), operand(6)));
+        let func = equivalent(func, true);
+        assert!(
+            func.get_block("body")
+                .unwrap()
+                .instructions
+                .iter()
+                .any(|i| i.def_reg() == Some(&reg(6)))
+        );
+    }
+
+    #[test]
+    fn quadratic_guarded_entry_skips_uninitialized_factors() {
+        let ty = MirType::i64();
+        let mut func = quadratic(ty, 20, 3, 7, false);
+        func.get_block_mut("entry")
+            .unwrap()
+            .instructions
+            .retain(|i| i.def_reg() != Some(&reg(0)) && i.def_reg() != Some(&reg(6)));
+        func.get_block_mut("entry").unwrap().instructions.insert(
+            0,
+            Instruction::Copy {
+                dst: reg(5),
+                ty,
+                src: constant(0),
+            },
+        );
+        if let Instruction::Br { true_target, .. } =
+            &mut func.get_block_mut("header").unwrap().instructions[1]
+        {
+            *true_target = "gate".into();
+        }
+        func.blocks.push(Block {
+            label: "gate".into(),
+            instructions: vec![Instruction::Br {
+                cond: reg(5),
+                true_target: "body".into(),
+                false_target: "exit".into(),
+            }],
+        });
+        equivalent(func, true);
+    }
+
+    #[test]
+    fn quadratic_shared_latches_require_both_updates() {
+        let ty = MirType::i64();
+        let mut func = quadratic(ty, 20, 3, 7, false);
+        *func
+            .get_block_mut("body")
+            .unwrap()
+            .instructions
+            .last_mut()
+            .unwrap() = Instruction::Br {
+            cond: reg(3),
+            true_target: "left".into(),
+            false_target: "right".into(),
+        };
+        for label in ["left", "right"] {
+            func.blocks.push(Block {
+                label: label.into(),
+                instructions: vec![Instruction::Jmp {
+                    target: "header".into(),
+                }],
+            });
+        }
+        equivalent(func.clone(), true);
+        let body = func.get_block_mut("body").unwrap();
+        let y_update = body.instructions.remove(4);
+        func.get_block_mut("left")
+            .unwrap()
+            .instructions
+            .insert(0, y_update);
+        equivalent(func, false);
+    }
+
+    #[test]
+    fn quadratic_discovery_rejects_ambiguous_definition_epochs() {
+        let ty = MirType::i64();
+        let mut func = quadratic(ty, 20, 3, 7, false);
+        func.get_block_mut("body")
+            .unwrap()
+            .instructions
+            .insert(4, binary(IntBinOp::Add, 0, ty, operand(0), constant(1)));
+        equivalent(func, false);
+        let mut func = quadratic(ty, 20, 3, 7, false);
+        let body = func.get_block_mut("body").unwrap();
+        let update = body.instructions.remove(3);
+        body.instructions.insert(0, update);
+        equivalent(func, false);
+    }
+
+    #[test]
+    fn polynomial_discovery_caps_degree_and_expansion() {
+        let ty = MirType::i64();
+        let mut func = quadratic(ty, 2, 3, 7, false);
+        let body = func.get_block_mut("body").unwrap();
+        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(10), operand(6));
+        body.instructions
+            .insert(0, binary(IntBinOp::Mul, 10, ty, operand(0), operand(6)));
+        let defs = HashMap::from([
+            (reg(0), vec![(2, 4)]),
+            (reg(6), vec![(2, 5)]),
+            (reg(10), vec![(2, 0)]),
+        ]);
+        let info = LoopInvariantCodeMotion.find_loops(&func).remove(0);
+        let mut analysis = polynomial::Analysis::new(&func, &info, &defs, (2, 1), ty);
+        assert!(analysis.product(&operand(10), &operand(6)).is_none());
+        let body = func.get_block_mut("body").unwrap();
+        body.instructions.remove(0);
+        body.instructions[0] = binary(IntBinOp::Mul, 4, ty, operand(199), operand(6));
+        let mut defs = HashMap::new();
+        for id in 10..200 {
+            let source = if id == 10 { 0 } else { id - 1 };
+            body.instructions.insert(
+                (id - 10) as usize,
+                binary(IntBinOp::Add, id, ty, operand(source), operand(source)),
+            );
+            defs.insert(reg(id), vec![(2, (id - 10) as usize)]);
+        }
+        defs.insert(reg(0), vec![(2, 193)]);
+        defs.insert(reg(6), vec![(2, 194)]);
+        let mut analysis = polynomial::Analysis::new(&func, &info, &defs, (2, 190), ty);
+        assert!(analysis.product(&operand(199), &operand(6)).is_none());
+    }
+    #[test]
+    fn quadratic_product_copies_preserve_observations_after_state_advance() {
+        let ty = MirType::i64();
+        let mut func = quadratic(ty, 20, 3, -7, false);
+        let body = func.get_block_mut("body").unwrap();
+        body.instructions
+            .push(binary(IntBinOp::Add, 2, ty, operand(2), operand(4)));
+        let last = body.instructions.len() - 1;
+        body.instructions.swap(last, last - 1);
+        let func = equivalent(func, true);
+        assert!(
+            func.get_block("body")
+                .unwrap()
+                .instructions
+                .iter()
+                .any(|i| { matches!(i, Instruction::Copy { dst, .. } if *dst == reg(4)) })
+        );
+    }
+
+    #[test]
+    fn quadratic_product_reuses_destination_when_every_use_precedes_update() {
+        let ty = MirType::i64();
+        let mut func = quadratic(ty, 20, 3, -7, false);
+        func.get_block_mut("body").unwrap().instructions.remove(1);
+        let func = equivalent(func, true);
+        assert!(
+            !func
+                .get_block("body")
+                .unwrap()
+                .instructions
+                .iter()
+                .any(|i| { matches!(i, Instruction::Copy { dst, .. } if *dst == reg(4)) })
+        );
+    }
+
+    fn quadratic_separate_updates() -> Function {
+        let ty = MirType::i64();
+        let mut func = quadratic(ty, 20, 3, 7, false);
+        let body = func.get_block_mut("body").unwrap();
+        let mut tail = body.instructions.split_off(3);
+        let y_tail = tail.split_off(1);
+        tail.push(Instruction::Jmp {
+            target: "y_update".into(),
+        });
+        body.instructions.push(Instruction::Jmp {
+            target: "x_update".into(),
+        });
+        func.blocks.push(Block {
+            label: "x_update".into(),
+            instructions: tail,
+        });
+        func.blocks.push(Block {
+            label: "y_update".into(),
+            instructions: y_tail,
+        });
+        func
+    }
+
+    #[test]
+    fn quadratic_factors_can_advance_in_separate_dominating_blocks() {
+        equivalent(quadratic_separate_updates(), true);
+    }
+
+    #[test]
+    fn quadratic_rewrite_rejects_paths_revisiting_product_after_update() {
+        let mut func = quadratic_separate_updates();
+        *func
+            .get_block_mut("y_update")
+            .unwrap()
+            .instructions
+            .last_mut()
+            .unwrap() = Instruction::Br {
+            cond: reg(3),
+            true_target: "header".into(),
+            false_target: "body".into(),
+        };
+        equivalent(func, false);
+    }
+
+    #[test]
+    fn quadratic_rewrite_rejects_nested_factor_updates() {
+        let mut func = quadratic_separate_updates();
+        *func
+            .get_block_mut("y_update")
+            .unwrap()
+            .instructions
+            .last_mut()
+            .unwrap() = Instruction::Br {
+            cond: reg(3),
+            true_target: "header".into(),
+            false_target: "y_update".into(),
+        };
+        equivalent(func, false);
+    }
+
+    #[test]
+    fn quadratic_rewrite_rejects_factor_width_mismatch_and_header_products() {
+        let mut func = quadratic(MirType::i64(), 20, 3, 7, false);
+        if let Instruction::IntBinary { ty, .. } =
+            &mut func.get_block_mut("body").unwrap().instructions[4]
+        {
+            *ty = MirType::i32();
+        }
+        equivalent(func, false);
+        let mut func = quadratic(MirType::i64(), 20, 3, 7, false);
+        let product = func.get_block_mut("body").unwrap().instructions.remove(0);
+        func.get_block_mut("header")
+            .unwrap()
+            .instructions
+            .insert(0, product);
+        equivalent(func, false);
+    }
+    #[test]
+    fn quadratic_differences_may_wrap_when_observed_products_fit() {
+        for (ty, step) in [
+            (MirType::i8(), 8),
+            (MirType::i16(), 128),
+            (MirType::i32(), 32768),
+        ] {
+            let mut func = quadratic(ty, 2, step, step + 1, false);
+            for instruction in &mut func.get_block_mut("entry").unwrap().instructions {
+                if let Instruction::Copy { dst, src, .. } = instruction
+                    && (*dst == reg(0) || *dst == reg(6))
+                {
+                    *src = constant(1);
+                }
+            }
+            equivalent(func, true);
+        }
     }
 }
