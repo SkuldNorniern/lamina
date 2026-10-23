@@ -52,7 +52,7 @@ pub(crate) fn interpret_mir_function(
 
     let mut register_values: HashMap<Register, i64> = HashMap::new();
     for (param, value) in function.sig.params.iter().zip(args.iter().copied()) {
-        register_values.insert(param.reg.clone(), value);
+        register_values.insert(param.reg.clone(), param.ty.signed_integer(value));
     }
 
     let mut block_index_by_label: HashMap<String, usize> = HashMap::new();
@@ -97,14 +97,12 @@ pub(crate) fn interpret_mir_function(
                     src,
                 } => {
                     let value = evaluate_operand(src, &register_values)?;
-                    let width = from.size_bytes().min(to.size_bytes()) * 8;
                     let value = if *signed {
-                        (value << (64 - width)) >> (64 - width)
-                    } else if width < 64 {
-                        (value as u64 & ((1u64 << width) - 1)) as i64
+                        from.signed_integer(value)
                     } else {
-                        value
+                        from.unsigned_integer(value) as i64
                     };
+                    let value = to.signed_integer(value);
                     register_values.insert(dst.clone(), value);
                 }
                 Instruction::IntBinary {
@@ -124,17 +122,29 @@ pub(crate) fn interpret_mir_function(
                     register_values.insert(dst.clone(), result);
                 }
                 Instruction::IntCmp {
-                    op, dst, lhs, rhs, ..
+                    op,
+                    ty,
+                    dst,
+                    lhs,
+                    rhs,
                 } => {
-                    let left_value = evaluate_operand(lhs, &register_values)?;
-                    let right_value = evaluate_operand(rhs, &register_values)?;
+                    let left_value = ty.signed_integer(evaluate_operand(lhs, &register_values)?);
+                    let right_value = ty.signed_integer(evaluate_operand(rhs, &register_values)?);
                     let result = match op {
                         IntCmpOp::Eq => left_value == right_value,
                         IntCmpOp::Ne => left_value != right_value,
-                        IntCmpOp::ULt => (left_value as u64) < (right_value as u64),
-                        IntCmpOp::ULe => (left_value as u64) <= (right_value as u64),
-                        IntCmpOp::UGt => (left_value as u64) > (right_value as u64),
-                        IntCmpOp::UGe => (left_value as u64) >= (right_value as u64),
+                        IntCmpOp::ULt => {
+                            ty.unsigned_integer(left_value) < ty.unsigned_integer(right_value)
+                        }
+                        IntCmpOp::ULe => {
+                            ty.unsigned_integer(left_value) <= ty.unsigned_integer(right_value)
+                        }
+                        IntCmpOp::UGt => {
+                            ty.unsigned_integer(left_value) > ty.unsigned_integer(right_value)
+                        }
+                        IntCmpOp::UGe => {
+                            ty.unsigned_integer(left_value) >= ty.unsigned_integer(right_value)
+                        }
                         IntCmpOp::SLt => left_value < right_value,
                         IntCmpOp::SLe => left_value <= right_value,
                         IntCmpOp::SGt => left_value > right_value,

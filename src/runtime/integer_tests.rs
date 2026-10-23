@@ -557,3 +557,226 @@ fn division_traps_stay_inside_unentered_loops() -> TestResult {
     assert_eq!(interpret_mir_function(&function, &[])?, Some(0));
     Ok(())
 }
+
+#[test]
+fn narrow_comparisons_and_conversions_match_native_execution() -> TestResult {
+    let directory = directory("comparisons")?;
+    for ty in [MirType::i8(), MirType::i16(), MirType::i32()] {
+        let width = ty.size_bytes() * 8;
+        let modulus = 1i64 << width;
+        let sign = modulus / 2;
+        let values = [0, 1, sign - 1, sign, modulus - 1, -1];
+        for converted in [false, true] {
+            let mut block = Block::new("entry");
+            let mut id = 0;
+            let mut failures = imm(0);
+            for lhs in values {
+                for rhs in values {
+                    for op in [
+                        IntCmpOp::Eq,
+                        IntCmpOp::Ne,
+                        IntCmpOp::SLt,
+                        IntCmpOp::SLe,
+                        IntCmpOp::SGt,
+                        IntCmpOp::SGe,
+                        IntCmpOp::ULt,
+                        IntCmpOp::ULe,
+                        IntCmpOp::UGt,
+                        IntCmpOp::UGe,
+                    ] {
+                        let unsigned = |v: i64| v & (modulus - 1);
+                        let signed = |v| {
+                            let v = unsigned(v);
+                            if v >= sign { v - modulus } else { v }
+                        };
+                        let expected = match op {
+                            IntCmpOp::Eq => unsigned(lhs) == unsigned(rhs),
+                            IntCmpOp::Ne => unsigned(lhs) != unsigned(rhs),
+                            IntCmpOp::SLt => signed(lhs) < signed(rhs),
+                            IntCmpOp::SLe => signed(lhs) <= signed(rhs),
+                            IntCmpOp::SGt => signed(lhs) > signed(rhs),
+                            IntCmpOp::SGe => signed(lhs) >= signed(rhs),
+                            IntCmpOp::ULt => unsigned(lhs) < unsigned(rhs),
+                            IntCmpOp::ULe => unsigned(lhs) <= unsigned(rhs),
+                            IntCmpOp::UGt => unsigned(lhs) > unsigned(rhs),
+                            IntCmpOp::UGe => unsigned(lhs) >= unsigned(rhs),
+                        };
+                        let narrow = |v| {
+                            Operand::Immediate(match width {
+                                8 => Immediate::I8(v as i8),
+                                16 => Immediate::I16(v as i16),
+                                _ => Immediate::I32(v as i32),
+                            })
+                        };
+                        let mut operands = [narrow(lhs), narrow(rhs)];
+                        if converted {
+                            let dst = reg(id);
+                            id += 1;
+                            block.push(Instruction::IntConvert {
+                                from: MirType::i64(),
+                                to: ty,
+                                signed: false,
+                                dst: dst.clone(),
+                                src: imm(lhs),
+                            });
+                            operands[0] = Operand::Register(dst);
+                        }
+                        let result = reg(id);
+                        let failed = reg(id + 1);
+                        let accumulated = reg(id + 2);
+                        id += 3;
+                        block.push(Instruction::IntCmp {
+                            op,
+                            ty,
+                            dst: result.clone(),
+                            lhs: operands[0].clone(),
+                            rhs: operands[1].clone(),
+                        });
+                        block.push(Instruction::IntCmp {
+                            op: IntCmpOp::Ne,
+                            ty: MirType::i64(),
+                            dst: failed.clone(),
+                            lhs: Operand::Register(result),
+                            rhs: imm(i64::from(expected)),
+                        });
+                        block.push(Instruction::IntBinary {
+                            op: IntBinOp::Or,
+                            ty: MirType::i64(),
+                            dst: accumulated.clone(),
+                            lhs: failures,
+                            rhs: Operand::Register(failed),
+                        });
+                        failures = Operand::Register(accumulated);
+                    }
+                }
+            }
+            block.push(Instruction::Ret {
+                value: Some(failures),
+            });
+            let module = module(block);
+            assert_eq!(
+                interpret_mir_function(&module.functions["main"], &[])?,
+                Some(0),
+                "{ty} converted={converted}"
+            );
+            for allocator in [
+                RegallocStrategy::Incremental,
+                RegallocStrategy::LinearScanGlobal,
+            ] {
+                let output = run(&module, &targets(false)[0], allocator, &directory)?;
+                assert_eq!(
+                    output.status.code(),
+                    Some(0),
+                    "{ty} converted={converted}: {output:?}"
+                );
+            }
+        }
+    }
+    fs::remove_dir_all(directory)?;
+    Ok(())
+}
+
+#[test]
+fn integer_conversions_preserve_source_bits_and_destination_width() -> TestResult {
+    let directory = directory("conversions")?;
+    let mut block = Block::new("entry");
+    let mut id = 0;
+    let mut failures = imm(0);
+    for from in [
+        MirType::i8(),
+        MirType::i16(),
+        MirType::i32(),
+        MirType::i64(),
+    ] {
+        for to in [
+            MirType::i8(),
+            MirType::i16(),
+            MirType::i32(),
+            MirType::i64(),
+        ] {
+            if from == to {
+                continue;
+            }
+            for signed in [false, true] {
+                if signed && from.size_bytes() > to.size_bytes() {
+                    continue;
+                }
+                for value in [
+                    0, 1, -1, 127, 128, 255, 32768, 65535, 2147483648, 4294967295,
+                ] {
+                    let dst = reg(id);
+                    let wide = reg(id + 1);
+                    let failed = reg(id + 2);
+                    let accumulated = reg(id + 3);
+                    id += 4;
+                    let expected = to.signed_integer(if signed {
+                        from.signed_integer(value)
+                    } else {
+                        from.unsigned_integer(value) as i64
+                    });
+                    let instruction = Instruction::IntConvert {
+                        from,
+                        to,
+                        signed,
+                        dst: dst.clone(),
+                        src: imm(value),
+                    };
+                    let mut single = Block::new("entry");
+                    single.push(instruction.clone());
+                    single.push(Instruction::Ret {
+                        value: Some(Operand::Register(dst.clone())),
+                    });
+                    assert_eq!(
+                        interpret_mir_function(&module(single).functions["main"], &[])?,
+                        Some(expected),
+                        "{from} -> {to} signed={signed} value={value}"
+                    );
+                    block.push(instruction);
+                    block.push(if to == MirType::i64() {
+                        Instruction::Copy {
+                            ty: to,
+                            dst: wide.clone(),
+                            src: Operand::Register(dst),
+                        }
+                    } else {
+                        Instruction::IntConvert {
+                            from: to,
+                            to: MirType::i64(),
+                            signed: true,
+                            dst: wide.clone(),
+                            src: Operand::Register(dst),
+                        }
+                    });
+                    block.push(Instruction::IntCmp {
+                        op: IntCmpOp::Ne,
+                        ty: MirType::i64(),
+                        dst: failed.clone(),
+                        lhs: Operand::Register(wide),
+                        rhs: imm(expected),
+                    });
+                    block.push(Instruction::IntBinary {
+                        op: IntBinOp::Or,
+                        ty: MirType::i64(),
+                        dst: accumulated.clone(),
+                        lhs: failures,
+                        rhs: Operand::Register(failed),
+                    });
+                    failures = Operand::Register(accumulated);
+                }
+            }
+        }
+    }
+    block.push(Instruction::Ret {
+        value: Some(failures),
+    });
+    let module = module(block);
+    for allocator in [
+        RegallocStrategy::Incremental,
+        RegallocStrategy::LinearScanGlobal,
+    ] {
+        let output = run(&module, &targets(false)[0], allocator, &directory)?;
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+    }
+    fs::remove_dir_all(directory)?;
+    Ok(())
+}
