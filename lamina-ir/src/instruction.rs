@@ -214,15 +214,15 @@ impl fmt::Display for AtomicBinOp {
 /// ```
 #[derive(Debug, Clone, PartialEq)] // Cannot derive Eq due to f32 in Value::Constant
 pub enum BinaryOp {
-    /// Addition: `result = lhs + rhs`
+    /// Addition: `result = lhs + rhs`. Integer results wrap.
     Add,
-    /// Subtraction: `result = lhs - rhs`
+    /// Subtraction: `result = lhs - rhs`. Integer results wrap.
     Sub,
-    /// Multiplication: `result = lhs * rhs`
+    /// Multiplication: `result = lhs * rhs`. Integer results wrap.
     Mul,
-    /// Division: `result = lhs / rhs`
+    /// Division: `result = lhs / rhs`. Integers trap on zero and signed `MIN / -1`.
     Div,
-    /// Remainder: `result = lhs % rhs`
+    /// Remainder: `result = lhs % rhs`. Integers trap on zero and signed `MIN % -1`.
     Rem,
     /// Bitwise AND: `result = lhs & rhs`
     ///
@@ -238,13 +238,12 @@ pub enum BinaryOp {
     Xor,
     /// Logical left shift: `result = lhs << rhs`
     ///
-    /// Only valid for integer-like types. The shift amount must be less than the bit-width
-    /// of `lhs` (e.g., 0–7 for `i8`, 0–31 for `i32`, etc.).
+    /// Only valid for integer-like types. The count is masked with `bit_width(lhs) - 1`.
     Shl,
     /// Arithmetic right shift: `result = lhs >> rhs`
     ///
     /// Interprets `lhs` as a two's-complement signed integer and propagates the sign bit.
-    /// Only valid for signed integer types.
+    /// Only valid for signed integer types. The count is masked with `bit_width(lhs) - 1`.
     ///
     /// For unsigned integers, consider using logical right shift in MIR (`IntBinOp::LShr`)
     /// or an explicit mask after an arithmetic shift.
@@ -392,26 +391,17 @@ pub enum AllocType {
 ///
 /// # Precondition conventions
 ///
-/// Each variant documents its *preconditions* — conditions that must hold for
-/// the instruction to be well-defined.  Violating a precondition produces
-/// either a **trap** (program abort at the point of the instruction) or
-/// **poison** (a value that propagates silently until it reaches a
-/// side-effecting instruction, which then causes undefined behavior).
-/// The per-variant doc comments state which applies.
-///
-/// See the [`crate::types`] module doc for a full description of the undef /
-/// poison / trap value-state model.
+/// Operands must satisfy the documented types. Integer arithmetic wraps and
+/// invalid integer division traps; see [`crate::types`] for the value contract.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction<'a> {
     /// Perform a binary arithmetic or bitwise operation.
     ///
     /// # Preconditions
     /// - `lhs` and `rhs` must have type `ty`.
-    /// - For `Div` and `Rem`: `rhs` must not be zero. A zero divisor causes a
-    ///   **trap**.
-    /// - For `Shl` and `Shr`: the shift count must be in the range
-    ///   `[0, bit_width(ty)]`. An out-of-range shift count produces **poison**.
-    /// - Signed integer overflow (wrap-around on Add/Sub/Mul) produces **poison**.
+    /// - Integer Add/Sub/Mul wrap modulo `2^bit_width(ty)`.
+    /// - Shift counts are masked with `bit_width(ty) - 1`.
+    /// - Integer Div/Rem trap on zero divisors and on signed `MIN / -1`.
     Binary {
         op: BinaryOp,
         result: Identifier<'a>,
@@ -424,7 +414,6 @@ pub enum Instruction<'a> {
     /// # Preconditions
     /// - `lhs` and `rhs` must have type `ty`.
     /// - Ordered floating-point comparisons on NaN produce `false`.
-    /// - If either operand is **poison**, the result is **poison**.
     Cmp {
         op: CmpOp,
         result: Identifier<'a>,
@@ -437,7 +426,7 @@ pub enum Instruction<'a> {
     /// # Preconditions
     /// - `value` must have type `source_type`.
     /// - `source_type` must be an integer type strictly smaller than
-    ///   `target_type`.  A mismatch produces **poison**.
+    ///   `target_type`.
     ZeroExtend {
         result: Identifier<'a>,
         source_type: PrimitiveType,
@@ -506,8 +495,6 @@ pub enum Instruction<'a> {
     /// - `condition` must have type `bool`.
     /// - Both `true_label` and `false_label` must name blocks in the same
     ///   function.
-    /// - If `condition` is **poison**, behavior is undefined (the branch may
-    ///   go to either target non-deterministically, or the program may abort).
     Br {
         condition: Value<'a>,
         true_label: Label<'a>,
@@ -533,8 +520,7 @@ pub enum Instruction<'a> {
     ///
     /// # Preconditions
     /// - For `AllocType::Stack`: the allocation is automatically freed when the
-    ///   function returns. Reading from stack memory before writing produces
-    ///   **undef**.
+    ///   function returns. Memory must be initialized before reading.
     /// - For `AllocType::Heap`: the caller must explicitly `dealloc` the
     ///   returned pointer. Failing to do so is a memory leak (not UB in the IR,
     ///   but wrong behavior).
@@ -549,8 +535,7 @@ pub enum Instruction<'a> {
     /// # Preconditions
     /// - `ptr` must have type `ptr` and must point to memory of type `ty`.
     /// - `ptr` must not be null — a null pointer causes a **trap**.
-    /// - The memory at `ptr` must be initialized; loading uninitialized memory
-    ///   produces **undef**.
+    /// - The memory at `ptr` must be initialized.
     /// - The memory must be accessible (allocated and not freed).
     Load {
         result: Identifier<'a>,
@@ -562,8 +547,7 @@ pub enum Instruction<'a> {
     /// # Preconditions
     /// - `ptr` must have type `ptr` and point to memory of type `ty`.
     /// - `ptr` must not be null — a null pointer causes a **trap**.
-    /// - `value` must have type `ty`. If `value` is **poison**, the stored
-    ///   bit pattern is unspecified and reads after this store return **poison**.
+    /// - `value` must have type `ty`.
     Store {
         ty: Type<'a>,
         ptr: Value<'a>,
