@@ -234,7 +234,8 @@ fn compile_single_function_wasm(
         store_to_register_wasm(&param.reg, &mut output, &vreg_to_local)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
-    writeln!(output, "    i64.const 0")
+    let entry_idx = block_labels.get(func.entry.as_str()).copied().unwrap_or(0);
+    writeln!(output, "    i64.const {entry_idx}")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    local.set $pc")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
@@ -967,6 +968,33 @@ mod tests {
         assert!(
             !assembly.contains("f64.add"),
             "unexpected float add: {assembly}"
+        );
+    }
+
+    #[test]
+    fn dispatcher_starts_at_non_leading_entry_block() {
+        let mut function = FunctionBuilder::new("entry_second")
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("first")
+            .instr(MirInst::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(7))),
+            })
+            .block("second")
+            .instr(MirInst::Ret {
+                value: Some(Operand::Immediate(Immediate::I64(9))),
+            })
+            .build();
+        function.entry = "second".to_string();
+        let mut module = MirModule::new("entry_test");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_wasm(&module, &mut output, TargetOperatingSystem::Unknown)
+            .expect("WASM codegen should succeed");
+        let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
+
+        assert!(
+            assembly.contains("i64.const 1\n    local.set $pc"),
+            "dispatcher should start at the entry block index: {assembly}"
         );
     }
 }
