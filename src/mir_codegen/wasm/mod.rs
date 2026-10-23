@@ -16,8 +16,8 @@ use crate::error::LaminaError;
 
 use crate::{
     mir::{
-        AddressMode, Function, Global, Immediate, Instruction as MirInst, IntBinOp, MirType,
-        Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
+        AddressMode, Function, Global, Immediate, Instruction as MirInst, IntBinOp, IntCmpOp,
+        MirType, Module as MirModule, Operand, Register, ScalarType, Signature, VirtualReg,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, assemble,
@@ -531,10 +531,16 @@ fn emit_instruction_wasm(
             dst,
             lhs,
             rhs,
-            ty: _,
+            ty,
         } => {
+            let signed = matches!(
+                op,
+                IntCmpOp::SLt | IntCmpOp::SLe | IntCmpOp::SGt | IntCmpOp::SGe
+            );
             load_operand_wasm(lhs, writer, vreg_to_local)?;
+            extend_integer_wasm(writer, *ty, signed)?;
             load_operand_wasm(rhs, writer, vreg_to_local)?;
+            extend_integer_wasm(writer, *ty, signed)?;
 
             emit_int_cmp_op(op, writer)?;
 
@@ -1126,5 +1132,23 @@ print('main returned', instance.exports(store)['main'](store))
             "fn @leaf(i64 %n) -> i64 {\nentry:\n %p = alloc.stack i64\n store.i64 %p, %n\n %x = load.i64 %p\n ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n %i = add.i64 0, 0\n jmp loop\nloop:\n %r = call @leaf(%i)\n %i = add.i64 %i, 1\n %c = lt.i64 %i, 6000\n br %c, loop, done\ndone:\n ret.i64 %i\n}",
         );
         assert_eq!(stdout, "main returned 6000\n");
+    }
+
+    #[test]
+    fn signed_byte_compares_on_loaded_operands_read_the_sign() {
+        let stdout = run_wasm_main(
+            "cmp8",
+            "fn @main() -> i64 {\nentry:\n %p = alloc.stack i8\n store.i8 %p, -1\n %x = load.i8 %p\n %a = lt.i8 %x, 0\n print %a\n %b = eq.i8 %x, -1\n print %b\n %c = lt.u8 %x, 1\n print %c\n %d = gt.i8 %x, -2\n print %d\n %e = gt.u8 %x, 1\n print %e\n %f = add.i8 %x, 0\n %g = lt.i8 %f, 0\n print %g\n ret.i64 0\n}",
+        );
+        assert_eq!(stdout, "1\n1\n0\n1\n1\n1\nmain returned 0\n");
+    }
+
+    #[test]
+    fn narrow_compares_normalize_operands_at_their_width() {
+        let stdout = run_wasm_main(
+            "cmpwidths",
+            "fn @main() -> i64 {\nentry:\n %p8 = alloc.stack i8\n %p16 = alloc.stack i16\n %p32 = alloc.stack i32\n store.i8 %p8, -128\n store.i16 %p16, -32768\n store.i32 %p32, -2147483648\n %a8 = load.i8 %p8\n %a16 = load.i16 %p16\n %a32 = load.i32 %p32\n %s8 = lt.i8 %a8, 0\n print %s8\n %s16 = lt.i16 %a16, 0\n print %s16\n %s32 = le.i32 %a32, -2147483648\n print %s32\n %u8 = lt.u8 %a8, 127\n print %u8\n %u16 = gt.u16 %a16, 32767\n print %u16\n %e8 = eq.i8 %a8, -128\n print %e8\n %c8 = add.i8 %a8, 0\n %g8 = gt.i8 %c8, -127\n print %g8\n ret.i64 0\n}",
+        );
+        assert_eq!(stdout, "1\n1\n1\n0\n1\n1\n0\nmain returned 0\n");
     }
 }
