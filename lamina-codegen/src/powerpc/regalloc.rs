@@ -11,9 +11,7 @@ use std::collections::HashMap;
 /// Caller-saved general-purpose registers available for allocation.
 ///
 /// We exclude r1 (sp), r2 (TOC), r13 (thread pointer on Linux).
-/// We leave r3/r4 available since they are the primary return/arg pair
-/// but start our scratch pool at r5 to allow arg passing to use r3-r10.
-const AVAILABLE_GPRS: &[&str] = &["5", "6", "7", "8", "9", "10", "11", "12"];
+const AVAILABLE_GPRS: &[&str] = &["6", "7", "8", "9", "10", "11", "12"];
 
 pub struct Ppc64RegAlloc {
     #[allow(dead_code)]
@@ -141,12 +139,12 @@ mod tests {
         let first = VirtualReg::gpr(0);
         let second = VirtualReg::gpr(1);
         let plan = HashMap::from([
-            (first, Allocation::Register("5")),
-            (second, Allocation::Register("5")),
+            (first, Allocation::Register("6")),
+            (second, Allocation::Register("6")),
         ]);
         let allocator = Ppc64RegAlloc::from_global_plan(TargetOperatingSystem::Linux, &plan);
-        assert_eq!(allocator.get_mapping(&first), Some("5"));
-        assert_eq!(allocator.get_mapping(&second), Some("5"));
+        assert_eq!(allocator.get_mapping(&first), Some("6"));
+        assert_eq!(allocator.get_mapping(&second), Some("6"));
     }
 
     #[test]
