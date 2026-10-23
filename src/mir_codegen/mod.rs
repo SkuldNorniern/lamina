@@ -526,3 +526,6 @@ mod float_tests;
 
 #[cfg(test)]
 mod allocation_tests;
+
+#[cfg(test)]
+mod unary_tests;

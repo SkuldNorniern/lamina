@@ -699,10 +699,10 @@ fn emit_instruction_ppc64<W: Write>(
         }
         MirInst::FloatUnary { op, dst, src, ty } => {
             let is_f32 = ty.size_bytes() == 4;
-            let suffix = if is_f32 { "s" } else { "d" };
+            let suffix = if is_f32 { "s" } else { "" };
             emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32)?;
             match op {
-                FloatUnOp::FNeg => writeln!(writer, "    fneg{suffix} 1, 1")?,
+                FloatUnOp::FNeg => writeln!(writer, "    fneg 1, 1")?,
                 FloatUnOp::FSqrt => writeln!(writer, "    fsqrt{suffix} 1, 1")?,
             }
             if let Register::Virtual(vreg) = dst {
