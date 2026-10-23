@@ -543,3 +543,7 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+#[path = "integer_tests.rs"]
+mod integer_tests;
