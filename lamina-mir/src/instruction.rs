@@ -402,6 +402,10 @@ impl From<Immediate> for Operand {
 }
 
 impl Operand {
+    pub fn normalize_integer_immediate(&mut self, ty: MirType) {
+        normalize_immediate(self, ty);
+    }
+
     pub fn integer_constant(&self) -> Option<i64> {
         match self {
             Self::Immediate(Immediate::I8(value)) => Some(i64::from(*value)),
