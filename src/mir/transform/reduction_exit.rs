@@ -459,3 +459,285 @@ fn rewrite(func: &mut Function, shape: &Shape, next: &mut u32) {
     func.blocks
         .retain(|b: &Block| b.label != shape.body && b.label != shape.test);
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::{mir::FunctionBuilder, runtime::executor::interpret_mir_function};
+
+    fn reg(id: u32) -> Register {
+        VirtualReg::gpr(id).into()
+    }
+    fn op(id: u32) -> Operand {
+        Operand::Register(reg(id))
+    }
+    fn add(ty: &MirType, dst: u32, lhs: Operand, rhs: Operand) -> Instruction {
+        binary(IntBinOp::Add, ty, &reg(dst), lhs, rhs)
+    }
+    fn jmp(target: &str) -> Instruction {
+        Instruction::Jmp {
+            target: target.into(),
+        }
+    }
+    fn cmp_sge(ty: &MirType, dst: u32) -> Instruction {
+        Instruction::IntCmp {
+            op: IntCmpOp::SGe,
+            ty: *ty,
+            dst: reg(dst),
+            lhs: op(0),
+            rhs: op(1),
+        }
+    }
+
+    #[derive(Clone)]
+    struct Variant {
+        step: i64,
+        guard: bool,
+        second_entry: bool,
+        extra_body: Option<Instruction>,
+    }
+
+    impl Variant {
+        fn standard() -> Self {
+            Self {
+                step: 1,
+                guard: true,
+                second_entry: false,
+                extra_body: None,
+            }
+        }
+    }
+
+    fn linear_loop(ty: MirType, variant: &Variant) -> Function {
+        let mut body = Vec::new();
+        if let Some(extra) = &variant.extra_body {
+            body.push(extra.clone());
+        }
+        body.extend([
+            add(&ty, 4, op(4), op(2)),
+            add(&ty, 0, op(0), immediate(&ty, variant.step)),
+            add(&ty, 2, op(2), op(3)),
+            jmp("test"),
+        ]);
+        let entry_branch = if variant.guard {
+            vec![
+                cmp_sge(&ty, 5),
+                Instruction::Br {
+                    cond: reg(5),
+                    true_target: "exit".into(),
+                    false_target: "pre".into(),
+                },
+            ]
+        } else {
+            vec![jmp("pre")]
+        };
+        let mut builder = FunctionBuilder::new("linear")
+            .param(reg(0), ty)
+            .param(reg(1), ty)
+            .param(reg(2), ty)
+            .param(reg(3), ty)
+            .param(reg(4), ty)
+            .returns(ty)
+            .block("entry");
+        for instr in entry_branch {
+            builder = builder.instr(instr);
+        }
+        builder = builder.block("pre").instr(jmp("body")).block("body");
+        for instr in body {
+            builder = builder.instr(instr);
+        }
+        builder = builder
+            .block("test")
+            .instr(cmp_sge(&ty, 6))
+            .instr(Instruction::Br {
+                cond: reg(6),
+                true_target: "exit".into(),
+                false_target: "body".into(),
+            });
+        if variant.second_entry {
+            builder = builder.block("alt").instr(jmp("body"));
+        }
+        builder
+            .block("exit")
+            .instr(binary(
+                IntBinOp::Mul,
+                &ty,
+                &reg(7),
+                op(2),
+                immediate(&ty, 3),
+            ))
+            .instr(add(&ty, 8, op(4), op(7)))
+            .instr(binary(
+                IntBinOp::Mul,
+                &ty,
+                &reg(9),
+                op(0),
+                immediate(&ty, 7),
+            ))
+            .instr(add(&ty, 10, op(8), op(9)))
+            .instr(Instruction::Ret {
+                value: Some(op(10)),
+            })
+            .build()
+    }
+
+    fn run(func: &Function, args: &[i64; 5]) -> Option<i64> {
+        interpret_mir_function(func, args).unwrap()
+    }
+
+    fn differential(ty: MirType, variant: &Variant, cases: &[[i64; 5]]) -> bool {
+        let original = linear_loop(ty, variant);
+        let mut transformed = original.clone();
+        ReductionExit.apply(&mut transformed).unwrap();
+        for args in cases {
+            assert_eq!(run(&transformed, args), run(&original, args), "{args:?}");
+        }
+        transformed.get_block("body").is_none()
+    }
+
+    fn accumulators() -> [[i64; 3]; 3] {
+        [[-7, 13, 5], [100, -99, -3], [0, 1, 0]]
+    }
+
+    #[test]
+    fn fires_on_guarded_loop_for_every_i8_span() {
+        let mut cases = Vec::new();
+        for j0 in i64::from(i8::MIN)..=i64::from(i8::MAX) {
+            for end in i64::from(i8::MIN)..=i64::from(i8::MAX) {
+                let [p, d, t] = accumulators()[0];
+                cases.push([j0, end, p, d, t]);
+            }
+        }
+        assert!(differential(MirType::i8(), &Variant::standard(), &cases));
+    }
+
+    #[test]
+    fn fires_for_every_accumulator_at_i8_trip_counts_that_wrap() {
+        let mut cases = Vec::new();
+        for [p, d, t] in accumulators() {
+            for j0 in [-128, -1, 0, 1, 27, 127] {
+                for end in [j0, j0 + 1, j0 + 100, j0 + 127, j0 + 128, 127] {
+                    if (-128..=127).contains(&end) {
+                        cases.push([j0, end, p, d, t]);
+                    }
+                }
+            }
+        }
+        assert!(differential(MirType::i8(), &Variant::standard(), &cases));
+    }
+
+    #[test]
+    fn fires_at_wider_widths_and_extreme_bounds() {
+        let i16_cases: Vec<[i64; 5]> = [
+            (-32768, 32767),
+            (-32768, -32768),
+            (-1, 32767),
+            (-5000, 30000),
+            (32766, 32767),
+            (0, 1),
+            (100, 101),
+            (-3, -4),
+        ]
+        .into_iter()
+        .flat_map(|(j0, end)| {
+            accumulators()
+                .into_iter()
+                .map(move |[p, d, t]| [j0, end, p, d, t])
+        })
+        .collect();
+        assert!(differential(
+            MirType::i16(),
+            &Variant::standard(),
+            &i16_cases
+        ));
+
+        let i64_cases: Vec<[i64; 5]> = [
+            (-5, 7),
+            (0, 0),
+            (3, 3),
+            (7, 2),
+            (i64::MIN, i64::MIN + 3),
+            (i64::MAX - 5, i64::MAX),
+            (-1000, 1000),
+        ]
+        .into_iter()
+        .flat_map(|(j0, end)| {
+            [[i64::MAX - 3, (1i64 << 40) + 7, 9], [-7, 13, 5]]
+                .into_iter()
+                .map(move |[p, d, t]| [j0, end, p, d, t])
+        })
+        .collect();
+        assert!(differential(
+            MirType::i64(),
+            &Variant::standard(),
+            &i64_cases
+        ));
+    }
+
+    #[test]
+    fn refuses_non_unit_and_negative_steps() {
+        let variant = Variant {
+            step: 2,
+            ..Variant::standard()
+        };
+        let cases = [[0, 5, -7, 13, 5], [5, 3, 1, 2, 3], [9, 9, 4, 4, 4]];
+        assert!(!differential(MirType::i64(), &variant, &cases));
+        let variant = Variant {
+            step: -1,
+            ..Variant::standard()
+        };
+        let cases = [[5, 3, 1, 2, 3], [9, 9, 4, 4, 4]];
+        assert!(!differential(MirType::i64(), &variant, &cases));
+    }
+
+    #[test]
+    fn refuses_when_body_observes_the_accumulator() {
+        let variant = Variant {
+            extra_body: Some(add(&MirType::i64(), 11, op(4), immediate_operand(1))),
+            ..Variant::standard()
+        };
+        let cases = [[0, 5, -7, 13, 5], [5, 3, 1, 2, 3]];
+        assert!(!differential(MirType::i64(), &variant, &cases));
+    }
+
+    #[test]
+    fn refuses_body_that_may_trap() {
+        let variant = Variant {
+            extra_body: Some(binary(
+                IntBinOp::UDiv,
+                &MirType::i64(),
+                &reg(11),
+                op(4),
+                op(3),
+            )),
+            ..Variant::standard()
+        };
+        let cases = [[0, 5, -7, 13, 5], [5, 3, 1, 2, 3]];
+        assert!(!differential(MirType::i64(), &variant, &cases));
+    }
+
+    #[test]
+    fn refuses_entry_without_a_proven_bound() {
+        let variant = Variant {
+            guard: false,
+            ..Variant::standard()
+        };
+        let cases = [[5, 3, -7, 13, 5], [0, 5, 1, 2, 3], [9, 9, 4, 4, 4]];
+        assert!(!differential(MirType::i64(), &variant, &cases));
+    }
+
+    #[test]
+    fn refuses_a_second_entry_edge() {
+        let variant = Variant {
+            second_entry: true,
+            ..Variant::standard()
+        };
+        let cases = [[0, 5, -7, 13, 5], [5, 3, 1, 2, 3]];
+        assert!(!differential(MirType::i64(), &variant, &cases));
+    }
+
+    fn immediate_operand(value: i64) -> Operand {
+        Operand::Immediate(Immediate::I64(value))
+    }
+}
