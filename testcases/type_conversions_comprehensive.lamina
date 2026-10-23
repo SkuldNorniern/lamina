@@ -84,15 +84,15 @@ fn @test_i16_conversions() -> i64 {
     %val_i16 = add.i16 30000, 0
 
     # Convert i16 to all other types
-    %to_i8 = add.i8 0, %val_i16   # Truncating
-    %to_u8 = add.u8 0, %val_i16   # Truncating
+    %to_i8 = trunc.i16.i8 %val_i16   # Truncating
+    %to_u8 = trunc.i16.u8 %val_i16   # Truncating
     %to_u16 = zext.i16.u16 %val_i16
     %to_i32 = zext.i16.i32 %val_i16
     %to_u32 = zext.i16.u32 %val_i16
     %to_i64 = zext.i16.i64 %val_i16
     %to_u64 = zext.i16.u64 %val_i16
     %to_bool = ne.i16 %val_i16, 0
-    %to_char = add.char 0, %val_i16  # Truncating
+    %to_char = trunc.i16.char %val_i16  # Truncating
 
     # Convert back to i64 for verification
     %i8_i64 = zext.i8.i64 %to_i8
@@ -122,15 +122,15 @@ fn @test_u16_conversions() -> i64 {
     %val_u16 = add.u16 50000, 0
 
     # Convert u16 to all other types
-    %to_i8 = add.i8 0, %val_u16   # Truncating
-    %to_u8 = add.u8 0, %val_u16   # Truncating
+    %to_i8 = trunc.u16.i8 %val_u16
+    %to_u8 = trunc.u16.u8 %val_u16
     %to_i16 = add.i16 0, %val_u16 # Truncating
     %to_i32 = zext.u16.i32 %val_u16
     %to_u32 = zext.u16.u32 %val_u16
     %to_i64 = zext.u16.i64 %val_u16
     %to_u64 = zext.u16.u64 %val_u16
     %to_bool = ne.u16 %val_u16, 0
-    %to_char = add.char 0, %val_u16  # Truncating
+    %to_char = trunc.u16.char %val_u16
 
     # Convert back to i64 for verification
     %i8_i64 = zext.i8.i64 %to_i8
@@ -160,15 +160,15 @@ fn @test_i32_conversions() -> i64 {
     %val_i32 = add.i32 100000, 0
 
     # Convert i32 to all other types
-    %to_i8 = add.i8 0, %val_i32   # Truncating
-    %to_u8 = add.u8 0, %val_i32   # Truncating
-    %to_i16 = add.i16 0, %val_i32 # Truncating
-    %to_u16 = add.u16 0, %val_i32 # Truncating
+    %to_i8 = trunc.i32.i8 %val_i32   # Truncating
+    %to_u8 = trunc.i32.u8 %val_i32   # Truncating
+    %to_i16 = trunc.i32.i16 %val_i32 # Truncating
+    %to_u16 = trunc.i32.u16 %val_i32 # Truncating
     %to_u32 = zext.i32.u32 %val_i32
     %to_i64 = zext.i32.i64 %val_i32
     %to_u64 = zext.i32.u64 %val_i32
     %to_bool = ne.i32 %val_i32, 0
-    %to_char = add.char 0, %val_i32  # Truncating
+    %to_char = trunc.i32.char %val_i32  # Truncating
 
     # Convert back to i64 for verification
     %i8_i64 = zext.i8.i64 %to_i8
@@ -198,15 +198,15 @@ fn @test_u32_conversions() -> i64 {
     %val_u32 = add.u32 2000000000, 0
 
     # Convert u32 to all other types
-    %to_i8 = add.i8 0, %val_u32   # Truncating
-    %to_u8 = add.u8 0, %val_u32   # Truncating
-    %to_i16 = add.i16 0, %val_u32 # Truncating
-    %to_u16 = add.u16 0, %val_u32 # Truncating
+    %to_i8 = trunc.u32.i8 %val_u32   # Truncating
+    %to_u8 = trunc.u32.u8 %val_u32   # Truncating
+    %to_i16 = trunc.u32.i16 %val_u32 # Truncating
+    %to_u16 = trunc.u32.u16 %val_u32 # Truncating
     %to_i32 = add.i32 0, %val_u32 # Truncating
     %to_i64 = zext.u32.i64 %val_u32
     %to_u64 = zext.u32.u64 %val_u32
     %to_bool = ne.u32 %val_u32, 0
-    %to_char = add.char 0, %val_u32  # Truncating
+    %to_char = trunc.u32.char %val_u32  # Truncating
 
     # Convert back to i64 for verification
     %i8_i64 = zext.i8.i64 %to_i8
@@ -236,15 +236,15 @@ fn @test_i64_conversions() -> i64 {
     %val_i64 = add.i64 5000000000, 0
 
     # Convert i64 to all other types (truncating where necessary)
-    %to_i8 = add.i8 0, %val_i64
-    %to_u8 = add.u8 0, %val_i64
-    %to_i16 = add.i16 0, %val_i64
-    %to_u16 = add.u16 0, %val_i64
-    %to_i32 = add.i32 0, %val_i64
-    %to_u32 = add.u32 0, %val_i64
+    %to_i8 = trunc.i64.i8 %val_i64
+    %to_u8 = trunc.i64.u8 %val_i64
+    %to_i16 = trunc.i64.i16 %val_i64
+    %to_u16 = trunc.i64.u16 %val_i64
+    %to_i32 = trunc.i64.i32 %val_i64
+    %to_u32 = trunc.i64.u32 %val_i64
     %to_u64 = add.u64 0, %val_i64  # Truncating
     %to_bool = ne.i64 %val_i64, 0
-    %to_char = add.char 0, %val_i64
+    %to_char = trunc.i64.char %val_i64
 
     # Convert back to i64 for verification
     %i8_i64 = zext.i8.i64 %to_i8
@@ -275,15 +275,15 @@ fn @test_u64_conversions() -> i64 {
     %val_u64 = add.u64 10000000000, 0
 
     # Convert u64 to all other types (truncating)
-    %to_i8 = add.i8 0, %val_u64
-    %to_u8 = add.u8 0, %val_u64
-    %to_i16 = add.i16 0, %val_u64
-    %to_u16 = add.u16 0, %val_u64
-    %to_i32 = add.i32 0, %val_u64
-    %to_u32 = add.u32 0, %val_u64
+    %to_i8 = trunc.u64.i8 %val_u64
+    %to_u8 = trunc.u64.u8 %val_u64
+    %to_i16 = trunc.u64.i16 %val_u64
+    %to_u16 = trunc.u64.u16 %val_u64
+    %to_i32 = trunc.u64.i32 %val_u64
+    %to_u32 = trunc.u64.u32 %val_u64
     %to_i64 = add.i64 0, %val_u64  # Truncating
     %to_bool = ne.u64 %val_u64, 0
-    %to_char = add.char 0, %val_u64
+    %to_char = trunc.u64.char %val_u64
 
     # Convert back to i64 for verification
     %i8_i64 = zext.i8.i64 %to_i8
@@ -335,25 +335,39 @@ fn @test_bool_conversions() -> i64 {
     %false_u64 = zext.bool.u64 %false_val
     %false_char = zext.bool.char %false_val
 
+    %true_i8_wide = zext.i8.i64 %true_i8
+    %true_u8_wide = zext.u8.i64 %true_u8
+    %true_i16_wide = zext.i16.i64 %true_i16
+    %true_u16_wide = zext.u16.i64 %true_u16
+    %true_i32_wide = zext.i32.i64 %true_i32
+    %true_u32_wide = zext.u32.i64 %true_u32
+    %true_char_wide = zext.char.i64 %true_char
+    %false_i8_wide = zext.i8.i64 %false_i8
+    %false_u8_wide = zext.u8.i64 %false_u8
+    %false_i16_wide = zext.i16.i64 %false_i16
+    %false_u16_wide = zext.u16.i64 %false_u16
+    %false_i32_wide = zext.i32.i64 %false_i32
+    %false_u32_wide = zext.u32.i64 %false_u32
+    %false_char_wide = zext.char.i64 %false_char
     # Sum all true conversions
-    %t_sum1 = add.i64 %true_i8, %true_u8
-    %t_sum2 = add.i64 %t_sum1, %true_i16
-    %t_sum3 = add.i64 %t_sum2, %true_u16
-    %t_sum4 = add.i64 %t_sum3, %true_i32
-    %t_sum5 = add.i64 %t_sum4, %true_u32
+    %t_sum1 = add.i64 %true_i8_wide, %true_u8_wide
+    %t_sum2 = add.i64 %t_sum1, %true_i16_wide
+    %t_sum3 = add.i64 %t_sum2, %true_u16_wide
+    %t_sum4 = add.i64 %t_sum3, %true_i32_wide
+    %t_sum5 = add.i64 %t_sum4, %true_u32_wide
     %t_sum6 = add.i64 %t_sum5, %true_i64
     %t_sum7 = add.i64 %t_sum6, %true_u64
-    %true_total = add.i64 %t_sum7, %true_char
+    %true_total = add.i64 %t_sum7, %true_char_wide
 
     # Sum all false conversions (should be 0)
-    %f_sum1 = add.i64 %false_i8, %false_u8
-    %f_sum2 = add.i64 %f_sum1, %false_i16
-    %f_sum3 = add.i64 %f_sum2, %false_u16
-    %f_sum4 = add.i64 %f_sum3, %false_i32
-    %f_sum5 = add.i64 %f_sum4, %false_u32
+    %f_sum1 = add.i64 %false_i8_wide, %false_u8_wide
+    %f_sum2 = add.i64 %f_sum1, %false_i16_wide
+    %f_sum3 = add.i64 %f_sum2, %false_u16_wide
+    %f_sum4 = add.i64 %f_sum3, %false_i32_wide
+    %f_sum5 = add.i64 %f_sum4, %false_u32_wide
     %f_sum6 = add.i64 %f_sum5, %false_i64
     %f_sum7 = add.i64 %f_sum6, %false_u64
-    %false_total = add.i64 %f_sum7, %false_char
+    %false_total = add.i64 %f_sum7, %false_char_wide
 
     # Combine results
     %result = add.i64 %true_total, %false_total
