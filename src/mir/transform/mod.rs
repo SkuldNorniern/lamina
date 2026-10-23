@@ -16,6 +16,7 @@ mod inline;
 mod loop_opt;
 mod memory;
 mod peephole;
+mod reduction_exit;
 pub mod sanity;
 mod scheduling;
 mod strength_reduction;
@@ -36,6 +37,7 @@ pub use inline::{FunctionInlining, ModuleInlining};
 pub use loop_opt::{LoopInvariantCodeMotion, LoopUnrolling};
 pub use memory::MemoryOptimization;
 pub use peephole::Peephole;
+pub use reduction_exit::ReductionExit;
 pub use scheduling::InstructionScheduling;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
@@ -340,6 +342,7 @@ impl TransformPipeline {
         if opt_level >= 3 {
             pipeline = pipeline.add_transform(LoopInvariantCodeMotion);
             pipeline = pipeline.add_transform(InductionStrengthReduction);
+            pipeline = pipeline.add_transform(ReductionExit);
             pipeline = pipeline.add_transform(StrengthReduction);
             pipeline = pipeline.add_transform(DeadCodeElimination);
             pipeline = pipeline.add_transform(CommonSubexpressionElimination);
