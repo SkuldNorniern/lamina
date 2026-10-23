@@ -1,5 +1,7 @@
 //! Tail call optimization transform for MIR.
 
+use std::collections::HashSet;
+
 use crate::mir::{
     Block, Function, Immediate, Instruction, Operand, Register,
     function::Signature,
@@ -52,9 +54,10 @@ impl TailCallOptimization {
 
         let mut changed = false;
         let func_sig = func.sig.clone();
+        let stack_addresses = Self::stack_addresses(func);
 
         for block in &mut func.blocks {
-            if self.optimize_block_tail_calls(&func_sig, block) {
+            if self.optimize_block_tail_calls(&func_sig, block, &stack_addresses) {
                 changed = true;
             }
         }
@@ -62,8 +65,47 @@ impl TailCallOptimization {
         Ok(changed)
     }
 
-    /// Optimize tail calls within a single block
-    fn optimize_block_tail_calls(&self, func_sig: &Signature, block: &mut Block) -> bool {
+    fn stack_addresses(func: &Function) -> HashSet<Register> {
+        let instructions: Vec<_> = func.blocks.iter().flat_map(|b| &b.instructions).collect();
+        let mut addresses = HashSet::new();
+        let mut escaped = false;
+        loop {
+            let old_len = addresses.len();
+            let old_escaped = escaped;
+            for instruction in &instructions {
+                let uses_address = instruction
+                    .use_regs()
+                    .iter()
+                    .any(|r| addresses.contains(*r));
+                if matches!(instruction, Instruction::Store { src: Operand::Register(r), .. } if addresses.contains(r))
+                    || matches!(instruction, Instruction::Call { .. } if uses_address)
+                {
+                    escaped = true;
+                }
+                if (matches!(instruction, Instruction::StackAddr { .. })
+                    || uses_address
+                    || (escaped
+                        && matches!(
+                            instruction,
+                            Instruction::Load { .. } | Instruction::Call { .. }
+                        )))
+                    && let Some(dst) = instruction.def_reg()
+                {
+                    addresses.insert(dst.clone());
+                }
+            }
+            if addresses.len() == old_len && escaped == old_escaped {
+                return addresses;
+            }
+        }
+    }
+
+    fn optimize_block_tail_calls(
+        &self,
+        func_sig: &Signature,
+        block: &mut Block,
+        stack_addresses: &HashSet<Register>,
+    ) -> bool {
         let mut changed = false;
 
         // Find the last instruction in the block
@@ -77,7 +119,9 @@ impl TailCallOptimization {
 
                 if let Instruction::Call { name, args, ret } = second_last_instr {
                     // Check if this is a tail call (return value matches call result)
-                    if self.is_tail_call(value, ret)
+                    if !args.iter().any(
+                        |arg| matches!(arg, Operand::Register(r) if stack_addresses.contains(r)),
+                    ) && self.is_tail_call(value, ret)
                         && self.is_tail_call_safe(func_sig, name, args, ret)
                         && self.convert_to_tail_call(&mut block.instructions[second_last_idx])
                     {
@@ -194,6 +238,112 @@ mod tests {
     use crate::mir::{
         FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
     };
+
+    #[test]
+    fn stack_derived_arguments_keep_caller_frame() {
+        use crate::mir::AddressMode;
+        let reg = |id| Register::from(VirtualReg::gpr(id));
+        let operand = |id| Operand::Register(reg(id));
+        let ptr = MirType::Scalar(ScalarType::Ptr);
+        let derivations = vec![
+            vec![],
+            vec![Instruction::Copy {
+                ty: ptr,
+                dst: reg(2),
+                src: operand(1),
+            }],
+            vec![Instruction::Lea {
+                dst: reg(2),
+                base: reg(1),
+                offset: 8,
+            }],
+            vec![Instruction::IntConvert {
+                from: ptr,
+                to: MirType::i64(),
+                signed: false,
+                dst: reg(2),
+                src: operand(1),
+            }],
+            vec![Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::i64(),
+                dst: reg(2),
+                lhs: operand(1),
+                rhs: Operand::Immediate(Immediate::I64(8)),
+            }],
+            vec![Instruction::Select {
+                ty: ptr,
+                dst: reg(2),
+                cond: reg(0),
+                true_val: operand(0),
+                false_val: operand(1),
+            }],
+            vec![
+                Instruction::Load {
+                    attrs: Default::default(),
+                    ty: ptr,
+                    dst: reg(2),
+                    addr: AddressMode::BaseOffset {
+                        base: reg(0),
+                        offset: 0,
+                        address_space: Default::default(),
+                    },
+                },
+                Instruction::Store {
+                    attrs: Default::default(),
+                    ty: ptr,
+                    src: operand(1),
+                    addr: AddressMode::BaseOffset {
+                        base: reg(0),
+                        offset: 0,
+                        address_space: Default::default(),
+                    },
+                },
+            ],
+            vec![
+                Instruction::Copy {
+                    ty: ptr,
+                    dst: reg(2),
+                    src: operand(3),
+                },
+                Instruction::Copy {
+                    ty: ptr,
+                    dst: reg(3),
+                    src: operand(1),
+                },
+            ],
+        ];
+        for derivation in derivations {
+            for name in ["caller", "callee"] {
+                let argument = if derivation.is_empty() { 1 } else { 2 };
+                let mut function = FunctionBuilder::new("caller")
+                    .param(reg(0), ptr)
+                    .returns(MirType::i64())
+                    .block("entry")
+                    .instr(Instruction::StackAddr {
+                        dst: reg(1),
+                        slot: VirtualReg::gpr(20),
+                    })
+                    .build();
+                function.blocks[0].instructions.extend(derivation.clone());
+                function.blocks[0].instructions.extend([
+                    Instruction::Call {
+                        name: name.into(),
+                        args: vec![operand(argument)],
+                        ret: Some(reg(10)),
+                    },
+                    Instruction::Ret {
+                        value: Some(operand(10)),
+                    },
+                ]);
+                assert!(!TailCallOptimization.apply(&mut function).expect("optimize"));
+                assert!(matches!(
+                    function.blocks[0].instructions.last(),
+                    Some(Instruction::Ret { .. })
+                ));
+            }
+        }
+    }
 
     #[test]
     fn gpu_barrier_keeps_its_return() {

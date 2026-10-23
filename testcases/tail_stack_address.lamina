@@ -1,0 +1,30 @@
+fn @callee(ptr %p) -> i64 {
+entry:
+ %byte = readbyte
+ %v = add.i64 %byte, 99
+ %slot = alloc.stack i64
+ store.i64 %slot, %v
+ %x = load.i64 %p
+ %c = eq.i64 %x, -999
+ br %c, recurse, done
+recurse:
+ %r = call @callee(%p)
+ ret.i64 %r
+done:
+ ret.i64 %x
+}
+fn @caller(i64 %unused) -> i64 {
+entry:
+ %p = alloc.stack i64
+ %byte = readbyte
+ %v = add.i64 %byte, 106
+ store.i64 %p, %v
+ %r = call @callee(%p)
+ ret.i64 %r
+}
+fn @main() -> i64 {
+entry:
+ %r = call @caller(0)
+ print %r
+ ret.i64 0
+}
