@@ -90,6 +90,14 @@ pub(super) fn assign_stack_slots_where(
 }
 
 pub(super) fn integer_conversion(instruction: &Instruction) -> Option<Vec<Instruction>> {
+    integer_conversion_with_width(instruction, MirType::i64())
+}
+
+pub(super) fn integer_conversion_with_width(
+    instruction: &Instruction,
+    word_ty: MirType,
+) -> Option<Vec<Instruction>> {
+    let word_bits = word_ty.size_bytes() * 8;
     let Instruction::IntConvert {
         from,
         to,
@@ -102,39 +110,39 @@ pub(super) fn integer_conversion(instruction: &Instruction) -> Option<Vec<Instru
     };
     let width = from.size_bytes().min(to.size_bytes()) * 8;
     let mut operations = if *signed {
-        let shift = (64 - width) as i64;
+        let shift = (word_bits - width) as i64;
         vec![
             Instruction::IntBinary {
                 op: IntBinOp::Shl,
-                ty: MirType::i64(),
+                ty: word_ty,
                 dst: dst.clone(),
                 lhs: src.clone(),
                 rhs: Operand::Immediate(Immediate::I64(shift)),
             },
             Instruction::IntBinary {
                 op: IntBinOp::AShr,
-                ty: MirType::i64(),
+                ty: word_ty,
                 dst: dst.clone(),
                 lhs: Operand::Register(dst.clone()),
                 rhs: Operand::Immediate(Immediate::I64(shift)),
             },
         ]
-    } else if width == 64 {
+    } else if width == word_bits {
         vec![Instruction::Copy {
-            ty: MirType::i64(),
+            ty: word_ty,
             dst: dst.clone(),
             src: src.clone(),
         }]
     } else {
         vec![Instruction::IntBinary {
             op: IntBinOp::And,
-            ty: MirType::i64(),
+            ty: word_ty,
             dst: dst.clone(),
             lhs: src.clone(),
             rhs: Operand::Immediate(Immediate::I64(((1u64 << width) - 1) as i64)),
         }]
     };
-    if to.size_bytes() < 8 {
+    if to.size_bytes() < word_ty.size_bytes() {
         operations.push(Instruction::Copy {
             ty: *to,
             dst: dst.clone(),

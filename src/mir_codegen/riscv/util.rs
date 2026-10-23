@@ -8,7 +8,10 @@ use crate::mir::{
     instruction::Immediate,
     register::{Register, VirtualReg},
 };
-use lamina_codegen::{LocalRegisterAllocator as RegisterAllocator, riscv::RiscVRegAlloc};
+use lamina_codegen::{
+    LocalRegisterAllocator as RegisterAllocator,
+    riscv::{RiscVRegAlloc, Xlen},
+};
 
 /// Load a virtual register into a destination register
 pub fn load_register_to_register<W: Write>(
@@ -132,6 +135,11 @@ pub fn load_fp_operand_to_register<W: Write>(
                     // Move from integer register to FP register
                     if is_f32 {
                         writeln!(writer, "    fmv.w.x {dest_fp_reg}, {phys}")?;
+                    } else if reg_alloc.target().xlen == Xlen::Rv32 {
+                        return Err(Error::new(
+                            ErrorKind::InvalidInput,
+                            "RV32 f64 requires a stack slot",
+                        ));
                     } else {
                         writeln!(writer, "    fmv.d.x {dest_fp_reg}, {phys}")?;
                     }
@@ -146,6 +154,11 @@ pub fn load_fp_operand_to_register<W: Write>(
                 // Move from physical integer register to FP register
                 if is_f32 {
                     writeln!(writer, "    fmv.w.x {}, {}", dest_fp_reg, p.name)?;
+                } else if reg_alloc.target().xlen == Xlen::Rv32 {
+                    return Err(Error::new(
+                        ErrorKind::InvalidInput,
+                        "RV32 f64 requires a stack slot",
+                    ));
                 } else {
                     writeln!(writer, "    fmv.d.x {}, {}", dest_fp_reg, p.name)?;
                 }
@@ -162,8 +175,18 @@ pub fn load_fp_operand_to_register<W: Write>(
                 Immediate::F64(v) => {
                     // Load F64 immediate via integer register
                     let bits = v.to_bits();
-                    writeln!(writer, "    li t0, {bits}")?;
-                    writeln!(writer, "    fmv.d.x {dest_fp_reg}, t0")?;
+                    if reg_alloc.target().xlen == Xlen::Rv32 {
+                        writeln!(writer, "    addi sp, sp, -16")?;
+                        writeln!(writer, "    li t0, {}", bits as u32)?;
+                        writeln!(writer, "    sw t0, 0(sp)")?;
+                        writeln!(writer, "    li t0, {}", (bits >> 32) as u32)?;
+                        writeln!(writer, "    sw t0, 4(sp)")?;
+                        writeln!(writer, "    fld {dest_fp_reg}, 0(sp)")?;
+                        writeln!(writer, "    addi sp, sp, 16")?;
+                    } else {
+                        writeln!(writer, "    li t0, {bits}")?;
+                        writeln!(writer, "    fmv.d.x {dest_fp_reg}, t0")?;
+                    }
                 }
                 _ => {
                     return Err(Error::new(
@@ -190,6 +213,11 @@ pub fn store_fp_register_to_register<W: Write>(
         // Move from FP register to integer register
         if is_f32 {
             writeln!(writer, "    fmv.x.w {phys}, {src_fp_reg}")?;
+        } else if reg_alloc.target().xlen == Xlen::Rv32 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "RV32 f64 requires a stack slot",
+            ));
         } else {
             writeln!(writer, "    fmv.x.d {phys}, {src_fp_reg}")?;
         }
