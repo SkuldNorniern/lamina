@@ -7,7 +7,7 @@ mod simd;
 use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
 
-use crate::mir_codegen::common::integer_conversion;
+use crate::mir_codegen::common::integer_conversion_with_width;
 
 use util::{
     emit_int_cmp_op, load_fp_operand_to_register, load_operand_to_register,
@@ -36,7 +36,11 @@ use lamina_codegen::{
     riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc, RiscVTarget, Xlen},
 };
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
-use std::{collections::HashMap, io::Write, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+    sync::Arc,
+};
 
 use crate::mir_codegen::common::CodegenBase;
 
@@ -168,18 +172,33 @@ fn compile_single_function_riscv(
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     }
 
+    let slot_target = RiscVTarget::general(Xlen::Rv64);
+    let wide_float_regs: HashSet<_> = func
+        .blocks
+        .iter()
+        .flat_map(|b| &b.instructions)
+        .filter(|i| instruction_type(i).is_some_and(|ty| *ty == MirType::f64()))
+        .filter_map(|i| {
+            i.def_reg().and_then(|r| match r {
+                Register::Virtual(v) => Some(*v),
+                _ => None,
+            })
+        })
+        .collect();
     let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
     let mut reg_alloc = RiscVRegAlloc::with_target(target_os, target);
     let mut live_across_calls = HashMap::new();
 
     if settings.regalloc != RegallocStrategy::Incremental {
         (stack_slots, _, _) =
-            assign_stack_slots(func, |i| RiscVFrame::calculate_stack_offset(i, target));
+            assign_stack_slots(func, |i| RiscVFrame::calculate_stack_offset(i, slot_target));
         let pool = RiscVRegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()
             .filter(|i| {
-                i.vreg.class == RegisterClass::Gpr && !func.stack_reservations.contains_key(&i.vreg)
+                i.vreg.class == RegisterClass::Gpr
+                    && !func.stack_reservations.contains_key(&i.vreg)
+                    && !(target.xlen == Xlen::Rv32 && wide_float_regs.contains(&i.vreg))
             })
             .collect();
         let mut plan = match settings.regalloc {
@@ -200,7 +219,7 @@ fn compile_single_function_riscv(
         reg_alloc = RiscVRegAlloc::from_global_plan(target_os, target, &plan, &stack_slots);
     } else if reserved.is_some() {
         (stack_slots, _, _) =
-            assign_stack_slots(func, |i| RiscVFrame::calculate_stack_offset(i, target));
+            assign_stack_slots(func, |i| RiscVFrame::calculate_stack_offset(i, slot_target));
     } else {
         let mut next_slot = 0usize;
         for block in &func.blocks {
@@ -209,16 +228,20 @@ fn compile_single_function_riscv(
                     && let Register::Virtual(vreg) = dst
                     && !stack_slots.contains_key(vreg)
                 {
-                    stack_slots
-                        .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot, target));
+                    stack_slots.insert(
+                        *vreg,
+                        RiscVFrame::calculate_stack_offset(next_slot, slot_target),
+                    );
                     next_slot += 1;
                 }
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg
                         && !stack_slots.contains_key(vreg)
                     {
-                        stack_slots
-                            .insert(*vreg, RiscVFrame::calculate_stack_offset(next_slot, target));
+                        stack_slots.insert(
+                            *vreg,
+                            RiscVFrame::calculate_stack_offset(next_slot, slot_target),
+                        );
                         next_slot += 1;
                     }
                 }
@@ -226,23 +249,21 @@ fn compile_single_function_riscv(
                 if let MirInst::StackAddr { slot, .. } = inst
                     && !stack_slots.contains_key(slot)
                 {
-                    stack_slots
-                        .insert(*slot, RiscVFrame::calculate_stack_offset(next_slot, target));
+                    stack_slots.insert(
+                        *slot,
+                        RiscVFrame::calculate_stack_offset(next_slot, slot_target),
+                    );
                     next_slot += 1;
                 }
             }
         }
     }
 
-    let stack_size = if reserved.is_some() {
-        stack_slots
-            .values()
-            .map(|offset| (-offset - 16) as usize)
-            .max()
-            .unwrap_or(0)
-    } else {
-        stack_slots.len() * target.word_bytes() as usize
-    };
+    let stack_size = stack_slots
+        .values()
+        .map(|offset| (-offset - 16) as usize)
+        .max()
+        .unwrap_or(0);
     let callee_saved_registers = reg_alloc.used_callee_saved_registers();
     RiscVFrame::generate_prologue(&mut output, stack_size, &callee_saved_registers, target)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -375,8 +396,8 @@ fn validate_rv32_i64(module: &MirModule, target: RiscVTarget) -> Result<(), Lami
                 block
                     .instructions
                     .iter()
-                    .filter_map(instruction_type)
-                    .any(&i64_type)
+                    .any(|i| instruction_type(i).is_some_and(&i64_type)
+                        || matches!(i, MirInst::IntConvert { from, to, .. } if i64_type(from) || i64_type(to)))
             })
     });
     if has_i64_global || has_i64_function {
@@ -610,7 +631,14 @@ fn emit_instruction_riscv<W: Write>(
     stack_slots: &HashMap<VirtualReg, i32>,
     ctx: &mut EmitCtx<'_>,
 ) -> Result<(), LaminaError> {
-    if let Some(operations) = integer_conversion(inst) {
+    if let Some(operations) = integer_conversion_with_width(
+        inst,
+        if ctx.target.xlen == Xlen::Rv32 {
+            MirType::i32()
+        } else {
+            MirType::i64()
+        },
+    ) {
         for operation in operations {
             emit_instruction_riscv(
                 &operation,
@@ -636,6 +664,16 @@ fn emit_instruction_riscv<W: Write>(
         }
 
         MirInst::Copy { ty, dst, src } => {
+            if ctx.target.xlen == Xlen::Rv32 && *ty == MirType::f64() {
+                load_fp_operand_to_register(src, writer, reg_alloc, stack_slots, "fa0", false)?;
+                let Register::Virtual(dst) = dst else {
+                    return Err(LaminaError::ValidationError(
+                        "RV32 f64 requires a stack slot".into(),
+                    ));
+                };
+                store_fp_register_to_register("fa0", dst, writer, reg_alloc, stack_slots, false)?;
+                return Ok(());
+            }
             if matches!(ty, MirType::Vector(_)) {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     format!("RISC-V backend does not support vector Copy of type {ty}"),
@@ -646,7 +684,11 @@ fn emit_instruction_riscv<W: Write>(
                     if let Some(physical) = reg_alloc.get_mapping(vreg) {
                         writeln!(writer, "    mv a0, {physical}")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        writeln!(writer, "    {} a0, {offset}(fp)", copy_load_mnemonic(ty))?;
+                        writeln!(
+                            writer,
+                            "    {} a0, {offset}(fp)",
+                            copy_load_mnemonic(ty, ctx.target)
+                        )?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!("RISC-V Copy source {vreg:?} has no register or stack slot"),
@@ -971,8 +1013,8 @@ fn emit_instruction_riscv<W: Write>(
                 MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "lb",
                 MirType::Scalar(ScalarType::I16) => "lh",
                 MirType::Scalar(ScalarType::I32) => "lw",
-                MirType::Scalar(ScalarType::I64)
-                | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => "ld",
+                MirType::Scalar(ScalarType::I64) => "ld",
+                MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => ctx.target.load_word(),
                 MirType::Scalar(ScalarType::F32) => "flw",
                 MirType::Scalar(ScalarType::F64) => "fld",
                 MirType::Vector(_) => {
@@ -1041,8 +1083,8 @@ fn emit_instruction_riscv<W: Write>(
                 MirType::Scalar(ScalarType::I1) | MirType::Scalar(ScalarType::I8) => "sb",
                 MirType::Scalar(ScalarType::I16) => "sh",
                 MirType::Scalar(ScalarType::I32) => "sw",
-                MirType::Scalar(ScalarType::I64)
-                | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => "sd",
+                MirType::Scalar(ScalarType::I64) => "sd",
+                MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => ctx.target.store_word(),
                 MirType::Scalar(ScalarType::F32) => "fsw",
                 MirType::Scalar(ScalarType::F64) => "fsd",
                 MirType::Vector(_) => {
@@ -1315,12 +1357,12 @@ fn reload_caller_saved<W: Write>(
     Ok(())
 }
 
-fn copy_load_mnemonic(ty: &MirType) -> &'static str {
+fn copy_load_mnemonic(ty: &MirType, target: RiscVTarget) -> &'static str {
     match ty.size_bytes() {
         1 => "lb",
         2 => "lh",
         4 => "lw",
-        _ => "ld",
+        _ => target.load_word(),
     }
 }
 
@@ -1352,6 +1394,228 @@ mod tests {
     use super::*;
     use crate::mir::FunctionBuilder;
     use std::error::Error;
+
+    #[test]
+    fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
+        use std::{
+            env::temp_dir,
+            fs,
+            process::{self, Command},
+        };
+        let directory = temp_dir().join(format!("lamina-rv32-scalar-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let reg = |id| Register::Virtual(VirtualReg::gpr(id));
+        let operand = |id| Operand::Register(reg(id));
+        let addr = AddressMode::BaseOffset {
+            base: reg(0),
+            offset: 0,
+            address_space: Default::default(),
+        };
+        let mut module = MirModule::new("rv32_scalar");
+        for ty in [MirType::f32(), MirType::f64()] {
+            let immediate = |v: f64| {
+                Operand::Immediate(if ty == MirType::f32() {
+                    Immediate::F32(v as f32)
+                } else {
+                    Immediate::F64(v)
+                })
+            };
+            let mut function = FunctionBuilder::new(format!("float_{}", ty.size_bytes()))
+                .param(reg(0), MirType::ptr())
+                .returns(MirType::i32())
+                .block("entry")
+                .build();
+            let instructions = &mut function.blocks[0].instructions;
+            instructions.push(MirInst::Copy {
+                ty,
+                dst: reg(1),
+                src: immediate(-1.23456789),
+            });
+            instructions.push(MirInst::Copy {
+                ty,
+                dst: reg(2),
+                src: operand(1),
+            });
+            for (id, op) in [
+                FloatBinOp::FAdd,
+                FloatBinOp::FSub,
+                FloatBinOp::FMul,
+                FloatBinOp::FDiv,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                instructions.push(MirInst::FloatBinary {
+                    op,
+                    ty,
+                    dst: reg(id as u32 + 3),
+                    lhs: operand(2),
+                    rhs: immediate(3.25),
+                });
+            }
+            for (id, op) in [FloatUnOp::FNeg, FloatUnOp::FSqrt].into_iter().enumerate() {
+                instructions.push(MirInst::FloatUnary {
+                    op,
+                    ty,
+                    dst: reg(id as u32 + 7),
+                    src: operand(3),
+                });
+            }
+            instructions.push(MirInst::Store {
+                ty,
+                src: operand(7),
+                addr: addr.clone(),
+                attrs: Default::default(),
+            });
+            instructions.push(MirInst::Load {
+                ty,
+                dst: reg(9),
+                addr: addr.clone(),
+                attrs: Default::default(),
+            });
+            for (id, op) in [
+                FloatCmpOp::Eq,
+                FloatCmpOp::Ne,
+                FloatCmpOp::Lt,
+                FloatCmpOp::Le,
+                FloatCmpOp::Gt,
+                FloatCmpOp::Ge,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                instructions.push(MirInst::FloatCmp {
+                    op,
+                    ty,
+                    dst: reg(id as u32 + 10),
+                    lhs: operand(9),
+                    rhs: immediate(-2.5),
+                });
+            }
+            instructions.push(MirInst::Ret {
+                value: Some(Operand::Immediate(Immediate::I32(0))),
+            });
+            module.add_function(function);
+        }
+        let mut function = FunctionBuilder::new("integers")
+            .param(reg(0), MirType::ptr())
+            .param(reg(1), MirType::i32())
+            .returns(MirType::i32())
+            .block("entry")
+            .build();
+        let instructions = &mut function.blocks[0].instructions;
+        instructions.push(MirInst::Load {
+            ty: MirType::ptr(),
+            dst: reg(2),
+            addr: addr.clone(),
+            attrs: Default::default(),
+        });
+        instructions.push(MirInst::Copy {
+            ty: MirType::ptr(),
+            dst: reg(3),
+            src: operand(2),
+        });
+        instructions.push(MirInst::Store {
+            ty: MirType::ptr(),
+            src: operand(3),
+            addr: addr.clone(),
+            attrs: Default::default(),
+        });
+        let mut id = 4;
+        for ty in [MirType::i8(), MirType::i16(), MirType::i32()] {
+            for op in [
+                IntBinOp::Add,
+                IntBinOp::Sub,
+                IntBinOp::Mul,
+                IntBinOp::SDiv,
+                IntBinOp::UDiv,
+                IntBinOp::SRem,
+                IntBinOp::URem,
+                IntBinOp::And,
+                IntBinOp::Or,
+                IntBinOp::Xor,
+                IntBinOp::Shl,
+                IntBinOp::LShr,
+                IntBinOp::AShr,
+            ] {
+                instructions.push(MirInst::IntBinary {
+                    op,
+                    ty,
+                    dst: reg(id),
+                    lhs: operand(1),
+                    rhs: Operand::Immediate(Immediate::I32(2)),
+                });
+                id += 1;
+            }
+        }
+        for ty in [MirType::i8(), MirType::i16()] {
+            instructions.push(MirInst::IntConvert {
+                from: MirType::i32(),
+                to: ty,
+                signed: false,
+                dst: reg(id),
+                src: operand(1),
+            });
+            let truncated = id;
+            for signed in [false, true] {
+                instructions.push(MirInst::IntConvert {
+                    from: ty,
+                    to: MirType::i32(),
+                    signed,
+                    dst: reg(id + 1),
+                    src: operand(truncated),
+                });
+                id += 2;
+            }
+        }
+        instructions.push(MirInst::Ret {
+            value: Some(Operand::Immediate(Immediate::I32(0))),
+        });
+        module.add_function(function);
+        for allocator in [
+            RegallocStrategy::Incremental,
+            RegallocStrategy::LinearScanGlobal,
+            RegallocStrategy::GraphColorGlobal,
+        ] {
+            let mut output = Vec::new();
+            generate_mir_riscv_with_units_and_settings(
+                &module,
+                &mut output,
+                RiscVTarget::general(Xlen::Rv32),
+                TargetOperatingSystem::Linux,
+                1,
+                &MirCodegenSettings {
+                    regalloc: allocator,
+                    ..Default::default()
+                },
+            )?;
+            let source = directory.join(format!("{allocator:?}.s"));
+            let object = source.with_extension("o");
+            fs::write(&source, output)?;
+            let output = Command::new("clang")
+                .args(["--target=riscv32-unknown-elf", "-march=rv32imafd", "-c"])
+                .arg(&source)
+                .arg("-o")
+                .arg(&object)
+                .output()?;
+            assert!(
+                output.status.success(),
+                "{allocator:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let output = Command::new("llvm-objdump-18")
+                .arg("-d")
+                .arg(&object)
+                .output()?;
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
 
     #[test]
     fn narrow_loads_sign_extend_on_both_register_widths() -> Result<(), Box<dyn Error>> {
