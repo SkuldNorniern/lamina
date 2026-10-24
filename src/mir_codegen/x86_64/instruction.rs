@@ -324,6 +324,15 @@ pub(super) fn emit_instruction_x86_64(
 
             if let Some(dp) = dst_phys {
                 // Optimized path: emit directly into dp, avoiding rax bounce
+                let rhs_phys = match rhs {
+                    Operand::Register(Register::Virtual(v)) => reg_alloc.get_mapping_for(v),
+                    Operand::Register(Register::Physical(p)) => Some(p.name),
+                    Operand::Immediate(_) => None,
+                };
+                let rhs_in_dp = rhs_phys == Some(dp);
+                if rhs_in_dp {
+                    writeln!(writer, "    movq %{dp}, %rax")?;
+                }
                 match op {
                     IntBinOp::Shl | IntBinOp::AShr | IntBinOp::LShr => {
                         // Load lhs into dp
@@ -360,13 +369,17 @@ pub(super) fn emit_instruction_x86_64(
                             }
                             Operand::Register(_) => {
                                 // Need shift count in %cl; load rhs into rcx
-                                load_operand_to_register(
-                                    rhs,
-                                    writer,
-                                    reg_alloc,
-                                    stack_slots,
-                                    "rcx",
-                                )?;
+                                if rhs_in_dp {
+                                    writeln!(writer, "    movq %rax, %rcx")?;
+                                } else {
+                                    load_operand_to_register(
+                                        rhs,
+                                        writer,
+                                        reg_alloc,
+                                        stack_slots,
+                                        "rcx",
+                                    )?;
+                                }
                                 if ty.size_bytes() < 8 {
                                     writeln!(
                                         writer,
@@ -478,13 +491,10 @@ pub(super) fn emit_instruction_x86_64(
                                     }
                                 }
                             }
-                            Operand::Register(rhs_reg) => {
+                            Operand::Register(_) => {
                                 // Get rhs physical register if available for direct register op
-                                let rhs_phys = match rhs_reg {
-                                    Register::Virtual(v) => reg_alloc.get_mapping_for(v),
-                                    Register::Physical(p) => Some(p.name),
-                                };
-                                if let Some(rp) = rhs_phys {
+                                let rhs_src = if rhs_in_dp { Some("rax") } else { rhs_phys };
+                                if let Some(rp) = rhs_src {
                                     // Both in registers: direct op, no memory access
                                     match op {
                                         IntBinOp::Add => writeln!(writer, "    addq %{rp}, %{dp}")?,

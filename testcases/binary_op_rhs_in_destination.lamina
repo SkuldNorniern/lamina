@@ -1,0 +1,22 @@
+# Integer ops whose right operand is also the destination register.
+fn @main() -> i64 {
+  entry:
+    %in = readbyte
+    %g = add.i64 %in, 3
+    %g = and.i64 2816, %g
+    jmp second
+  second:
+    print %g
+    %x = add.i64 %in, 2816
+    %h = add.i64 %in, 3
+    %h = and.i64 %x, %h
+    print %h
+    %s = add.i64 %in, 40
+    %k = add.i64 %in, 2
+    %k = shr.i64 %s, %k
+    print %k
+    %m = add.i64 %in, 2
+    %m = shl.i64 40, %m
+    print %m
+    ret.i64 0
+}
