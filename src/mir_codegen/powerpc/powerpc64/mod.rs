@@ -243,7 +243,7 @@ fn compile_single_function_ppc64(
             && let Some(offset) = stack_slots.get(vreg)
         {
             if let Some(src) = Ppc64Abi::ARG_REGISTERS.get(index) {
-                extend_integer(&mut output, src, &param.ty, true)
+                extend_param(&mut output, src, &param.ty)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 writeln!(output, "    std {src}, {offset}(1)")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -252,7 +252,7 @@ fn compile_single_function_ppc64(
                     + (index - Ppc64Abi::ARG_REGISTERS.len()) * 8;
                 writeln!(output, "    ld 0, {disp}(1)")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                extend_integer(&mut output, "0", &param.ty, true)
+                extend_param(&mut output, "0", &param.ty)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 writeln!(output, "    std 0, {offset}(1)")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -1143,6 +1143,14 @@ fn emit_store_fp_result<W: Write>(
         writeln!(writer, "    ld {phys}, -8(1)")?;
     }
     Ok(())
+}
+
+fn extend_param(w: &mut impl Write, register: &str, ty: &MirType) -> Result<(), LaminaError> {
+    if matches!(ty, MirType::Scalar(ScalarType::I1)) {
+        writeln!(w, "    clrldi {register}, {register}, 56")?;
+        return Ok(());
+    }
+    extend_integer(w, register, ty, true)
 }
 
 fn extend_integer(
