@@ -187,6 +187,18 @@ fn assemble_native(
                 output_path.display()
             );
         }
+        let assembly = fs::read_to_string(input_path).map_err(|e| {
+            LaminaError::ValidationError(format!("Failed to read {}: {e}", input_path.display()))
+        })?;
+        if assembly
+            .lines()
+            .any(|line| line.trim_start().starts_with(".loc "))
+        {
+            return Err(LaminaError::ValidationError(
+                "ras does not implement the .loc directive; use --assembler gas or clang, or drop -g"
+                    .to_string(),
+            ));
+        }
         let mut ras =
             Ras::with_object_write_options(target_arch, target_os, ras_object_write_options)
                 .map_err(|e| {

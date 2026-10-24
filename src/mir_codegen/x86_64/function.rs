@@ -98,12 +98,6 @@ pub(super) fn compile_single_function_x86_64(
     writeln!(output, "{label}:")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
-    if settings.emit_asm_debug_lines {
-        let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{tag}\"")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    }
-
     // A self tail call lowers to a jump back past the prologue, so it neither needs a
     // frame nor clobbers anything a real call would.
     let is_leaf = !func.blocks.iter().any(|b| {

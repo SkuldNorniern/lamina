@@ -1,4 +1,5 @@
 use crate::mir::register::PhysicalReg;
+use crate::mir_codegen::common::emit_debug_file;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
     self_tail_arguments, self_tail_schedule,
@@ -165,12 +166,6 @@ fn compile_single_function_riscv(
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{label}:")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-
-    if settings.emit_asm_debug_lines {
-        let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{tag}\"")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    }
 
     let slot_target = RiscVTarget::general(Xlen::Rv64);
     let wide_float_regs: HashSet<_> = func
@@ -485,6 +480,7 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     writeln!(writer, "{}", abi.get_data_section())?;
     writeln!(writer, "{}", abi.get_print_format())?;
     writeln!(writer, "{}", abi.get_text_section())?;
+    emit_debug_file(writer, settings)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
 
     for func_name in &module.external_functions {
