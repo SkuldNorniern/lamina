@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use super::loop_opt::{LoopInfo, LoopInvariantCodeMotion};
 use crate::mir::{
-    Function, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register, ScalarType,
+    Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register,
+    ScalarType, VirtualReg,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 
@@ -28,16 +29,21 @@ impl Transform for LoopUnrolling {
             let candidate = LoopInvariantCodeMotion
                 .find_loops(func)
                 .iter()
-                .find_map(|info| {
-                    let shape = analyze(func, info)?;
-                    let count = constant_trip_count(func, &shape)?;
-                    (count <= 32 && shape.body.len().saturating_mul(count as usize) <= 192)
-                        .then_some((shape, count))
-                });
-            let Some((shape, count)) = candidate else {
+                .find_map(|info| analyze(func, info));
+            let Some(shape) = candidate else {
                 break;
             };
-            full_unroll(func, &shape, count);
+            let count = constant_trip_count(func, &shape);
+            if let Some(count) =
+                count.filter(|n| *n <= 32 && shape.body.len().saturating_mul(*n as usize) <= 192)
+            {
+                full_unroll(func, &shape, count);
+            } else {
+                let Some(mut next) = register_base(func) else {
+                    break;
+                };
+                partial_unroll(func, &shape, 8, &mut next);
+            }
             changed = true;
         }
         Ok(changed)
@@ -55,6 +61,9 @@ struct Shape {
 }
 
 fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
+    if info.header.starts_with("__unroll_") {
+        return None;
+    }
     if info.blocks.len() < 2 || info.blocks.len() > 8 {
         return None;
     }
@@ -96,6 +105,9 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
     let [entry] = outside.as_slice() else {
         return None;
     };
+    if entry.label.starts_with("__unroll_") {
+        return None;
+    }
     let mut labels = HashSet::from([info.header.clone()]);
     let mut body = Vec::new();
     let mut current = first.clone();
@@ -172,6 +184,202 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
         inclusive,
         entry: entry.label.clone(),
     })
+}
+
+fn register_base(func: &Function) -> Option<u32> {
+    let next = func
+        .blocks
+        .iter()
+        .flat_map(|b| &b.instructions)
+        .flat_map(|i| i.def_reg().into_iter().chain(i.use_regs()))
+        .chain(func.sig.params.iter().map(|p| &p.reg))
+        .filter_map(|r| match r {
+            Register::Virtual(v) => Some(v.id),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(0)
+        .checked_add(1)?;
+    next.checked_add(100_000)?;
+    Some(next)
+}
+
+fn fresh(next: &mut u32) -> Register {
+    let reg = VirtualReg::gpr(*next).into();
+    *next += 1;
+    reg
+}
+fn imm(n: i64) -> Operand {
+    Operand::Immediate(Immediate::I64(n))
+}
+fn binary(op: IntBinOp, dst: &Register, lhs: Operand, rhs: Operand) -> Instruction {
+    Instruction::IntBinary {
+        op,
+        ty: MirType::Scalar(ScalarType::I64),
+        dst: dst.clone(),
+        lhs,
+        rhs,
+    }
+}
+fn compare(op: IntCmpOp, dst: &Register, lhs: Operand, rhs: Operand) -> Instruction {
+    Instruction::IntCmp {
+        op,
+        ty: MirType::Scalar(ScalarType::I64),
+        dst: dst.clone(),
+        lhs,
+        rhs,
+    }
+}
+fn jump(target: &str) -> Instruction {
+    Instruction::Jmp {
+        target: target.into(),
+    }
+}
+fn branch(cond: &Register, yes: &str, no: &str) -> Instruction {
+    Instruction::Br {
+        cond: cond.clone(),
+        true_target: yes.into(),
+        false_target: no.into(),
+    }
+}
+
+fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut u32) {
+    let mut prefix = format!("__unroll_{}", shape.header);
+    while func.blocks.iter().any(|b| b.label.starts_with(&prefix)) {
+        prefix.push('_');
+    }
+    let label = |suffix: &str| format!("{prefix}_{suffix}");
+    let dispatch = label("dispatch");
+    let overflow = label("overflow");
+    let setup = label("setup");
+    let procheck = label("procheck");
+    let probody = label("probody");
+    let maincheck = label("maincheck");
+    let mainbody = label("mainbody");
+    let trip = fresh(next);
+    let remainder = fresh(next);
+    let flag = fresh(next);
+    let mut guard = func
+        .get_block(&shape.header)
+        .map(|b| b.instructions.clone())
+        .unwrap_or_default();
+    if let Some(Instruction::Br {
+        true_target,
+        false_target,
+        ..
+    }) = guard.last_mut()
+    {
+        let target = if shape.labels.contains(true_target) {
+            true_target
+        } else {
+            false_target
+        };
+        *target = if shape.inclusive {
+            overflow.clone()
+        } else {
+            setup.clone()
+        };
+    }
+    for b in &mut func.blocks {
+        if shape.labels.contains(&b.label) {
+            continue;
+        }
+        for i in &mut b.instructions {
+            match i {
+                Instruction::Jmp { target } if *target == shape.header => {
+                    *target = dispatch.clone()
+                }
+                Instruction::Br {
+                    true_target,
+                    false_target,
+                    ..
+                } => {
+                    if *true_target == shape.header {
+                        *true_target = dispatch.clone();
+                    }
+                    if *false_target == shape.header {
+                        *false_target = dispatch.clone();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut add_block = |name: String, instructions: Vec<Instruction>| {
+        func.blocks.push(Block {
+            label: name,
+            instructions,
+        })
+    };
+    add_block(dispatch, guard);
+    if shape.inclusive {
+        add_block(
+            overflow,
+            vec![
+                compare(IntCmpOp::Eq, &flag, shape.end.clone(), imm(i64::MAX)),
+                branch(&flag, &shape.header, &setup),
+            ],
+        );
+    }
+    let mut setup_code = vec![binary(
+        IntBinOp::Sub,
+        &trip,
+        shape.end.clone(),
+        Operand::Register(shape.iv.clone()),
+    )];
+    if shape.inclusive {
+        setup_code.push(binary(IntBinOp::Add, &trip, trip.clone().into(), imm(1)));
+    }
+    setup_code.extend([
+        binary(
+            IntBinOp::And,
+            &remainder,
+            trip.clone().into(),
+            imm(factor as i64 - 1),
+        ),
+        binary(
+            IntBinOp::Sub,
+            &trip,
+            trip.clone().into(),
+            remainder.clone().into(),
+        ),
+        jump(&procheck),
+    ]);
+    add_block(setup, setup_code);
+    add_block(
+        procheck.clone(),
+        vec![
+            compare(IntCmpOp::Ne, &flag, remainder.clone().into(), imm(0)),
+            branch(&flag, &probody, &maincheck),
+        ],
+    );
+    let mut code = shape.body.clone();
+    code.extend([
+        binary(IntBinOp::Sub, &remainder, remainder.clone().into(), imm(1)),
+        jump(&procheck),
+    ]);
+    add_block(probody, code);
+    add_block(
+        maincheck.clone(),
+        vec![
+            compare(IntCmpOp::Ne, &flag, trip.clone().into(), imm(0)),
+            branch(&flag, &mainbody, &shape.header),
+        ],
+    );
+    let mut code = Vec::new();
+    for _ in 0..factor {
+        code.extend_from_slice(&shape.body);
+    }
+    code.extend([
+        binary(
+            IntBinOp::Sub,
+            &trip,
+            trip.clone().into(),
+            imm(factor as i64),
+        ),
+        jump(&maincheck),
+    ]);
+    add_block(mainbody, code);
 }
 
 fn full_unroll(func: &mut Function, shape: &Shape, count: u64) {
@@ -270,6 +478,24 @@ ret.i64 %b
             .functions
             .remove("f")
             .unwrap()
+    }
+
+    #[test]
+    fn partial_unrolling_preserves_remainders_and_signed_spans() {
+        for cmp in ["lt", "le"] {
+            let original = counting(-3, "%n", cmp);
+            let mut func = original.clone();
+            assert!(LoopUnrolling.apply(&mut func).unwrap());
+            assert!(!LoopUnrolling.apply(&mut func).unwrap());
+            crate::mir::verify::verify_function_in_pipeline(&func).unwrap();
+            for n in [-9, -3, -2, 3, 4, 5, 6, 13, 29, 30] {
+                assert_eq!(
+                    crate::runtime::executor::interpret_mir_function(&func, &[n]).unwrap(),
+                    crate::runtime::executor::interpret_mir_function(&original, &[n]).unwrap(),
+                    "{cmp} {n}"
+                );
+            }
+        }
     }
 
     #[test]
