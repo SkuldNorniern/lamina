@@ -108,16 +108,27 @@ def load_expected_output(test_path):
     if not expected_path.exists():
         return None
 
-    with open(expected_path, 'r') as f:
-        lines = f.readlines()
+    with open(expected_path, 'rb') as f:
+        text = f.read().decode('utf-8', errors='replace')
+
+    if test_path.name == 'io_types.lamina':
+        return printable_lines(text)
 
     expected_values = []
-    for line in lines:
+    for line in text.splitlines():
         line = line.strip()
         if line and not line.startswith('#'):
             expected_values.append(line)
-            
+
     return expected_values
+
+def printable_lines(text):
+    lines = []
+    for line in text.split('\n'):
+        printable_line = ''.join(c for c in line if 32 <= ord(c) <= 126)
+        if printable_line.strip():
+            lines.append(printable_line.strip())
+    return lines
 
 def compile_and_run_test(test_path, use_mir=False):
     """Compile and run a test case, return the output lines"""
@@ -179,12 +190,7 @@ def compile_and_run_test(test_path, use_mir=False):
     elif test_path.name == 'io_buffer.lamina' and len(output_lines) >= 3:
         output_lines = output_lines[-3:]
     elif test_path.name == 'io_types.lamina':
-        filtered_lines = []
-        for line in output_lines:
-            printable_line = ''.join(c for c in line if ord(c) >= 32 and ord(c) <= 126)
-            if printable_line.strip():
-                filtered_lines.append(printable_line.strip())
-        output_lines = filtered_lines
+        output_lines = printable_lines(stdout)
 
     return True, output_lines
 
