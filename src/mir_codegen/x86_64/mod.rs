@@ -32,7 +32,7 @@ use crate::{
     mir::{
         AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
         IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
-        VirtualReg, instruction::Immediate, register::RegisterClass,
+        Signedness, VirtualReg, instruction::Immediate, register::RegisterClass,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
@@ -191,16 +191,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
 
     let settings_arc = Arc::new(settings.clone());
-    let return_extensions: Arc<ReturnExtensions> = Arc::new(
-        module
-            .functions
-            .iter()
-            .filter_map(|(name, func)| {
-                let extension = func.sig.ret_ty.as_ref().and_then(narrow_param_extension)?;
-                Some((name.clone(), extension))
-            })
-            .collect(),
-    );
+    let abi_extensions = Arc::new(AbiExtensions::from_module(module));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
             compile_single_function_x86_64(
@@ -208,7 +199,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
                 func,
                 os,
                 settings_arc.as_ref(),
-                return_extensions.as_ref(),
+                abi_extensions.as_ref(),
             )
         })
         .map_err(parallel_codegen_error)?;

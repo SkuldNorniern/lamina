@@ -42,7 +42,7 @@ pub use simd::{
     extract_vector_type, get_lane_type, is_float_vector, is_integer_vector, lane_count,
     vector_alignment, vector_size_bytes,
 };
-pub use types::{AddressSpace, MirType, ScalarType, VectorLane, VectorType};
+pub use types::{AddressSpace, MirType, ScalarType, Signedness, VectorLane, VectorType};
 pub use verify::{
     verify_function, verify_function_in_pipeline, verify_module, verify_module_in_pipeline,
 };

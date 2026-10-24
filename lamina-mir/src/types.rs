@@ -29,6 +29,16 @@ pub enum AddressSpace {
     Parameter,
 }
 
+/// Signedness of an integer crossing a function boundary. Instructions stay
+/// signedness-free; this tells external call sites how to widen narrow arguments
+/// and results to the width the C ABI expects.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Signedness {
+    #[default]
+    Signed,
+    Unsigned,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScalarType {
     I8,

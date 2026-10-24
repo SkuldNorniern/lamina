@@ -13,6 +13,19 @@ pub(super) fn restore_saved_registers<W: Write>(
     Ok(())
 }
 
+fn widen_external_argument<W: Write>(
+    writer: &mut W,
+    abi_extensions: &AbiExtensions,
+    callee: &str,
+    index: usize,
+    register: &str,
+) -> Result<(), LaminaError> {
+    if let Some((width, signed)) = abi_extensions.external_argument(callee, index) {
+        extend_integer(writer, register, width, signed)?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn emit_instruction_x86_64(
     inst: &MirInst,
@@ -27,7 +40,7 @@ pub(super) fn emit_instruction_x86_64(
     def_regs: &BTreeSet<VirtualReg>,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
-    return_extensions: &ReturnExtensions,
+    abi_extensions: &AbiExtensions,
     next_label: &str,
     self_param_homes: &[Option<String>],
     param_extensions: &[Option<(usize, bool)>],
@@ -634,6 +647,7 @@ pub(super) fn emit_instruction_x86_64(
                         let arg = &args[arg_idx];
                         let stack_offset = shadow_space + (i * stack::SLOT_SIZE);
                         load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
+                        widen_external_argument(writer, abi_extensions, name, arg_idx, "rax")?;
                         writeln!(writer, "    movq %rax, {stack_offset}(%rsp)")?;
                     }
                 } else {
@@ -645,6 +659,7 @@ pub(super) fn emit_instruction_x86_64(
                         let arg_idx = num_reg_args + i;
                         let arg = &args[arg_idx];
                         load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
+                        widen_external_argument(writer, abi_extensions, name, arg_idx, "rax")?;
                         writeln!(writer, "    pushq %rax")?;
                     }
                 }
@@ -653,6 +668,9 @@ pub(super) fn emit_instruction_x86_64(
                     let arg = &args[i];
                     let dest_reg = arg_regs[i];
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
+                }
+                for (i, dest_reg) in arg_regs.iter().take(num_reg_args).enumerate() {
+                    widen_external_argument(writer, abi_extensions, name, i, dest_reg)?;
                 }
 
                 let mangled_name = abi.mangle_function_name(name);
@@ -678,12 +696,8 @@ pub(super) fn emit_instruction_x86_64(
                 if let Some(ret_reg) = ret
                     && let Register::Virtual(vreg) = ret_reg
                 {
-                    if let Some(extension) = return_extensions.get(name) {
-                        emit_narrow_param_normalization(
-                            writer,
-                            &[Some(*extension)],
-                            &[Some("%rax".to_string())],
-                        )?;
+                    if let Some((width, signed)) = abi_extensions.return_extension(name) {
+                        extend_integer(writer, "rax", width, signed)?;
                     }
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
@@ -831,6 +845,9 @@ pub(super) fn emit_instruction_x86_64(
                 let dest_reg = arg_regs[i];
                 load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
             }
+            for (i, dest_reg) in arg_regs.iter().take(num_reg_args).enumerate() {
+                widen_external_argument(writer, abi_extensions, name, i, dest_reg)?;
+            }
 
             // 2. Handle Stack Arguments (Overwrite incoming args)
             // Note: TailCallOptimization guarantees args.len() == current_func.args.len()
@@ -868,6 +885,7 @@ pub(super) fn emit_instruction_x86_64(
 
                     // Load to RAX (scratch) first
                     load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
+                    widen_external_argument(writer, abi_extensions, name, arg_idx, "rax")?;
 
                     // Store to incoming slot
                     writeln!(writer, "    movq %rax, {offset}(%rbp)")?;

@@ -3,8 +3,12 @@
 //! This module defines the structures for representing functions in LUMIR,
 //! including function signatures, parameters, and basic blocks.
 use crate::{
-    block::Block, instruction::Instruction, register::Register, register::VirtualReg,
-    types::MirType, verify::verify_function,
+    block::Block,
+    instruction::Instruction,
+    register::Register,
+    register::VirtualReg,
+    types::{MirType, Signedness},
+    verify::verify_function,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -17,11 +21,23 @@ pub struct Parameter {
 
     /// Type of the parameter
     pub ty: MirType,
+
+    /// Signedness of an integer parameter
+    pub signedness: Signedness,
 }
 
 impl Parameter {
     pub fn new(reg: Register, ty: MirType) -> Self {
-        Self { reg, ty }
+        Self {
+            reg,
+            ty,
+            signedness: Signedness::Signed,
+        }
+    }
+
+    pub fn with_signedness(mut self, signedness: Signedness) -> Self {
+        self.signedness = signedness;
+        self
     }
 }
 
@@ -43,6 +59,9 @@ pub struct Signature {
     /// Return type (None for void)
     pub ret_ty: Option<MirType>,
 
+    /// Signedness of an integer return value
+    pub ret_signedness: Signedness,
+
     pub kernel: Option<KernelMetadata>,
 }
 
@@ -52,6 +71,7 @@ impl Signature {
             name: name.into(),
             params: Vec::new(),
             ret_ty: None,
+            ret_signedness: Signedness::Signed,
             kernel: None,
         }
     }
@@ -68,6 +88,11 @@ impl Signature {
 
     pub fn with_return(mut self, ty: MirType) -> Self {
         self.ret_ty = Some(ty);
+        self
+    }
+
+    pub fn with_return_signedness(mut self, signedness: Signedness) -> Self {
+        self.ret_signedness = signedness;
         self
     }
 

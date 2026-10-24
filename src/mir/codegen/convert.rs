@@ -27,7 +27,7 @@ use crate::{
         ScalarType, Signature, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
-            mapping::{map_ir_prim, map_ir_type},
+            mapping::{map_ir_prim, map_ir_type, signedness_of},
         },
         verify::{PhiVerification, verify_before_phi_lowering},
     },
@@ -184,7 +184,9 @@ fn convert_function<'a>(
         IRType::Void => {}
         other => {
             let ty = map_ir_type(other)?;
-            mir_sig = mir_sig.with_return(ty);
+            mir_sig = mir_sig
+                .with_return(ty)
+                .with_return_signedness(signedness_of(other));
         }
     }
 
@@ -202,7 +204,9 @@ fn convert_function<'a>(
         };
         let mir_ty = map_ir_type(&param.ty)?;
         register_types.insert(v.clone(), mir_ty);
-        mir_sig.params.push(Parameter::new(v.clone(), mir_ty));
+        mir_sig
+            .params
+            .push(Parameter::new(v.clone(), mir_ty).with_signedness(signedness_of(&param.ty)));
         var_to_reg.insert(param.name, v);
     }
 
