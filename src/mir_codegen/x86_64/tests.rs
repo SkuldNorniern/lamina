@@ -697,7 +697,7 @@ mod c_abi_harness {
 #[cfg(all(test, target_os = "linux"))]
 mod narrow_c_abi_tests {
     use super::c_abi_harness::build_and_run;
-    use crate::mir_codegen::simd_support::tools_available;
+    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
     use std::{env, error::Error, fs, process};
 
     /// Each `raw_*` callee returns the full 64-bit register it received, so the caller
@@ -954,6 +954,52 @@ int main(void) {
             INCOMING_CALLER,
         )?;
         assert_eq!(incoming, INCOMING_EXPECTED);
+
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    const PARAM_WIDTHS: &str = r#"
+@export fn @p_u8(u8 %x) -> u8 { entry: ret.u8 %x }
+@export fn @p_i8(i8 %x) -> i8 { entry: ret.i8 %x }
+@export fn @p_char(char %x) -> char { entry: ret.char %x }
+@export fn @p_u16(u16 %x) -> u16 { entry: ret.u16 %x }
+@export fn @p_i16(i16 %x) -> i16 { entry: ret.i16 %x }
+@export fn @p_u32(u32 %x) -> u32 { entry: ret.u32 %x }
+@export fn @p_i32(i32 %x) -> i32 { entry: ret.i32 %x }
+"#;
+
+    #[test]
+    fn narrow_parameter_prologue_extends_by_declared_signedness() -> Result<(), Box<dyn Error>> {
+        let directory = env::temp_dir().join(format!("lamina-param-widths-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let source = directory.join("widths.lamina");
+        fs::write(&source, PARAM_WIDTHS)?;
+        let base = directory.join("widths");
+        compile(&source, &base, &["--emit-asm"])?;
+        let assembly = fs::read_to_string(directory.join("widths.s"))?;
+
+        for (function, instruction) in [
+            ("p_u8", "movzbl"),
+            ("p_i8", "movsbq"),
+            ("p_char", "movsbq"),
+            ("p_u16", "movzwl"),
+            ("p_i16", "movswq"),
+            ("p_u32", "movl"),
+            ("p_i32", "movslq"),
+        ] {
+            let body = assembly
+                .split(&format!("\n{function}:\n"))
+                .nth(1)
+                .unwrap_or_default();
+            let prologue = body.split("    ret").next().unwrap_or_default();
+            assert!(
+                prologue
+                    .lines()
+                    .any(|line| line.trim_start().starts_with(instruction)),
+                "{function} prologue missing {instruction}: {prologue}"
+            );
+        }
 
         fs::remove_dir_all(directory)?;
         Ok(())
