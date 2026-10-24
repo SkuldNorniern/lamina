@@ -1155,6 +1155,13 @@ pub(super) fn emit_instruction_x86_64(
             let mangled_name = abi.mangle_function_name(name);
             writeln!(writer, "    jmp {mangled_name}")?;
         }
+        MirInst::SymbolAddress { dst, symbol } => {
+            let label = X86ABI::new(target_os).mangle_function_name(symbol);
+            writeln!(writer, "    leaq {label}(%rip), %rax")?;
+            if let Register::Virtual(vreg) = dst {
+                store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            }
+        }
         MirInst::StackAddr { dst, slot } => {
             let offset = stack_slots.get(slot).ok_or_else(|| {
                 LaminaError::ValidationError("stack address has no frame slot".into())
