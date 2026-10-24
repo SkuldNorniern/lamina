@@ -293,7 +293,7 @@ impl LoopInvariantCodeMotion {
         // and all nodes that can reach the back edge without going through the header.
         // (Optimized: we can traverse backwards from back_edge_source stopping at header)
         let mut loop_blocks = HashSet::new();
-        let mut to_visit = vec![back_edge_source.to_string()];
+        let mut to_visit = Vec::new();
         let mut visited = HashSet::new();
         const MAX_LOOP_ANALYSIS_ITERATIONS: usize = 1000;
         let mut iterations = 0;
@@ -1319,6 +1319,74 @@ mod tests {
         assert!(!hoisted);
         let body = func.get_block("body").expect("body block exists");
         assert!(body.instructions.iter().any(defines_v1_constant));
+    }
+
+    #[test]
+    fn test_licm_self_loop_does_not_capture_predecessors() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let add = |dst: u32, lhs: Operand, rhs: Operand| Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: i64_ty,
+            dst: VirtualReg::gpr(dst).into(),
+            lhs,
+            rhs,
+        };
+        let reg = |id: u32| Operand::Register(VirtualReg::gpr(id).into());
+        let imm = |v: i64| Operand::Immediate(Immediate::I64(v));
+        let mut func = FunctionBuilder::new("self_loop_predecessor")
+            .returns(i64_ty)
+            .block("entry")
+            .instr(add(0, imm(0), imm(0)))
+            .instr(Instruction::IntCmp {
+                op: IntCmpOp::SLt,
+                ty: MirType::Scalar(ScalarType::I1),
+                dst: VirtualReg::gpr(9).into(),
+                lhs: reg(0),
+                rhs: imm(1),
+            })
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(9).into(),
+                true_target: "then".to_string(),
+                false_target: "hdr".to_string(),
+            })
+            .block("then")
+            .instr(add(5, imm(7), imm(0)))
+            .instr(add(6, reg(5), imm(1)))
+            .instr(Instruction::Jmp {
+                target: "hdr".to_string(),
+            })
+            .block("hdr")
+            .instr(add(1, reg(1), imm(1)))
+            .instr(Instruction::IntCmp {
+                op: IntCmpOp::SLt,
+                ty: MirType::Scalar(ScalarType::I1),
+                dst: VirtualReg::gpr(2).into(),
+                lhs: reg(1),
+                rhs: imm(4),
+            })
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(2).into(),
+                true_target: "hdr".to_string(),
+                false_target: "exit".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret {
+                value: Some(imm(0)),
+            })
+            .build();
+
+        LoopInvariantCodeMotion
+            .apply(&mut func)
+            .expect("LICM failed");
+
+        let then_block = func.get_block("then").expect("then block exists");
+        assert!(then_block.instructions.iter().any(|i| matches!(
+            i,
+            Instruction::IntBinary {
+                dst: Register::Virtual(v),
+                ..
+            } if *v == VirtualReg::gpr(5)
+        )));
     }
 
     #[test]
