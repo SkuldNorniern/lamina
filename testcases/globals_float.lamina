@@ -1,0 +1,16 @@
+global @scale: f64 = 2.5
+global @half: f32 = 0.5
+
+fn @main() -> i64 {
+entry:
+ %s = load.f64 @scale
+ %t = mul.f64 %s, 4.0
+ %ti = fptosi.f64.i64 %t
+ print %ti
+ %h = load.f32 @half
+ %h2 = mul.f32 %h, 8.0
+ %bits = bitcast.f32.i32 %h2
+ %wide = sext.i32.i64 %bits
+ print %wide
+ ret.i64 0
+}

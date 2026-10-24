@@ -1,0 +1,17 @@
+global @slot: i64 = 1
+
+fn @poke(ptr %p, i64 %v) -> void {
+entry:
+ store.i64 %p, %v
+ ret.void
+}
+
+fn @main() -> i64 {
+entry:
+ %before = load.i64 @slot
+ print %before
+ call @poke(@slot, 99)
+ %after = load.i64 @slot
+ print %after
+ ret.i64 0
+}
