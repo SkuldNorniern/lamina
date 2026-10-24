@@ -43,6 +43,7 @@ pub(super) fn instruction_clobbers(
             }
             _ => scratch,
         },
+        MirInst::IntToFloat { .. } | MirInst::FloatToInt { .. } => vec!["rcx", "rdx"],
         MirInst::IntCmp { .. }
         | MirInst::Store { .. }
         | MirInst::Lea { .. }

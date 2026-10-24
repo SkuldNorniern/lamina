@@ -67,6 +67,179 @@ fn load_register_arguments<W: Write, RA: LocalRegisterAllocator<PhysReg = &'stat
     Ok(())
 }
 
+fn fixed_bits(value: f64, is_f32: bool) -> i64 {
+    if is_f32 {
+        i64::from((value as f32).to_bits())
+    } else {
+        value.to_bits() as i64
+    }
+}
+
+/// Emit `IntToFloat`. Integers of 32 bits or fewer convert through the 64-bit
+/// signed form after extension. Unsigned 64-bit inputs at or above 2^63 are
+/// halved with the lost bit kept as a sticky bit, converted, and doubled. Both
+/// candidates are computed and the sign of the source selects one with a mask,
+/// so no branch is needed.
+#[allow(clippy::too_many_arguments)]
+fn emit_int_to_float<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
+    writer: &mut RaxTrackingWriter<W>,
+    reg_alloc: &RA,
+    stack_slots: &HashMap<VirtualReg, i32>,
+    from: &MirType,
+    to: &MirType,
+    signed: bool,
+    dst: &Register,
+    src: &Operand,
+) -> Result<(), LaminaError> {
+    let is_f32 = is_f32(to);
+    let (cvt, add, mov_out) = if is_f32 {
+        ("cvtsi2ssq", "addss", "movd")
+    } else {
+        ("cvtsi2sdq", "addsd", "movq")
+    };
+    let width = from.size_bytes();
+    load_operand_to_rax(src, writer, reg_alloc, stack_slots)?;
+    if signed || width < 8 {
+        extend_integer(writer, "rax", width, signed)?;
+        writeln!(writer, "    {cvt} %rax, %xmm0")?;
+        writeln!(writer, "    {mov_out} %xmm0, %rax")?;
+    } else {
+        writeln!(writer, "    movq %rax, %rdx")?;
+        writeln!(writer, "    shrq $1, %rdx")?;
+        writeln!(writer, "    movq %rax, %rcx")?;
+        writeln!(writer, "    andl $1, %ecx")?;
+        writeln!(writer, "    orq %rcx, %rdx")?;
+        writeln!(writer, "    {cvt} %rdx, %xmm0")?;
+        writeln!(writer, "    {add} %xmm0, %xmm0")?;
+        writeln!(writer, "    movq %rax, %rcx")?;
+        writeln!(writer, "    sarq $63, %rcx")?;
+        writeln!(writer, "    {cvt} %rax, %xmm1")?;
+        writeln!(writer, "    {mov_out} %xmm0, %rdx")?;
+        writeln!(writer, "    {mov_out} %xmm1, %rax")?;
+        writeln!(writer, "    andq %rcx, %rdx")?;
+        writeln!(writer, "    notq %rcx")?;
+        writeln!(writer, "    andq %rcx, %rax")?;
+        writeln!(writer, "    orq %rdx, %rax")?;
+    }
+    match dst {
+        Register::Virtual(vreg) => store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?,
+        Register::Physical(physical) => writeln!(writer, "    movq %rax, %{}", physical.name)?,
+    }
+    Ok(())
+}
+
+/// Emit `FloatToInt`: truncate toward zero, saturate to the target range, NaN
+/// yields 0. The hardware instruction returns the "integer indefinite" value
+/// for NaN and out-of-range inputs, so the result is overridden by comparisons
+/// against constants that are exact in the source format.
+#[allow(clippy::too_many_arguments)]
+fn emit_float_to_int<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
+    writer: &mut RaxTrackingWriter<W>,
+    reg_alloc: &RA,
+    stack_slots: &HashMap<VirtualReg, i32>,
+    from: &MirType,
+    to: &MirType,
+    signed: bool,
+    dst: &Register,
+    src: &Operand,
+) -> Result<(), LaminaError> {
+    let source_f32 = is_f32(from);
+    let (cvt, ucomi, mov_const) = if source_f32 {
+        ("cvttss2siq", "ucomiss", "movd")
+    } else {
+        ("cvttsd2siq", "ucomisd", "movq")
+    };
+    let bits = to.size_bytes() * 8;
+    let constant = |value: f64| fixed_bits(value, source_f32);
+    load_float_operand_to_xmm(src, writer, reg_alloc, stack_slots, "xmm0", from)?;
+    writeln!(writer, "    {cvt} %xmm0, %rax")?;
+    if signed {
+        let (max, min) = if bits >= 64 {
+            (i64::MAX, i64::MIN)
+        } else {
+            ((1i64 << (bits - 1)) - 1, -(1i64 << (bits - 1)))
+        };
+        let two63 = 2f64.powi(63);
+        writeln!(writer, "    movq ${}, %rcx", max)?;
+        writeln!(writer, "    movq ${}, %rdx", constant(two63))?;
+        writeln!(writer, "    {mov_const} %rdx, %xmm1")?;
+        writeln!(writer, "    {ucomi} %xmm1, %xmm0")?;
+        writeln!(writer, "    cmovae %rcx, %rax")?;
+        writeln!(writer, "    movq ${}, %rcx", min)?;
+        writeln!(writer, "    movq ${}, %rdx", constant(-two63))?;
+        writeln!(writer, "    {mov_const} %rdx, %xmm1")?;
+        writeln!(writer, "    {ucomi} %xmm1, %xmm0")?;
+        writeln!(writer, "    cmovb %rcx, %rax")?;
+        if bits < 64 {
+            writeln!(writer, "    movq ${}, %rcx", max)?;
+            writeln!(writer, "    cmpq %rcx, %rax")?;
+            writeln!(writer, "    cmovg %rcx, %rax")?;
+            writeln!(writer, "    movq ${}, %rcx", min)?;
+            writeln!(writer, "    cmpq %rcx, %rax")?;
+            writeln!(writer, "    cmovl %rcx, %rax")?;
+        }
+        writeln!(writer, "    xorl %ecx, %ecx")?;
+        writeln!(writer, "    {ucomi} %xmm0, %xmm0")?;
+        writeln!(writer, "    cmovp %rcx, %rax")?;
+    } else if bits < 64 {
+        let max = (1i128 << bits) - 1;
+        writeln!(writer, "    movq ${}, %rcx", max)?;
+        writeln!(
+            writer,
+            "    movq ${}, %rdx",
+            constant(2f64.powi(bits as i32))
+        )?;
+        writeln!(writer, "    {mov_const} %rdx, %xmm1")?;
+        writeln!(writer, "    {ucomi} %xmm1, %xmm0")?;
+        writeln!(writer, "    cmovae %rcx, %rax")?;
+        writeln!(writer, "    xorl %ecx, %ecx")?;
+        writeln!(writer, "    movq ${}, %rdx", constant(-1.0))?;
+        writeln!(writer, "    {mov_const} %rdx, %xmm1")?;
+        writeln!(writer, "    {ucomi} %xmm1, %xmm0")?;
+        writeln!(writer, "    cmovbe %rcx, %rax")?;
+    } else {
+        // Values in [2^63, 2^64) are truncated after subtracting 2^63, then the
+        // top bit is restored.
+        writeln!(writer, "    movq ${}, %rdx", constant(2f64.powi(63)))?;
+        writeln!(writer, "    {mov_const} %rdx, %xmm1")?;
+        writeln!(writer, "    movapd %xmm0, %xmm2")?;
+        writeln!(
+            writer,
+            "    {}",
+            if source_f32 {
+                "subss %xmm1, %xmm2"
+            } else {
+                "subsd %xmm1, %xmm2"
+            }
+        )?;
+        writeln!(writer, "    {cvt} %xmm2, %rcx")?;
+        writeln!(writer, "    movq $-9223372036854775808, %rdx")?;
+        writeln!(writer, "    xorq %rdx, %rcx")?;
+        writeln!(writer, "    movq ${}, %rdx", constant(2f64.powi(63)))?;
+        writeln!(writer, "    {mov_const} %rdx, %xmm1")?;
+        writeln!(writer, "    {ucomi} %xmm1, %xmm0")?;
+        writeln!(writer, "    cmovae %rcx, %rax")?;
+        writeln!(writer, "    movq ${}, %rdx", constant(2f64.powi(64)))?;
+        writeln!(writer, "    {mov_const} %rdx, %xmm1")?;
+        writeln!(writer, "    {ucomi} %xmm1, %xmm0")?;
+        writeln!(writer, "    movq $-1, %rcx")?;
+        writeln!(writer, "    cmovae %rcx, %rax")?;
+        writeln!(writer, "    xorl %ecx, %ecx")?;
+        writeln!(writer, "    movq ${}, %rdx", constant(-1.0))?;
+        writeln!(writer, "    {mov_const} %rdx, %xmm1")?;
+        writeln!(writer, "    {ucomi} %xmm1, %xmm0")?;
+        writeln!(writer, "    cmovbe %rcx, %rax")?;
+    }
+    if bits < 64 {
+        extend_integer(writer, "rax", to.size_bytes(), true)?;
+    }
+    match dst {
+        Register::Virtual(vreg) => store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?,
+        Register::Physical(physical) => writeln!(writer, "    movq %rax, %{}", physical.name)?,
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn emit_instruction_x86_64(
     inst: &MirInst,
@@ -1070,6 +1243,20 @@ pub(super) fn emit_instruction_x86_64(
                 store_xmm_to_register("xmm0", vreg, writer, reg_alloc, stack_slots, ty)?;
             }
         }
+        MirInst::IntToFloat {
+            from,
+            to,
+            signed,
+            dst,
+            src,
+        } => emit_int_to_float(writer, reg_alloc, stack_slots, from, to, *signed, dst, src)?,
+        MirInst::FloatToInt {
+            from,
+            to,
+            signed,
+            dst,
+            src,
+        } => emit_float_to_int(writer, reg_alloc, stack_slots, from, to, *signed, dst, src)?,
         MirInst::FloatUnary { op, ty, dst, src } => {
             load_float_operand_to_xmm(src, writer, reg_alloc, stack_slots, "xmm0", ty)?;
             match op {
