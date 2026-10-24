@@ -165,13 +165,8 @@ pub fn load_operand_to_rax<W: Write, RA: LocalRegisterAllocator<PhysReg = &'stat
                 writeln!(writer, "    movq ${}, %rax", *v as i64)
             }
             Immediate::I64(v) => writeln!(writer, "    movq ${v}, %rax"),
-            Immediate::F32(_) | Immediate::F64(_) => {
-                writeln!(
-                    writer,
-                    "    # Floating point immediates not yet implemented"
-                )?;
-                Ok(())
-            }
+            Immediate::F32(v) => writeln!(writer, "    movq ${}, %rax", v.to_bits()),
+            Immediate::F64(v) => writeln!(writer, "    movq ${}, %rax", v.to_bits() as i64),
         },
     }
 }
@@ -207,12 +202,9 @@ pub fn load_operand_to_register<W: Write, RA: LocalRegisterAllocator<PhysReg = &
             Immediate::I64(v) => {
                 writeln!(writer, "    movq ${v}, %{target_reg}")
             }
-            Immediate::F32(_) | Immediate::F64(_) => {
-                writeln!(
-                    writer,
-                    "    # Floating point immediates not yet implemented"
-                )?;
-                Ok(())
+            Immediate::F32(v) => writeln!(writer, "    movq ${}, %{target_reg}", v.to_bits()),
+            Immediate::F64(v) => {
+                writeln!(writer, "    movq ${}, %{target_reg}", v.to_bits() as i64)
             }
         },
     }

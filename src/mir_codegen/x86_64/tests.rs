@@ -655,15 +655,50 @@ entry:
 }
 
 #[cfg(all(test, target_os = "linux"))]
+mod c_abi_harness {
+    use crate::mir_codegen::test_support::compile;
+    use std::{error::Error, fs, path::Path, process::Command};
+
+    /// Compiles `lamina`, links it with `c_source` through `cc`, and returns the
+    /// executable's stdout.
+    pub(super) fn build_and_run(
+        directory: &Path,
+        name: &str,
+        lamina: &str,
+        exports: &[&str],
+        c_source: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let source = directory.join(format!("{name}.lamina"));
+        fs::write(&source, lamina)?;
+        let base = directory.join(name);
+        compile(&source, &base, &["--emit-asm"])?;
+        let mut assembly = fs::read_to_string(directory.join(format!("{name}.s")))?;
+        for export in exports {
+            assembly.push_str(&format!(".globl {export}\n"));
+        }
+        let assembly_path = directory.join(format!("{name}-linked.s"));
+        fs::write(&assembly_path, assembly)?;
+        let caller = directory.join(format!("{name}-caller.c"));
+        fs::write(&caller, c_source)?;
+        let executable = directory.join(format!("{name}-bin"));
+        let linked = Command::new("cc")
+            .arg("-no-pie")
+            .arg(&caller)
+            .arg(&assembly_path)
+            .arg("-o")
+            .arg(&executable)
+            .output()?;
+        assert!(linked.status.success(), "link failed: {linked:?}");
+        let output = Command::new(&executable).output()?;
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
 mod narrow_c_abi_tests {
-    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
-    use std::{
-        env,
-        error::Error,
-        fs,
-        path::Path,
-        process::{self, Command},
-    };
+    use super::c_abi_harness::build_and_run;
+    use crate::mir_codegen::simd_support::tools_available;
+    use std::{env, error::Error, fs, process};
 
     /// Each `raw_*` callee returns the full 64-bit register it received, so the caller
     /// sees exactly the upper bits lamina left behind.
@@ -879,38 +914,6 @@ int main(void) {
         "255 -1 65535 -1 4294967295 -1\n255 -1 65535 -32768 4294967295 -1\n";
     const INCOMING_EXPECTED: &str = "255 -1\n65535 -1\n4294967295 -1\n";
 
-    fn build_and_run(
-        directory: &Path,
-        name: &str,
-        lamina: &str,
-        exports: &[&str],
-        c_source: &str,
-    ) -> Result<String, Box<dyn Error>> {
-        let source = directory.join(format!("{name}.lamina"));
-        fs::write(&source, lamina)?;
-        let base = directory.join(name);
-        compile(&source, &base, &["--emit-asm"])?;
-        let mut assembly = fs::read_to_string(directory.join(format!("{name}.s")))?;
-        for export in exports {
-            assembly.push_str(&format!(".globl {export}\n"));
-        }
-        let assembly_path = directory.join(format!("{name}-linked.s"));
-        fs::write(&assembly_path, assembly)?;
-        let caller = directory.join(format!("{name}-caller.c"));
-        fs::write(&caller, c_source)?;
-        let executable = directory.join(format!("{name}-bin"));
-        let linked = Command::new("cc")
-            .arg("-no-pie")
-            .arg(&caller)
-            .arg(&assembly_path)
-            .arg("-o")
-            .arg(&executable)
-            .output()?;
-        assert!(linked.status.success(), "link failed: {linked:?}");
-        let output = Command::new(&executable).output()?;
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-    }
-
     #[test]
     fn narrow_arguments_and_results_cross_the_c_abi_widened() -> Result<(), Box<dyn Error>> {
         if !tools_available(&["cc"]) {
@@ -951,6 +954,146 @@ int main(void) {
             INCOMING_CALLER,
         )?;
         assert_eq!(incoming, INCOMING_EXPECTED);
+
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod float_c_abi_tests {
+    use super::c_abi_harness::build_and_run;
+    use crate::mir_codegen::simd_support::tools_available;
+    use std::{env, error::Error, fs, process};
+
+    const OUTGOING: &str = r#"
+@extern fn @c_mix(i64 %a, f64 %x, i64 %b, f32 %y, f64 %z) -> f64 {
+entry:
+ ret.f64 0.0
+}
+@extern fn @c_spill(i64 %i0, f64 %f0, i64 %i1, f64 %f1, i64 %i2, f64 %f2, i64 %i3, f32 %f3, i64 %i4, f64 %f4, i64 %i5, f64 %f5, i64 %i6, f64 %f6, f64 %f7, f64 %f8) -> f64 {
+entry:
+ ret.f64 0.0
+}
+@extern fn @c_f32(f32 %x, i64 %n) -> f32 {
+entry:
+ %z = add.f32 0.0, 0.0
+ ret.f32 %z
+}
+@export fn @run_mix() -> f64 {
+entry:
+ %y = add.f32 2.25, 0.0
+ %r = call @c_mix(3, 1.5, 4, %y, 0.5)
+ ret.f64 %r
+}
+@export fn @run_spill() -> f64 {
+entry:
+ %f = add.f32 3.5, 0.0
+ %r = call @c_spill(1, 0.5, 2, 1.5, 3, 2.5, 4, %f, 5, 4.5, 6, 5.5, 7, 6.5, 7.5, 8.5)
+ ret.f64 %r
+}
+@export fn @run_f32() -> f32 {
+entry:
+ %x = add.f32 2.5, 0.0
+ %r = call @c_f32(%x, 3)
+ ret.f32 %r
+}
+"#;
+
+    const OUTGOING_CALLER: &str = r#"
+#include <stdio.h>
+double c_mix(long a, double x, long b, float y, double z) { return a + x * b + y - z; }
+double c_spill(long i0, double f0, long i1, double f1, long i2, double f2, long i3, float f3, long i4, double f4, long i5, double f5, long i6, double f6, double f7, double f8) {
+    return i0 + f0 + 2*i1 + 2*f1 + 4*i2 + 4*f2 + 8*i3 + 8*f3 + 16*i4 + 16*f4 + 32*i5 + 32*f5 + 64*i6 + 64*f6 + 128*f7 + 256*f8;
+}
+float c_f32(float x, long n) { return x * n; }
+extern double run_mix(void);
+extern double run_spill(void);
+extern float run_f32(void);
+int main(void) {
+    printf("%.6f %.6f\n", run_mix(), c_mix(3, 1.5, 4, 2.25, 0.5));
+    printf("%.6f %.6f\n", run_spill(), c_spill(1, 0.5, 2, 1.5, 3, 2.5, 4, 3.5, 5, 4.5, 6, 5.5, 7, 6.5, 7.5, 8.5));
+    printf("%.6f %.6f\n", (double)run_f32(), (double)c_f32(2.5f, 3));
+    return 0;
+}
+"#;
+
+    const INCOMING: &str = r#"
+@export fn @l_mix(i64 %a, f64 %x, i64 %b, f32 %y, f64 %z) -> f64 {
+entry:
+ %p = mul.f64 %x, %z
+ %c = lt.i64 %a, %b
+ br %c, yes, no
+yes:
+ ret.f64 %p
+no:
+ ret.f64 %x
+}
+@export fn @l_f32(f32 %x, f32 %y) -> f32 {
+entry:
+ %s = add.f32 %x, %y
+ ret.f32 %s
+}
+@export fn @l_spill(i64 %i0, f64 %f0, i64 %i1, f64 %f1, i64 %i2, f64 %f2, i64 %i3, f32 %f3, i64 %i4, f64 %f4, i64 %i5, f64 %f5, i64 %i6, f64 %f6, f64 %f7, f64 %f8) -> f64 {
+entry:
+ %s1 = mul.f64 %f7, %f8
+ %s2 = add.f64 %s1, %f0
+ %c = eq.i64 %i6, 7
+ br %c, yes, no
+yes:
+ ret.f64 %s2
+no:
+ ret.f64 %f6
+}
+"#;
+
+    const INCOMING_CALLER: &str = r#"
+#include <stdio.h>
+extern double l_mix(long a, double x, long b, float y, double z);
+extern float l_f32(float x, float y);
+extern double l_spill(long i0, double f0, long i1, double f1, long i2, double f2, long i3, float f3, long i4, double f4, long i5, double f5, long i6, double f6, double f7, double f8);
+int main(void) {
+    printf("%.6f %.6f\n", l_mix(1, 1.5, 2, 2.25f, 4.0), 1.5 * 4.0);
+    printf("%.6f %.6f\n", l_mix(3, 1.5, 2, 2.25f, 4.0), 1.5);
+    printf("%.6f %.6f\n", (double)l_f32(1.25f, 2.5f), 3.75);
+    printf("%.6f %.6f\n", l_spill(1, 0.5, 2, 1.5, 3, 2.5, 4, 3.5f, 5, 4.5, 6, 5.5, 7, 6.5, 7.5, 8.5), 7.5 * 8.5 + 0.5);
+    printf("%.6f %.6f\n", l_spill(1, 0.5, 2, 1.5, 3, 2.5, 4, 3.5f, 5, 4.5, 6, 5.5, 8, 6.5, 7.5, 8.5), 6.5);
+    return 0;
+}
+"#;
+
+    #[test]
+    fn float_arguments_and_results_cross_the_c_abi_in_both_directions() -> Result<(), Box<dyn Error>>
+    {
+        if !tools_available(&["cc"]) {
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-float-abi-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+
+        let outgoing = build_and_run(
+            &directory,
+            "outgoing",
+            OUTGOING,
+            &["run_mix", "run_spill", "run_f32"],
+            OUTGOING_CALLER,
+        )?;
+        assert_eq!(
+            outgoing,
+            "10.750000 10.750000\n4610.500000 4610.500000\n7.500000 7.500000\n"
+        );
+
+        let incoming = build_and_run(
+            &directory,
+            "incoming",
+            INCOMING,
+            &["l_mix", "l_f32", "l_spill"],
+            INCOMING_CALLER,
+        )?;
+        assert_eq!(
+            incoming,
+            "6.000000 6.000000\n1.500000 1.500000\n3.750000 3.750000\n64.250000 64.250000\n6.500000 6.500000\n"
+        );
 
         fs::remove_dir_all(directory)?;
         Ok(())

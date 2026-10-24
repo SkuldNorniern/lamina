@@ -203,43 +203,56 @@ pub(super) fn compile_single_function_x86_64(
     if !func.sig.params.is_empty() {
         let abi_for_func = X86ABI::new(target_os);
         let arg_regs = abi_for_func.arg_registers();
+        let param_types: Vec<MirType> = func.sig.params.iter().map(|p| p.ty).collect();
+        let locations = classify_arguments(&param_types, target_os);
 
         if settings.regalloc == RegallocStrategy::Incremental {
             for (index, param) in func.sig.params.iter().enumerate() {
                 if let Register::Virtual(vreg) = &param.reg
                     && let Some(slot_off) = stack_slots.get(vreg)
                 {
-                    if index < arg_regs.len() {
-                        let phys_arg = arg_regs[index];
-                        let destination = reg_alloc
-                            .get_mapping_for(vreg)
-                            .map(|reg| format!("%{reg}"))
-                            .unwrap_or_else(|| format!("{slot_off}(%rbp)"));
-                        let source = format!("%{phys_arg}");
-                        if source == destination {
-                            continue;
-                        }
-                        writeln!(output, "    movq {source}, {destination}").map_err(|e| {
-                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                        })?;
-                    } else {
-                        let stack_index = index - arg_regs.len();
-                        // Saved rbp and the return address sit at rbp+0 and rbp+8;
-                        // on Windows the caller's home space follows before the
-                        // first stack argument.
-                        let home = if target_os == TargetOperatingSystem::Windows {
-                            windows::SHADOW_SPACE_SIZE
-                        } else {
-                            0
-                        };
-                        let caller_off = 16 + home + (stack_index as i32) * 8;
-                        writeln!(output, "    movq {caller_off}(%rbp), %rax").map_err(|e| {
-                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                        })?;
-                        store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
-                            .map_err(|e| {
+                    match locations[index] {
+                        ArgLocation::Gpr(gpr) => {
+                            let phys_arg = arg_regs[gpr];
+                            let destination = reg_alloc
+                                .get_mapping_for(vreg)
+                                .map(|reg| format!("%{reg}"))
+                                .unwrap_or_else(|| format!("{slot_off}(%rbp)"));
+                            let source = format!("%{phys_arg}");
+                            if source == destination {
+                                continue;
+                            }
+                            writeln!(output, "    movq {source}, {destination}").map_err(|e| {
                                 CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
                             })?;
+                        }
+                        ArgLocation::Xmm(xmm) => {
+                            writeln!(output, "{}", move_xmm_to_rax(&param.ty, xmm)).map_err(
+                                |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                            )?;
+                            store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
+                                .map_err(|e| {
+                                    CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                                })?;
+                        }
+                        ArgLocation::Stack(stack_index) => {
+                            // Saved rbp and the return address sit at rbp+0 and rbp+8;
+                            // on Windows the caller's home space follows before the
+                            // first stack argument.
+                            let home = if target_os == TargetOperatingSystem::Windows {
+                                windows::SHADOW_SPACE_SIZE
+                            } else {
+                                0
+                            };
+                            let caller_off = 16 + home + (stack_index as i32) * 8;
+                            writeln!(output, "    movq {caller_off}(%rbp), %rax").map_err(|e| {
+                                CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                            })?;
+                            store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
+                                .map_err(|e| {
+                                    CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                                })?;
+                        }
                     }
                 }
             }
@@ -253,6 +266,19 @@ pub(super) fn compile_single_function_x86_64(
                     let Register::Virtual(vreg) = &param.reg else {
                         return None;
                     };
+                    let source = match locations[index] {
+                        ArgLocation::Gpr(gpr) => format!("%{}", arg_regs[gpr]),
+                        ArgLocation::Stack(stack_index) => {
+                            let home = if target_os == TargetOperatingSystem::Windows {
+                                windows::SHADOW_SPACE_SIZE
+                            } else {
+                                0
+                            };
+                            let offset = 16 + home + (stack_index as i32) * 8;
+                            format!("{offset}(%rbp)")
+                        }
+                        ArgLocation::Xmm(_) => return None,
+                    };
                     let destination = reg_alloc
                         .get_mapping_for(vreg)
                         .map(|reg| format!("%{reg}"))
@@ -261,22 +287,25 @@ pub(super) fn compile_single_function_x86_64(
                                 .get(vreg)
                                 .map(|offset| format!("{offset}(%rbp)"))
                         })?;
-                    let source = if let Some(reg) = arg_regs.get(index) {
-                        format!("%{reg}")
-                    } else {
-                        let home = if target_os == TargetOperatingSystem::Windows {
-                            windows::SHADOW_SPACE_SIZE
-                        } else {
-                            0
-                        };
-                        let offset = 16 + home + ((index - arg_regs.len()) as i32) * 8;
-                        format!("{offset}(%rbp)")
-                    };
                     Some((source, destination))
                 })
                 .collect();
             emit_parallel_copy(&pairs, &mut output)
                 .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            for (index, param) in func.sig.params.iter().enumerate() {
+                let (ArgLocation::Xmm(xmm), Register::Virtual(vreg)) =
+                    (locations[index], &param.reg)
+                else {
+                    continue;
+                };
+                if reg_alloc.get_mapping_for(vreg).is_none() && !stack_slots.contains_key(vreg) {
+                    continue;
+                }
+                writeln!(output, "{}", move_xmm_to_rax(&param.ty, xmm))
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+            }
         }
     }
 
@@ -442,7 +471,7 @@ pub(super) fn ensure_signature_support(sig: &Signature) -> Result<(), LaminaErro
 }
 
 pub(super) fn ensure_type_supported(ty: &MirType, context: &str) -> Result<(), LaminaError> {
-    if ty.is_float() || ty.is_vector() {
+    if ty.is_vector() {
         return Err(LaminaError::ValidationError(format!(
             "x86_64 backend does not support {context} (type {ty})"
         )));
@@ -456,13 +485,78 @@ pub(super) fn ensure_type_supported(ty: &MirType, context: &str) -> Result<(), L
 /// for `i1`, which only ever holds 0 or 1.
 pub(super) type NarrowExtension = (usize, bool);
 
-/// Width-extension facts about the module's functions that call sites and callees need.
-/// Returns are widened by the caller after the call; arguments are widened by the caller
-/// only when the callee is external, since the C ABI leaves the upper bits unspecified.
+/// Where an argument or parameter is passed under the target convention.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ArgLocation {
+    Gpr(usize),
+    Xmm(usize),
+    Stack(usize),
+}
+
+const SSE_ARGUMENT_COUNT: usize = 8;
+
+/// System V draws integer and floating arguments from separate register banks, so a
+/// float takes the next xmm register even when integer registers remain. Windows gives
+/// each position one slot, which is an xmm register for floats and a general register
+/// for integers, and spills positions past the fourth to the stack.
+pub(super) fn classify_arguments(
+    types: &[MirType],
+    target_os: TargetOperatingSystem,
+) -> Vec<ArgLocation> {
+    let gpr_count = X86ABI::new(target_os).arg_registers().len();
+    let windows = target_os == TargetOperatingSystem::Windows;
+    let mut gprs = 0;
+    let mut sses = 0;
+    let mut stack = 0;
+    let mut locations = Vec::with_capacity(types.len());
+    for (position, ty) in types.iter().enumerate() {
+        let float = ty.is_float();
+        let location = if windows && position < gpr_count {
+            if float {
+                ArgLocation::Xmm(position)
+            } else {
+                ArgLocation::Gpr(position)
+            }
+        } else if !windows && float && sses < SSE_ARGUMENT_COUNT {
+            sses += 1;
+            ArgLocation::Xmm(sses - 1)
+        } else if !windows && !float && gprs < gpr_count {
+            gprs += 1;
+            ArgLocation::Gpr(gprs - 1)
+        } else {
+            stack += 1;
+            ArgLocation::Stack(stack - 1)
+        };
+        locations.push(location);
+    }
+    locations
+}
+
+pub(super) fn stack_argument_count(locations: &[ArgLocation]) -> usize {
+    locations
+        .iter()
+        .filter(|location| matches!(location, ArgLocation::Stack(_)))
+        .count()
+}
+
+/// Moves the float bits of an xmm register into rax, the form every value takes.
+pub(super) fn move_xmm_to_rax(ty: &MirType, xmm: usize) -> String {
+    if is_f32(ty) {
+        format!("    movd %xmm{xmm}, %eax")
+    } else {
+        format!("    movq %xmm{xmm}, %rax")
+    }
+}
+
+/// Width-extension and float-passing facts about the module's functions. Returns are
+/// widened by the caller after the call; arguments are widened by the caller only when
+/// the callee is external, since the C ABI leaves the upper bits unspecified.
 #[derive(Default)]
 pub(super) struct AbiExtensions {
     returns: HashMap<String, NarrowExtension>,
     external_arguments: HashMap<String, Vec<Option<NarrowExtension>>>,
+    parameter_types: HashMap<String, Vec<MirType>>,
+    return_types: HashMap<String, MirType>,
 }
 
 impl AbiExtensions {
@@ -491,9 +585,21 @@ impl AbiExtensions {
                     .then(|| (name.clone(), extensions))
             })
             .collect();
+        let parameter_types = module
+            .functions
+            .iter()
+            .map(|(name, func)| (name.clone(), func.sig.params.iter().map(|p| p.ty).collect()))
+            .collect();
+        let return_types = module
+            .functions
+            .iter()
+            .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_ty?)))
+            .collect();
         Self {
             returns,
             external_arguments,
+            parameter_types,
+            return_types,
         }
     }
 
@@ -507,6 +613,29 @@ impl AbiExtensions {
             .get(index)
             .copied()
             .flatten()
+    }
+
+    pub(super) fn parameter_types(&self, function: &str) -> Vec<MirType> {
+        self.parameter_types
+            .get(function)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Types of a call's arguments. An undeclared callee has no signature, so its
+    /// arguments are passed as integers.
+    pub(super) fn argument_types(&self, callee: &str, count: usize) -> Vec<MirType> {
+        match self.parameter_types.get(callee) {
+            Some(types) if types.len() == count => types.clone(),
+            _ => vec![MirType::i64(); count],
+        }
+    }
+
+    pub(super) fn float_return(&self, callee: &str) -> Option<MirType> {
+        self.return_types
+            .get(callee)
+            .copied()
+            .filter(MirType::is_float)
     }
 }
 
