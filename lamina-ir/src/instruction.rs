@@ -475,6 +475,47 @@ pub enum Instruction<'a> {
         target_type: PrimitiveType,
         value: Value<'a>,
     },
+    /// Convert an integer to a floating-point type.
+    ///
+    /// `signed == true` is `sitofp`: `source_type` is `i8`, `i16`, `i32` or `i64`
+    /// and the value is read as two's complement. `signed == false` is `uitofp`:
+    /// `source_type` is `u8`, `u16`, `u32` or `u64` and the value is read as
+    /// unsigned. `target_type` is `f32` or `f64`.
+    ///
+    /// Rounding is IEEE 754 round-to-nearest, ties-to-even. Values that are
+    /// representable are converted exactly. Conversion never traps and never
+    /// produces NaN or infinity, because every integer of at most 64 bits is
+    /// finite and below the overflow threshold of `f32`.
+    IntToFloat {
+        result: Identifier<'a>,
+        signed: bool,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    },
+    /// Convert a floating-point value to an integer, truncating toward zero.
+    ///
+    /// `signed == true` is `fptosi`: `target_type` is `i8`, `i16`, `i32` or `i64`.
+    /// `signed == false` is `fptoui`: `target_type` is `u8`, `u16`, `u32` or `u64`.
+    /// `source_type` is `f32` or `f64`.
+    ///
+    /// This operation saturates and never traps. It does not depend on the
+    /// hardware instruction used by a backend:
+    /// - NaN produces `0`.
+    /// - A value whose truncation lies above the largest representable target
+    ///   value produces that maximum, including `+inf`.
+    /// - For signed targets, a value whose truncation lies below the smallest
+    ///   representable target value produces the minimum, including `-inf`.
+    /// - For unsigned targets, a value whose truncation is negative produces `0`,
+    ///   including `-inf`. Values in `(-1, 0)` truncate to `0`.
+    /// - Values in range truncate toward zero: `fptosi.f64.i8` of `-1.9` is `-1`.
+    FloatToInt {
+        result: Identifier<'a>,
+        signed: bool,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    },
     // --- Control Flow ---
     /// Multi-way branch based on an integer or boolean value.
     ///
@@ -832,6 +873,10 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "trunc",
         "sext",
         "bitcast",
+        "sitofp",
+        "uitofp",
+        "fptosi",
+        "fptoui",
         "select",
         // Memory operations (from Instruction::Alloc, Instruction::Load, etc.)
         "alloc",
@@ -886,6 +931,10 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "trunc",
         "sext",
         "bitcast",
+        "sitofp",
+        "uitofp",
+        "fptosi",
+        "fptoui",
         "select",
         "alloc",
         "load",
@@ -968,6 +1017,8 @@ impl<'a> Instruction<'a> {
             | Instruction::SignExtend { result, .. }
             | Instruction::Trunc { result, .. }
             | Instruction::Bitcast { result, .. }
+            | Instruction::IntToFloat { result, .. }
+            | Instruction::FloatToInt { result, .. }
             | Instruction::Select { result, .. }
             | Instruction::GetElemPtr { result, .. }
             | Instruction::GetFieldPtr { result, .. }
@@ -1023,7 +1074,9 @@ impl<'a> Instruction<'a> {
             | Instruction::ZeroExtend { value, .. }
             | Instruction::SignExtend { value, .. }
             | Instruction::Trunc { value, .. }
-            | Instruction::Bitcast { value, .. } => push_value(value, &mut vars),
+            | Instruction::Bitcast { value, .. }
+            | Instruction::IntToFloat { value, .. }
+            | Instruction::FloatToInt { value, .. } => push_value(value, &mut vars),
             Instruction::Call { args, .. } => {
                 for arg in args {
                     push_value(arg, &mut vars);
@@ -1123,6 +1176,26 @@ impl fmt::Display for Instruction<'_> {
                 target_type,
                 value,
             } => write!(f, "%{result} = bitcast.{source_type}.{target_type} {value}"),
+            Instruction::IntToFloat {
+                result,
+                signed,
+                source_type,
+                target_type,
+                value,
+            } => {
+                let op = if *signed { "sitofp" } else { "uitofp" };
+                write!(f, "%{result} = {op}.{source_type}.{target_type} {value}")
+            }
+            Instruction::FloatToInt {
+                result,
+                signed,
+                source_type,
+                target_type,
+                value,
+            } => {
+                let op = if *signed { "fptosi" } else { "fptoui" };
+                write!(f, "%{result} = {op}.{source_type}.{target_type} {value}")
+            }
             Instruction::Switch {
                 ty,
                 value,
