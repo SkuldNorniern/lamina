@@ -1,0 +1,30 @@
+# char is signed, like C's plain char on x86-64 linux, so the bit pattern
+# 255 crossing a call boundary reads back as -1 and compares below zero.
+fn @mk_char() -> char {
+  entry:
+    %v = trunc.i64.char 255
+    ret.char %v
+}
+
+fn @mk_u8() -> u8 {
+  entry:
+    %v = trunc.i64.u8 255
+    ret.u8 %v
+}
+
+fn @main() -> i64 {
+  entry:
+    %c = call @mk_char()
+    %u = call @mk_u8()
+    %cneg = lt.char %c, 0
+    %uneg = lt.u8 %u, 0
+    %cwide = sext.char.i64 %c
+    %uwide = zext.u8.i64 %u
+    %cnegw = zext.bool.i64 %cneg
+    %unegw = zext.bool.i64 %uneg
+    print %cnegw
+    print %unegw
+    print %cwide
+    print %uwide
+    ret.i64 0
+}
