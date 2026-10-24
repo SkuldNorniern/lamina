@@ -421,6 +421,11 @@ fn emit_block<W: Write>(
             writeln!(w, "    .loc 1 {} 0", *debug_line)?;
         }
         match inst {
+            MirInst::SymbolAddress { .. } => {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "aarch64 global symbol addresses are not yet supported".into(),
+                )));
+            }
             MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
                 simd::emit(inst, w, frame, ra)?
             }

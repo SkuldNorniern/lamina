@@ -347,6 +347,9 @@ impl ModuleInlining {
                     *slot = fresh;
                 }
             }
+            Instruction::SymbolAddress { dst, .. } => {
+                *dst = map(dst);
+            }
             Instruction::Lea { dst, base, .. } => {
                 *dst = map(dst);
                 *base = map(base);
