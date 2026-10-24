@@ -629,6 +629,42 @@ fn verify_instruction_types(
                         &mut instruction_errors,
                     );
                 }
+                Instruction::IntToFloat {
+                    from, to, dst, src, ..
+                } => {
+                    if !is_plain_integer(*from) || !is_float_scalar(*to) {
+                        instruction_errors.push(
+                            "expected IntToFloat from an integer scalar to a float scalar".into(),
+                        );
+                    }
+                    verify_destination(dst, *to, "IntToFloat", config, &mut instruction_errors);
+                    verify_operand(
+                        src,
+                        *from,
+                        "IntToFloat source",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
+                Instruction::FloatToInt {
+                    from, to, dst, src, ..
+                } => {
+                    if !is_float_scalar(*from) || !is_plain_integer(*to) {
+                        instruction_errors.push(
+                            "expected FloatToInt from a float scalar to an integer scalar".into(),
+                        );
+                    }
+                    verify_destination(dst, *to, "FloatToInt", config, &mut instruction_errors);
+                    verify_operand(
+                        src,
+                        *from,
+                        "FloatToInt source",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
                 Instruction::IntBinary {
                     ty, dst, lhs, rhs, ..
                 } => {
@@ -956,7 +992,10 @@ fn instruction_definition_type(instruction: &Instruction) -> Option<MirType> {
         } => Some(vector_scalar(*ty)),
         Instruction::VectorOp { ty, .. } => Some(*ty),
         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => Some(MirType::i1()),
-        Instruction::IntConvert { to, .. } | Instruction::Bitcast { to, .. } => Some(*to),
+        Instruction::IntConvert { to, .. }
+        | Instruction::IntToFloat { to, .. }
+        | Instruction::FloatToInt { to, .. }
+        | Instruction::Bitcast { to, .. } => Some(*to),
         Instruction::Lea { .. } | Instruction::StackAddr { .. } => Some(MirType::ptr()),
         _ => None,
     }
@@ -992,6 +1031,13 @@ fn vector_scalar(ty: MirType) -> MirType {
         VectorLane::F32 => ScalarType::F32,
         VectorLane::F64 => ScalarType::F64,
     })
+}
+
+fn is_plain_integer(ty: MirType) -> bool {
+    matches!(
+        ty,
+        MirType::Scalar(ScalarType::I8 | ScalarType::I16 | ScalarType::I32 | ScalarType::I64)
+    )
 }
 
 fn is_integer_or_pointer(ty: MirType) -> bool {

@@ -108,6 +108,47 @@ pub(crate) fn interpret_mir_function(
                     let value = to.signed_integer(value);
                     register_values.insert(dst.clone(), value);
                 }
+                Instruction::IntToFloat {
+                    from,
+                    to,
+                    signed,
+                    dst,
+                    src,
+                } => {
+                    let bits = evaluate_operand(src, &register_values)?;
+                    let result = match (to.size_bytes(), *signed) {
+                        (4, true) => i64::from((from.signed_integer(bits) as f32).to_bits()),
+                        (4, false) => i64::from((from.unsigned_integer(bits) as f32).to_bits()),
+                        (_, true) => (from.signed_integer(bits) as f64).to_bits() as i64,
+                        (_, false) => (from.unsigned_integer(bits) as f64).to_bits() as i64,
+                    };
+                    register_values.insert(dst.clone(), result);
+                }
+                Instruction::FloatToInt {
+                    from,
+                    to,
+                    signed,
+                    dst,
+                    src,
+                } => {
+                    let bits = evaluate_operand(src, &register_values)?;
+                    let value = if matches!(from, MirType::Scalar(ScalarType::F32)) {
+                        f64::from(f32::from_bits(bits as u32))
+                    } else {
+                        f64::from_bits(bits as u64)
+                    };
+                    let converted = match (*signed, to.size_bytes()) {
+                        (true, 1) => value as i8 as i64,
+                        (true, 2) => value as i16 as i64,
+                        (true, 4) => value as i32 as i64,
+                        (true, _) => value as i64,
+                        (false, 1) => value as u8 as i64,
+                        (false, 2) => value as u16 as i64,
+                        (false, 4) => value as u32 as i64,
+                        (false, _) => value as u64 as i64,
+                    };
+                    register_values.insert(dst.clone(), to.signed_integer(converted));
+                }
                 Instruction::IntBinary {
                     op,
                     ty,
