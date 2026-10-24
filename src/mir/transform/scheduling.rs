@@ -148,6 +148,19 @@ impl InstructionScheduling {
             }
         }
 
+        if let [
+            ..,
+            Instruction::IntCmp { dst, .. } | Instruction::FloatCmp { dst, .. },
+            Instruction::Br { cond, .. },
+        ] = instructions
+            && dst == cond
+        {
+            let comparison_index = instructions.len() - 2;
+            for index in 0..comparison_index {
+                graph.add_edge(index, comparison_index);
+            }
+        }
+
         // 5. Control Dependencies
         // The terminator (Branch/Jmp/Ret) must depend on everything that affects it's condition
         // or effectively be last.
@@ -360,6 +373,47 @@ mod tests {
         AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
         ScalarType, VirtualReg,
     };
+
+    #[test]
+    fn terminal_comparisons_stay_adjacent_to_branches() {
+        let ty = MirType::Scalar(ScalarType::I64);
+        let mut block = Block::new("body");
+        let a: Register = VirtualReg::gpr(0).into();
+        let b: Register = VirtualReg::gpr(1).into();
+        let counter: Register = VirtualReg::gpr(2).into();
+        let flag: Register = VirtualReg::gpr(3).into();
+        for _ in 0..8 {
+            block.instructions.push(Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty,
+                dst: a.clone(),
+                lhs: a.clone().into(),
+                rhs: b.clone().into(),
+            });
+        }
+        block.instructions.push(Instruction::IntBinary {
+            op: IntBinOp::Sub,
+            ty,
+            dst: counter.clone(),
+            lhs: counter.clone().into(),
+            rhs: Operand::imm_i64(8),
+        });
+        block.instructions.push(Instruction::IntCmp {
+            op: crate::mir::IntCmpOp::Ne,
+            ty,
+            dst: flag.clone(),
+            lhs: counter.into(),
+            rhs: Operand::imm_i64(0),
+        });
+        block.instructions.push(Instruction::Br {
+            cond: flag,
+            true_target: "body".into(),
+            false_target: "exit".into(),
+        });
+        let tail = block.instructions[block.instructions.len() - 2..].to_vec();
+        InstructionScheduling.schedule_block(&mut block);
+        assert_eq!(block.instructions[block.instructions.len() - 2..], tail);
+    }
 
     #[test]
     fn test_scheduling_keeps_reads_before_redefinition() {
