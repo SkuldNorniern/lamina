@@ -1,0 +1,8 @@
+@export global @shared: i64 = 5
+
+fn @main() -> i64 {
+entry:
+ %v = load.i64 @shared
+ print %v
+ ret.i64 0
+}

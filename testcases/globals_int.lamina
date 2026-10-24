@@ -1,0 +1,22 @@
+global @counter: i64 = 41
+global @step: i32 = 3
+
+fn @bump() -> i64 {
+entry:
+ %c = load.i64 @counter
+ %n = add.i64 %c, 1
+ store.i64 @counter, %n
+ ret.i64 %n
+}
+
+fn @main() -> i64 {
+entry:
+ %a = load.i64 @counter
+ print %a
+ %b = call @bump()
+ print %b
+ %s = load.i32 @step
+ %s64 = sext.i32.i64 %s
+ print %s64
+ ret.i64 0
+}

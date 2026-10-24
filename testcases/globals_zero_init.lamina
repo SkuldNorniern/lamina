@@ -1,0 +1,19 @@
+global @acc: i64
+global @flag: i8
+
+fn @main() -> i64 {
+entry:
+ %z = load.i64 @acc
+ print %z
+ store.i64 @acc, 7
+ %f0 = load.i8 @flag
+ %f0w = zext.i8.i64 %f0
+ print %f0w
+ store.i8 @flag, 200
+ %f1 = load.i8 @flag
+ %f1w = zext.i8.i64 %f1
+ %acc = load.i64 @acc
+ %sum = add.i64 %acc, %f1w
+ print %sum
+ ret.i64 0
+}
