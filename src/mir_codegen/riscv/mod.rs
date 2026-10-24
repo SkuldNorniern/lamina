@@ -1,7 +1,7 @@
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::{
-    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, self_tail_arguments,
-    self_tail_schedule,
+    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
+    self_tail_arguments, self_tail_schedule,
 };
 mod simd;
 use crate::mir_codegen::simd::reserve_vector_slots;
@@ -485,7 +485,7 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     writeln!(writer, "{}", abi.get_data_section())?;
     writeln!(writer, "{}", abi.get_print_format())?;
     writeln!(writer, "{}", abi.get_text_section())?;
-    writeln!(writer, "{}", abi.get_main_global())?;
+    emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
 
     for func_name in &module.external_functions {
         let label = abi.mangle_function_name(func_name);

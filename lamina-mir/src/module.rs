@@ -63,6 +63,9 @@ pub struct Module {
 
     /// Names of external functions (functions with external linkage)
     pub external_functions: HashSet<String>,
+
+    /// Names of functions exported with global linkage
+    pub exported_functions: HashSet<String>,
 }
 
 impl Module {
@@ -73,6 +76,7 @@ impl Module {
             functions: HashMap::new(),
             globals: HashMap::new(),
             external_functions: HashSet::new(),
+            exported_functions: HashSet::new(),
         }
     }
 
@@ -90,6 +94,16 @@ impl Module {
     /// Check if a function is external
     pub fn is_external(&self, name: &str) -> bool {
         self.external_functions.contains(name)
+    }
+
+    /// Mark a function as exported
+    pub fn mark_exported(&mut self, name: impl Into<String>) {
+        self.exported_functions.insert(name.into());
+    }
+
+    /// Check if a function is exported
+    pub fn is_exported(&self, name: &str) -> bool {
+        self.exported_functions.contains(name)
     }
 
     /// Add a global variable to this module

@@ -451,6 +451,10 @@ entry:
  %w = sext.i32.i64 %x
  ret.i64 %w
 }
+fn @plain_helper() -> i64 {
+entry:
+ ret.i64 7
+}
 @extern fn @dirty_i8() -> i8 {
 entry:
  ret.i8 0
@@ -540,21 +544,6 @@ int main(void) {
 
     const EXPECTED: &str = "1 1 0\n1 0 0\n1 0 0\n0 1 1\n-1 -1\n1\n1 0 1 1\n";
 
-    /// Names every `@export` function so the C caller can link against them.
-    const EXPORTS: &[&str] = &[
-        "i8_is_negative",
-        "i16_is_negative",
-        "i32_is_negative",
-        "seventh_i8",
-        "u8_below_200",
-        "i8_widen",
-        "i32_widen",
-        "call_dirty_i8",
-        "call_dirty_u8",
-        "call_dirty_i16",
-        "call_dirty_i32",
-    ];
-
     #[test]
     fn narrow_integers_cross_the_c_abi_in_both_directions() -> Result<(), Box<dyn Error>> {
         if !tools_available(&["cc"]) {
@@ -566,12 +555,9 @@ int main(void) {
         fs::write(&source, LAMINA)?;
         let base = directory.join("narrow");
         compile(&source, &base, &["--emit-asm"])?;
-        let mut assembly = fs::read_to_string(directory.join("narrow.s"))?;
-        for name in EXPORTS {
-            assembly.push_str(&format!(".globl {name}\n"));
-        }
-        let assembly_path = directory.join("narrow-linked.s");
-        fs::write(&assembly_path, assembly)?;
+        let assembly_path = directory.join("narrow.s");
+        let assembly = fs::read_to_string(&assembly_path)?;
+        assert!(!assembly.contains(".globl plain_helper"), "{assembly}");
         let caller = directory.join("caller.c");
         fs::write(&caller, CALLER)?;
         let executable = directory.join("narrow-c");
