@@ -512,6 +512,40 @@ mod tests {
         func
     }
 
+    fn narrow_compare_func(ty: MirType, op: IntCmpOp, rhs: i64) -> Function {
+        let param = vreg(0);
+        let dst = vreg(1);
+        let mut func = Function::new(
+            Signature::new("narrow_cmp")
+                .with_params(vec![Parameter::new(param.clone(), ty)])
+                .with_return(MirType::i64()),
+        );
+        let mut block = Block::new("entry");
+        block.push(Instruction::IntCmp {
+            op,
+            ty,
+            dst: dst.clone(),
+            lhs: Operand::Register(param),
+            rhs: Operand::Immediate(Immediate::I64(rhs)),
+        });
+        block.push(Instruction::Ret {
+            value: Some(Operand::Register(dst)),
+        });
+        func.blocks.push(block);
+        func
+    }
+
+    #[test]
+    fn narrow_arguments_compare_at_their_declared_width() {
+        let signed = narrow_compare_func(MirType::Scalar(ScalarType::I8), IntCmpOp::SLt, 0);
+        assert_eq!(interpret_mir_function(&signed, &[255]).unwrap(), Some(1));
+        let unsigned = narrow_compare_func(MirType::Scalar(ScalarType::I8), IntCmpOp::ULt, 128);
+        assert_eq!(interpret_mir_function(&unsigned, &[255]).unwrap(), Some(0));
+        let unsigned_byte =
+            narrow_compare_func(MirType::Scalar(ScalarType::I8), IntCmpOp::UGt, 127);
+        assert_eq!(interpret_mir_function(&unsigned_byte, &[-1]).unwrap(), Some(1));
+    }
+
     #[test]
     fn interpret_returns_constant() {
         let func = make_const_return_func(99);
