@@ -178,27 +178,30 @@ impl LoopInvariantCodeMotion {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
-        let loops = self.find_loops(func);
-
         let max_loops = 10;
         let max_iterations_per_loop = 5;
-        let loops_to_process = loops.into_iter().take(max_loops);
+        let headers: Vec<String> = self
+            .find_loops(func)
+            .into_iter()
+            .take(max_loops)
+            .map(|loop_info| loop_info.header)
+            .collect();
 
-        for loop_info in loops_to_process {
-            if loop_info.blocks.len() > 50 {
-                continue;
-            }
-
+        for header in headers {
             let mut iterations = 0;
             while iterations < max_iterations_per_loop {
-                if !self.optimize_loop(func, &loop_info)? {
+                let Some(loop_info) = self
+                    .find_loops(func)
+                    .into_iter()
+                    .find(|candidate| candidate.header == header)
+                else {
+                    break;
+                };
+                if loop_info.blocks.len() > 50 || !self.optimize_loop(func, &loop_info)? {
                     break;
                 }
                 changed = true;
                 iterations += 1;
-                if iterations >= max_iterations_per_loop {
-                    break;
-                }
             }
         }
 
@@ -1387,6 +1390,85 @@ mod tests {
                 ..
             } if *v == VirtualReg::gpr(5)
         )));
+    }
+
+    #[test]
+    fn test_licm_nested_loops_keep_inner_hoisted_values_in_outer_scope() {
+        use crate::runtime::executor::interpret_mir_function;
+
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let add = |dst: u32, lhs: Operand, rhs: Operand| Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: i64_ty,
+            dst: VirtualReg::gpr(dst).into(),
+            lhs,
+            rhs,
+        };
+        let less = |dst: u32, lhs: u32, bound: i64| Instruction::IntCmp {
+            op: IntCmpOp::SLt,
+            ty: MirType::Scalar(ScalarType::I1),
+            dst: VirtualReg::gpr(dst).into(),
+            lhs: Operand::Register(VirtualReg::gpr(lhs).into()),
+            rhs: Operand::Immediate(Immediate::I64(bound)),
+        };
+        let reg = |id: u32| Operand::Register(VirtualReg::gpr(id).into());
+        let imm = |v: i64| Operand::Immediate(Immediate::I64(v));
+        let mut inner_body = FunctionBuilder::new("nested_hoist")
+            .returns(i64_ty)
+            .block("entry")
+            .instr(add(0, imm(0), imm(0)))
+            .instr(add(1, imm(0), imm(0)))
+            .instr(Instruction::Jmp {
+                target: "outer".to_string(),
+            })
+            .block("inner")
+            .instr(less(15, 12, 3))
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(15).into(),
+                true_target: "inner_body".to_string(),
+                false_target: "outer_latch".to_string(),
+            })
+            .block("inner_body")
+            .instr(add(2, imm(1), imm(0)));
+        for (dst, src) in [(3, 2), (4, 3), (6, 4), (7, 6), (9, 7), (10, 9), (11, 10)] {
+            inner_body = inner_body.instr(add(dst, reg(src), imm(1)));
+        }
+        let mut func = inner_body
+            .instr(add(1, reg(1), reg(11)))
+            .instr(add(12, reg(12), imm(1)))
+            .instr(Instruction::Jmp {
+                target: "inner".to_string(),
+            })
+            .block("outer")
+            .instr(less(14, 0, 2))
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(14).into(),
+                true_target: "outer_body".to_string(),
+                false_target: "exit".to_string(),
+            })
+            .block("outer_body")
+            .instr(add(12, imm(0), imm(0)))
+            .instr(Instruction::Jmp {
+                target: "inner".to_string(),
+            })
+            .block("outer_latch")
+            .instr(add(0, reg(0), imm(1)))
+            .instr(Instruction::Jmp {
+                target: "outer".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret {
+                value: Some(reg(1)),
+            })
+            .build();
+
+        let expected = interpret_mir_function(&func, &[])
+            .expect("interpret before LICM");
+        LoopInvariantCodeMotion
+            .apply(&mut func)
+            .expect("LICM failed");
+        let actual = interpret_mir_function(&func, &[]).ok().flatten();
+        assert_eq!(actual, expected);
     }
 
     #[test]
