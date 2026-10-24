@@ -518,7 +518,7 @@ mod tests {
                 } if *ty == f64_ty && *value == 2.5
             ),
             "float select must become Copy, got {:?}",
-            &entry.instructions[0]
+            entry.instructions[0]
         );
     }
 
