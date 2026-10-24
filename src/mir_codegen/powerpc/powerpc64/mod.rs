@@ -1274,6 +1274,27 @@ mod tests {
     }
 
     #[test]
+    fn bool_parameters_are_zero_extended_on_entry() {
+        let reg = Register::Virtual(VirtualReg::gpr(0));
+        let ty = MirType::Scalar(ScalarType::I1);
+        let mut module = MirModule::new("flag_entry");
+        module.add_function(
+            FunctionBuilder::new("flag")
+                .param(reg.clone(), ty)
+                .returns(ty)
+                .block("entry")
+                .instr(MirInst::Ret {
+                    value: Some(Operand::Register(reg)),
+                })
+                .build(),
+        );
+        let mut output = Vec::new();
+        generate_mir_ppc64(&module, &mut output, TargetOperatingSystem::Linux).unwrap();
+        let s = String::from_utf8(output).unwrap();
+        assert!(s.contains("    clrldi 3, 3, 56\n    std 3, "), "{s}");
+    }
+
+    #[test]
     fn float_memory_transfers_use_fpr_bits() {
         for (ty, load, store) in [
             (MirType::Scalar(ScalarType::F32), "lfs", "stfs"),
