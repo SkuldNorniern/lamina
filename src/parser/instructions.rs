@@ -29,6 +29,10 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "trunc" => parse_trunc(state, result),
             "sext" => parse_sext(state, result),
             "bitcast" => parse_bitcast(state, result),
+            "sitofp" => parse_int_to_float(state, result, true),
+            "uitofp" => parse_int_to_float(state, result, false),
+            "fptosi" => parse_float_to_int(state, result, true),
+            "fptoui" => parse_float_to_int(state, result, false),
             "select" => parse_select(state, result),
             "alloc" => parse_alloc(state, result),
             "load" => parse_load(state, result),
@@ -771,6 +775,98 @@ fn parse_zext<'a>(
     let value = parse_value(state)?;
     Ok(Instruction::ZeroExtend {
         result,
+        source_type,
+        target_type,
+        value,
+    })
+}
+
+fn parse_int_to_float<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+    signed: bool,
+) -> Result<Instruction<'a>, LaminaError> {
+    let mnemonic = if signed { "sitofp" } else { "uitofp" };
+    state.expect_char('.')?;
+    let source_str = state.parse_identifier_str()?;
+    let source_type = parse_primitive_from_ident(state, source_str)?;
+    state.expect_char('.')?;
+    let target_str = state.parse_identifier_str()?;
+    let target_type = parse_primitive_from_ident(state, target_str)?;
+
+    let source_ok = if signed {
+        matches!(
+            source_type,
+            PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64
+        )
+    } else {
+        matches!(
+            source_type,
+            PrimitiveType::U8 | PrimitiveType::U16 | PrimitiveType::U32 | PrimitiveType::U64
+        )
+    };
+    if !source_ok {
+        return Err(state.error(format!(
+            "{mnemonic} source must be a {} integer type, found {source_str}",
+            if signed { "signed" } else { "unsigned" }
+        )));
+    }
+    if !matches!(target_type, PrimitiveType::F32 | PrimitiveType::F64) {
+        return Err(state.error(format!(
+            "{mnemonic} target must be f32 or f64, found {target_str}"
+        )));
+    }
+
+    let value = parse_value(state)?;
+    Ok(Instruction::IntToFloat {
+        result,
+        signed,
+        source_type,
+        target_type,
+        value,
+    })
+}
+
+fn parse_float_to_int<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+    signed: bool,
+) -> Result<Instruction<'a>, LaminaError> {
+    let mnemonic = if signed { "fptosi" } else { "fptoui" };
+    state.expect_char('.')?;
+    let source_str = state.parse_identifier_str()?;
+    let source_type = parse_primitive_from_ident(state, source_str)?;
+    state.expect_char('.')?;
+    let target_str = state.parse_identifier_str()?;
+    let target_type = parse_primitive_from_ident(state, target_str)?;
+
+    if !matches!(source_type, PrimitiveType::F32 | PrimitiveType::F64) {
+        return Err(state.error(format!(
+            "{mnemonic} source must be f32 or f64, found {source_str}"
+        )));
+    }
+    let target_ok = if signed {
+        matches!(
+            target_type,
+            PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64
+        )
+    } else {
+        matches!(
+            target_type,
+            PrimitiveType::U8 | PrimitiveType::U16 | PrimitiveType::U32 | PrimitiveType::U64
+        )
+    };
+    if !target_ok {
+        return Err(state.error(format!(
+            "{mnemonic} target must be a {} integer type, found {target_str}",
+            if signed { "signed" } else { "unsigned" }
+        )));
+    }
+
+    let value = parse_value(state)?;
+    Ok(Instruction::FloatToInt {
+        result,
+        signed,
         source_type,
         target_type,
         value,
