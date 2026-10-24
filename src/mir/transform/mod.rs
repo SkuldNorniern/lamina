@@ -21,6 +21,7 @@ pub mod sanity;
 mod scheduling;
 mod strength_reduction;
 mod tail_call;
+mod unroll;
 #[cfg(feature = "nightly")]
 mod vectorization;
 
@@ -34,13 +35,14 @@ pub use cse::CommonSubexpressionElimination;
 pub use deadcode::DeadCodeElimination;
 pub use induction_strength_reduction::InductionStrengthReduction;
 pub use inline::{FunctionInlining, ModuleInlining};
-pub use loop_opt::{LoopInvariantCodeMotion, LoopUnrolling};
+pub use loop_opt::LoopInvariantCodeMotion;
 pub use memory::MemoryOptimization;
 pub use peephole::Peephole;
 pub use reduction_exit::ReductionExit;
 pub use scheduling::InstructionScheduling;
 pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
+pub use unroll::LoopUnrolling;
 
 use crate::mir::{Function, Module, verify_function_in_pipeline};
 use std::fmt;
