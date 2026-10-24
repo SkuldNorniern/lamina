@@ -370,7 +370,7 @@ impl PartialOrd for ScheduledItem {
 mod tests {
     use super::*;
     use crate::mir::{
-        AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
+        AddressMode, FunctionBuilder, Immediate, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Operand,
         ScalarType, VirtualReg,
     };
 
@@ -399,7 +399,7 @@ mod tests {
             rhs: Operand::imm_i64(8),
         });
         block.instructions.push(Instruction::IntCmp {
-            op: crate::mir::IntCmpOp::Ne,
+            op: IntCmpOp::Ne,
             ty,
             dst: flag.clone(),
             lhs: counter.into(),

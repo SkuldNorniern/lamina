@@ -4,7 +4,10 @@ use super::loop_opt::{LoopInfo, LoopInvariantCodeMotion};
 use crate::mir::{
     Block, Function, Immediate, Instruction, IntBinOp, IntCmpOp, MirType, Operand, Register,
     ScalarType, VirtualReg,
-    transform::{Transform, TransformCategory, TransformError, TransformLevel},
+    transform::{
+        CfgSimplify, DeadCodeElimination, Peephole, Transform, TransformCategory, TransformError,
+        TransformLevel,
+    },
 };
 
 #[derive(Default)]
@@ -24,22 +27,44 @@ impl Transform for LoopUnrolling {
         TransformLevel::Experimental
     }
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
-        let original = if func.blocks.iter().any(|b| matches!(b.instructions.last(), Some(Instruction::TailCall { name, .. }) if name == &func.sig.name)) {
+        if !func.blocks.iter().any(|b| {
+            matches!(
+                b.instructions.last(),
+                Some(
+                    Instruction::Jmp { .. } | Instruction::Br { .. } | Instruction::TailCall { .. }
+                )
+            )
+        }) {
+            return Ok(false);
+        }
+        let initial_size: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
+        if func.blocks.len() > 256 || initial_size > 8192 {
+            return Ok(false);
+        }
+        let materialized = if func.blocks.iter().any(|b| matches!(b.instructions.last(), Some(Instruction::TailCall { name, .. }) if name == &func.sig.name)) {
             let saved = func.clone();
             if !materialize_tail_loop(func) { return Ok(false); }
             if !LoopInvariantCodeMotion.find_loops(func).iter().any(|info| analyze(func, info).is_some()) {
                 *func = saved;
                 return Ok(false);
             }
-            Some(saved)
-        } else { None };
+            true
+        } else { false };
         let mut changed = false;
         for _ in 0..16 {
+            let size: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
+            if size >= initial_size + 1024 {
+                break;
+            }
             let candidate = LoopInvariantCodeMotion
                 .find_loops(func)
                 .iter()
-                .find_map(|info| analyze(func, info));
-            let Some(shape) = candidate else {
+                .find_map(|info| {
+                    let shape = analyze(func, info)?;
+                    let plan = choose_plan(func, &shape)?;
+                    Some((shape, plan))
+                });
+            let Some((shape, (count, factor))) = candidate else {
                 let loops = LoopInvariantCodeMotion.find_loops(func);
                 let guarded = loops
                     .iter()
@@ -50,14 +75,23 @@ impl Transform for LoopUnrolling {
                 let Some(mut next) = register_base(func) else {
                     break;
                 };
-                clone_guarded(func, info, 4, &mut next);
+                let before = func.clone();
+                clone_guarded(func, info, guarded_factor(func, info), &mut next);
+                if func
+                    .blocks
+                    .iter()
+                    .map(|b| b.instructions.len())
+                    .sum::<usize>()
+                    > initial_size + 1024
+                {
+                    *func = before;
+                    break;
+                }
                 changed = true;
                 continue;
             };
-            let count = constant_trip_count(func, &shape);
-            if let Some(count) =
-                count.filter(|n| *n <= 32 && shape.body.len().saturating_mul(*n as usize) <= 192)
-            {
+            let before = func.clone();
+            if let Some(count) = count {
                 let Some(mut next) = register_base(func) else {
                     break;
                 };
@@ -66,14 +100,30 @@ impl Transform for LoopUnrolling {
                 let Some(mut next) = register_base(func) else {
                     break;
                 };
-                partial_unroll(func, &shape, 8, &mut next);
+                partial_unroll(func, &shape, factor, &mut next);
+            }
+            if func
+                .blocks
+                .iter()
+                .map(|b| b.instructions.len())
+                .sum::<usize>()
+                > initial_size + 1024
+            {
+                *func = before;
+                break;
             }
             changed = true;
         }
-        Ok(changed || original.is_some())
+        if changed || materialized {
+            DeadCodeElimination.apply(func)?;
+            Peephole.apply(func)?;
+            CfgSimplify.apply(func)?;
+        }
+        Ok(changed || materialized)
     }
 }
 
+#[derive(Clone)]
 struct Shape {
     header: String,
     body: Vec<Instruction>,
@@ -86,7 +136,7 @@ struct Shape {
 }
 
 fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
-    if info.header.starts_with("__unroll_") {
+    if info.header.contains("__unroll_") {
         return None;
     }
     if info.blocks.len() < 2 || info.blocks.len() > 8 {
@@ -112,6 +162,9 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
     };
     if cond != dst
         || iv == dst
+        || end
+            .as_register()
+            .is_some_and(|r| r == dst || !r.is_virtual())
         || func.blocks.iter().any(|b| {
             b.label != info.header && b.instructions.iter().any(|i| i.use_regs().contains(&dst))
         })
@@ -135,7 +188,7 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
     let [entry] = outside.as_slice() else {
         return None;
     };
-    if entry.label.starts_with("__unroll_") {
+    if entry.label.contains("__unroll_") {
         return None;
     }
     let mut labels = HashSet::from([info.header.clone()]);
@@ -239,6 +292,12 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
         }
     }
     live_out.retain(|r| defined.contains(r));
+    live_out.extend(
+        body.iter()
+            .flat_map(Instruction::use_regs)
+            .filter(|r| !defined.contains(*r))
+            .cloned(),
+    );
     Some(Shape {
         header: info.header.clone(),
         body,
@@ -251,8 +310,40 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
     })
 }
 
+fn choose_plan(func: &Function, shape: &Shape) -> Option<(Option<u64>, usize)> {
+    let count = constant_trip_count(func, shape);
+    if let Some(n) =
+        count.filter(|n| *n <= 32 && shape.body.len().saturating_mul(*n as usize) <= 192)
+    {
+        return Some((Some(n), 0));
+    }
+    let work = shape.body.iter().filter(|i| !matches!(i, Instruction::Copy { .. }) && !matches!(i, Instruction::IntBinary { op: IntBinOp::Add, rhs, .. } if rhs.integer_constant() == Some(0))).count();
+    let mut factor = match work {
+        0..=4 => 8,
+        5..=8 => 4,
+        9..=16 => 2,
+        _ => return None,
+    };
+    while factor > 1
+        && (shape.body.len() * factor > 192 || count.is_some_and(|n| n < factor as u64))
+    {
+        factor /= 2;
+    }
+    (factor >= 2).then_some((None, factor))
+}
+
+fn guarded_factor(func: &Function, info: &LoopInfo) -> usize {
+    let size: usize = func
+        .blocks
+        .iter()
+        .filter(|b| info.blocks.contains(&b.label))
+        .map(|b| b.instructions.len())
+        .sum();
+    if size <= 12 { 4 } else { 2 }
+}
+
 fn guarded_candidate(func: &Function, info: &LoopInfo, loops: &[LoopInfo]) -> bool {
-    if info.header.starts_with("__unroll_")
+    if info.header.contains("__unroll_")
         || info.blocks.len() > 8
         || loops
             .iter()
@@ -295,18 +386,22 @@ fn guarded_candidate(func: &Function, info: &LoopInfo, loops: &[LoopInfo]) -> bo
                 .iter()
                 .filter(|target| !info.blocks.contains(**target))
                 .count();
-        } else if b.label.starts_with("__unroll_") && b.successors().contains(&info.header.as_str())
-        {
-            return false;
-        } else if b
-            .successors()
-            .iter()
-            .any(|target| **target != info.header && info.blocks.contains(*target))
+        } else if (b.label.contains("__unroll_") && b.successors().contains(&info.header.as_str()))
+            || b.successors()
+                .iter()
+                .any(|target| **target != info.header && info.blocks.contains(*target))
         {
             return false;
         }
     }
-    exits >= 2 && size <= 24
+    exits >= 2
+        && size <= 24
+        && !func
+            .blocks
+            .iter()
+            .filter(|b| info.blocks.contains(&b.label))
+            .flat_map(|b| &b.instructions)
+            .any(Instruction::may_trap_integer)
 }
 
 fn clone_guarded(func: &mut Function, info: &LoopInfo, factor: usize, next: &mut u32) {
@@ -423,6 +518,9 @@ fn clone_guarded(func: &mut Function, info: &LoopInfo, factor: usize, next: &mut
 }
 
 fn materialize_tail_loop(func: &mut Function) -> bool {
+    if func.sig.params.len() > 32 {
+        return false;
+    }
     if func
         .sig
         .params
@@ -537,7 +635,32 @@ fn branch(cond: &Register, yes: &str, no: &str) -> Instruction {
     }
 }
 
+fn counter_only(shape: &Shape) -> bool {
+    let mut dependent = HashSet::from([shape.iv.clone()]);
+    for i in &shape.body {
+        let uses_counter = i.use_regs().iter().any(|r| dependent.contains(*r));
+        if uses_counter && i.may_trap_integer() {
+            return false;
+        }
+        if let Some(dst) = i.def_reg() {
+            dependent.remove(dst);
+            if uses_counter {
+                dependent.insert(dst.clone());
+            }
+        }
+    }
+    shape
+        .live_out
+        .iter()
+        .all(|r| *r == shape.iv || !dependent.contains(r))
+}
+
 fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut u32) {
+    let mut work = shape.clone();
+    let counter_only = counter_only(shape);
+    if counter_only {
+        work.live_out.remove(&shape.iv);
+    }
     let mut prefix = format!("__unroll_{}", shape.header);
     while func.blocks.iter().any(|b| b.label.starts_with(&prefix)) {
         prefix.push('_');
@@ -653,6 +776,16 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
         ),
         jump(&procheck),
     ]);
+    if counter_only {
+        setup_code.pop();
+        setup_code.push(binary(
+            IntBinOp::Add,
+            &shape.iv,
+            shape.end.clone(),
+            imm(i64::from(shape.inclusive)),
+        ));
+        setup_code.push(jump(&procheck));
+    }
     add_block(setup, setup_code);
     add_block(
         procheck.clone(),
@@ -661,7 +794,7 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
             branch(&pro_flag, &probody, &oddcheck),
         ],
     );
-    let mut code = renamed_body(shape, 2, next);
+    let mut code = renamed_body(&work, 2, next);
     code.extend([
         binary(IntBinOp::Sub, &remainder, remainder.clone().into(), imm(2)),
         compare(IntCmpOp::UGe, &pro_back, remainder.clone().into(), imm(2)),
@@ -675,7 +808,7 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
             branch(&odd_flag, &oddbody, &maincheck),
         ],
     );
-    let mut odd = renamed_body(shape, 1, next);
+    let mut odd = renamed_body(&work, 1, next);
     odd.push(jump(&maincheck));
     add_block(oddbody, odd);
     add_block(
@@ -685,7 +818,7 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
             branch(&main_flag, &mainbody, &shape.header),
         ],
     );
-    let mut code = renamed_body(shape, factor, next);
+    let mut code = renamed_body(&work, factor, next);
     code.extend([
         binary(
             IntBinOp::Sub,
@@ -952,7 +1085,11 @@ fn constant_trip_count(func: &Function, shape: &Shape) -> Option<u64> {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::{mir::codegen::from_ir, parser::parse_module};
+    use crate::{
+        mir::{codegen::from_ir, verify::verify_function_in_pipeline},
+        parser::parse_module,
+        runtime::executor::interpret_mir_function,
+    };
 
     fn counting(start: i64, end: &str, comparison: &str) -> Function {
         let source = format!(
@@ -983,6 +1120,70 @@ ret.i64 %b
     }
 
     #[test]
+    fn coalescing_preserves_invariant_operands_across_iterations() {
+        let mut original = counting(0, "%n", "lt");
+        let invariant = original.sig.params[0].reg.clone();
+        if let Instruction::IntBinary { lhs, .. } =
+            &mut original.get_block_mut("body").unwrap().instructions[0]
+        {
+            *lhs = invariant.into();
+        }
+        let mut func = original.clone();
+        assert!(LoopUnrolling.apply(&mut func).unwrap());
+        for n in 0..34 {
+            assert_eq!(
+                interpret_mir_function(&func, &[n]).unwrap(),
+                interpret_mir_function(&original, &[n]).unwrap(),
+                "{n}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_remainder_preserves_values_near_signed_limits() {
+        for factor in [2, 4, 8, 16] {
+            for start in [i64::MIN, -17, i64::MAX - 40] {
+                for comparison in ["lt", "le"] {
+                    let original = counting(start, "%n", comparison);
+                    let shape =
+                        analyze(&original, &LoopInvariantCodeMotion.find_loops(&original)[0])
+                            .unwrap();
+                    let mut func = original.clone();
+                    let mut next = register_base(&func).unwrap();
+                    partial_unroll(&mut func, &shape, factor, &mut next);
+                    verify_function_in_pipeline(&func).unwrap();
+                    for count in 0..=factor * 2 + 1 {
+                        let end = start + count as i64;
+                        assert_eq!(
+                            interpret_mir_function(&func, &[end]).unwrap(),
+                            interpret_mir_function(&original, &[end]).unwrap(),
+                            "{factor} {start} {comparison} {end}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn growth_budget_limits_large_bodies_and_function_sizes() {
+        let mut func = counting(0, "%n", "lt");
+        let body = func.get_block_mut("body").unwrap();
+        let instruction = body.instructions[0].clone();
+        for _ in 0..100 {
+            body.instructions.insert(0, instruction.clone());
+        }
+        assert!(!LoopUnrolling.apply(&mut func).unwrap());
+        let mut func = counting(0, "%n", "lt");
+        let body = func.get_block_mut("body").unwrap();
+        let instruction = body.instructions[0].clone();
+        for _ in 0..8192 {
+            body.instructions.insert(0, instruction.clone());
+        }
+        assert!(!LoopUnrolling.apply(&mut func).unwrap());
+    }
+
+    #[test]
     fn guarded_copies_preserve_early_exits_in_every_position() {
         let source = "fn @f(i64 %n) -> i64 {
 entry:
@@ -1010,13 +1211,15 @@ ret.i64 0
             .remove("f")
             .unwrap();
         let mut func = original.clone();
-        assert!(LoopUnrolling.apply(&mut func).unwrap());
+        let info = LoopInvariantCodeMotion.find_loops(&func).remove(0);
+        let mut next = register_base(&func).unwrap();
+        clone_guarded(&mut func, &info, 4, &mut next);
         assert!(!LoopUnrolling.apply(&mut func).unwrap());
-        crate::mir::verify::verify_function_in_pipeline(&func).unwrap();
+        verify_function_in_pipeline(&func).unwrap();
         for n in -4..240 {
             assert_eq!(
-                crate::runtime::executor::interpret_mir_function(&func, &[n]).unwrap(),
-                crate::runtime::executor::interpret_mir_function(&original, &[n]).unwrap(),
+                interpret_mir_function(&func, &[n]).unwrap(),
+                interpret_mir_function(&original, &[n]).unwrap(),
                 "{n}"
             );
         }
@@ -1043,15 +1246,14 @@ ret.i64 %b
             .unwrap();
         super::super::TailCallOptimization.apply(&mut func).unwrap();
         assert!(LoopUnrolling.apply(&mut func).unwrap());
-        crate::mir::verify::verify_function_in_pipeline(&func).unwrap();
+        verify_function_in_pipeline(&func).unwrap();
         for trips in 0..=33 {
             let (mut a, mut b) = (7_i64, 11_i64);
             for _ in 0..trips {
                 (a, b) = (b, a.wrapping_add(b));
             }
             assert_eq!(
-                crate::runtime::executor::interpret_mir_function(&func, &[trips - 1, 7, 11, 0])
-                    .unwrap(),
+                interpret_mir_function(&func, &[trips - 1, 7, 11, 0]).unwrap(),
                 Some(b)
             );
         }
@@ -1089,11 +1291,11 @@ ret.i64 %b
             let mut func = original.clone();
             assert!(LoopUnrolling.apply(&mut func).unwrap());
             assert!(!LoopUnrolling.apply(&mut func).unwrap());
-            crate::mir::verify::verify_function_in_pipeline(&func).unwrap();
+            verify_function_in_pipeline(&func).unwrap();
             for n in [-9, -3, -2, 3, 4, 5, 6, 13, 29, 30] {
                 assert_eq!(
-                    crate::runtime::executor::interpret_mir_function(&func, &[n]).unwrap(),
-                    crate::runtime::executor::interpret_mir_function(&original, &[n]).unwrap(),
+                    interpret_mir_function(&func, &[n]).unwrap(),
+                    interpret_mir_function(&original, &[n]).unwrap(),
                     "{cmp} {n}"
                 );
             }
@@ -1104,13 +1306,10 @@ ret.i64 %b
     fn full_unrolling_preserves_zero_and_nonzero_trips() {
         for count in [0, 1, 7, 8, 9, 16, 32] {
             let mut func = counting(3, &(3 + count).to_string(), "lt");
-            let before = crate::runtime::executor::interpret_mir_function(&func, &[0]).unwrap();
+            let before = interpret_mir_function(&func, &[0]).unwrap();
             assert!(LoopUnrolling.apply(&mut func).unwrap());
             assert!(LoopInvariantCodeMotion.find_loops(&func).is_empty());
-            assert_eq!(
-                crate::runtime::executor::interpret_mir_function(&func, &[0]).unwrap(),
-                before
-            );
+            assert_eq!(interpret_mir_function(&func, &[0]).unwrap(), before);
         }
     }
 
