@@ -9,6 +9,7 @@ mod util;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::emit_debug_file;
 use crate::mir_codegen::common::{
+    reject_module_globals,
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
     integer_conversion, self_tail_arguments, self_tail_schedule,
 };
@@ -376,6 +377,7 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
+    reject_module_globals(module, "aarch64")?;
     let settings_arc = Arc::new(settings.clone());
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {

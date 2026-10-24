@@ -289,6 +289,9 @@ impl Kernel {
 }
 
 pub fn emit<W: Write>(module: &Module, writer: &mut W) -> Result<(), LaminaError> {
+    if !module.globals.is_empty() {
+        return Err(error("PTX does not yet support global variables"));
+    }
     let mut output = Vec::new();
     writeln!(output, ".version 6.0\n.target sm_60\n.address_size 64")?;
     for (function, name, metadata) in kernels(module, true)? {

@@ -508,6 +508,16 @@ pub fn emit_global_directives<W: Write>(
     Ok(())
 }
 
+/// Rejects modules that declare globals, for backends that cannot place them yet.
+pub fn reject_module_globals(module: &MirModule, backend: &str) -> Result<(), LaminaError> {
+    if module.globals.is_empty() {
+        return Ok(());
+    }
+    Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+        format!("{backend} does not yet support global variables"),
+    )))
+}
+
 /// Emits storage for every global. Globals whose initializer is all zero (or absent) go to
 /// the bss section, the rest to data.
 pub fn emit_global_data<W: Write>(
@@ -1610,6 +1620,41 @@ entry:
             assert!(text.contains(".globl answer\n"), "{name}: {text}");
             assert!(text.contains(".globl main\n"), "{name}: {text}");
             assert!(!text.contains(".globl helper\n"), "{name}: {text}");
+        }
+    }
+
+    #[test]
+    fn backends_without_global_support_reject_modules_with_globals() {
+        let ir = parse_module(
+            "global @g: i64 = 1\nfn @main() -> i64 {\nentry:\n %x = load.i64 @g\n ret.i64 %x\n}\n",
+        )
+        .expect("parse global module");
+        let mir = from_ir(&ir, "globals").expect("lower global module");
+        let rejecting: [(&str, Emitter, TargetOperatingSystem); 3] = [
+            (
+                "aarch64",
+                generate_mir_aarch64::<Vec<u8>>,
+                TargetOperatingSystem::Linux,
+            ),
+            (
+                "riscv",
+                generate_mir_riscv::<Vec<u8>>,
+                TargetOperatingSystem::Linux,
+            ),
+            (
+                "ppc64",
+                generate_mir_ppc64::<Vec<u8>>,
+                TargetOperatingSystem::Linux,
+            ),
+        ];
+        for (name, emit, os) in rejecting {
+            let mut output = Vec::new();
+            let error = emit(&mir, &mut output, os).expect_err(name);
+            assert!(
+                error.to_string().contains("does not yet support global variables")
+                    || error.to_string().contains("global symbol addresses"),
+                "{name}: {error}"
+            );
         }
     }
 
