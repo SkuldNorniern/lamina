@@ -243,12 +243,18 @@ fn compile_single_function_ppc64(
             && let Some(offset) = stack_slots.get(vreg)
         {
             if let Some(src) = Ppc64Abi::ARG_REGISTERS.get(index) {
+                extend_integer(&mut output, src, &param.ty, true)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 writeln!(output, "    std {src}, {offset}(1)")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
             } else {
                 let disp = Ppc64Frame::aligned_frame_size(local_bytes)
                     + (index - Ppc64Abi::ARG_REGISTERS.len()) * 8;
-                writeln!(output, "    ld 0, {disp}(1)\n    std 0, {offset}(1)")
+                writeln!(output, "    ld 0, {disp}(1)")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                extend_integer(&mut output, "0", &param.ty, true)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+                writeln!(output, "    std 0, {offset}(1)")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
             }
         }
