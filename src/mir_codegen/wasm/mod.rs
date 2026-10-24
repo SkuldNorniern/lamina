@@ -5,9 +5,10 @@ use crate::mir_codegen::common::integer_conversion;
 use crate::mir_codegen::simd::vector_slots;
 
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     env::temp_dir,
     fs,
+    sync::Arc,
 };
 
 use std::{io::Write, process::id};
@@ -165,6 +166,7 @@ fn compile_single_function_wasm(
     func_name: &str,
     func: &Function,
     target_os: TargetOperatingSystem,
+    globals: &BTreeMap<String, u32>,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut output = Vec::new();
     let abi = WasmABI::new(target_os);
@@ -276,8 +278,15 @@ fn compile_single_function_wasm(
         writeln!(output, "      ;; Block: {}", block.label)
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
         for inst in &block.instructions {
-            emit_instruction_wasm(inst, &mut output, &vreg_to_local, &block_labels, &frame)
-                .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            emit_instruction_wasm(
+                inst,
+                &mut output,
+                &vreg_to_local,
+                &block_labels,
+                &frame,
+                globals,
+            )
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
         writeln!(output, "      br $dispatch_loop")
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
@@ -312,12 +321,11 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     codegen_units: usize,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::Wasm64)?;
-    let results = compile_functions_parallel(
-        module,
-        target_os,
-        codegen_units,
-        compile_single_function_wasm,
-    )
+    let global_addresses = Arc::new(global_addresses(module)?);
+    let results = compile_functions_parallel(module, target_os, codegen_units, {
+        let global_addresses = Arc::clone(&global_addresses);
+        move |name, func, os| compile_single_function_wasm(name, func, os, &global_addresses)
+    })
     .map_err(parallel_codegen_error)?;
 
     let abi = WasmABI::new(target_os);
@@ -372,6 +380,17 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         writer,
         "  (global $sp (mut i32) (i32.const {WASM_STACK_TOP}))"
     )?;
+    for (name, global) in &module.globals {
+        let Some(bytes) = global.initializer.as_deref() else {
+            continue;
+        };
+        if bytes.iter().all(|&b| b == 0) {
+            continue;
+        }
+        let address = global_addresses[name];
+        let escaped: String = bytes.iter().map(|b| format!("\\{b:02x}")).collect();
+        writeln!(writer, "  (data (i32.const {address}) \"{escaped}\")")?;
+    }
 
     for i in 0..global_count {
         writeln!(writer, "{}", abi.generate_global_decl(i))?;
@@ -393,6 +412,35 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 }
 
 const WASM_STACK_TOP: u32 = 65536;
+
+/// Globals occupy linear memory from this address upward, below the stack.
+/// Zero-initialized globals need no data segment because memory starts zeroed.
+const WASM_GLOBAL_BASE: u32 = 16;
+
+fn global_addresses(module: &MirModule) -> Result<BTreeMap<String, u32>, LaminaError> {
+    let mut names: Vec<&str> = module.globals.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    let mut addresses = BTreeMap::new();
+    let mut next = WASM_GLOBAL_BASE;
+    for name in names {
+        let global = &module.globals[name];
+        let align = u32::try_from(global.ty.alignment())
+            .map_err(|_| LaminaError::ValidationError("global alignment overflow".into()))?;
+        next = next.div_ceil(align) * align;
+        addresses.insert(name.to_string(), next);
+        let size = u32::try_from(global.ty.size_bytes())
+            .map_err(|_| LaminaError::ValidationError("global size overflow".into()))?;
+        next = next
+            .checked_add(size)
+            .ok_or_else(|| LaminaError::ValidationError("global data overflows memory".into()))?;
+    }
+    if next > WASM_STACK_TOP {
+        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            "WASM globals do not fit below the stack in one memory page".into(),
+        )));
+    }
+    Ok(addresses)
+}
 
 struct StackFrame {
     offsets: HashMap<VirtualReg, i64>,
@@ -455,14 +503,31 @@ fn emit_instruction_wasm(
     vreg_to_local: &HashMap<VirtualReg, usize>,
     block_labels: &HashMap<&str, usize>,
     frame: &StackFrame,
+    globals: &BTreeMap<String, u32>,
 ) -> Result<(), LaminaError> {
     if let Some(operations) = integer_conversion(inst) {
         for operation in operations {
-            emit_instruction_wasm(&operation, writer, vreg_to_local, block_labels, frame)?;
+            emit_instruction_wasm(
+                &operation,
+                writer,
+                vreg_to_local,
+                block_labels,
+                frame,
+                globals,
+            )?;
         }
         return Ok(());
     }
     match inst {
+        MirInst::SymbolAddress { dst, symbol } => {
+            let address = globals.get(symbol).ok_or_else(|| {
+                LaminaError::ValidationError(format!("symbol address @{symbol} has no global"))
+            })?;
+            writeln!(writer, "        i64.const {address}")?;
+            if let Register::Virtual(vreg) = dst {
+                store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
+            }
+        }
         MirInst::VectorOp { .. } => simd::emit(inst, writer, vreg_to_local)?,
         MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
             simd::emit(inst, writer, vreg_to_local)?
