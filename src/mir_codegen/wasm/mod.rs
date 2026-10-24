@@ -1303,6 +1303,16 @@ print('main returned', instance.exports(store)['main'](store))
     }
 
     #[test]
+    fn narrow_arguments_keep_their_declared_signedness_across_calls() {
+        let stdout = run_wasm_main(
+            "boundary_signedness",
+            "fn @mk() -> char {\nentry:\n %v = trunc.i64.char 255\n ret.char %v\n}\nfn @take(u8 %u, char %c) -> i64 {\nentry:\n %a = lt.u8 %u, 1\n print %a\n %b = lt.char %c, 0\n print %b\n ret.i64 0\n}\nfn @main() -> i64 {\nentry:\n %c = call @mk()\n %u = trunc.i64.u8 255\n %r = call @take(%u, %c)\n ret.i64 0\n}",
+            0,
+        );
+        assert_eq!(stdout, "0\n1\nmain returned 0\n");
+    }
+
+    #[test]
     fn entry_block_runs_first_after_block_reordering() {
         for opt_level in [0, 1, 2] {
             let stdout = run_wasm_main(
