@@ -1,6 +1,7 @@
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::emit_debug_file;
 use crate::mir_codegen::common::{
+    reject_module_globals,
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
     self_tail_arguments, self_tail_schedule,
 };
@@ -468,6 +469,7 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     };
     validate_module_call_parameters(module, arch)?;
     validate_rv32_i64(module, target)?;
+    reject_module_globals(module, "riscv")?;
     let settings_arc = Arc::new(settings.clone());
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
@@ -729,6 +731,11 @@ fn emit_instruction_riscv<W: Write>(
                 }
                 Register::Physical(_) => {}
             }
+        }
+        MirInst::SymbolAddress { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "riscv global symbol addresses are not yet supported".into(),
+            )));
         }
         MirInst::StackAddr { dst, slot } => {
             let offset = stack_slots.get(slot).ok_or_else(|| {

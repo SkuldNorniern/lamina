@@ -639,6 +639,9 @@ pub fn emit_with_target<W: Write>(
     writer: &mut W,
     target: AmdGpuTarget,
 ) -> Result<(), LaminaError> {
+    if !module.globals.is_empty() {
+        return Err(error("AMDGPU does not yet support global variables"));
+    }
     let mut output = Vec::new();
     let kernels = kernels(module, true)?;
     let mut compiled = Vec::new();

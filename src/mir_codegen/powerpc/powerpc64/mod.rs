@@ -20,6 +20,7 @@ use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::emit_debug_file;
 use crate::mir_codegen::common::integer_conversion;
 use crate::mir_codegen::common::{
+    reject_module_globals,
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
     self_tail_arguments, self_tail_schedule,
 };
@@ -332,6 +333,7 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::PowerPC64)?;
+    reject_module_globals(module, "powerpc64")?;
     let abi = Ppc64Abi::new(target_os);
 
     writeln!(writer, "{}", abi.get_data_section())?;
@@ -962,6 +964,11 @@ fn emit_instruction_ppc64<W: Write>(
                     )));
                 }
             }
+        }
+        MirInst::SymbolAddress { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                "powerpc64 global symbol addresses are not yet supported".into(),
+            )));
         }
         MirInst::StackAddr { dst, slot } => {
             let offset = stack_slots.get(slot).ok_or_else(|| {
