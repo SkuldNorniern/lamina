@@ -42,6 +42,7 @@ exit:
             mir.get_function("two").unwrap(),
             TargetOperatingSystem::Linux,
             &settings,
+            &Default::default(),
         )
         .unwrap(),
     )
@@ -107,6 +108,7 @@ fn self_tail_loop_rotates_with_initial_condition_check() {
                 &func,
                 TargetOperatingSystem::Linux,
                 &settings,
+                &Default::default(),
             )
             .unwrap(),
         )
@@ -226,6 +228,7 @@ fn global_leaf_omits_empty_frame_but_keeps_stack_argument_base() {
                 function,
                 TargetOperatingSystem::Linux,
                 &settings,
+                &Default::default(),
             )
             .expect("emit frame case");
             let assembly = String::from_utf8(assembly).expect("assembly text");
@@ -380,4 +383,209 @@ fn stack_copy_cycle_preserves_saved_value() -> Result<(), Box<dyn StdError>> {
     );
     assert!(stack.is_empty());
     Ok(())
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod c_caller_abi_tests {
+    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use std::{
+        env,
+        error::Error,
+        fs,
+        process::{self, Command},
+    };
+
+    const LAMINA: &str = r#"
+@export fn @i8_is_negative(i8 %x) -> i64 {
+entry:
+ %c = lt.i8 %x, 0
+ br %c, yes, no
+yes:
+ ret.i64 1
+no:
+ ret.i64 0
+}
+@export fn @i16_is_negative(i16 %x) -> i64 {
+entry:
+ %c = lt.i16 %x, 0
+ br %c, yes, no
+yes:
+ ret.i64 1
+no:
+ ret.i64 0
+}
+@export fn @i32_is_negative(i32 %x) -> i64 {
+entry:
+ %c = lt.i32 %x, 0
+ br %c, yes, no
+yes:
+ ret.i64 1
+no:
+ ret.i64 0
+}
+@export fn @seventh_i8(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i8 %x) -> i64 {
+entry:
+ %c2 = lt.i8 %x, 0
+ br %c2, yes, no
+yes:
+ ret.i64 1
+no:
+ ret.i64 0
+}
+@export fn @u8_below_200(u8 %x) -> i64 {
+entry:
+ %c = lt.u8 %x, 200
+ br %c, yes, no
+yes:
+ ret.i64 1
+no:
+ ret.i64 0
+}
+@export fn @i8_widen(i8 %x) -> i64 {
+entry:
+ %w = sext.i8.i64 %x
+ ret.i64 %w
+}
+@export fn @i32_widen(i32 %x) -> i64 {
+entry:
+ %w = sext.i32.i64 %x
+ ret.i64 %w
+}
+@extern fn @dirty_i8() -> i8 {
+entry:
+ ret.i8 0
+}
+@extern fn @dirty_u8() -> u8 {
+entry:
+ ret.u8 0
+}
+@extern fn @dirty_i16() -> i16 {
+entry:
+ ret.i16 0
+}
+@extern fn @dirty_i32() -> i32 {
+entry:
+ ret.i32 0
+}
+@export fn @call_dirty_i8() -> i64 {
+entry:
+ %r = call @dirty_i8()
+ %c = lt.i8 %r, 0
+ br %c, yes, no
+yes:
+ ret.i64 1
+no:
+ ret.i64 0
+}
+@export fn @call_dirty_u8() -> i64 {
+entry:
+ %r = call @dirty_u8()
+ %c = lt.u8 %r, 200
+ br %c, yes, no
+yes:
+ ret.i64 1
+no:
+ ret.i64 0
+}
+@export fn @call_dirty_i16() -> i64 {
+entry:
+ %r = call @dirty_i16()
+ %c = lt.i16 %r, 0
+ br %c, yes, no
+yes:
+ ret.i64 1
+no:
+ ret.i64 0
+}
+@export fn @call_dirty_i32() -> i64 {
+entry:
+ %r = call @dirty_i32()
+ %c = lt.i32 %r, 0
+ br %c, yes, no
+yes:
+ ret.i64 1
+no:
+ ret.i64 0
+}
+"#;
+
+    const CALLER: &str = r#"
+#include <stdio.h>
+__asm__(".text\n.globl dirty_i8\n.type dirty_i8,@function\ndirty_i8:\n movl $255, %eax\n ret\n");
+__asm__(".text\n.globl dirty_u8\n.type dirty_u8,@function\ndirty_u8:\n movl $255, %eax\n ret\n");
+__asm__(".text\n.globl dirty_i16\n.type dirty_i16,@function\ndirty_i16:\n movl $65535, %eax\n ret\n");
+__asm__(".text\n.globl dirty_i32\n.type dirty_i32,@function\ndirty_i32:\n movl $4294967295, %eax\n ret\n");
+extern long i8_is_negative(long);
+extern long i16_is_negative(long);
+extern long i32_is_negative(long);
+extern long seventh_i8(long, long, long, long, long, long, long);
+extern long u8_below_200(long);
+extern long i8_widen(long);
+extern long i32_widen(long);
+extern long call_dirty_i8(void);
+extern long call_dirty_u8(void);
+extern long call_dirty_i16(void);
+extern long call_dirty_i32(void);
+int main(void) {
+    printf("%ld %ld %ld\n", i8_is_negative(255), i8_is_negative(-1), i8_is_negative(256));
+    printf("%ld %ld %ld\n", i16_is_negative(65535), i16_is_negative(32767), i16_is_negative(65536));
+    printf("%ld %ld %ld\n", i32_is_negative(4294967295L), i32_is_negative(2147483647L), i32_is_negative(4294967296L));
+    printf("%ld %ld %ld\n", u8_below_200(255), u8_below_200(199), u8_below_200(455));
+    printf("%ld %ld\n", i8_widen(255), i32_widen(4294967295L));
+    printf("%ld\n", seventh_i8(0, 0, 0, 0, 0, 0, 255));
+    printf("%ld %ld %ld %ld\n", call_dirty_i8(), call_dirty_u8(), call_dirty_i16(), call_dirty_i32());
+    return 0;
+}
+"#;
+
+    const EXPECTED: &str = "1 1 0\n1 0 0\n1 0 0\n0 1 1\n-1 -1\n1\n1 0 1 1\n";
+
+    /// Names every `@export` function so the C caller can link against them.
+    const EXPORTS: &[&str] = &[
+        "i8_is_negative",
+        "i16_is_negative",
+        "i32_is_negative",
+        "seventh_i8",
+        "u8_below_200",
+        "i8_widen",
+        "i32_widen",
+        "call_dirty_i8",
+        "call_dirty_u8",
+        "call_dirty_i16",
+        "call_dirty_i32",
+    ];
+
+    #[test]
+    fn narrow_integers_cross_the_c_abi_in_both_directions() -> Result<(), Box<dyn Error>> {
+        if !tools_available(&["cc"]) {
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-c-abi-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let source = directory.join("narrow.lamina");
+        fs::write(&source, LAMINA)?;
+        let base = directory.join("narrow");
+        compile(&source, &base, &["--emit-asm"])?;
+        let mut assembly = fs::read_to_string(directory.join("narrow.s"))?;
+        for name in EXPORTS {
+            assembly.push_str(&format!(".globl {name}\n"));
+        }
+        let assembly_path = directory.join("narrow-linked.s");
+        fs::write(&assembly_path, assembly)?;
+        let caller = directory.join("caller.c");
+        fs::write(&caller, CALLER)?;
+        let executable = directory.join("narrow-c");
+        let linked = Command::new("cc")
+            .arg("-no-pie")
+            .arg(&caller)
+            .arg(&assembly_path)
+            .arg("-o")
+            .arg(&executable)
+            .output()?;
+        assert!(linked.status.success(), "link failed: {linked:?}");
+        let output = Command::new(&executable).output()?;
+        assert_eq!(String::from_utf8_lossy(&output.stdout), EXPECTED);
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
 }

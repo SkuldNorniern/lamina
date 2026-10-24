@@ -27,8 +27,10 @@ pub(super) fn emit_instruction_x86_64(
     def_regs: &BTreeSet<VirtualReg>,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
+    return_extensions: &ReturnExtensions,
     next_label: &str,
     self_param_homes: &[Option<String>],
+    param_extensions: &[Option<(usize, bool)>],
     entry_label: &str,
 ) -> Result<(), LaminaError> {
     if settings.emit_asm_debug_lines {
@@ -676,6 +678,13 @@ pub(super) fn emit_instruction_x86_64(
                 if let Some(ret_reg) = ret
                     && let Register::Virtual(vreg) = ret_reg
                 {
+                    if let Some(extension) = return_extensions.get(name) {
+                        emit_narrow_param_normalization(
+                            writer,
+                            &[Some(*extension)],
+                            &[Some("%rax".to_string())],
+                        )?;
+                    }
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
             }
@@ -797,6 +806,7 @@ pub(super) fn emit_instruction_x86_64(
                     pairs.push((source, home.clone().unwrap_or_default()));
                 }
                 emit_parallel_copy(&pairs, writer)?;
+                emit_narrow_param_normalization(writer, param_extensions, self_param_homes)?;
                 if entry_label != next_label {
                     writeln!(writer, "    jmp .L_{func_name}.{entry_label}")?;
                 }
