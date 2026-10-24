@@ -108,11 +108,12 @@ def load_expected_output(test_path):
     if not expected_path.exists():
         return None
 
+    if test_path.name == 'io_types.lamina':
+        with open(expected_path, 'rb') as f:
+            return f.read()
+
     with open(expected_path, 'rb') as f:
         text = f.read().decode('utf-8', errors='replace')
-
-    if test_path.name == 'io_types.lamina':
-        return printable_lines(text)
 
     expected_values = []
     for line in text.splitlines():
@@ -122,13 +123,25 @@ def load_expected_output(test_path):
 
     return expected_values
 
-def printable_lines(text):
-    lines = []
-    for line in text.split('\n'):
-        printable_line = ''.join(c for c in line if 32 <= ord(c) <= 126)
-        if printable_line.strip():
-            lines.append(printable_line.strip())
-    return lines
+def run_raw_output(executable_path, project_root):
+    """Run a binary whose stdout is compared byte for byte (writeptr writes raw memory)."""
+    try:
+        result = subprocess.run(
+            [executable_path],
+            capture_output=True,
+            cwd=project_root,
+            stdin=subprocess.DEVNULL,
+            timeout=60,
+        )
+    except Exception as e:
+        return False, f"Execution failed: {str(e)}"
+    if is_crash(result.returncode):
+        return False, execution_failure(
+            result.stdout.decode('utf-8', errors='replace'),
+            result.stderr.decode('utf-8', errors='replace'),
+            result.returncode,
+        )
+    return True, result.stdout
 
 def compile_and_run_test(test_path, use_mir=False):
     """Compile and run a test case, return the output lines"""
@@ -154,6 +167,9 @@ def compile_and_run_test(test_path, use_mir=False):
 
     if not success:
         return False, f"Compilation failed: {stderr}"
+
+    if test_path.name == 'io_types.lamina':
+        return run_raw_output(executable_path, project_root)
 
     stdin_input = stdin_inputs.get(test_path.name)
 
@@ -189,8 +205,6 @@ def compile_and_run_test(test_path, use_mir=False):
         output_lines = output_lines[results_start:]
     elif test_path.name == 'io_buffer.lamina' and len(output_lines) >= 3:
         output_lines = output_lines[-3:]
-    elif test_path.name == 'io_types.lamina':
-        output_lines = printable_lines(stdout)
 
     return True, output_lines
 
