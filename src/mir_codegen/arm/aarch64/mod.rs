@@ -8,8 +8,8 @@ mod util;
 
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::{
-    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, integer_conversion,
-    self_tail_arguments, self_tail_schedule,
+    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
+    integer_conversion, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::simd::reserve_vector_slots;
 
@@ -70,10 +70,6 @@ fn compile_single_function_aarch64(
     let mut output = Vec::new();
     let abi = AArch64ABI::new(target_os);
 
-    if let Some(globl) = abi.get_global_directive(func_name) {
-        writeln!(output, "{globl}")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    }
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{label}:")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
@@ -401,6 +397,7 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, ".extern {label}")?;
     }
+    emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
 
     for result in results {
         writer.write_all(&result.assembly)?;

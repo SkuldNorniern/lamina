@@ -155,6 +155,9 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
         if ir_func.annotations.contains(&FunctionAnnotation::Extern) {
             mir_module.mark_external(*func_name);
         }
+        if ir_func.annotations.contains(&FunctionAnnotation::Export) {
+            mir_module.mark_exported(*func_name);
+        }
 
         let mir_func = convert_function(func_name, ir_func, ir)?;
         mir_module.add_function(mir_func);

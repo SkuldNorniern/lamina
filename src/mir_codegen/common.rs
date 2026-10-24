@@ -469,6 +469,26 @@ where
     Ok(results)
 }
 
+/// Emit `.globl` for `main` and every exported function, leaving other functions local.
+pub fn emit_global_directives<W: Write>(
+    writer: &mut W,
+    module: &MirModule,
+    mangle: impl Fn(&str) -> String,
+) -> Result<(), LaminaError> {
+    let mut names: Vec<&str> = module
+        .exported_functions
+        .iter()
+        .map(String::as_str)
+        .chain(module.functions.contains_key("main").then_some("main"))
+        .collect();
+    names.sort_unstable();
+    names.dedup();
+    for name in names {
+        writeln!(writer, ".globl {}", mangle(name))?;
+    }
+    Ok(())
+}
+
 /// Helper to emit rodata section with format string for print intrinsics.
 pub fn emit_print_format_section<W: Write>(
     writer: &mut W,
@@ -1456,5 +1476,81 @@ mod backend_plan_tests {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod export_linkage_tests {
+    use crate::{
+        error::LaminaError,
+        mir::{Module as MirModule, codegen::from_ir},
+        mir_codegen::{
+            arm::aarch64::generate_mir_aarch64, arx64::generate_mir_arx64,
+            powerpc::powerpc64::generate_mir_ppc64, riscv::generate_mir_riscv,
+            x86_64::generate_mir_x86_64,
+        },
+        parser::parse_module,
+    };
+    use lamina_platform::TargetOperatingSystem;
+
+    const SOURCE: &str = r#"
+@export fn @answer() -> i64 {
+entry:
+ ret.i64 42
+}
+fn @helper() -> i64 {
+entry:
+ ret.i64 7
+}
+fn @main() -> i64 {
+entry:
+ %a = call @answer()
+ %b = call @helper()
+ %c = add.i64 %a, %b
+ ret.i64 %c
+}
+"#;
+
+    type Emitter = fn(&MirModule, &mut Vec<u8>, TargetOperatingSystem) -> Result<(), LaminaError>;
+
+    #[test]
+    fn only_exported_functions_and_main_are_global() {
+        let ir = parse_module(SOURCE).expect("parse export module");
+        let mir = from_ir(&ir, "exports").expect("lower export module");
+        let emitters: [(&str, Emitter, TargetOperatingSystem); 5] = [
+            (
+                "x86_64",
+                generate_mir_x86_64::<Vec<u8>>,
+                TargetOperatingSystem::Linux,
+            ),
+            (
+                "aarch64",
+                generate_mir_aarch64::<Vec<u8>>,
+                TargetOperatingSystem::Linux,
+            ),
+            (
+                "riscv",
+                generate_mir_riscv::<Vec<u8>>,
+                TargetOperatingSystem::Linux,
+            ),
+            (
+                "ppc64",
+                generate_mir_ppc64::<Vec<u8>>,
+                TargetOperatingSystem::Linux,
+            ),
+            (
+                "arx64",
+                generate_mir_arx64::<Vec<u8>>,
+                TargetOperatingSystem::Unknown,
+            ),
+        ];
+        for (name, emit, os) in emitters {
+            let mut output = Vec::new();
+            emit(&mir, &mut output, os).expect("emit module");
+            let text = String::from_utf8(output).expect("utf8 assembly");
+            assert!(text.contains(".globl answer\n"), "{name}: {text}");
+            assert!(text.contains(".globl main\n"), "{name}: {text}");
+            assert!(!text.contains(".globl helper\n"), "{name}: {text}");
+        }
     }
 }

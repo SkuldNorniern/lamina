@@ -6,7 +6,8 @@
 //! Unsupported MIR ops fail loudly instead of being silently lowered wrong.
 
 use crate::mir_codegen::common::{
-    CopyLocation, integer_conversion, self_tail_arguments, self_tail_schedule,
+    CopyLocation, emit_global_directives, integer_conversion, self_tail_arguments,
+    self_tail_schedule,
 };
 
 use std::{
@@ -66,6 +67,7 @@ pub fn generate_mir_arx64_with_units_and_settings<W: Write>(
     validate_module_call_parameters(module, TargetArchitecture::Arx64)?;
 
     writeln!(writer, ".section .text").map_err(io_error)?;
+    emit_global_directives(writer, module, str::to_string)?;
     let mut functions: Vec<_> = module
         .functions
         .iter()
@@ -84,7 +86,6 @@ fn emit_function<W: Write>(name: &str, func: &Function, writer: &mut W) -> Resul
     let mut stack = StackLayout::new(func);
     let frame_size = align_to(stack.bytes + 16, 16);
 
-    writeln!(writer, ".globl {name}").map_err(io_error)?;
     writeln!(writer, "{name}:").map_err(io_error)?;
     emit_addi(writer, SP, SP, -(frame_size as i64))?;
     emit_store(writer, "sd", RA, frame_size as i64 - 8, SP)?;
