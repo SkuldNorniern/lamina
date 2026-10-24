@@ -955,6 +955,53 @@ fn convert_instruction<'a>(
                 src,
             }])
         }
+        IRInst::IntToFloat {
+            result,
+            signed,
+            source_type,
+            target_type,
+            value,
+        } => {
+            let from = map_ir_prim(*source_type)?;
+            let to = map_ir_prim(*target_type)?;
+            let dst = match var_to_reg.get(result) {
+                Some(existing) => existing.clone(),
+                None => {
+                    let fresh = Register::Virtual(vreg_alloc.allocate_fpr());
+                    var_to_reg.insert(result, fresh.clone());
+                    fresh
+                }
+            };
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            normalize_lowered_literal(&mut src, from);
+            Ok(vec![Instruction::IntToFloat {
+                from,
+                to,
+                signed: *signed,
+                dst,
+                src,
+            }])
+        }
+        IRInst::FloatToInt {
+            result,
+            signed,
+            source_type,
+            target_type,
+            value,
+        } => {
+            let from = map_ir_prim(*source_type)?;
+            let to = map_ir_prim(*target_type)?;
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            normalize_lowered_literal(&mut src, from);
+            Ok(vec![Instruction::FloatToInt {
+                from,
+                to,
+                signed: *signed,
+                dst,
+                src,
+            }])
+        }
         IRInst::Bitcast {
             result,
             source_type,
