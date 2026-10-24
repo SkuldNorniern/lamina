@@ -1588,6 +1588,7 @@ fn emit_narrow_param_extension(
         MirType::Scalar(ScalarType::I8) => "sxtb",
         MirType::Scalar(ScalarType::I16) => "sxth",
         MirType::Scalar(ScalarType::I32) => "sxtw",
+        MirType::Scalar(ScalarType::I1) => "uxtb",
         _ => return Ok(()),
     };
     writeln!(w, "    {instruction} {xreg}, {}", w_alias(xreg))?;
