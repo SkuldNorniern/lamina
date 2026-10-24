@@ -1240,6 +1240,32 @@ mod tests {
     }
 
     #[test]
+    fn narrow_parameters_are_sign_extended_on_entry() {
+        for (ty, extend) in [
+            (MirType::Scalar(ScalarType::I8), "extsb 3, 3"),
+            (MirType::Scalar(ScalarType::I16), "extsh 3, 3"),
+            (MirType::Scalar(ScalarType::I32), "extsw 3, 3"),
+        ] {
+            let reg = Register::Virtual(VirtualReg::gpr(0));
+            let mut module = MirModule::new("narrow_entry");
+            module.add_function(
+                FunctionBuilder::new("narrow")
+                    .param(reg.clone(), ty)
+                    .returns(ty)
+                    .block("entry")
+                    .instr(MirInst::Ret {
+                        value: Some(Operand::Register(reg)),
+                    })
+                    .build(),
+            );
+            let mut output = Vec::new();
+            generate_mir_ppc64(&module, &mut output, TargetOperatingSystem::Linux).unwrap();
+            let s = String::from_utf8(output).unwrap();
+            assert!(s.contains(&format!("    {extend}\n    std 3, ")), "{s}");
+        }
+    }
+
+    #[test]
     fn float_memory_transfers_use_fpr_bits() {
         for (ty, load, store) in [
             (MirType::Scalar(ScalarType::F32), "lfs", "stfs"),
