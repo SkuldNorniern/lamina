@@ -1059,12 +1059,17 @@ pub unsafe extern "C" fn lia_builder_write_ptr(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ptr: *const LaminaValue,
+    width: usize,
 ) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         let b = require_mut!(builder, "builder");
         let r = require_str!(result, "result");
         let p = require_ref!(ptr, "ptr");
-        b.0.write_ptr(r, &p.0);
+        if !matches!(width, 1 | 2 | 4 | 8) {
+            set_error("write_ptr width must be 1, 2, 4 or 8 bytes");
+            return LaminaStatus::ErrorInvalidArgument;
+        }
+        b.0.write_ptr(r, &p.0, width as u64);
         clear_error();
         LaminaStatus::Ok
     }))

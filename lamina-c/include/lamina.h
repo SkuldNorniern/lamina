@@ -181,7 +181,7 @@ lia_status_t lia_builder_write_byte(lia_builder_t *b, const char *result,
     const lia_value_t *val);
 lia_status_t lia_builder_read_byte(lia_builder_t *b, const char *result);
 lia_status_t lia_builder_write_ptr(lia_builder_t *b, const char *result,
-    const lia_value_t *ptr);
+    const lia_value_t *ptr, size_t width);
 lia_status_t lia_builder_print(lia_builder_t *b, const lia_value_t *value);
 
 lia_status_t lia_module_emit_ir(const lia_module_t *m, lia_buffer_t *out);

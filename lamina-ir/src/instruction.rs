@@ -772,9 +772,9 @@ pub enum Instruction<'a> {
     WritePtr {
         ptr: Value<'a>,         // Pointer to the bytes to write to output
         result: Identifier<'a>, // Result (bytes written on success, -1 on error)
-        /// Size in bytes of the pointee. `None` when the pointee type is not known from
-        /// the pointer's defining instruction; lowering then rejects the instruction.
-        /// Set by the parser's pointee pass; the text syntax carries no type.
+        /// Size in bytes of the pointee. `None` when neither the text syntax
+        /// (`writeptr.i32`) nor the builder states it and the pointee type is not known
+        /// from the pointer's defining instruction; lowering then rejects the instruction.
         pointee_size: Option<u64>,
     },
 
@@ -1064,6 +1064,17 @@ impl<'a> Instruction<'a> {
     }
 }
 
+/// Text-syntax suffix (`writeptr.i32`) naming a pointee width in bytes.
+pub(crate) fn writeptr_width_suffix(width: u64) -> Option<&'static str> {
+    match width {
+        1 => Some("i8"),
+        2 => Some("i16"),
+        4 => Some("i32"),
+        8 => Some("i64"),
+        _ => None,
+    }
+}
+
 impl fmt::Display for Instruction<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -1340,7 +1351,14 @@ impl fmt::Display for Instruction<'_> {
                 write!(f, "%{result} = writebyte {value}")
             }
             Instruction::ReadByte { result } => write!(f, "%{result} = readbyte"),
-            Instruction::WritePtr { ptr, result, .. } => write!(f, "%{result} = writeptr {ptr}"),
+            Instruction::WritePtr {
+                ptr,
+                result,
+                pointee_size,
+            } => match pointee_size.and_then(writeptr_width_suffix) {
+                Some(suffix) => write!(f, "%{result} = writeptr.{suffix} {ptr}"),
+                None => write!(f, "%{result} = writeptr {ptr}"),
+            },
             Instruction::Print { value } => write!(f, "print {value}"),
         }
     }
