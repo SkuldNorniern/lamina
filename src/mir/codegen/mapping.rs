@@ -34,7 +34,6 @@ pub fn signedness_of(ty: &IRType<'_>) -> Signedness {
             | IRPrim::U32
             | IRPrim::U64
             | IRPrim::Bool
-            | IRPrim::Char
             | IRPrim::Ptr,
         ) => Signedness::Unsigned,
         _ => Signedness::Signed,
