@@ -24,6 +24,15 @@ impl Transform for LoopUnrolling {
         TransformLevel::Experimental
     }
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
+        let original = if func.blocks.iter().any(|b| matches!(b.instructions.last(), Some(Instruction::TailCall { name, .. }) if name == &func.sig.name)) {
+            let saved = func.clone();
+            if !materialize_tail_loop(func) { return Ok(false); }
+            if !LoopInvariantCodeMotion.find_loops(func).iter().any(|info| analyze(func, info).is_some()) {
+                *func = saved;
+                return Ok(false);
+            }
+            Some(saved)
+        } else { None };
         let mut changed = false;
         for _ in 0..16 {
             let candidate = LoopInvariantCodeMotion
@@ -31,7 +40,19 @@ impl Transform for LoopUnrolling {
                 .iter()
                 .find_map(|info| analyze(func, info));
             let Some(shape) = candidate else {
-                break;
+                let loops = LoopInvariantCodeMotion.find_loops(func);
+                let guarded = loops
+                    .iter()
+                    .find(|info| guarded_candidate(func, info, &loops));
+                let Some(info) = guarded else {
+                    break;
+                };
+                let Some(mut next) = register_base(func) else {
+                    break;
+                };
+                clone_guarded(func, info, 4, &mut next);
+                changed = true;
+                continue;
             };
             let count = constant_trip_count(func, &shape);
             if let Some(count) =
@@ -49,7 +70,7 @@ impl Transform for LoopUnrolling {
             }
             changed = true;
         }
-        Ok(changed)
+        Ok(changed || original.is_some())
     }
 }
 
@@ -61,6 +82,7 @@ struct Shape {
     end: Operand,
     inclusive: bool,
     entry: String,
+    live_out: HashSet<Register>,
 }
 
 fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
@@ -88,7 +110,12 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
     else {
         return None;
     };
-    if cond != dst || iv == dst {
+    if cond != dst
+        || iv == dst
+        || func.blocks.iter().any(|b| {
+            b.label != info.header && b.instructions.iter().any(|i| i.use_regs().contains(&dst))
+        })
+    {
         return None;
     }
     let (first, inclusive) = match op {
@@ -158,19 +185,33 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
             return None;
         }
     }
-    let updates: Vec<_> = body.iter().filter(|i| i.def_reg() == Some(iv)).collect();
-    let [
-        Instruction::IntBinary {
-            op: IntBinOp::Add,
-            lhs: Operand::Register(src),
-            rhs,
-            ..
-        },
-    ] = updates.as_slice()
-    else {
-        return None;
-    };
-    if src != iv || rhs.integer_constant() != Some(1) {
+    let mut offsets = HashMap::from([(iv.clone(), 0_i64)]);
+    for i in &body {
+        let offset = match i {
+            Instruction::Copy {
+                src: Operand::Register(src),
+                ..
+            } => offsets.get(src).copied(),
+            Instruction::IntBinary {
+                op: IntBinOp::Add,
+                lhs: Operand::Register(src),
+                rhs,
+                ..
+            } => offsets
+                .get(src)
+                .copied()
+                .zip(rhs.integer_constant())
+                .and_then(|(x, y)| x.checked_add(y)),
+            _ => None,
+        };
+        if let Some(dst) = i.def_reg() {
+            offsets.remove(dst);
+            if let Some(offset) = offset {
+                offsets.insert(dst.clone(), offset);
+            }
+        }
+    }
+    if offsets.get(iv) != Some(&1) {
         return None;
     }
     if body.iter().any(|i| {
@@ -178,6 +219,26 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
     }) {
         return None;
     }
+    let mut live_out: HashSet<Register> = func
+        .blocks
+        .iter()
+        .filter(|b| !labels.contains(&b.label) || b.label == info.header)
+        .flat_map(|b| &b.instructions)
+        .flat_map(Instruction::use_regs)
+        .cloned()
+        .collect();
+    let mut defined = HashSet::new();
+    for i in &body {
+        for r in i.use_regs() {
+            if !defined.contains(r) {
+                live_out.insert(r.clone());
+            }
+        }
+        if let Some(r) = i.def_reg() {
+            defined.insert(r.clone());
+        }
+    }
+    live_out.retain(|r| defined.contains(r));
     Some(Shape {
         header: info.header.clone(),
         body,
@@ -186,7 +247,237 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
         end: end.clone(),
         inclusive,
         entry: entry.label.clone(),
+        live_out,
     })
+}
+
+fn guarded_candidate(func: &Function, info: &LoopInfo, loops: &[LoopInfo]) -> bool {
+    if info.header.starts_with("__unroll_")
+        || info.blocks.len() > 8
+        || loops
+            .iter()
+            .any(|other| other.header != info.header && info.blocks.contains(&other.header))
+    {
+        return false;
+    }
+    let mut size = 0;
+    let mut exits = 0;
+    for b in &func.blocks {
+        if info.blocks.contains(&b.label) {
+            size += b.instructions.len();
+            for i in &b.instructions {
+                if !matches!(
+                    i,
+                    Instruction::IntBinary {
+                        ty: MirType::Scalar(ScalarType::I64),
+                        ..
+                    } | Instruction::IntCmp {
+                        ty: MirType::Scalar(ScalarType::I64),
+                        ..
+                    } | Instruction::Copy {
+                        ty: MirType::Scalar(ScalarType::I64),
+                        ..
+                    } | Instruction::Jmp { .. }
+                        | Instruction::Br { .. }
+                ) {
+                    return false;
+                }
+                if i.def_reg()
+                    .into_iter()
+                    .chain(i.use_regs())
+                    .any(|r| !r.is_virtual())
+                {
+                    return false;
+                }
+            }
+            exits += b
+                .successors()
+                .iter()
+                .filter(|target| !info.blocks.contains(**target))
+                .count();
+        } else if b.label.starts_with("__unroll_") && b.successors().contains(&info.header.as_str())
+        {
+            return false;
+        } else if b
+            .successors()
+            .iter()
+            .any(|target| **target != info.header && info.blocks.contains(*target))
+        {
+            return false;
+        }
+    }
+    exits >= 2 && size <= 24
+}
+
+fn clone_guarded(func: &mut Function, info: &LoopInfo, factor: usize, next: &mut u32) {
+    let mut prefix = format!("__unroll_guard_{}", info.header);
+    while func.blocks.iter().any(|b| b.label.starts_with(&prefix)) {
+        prefix.push('_');
+    }
+    let label = |name: &str, copy: usize| format!("{prefix}_{copy}_{name}");
+    let mut local = HashSet::new();
+    for b in func
+        .blocks
+        .iter()
+        .filter(|b| info.blocks.contains(&b.label))
+    {
+        for (index, i) in b.instructions.iter().enumerate() {
+            if let Some(dst) = i.def_reg() {
+                if func.sig.params.iter().any(|p| &p.reg == dst) {
+                    continue;
+                }
+                let unique = func
+                    .blocks
+                    .iter()
+                    .flat_map(|b| &b.instructions)
+                    .filter(|i| i.def_reg() == Some(dst))
+                    .count()
+                    == 1;
+                let local_uses = func.blocks.iter().all(|other| {
+                    other.instructions.iter().enumerate().all(|(at, i)| {
+                        !i.use_regs().contains(&dst) || (other.label == b.label && at > index)
+                    })
+                });
+                if unique && local_uses {
+                    local.insert(dst.clone());
+                }
+            }
+        }
+    }
+    let originals: Vec<_> = func
+        .blocks
+        .iter()
+        .filter(|b| info.blocks.contains(&b.label))
+        .cloned()
+        .collect();
+    let mut copies = Vec::new();
+    for copy in 0..factor {
+        let mut renamed = HashMap::new();
+        for b in &originals {
+            for dst in b.instructions.iter().filter_map(Instruction::def_reg) {
+                if local.contains(dst) {
+                    renamed.insert(dst.clone(), fresh(next));
+                }
+            }
+        }
+        for b in &originals {
+            let mut block = b.clone();
+            block.label = label(&b.label, copy);
+            for i in &mut block.instructions {
+                super::inline::ModuleInlining::map_registers(i, &mut |r| {
+                    renamed.get(r).cloned().unwrap_or_else(|| r.clone())
+                });
+                let target = |name: &mut String| {
+                    if *name == info.header {
+                        *name = label(name, (copy + 1) % factor);
+                    } else if info.blocks.contains(name) {
+                        *name = label(name, copy);
+                    }
+                };
+                match i {
+                    Instruction::Jmp { target: name } => target(name),
+                    Instruction::Br {
+                        true_target,
+                        false_target,
+                        ..
+                    } => {
+                        target(true_target);
+                        target(false_target);
+                    }
+                    _ => {}
+                }
+            }
+            copies.push(block);
+        }
+    }
+    for b in &mut func.blocks {
+        if info.blocks.contains(&b.label) {
+            continue;
+        }
+        for i in &mut b.instructions {
+            match i {
+                Instruction::Jmp { target } if *target == info.header => {
+                    *target = label(&info.header, 0)
+                }
+                Instruction::Br {
+                    true_target,
+                    false_target,
+                    ..
+                } => {
+                    if *true_target == info.header {
+                        *true_target = label(&info.header, 0);
+                    }
+                    if *false_target == info.header {
+                        *false_target = label(&info.header, 0);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    if func.entry == info.header {
+        func.entry = label(&info.header, 0);
+    }
+    func.blocks.retain(|b| !info.blocks.contains(&b.label));
+    func.blocks.extend(copies);
+}
+
+fn materialize_tail_loop(func: &mut Function) -> bool {
+    if func
+        .sig
+        .params
+        .iter()
+        .any(|p| p.ty != MirType::Scalar(ScalarType::I64))
+    {
+        return false;
+    }
+    let Some(mut next) = register_base(func) else {
+        return false;
+    };
+    let entry = func.entry.clone();
+    let mut pre = format!("{}_unroll_entry", entry);
+    while func.blocks.iter().any(|b| b.label == pre) {
+        pre.push('_');
+    }
+    for block in &mut func.blocks {
+        let Some(Instruction::TailCall { name, args }) = block.instructions.last() else {
+            continue;
+        };
+        if name != &func.sig.name || args.len() != func.sig.params.len() {
+            continue;
+        }
+        let mut snapshots = Vec::new();
+        let mut assignments = Vec::new();
+        for (param, arg) in func.sig.params.iter().zip(args) {
+            if arg.as_register() == Some(&param.reg) {
+                continue;
+            }
+            let saved = fresh(&mut next);
+            snapshots.push(Instruction::Copy {
+                ty: param.ty,
+                dst: saved.clone(),
+                src: arg.clone(),
+            });
+            assignments.push(Instruction::Copy {
+                ty: param.ty,
+                dst: param.reg.clone(),
+                src: saved.into(),
+            });
+        }
+        block.instructions.pop();
+        block.instructions.extend(snapshots);
+        block.instructions.extend(assignments);
+        block.instructions.push(jump(&entry));
+    }
+    func.blocks.insert(
+        0,
+        Block {
+            label: pre.clone(),
+            instructions: vec![jump(&entry)],
+        },
+    );
+    func.entry = pre;
+    true
 }
 
 fn register_base(func: &Function) -> Option<u32> {
@@ -259,13 +550,27 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
     let probody = label("probody");
     let maincheck = label("maincheck");
     let mainbody = label("mainbody");
+    let oddcheck = label("oddcheck");
+    let oddbody = label("oddbody");
     let trip = fresh(next);
     let remainder = fresh(next);
     let flag = fresh(next);
+    let guard_flag = fresh(next);
+    let pro_flag = fresh(next);
+    let main_flag = fresh(next);
+    let odd_flag = fresh(next);
+    let pro_back = fresh(next);
+    let main_back = fresh(next);
     let mut guard = func
         .get_block(&shape.header)
         .map(|b| b.instructions.clone())
         .unwrap_or_default();
+    if let Some(Instruction::IntCmp { dst, .. }) = guard.first_mut() {
+        *dst = guard_flag.clone();
+    }
+    if let Some(Instruction::Br { cond, .. }) = guard.last_mut() {
+        *cond = guard_flag;
+    }
     if let Some(Instruction::Br {
         true_target,
         false_target,
@@ -352,21 +657,32 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
     add_block(
         procheck.clone(),
         vec![
-            compare(IntCmpOp::Ne, &flag, remainder.clone().into(), imm(0)),
-            branch(&flag, &probody, &maincheck),
+            compare(IntCmpOp::UGe, &pro_flag, remainder.clone().into(), imm(2)),
+            branch(&pro_flag, &probody, &oddcheck),
         ],
     );
-    let mut code = renamed_body(shape, 1, next);
+    let mut code = renamed_body(shape, 2, next);
     code.extend([
-        binary(IntBinOp::Sub, &remainder, remainder.clone().into(), imm(1)),
-        jump(&procheck),
+        binary(IntBinOp::Sub, &remainder, remainder.clone().into(), imm(2)),
+        compare(IntCmpOp::UGe, &pro_back, remainder.clone().into(), imm(2)),
+        branch(&pro_back, &probody, &oddcheck),
     ]);
     add_block(probody, code);
     add_block(
+        oddcheck,
+        vec![
+            compare(IntCmpOp::Ne, &odd_flag, remainder.clone().into(), imm(0)),
+            branch(&odd_flag, &oddbody, &maincheck),
+        ],
+    );
+    let mut odd = renamed_body(shape, 1, next);
+    odd.push(jump(&maincheck));
+    add_block(oddbody, odd);
+    add_block(
         maincheck.clone(),
         vec![
-            compare(IntCmpOp::Ne, &flag, trip.clone().into(), imm(0)),
-            branch(&flag, &mainbody, &shape.header),
+            compare(IntCmpOp::Ne, &main_flag, trip.clone().into(), imm(0)),
+            branch(&main_flag, &mainbody, &shape.header),
         ],
     );
     let mut code = renamed_body(shape, factor, next);
@@ -377,7 +693,8 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
             trip.clone().into(),
             imm(factor as i64),
         ),
-        jump(&maincheck),
+        compare(IntCmpOp::Ne, &main_back, trip.clone().into(), imm(0)),
+        branch(&main_back, &mainbody, &shape.header),
     ]);
     add_block(mainbody, code);
 }
@@ -385,6 +702,7 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
 fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction> {
     let first_fresh = *next;
     let mut values: HashMap<Register, Operand> = HashMap::new();
+    let mut affine: HashMap<Register, (Operand, i64)> = HashMap::new();
     let mut definitions = Vec::new();
     let mut code = Vec::new();
     let only_increment = shape
@@ -408,11 +726,19 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction>
                     .cloned()
                     .unwrap_or_else(|| o.clone())
             };
-            let (op, lhs, rhs) = match i {
+            let (op, mut lhs, mut rhs) = match i {
                 Instruction::IntBinary { op, lhs, rhs, .. } => (*op, resolve(lhs), resolve(rhs)),
                 Instruction::Copy { src, .. } => (IntBinOp::Add, resolve(src), imm(0)),
                 _ => continue,
             };
+            if op == IntBinOp::Add {
+                if let Some((base, offset)) = lhs.as_register().and_then(|r| affine.get(r)) {
+                    if let Some(n) = rhs.integer_constant() {
+                        rhs = imm(n.wrapping_add(*offset));
+                        lhs = base.clone();
+                    }
+                }
+            }
             if matches!(
                 op,
                 IntBinOp::Add | IntBinOp::Sub | IntBinOp::Or | IntBinOp::Xor
@@ -421,6 +747,11 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction>
                 values.insert(dst.clone(), lhs);
             } else {
                 let result = fresh(next);
+                if op == IntBinOp::Add {
+                    if let Some(n) = rhs.integer_constant() {
+                        affine.insert(result.clone(), (lhs.clone(), n));
+                    }
+                }
                 code.push(binary(op, &result, lhs, rhs));
                 values.insert(dst.clone(), result.into());
             }
@@ -438,6 +769,9 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction>
     }
     let mut copies = Vec::new();
     for dst in definitions {
+        if !shape.live_out.contains(&dst) {
+            continue;
+        }
         if let Some(mut src) = values.remove(&dst) {
             if let Operand::Register(r) = &src {
                 if !matches!(r, Register::Virtual(v) if v.id >= first_fresh) {
@@ -458,7 +792,99 @@ fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction>
         }
     }
     code.extend(copies);
+    let mut live = shape.live_out.clone();
+    code = code
+        .into_iter()
+        .rev()
+        .filter(|i| {
+            let needed = i.may_trap_integer() || i.def_reg().is_none_or(|r| live.contains(r));
+            if needed {
+                if let Some(r) = i.def_reg() {
+                    live.remove(r);
+                }
+                live.extend(i.use_regs().into_iter().cloned());
+            }
+            needed
+        })
+        .collect();
+    code.reverse();
+    coalesce_region(&mut code, &shape.live_out, first_fresh);
     code
+}
+
+fn coalesce_region(code: &mut Vec<Instruction>, live_out: &HashSet<Register>, first_fresh: u32) {
+    let mut live = live_out.clone();
+    let mut edges: HashSet<(Register, Register)> = HashSet::new();
+    let mut candidates = Vec::new();
+    let mut registers = HashSet::new();
+    for i in code.iter().rev() {
+        if let Some(dst) = i.def_reg() {
+            registers.insert(dst.clone());
+            let copy = match i {
+                Instruction::Copy {
+                    src: Operand::Register(src),
+                    ..
+                } => Some(src),
+                _ => None,
+            };
+            for r in &live {
+                if r != dst && Some(r) != copy {
+                    edges.insert((dst.clone(), r.clone()));
+                    edges.insert((r.clone(), dst.clone()));
+                }
+            }
+            live.remove(dst);
+            if let Some(src) = copy {
+                candidates.push((dst.clone(), src.clone()));
+            }
+        }
+        for r in i.use_regs() {
+            registers.insert(r.clone());
+            live.insert(r.clone());
+        }
+    }
+    for i in code.iter() {
+        if let Instruction::IntBinary {
+            dst,
+            lhs: Operand::Register(src),
+            ..
+        } = i
+        {
+            candidates.push((src.clone(), dst.clone()));
+        }
+    }
+    let mut groups: HashMap<Register, Register> =
+        registers.into_iter().map(|r| (r.clone(), r)).collect();
+    for (a, b) in candidates {
+        let (Some(a), Some(b)) = (groups.get(&a).cloned(), groups.get(&b).cloned()) else {
+            continue;
+        };
+        if a == b
+            || edges
+                .iter()
+                .any(|(x, y)| groups.get(x) == Some(&a) && groups.get(y) == Some(&b))
+        {
+            continue;
+        }
+        let canonical = |r: &Register| matches!(r, Register::Virtual(v) if v.id < first_fresh);
+        if canonical(&a) && canonical(&b) {
+            continue;
+        }
+        let (keep, remove) = if canonical(&b) { (&b, &a) } else { (&a, &b) };
+        for group in groups.values_mut() {
+            if group == remove {
+                *group = keep.clone();
+            }
+        }
+    }
+    for i in code.iter_mut() {
+        super::inline::ModuleInlining::map_registers(i, &mut |r| {
+            groups.get(r).cloned().unwrap_or_else(|| r.clone())
+        });
+    }
+    code.retain(
+        |i| !matches!(i, Instruction::Copy { dst, src: Operand::Register(src), .. } if dst == src),
+    );
 }
 
 fn full_unroll(func: &mut Function, shape: &Shape, count: u64, next: &mut u32) {
@@ -557,6 +983,81 @@ ret.i64 %b
     }
 
     #[test]
+    fn guarded_copies_preserve_early_exits_in_every_position() {
+        let source = "fn @f(i64 %n) -> i64 {
+entry:
+%d = add.i64 3, 0
+jmp test
+test:
+%sq = mul.i64 %d, %d
+%done = gt.i64 %sq, %n
+br %done, prime, body
+body:
+%r = rem.i64 %n, %d
+%div = eq.i64 %r, 0
+br %div, composite, next
+next:
+%d = add.i64 %d, 2
+jmp test
+prime:
+ret.i64 %d
+composite:
+ret.i64 0
+}";
+        let original = from_ir(&parse_module(source).unwrap(), "guarded")
+            .unwrap()
+            .functions
+            .remove("f")
+            .unwrap();
+        let mut func = original.clone();
+        assert!(LoopUnrolling.apply(&mut func).unwrap());
+        assert!(!LoopUnrolling.apply(&mut func).unwrap());
+        crate::mir::verify::verify_function_in_pipeline(&func).unwrap();
+        for n in -4..240 {
+            assert_eq!(
+                crate::runtime::executor::interpret_mir_function(&func, &[n]).unwrap(),
+                crate::runtime::executor::interpret_mir_function(&original, &[n]).unwrap(),
+                "{n}"
+            );
+        }
+    }
+
+    #[test]
+    fn tail_recursion_preserves_parallel_argument_rotation() {
+        let source = "fn @f(i64 %n, i64 %a, i64 %b, i64 %i) -> i64 {
+entry:
+%c = gt.i64 %i, %n
+br %c, exit, body
+body:
+%t = add.i64 %a, %b
+%j = add.i64 %i, 1
+%r = call @f(%n, %b, %t, %j)
+ret.i64 %r
+exit:
+ret.i64 %b
+}";
+        let mut func = from_ir(&parse_module(source).unwrap(), "tail")
+            .unwrap()
+            .functions
+            .remove("f")
+            .unwrap();
+        super::super::TailCallOptimization.apply(&mut func).unwrap();
+        assert!(LoopUnrolling.apply(&mut func).unwrap());
+        crate::mir::verify::verify_function_in_pipeline(&func).unwrap();
+        for trips in 0..=33 {
+            let (mut a, mut b) = (7_i64, 11_i64);
+            for _ in 0..trips {
+                (a, b) = (b, a.wrapping_add(b));
+            }
+            assert_eq!(
+                crate::runtime::executor::interpret_mir_function(&func, &[trips - 1, 7, 11, 0])
+                    .unwrap(),
+                Some(b)
+            );
+        }
+    }
+
+    #[test]
     fn renaming_removes_rotation_copies_between_iterations() {
         let func = counting(0, "%n", "lt");
         let shape = analyze(&func, &LoopInvariantCodeMotion.find_loops(&func)[0]).unwrap();
@@ -576,8 +1077,9 @@ ret.i64 %b
         )));
         let mut values = HashSet::new();
         for i in &body[..8] {
-            assert!(values.insert(i.def_reg().unwrap()));
+            values.insert(i.def_reg().unwrap());
         }
+        assert_eq!(values.len(), 2);
     }
 
     #[test]
