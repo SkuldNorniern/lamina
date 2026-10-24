@@ -81,6 +81,7 @@ pub(super) fn compile_single_function_x86_64(
     func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
+    return_extensions: &ReturnExtensions,
 ) -> Result<Vec<u8>, CodegenError> {
     let reserved = simd::reserve_vector_slots(func);
     let func = reserved.as_ref().unwrap_or(func);
@@ -300,6 +301,14 @@ pub(super) fn compile_single_function_x86_64(
         })
         .collect();
 
+    let param_extensions: Vec<Option<(usize, bool)>> = func
+        .sig
+        .params
+        .iter()
+        .map(|param| narrow_param_extension(&param.ty))
+        .collect();
+    emit_narrow_param_normalization(&mut output, &param_extensions, &self_param_homes)?;
+
     let plan = FunctionEmissionPlan::new(func);
     let layout = &plan.order;
     let rotations = &plan.rotations;
@@ -412,8 +421,10 @@ pub(super) fn compile_single_function_x86_64(
                 &def_regs,
                 settings,
                 &mut debug_line,
+                return_extensions,
                 next_label,
                 &self_param_homes,
+                &param_extensions,
                 &func.entry,
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -441,6 +452,61 @@ pub(super) fn ensure_type_supported(ty: &MirType, context: &str) -> Result<(), L
         return Err(LaminaError::ValidationError(format!(
             "x86_64 backend does not support {context} (type {ty})"
         )));
+    }
+    Ok(())
+}
+
+/// Width and signedness of a narrow integer parameter. The ABI leaves the bits above
+/// the declared width unspecified, so the callee rebuilds the canonical 64-bit form
+/// that the rest of the function assumes: sign-extended for signed types, zero-extended
+/// for `i1`, which only ever holds 0 or 1.
+pub(super) type NarrowExtension = (usize, bool);
+
+/// Declared return extension of every function in the module that returns a narrow integer.
+pub(super) type ReturnExtensions = HashMap<String, NarrowExtension>;
+
+pub(super) fn narrow_param_extension(ty: &MirType) -> Option<NarrowExtension> {
+    match ty {
+        MirType::Scalar(ScalarType::I1) => Some((1, false)),
+        MirType::Scalar(ScalarType::I8) => Some((1, true)),
+        MirType::Scalar(ScalarType::I16) => Some((2, true)),
+        MirType::Scalar(ScalarType::I32) => Some((4, true)),
+        _ => None,
+    }
+}
+
+/// Rewrite each narrow parameter home in place to its canonical 64-bit form.
+pub(super) fn emit_narrow_param_normalization<W: Write>(
+    writer: &mut W,
+    extensions: &[Option<(usize, bool)>],
+    homes: &[Option<String>],
+) -> Result<(), CodegenError> {
+    let io_error = |e: Error| CodegenError::InvalidCodegenOptions(format!("IO error: {e}"));
+    for (extension, home) in extensions.iter().zip(homes) {
+        let (Some((width, signed)), Some(home)) = (extension, home) else {
+            continue;
+        };
+        let insn = match (width, signed) {
+            (1, false) => "movzbl",
+            (1, true) => "movsbq",
+            (2, _) => "movswq",
+            _ => "movslq",
+        };
+        if let Some(reg) = home.strip_prefix('%') {
+            let source = register_for_size(reg, *width).ok_or_else(|| {
+                CodegenError::InvalidCodegenOptions(format!("no alias for register {reg}"))
+            })?;
+            let dest = if insn == "movzbl" {
+                register_for_size(reg, 4).unwrap_or_else(|| reg.to_string())
+            } else {
+                reg.to_string()
+            };
+            writeln!(writer, "    {insn} %{source}, %{dest}").map_err(io_error)?;
+        } else {
+            let dest = if insn == "movzbl" { "eax" } else { "rax" };
+            writeln!(writer, "    {insn} {home}, %{dest}").map_err(io_error)?;
+            writeln!(writer, "    movq %rax, {home}").map_err(io_error)?;
+        }
     }
     Ok(())
 }
