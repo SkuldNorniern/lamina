@@ -575,3 +575,81 @@ int main(void) {
         Ok(())
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod debug_line_tests {
+    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use std::{
+        env,
+        error::Error,
+        fs,
+        process::{self, Command},
+    };
+
+    const SOURCE: &str = r#"
+fn @double(i64 %x) -> i64 {
+entry:
+ %r = mul.i64 %x, 2
+ ret.i64 %r
+}
+fn @triple(i64 %x) -> i64 {
+entry:
+ %r = mul.i64 %x, 3
+ ret.i64 %r
+}
+fn @main() -> i64 {
+entry:
+ %a = call @double(10)
+ %b = call @triple(10)
+ print %a
+ print %b
+ ret.i64 0
+}
+"#;
+
+    #[test]
+    fn debug_lines_assemble_across_functions() -> Result<(), Box<dyn Error>> {
+        if !tools_available(&["as", "clang", "gcc", "timeout"]) {
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-debug-lines-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let source = directory.join("two_functions.lamina");
+        fs::write(&source, SOURCE)?;
+
+        let assembly = directory.join("two_functions");
+        compile(&source, &assembly, &["-g", "--emit-asm"])?;
+        let text = fs::read_to_string(directory.join("two_functions.s"))?;
+        let file_entries = text
+            .lines()
+            .filter(|line| line.trim_start().starts_with(".file 1 "))
+            .count();
+        assert_eq!(file_entries, 1, "{text}");
+        assert!(
+            text.contains(&format!(".file 1 \"{}\"", source.display())),
+            "{text}"
+        );
+
+        for assembler in ["gas", "clang"] {
+            let executable = directory.join(format!("two_functions-{assembler}"));
+            compile(&source, &executable, &["-g", "--assembler", assembler])?;
+            let output = Command::new("timeout")
+                .arg("10")
+                .arg(&executable)
+                .output()?;
+            assert!(output.status.success(), "{assembler}: {output:?}");
+            assert_eq!(
+                String::from_utf8_lossy(&output.stdout),
+                "20\n30\n",
+                "{assembler}"
+            );
+        }
+
+        let refused = directory.join("two_functions-ras");
+        let error = compile(&source, &refused, &["-g", "--assembler", "ras"])
+            .expect_err("ras must refuse .loc");
+        assert!(error.to_string().contains(".loc"), "{error}");
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+}

@@ -46,6 +46,7 @@ use lamina_codegen::{
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{collections::hash_map::Entry, sync::Arc};
 
+use crate::mir_codegen::common::emit_debug_file;
 use crate::mir_codegen::common::{
     CodegenBase, CopyLocation, assign_stack_slots, assign_stack_slots_where, coalesce_dying_inputs,
     compile_functions_parallel, emit_global_directives, emit_print_format_section,
@@ -186,6 +187,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     }
 
     writeln!(writer, ".text")?;
+    emit_debug_file(writer, settings)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
 
     let settings_arc = Arc::new(settings.clone());

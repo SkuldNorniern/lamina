@@ -15,7 +15,7 @@ use crate::{
         Function, Global, Immediate, Instruction, IntBinOp, MirType, Module as MirModule, Operand,
         Register, Signature, VirtualReg,
     },
-    mir_codegen::{CodegenError, CodegenOptions},
+    mir_codegen::{CodegenError, CodegenOptions, MirCodegenSettings},
 };
 use lamina_codegen::{Allocation, LiveInterval};
 use lamina_platform::TargetOperatingSystem;
@@ -467,6 +467,18 @@ where
     }
     results.sort_by_key(|r| r.func_index);
     Ok(results)
+}
+
+/// Emit the single `.file 1` entry that every `.loc` in the translation unit refers to.
+pub fn emit_debug_file<W: Write>(
+    writer: &mut W,
+    settings: &MirCodegenSettings,
+) -> Result<(), LaminaError> {
+    if settings.emit_asm_debug_lines {
+        let tag = settings.debug_file_tag.replace('"', "'");
+        writeln!(writer, "    .file 1 \"{tag}\"")?;
+    }
+    Ok(())
 }
 
 /// Emit `.globl` for `main` and every exported function, leaving other functions local.

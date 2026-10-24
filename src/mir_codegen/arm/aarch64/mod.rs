@@ -7,6 +7,7 @@ mod simd;
 mod util;
 
 use crate::mir::register::PhysicalReg;
+use crate::mir_codegen::common::emit_debug_file;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
     integer_conversion, self_tail_arguments, self_tail_schedule,
@@ -73,12 +74,6 @@ fn compile_single_function_aarch64(
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{label}:")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-
-    if settings.emit_asm_debug_lines {
-        let tag = settings.debug_file_tag.replace('\"', "'");
-        writeln!(output, "    .file 1 \"{tag}\"")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    }
 
     let mut ra_pro = A64RegAlloc::new();
     let s0 = ra_pro.alloc_scratch().unwrap_or("x19");
@@ -390,6 +385,7 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
 
     emit_print_format_section(writer, target_os)?;
     writeln!(writer, ".text")?;
+    emit_debug_file(writer, settings)?;
 
     let abi = AArch64ABI::new(target_os);
 

@@ -327,6 +327,10 @@ pub(crate) fn parse_args_from(args: Vec<String>) -> Result<CompileOptions, Strin
         .map_or(cfg!(target_arch = "x86_64"), |target| {
             target.starts_with("x86_64_")
         });
+    if options.mir_codegen_settings.emit_asm_debug_lines {
+        options.mir_codegen_settings.debug_file_tag =
+            options.input_file.to_string_lossy().into_owned();
+    }
     if !regalloc_explicit && x86_64 {
         options.mir_codegen_settings.regalloc = RegallocStrategy::for_opt_level(options.opt_level);
     }
