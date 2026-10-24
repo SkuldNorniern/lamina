@@ -9,7 +9,7 @@
 //! - Control flow graph construction
 //! - Type mapping and validation
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use crate::{
     ir::{
@@ -22,9 +22,9 @@ use crate::{
         },
     },
     mir::{
-        AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Immediate, Instruction, IntBinOp,
-        IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter, Register, RegisterClass,
-        ScalarType, Signature, VirtualReg, VirtualRegAllocator,
+        AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Global, Immediate, Instruction,
+        IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter, Register,
+        RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
             mapping::{map_ir_prim, map_ir_type, signedness_of},
@@ -97,6 +97,7 @@ fn resolve_operand<'a>(
     v: &IRVal<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
     var_to_reg: &mut HashMap<&'a str, Register>,
+    globals: &mut GlobalAddresses<'a>,
 ) -> Result<Operand, FromIRError> {
     match v {
         IRVal::Variable(id) => {
@@ -109,7 +110,7 @@ fn resolve_operand<'a>(
             }
         }
         IRVal::Constant(lit) => literal_to_immediate(lit).map(Operand::Immediate),
-        IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
+        IRVal::Global(name) => Ok(Operand::Register(globals.register(name, vreg_alloc)?)),
     }
 }
 
@@ -150,6 +151,19 @@ fn normalize_lowered_literal(operand: &mut Operand, ty: MirType) {
 pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     let mut mir_module = Module::new(name);
 
+    for (global_name, decl) in &ir.global_declarations {
+        let ty = map_ir_type(&decl.ty)?;
+        let initializer = global_initializer(global_name, ty, decl.initializer.as_ref())?;
+        let mut global = Global::new(*global_name, ty);
+        if let Some(bytes) = initializer {
+            global = global.with_initializer(bytes);
+        }
+        if decl.exported {
+            global = global.exported();
+        }
+        mir_module.globals.insert(global_name.to_string(), global);
+    }
+
     for (func_name, ir_func) in &ir.functions {
         // Check if function is external before converting
         if ir_func.annotations.contains(&FunctionAnnotation::Extern) {
@@ -167,6 +181,86 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
         .validate_in_pipeline()
         .map_err(FromIRError::InvalidMir)?;
     Ok(mir_module)
+}
+
+fn global_initializer(
+    name: &str,
+    ty: MirType,
+    value: Option<&IRVal<'_>>,
+) -> Result<Option<Vec<u8>>, FromIRError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let IRVal::Constant(literal) = value else {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} needs a literal initializer"
+        )));
+    };
+    let bytes = match literal {
+        IRLit::I8(v) => v.to_le_bytes().to_vec(),
+        IRLit::I16(v) => v.to_le_bytes().to_vec(),
+        IRLit::I32(v) => v.to_le_bytes().to_vec(),
+        IRLit::I64(v) => v.to_le_bytes().to_vec(),
+        IRLit::U8(v) => v.to_le_bytes().to_vec(),
+        IRLit::U16(v) => v.to_le_bytes().to_vec(),
+        IRLit::U32(v) => v.to_le_bytes().to_vec(),
+        IRLit::U64(v) => v.to_le_bytes().to_vec(),
+        IRLit::F32(v) => v.to_le_bytes().to_vec(),
+        IRLit::F64(v) => v.to_le_bytes().to_vec(),
+        IRLit::Bool(b) => vec![u8::from(*b)],
+        IRLit::Char(_) | IRLit::String(_) => {
+            return Err(FromIRError::UnsupportedGlobal(format!(
+                "@{name} initializer must be an integer, float or bool literal"
+            )));
+        }
+    };
+    if bytes.len() != ty.size_bytes() {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} initializer width does not match its type {ty}"
+        )));
+    }
+    Ok(Some(bytes))
+}
+
+/// Address registers for referenced globals. Each global gets one register,
+/// defined by a `SymbolAddress` at the top of the entry block.
+struct GlobalAddresses<'a> {
+    declared: HashSet<&'a str>,
+    regs: BTreeMap<&'a str, Register>,
+}
+
+impl<'a> GlobalAddresses<'a> {
+    fn new(module: &IRModule<'a>) -> Self {
+        Self {
+            declared: module.global_declarations.keys().copied().collect(),
+            regs: BTreeMap::new(),
+        }
+    }
+
+    fn register(
+        &mut self,
+        name: &'a str,
+        vreg_alloc: &mut VirtualRegAllocator,
+    ) -> Result<Register, FromIRError> {
+        if !self.declared.contains(name) {
+            return Err(FromIRError::UnknownVariable);
+        }
+        Ok(self
+            .regs
+            .entry(name)
+            .or_insert_with(|| Register::Virtual(vreg_alloc.allocate_gpr()))
+            .clone())
+    }
+
+    fn prelude(&self) -> Vec<Instruction> {
+        self.regs
+            .iter()
+            .map(|(name, dst)| Instruction::SymbolAddress {
+                dst: dst.clone(),
+                symbol: (*name).to_string(),
+            })
+            .collect()
+    }
 }
 
 fn convert_function<'a>(
@@ -194,6 +288,7 @@ fn convert_function<'a>(
     let mut register_types = HashMap::new();
     let mut stack_allocs: HashSet<&'a str> = HashSet::new();
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
+    let mut globals = GlobalAddresses::new(module);
 
     for param in &f.signature.params {
         let class = reg_class_for_type(&param.ty);
@@ -264,6 +359,7 @@ fn convert_function<'a>(
                 &mut stack_allocs,
                 &mut reservations,
                 &register_types,
+                &mut globals,
             )?;
             if f.basic_blocks.len() == 1
                 && let IRInst::Binary { result, .. } | IRInst::WriteByte { result, .. } = instr
@@ -398,7 +494,7 @@ fn convert_function<'a>(
                             if !visited.contains(pred_label) {
                                 continue;
                             }
-                            let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg)?;
+                            let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg, &mut globals)?;
                             let mut mov_like = Instruction::Copy {
                                 ty: mir_ty,
                                 dst: dst_reg.clone(),
@@ -421,6 +517,13 @@ fn convert_function<'a>(
                     }
                 }
             }
+        }
+
+        let prelude = globals.prelude();
+        if !prelude.is_empty()
+            && let Some(entry) = mir_func.get_block_mut(f.entry_block)
+        {
+            entry.instructions.splice(0..0, prelude);
         }
 
         verify_before_phi_lowering(
@@ -528,6 +631,7 @@ fn convert_instruction<'a>(
     stack_allocs: &mut HashSet<&'a str>,
     reservations: &mut HashMap<VirtualReg, usize>,
     register_types: &HashMap<Register, MirType>,
+    globals: &mut GlobalAddresses<'a>,
 ) -> Result<Vec<Instruction>, FromIRError> {
     #[cfg(feature = "nightly")]
     fn ir_address_mode_to_mir<'b>(
@@ -576,8 +680,8 @@ fn convert_instruction<'a>(
 
             let mir_ty = map_ir_prim(*ty)?;
             // Read operands using the PREVIOUS bindings to avoid using the new dest mapping
-            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg)?;
-            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
+            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg, globals)?;
+            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?;
 
             let mir = match (op, *ty) {
                 (IRBin::Add, IRPrim::F32 | IRPrim::F64) => {
@@ -628,8 +732,8 @@ fn convert_instruction<'a>(
         } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_prim(*ty)?;
-            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg)?;
-            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
+            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg, globals)?;
+            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?;
             let mir = match (*ty, op) {
                 (IRPrim::F32 | IRPrim::F64, IRCmp::Eq) => Instruction::FloatCmp {
                     op: FloatCmpOp::Eq,
@@ -848,7 +952,7 @@ fn convert_instruction<'a>(
                 return Ok(vec![Instruction::Ret { value: None }]);
             }
             let op = match value {
-                Some(v) => Some(resolve_operand(v, vreg_alloc, var_to_reg)?),
+                Some(v) => Some(resolve_operand(v, vreg_alloc, var_to_reg, globals)?),
                 None => None,
             };
             Ok(vec![Instruction::Ret { value: op }])
@@ -861,6 +965,7 @@ fn convert_instruction<'a>(
                     .get(id)
                     .cloned()
                     .ok_or(FromIRError::UnknownVariable)?,
+                IRVal::Global(name) => globals.register(name, vreg_alloc)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
             let addr = AddressMode::BaseOffset {
@@ -885,9 +990,10 @@ fn convert_instruction<'a>(
                     .get(id)
                     .cloned()
                     .ok_or(FromIRError::UnknownVariable)?,
+                IRVal::Global(name) => globals.register(name, vreg_alloc)?,
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
-            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut src, mir_ty);
             let addr = AddressMode::BaseOffset {
                 base,
@@ -911,7 +1017,7 @@ fn convert_instruction<'a>(
         } => {
             let mut mir_args = Vec::new();
             for a in args {
-                mir_args.push(resolve_operand(a, vreg_alloc, var_to_reg)?);
+                mir_args.push(resolve_operand(a, vreg_alloc, var_to_reg, globals)?);
             }
             let ret = result.map(|res| resolve_or_alloc_gpr(res, vreg_alloc, var_to_reg));
             Ok(vec![Instruction::Call {
@@ -946,7 +1052,7 @@ fn convert_instruction<'a>(
                 return Err(FromIRError::UnsupportedType);
             }
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-            let src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             Ok(vec![Instruction::IntConvert {
                 from,
                 to,
@@ -972,7 +1078,7 @@ fn convert_instruction<'a>(
                     fresh
                 }
             };
-            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut src, from);
             Ok(vec![Instruction::IntToFloat {
                 from,
@@ -992,7 +1098,7 @@ fn convert_instruction<'a>(
             let from = map_ir_prim(*source_type)?;
             let to = map_ir_prim(*target_type)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut src, from);
             Ok(vec![Instruction::FloatToInt {
                 from,
@@ -1014,7 +1120,7 @@ fn convert_instruction<'a>(
 
             let from = map_ir_prim(*source_type)?;
             let to = map_ir_prim(*target_type)?;
-            let mut src = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut src, from);
             let dst =
                 Register::Virtual(match reg_class_for_type(&IRType::Primitive(*target_type)) {
@@ -1045,8 +1151,8 @@ fn convert_instruction<'a>(
                 _ => return Err(FromIRError::UnsupportedInstruction),
             };
 
-            let mut tv = resolve_operand(true_val, vreg_alloc, var_to_reg)?;
-            let mut fv = resolve_operand(false_val, vreg_alloc, var_to_reg)?;
+            let mut tv = resolve_operand(true_val, vreg_alloc, var_to_reg, globals)?;
+            let mut fv = resolve_operand(false_val, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut tv, mir_ty);
             normalize_lowered_literal(&mut fv, mir_ty);
 
@@ -1064,7 +1170,7 @@ fn convert_instruction<'a>(
             target_type,
         } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-            let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg)?;
+            let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg, globals)?;
             Ok(vec![Instruction::IntConvert {
                 from: MirType::ptr(),
                 to: map_ir_prim(*target_type)?,
@@ -1079,7 +1185,7 @@ fn convert_instruction<'a>(
             target_type: _,
         } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-            let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg)?;
+            let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg, globals)?;
             let from = operand_type(&val_op, register_types);
             Ok(vec![Instruction::IntConvert {
                 from,
@@ -1091,9 +1197,9 @@ fn convert_instruction<'a>(
         }
         IRInst::MemCpy { dst, src, size } => {
             let args = vec![
-                resolve_operand(dst, vreg_alloc, var_to_reg)?,
-                resolve_operand(src, vreg_alloc, var_to_reg)?,
-                resolve_operand(size, vreg_alloc, var_to_reg)?,
+                resolve_operand(dst, vreg_alloc, var_to_reg, globals)?,
+                resolve_operand(src, vreg_alloc, var_to_reg, globals)?,
+                resolve_operand(size, vreg_alloc, var_to_reg, globals)?,
             ];
             Ok(vec![Instruction::Call {
                 name: "memcpy".to_string(),
@@ -1103,9 +1209,9 @@ fn convert_instruction<'a>(
         }
         IRInst::MemMove { dst, src, size } => {
             let args = vec![
-                resolve_operand(dst, vreg_alloc, var_to_reg)?,
-                resolve_operand(src, vreg_alloc, var_to_reg)?,
-                resolve_operand(size, vreg_alloc, var_to_reg)?,
+                resolve_operand(dst, vreg_alloc, var_to_reg, globals)?,
+                resolve_operand(src, vreg_alloc, var_to_reg, globals)?,
+                resolve_operand(size, vreg_alloc, var_to_reg, globals)?,
             ];
             Ok(vec![Instruction::Call {
                 name: "memmove".to_string(),
@@ -1115,9 +1221,9 @@ fn convert_instruction<'a>(
         }
         IRInst::MemSet { dst, value, size } => {
             let args = vec![
-                resolve_operand(dst, vreg_alloc, var_to_reg)?,
-                resolve_operand(value, vreg_alloc, var_to_reg)?,
-                resolve_operand(size, vreg_alloc, var_to_reg)?,
+                resolve_operand(dst, vreg_alloc, var_to_reg, globals)?,
+                resolve_operand(value, vreg_alloc, var_to_reg, globals)?,
+                resolve_operand(size, vreg_alloc, var_to_reg, globals)?,
             ];
             Ok(vec![Instruction::Call {
                 name: "memset".to_string(),
@@ -1207,7 +1313,7 @@ fn convert_instruction<'a>(
                     },
                 ])
             } else {
-                let index_op = resolve_operand(index, vreg_alloc, var_to_reg)?;
+                let index_op = resolve_operand(index, vreg_alloc, var_to_reg, globals)?;
                 let from = operand_type(&index_op, register_types);
                 let wide_index = Register::Virtual(vreg_alloc.allocate_gpr());
                 let scaled = Register::Virtual(vreg_alloc.allocate_gpr());
@@ -1257,7 +1363,7 @@ fn convert_instruction<'a>(
             if matches!(value, IRVal::Constant(IRLit::String(_))) {
                 return Err(FromIRError::PrintStringLiteralUnsupported);
             }
-            let arg = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let arg = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             Ok(vec![Instruction::Call {
                 name: "print".to_string(),
                 args: vec![arg],
@@ -1269,8 +1375,8 @@ fn convert_instruction<'a>(
             size,
             result,
         } => {
-            let buf = resolve_operand(buffer, vreg_alloc, var_to_reg)?;
-            let sz = resolve_operand(size, vreg_alloc, var_to_reg)?;
+            let buf = resolve_operand(buffer, vreg_alloc, var_to_reg, globals)?;
+            let sz = resolve_operand(size, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "write".to_string(),
@@ -1279,7 +1385,7 @@ fn convert_instruction<'a>(
             }])
         }
         IRInst::WriteByte { value, result } => {
-            let v = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let v = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "writebyte".to_string(),
@@ -1303,7 +1409,7 @@ fn convert_instruction<'a>(
             let width = pointee_size
                 .filter(|w| matches!(w, 1 | 2 | 4 | 8))
                 .ok_or(FromIRError::WritePtrPointeeUnknown)?;
-            let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
+            let p = resolve_operand(ptr, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "writeptr".to_string(),
@@ -1316,8 +1422,8 @@ fn convert_instruction<'a>(
             size,
             result,
         } => {
-            let buf = resolve_operand(buffer, vreg_alloc, var_to_reg)?;
-            let sz = resolve_operand(size, vreg_alloc, var_to_reg)?;
+            let buf = resolve_operand(buffer, vreg_alloc, var_to_reg, globals)?;
+            let sz = resolve_operand(size, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "read".to_string(),
@@ -1363,7 +1469,7 @@ fn convert_instruction<'a>(
             {
                 return Ok(Vec::new());
             }
-            let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
+            let p = resolve_operand(ptr, vreg_alloc, var_to_reg, globals)?;
             Ok(vec![Instruction::Call {
                 name: "free".to_string(),
                 args: vec![p],
@@ -1386,8 +1492,8 @@ fn convert_instruction<'a>(
                 fresh
             };
             let mir_ty = map_ir_type(vector_type)?;
-            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg)?;
-            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg)?;
+            let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg, globals)?;
+            let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?;
             let mir_op = match op {
                 IRSimdOp::Add => SimdOp::Add,
                 IRSimdOp::Sub => SimdOp::Sub,
@@ -1423,7 +1529,7 @@ fn convert_instruction<'a>(
                 fresh
             };
             let mir_ty = map_ir_type(vector_type)?;
-            let src_op = resolve_operand(operand, vreg_alloc, var_to_reg)?;
+            let src_op = resolve_operand(operand, vreg_alloc, var_to_reg, globals)?;
             let mir_op = match op {
                 IRSimdOp::Abs => SimdOp::Abs,
                 IRSimdOp::Neg => SimdOp::Neg,
@@ -1470,7 +1576,7 @@ fn convert_instruction<'a>(
         } => {
             let mir_ty = map_ir_type(ty)?;
             let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
-            let val_op = resolve_operand(value, vreg_alloc, var_to_reg)?;
+            let val_op = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             let mir_ordering = match ordering {
                 IRMemOrd::Relaxed => MemoryOrdering::Relaxed,
                 IRMemOrd::Acquire => MemoryOrdering::Acquire,
@@ -1543,6 +1649,73 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+
+    fn lowered_global_module(source: &str) -> Result<Module, FromIRError> {
+        let ir = parse_module(source).expect("parse globals");
+        from_ir(&ir, "globals")
+    }
+
+    #[test]
+    fn global_initializers_lower_to_little_endian_bytes() {
+        let module = lowered_global_module(
+            "global @a: i64 = 41\nglobal @b: f64 = 2.5\nglobal @c: i32\n\
+             fn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        )
+        .expect("lower globals");
+        assert_eq!(
+            module.globals["a"].initializer.as_deref(),
+            Some(41i64.to_le_bytes().as_slice())
+        );
+        assert_eq!(
+            module.globals["b"].initializer.as_deref(),
+            Some(2.5f64.to_le_bytes().as_slice())
+        );
+        assert_eq!(module.globals["c"].initializer, None);
+        assert!(!module.globals["a"].exported);
+    }
+
+    #[test]
+    fn exported_global_is_marked_exported() {
+        let module = lowered_global_module(
+            "@export global @g: i64 = 1\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        )
+        .expect("lower exported global");
+        assert!(module.globals["g"].exported);
+    }
+
+    #[test]
+    fn global_address_is_materialized_once_at_entry() {
+        let module = lowered_global_module(
+            "global @g: i64 = 7\nfn @main() -> i64 {\nentry:\n %x = load.i64 @g\n store.i64 @g, %x\n %y = load.i64 @g\n ret.i64 %y\n}",
+        )
+        .expect("lower global loads and stores");
+        let entry = &module.functions["main"].blocks[0].instructions;
+        let symbol_addresses = entry
+            .iter()
+            .filter(|i| matches!(i, Instruction::SymbolAddress { symbol, .. } if symbol == "g"))
+            .count();
+        assert_eq!(symbol_addresses, 1);
+        assert!(matches!(entry[0], Instruction::SymbolAddress { .. }));
+    }
+
+    #[test]
+    fn unknown_global_reference_is_rejected() {
+        let error = lowered_global_module(
+            "fn @main() -> i64 {\nentry:\n %x = load.i64 @missing\n ret.i64 %x\n}",
+        )
+        .expect_err("undeclared global");
+        assert!(matches!(error, FromIRError::UnknownVariable));
+    }
+
+    #[test]
+    fn array_global_is_rejected_cleanly() {
+        let error = lowered_global_module(
+            "global @s: [4 x i8] = \"abc\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        )
+        .expect_err("array global");
+        assert!(matches!(error, FromIRError::UnsupportedType));
+    }
+
     use crate::mir::TransformPipeline;
     use crate::{
         ir::{

@@ -185,6 +185,10 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
         }
 
         let keyword_slice = state.peek_slice(6).unwrap_or("");
+        let exported_global = state
+            .peek_slice(32)
+            .and_then(|s| s.strip_prefix("@export"))
+            .is_some_and(|rest| rest.trim_start().starts_with("global"));
 
         if keyword_slice.starts_with("type") {
             let decl = parse_type_declaration(&mut state)?;
@@ -199,8 +203,11 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
                     "Duplicate type declaration: @{name}\n  Hint: Each type can only be declared once"
                 )));
             }
-        } else if keyword_slice.starts_with("global") {
-            let decl = parse_global_declaration(&mut state)?;
+        } else if exported_global || keyword_slice.starts_with("global") {
+            if exported_global {
+                state.consume_keyword("@export")?;
+            }
+            let decl = parse_global_declaration(&mut state, exported_global)?;
             let name = decl.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
@@ -356,6 +363,14 @@ mod tests {
         } else {
             panic!("Expected array for Matrix");
         }
+    }
+
+    #[test]
+    fn test_parse_exported_global_declaration() {
+        let module = parse_module("@export global @g: f64 = 1.5\nglobal @h: i32 = 2")
+            .expect("Parsing failed");
+        assert!(module.global_declarations["g"].exported);
+        assert!(!module.global_declarations["h"].exported);
     }
 
     #[test]
