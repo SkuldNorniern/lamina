@@ -4,6 +4,7 @@ use crate::{
     LaminaError,
     ir::{
         AllocType, BinaryOp, CmpOp, Identifier, Instruction, Literal, PrimitiveType, Type, Value,
+        types::sizeof_type,
     },
     parser::{state::ParserState, types::parse_type, values::parse_value},
 };
@@ -619,15 +620,28 @@ fn parse_readbyte_assignment<'a>(
     Ok(Instruction::ReadByte { result })
 }
 
+/// Reads the optional `.<type>` after `writeptr`; its size is the number of bytes written.
+fn parse_writeptr_width<'a>(state: &mut ParserState<'a>) -> Result<Option<u64>, LaminaError> {
+    if state.current_char() != Some('.') {
+        return Ok(None);
+    }
+    let ty = parse_type_suffix(state)?;
+    match sizeof_type(&ty) {
+        Some(width) => Ok(Some(width)),
+        None => Err(state.error("writeptr width must be a sized type such as .i32")),
+    }
+}
+
 fn parse_writeptr_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
+    let pointee_size = parse_writeptr_width(state)?;
     let ptr = parse_value(state)?;
     Ok(Instruction::WritePtr {
         ptr,
         result,
-        pointee_size: None,
+        pointee_size,
     })
 }
 
@@ -670,13 +684,14 @@ fn parse_readbyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, La
 }
 
 fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
+    let pointee_size = parse_writeptr_width(state)?;
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
     let result = state.parse_identifier_str()?;
     Ok(Instruction::WritePtr {
         ptr,
         result,
-        pointee_size: None,
+        pointee_size,
     })
 }
 

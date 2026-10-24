@@ -38,12 +38,12 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::ReadByte { result })
     }
 
-    /// Writes the value stored at a pointer location to stdout (I/O operation)
-    pub fn write_ptr(&mut self, ptr: Value<'a>, result: &'a str) -> &mut Self {
+    /// Writes `width` bytes starting at `ptr` to stdout. `width` must be 1, 2, 4 or 8.
+    pub fn write_ptr(&mut self, ptr: Value<'a>, width: u64, result: &'a str) -> &mut Self {
         self.inst(Instruction::WritePtr {
             ptr,
             result,
-            pointee_size: None,
+            pointee_size: Some(width),
         })
     }
 

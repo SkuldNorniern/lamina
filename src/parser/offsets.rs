@@ -57,7 +57,10 @@ fn resolve_in_function<'a>(
                 Instruction::WritePtr {
                     ptr, pointee_size, ..
                 } => {
-                    *pointee_size = pointee_of(ptr, &pointee, types).and_then(|t| sizeof_type(&t));
+                    if pointee_size.is_none() {
+                        *pointee_size =
+                            pointee_of(ptr, &pointee, types).and_then(|t| sizeof_type(&t));
+                    }
                 }
                 Instruction::GetFieldPtr {
                     result,
@@ -162,5 +165,20 @@ entry:
 "#,
         );
         assert_eq!(widths, [None]);
+    }
+
+    #[test]
+    fn writeptr_suffix_states_width_for_parameters() {
+        let widths = writeptr_widths(
+            r#"
+fn @main(ptr %p, ptr %q) -> i32 {
+entry:
+    %a = writeptr.i32 %p
+    %b = writeptr.i8 %q
+    ret.i32 0
+}
+"#,
+        );
+        assert_eq!(widths, [Some(4), Some(1)]);
     }
 }

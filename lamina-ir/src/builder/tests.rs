@@ -940,7 +940,7 @@ mod tests {
             .read(var("buffer"), i32(100), "bytes_read")
             .write_byte(i8(65), "byte_written")
             .read_byte("byte_read")
-            .write_ptr(var("buffer"), "ptr_written")
+            .write_ptr(var("buffer"), 1, "ptr_written")
             .print(i32(42))
             .ret_void();
 

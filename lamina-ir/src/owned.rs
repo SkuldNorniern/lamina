@@ -7,7 +7,7 @@
 use std::fmt;
 
 use crate::{
-    instruction::{BinaryOp, CmpOp},
+    instruction::{BinaryOp, CmpOp, writeptr_width_suffix},
     types::PrimitiveType,
 };
 
@@ -693,9 +693,17 @@ impl OwnedIRBuilder {
         self
     }
 
-    /// Appends a write-pointer-value syscall.
-    pub fn write_ptr(&mut self, result: impl AsRef<str>, ptr: &OwnedValue) -> &mut Self {
-        let t = format!("%{} = writeptr {}", result.as_ref(), ptr);
+    /// Appends a write of `width` bytes read from `ptr`. `width` must be 1, 2, 4 or 8.
+    pub fn write_ptr(
+        &mut self,
+        result: impl AsRef<str>,
+        ptr: &OwnedValue,
+        width: u64,
+    ) -> &mut Self {
+        let t = match writeptr_width_suffix(width) {
+            Some(suffix) => format!("%{} = writeptr.{} {}", result.as_ref(), suffix, ptr),
+            None => format!("%{} = writeptr {}", result.as_ref(), ptr),
+        };
         self.push(t);
         self
     }
