@@ -389,6 +389,22 @@ impl LoopInvariantCodeMotion {
             }
         }
 
+        let mut total_defs: HashMap<Register, usize> = HashMap::new();
+        let mut use_sites: HashMap<Register, Vec<(usize, usize)>> = HashMap::new();
+        for (block_idx, block) in func.blocks.iter().enumerate() {
+            for (instr_idx, instr) in block.instructions.iter().enumerate() {
+                if let Some(def) = instr.def_reg() {
+                    *total_defs.entry(def.clone()).or_insert(0) += 1;
+                }
+                for reg in instr.use_regs() {
+                    use_sites
+                        .entry(reg.clone())
+                        .or_default()
+                        .push((block_idx, instr_idx));
+                }
+            }
+        }
+
         let max_invariant_instructions = 20;
 
         for (block_idx, block) in func.blocks.iter().enumerate() {
@@ -402,6 +418,17 @@ impl LoopInvariantCodeMotion {
                     && def_counts.get(def).copied().unwrap_or(0) > 1
                 {
                     continue;
+                }
+                if let Some(def) = instr.def_reg() {
+                    let single_def = total_defs.get(def) == Some(&1);
+                    let reads_after_def = use_sites.get(def).is_none_or(|sites| {
+                        sites
+                            .iter()
+                            .all(|&(b, i)| b == block_idx && i > instr_idx)
+                    });
+                    if !single_def || !reads_after_def {
+                        continue;
+                    }
                 }
                 if self.is_invariant_instruction(func, loop_info, &defs_in_loop, instr) {
                     invariant.push((block_idx, instr_idx));
@@ -1223,6 +1250,75 @@ mod tests {
         let licm = LoopInvariantCodeMotion;
         let changed = licm.apply(&mut func).expect("should succeed");
         assert!(!changed);
+    }
+
+    #[test]
+    fn test_licm_keeps_register_read_before_its_definition() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let add = |dst: u32, lhs: Operand, rhs: Operand| Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: i64_ty,
+            dst: VirtualReg::gpr(dst).into(),
+            lhs,
+            rhs,
+        };
+        let reg = |id: u32| Operand::Register(VirtualReg::gpr(id).into());
+        let imm = |v: i64| Operand::Immediate(Immediate::I64(v));
+        let mut func = FunctionBuilder::new("read_before_def")
+            .returns(i64_ty)
+            .block("entry")
+            .instr(add(0, imm(0), imm(0)))
+            .instr(add(1, imm(5), imm(0)))
+            .instr(add(2, imm(0), imm(0)))
+            .instr(Instruction::Jmp {
+                target: "loop".to_string(),
+            })
+            .block("loop")
+            .instr(Instruction::IntCmp {
+                op: IntCmpOp::SLt,
+                ty: MirType::Scalar(ScalarType::I1),
+                dst: VirtualReg::gpr(3).into(),
+                lhs: reg(0),
+                rhs: imm(3),
+            })
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(3).into(),
+                true_target: "body".to_string(),
+                false_target: "exit".to_string(),
+            })
+            .block("body")
+            .instr(add(2, reg(2), reg(1)))
+            .instr(add(1, imm(2), imm(3)))
+            .instr(add(0, reg(0), imm(1)))
+            .instr(Instruction::Jmp {
+                target: "loop".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret {
+                value: Some(reg(2)),
+            })
+            .build();
+
+        LoopInvariantCodeMotion
+            .apply(&mut func)
+            .expect("LICM failed");
+
+        let defines_v1_constant = |instr: &Instruction| {
+            matches!(
+                instr,
+                Instruction::IntBinary {
+                    dst: Register::Virtual(v),
+                    lhs: Operand::Immediate(Immediate::I64(2)),
+                    ..
+                } if *v == VirtualReg::gpr(1)
+            )
+        };
+        let hoisted = func
+            .get_block("loop_pre")
+            .is_some_and(|pre| pre.instructions.iter().any(defines_v1_constant));
+        assert!(!hoisted);
+        let body = func.get_block("body").expect("body block exists");
+        assert!(body.instructions.iter().any(defines_v1_constant));
     }
 
     #[test]
