@@ -1,0 +1,225 @@
+fn @main() -> i64 {
+entry:
+ %r1 = uitofp.u8.f32 0
+ %b1 = bitcast.f32.i32 %r1
+ %w1 = sext.i32.i64 %b1
+ print %w1
+ %r2 = uitofp.u8.f32 1
+ %b2 = bitcast.f32.i32 %r2
+ %w2 = sext.i32.i64 %b2
+ print %w2
+ %r3 = uitofp.u8.f32 2
+ %b3 = bitcast.f32.i32 %r3
+ %w3 = sext.i32.i64 %b3
+ print %w3
+ %r4 = uitofp.u8.f32 127
+ %b4 = bitcast.f32.i32 %r4
+ %w4 = sext.i32.i64 %b4
+ print %w4
+ %r5 = uitofp.u8.f32 128
+ %b5 = bitcast.f32.i32 %r5
+ %w5 = sext.i32.i64 %b5
+ print %w5
+ %r6 = uitofp.u8.f32 254
+ %b6 = bitcast.f32.i32 %r6
+ %w6 = sext.i32.i64 %b6
+ print %w6
+ %r7 = uitofp.u8.f32 255
+ %b7 = bitcast.f32.i32 %r7
+ %w7 = sext.i32.i64 %b7
+ print %w7
+ %r8 = uitofp.u8.f64 0
+ %b8 = bitcast.f64.i64 %r8
+ print %b8
+ %r9 = uitofp.u8.f64 1
+ %b9 = bitcast.f64.i64 %r9
+ print %b9
+ %r10 = uitofp.u8.f64 2
+ %b10 = bitcast.f64.i64 %r10
+ print %b10
+ %r11 = uitofp.u8.f64 127
+ %b11 = bitcast.f64.i64 %r11
+ print %b11
+ %r12 = uitofp.u8.f64 128
+ %b12 = bitcast.f64.i64 %r12
+ print %b12
+ %r13 = uitofp.u8.f64 254
+ %b13 = bitcast.f64.i64 %r13
+ print %b13
+ %r14 = uitofp.u8.f64 255
+ %b14 = bitcast.f64.i64 %r14
+ print %b14
+ %r15 = uitofp.u16.f32 0
+ %b15 = bitcast.f32.i32 %r15
+ %w15 = sext.i32.i64 %b15
+ print %w15
+ %r16 = uitofp.u16.f32 1
+ %b16 = bitcast.f32.i32 %r16
+ %w16 = sext.i32.i64 %b16
+ print %w16
+ %r17 = uitofp.u16.f32 2
+ %b17 = bitcast.f32.i32 %r17
+ %w17 = sext.i32.i64 %b17
+ print %w17
+ %r18 = uitofp.u16.f32 32767
+ %b18 = bitcast.f32.i32 %r18
+ %w18 = sext.i32.i64 %b18
+ print %w18
+ %r19 = uitofp.u16.f32 32768
+ %b19 = bitcast.f32.i32 %r19
+ %w19 = sext.i32.i64 %b19
+ print %w19
+ %r20 = uitofp.u16.f32 65534
+ %b20 = bitcast.f32.i32 %r20
+ %w20 = sext.i32.i64 %b20
+ print %w20
+ %r21 = uitofp.u16.f32 65535
+ %b21 = bitcast.f32.i32 %r21
+ %w21 = sext.i32.i64 %b21
+ print %w21
+ %r22 = uitofp.u16.f64 0
+ %b22 = bitcast.f64.i64 %r22
+ print %b22
+ %r23 = uitofp.u16.f64 1
+ %b23 = bitcast.f64.i64 %r23
+ print %b23
+ %r24 = uitofp.u16.f64 2
+ %b24 = bitcast.f64.i64 %r24
+ print %b24
+ jmp b24
+b24:
+ %r25 = uitofp.u16.f64 32767
+ %b25 = bitcast.f64.i64 %r25
+ print %b25
+ %r26 = uitofp.u16.f64 32768
+ %b26 = bitcast.f64.i64 %r26
+ print %b26
+ %r27 = uitofp.u16.f64 65534
+ %b27 = bitcast.f64.i64 %r27
+ print %b27
+ %r28 = uitofp.u16.f64 65535
+ %b28 = bitcast.f64.i64 %r28
+ print %b28
+ %r29 = uitofp.u32.f32 0
+ %b29 = bitcast.f32.i32 %r29
+ %w29 = sext.i32.i64 %b29
+ print %w29
+ %r30 = uitofp.u32.f32 1
+ %b30 = bitcast.f32.i32 %r30
+ %w30 = sext.i32.i64 %b30
+ print %w30
+ %r31 = uitofp.u32.f32 2
+ %b31 = bitcast.f32.i32 %r31
+ %w31 = sext.i32.i64 %b31
+ print %w31
+ %r32 = uitofp.u32.f32 2147483647
+ %b32 = bitcast.f32.i32 %r32
+ %w32 = sext.i32.i64 %b32
+ print %w32
+ %r33 = uitofp.u32.f32 2147483648
+ %b33 = bitcast.f32.i32 %r33
+ %w33 = sext.i32.i64 %b33
+ print %w33
+ %r34 = uitofp.u32.f32 4294967294
+ %b34 = bitcast.f32.i32 %r34
+ %w34 = sext.i32.i64 %b34
+ print %w34
+ %r35 = uitofp.u32.f32 4294967295
+ %b35 = bitcast.f32.i32 %r35
+ %w35 = sext.i32.i64 %b35
+ print %w35
+ %r36 = uitofp.u32.f32 16777217
+ %b36 = bitcast.f32.i32 %r36
+ %w36 = sext.i32.i64 %b36
+ print %w36
+ %r37 = uitofp.u32.f64 0
+ %b37 = bitcast.f64.i64 %r37
+ print %b37
+ %r38 = uitofp.u32.f64 1
+ %b38 = bitcast.f64.i64 %r38
+ print %b38
+ %r39 = uitofp.u32.f64 2
+ %b39 = bitcast.f64.i64 %r39
+ print %b39
+ %r40 = uitofp.u32.f64 2147483647
+ %b40 = bitcast.f64.i64 %r40
+ print %b40
+ %r41 = uitofp.u32.f64 2147483648
+ %b41 = bitcast.f64.i64 %r41
+ print %b41
+ %r42 = uitofp.u32.f64 4294967294
+ %b42 = bitcast.f64.i64 %r42
+ print %b42
+ %r43 = uitofp.u32.f64 4294967295
+ %b43 = bitcast.f64.i64 %r43
+ print %b43
+ %r44 = uitofp.u32.f64 16777217
+ %b44 = bitcast.f64.i64 %r44
+ print %b44
+ %r45 = uitofp.u64.f32 0
+ %b45 = bitcast.f32.i32 %r45
+ %w45 = sext.i32.i64 %b45
+ print %w45
+ %r46 = uitofp.u64.f32 1
+ %b46 = bitcast.f32.i32 %r46
+ %w46 = sext.i32.i64 %b46
+ print %w46
+ %r47 = uitofp.u64.f32 2
+ %b47 = bitcast.f32.i32 %r47
+ %w47 = sext.i32.i64 %b47
+ print %w47
+ %r48 = uitofp.u64.f32 9223372036854775807
+ %b48 = bitcast.f32.i32 %r48
+ %w48 = sext.i32.i64 %b48
+ print %w48
+ jmp b48
+b48:
+ %r49 = uitofp.u64.f32 9223372036854775808
+ %b49 = bitcast.f32.i32 %r49
+ %w49 = sext.i32.i64 %b49
+ print %w49
+ %r50 = uitofp.u64.f32 18446744073709551614
+ %b50 = bitcast.f32.i32 %r50
+ %w50 = sext.i32.i64 %b50
+ print %w50
+ %r51 = uitofp.u64.f32 18446744073709551615
+ %b51 = bitcast.f32.i32 %r51
+ %w51 = sext.i32.i64 %b51
+ print %w51
+ %r52 = uitofp.u64.f32 9007199254740993
+ %b52 = bitcast.f32.i32 %r52
+ %w52 = sext.i32.i64 %b52
+ print %w52
+ %r53 = uitofp.u64.f32 18446744073709549568
+ %b53 = bitcast.f32.i32 %r53
+ %w53 = sext.i32.i64 %b53
+ print %w53
+ %r54 = uitofp.u64.f64 0
+ %b54 = bitcast.f64.i64 %r54
+ print %b54
+ %r55 = uitofp.u64.f64 1
+ %b55 = bitcast.f64.i64 %r55
+ print %b55
+ %r56 = uitofp.u64.f64 2
+ %b56 = bitcast.f64.i64 %r56
+ print %b56
+ %r57 = uitofp.u64.f64 9223372036854775807
+ %b57 = bitcast.f64.i64 %r57
+ print %b57
+ %r58 = uitofp.u64.f64 9223372036854775808
+ %b58 = bitcast.f64.i64 %r58
+ print %b58
+ %r59 = uitofp.u64.f64 18446744073709551614
+ %b59 = bitcast.f64.i64 %r59
+ print %b59
+ %r60 = uitofp.u64.f64 18446744073709551615
+ %b60 = bitcast.f64.i64 %r60
+ print %b60
+ %r61 = uitofp.u64.f64 9007199254740993
+ %b61 = bitcast.f64.i64 %r61
+ print %b61
+ %r62 = uitofp.u64.f64 18446744073709549568
+ %b62 = bitcast.f64.i64 %r62
+ print %b62
+ ret.i64 0
+}

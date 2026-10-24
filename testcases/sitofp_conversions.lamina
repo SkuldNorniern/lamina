@@ -1,0 +1,269 @@
+fn @main() -> i64 {
+entry:
+ %r1 = sitofp.i8.f32 -128
+ %b1 = bitcast.f32.i32 %r1
+ %w1 = sext.i32.i64 %b1
+ print %w1
+ %r2 = sitofp.i8.f32 -127
+ %b2 = bitcast.f32.i32 %r2
+ %w2 = sext.i32.i64 %b2
+ print %w2
+ %r3 = sitofp.i8.f32 -2
+ %b3 = bitcast.f32.i32 %r3
+ %w3 = sext.i32.i64 %b3
+ print %w3
+ %r4 = sitofp.i8.f32 -1
+ %b4 = bitcast.f32.i32 %r4
+ %w4 = sext.i32.i64 %b4
+ print %w4
+ %r5 = sitofp.i8.f32 0
+ %b5 = bitcast.f32.i32 %r5
+ %w5 = sext.i32.i64 %b5
+ print %w5
+ %r6 = sitofp.i8.f32 1
+ %b6 = bitcast.f32.i32 %r6
+ %w6 = sext.i32.i64 %b6
+ print %w6
+ %r7 = sitofp.i8.f32 2
+ %b7 = bitcast.f32.i32 %r7
+ %w7 = sext.i32.i64 %b7
+ print %w7
+ %r8 = sitofp.i8.f32 127
+ %b8 = bitcast.f32.i32 %r8
+ %w8 = sext.i32.i64 %b8
+ print %w8
+ %r9 = sitofp.i8.f64 -128
+ %b9 = bitcast.f64.i64 %r9
+ print %b9
+ %r10 = sitofp.i8.f64 -127
+ %b10 = bitcast.f64.i64 %r10
+ print %b10
+ %r11 = sitofp.i8.f64 -2
+ %b11 = bitcast.f64.i64 %r11
+ print %b11
+ %r12 = sitofp.i8.f64 -1
+ %b12 = bitcast.f64.i64 %r12
+ print %b12
+ %r13 = sitofp.i8.f64 0
+ %b13 = bitcast.f64.i64 %r13
+ print %b13
+ %r14 = sitofp.i8.f64 1
+ %b14 = bitcast.f64.i64 %r14
+ print %b14
+ %r15 = sitofp.i8.f64 2
+ %b15 = bitcast.f64.i64 %r15
+ print %b15
+ %r16 = sitofp.i8.f64 127
+ %b16 = bitcast.f64.i64 %r16
+ print %b16
+ %r17 = sitofp.i16.f32 -32768
+ %b17 = bitcast.f32.i32 %r17
+ %w17 = sext.i32.i64 %b17
+ print %w17
+ %r18 = sitofp.i16.f32 -32767
+ %b18 = bitcast.f32.i32 %r18
+ %w18 = sext.i32.i64 %b18
+ print %w18
+ %r19 = sitofp.i16.f32 -2
+ %b19 = bitcast.f32.i32 %r19
+ %w19 = sext.i32.i64 %b19
+ print %w19
+ %r20 = sitofp.i16.f32 -1
+ %b20 = bitcast.f32.i32 %r20
+ %w20 = sext.i32.i64 %b20
+ print %w20
+ %r21 = sitofp.i16.f32 0
+ %b21 = bitcast.f32.i32 %r21
+ %w21 = sext.i32.i64 %b21
+ print %w21
+ %r22 = sitofp.i16.f32 1
+ %b22 = bitcast.f32.i32 %r22
+ %w22 = sext.i32.i64 %b22
+ print %w22
+ %r23 = sitofp.i16.f32 2
+ %b23 = bitcast.f32.i32 %r23
+ %w23 = sext.i32.i64 %b23
+ print %w23
+ %r24 = sitofp.i16.f32 32767
+ %b24 = bitcast.f32.i32 %r24
+ %w24 = sext.i32.i64 %b24
+ print %w24
+ jmp b24
+b24:
+ %r25 = sitofp.i16.f64 -32768
+ %b25 = bitcast.f64.i64 %r25
+ print %b25
+ %r26 = sitofp.i16.f64 -32767
+ %b26 = bitcast.f64.i64 %r26
+ print %b26
+ %r27 = sitofp.i16.f64 -2
+ %b27 = bitcast.f64.i64 %r27
+ print %b27
+ %r28 = sitofp.i16.f64 -1
+ %b28 = bitcast.f64.i64 %r28
+ print %b28
+ %r29 = sitofp.i16.f64 0
+ %b29 = bitcast.f64.i64 %r29
+ print %b29
+ %r30 = sitofp.i16.f64 1
+ %b30 = bitcast.f64.i64 %r30
+ print %b30
+ %r31 = sitofp.i16.f64 2
+ %b31 = bitcast.f64.i64 %r31
+ print %b31
+ %r32 = sitofp.i16.f64 32767
+ %b32 = bitcast.f64.i64 %r32
+ print %b32
+ %r33 = sitofp.i32.f32 -2147483648
+ %b33 = bitcast.f32.i32 %r33
+ %w33 = sext.i32.i64 %b33
+ print %w33
+ %r34 = sitofp.i32.f32 -2147483647
+ %b34 = bitcast.f32.i32 %r34
+ %w34 = sext.i32.i64 %b34
+ print %w34
+ %r35 = sitofp.i32.f32 -2
+ %b35 = bitcast.f32.i32 %r35
+ %w35 = sext.i32.i64 %b35
+ print %w35
+ %r36 = sitofp.i32.f32 -1
+ %b36 = bitcast.f32.i32 %r36
+ %w36 = sext.i32.i64 %b36
+ print %w36
+ %r37 = sitofp.i32.f32 0
+ %b37 = bitcast.f32.i32 %r37
+ %w37 = sext.i32.i64 %b37
+ print %w37
+ %r38 = sitofp.i32.f32 1
+ %b38 = bitcast.f32.i32 %r38
+ %w38 = sext.i32.i64 %b38
+ print %w38
+ %r39 = sitofp.i32.f32 2
+ %b39 = bitcast.f32.i32 %r39
+ %w39 = sext.i32.i64 %b39
+ print %w39
+ %r40 = sitofp.i32.f32 2147483647
+ %b40 = bitcast.f32.i32 %r40
+ %w40 = sext.i32.i64 %b40
+ print %w40
+ %r41 = sitofp.i32.f32 16777217
+ %b41 = bitcast.f32.i32 %r41
+ %w41 = sext.i32.i64 %b41
+ print %w41
+ %r42 = sitofp.i32.f32 -16777217
+ %b42 = bitcast.f32.i32 %r42
+ %w42 = sext.i32.i64 %b42
+ print %w42
+ %r43 = sitofp.i32.f64 -2147483648
+ %b43 = bitcast.f64.i64 %r43
+ print %b43
+ %r44 = sitofp.i32.f64 -2147483647
+ %b44 = bitcast.f64.i64 %r44
+ print %b44
+ %r45 = sitofp.i32.f64 -2
+ %b45 = bitcast.f64.i64 %r45
+ print %b45
+ %r46 = sitofp.i32.f64 -1
+ %b46 = bitcast.f64.i64 %r46
+ print %b46
+ %r47 = sitofp.i32.f64 0
+ %b47 = bitcast.f64.i64 %r47
+ print %b47
+ %r48 = sitofp.i32.f64 1
+ %b48 = bitcast.f64.i64 %r48
+ print %b48
+ jmp b48
+b48:
+ %r49 = sitofp.i32.f64 2
+ %b49 = bitcast.f64.i64 %r49
+ print %b49
+ %r50 = sitofp.i32.f64 2147483647
+ %b50 = bitcast.f64.i64 %r50
+ print %b50
+ %r51 = sitofp.i32.f64 16777217
+ %b51 = bitcast.f64.i64 %r51
+ print %b51
+ %r52 = sitofp.i32.f64 -16777217
+ %b52 = bitcast.f64.i64 %r52
+ print %b52
+ %r53 = sitofp.i64.f32 -9223372036854775808
+ %b53 = bitcast.f32.i32 %r53
+ %w53 = sext.i32.i64 %b53
+ print %w53
+ %r54 = sitofp.i64.f32 -9223372036854775807
+ %b54 = bitcast.f32.i32 %r54
+ %w54 = sext.i32.i64 %b54
+ print %w54
+ %r55 = sitofp.i64.f32 -2
+ %b55 = bitcast.f32.i32 %r55
+ %w55 = sext.i32.i64 %b55
+ print %w55
+ %r56 = sitofp.i64.f32 -1
+ %b56 = bitcast.f32.i32 %r56
+ %w56 = sext.i32.i64 %b56
+ print %w56
+ %r57 = sitofp.i64.f32 0
+ %b57 = bitcast.f32.i32 %r57
+ %w57 = sext.i32.i64 %b57
+ print %w57
+ %r58 = sitofp.i64.f32 1
+ %b58 = bitcast.f32.i32 %r58
+ %w58 = sext.i32.i64 %b58
+ print %w58
+ %r59 = sitofp.i64.f32 2
+ %b59 = bitcast.f32.i32 %r59
+ %w59 = sext.i32.i64 %b59
+ print %w59
+ %r60 = sitofp.i64.f32 9223372036854775807
+ %b60 = bitcast.f32.i32 %r60
+ %w60 = sext.i32.i64 %b60
+ print %w60
+ %r61 = sitofp.i64.f32 -9007199254740993
+ %b61 = bitcast.f32.i32 %r61
+ %w61 = sext.i32.i64 %b61
+ print %w61
+ %r62 = sitofp.i64.f32 9007199254740993
+ %b62 = bitcast.f32.i32 %r62
+ %w62 = sext.i32.i64 %b62
+ print %w62
+ %r63 = sitofp.i64.f32 4294967297
+ %b63 = bitcast.f32.i32 %r63
+ %w63 = sext.i32.i64 %b63
+ print %w63
+ %r64 = sitofp.i64.f64 -9223372036854775808
+ %b64 = bitcast.f64.i64 %r64
+ print %b64
+ %r65 = sitofp.i64.f64 -9223372036854775807
+ %b65 = bitcast.f64.i64 %r65
+ print %b65
+ %r66 = sitofp.i64.f64 -2
+ %b66 = bitcast.f64.i64 %r66
+ print %b66
+ %r67 = sitofp.i64.f64 -1
+ %b67 = bitcast.f64.i64 %r67
+ print %b67
+ %r68 = sitofp.i64.f64 0
+ %b68 = bitcast.f64.i64 %r68
+ print %b68
+ %r69 = sitofp.i64.f64 1
+ %b69 = bitcast.f64.i64 %r69
+ print %b69
+ %r70 = sitofp.i64.f64 2
+ %b70 = bitcast.f64.i64 %r70
+ print %b70
+ %r71 = sitofp.i64.f64 9223372036854775807
+ %b71 = bitcast.f64.i64 %r71
+ print %b71
+ %r72 = sitofp.i64.f64 -9007199254740993
+ %b72 = bitcast.f64.i64 %r72
+ print %b72
+ jmp b72
+b72:
+ %r73 = sitofp.i64.f64 9007199254740993
+ %b73 = bitcast.f64.i64 %r73
+ print %b73
+ %r74 = sitofp.i64.f64 4294967297
+ %b74 = bitcast.f64.i64 %r74
+ print %b74
+ ret.i64 0
+}
