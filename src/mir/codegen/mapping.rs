@@ -8,7 +8,7 @@ use crate::{
     ir::types::{PrimitiveType as IRPrim, Type as IRType},
     mir::{
         codegen::error::FromIRError,
-        types::{MirType, ScalarType},
+        types::{MirType, ScalarType, Signedness},
     },
 };
 
@@ -24,6 +24,21 @@ pub fn map_ir_prim(p: IRPrim) -> Result<MirType, FromIRError> {
         IRPrim::Ptr => ScalarType::Ptr,
     };
     Ok(MirType::Scalar(scalar))
+}
+
+pub fn signedness_of(ty: &IRType<'_>) -> Signedness {
+    match ty {
+        IRType::Primitive(
+            IRPrim::U8
+            | IRPrim::U16
+            | IRPrim::U32
+            | IRPrim::U64
+            | IRPrim::Bool
+            | IRPrim::Char
+            | IRPrim::Ptr,
+        ) => Signedness::Unsigned,
+        _ => Signedness::Signed,
+    }
 }
 
 /// Maps an IR type to a MIR type.

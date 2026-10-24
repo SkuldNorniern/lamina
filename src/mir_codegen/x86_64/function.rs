@@ -81,7 +81,7 @@ pub(super) fn compile_single_function_x86_64(
     func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
-    return_extensions: &ReturnExtensions,
+    abi_extensions: &AbiExtensions,
 ) -> Result<Vec<u8>, CodegenError> {
     let reserved = simd::reserve_vector_slots(func);
     let func = reserved.as_ref().unwrap_or(func);
@@ -415,7 +415,7 @@ pub(super) fn compile_single_function_x86_64(
                 &def_regs,
                 settings,
                 &mut debug_line,
-                return_extensions,
+                abi_extensions,
                 next_label,
                 &self_param_homes,
                 &param_extensions,
@@ -456,17 +456,75 @@ pub(super) fn ensure_type_supported(ty: &MirType, context: &str) -> Result<(), L
 /// for `i1`, which only ever holds 0 or 1.
 pub(super) type NarrowExtension = (usize, bool);
 
-/// Declared return extension of every function in the module that returns a narrow integer.
-pub(super) type ReturnExtensions = HashMap<String, NarrowExtension>;
+/// Width-extension facts about the module's functions that call sites and callees need.
+/// Returns are widened by the caller after the call; arguments are widened by the caller
+/// only when the callee is external, since the C ABI leaves the upper bits unspecified.
+#[derive(Default)]
+pub(super) struct AbiExtensions {
+    returns: HashMap<String, NarrowExtension>,
+    external_arguments: HashMap<String, Vec<Option<NarrowExtension>>>,
+}
 
-pub(super) fn narrow_param_extension(ty: &MirType) -> Option<NarrowExtension> {
+impl AbiExtensions {
+    pub(super) fn from_module(module: &MirModule) -> Self {
+        let returns = module
+            .functions
+            .iter()
+            .filter_map(|(name, func)| {
+                let ty = func.sig.ret_ty.as_ref()?;
+                Some((name.clone(), narrow_extension(ty, func.sig.ret_signedness)?))
+            })
+            .collect();
+        let external_arguments = module
+            .external_functions
+            .iter()
+            .filter_map(|name| {
+                let sig = &module.functions.get(name)?.sig;
+                let extensions: Vec<_> = sig
+                    .params
+                    .iter()
+                    .map(|param| narrow_extension(&param.ty, param.signedness))
+                    .collect();
+                extensions
+                    .iter()
+                    .any(Option::is_some)
+                    .then(|| (name.clone(), extensions))
+            })
+            .collect();
+        Self {
+            returns,
+            external_arguments,
+        }
+    }
+
+    pub(super) fn return_extension(&self, callee: &str) -> Option<NarrowExtension> {
+        self.returns.get(callee).copied()
+    }
+
+    pub(super) fn external_argument(&self, callee: &str, index: usize) -> Option<NarrowExtension> {
+        self.external_arguments
+            .get(callee)?
+            .get(index)
+            .copied()
+            .flatten()
+    }
+}
+
+/// Width and signedness of a narrow integer value crossing a boundary. `i1` holds only
+/// 0 or 1, so it is always zero-extended.
+pub(super) fn narrow_extension(ty: &MirType, signedness: Signedness) -> Option<NarrowExtension> {
+    let signed = signedness == Signedness::Signed;
     match ty {
         MirType::Scalar(ScalarType::I1) => Some((1, false)),
-        MirType::Scalar(ScalarType::I8) => Some((1, true)),
-        MirType::Scalar(ScalarType::I16) => Some((2, true)),
-        MirType::Scalar(ScalarType::I32) => Some((4, true)),
+        MirType::Scalar(ScalarType::I8) => Some((1, signed)),
+        MirType::Scalar(ScalarType::I16) => Some((2, signed)),
+        MirType::Scalar(ScalarType::I32) => Some((4, signed)),
         _ => None,
     }
+}
+
+pub(super) fn narrow_param_extension(ty: &MirType) -> Option<NarrowExtension> {
+    narrow_extension(ty, Signedness::Signed)
 }
 
 /// Rewrite each narrow parameter home in place to its canonical 64-bit form.

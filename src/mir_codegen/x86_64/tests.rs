@@ -653,3 +653,306 @@ entry:
         Ok(())
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod narrow_c_abi_tests {
+    use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
+    use std::{
+        env,
+        error::Error,
+        fs,
+        path::Path,
+        process::{self, Command},
+    };
+
+    /// Each `raw_*` callee returns the full 64-bit register it received, so the caller
+    /// sees exactly the upper bits lamina left behind.
+    const RAW_CALLEES: &str = r#"
+#include <stdio.h>
+__asm__(".text\n.globl raw_u8\n.type raw_u8,@function\nraw_u8:\n movq %rdi, %rax\n ret\n");
+__asm__(".text\n.globl raw_i8\n.type raw_i8,@function\nraw_i8:\n movq %rdi, %rax\n ret\n");
+__asm__(".text\n.globl raw_u16\n.type raw_u16,@function\nraw_u16:\n movq %rdi, %rax\n ret\n");
+__asm__(".text\n.globl raw_i16\n.type raw_i16,@function\nraw_i16:\n movq %rdi, %rax\n ret\n");
+__asm__(".text\n.globl raw_u32\n.type raw_u32,@function\nraw_u32:\n movq %rdi, %rax\n ret\n");
+__asm__(".text\n.globl raw_i32\n.type raw_i32,@function\nraw_i32:\n movq %rdi, %rax\n ret\n");
+__asm__(".text\n.globl raw_ret_u8\n.type raw_ret_u8,@function\nraw_ret_u8:\n movl $511, %eax\n ret\n");
+__asm__(".text\n.globl raw_ret_i8\n.type raw_ret_i8,@function\nraw_ret_i8:\n movl $255, %eax\n ret\n");
+__asm__(".text\n.globl raw_ret_u16\n.type raw_ret_u16,@function\nraw_ret_u16:\n movl $131071, %eax\n ret\n");
+__asm__(".text\n.globl raw_ret_i16\n.type raw_ret_i16,@function\nraw_ret_i16:\n movl $32768, %eax\n ret\n");
+__asm__(".text\n.globl raw_ret_u32\n.type raw_ret_u32,@function\nraw_ret_u32:\n movq $-1, %rax\n ret\n");
+__asm__(".text\n.globl raw_ret_i32\n.type raw_ret_i32,@function\nraw_ret_i32:\n movq $4294967295, %rax\n ret\n");
+extern long probe_u8(void);
+extern long probe_i8(void);
+extern long probe_u16(void);
+extern long probe_i16(void);
+extern long probe_u32(void);
+extern long probe_i32(void);
+extern long probe_ret_u8(void);
+extern long probe_ret_i8(void);
+extern long probe_ret_u16(void);
+extern long probe_ret_i16(void);
+extern long probe_ret_u32(void);
+extern long probe_ret_i32(void);
+int main(void) {
+    printf("%ld %ld %ld %ld %ld %ld\n", probe_u8(), probe_i8(), probe_u16(), probe_i16(), probe_u32(), probe_i32());
+    printf("%ld %ld %ld %ld %ld %ld\n", probe_ret_u8(), probe_ret_i8(), probe_ret_u16(), probe_ret_i16(), probe_ret_u32(), probe_ret_i32());
+    return 0;
+}
+"#;
+
+    /// Each `probe_*` materializes a narrow constant and passes it to a raw callee.
+    const OUTGOING: &str = r#"
+@extern fn @raw_u8(u8 %x) -> i64 {
+entry:
+ ret.i64 0
+}
+@extern fn @raw_i8(i8 %x) -> i64 {
+entry:
+ ret.i64 0
+}
+@extern fn @raw_u16(u16 %x) -> i64 {
+entry:
+ ret.i64 0
+}
+@extern fn @raw_i16(i16 %x) -> i64 {
+entry:
+ ret.i64 0
+}
+@extern fn @raw_u32(u32 %x) -> i64 {
+entry:
+ ret.i64 0
+}
+@extern fn @raw_i32(i32 %x) -> i64 {
+entry:
+ ret.i64 0
+}
+@export fn @probe_u8() -> i64 {
+entry:
+ %v = add.u8 255, 0
+ %r = call @raw_u8(%v)
+ ret.i64 %r
+}
+@export fn @probe_i8() -> i64 {
+entry:
+ %v = add.i8 -1, 0
+ %r = call @raw_i8(%v)
+ ret.i64 %r
+}
+@export fn @probe_u16() -> i64 {
+entry:
+ %v = add.u16 65535, 0
+ %r = call @raw_u16(%v)
+ ret.i64 %r
+}
+@export fn @probe_i16() -> i64 {
+entry:
+ %v = add.i16 -1, 0
+ %r = call @raw_i16(%v)
+ ret.i64 %r
+}
+@export fn @probe_u32() -> i64 {
+entry:
+ %v = add.u32 4294967295, 0
+ %r = call @raw_u32(%v)
+ ret.i64 %r
+}
+@export fn @probe_i32() -> i64 {
+entry:
+ %v = add.i32 -1, 0
+ %r = call @raw_i32(%v)
+ ret.i64 %r
+}
+@extern fn @raw_ret_u8() -> u8 {
+entry:
+ ret.u8 0
+}
+@extern fn @raw_ret_i8() -> i8 {
+entry:
+ ret.i8 0
+}
+@extern fn @raw_ret_u16() -> u16 {
+entry:
+ ret.u16 0
+}
+@extern fn @raw_ret_i16() -> i16 {
+entry:
+ ret.i16 0
+}
+@extern fn @raw_ret_u32() -> u32 {
+entry:
+ ret.u32 0
+}
+@extern fn @raw_ret_i32() -> i32 {
+entry:
+ ret.i32 0
+}
+@export fn @probe_ret_u8() -> i64 {
+entry:
+ %r = call @raw_ret_u8()
+ %w = zext.u8.i64 %r
+ ret.i64 %w
+}
+@export fn @probe_ret_i8() -> i64 {
+entry:
+ %r = call @raw_ret_i8()
+ %w = sext.i8.i64 %r
+ ret.i64 %w
+}
+@export fn @probe_ret_u16() -> i64 {
+entry:
+ %r = call @raw_ret_u16()
+ %w = zext.u16.i64 %r
+ ret.i64 %w
+}
+@export fn @probe_ret_i16() -> i64 {
+entry:
+ %r = call @raw_ret_i16()
+ %w = sext.i16.i64 %r
+ ret.i64 %w
+}
+@export fn @probe_ret_u32() -> i64 {
+entry:
+ %r = call @raw_ret_u32()
+ %w = zext.u32.i64 %r
+ ret.i64 %w
+}
+@export fn @probe_ret_i32() -> i64 {
+entry:
+ %r = call @raw_ret_i32()
+ %w = sext.i32.i64 %r
+ ret.i64 %w
+}
+"#;
+
+    /// Each `echo_*` receives a narrow argument from a C caller that uses the real
+    /// C prototype, and returns it widened by lamina.
+    const INCOMING: &str = r#"
+@export fn @echo_u8(u8 %x) -> i64 {
+entry:
+ %w = zext.u8.i64 %x
+ ret.i64 %w
+}
+@export fn @echo_i8(i8 %x) -> i64 {
+entry:
+ %w = sext.i8.i64 %x
+ ret.i64 %w
+}
+@export fn @echo_u16(u16 %x) -> i64 {
+entry:
+ %w = zext.u16.i64 %x
+ ret.i64 %w
+}
+@export fn @echo_i16(i16 %x) -> i64 {
+entry:
+ %w = sext.i16.i64 %x
+ ret.i64 %w
+}
+@export fn @echo_u32(u32 %x) -> i64 {
+entry:
+ %w = zext.u32.i64 %x
+ ret.i64 %w
+}
+@export fn @echo_i32(i32 %x) -> i64 {
+entry:
+ %w = sext.i32.i64 %x
+ ret.i64 %w
+}
+"#;
+
+    const INCOMING_CALLER: &str = r#"
+#include <stdio.h>
+extern long echo_u8(unsigned char);
+extern long echo_i8(signed char);
+extern long echo_u16(unsigned short);
+extern long echo_i16(short);
+extern long echo_u32(unsigned int);
+extern long echo_i32(int);
+int main(void) {
+    printf("%ld %ld\n", echo_u8(255), echo_i8(255));
+    printf("%ld %ld\n", echo_u16(65535), echo_i16(65535));
+    printf("%ld %ld\n", echo_u32(4294967295u), echo_i32(-1));
+    return 0;
+}
+"#;
+
+    const OUTGOING_EXPECTED: &str =
+        "255 -1 65535 -1 4294967295 -1\n255 -1 65535 -32768 4294967295 -1\n";
+    const INCOMING_EXPECTED: &str = "255 -1\n65535 -1\n4294967295 -1\n";
+
+    fn build_and_run(
+        directory: &Path,
+        name: &str,
+        lamina: &str,
+        exports: &[&str],
+        c_source: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let source = directory.join(format!("{name}.lamina"));
+        fs::write(&source, lamina)?;
+        let base = directory.join(name);
+        compile(&source, &base, &["--emit-asm"])?;
+        let mut assembly = fs::read_to_string(directory.join(format!("{name}.s")))?;
+        for export in exports {
+            assembly.push_str(&format!(".globl {export}\n"));
+        }
+        let assembly_path = directory.join(format!("{name}-linked.s"));
+        fs::write(&assembly_path, assembly)?;
+        let caller = directory.join(format!("{name}-caller.c"));
+        fs::write(&caller, c_source)?;
+        let executable = directory.join(format!("{name}-bin"));
+        let linked = Command::new("cc")
+            .arg("-no-pie")
+            .arg(&caller)
+            .arg(&assembly_path)
+            .arg("-o")
+            .arg(&executable)
+            .output()?;
+        assert!(linked.status.success(), "link failed: {linked:?}");
+        let output = Command::new(&executable).output()?;
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    #[test]
+    fn narrow_arguments_and_results_cross_the_c_abi_widened() -> Result<(), Box<dyn Error>> {
+        if !tools_available(&["cc"]) {
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-narrow-abi-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+
+        let outgoing = build_and_run(
+            &directory,
+            "outgoing",
+            OUTGOING,
+            &[
+                "probe_u8",
+                "probe_i8",
+                "probe_u16",
+                "probe_i16",
+                "probe_u32",
+                "probe_i32",
+                "probe_ret_u8",
+                "probe_ret_i8",
+                "probe_ret_u16",
+                "probe_ret_i16",
+                "probe_ret_u32",
+                "probe_ret_i32",
+            ],
+            RAW_CALLEES,
+        )?;
+        assert_eq!(outgoing, OUTGOING_EXPECTED);
+
+        let incoming = build_and_run(
+            &directory,
+            "incoming",
+            INCOMING,
+            &[
+                "echo_u8", "echo_i8", "echo_u16", "echo_i16", "echo_u32", "echo_i32",
+            ],
+            INCOMING_CALLER,
+        )?;
+        assert_eq!(incoming, INCOMING_EXPECTED);
+
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+}
