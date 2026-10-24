@@ -317,6 +317,9 @@ fn choose_plan(func: &Function, shape: &Shape) -> Option<(Option<u64>, usize)> {
     {
         return Some((Some(n), 0));
     }
+    if shape.body.iter().any(|i| matches!(i, Instruction::IntBinary { op: IntBinOp::Mul, dst, lhs, rhs, .. } if lhs.as_register() == Some(dst) || rhs.as_register() == Some(dst))) {
+        return None;
+    }
     let work = shape.body.iter().filter(|i| !matches!(i, Instruction::Copy { .. }) && !matches!(i, Instruction::IntBinary { op: IntBinOp::Add, rhs, .. } if rhs.integer_constant() == Some(0))).count();
     let mut factor = match work {
         0..=4 => 8,
