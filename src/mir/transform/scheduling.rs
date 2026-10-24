@@ -90,6 +90,7 @@ impl InstructionScheduling {
     fn build_dependency_graph(&self, instructions: &[Instruction]) -> DependencyGraph {
         let mut graph = DependencyGraph::new(instructions.len());
         let mut reg_defs: HashMap<Register, usize> = HashMap::new();
+        let mut reg_readers: HashMap<Register, Vec<usize>> = HashMap::new();
 
         // Track memory dependencies
         // Conservative approach:
@@ -104,6 +105,7 @@ impl InstructionScheduling {
                 if let Some(&def_idx) = reg_defs.get(use_reg) {
                     graph.add_edge(def_idx, idx);
                 }
+                reg_readers.entry(use_reg.clone()).or_default().push(idx);
             }
 
             // 2. Register Output Dependencies (WAW) - to ensure we don't reorder defs to same reg
@@ -111,6 +113,13 @@ impl InstructionScheduling {
             if let Some(def_reg) = instr.def_reg() {
                 if let Some(&prev_def_idx) = reg_defs.get(def_reg) {
                     graph.add_edge(prev_def_idx, idx);
+                }
+                if let Some(readers) = reg_readers.remove(def_reg) {
+                    for reader in readers {
+                        if reader != idx {
+                            graph.add_edge(reader, idx);
+                        }
+                    }
                 }
                 reg_defs.insert(def_reg.clone(), idx);
             }
@@ -351,6 +360,52 @@ mod tests {
         AddressMode, FunctionBuilder, Immediate, IntBinOp, MemoryAttrs, MirType, Operand,
         ScalarType, VirtualReg,
     };
+
+    #[test]
+    fn test_scheduling_keeps_reads_before_redefinition() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let add = |dst: u32, lhs: Operand, rhs: Operand| Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: i64_ty,
+            dst: VirtualReg::gpr(dst).into(),
+            lhs,
+            rhs,
+        };
+        let reg = |id: u32| Operand::Register(VirtualReg::gpr(id).into());
+        let imm = |v: i64| Operand::Immediate(Immediate::I64(v));
+        let mut func = FunctionBuilder::new("read_before_redefine")
+            .returns(i64_ty)
+            .block("entry")
+            .instr(add(2, imm(40), imm(0)))
+            .instr(add(8, imm(1), imm(0)))
+            .instr(add(8, reg(8), reg(2)))
+            .instr(add(2, reg(2), imm(100)))
+            .instr(add(11, reg(2), imm(1)))
+            .instr(add(12, reg(11), reg(8)))
+            .instr(Instruction::Ret {
+                value: Some(reg(12)),
+            })
+            .build();
+
+        InstructionScheduling
+            .apply(&mut func)
+            .expect("Scheduling failed");
+
+        let instrs = &func.blocks[0].instructions;
+        let read_pos = instrs
+            .iter()
+            .position(|i| {
+                matches!(i, Instruction::IntBinary { dst: Register::Virtual(v), lhs: Operand::Register(_), .. } if v.id == 8)
+            })
+            .unwrap();
+        let redefine_pos = instrs
+            .iter()
+            .position(|i| {
+                matches!(i, Instruction::IntBinary { dst: Register::Virtual(v), rhs: Operand::Immediate(Immediate::I64(100)), .. } if v.id == 2)
+            })
+            .unwrap();
+        assert!(read_pos < redefine_pos);
+    }
 
     #[test]
     fn test_scheduling_latency_hiding() {
