@@ -836,6 +836,77 @@ fn emit_instruction_wasm(
             // Continue dispatch loop
             writeln!(writer, "        br $dispatch_loop")?;
         }
+        MirInst::IntToFloat {
+            from,
+            to,
+            signed,
+            dst,
+            src,
+        } => {
+            let is_f32 = to.size_bytes() == 4;
+            load_operand_wasm(src, writer, vreg_to_local)?;
+            if from.size_bytes() < 8 {
+                extend_integer_wasm(writer, *from, *signed)?;
+            }
+            let unsigned_word = !*signed && from.size_bytes() == 8;
+            let convert = match (is_f32, unsigned_word) {
+                (true, true) => "f32.convert_i64_u",
+                (true, false) => "f32.convert_i64_s",
+                (false, true) => "f64.convert_i64_u",
+                (false, false) => "f64.convert_i64_s",
+            };
+            writeln!(writer, "      {convert}")?;
+            if is_f32 {
+                writeln!(writer, "      i32.reinterpret_f32")?;
+                writeln!(writer, "      i64.extend_i32_u")?;
+            } else {
+                writeln!(writer, "      i64.reinterpret_f64")?;
+            }
+            store_to_register_wasm(dst, writer, vreg_to_local)?;
+        }
+        MirInst::FloatToInt {
+            from,
+            to,
+            signed,
+            dst,
+            src,
+        } => {
+            // trunc_sat maps NaN to 0 and saturates to the 64-bit range. Narrower
+            // targets are clamped with select, then sign-extended to match the x86
+            // backend's canonical register form.
+            let is_f32 = from.size_bytes() == 4;
+            load_fp_operand_wasm(src, writer, vreg_to_local, is_f32)?;
+            let trunc = match (is_f32, *signed) {
+                (true, true) => "i64.trunc_sat_f32_s",
+                (true, false) => "i64.trunc_sat_f32_u",
+                (false, true) => "i64.trunc_sat_f64_s",
+                (false, false) => "i64.trunc_sat_f64_u",
+            };
+            writeln!(writer, "      {trunc}")?;
+            store_to_register_wasm(dst, writer, vreg_to_local)?;
+            let bits = to.size_bytes() * 8;
+            if bits < 64 {
+                let clamps: Vec<(i128, &str)> = if *signed {
+                    let max = (1i128 << (bits - 1)) - 1;
+                    let min = -(1i128 << (bits - 1));
+                    vec![(max, "i64.gt_s"), (min, "i64.lt_s")]
+                } else {
+                    vec![((1i128 << bits) - 1, "i64.gt_u")]
+                };
+                for (bound, compare) in clamps {
+                    writeln!(writer, "      i64.const {bound}")?;
+                    load_operand_wasm(&Operand::Register(dst.clone()), writer, vreg_to_local)?;
+                    load_operand_wasm(&Operand::Register(dst.clone()), writer, vreg_to_local)?;
+                    writeln!(writer, "      i64.const {bound}")?;
+                    writeln!(writer, "      {compare}")?;
+                    writeln!(writer, "      select")?;
+                    store_to_register_wasm(dst, writer, vreg_to_local)?;
+                }
+                load_operand_wasm(&Operand::Register(dst.clone()), writer, vreg_to_local)?;
+                extend_integer_wasm(writer, *to, true)?;
+                store_to_register_wasm(dst, writer, vreg_to_local)?;
+            }
+        }
         MirInst::FloatBinary {
             op,
             dst,
