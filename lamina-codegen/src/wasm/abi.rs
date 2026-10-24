@@ -35,7 +35,7 @@ impl WasmABI {
         &[
             "(import \"env\" \"writebyte\" (func $writebyte (param i64) (result i64)))",
             "(import \"env\" \"readbyte\" (func $readbyte (result i64)))",
-            "(import \"env\" \"writeptr\" (func $writeptr (param i64) (result i64)))",
+            "(import \"env\" \"writeptr\" (func $writeptr (param i64 i64) (result i64)))",
             "(import \"env\" \"malloc\" (func $malloc (param i64) (result i64)))",
             "(import \"env\" \"free\" (func $free (param i64)))",
         ]

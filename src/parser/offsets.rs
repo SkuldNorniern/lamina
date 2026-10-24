@@ -1,4 +1,5 @@
-//! Fills in `field_byte_offset` on `getfieldptr` parsed from text.
+//! Fills in the layout facts that the text syntax leaves out: `field_byte_offset`
+//! on `getfieldptr`, and the pointee width of `writeptr`.
 //!
 //! The text syntax carries no type on a `getfieldptr`, so the lowering falls
 //! back to one 8-byte slot per field. That is wrong for any struct with
@@ -10,7 +11,7 @@ use lamina_ir::function::Function;
 use lamina_ir::instruction::Instruction;
 use lamina_ir::module::{Module, TypeDeclaration};
 use lamina_ir::types::{
-    Identifier, StructField, Type, Value, resolve_type_names, struct_field_byte_offset,
+    Identifier, StructField, Type, Value, resolve_type_names, sizeof_type, struct_field_byte_offset,
 };
 use std::collections::HashMap;
 
@@ -52,6 +53,11 @@ fn resolve_in_function<'a>(
                         _ => None,
                     });
                     pointee.insert(*result, elem.unwrap_or_else(|| element_type.clone()));
+                }
+                Instruction::WritePtr {
+                    ptr, pointee_size, ..
+                } => {
+                    *pointee_size = pointee_of(ptr, &pointee, types).and_then(|t| sizeof_type(&t));
                 }
                 Instruction::GetFieldPtr {
                     result,

@@ -99,6 +99,8 @@
 //! **Common misconception:**
 //! - `writeptr(ptr)` does NOT write the pointer address
 //! - `writeptr(ptr)` writes the VALUE stored at that address
+//! - The number of bytes written is the pointee's size (1, 2, 4 or 8), taken from the
+//!   alloc, getelemptr or getfieldptr that defines `ptr`
 //! - Think of it as "write pointer's value", not "write pointer"
 //!
 //! ### I/O Operation Comparison:

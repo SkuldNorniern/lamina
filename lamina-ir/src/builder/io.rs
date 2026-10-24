@@ -40,7 +40,11 @@ impl<'a> IRBuilder<'a> {
 
     /// Writes the value stored at a pointer location to stdout (I/O operation)
     pub fn write_ptr(&mut self, ptr: Value<'a>, result: &'a str) -> &mut Self {
-        self.inst(Instruction::WritePtr { ptr, result })
+        self.inst(Instruction::WritePtr {
+            ptr,
+            result,
+            pointee_size: None,
+        })
     }
 
     /// Creates a print instruction for debugging. Accepts numeric literals and SSA

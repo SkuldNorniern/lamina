@@ -1248,12 +1248,19 @@ fn convert_instruction<'a>(
                 ret: Some(dst),
             }])
         }
-        IRInst::WritePtr { ptr, result } => {
+        IRInst::WritePtr {
+            ptr,
+            result,
+            pointee_size,
+        } => {
+            let width = pointee_size
+                .filter(|w| matches!(w, 1 | 2 | 4 | 8))
+                .ok_or(FromIRError::WritePtrPointeeUnknown)?;
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "writeptr".to_string(),
-                args: vec![p],
+                args: vec![p, Operand::Immediate(Immediate::I64(width as i64))],
                 ret: Some(dst),
             }])
         }
