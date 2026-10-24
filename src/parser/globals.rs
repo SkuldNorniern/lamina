@@ -9,6 +9,7 @@ use crate::{
 /// Parses a global declaration.
 pub fn parse_global_declaration<'a>(
     state: &mut ParserState<'a>,
+    exported: bool,
 ) -> Result<GlobalDeclaration<'a>, LaminaError> {
     state.consume_keyword("global")?;
     let name = state.parse_type_identifier()?;
@@ -28,6 +29,7 @@ pub fn parse_global_declaration<'a>(
         name,
         ty,
         initializer,
+        exported,
     })
 }
 

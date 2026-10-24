@@ -24,6 +24,8 @@ pub enum FromIRError {
     PrintStringLiteralUnsupported,
     /// Lowering produced MIR that failed verification.
     InvalidMir(Vec<String>),
+    /// A global declaration uses a form the backend cannot lower yet.
+    UnsupportedGlobal(String),
 }
 
 impl fmt::Display for FromIRError {
@@ -56,6 +58,9 @@ impl fmt::Display for FromIRError {
                 f,
                 "print with string literal is not supported. Use writebyte in a loop for portable output. See docs/OUTPUT_SEMANTICS.md"
             ),
+            FromIRError::UnsupportedGlobal(reason) => {
+                write!(f, "global not yet supported: {reason}")
+            }
             FromIRError::InvalidMir(errors) => {
                 write!(f, "lowering produced invalid MIR: {}", errors.join("; "))
             }

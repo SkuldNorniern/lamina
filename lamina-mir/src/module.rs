@@ -26,6 +26,9 @@ pub struct Global {
 
     /// Initial value (as raw bytes)
     pub initializer: Option<Vec<u8>>,
+
+    /// Whether the symbol is visible to other modules
+    pub exported: bool,
 }
 
 impl Global {
@@ -35,7 +38,13 @@ impl Global {
             ty,
             mutable: true,
             initializer: None,
+            exported: false,
         }
+    }
+
+    pub fn exported(mut self) -> Self {
+        self.exported = true;
+        self
     }
 
     pub fn immutable(mut self) -> Self {

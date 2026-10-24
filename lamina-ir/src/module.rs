@@ -183,6 +183,7 @@ pub struct TypeDeclaration<'a> {
 ///         size: 13,
 ///     },
 ///     initializer: Some(Value::Constant(Literal::String("Hello, World!"))),
+///     exported: false,
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq)] // PartialEq due to Value potentially holding f32
@@ -193,6 +194,8 @@ pub struct GlobalDeclaration<'a> {
     pub ty: Type<'a>,
     /// Optional initializer value (None for external symbols)
     pub initializer: Option<Value<'a>>, // Globals might be uninitialized (extern)
+    /// Whether the global is visible to other modules (declared with `@export`)
+    pub exported: bool,
 }
 
 /// A complete Lamina IR module (file).
@@ -372,6 +375,9 @@ impl fmt::Display for TypeDeclaration<'_> {
 
 impl fmt::Display for GlobalDeclaration<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.exported {
+            write!(f, "@export ")?;
+        }
         write!(f, "global @{}: {}", self.name, self.ty)?;
         if let Some(init) = &self.initializer {
             write!(f, " = {init}")?;
@@ -441,6 +447,7 @@ mod tests {
             name: "count",
             ty: Type::Primitive(PrimitiveType::I32),
             initializer: Some(Value::Constant(Literal::I32(0))),
+            exported: false,
         };
         assert_eq!(format!("{}", decl1), "global @count: i32 = 0");
 
@@ -451,6 +458,7 @@ mod tests {
                 size: 256,
             },
             initializer: None,
+            exported: false,
         };
         assert_eq!(format!("{}", decl2), "global @external_data: [256 x i8]");
     }
@@ -482,6 +490,7 @@ mod tests {
                 name: "PI",
                 ty: Type::Primitive(PrimitiveType::F32),
                 initializer: Some(Value::Constant(Literal::F32(PI))),
+                exported: false,
             },
         );
 
