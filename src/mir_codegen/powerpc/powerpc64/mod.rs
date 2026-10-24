@@ -785,6 +785,11 @@ fn emit_instruction_ppc64<W: Write>(
             let abi = Ppc64Abi::new(target_os);
             let arg_regs = Ppc64Abi::ARG_REGISTERS;
 
+            if name == "writeptr" {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "PowerPC64: writeptr is not supported".to_string(),
+                )));
+            }
             if name == "print" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    addis 3, 2, .L_mir_fmt_int@toc@ha")?;
@@ -828,6 +833,11 @@ fn emit_instruction_ppc64<W: Write>(
             }
         }
         MirInst::TailCall { name, args } => {
+            if name == "writeptr" {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "PowerPC64: writeptr is not supported".to_string(),
+                )));
+            }
             let abi = Ppc64Abi::new(target_os);
             let arg_regs = Ppc64Abi::ARG_REGISTERS;
             let num_reg_args = args.len().min(arg_regs.len());
