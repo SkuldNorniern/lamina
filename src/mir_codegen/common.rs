@@ -518,6 +518,29 @@ pub fn reject_module_globals(module: &MirModule, backend: &str) -> Result<(), La
     )))
 }
 
+/// Without this note the linker marks the stack executable, so every ELF target emits it
+/// even though nothing in the generated code needs a trampoline.
+pub fn emit_gnu_stack_note<W: Write>(
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+) -> Result<(), LaminaError> {
+    if matches!(
+        target_os,
+        TargetOperatingSystem::MacOS
+            | TargetOperatingSystem::IOS
+            | TargetOperatingSystem::TvOS
+            | TargetOperatingSystem::WatchOS
+            | TargetOperatingSystem::VisionOS
+            | TargetOperatingSystem::Windows
+            | TargetOperatingSystem::Cuda
+            | TargetOperatingSystem::AmdHsa
+    ) {
+        return Ok(());
+    }
+    writeln!(writer, ".section .note.GNU-stack,\"\",@progbits")?;
+    Ok(())
+}
+
 /// Emits storage for every global. Globals whose initializer is all zero (or absent) go to
 /// the bss section, the rest to data.
 pub fn emit_global_data<W: Write>(
@@ -1689,5 +1712,23 @@ entry:
             text.contains(".bss\n.p2align 3\nhidden:\n    .zero 8\n"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn elf_targets_mark_stack_non_executable() {
+        let ir = parse_module("fn @main() -> i64 {\nentry:\n ret.i64 0\n}\n").expect("parse");
+        let mir = from_ir(&ir, "stack_note").expect("lower");
+        let note = ".section .note.GNU-stack,\"\",@progbits";
+        for (os, expected) in [
+            (TargetOperatingSystem::Linux, true),
+            (TargetOperatingSystem::FreeBSD, true),
+            (TargetOperatingSystem::MacOS, false),
+            (TargetOperatingSystem::Windows, false),
+        ] {
+            let mut output = Vec::new();
+            generate_mir_x86_64::<Vec<u8>>(&mir, &mut output, os).expect("emit");
+            let text = String::from_utf8(output).expect("utf8 assembly");
+            assert_eq!(text.contains(note), expected, "{os:?}: {text}");
+        }
     }
 }
