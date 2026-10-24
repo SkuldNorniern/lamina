@@ -1,5 +1,5 @@
 use crate::mir::register::PhysicalReg;
-use crate::mir_codegen::common::emit_debug_file;
+use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::common::{
     reject_module_globals,
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
@@ -493,6 +493,7 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     for result in results {
         writer.write_all(&result.assembly)?;
     }
+    emit_gnu_stack_note(writer, target_os)?;
 
     Ok(())
 }
