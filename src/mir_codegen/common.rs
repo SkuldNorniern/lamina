@@ -492,11 +492,58 @@ pub fn emit_global_directives<W: Write>(
         .iter()
         .map(String::as_str)
         .chain(module.functions.contains_key("main").then_some("main"))
+        .chain(
+            module
+                .globals
+                .iter()
+                .filter(|(_, global)| global.exported)
+                .map(|(name, _)| name.as_str()),
+        )
         .collect();
     names.sort_unstable();
     names.dedup();
     for name in names {
         writeln!(writer, ".globl {}", mangle(name))?;
+    }
+    Ok(())
+}
+
+/// Emits storage for every global. Globals whose initializer is all zero (or absent) go to
+/// the bss section, the rest to data.
+pub fn emit_global_data<W: Write>(
+    writer: &mut W,
+    module: &MirModule,
+    target_os: TargetOperatingSystem,
+    mangle: impl Fn(&str) -> String,
+) -> Result<(), LaminaError> {
+    let (data_section, bss_section) = match target_os {
+        TargetOperatingSystem::MacOS => (".section __DATA,__data", ".section __DATA,__data"),
+        _ => (".data", ".bss"),
+    };
+    let mut names: Vec<&str> = module.globals.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    for name in names {
+        let global = &module.globals[name];
+        let label = mangle(name);
+        let align_log2 = global.ty.alignment().trailing_zeros();
+        let size = global.ty.size_bytes();
+        match global.initializer.as_deref() {
+            Some(bytes) if bytes.iter().any(|&b| b != 0) => {
+                writeln!(writer, "{data_section}")?;
+                writeln!(writer, ".p2align {align_log2}")?;
+                writeln!(writer, "{label}:")?;
+                for chunk in bytes.chunks(16) {
+                    let list: Vec<String> = chunk.iter().map(|b| format!("{b:#04x}")).collect();
+                    writeln!(writer, "    .byte {}", list.join(", "))?;
+                }
+            }
+            _ => {
+                writeln!(writer, "{bss_section}")?;
+                writeln!(writer, ".p2align {align_log2}")?;
+                writeln!(writer, "{label}:")?;
+                writeln!(writer, "    .zero {size}")?;
+            }
+        }
     }
     Ok(())
 }
@@ -1564,5 +1611,38 @@ entry:
             assert!(text.contains(".globl main\n"), "{name}: {text}");
             assert!(!text.contains(".globl helper\n"), "{name}: {text}");
         }
+    }
+
+    #[test]
+    fn exported_globals_are_global_and_zero_storage_is_bss() {
+        let ir = parse_module(
+            r#"
+@export global @shared: i64 = 3
+global @hidden: i64
+fn @main() -> i64 {
+entry:
+ %a = load.i64 @shared
+ %b = load.i64 @hidden
+ %c = add.i64 %a, %b
+ ret.i64 %c
+}
+"#,
+        )
+        .expect("parse global module");
+        let mir = from_ir(&ir, "globals").expect("lower global module");
+        let mut output = Vec::new();
+        generate_mir_x86_64::<Vec<u8>>(&mir, &mut output, TargetOperatingSystem::Linux)
+            .expect("emit global module");
+        let text = String::from_utf8(output).expect("utf8 assembly");
+        assert!(text.contains(".globl shared\n"), "{text}");
+        assert!(!text.contains(".globl hidden\n"), "{text}");
+        assert!(
+            text.contains(".data\n.p2align 3\nshared:\n    .byte 0x03, 0x00"),
+            "{text}"
+        );
+        assert!(
+            text.contains(".bss\n.p2align 3\nhidden:\n    .zero 8\n"),
+            "{text}"
+        );
     }
 }

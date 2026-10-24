@@ -50,7 +50,7 @@ use std::{collections::hash_map::Entry, sync::Arc};
 use crate::mir_codegen::common::emit_debug_file;
 use crate::mir_codegen::common::{
     CodegenBase, CopyLocation, assign_stack_slots, assign_stack_slots_where, coalesce_dying_inputs,
-    compile_functions_parallel, emit_global_directives, emit_print_format_section,
+    compile_functions_parallel, emit_global_data, emit_global_directives, emit_print_format_section,
     parallel_codegen_error, parallel_copy_schedule, self_tail_entry_label, use_counts,
 };
 
@@ -208,6 +208,8 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     for result in results {
         writer.write_all(&result.assembly)?;
     }
+
+    emit_global_data(writer, module, target_os, |name| abi.mangle_function_name(name))?;
 
     Ok(())
 }
