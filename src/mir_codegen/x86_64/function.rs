@@ -924,4 +924,55 @@ entry:
         }
         fs::remove_dir_all(directory).expect("remove executable directory");
     }
+
+    #[test]
+    fn writeptr_emits_pointee_width_bytes() {
+        if !tools_available(&["as", "gcc", "timeout"]) {
+            return;
+        }
+        let directory = env::temp_dir().join(format!("lamina-writeptr-width-{}", process::id()));
+        fs::create_dir_all(&directory).expect("create executable directory");
+        let source = directory.join("writeptr_width.lamina");
+        fs::write(
+            &source,
+            r#"
+fn @main() -> i32 {
+entry:
+    %b8 = alloc.stack i8
+    %b16 = alloc.stack i16
+    %b32 = alloc.stack i32
+    %b64 = alloc.stack i64
+    store.i8 %b8, 127
+    store.i16 %b16, 4660
+    store.i32 %b32, 168496141
+    store.i64 %b64, 72623859790382856
+    %w8 = writeptr %b8
+    %w16 = writeptr %b16
+    %w32 = writeptr %b32
+    %w64 = writeptr %b64
+    ret.i32 0
+}
+"#,
+        )
+        .expect("write writeptr source");
+        for level in ["0", "1", "2", "3"] {
+            let executable = directory.join(format!("writeptr-width-{level}"));
+            compile(&source, &executable, &["--opt-level", level]).expect("compile program");
+            let output = Command::new("timeout")
+                .arg("10")
+                .arg(&executable)
+                .output()
+                .expect("run writeptr executable");
+            assert!(output.status.success(), "O{level}: {output:?}");
+            assert_eq!(
+                output.stdout,
+                [
+                    0x7f, 0x34, 0x12, 0x0d, 0x0c, 0x0b, 0x0a, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03,
+                    0x02, 0x01,
+                ],
+                "O{level}"
+            );
+        }
+        fs::remove_dir_all(directory).expect("remove executable directory");
+    }
 }

@@ -110,3 +110,57 @@ fn struct_fields<'a>(ty: &Type<'a>) -> Option<Vec<StructField<'a>>> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse_module;
+
+    fn writeptr_widths(source: &str) -> Vec<Option<u64>> {
+        let module = parse_module(source).expect("parse module");
+        let func = &module.functions["main"];
+        func.basic_blocks["entry"]
+            .instructions
+            .iter()
+            .filter_map(|inst| match inst {
+                Instruction::WritePtr { pointee_size, .. } => Some(*pointee_size),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn writeptr_pointee_width_follows_alloc_type() {
+        let widths = writeptr_widths(
+            r#"
+fn @main() -> i32 {
+entry:
+    %b8 = alloc.stack i8
+    %b16 = alloc.stack i16
+    %b32 = alloc.stack i32
+    %b64 = alloc.stack i64
+    %w8 = writeptr %b8
+    %w16 = writeptr %b16
+    %w32 = writeptr %b32
+    %w64 = writeptr %b64
+    ret.i32 0
+}
+"#,
+        );
+        assert_eq!(widths, [Some(1), Some(2), Some(4), Some(8)]);
+    }
+
+    #[test]
+    fn writeptr_pointee_width_unknown_for_parameters() {
+        let widths = writeptr_widths(
+            r#"
+fn @main(ptr %p) -> i32 {
+entry:
+    %w = writeptr %p
+    ret.i32 0
+}
+"#,
+        );
+        assert_eq!(widths, [None]);
+    }
+}
