@@ -14,6 +14,8 @@ pub enum FromIRError {
     UnsupportedType,
     /// The IR instruction is not supported in MIR.
     UnsupportedInstruction,
+    /// writeptr needs a 1, 2, 4 or 8 byte pointee known from the pointer's defining instruction.
+    WritePtrPointeeUnknown,
     /// A function is missing its entry block.
     MissingEntryBlock,
     /// A variable reference cannot be resolved.
@@ -37,6 +39,10 @@ impl fmt::Display for FromIRError {
             FromIRError::UnsupportedInstruction => {
                 write!(f, "IR instruction is not supported in MIR")
             }
+            FromIRError::WritePtrPointeeUnknown => write!(
+                f,
+                "writeptr needs a pointer to a 1, 2, 4 or 8 byte scalar, defined by alloc, getelemptr or getfieldptr in the same function"
+            ),
             FromIRError::MissingEntryBlock => {
                 write!(f, "Function is missing its entry block")
             }

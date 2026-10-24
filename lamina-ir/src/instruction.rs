@@ -770,8 +770,12 @@ pub enum Instruction<'a> {
         result: Identifier<'a>, // Result byte read (-1 on error)
     },
     WritePtr {
-        ptr: Value<'a>,         // Pointer whose address/value to write to output
+        ptr: Value<'a>,         // Pointer to the bytes to write to output
         result: Identifier<'a>, // Result (bytes written on success, -1 on error)
+        /// Size in bytes of the pointee. `None` when the pointee type is not known from
+        /// the pointer's defining instruction; lowering then rejects the instruction.
+        /// Set by the parser's pointee pass; the text syntax carries no type.
+        pointee_size: Option<u64>,
     },
 
     // --- Debugging ---
@@ -1336,7 +1340,7 @@ impl fmt::Display for Instruction<'_> {
                 write!(f, "%{result} = writebyte {value}")
             }
             Instruction::ReadByte { result } => write!(f, "%{result} = readbyte"),
-            Instruction::WritePtr { ptr, result } => write!(f, "%{result} = writeptr {ptr}"),
+            Instruction::WritePtr { ptr, result, .. } => write!(f, "%{result} = writeptr {ptr}"),
             Instruction::Print { value } => write!(f, "print {value}"),
         }
     }

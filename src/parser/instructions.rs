@@ -624,7 +624,11 @@ fn parse_writeptr_assignment<'a>(
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
     let ptr = parse_value(state)?;
-    Ok(Instruction::WritePtr { ptr, result })
+    Ok(Instruction::WritePtr {
+        ptr,
+        result,
+        pointee_size: None,
+    })
 }
 
 fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
@@ -669,7 +673,11 @@ fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, La
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
     let result = state.parse_identifier_str()?;
-    Ok(Instruction::WritePtr { ptr, result })
+    Ok(Instruction::WritePtr {
+        ptr,
+        result,
+        pointee_size: None,
+    })
 }
 
 fn parse_memcpy<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {

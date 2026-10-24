@@ -21,9 +21,9 @@ use util::{emit_mov_imm64, imm_to_u64};
 use crate::{
     error::LaminaError,
     mir::{
-        AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
-        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
-        VirtualReg, register::RegisterClass,
+        AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Immediate,
+        Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
+        Register, ScalarType, Signature, VirtualReg, register::RegisterClass,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
@@ -971,38 +971,27 @@ fn emit_block<W: Write>(
                             writeln!(w, "    add sp, sp, #16")?;
                         }
                     }
-                } else if name == "writeptr" && args.len() == 1 {
-                    // Write the byte value at pointer to stdout
+                } else if name == "writeptr" && args.len() == 2 {
+                    // write(1, ptr, width): the bytes go out straight from memory.
+                    let Operand::Immediate(Immediate::I64(width)) = &args[1] else {
+                        return Err(LaminaError::ValidationError(
+                            "writeptr width must be an immediate".to_string(),
+                        ));
+                    };
+                    emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
+                    writeln!(w, "    mov x2, #{width}")?;
+                    writeln!(w, "    mov x0, #1")?;
                     match abi.target_os() {
                         TargetOperatingSystem::MacOS => {
-                            emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
-                            writeln!(w, "    ldrb {}, [x1]", w_alias("x9"))?;
-                            writeln!(w, "    sub sp, sp, #16")?;
-                            writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
-                            writeln!(w, "    mov x0, #1")?;
-                            writeln!(w, "    mov x1, sp")?;
-                            writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    mov x16, #4")?;
                             writeln!(w, "    svc #0")?;
-                            if let Some(dst) = ret {
-                                store_result(w, dst, "x0", frame, ra)?;
-                            }
-                            writeln!(w, "    add sp, sp, #16")?;
                         }
                         _ => {
-                            emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
-                            writeln!(w, "    ldrb {}, [x1]", w_alias("x9"))?;
-                            writeln!(w, "    sub sp, sp, #16")?;
-                            writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
-                            writeln!(w, "    mov x0, #1")?;
-                            writeln!(w, "    mov x1, sp")?;
-                            writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    bl write")?;
-                            if let Some(dst) = ret {
-                                store_result(w, dst, "x0", frame, ra)?;
-                            }
-                            writeln!(w, "    add sp, sp, #16")?;
                         }
+                    }
+                    if let Some(dst) = ret {
+                        store_result(w, dst, "x0", frame, ra)?;
                     }
                 } else if name == "write" && args.len() == 2 {
                     match abi.target_os() {
