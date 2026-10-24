@@ -859,6 +859,11 @@ fn emit_block<W: Write>(
                 store_result(w, dst, t, frame, ra)?;
                 ra.free_scratch(t);
             }
+            MirInst::IntToFloat { .. } | MirInst::FloatToInt { .. } => {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "AArch64 backend does not support integer/float conversions yet".to_string(),
+                )));
+            }
             MirInst::Call { name, args, ret } => {
                 if name == "print" && args.len() == 1 {
                     // Special-case intrinsic: print(integer) via printf("%lld\n", value)

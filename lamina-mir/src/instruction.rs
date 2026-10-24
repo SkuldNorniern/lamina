@@ -652,6 +652,26 @@ pub enum Instruction {
         src: Operand,
     },
 
+    /// Integer to float. `signed` selects sign or zero extension of `from`.
+    /// Rounds to nearest, ties to even. See IR `IntToFloat` for the contract.
+    IntToFloat {
+        from: MirType,
+        to: MirType,
+        signed: bool,
+        dst: Register,
+        src: Operand,
+    },
+
+    /// Float to integer, truncating toward zero with saturation. NaN yields 0.
+    /// See IR `FloatToInt` for the contract.
+    FloatToInt {
+        from: MirType,
+        to: MirType,
+        signed: bool,
+        dst: Register,
+        src: Operand,
+    },
+
     StackAddr {
         dst: Register,
         slot: VirtualReg,
@@ -861,6 +881,8 @@ impl Instruction {
             Instruction::Store { ty, src, .. }
             | Instruction::Copy { ty, src, .. }
             | Instruction::IntConvert { from: ty, src, .. }
+            | Instruction::IntToFloat { from: ty, src, .. }
+            | Instruction::FloatToInt { from: ty, src, .. }
             | Instruction::Bitcast { from: ty, src, .. } => {
                 normalize_immediate(src, *ty);
             }
@@ -894,6 +916,8 @@ impl Instruction {
             | Instruction::Select { dst, .. }
             | Instruction::Load { dst, .. }
             | Instruction::IntConvert { dst, .. }
+            | Instruction::IntToFloat { dst, .. }
+            | Instruction::FloatToInt { dst, .. }
             | Instruction::Bitcast { dst, .. }
             | Instruction::StackAddr { dst, .. }
             | Instruction::Lea { dst, .. }
@@ -924,6 +948,14 @@ impl Instruction {
                 ..
             }
             | Instruction::IntConvert {
+                src: Operand::Register(r),
+                ..
+            }
+            | Instruction::IntToFloat {
+                src: Operand::Register(r),
+                ..
+            }
+            | Instruction::FloatToInt {
                 src: Operand::Register(r),
                 ..
             }
@@ -1241,6 +1273,20 @@ impl fmt::Display for Instruction {
             } => {
                 write!(f, "{dst} = intconvert.{from}.{to} signed={signed} {src}")
             }
+            Instruction::IntToFloat {
+                from,
+                to,
+                signed,
+                dst,
+                src,
+            } => write!(f, "{dst} = inttofloat.{from}.{to} signed={signed} {src}"),
+            Instruction::FloatToInt {
+                from,
+                to,
+                signed,
+                dst,
+                src,
+            } => write!(f, "{dst} = floattoint.{from}.{to} signed={signed} {src}"),
             Instruction::StackAddr { dst, slot } => write!(f, "{dst} = stackaddr {slot}"),
             Instruction::Lea { dst, base, offset } => {
                 write!(f, "lea {dst}, {base}, {offset}")
