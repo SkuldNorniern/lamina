@@ -1701,6 +1701,47 @@ mod tests {
     }
 
     #[test]
+    fn narrow_unsigned_compares_zero_extend_both_operands() -> Result<(), Box<dyn Error>> {
+        let ty = MirType::Scalar(ScalarType::I8);
+        let a = Register::Virtual(VirtualReg::gpr(0));
+        let b = Register::Virtual(VirtualReg::gpr(1));
+        let dst = Register::Virtual(VirtualReg::gpr(2));
+        let mut module = MirModule::new("unsigned_cmp");
+        module.add_function(
+            FunctionBuilder::new("below")
+                .param(a.clone(), ty)
+                .param(b.clone(), ty)
+                .returns(MirType::Scalar(ScalarType::I1))
+                .block("entry")
+                .instr(MirInst::IntCmp {
+                    op: IntCmpOp::ULt,
+                    dst: dst.clone(),
+                    lhs: Operand::Register(a),
+                    rhs: Operand::Register(b),
+                    ty,
+                })
+                .instr(MirInst::Ret {
+                    value: Some(Operand::Register(dst)),
+                })
+                .build(),
+        );
+        let mut output = Vec::new();
+        generate_mir_riscv_with_units_and_settings(
+            &module,
+            &mut output,
+            RiscVTarget::general(Xlen::Rv64),
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+        )?;
+        let assembly = String::from_utf8(output)?;
+        assert!(assembly.contains("    srli a0, a0, 56\n"), "{assembly}");
+        assert!(assembly.contains("    srli a1, a1, 56\n"), "{assembly}");
+        assert!(assembly.contains("    sltu "), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
     fn rv32_uses_word_memory_ops_not_doubleword() {
         let ty = MirType::Scalar(ScalarType::I32);
         let a = Register::Virtual(VirtualReg::gpr(0));
