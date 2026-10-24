@@ -158,12 +158,16 @@ fn compile_single_function_aarch64(
             }
 
             if i < 8 {
+                emit_narrow_param_extension(&mut output, &format!("x{i}"), &p.ty)
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 writeln!(output, "    str x{i}, [{addr}]")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
             } else {
                 let caller_offset = 16 + (i - 8) * 8;
                 let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
                 writeln!(output, "    ldr {val_reg}, [x29, #{caller_offset}]")
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                emit_narrow_param_extension(&mut output, val_reg, &p.ty)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 writeln!(output, "    str {val_reg}, [{addr}]")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
@@ -1573,6 +1577,21 @@ impl<'a> Codegen for AArch64Codegen<'a> {
             "Binary emission not implemented for AArch64 MIR backend".into(),
         ))
     }
+}
+
+fn emit_narrow_param_extension(
+    w: &mut impl Write,
+    xreg: &str,
+    ty: &MirType,
+) -> Result<(), LaminaError> {
+    let instruction = match ty {
+        MirType::Scalar(ScalarType::I8) => "sxtb",
+        MirType::Scalar(ScalarType::I16) => "sxth",
+        MirType::Scalar(ScalarType::I32) => "sxtw",
+        _ => return Ok(()),
+    };
+    writeln!(w, "    {instruction} {xreg}, {}", w_alias(xreg))?;
+    Ok(())
 }
 
 fn extend_integer(
