@@ -264,6 +264,7 @@ pub(crate) fn interpret_mir_function(
                 Instruction::Load { .. }
                 | Instruction::Store { .. }
                 | Instruction::StackAddr { .. }
+                | Instruction::SymbolAddress { .. }
                 | Instruction::Lea { .. }
                 | Instruction::FloatBinary { .. }
                 | Instruction::FloatUnary { .. }

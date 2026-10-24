@@ -581,6 +581,15 @@ fn verify_instruction_types(
                         }
                     }
                 }
+                Instruction::SymbolAddress { dst, .. } => {
+                    verify_destination(
+                        dst,
+                        MirType::ptr(),
+                        "SymbolAddress",
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
                 Instruction::Copy { ty, dst, src } => {
                     verify_destination(dst, *ty, "Copy", config, &mut instruction_errors);
                     verify_operand(
@@ -996,7 +1005,9 @@ fn instruction_definition_type(instruction: &Instruction) -> Option<MirType> {
         | Instruction::IntToFloat { to, .. }
         | Instruction::FloatToInt { to, .. }
         | Instruction::Bitcast { to, .. } => Some(*to),
-        Instruction::Lea { .. } | Instruction::StackAddr { .. } => Some(MirType::ptr()),
+        Instruction::Lea { .. }
+        | Instruction::StackAddr { .. }
+        | Instruction::SymbolAddress { .. } => Some(MirType::ptr()),
         _ => None,
     }
 }
@@ -1136,6 +1147,26 @@ mod tests {
         verify_before_phi_lowering(&module.functions["f"], &[], &HashSet::new())
             .err()
             .unwrap_or_default()
+    }
+
+    #[test]
+    fn symbol_address_requires_pointer_register_destination() {
+        let symbol_address = |dst: Register| {
+            FunctionBuilder::new("f")
+                .block("entry")
+                .instr(Instruction::SymbolAddress {
+                    dst,
+                    symbol: "g".to_string(),
+                })
+                .instr(Instruction::Ret { value: None })
+                .build()
+        };
+        assert!(verify_function(&symbol_address(VirtualReg::gpr(0).into())).is_ok());
+        assert!(
+            verification_errors(&symbol_address(VirtualReg::fpr(0).into()))
+                .iter()
+                .any(|e| e.contains("SymbolAddress destination"))
+        );
     }
 
     #[test]

@@ -246,6 +246,7 @@ impl DeadCodeElimination {
             | Instruction::FloatToInt { .. }
             | Instruction::Bitcast { .. }
             | Instruction::StackAddr { .. }
+            | Instruction::SymbolAddress { .. }
                 | Instruction::Lea { .. } => true,
 
             // SIMD register-only ops are also pure (nightly only)

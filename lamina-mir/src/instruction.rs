@@ -571,6 +571,12 @@ pub enum Instruction {
         src: Operand,
     },
 
+    // Address of a global symbol, materialized into a pointer register
+    SymbolAddress {
+        dst: Register,
+        symbol: String,
+    },
+
     // Integer arithmetic
     IntBinary {
         op: IntBinOp,
@@ -908,6 +914,7 @@ impl Instruction {
     pub fn def_reg(&self) -> Option<&Register> {
         match self {
             Instruction::Copy { dst, .. }
+            | Instruction::SymbolAddress { dst, .. }
             | Instruction::IntBinary { dst, .. }
             | Instruction::FloatBinary { dst, .. }
             | Instruction::FloatUnary { dst, .. }
@@ -1188,6 +1195,9 @@ impl fmt::Display for Instruction {
         match self {
             Instruction::Copy { ty, dst, src } => {
                 write!(f, "{dst} = copy.{ty} {src}")
+            }
+            Instruction::SymbolAddress { dst, symbol } => {
+                write!(f, "{dst} = symbol_addr @{symbol}")
             }
             Instruction::IntBinary {
                 op,
