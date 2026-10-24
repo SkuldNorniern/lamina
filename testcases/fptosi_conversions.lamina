@@ -1,0 +1,820 @@
+fn @main() -> i64 {
+entry:
+ %r1 = fptosi.f32.i8 0.0
+ %w1 = sext.i8.i64 %r1
+ print %w1
+ %r2 = fptosi.f32.i8 -0.0
+ %w2 = sext.i8.i64 %r2
+ print %w2
+ %r3 = fptosi.f32.i8 0.5
+ %w3 = sext.i8.i64 %r3
+ print %w3
+ %r4 = fptosi.f32.i8 -0.5
+ %w4 = sext.i8.i64 %r4
+ print %w4
+ %r5 = fptosi.f32.i8 0.99999999
+ %w5 = sext.i8.i64 %r5
+ print %w5
+ %r6 = fptosi.f32.i8 1.0
+ %w6 = sext.i8.i64 %r6
+ print %w6
+ %r7 = fptosi.f32.i8 -1.0
+ %w7 = sext.i8.i64 %r7
+ print %w7
+ %r8 = fptosi.f32.i8 -1.5
+ %w8 = sext.i8.i64 %r8
+ print %w8
+ %r9 = fptosi.f32.i8 2.5
+ %w9 = sext.i8.i64 %r9
+ print %w9
+ %r10 = fptosi.f32.i8 -2.5
+ %w10 = sext.i8.i64 %r10
+ print %w10
+ %r11 = fptosi.f32.i8 127.9
+ %w11 = sext.i8.i64 %r11
+ print %w11
+ %r12 = fptosi.f32.i8 128.0
+ %w12 = sext.i8.i64 %r12
+ print %w12
+ %r13 = fptosi.f32.i8 -128.9
+ %w13 = sext.i8.i64 %r13
+ print %w13
+ %r14 = fptosi.f32.i8 -129.0
+ %w14 = sext.i8.i64 %r14
+ print %w14
+ %r15 = fptosi.f32.i8 255.5
+ %w15 = sext.i8.i64 %r15
+ print %w15
+ %r16 = fptosi.f32.i8 256.0
+ %w16 = sext.i8.i64 %r16
+ print %w16
+ %r17 = fptosi.f32.i8 65535.9
+ %w17 = sext.i8.i64 %r17
+ print %w17
+ %r18 = fptosi.f32.i8 65536.0
+ %w18 = sext.i8.i64 %r18
+ print %w18
+ %r19 = fptosi.f32.i8 3000000000.0
+ %w19 = sext.i8.i64 %r19
+ print %w19
+ %r20 = fptosi.f32.i8 -3000000000.0
+ %w20 = sext.i8.i64 %r20
+ print %w20
+ %r21 = fptosi.f32.i8 -2147483648.5
+ %w21 = sext.i8.i64 %r21
+ print %w21
+ %r22 = fptosi.f32.i8 2147483647.9
+ %w22 = sext.i8.i64 %r22
+ print %w22
+ %r23 = fptosi.f32.i8 9223372036854775808.0
+ %w23 = sext.i8.i64 %r23
+ print %w23
+ %r24 = fptosi.f32.i8 -9223372036854775808.0
+ %w24 = sext.i8.i64 %r24
+ print %w24
+ jmp b24
+b24:
+ %r25 = fptosi.f32.i8 9223372036854774784.0
+ %w25 = sext.i8.i64 %r25
+ print %w25
+ %r26 = fptosi.f32.i8 18446744073709549568.0
+ %w26 = sext.i8.i64 %r26
+ print %w26
+ %r27 = fptosi.f32.i8 18446744073709551616.0
+ %w27 = sext.i8.i64 %r27
+ print %w27
+ %r28 = fptosi.f32.i8 1500000000000000000000000000000.0
+ %w28 = sext.i8.i64 %r28
+ print %w28
+ %r29 = fptosi.f32.i8 -1500000000000000000000000000000.0
+ %w29 = sext.i8.i64 %r29
+ print %w29
+ %r30 = fptosi.f32.i8 4503599627370497.0
+ %w30 = sext.i8.i64 %r30
+ print %w30
+ %r31 = fptosi.f32.i8 16777217.0
+ %w31 = sext.i8.i64 %r31
+ print %w31
+ %r32 = fptosi.f32.i8 0.000000000000000000000000000001
+ %w32 = sext.i8.i64 %r32
+ print %w32
+ %s33 = div.f32 0.0, 0.0
+ %r33 = fptosi.f32.i8 %s33
+ %w33 = sext.i8.i64 %r33
+ print %w33
+ %s34 = div.f32 1.0, 0.0
+ %r34 = fptosi.f32.i8 %s34
+ %w34 = sext.i8.i64 %r34
+ print %w34
+ %s35 = div.f32 -1.0, 0.0
+ %r35 = fptosi.f32.i8 %s35
+ %w35 = sext.i8.i64 %r35
+ print %w35
+ %r36 = fptosi.f32.i16 0.0
+ %w36 = sext.i16.i64 %r36
+ print %w36
+ %r37 = fptosi.f32.i16 -0.0
+ %w37 = sext.i16.i64 %r37
+ print %w37
+ %r38 = fptosi.f32.i16 0.5
+ %w38 = sext.i16.i64 %r38
+ print %w38
+ %r39 = fptosi.f32.i16 -0.5
+ %w39 = sext.i16.i64 %r39
+ print %w39
+ %r40 = fptosi.f32.i16 0.99999999
+ %w40 = sext.i16.i64 %r40
+ print %w40
+ %r41 = fptosi.f32.i16 1.0
+ %w41 = sext.i16.i64 %r41
+ print %w41
+ %r42 = fptosi.f32.i16 -1.0
+ %w42 = sext.i16.i64 %r42
+ print %w42
+ %r43 = fptosi.f32.i16 -1.5
+ %w43 = sext.i16.i64 %r43
+ print %w43
+ %r44 = fptosi.f32.i16 2.5
+ %w44 = sext.i16.i64 %r44
+ print %w44
+ %r45 = fptosi.f32.i16 -2.5
+ %w45 = sext.i16.i64 %r45
+ print %w45
+ %r46 = fptosi.f32.i16 127.9
+ %w46 = sext.i16.i64 %r46
+ print %w46
+ %r47 = fptosi.f32.i16 128.0
+ %w47 = sext.i16.i64 %r47
+ print %w47
+ %r48 = fptosi.f32.i16 -128.9
+ %w48 = sext.i16.i64 %r48
+ print %w48
+ jmp b48
+b48:
+ %r49 = fptosi.f32.i16 -129.0
+ %w49 = sext.i16.i64 %r49
+ print %w49
+ %r50 = fptosi.f32.i16 255.5
+ %w50 = sext.i16.i64 %r50
+ print %w50
+ %r51 = fptosi.f32.i16 256.0
+ %w51 = sext.i16.i64 %r51
+ print %w51
+ %r52 = fptosi.f32.i16 65535.9
+ %w52 = sext.i16.i64 %r52
+ print %w52
+ %r53 = fptosi.f32.i16 65536.0
+ %w53 = sext.i16.i64 %r53
+ print %w53
+ %r54 = fptosi.f32.i16 3000000000.0
+ %w54 = sext.i16.i64 %r54
+ print %w54
+ %r55 = fptosi.f32.i16 -3000000000.0
+ %w55 = sext.i16.i64 %r55
+ print %w55
+ %r56 = fptosi.f32.i16 -2147483648.5
+ %w56 = sext.i16.i64 %r56
+ print %w56
+ %r57 = fptosi.f32.i16 2147483647.9
+ %w57 = sext.i16.i64 %r57
+ print %w57
+ %r58 = fptosi.f32.i16 9223372036854775808.0
+ %w58 = sext.i16.i64 %r58
+ print %w58
+ %r59 = fptosi.f32.i16 -9223372036854775808.0
+ %w59 = sext.i16.i64 %r59
+ print %w59
+ %r60 = fptosi.f32.i16 9223372036854774784.0
+ %w60 = sext.i16.i64 %r60
+ print %w60
+ %r61 = fptosi.f32.i16 18446744073709549568.0
+ %w61 = sext.i16.i64 %r61
+ print %w61
+ %r62 = fptosi.f32.i16 18446744073709551616.0
+ %w62 = sext.i16.i64 %r62
+ print %w62
+ %r63 = fptosi.f32.i16 1500000000000000000000000000000.0
+ %w63 = sext.i16.i64 %r63
+ print %w63
+ %r64 = fptosi.f32.i16 -1500000000000000000000000000000.0
+ %w64 = sext.i16.i64 %r64
+ print %w64
+ %r65 = fptosi.f32.i16 4503599627370497.0
+ %w65 = sext.i16.i64 %r65
+ print %w65
+ %r66 = fptosi.f32.i16 16777217.0
+ %w66 = sext.i16.i64 %r66
+ print %w66
+ %r67 = fptosi.f32.i16 0.000000000000000000000000000001
+ %w67 = sext.i16.i64 %r67
+ print %w67
+ %s68 = div.f32 0.0, 0.0
+ %r68 = fptosi.f32.i16 %s68
+ %w68 = sext.i16.i64 %r68
+ print %w68
+ %s69 = div.f32 1.0, 0.0
+ %r69 = fptosi.f32.i16 %s69
+ %w69 = sext.i16.i64 %r69
+ print %w69
+ %s70 = div.f32 -1.0, 0.0
+ %r70 = fptosi.f32.i16 %s70
+ %w70 = sext.i16.i64 %r70
+ print %w70
+ %r71 = fptosi.f32.i32 0.0
+ %w71 = sext.i32.i64 %r71
+ print %w71
+ %r72 = fptosi.f32.i32 -0.0
+ %w72 = sext.i32.i64 %r72
+ print %w72
+ jmp b72
+b72:
+ %r73 = fptosi.f32.i32 0.5
+ %w73 = sext.i32.i64 %r73
+ print %w73
+ %r74 = fptosi.f32.i32 -0.5
+ %w74 = sext.i32.i64 %r74
+ print %w74
+ %r75 = fptosi.f32.i32 0.99999999
+ %w75 = sext.i32.i64 %r75
+ print %w75
+ %r76 = fptosi.f32.i32 1.0
+ %w76 = sext.i32.i64 %r76
+ print %w76
+ %r77 = fptosi.f32.i32 -1.0
+ %w77 = sext.i32.i64 %r77
+ print %w77
+ %r78 = fptosi.f32.i32 -1.5
+ %w78 = sext.i32.i64 %r78
+ print %w78
+ %r79 = fptosi.f32.i32 2.5
+ %w79 = sext.i32.i64 %r79
+ print %w79
+ %r80 = fptosi.f32.i32 -2.5
+ %w80 = sext.i32.i64 %r80
+ print %w80
+ %r81 = fptosi.f32.i32 127.9
+ %w81 = sext.i32.i64 %r81
+ print %w81
+ %r82 = fptosi.f32.i32 128.0
+ %w82 = sext.i32.i64 %r82
+ print %w82
+ %r83 = fptosi.f32.i32 -128.9
+ %w83 = sext.i32.i64 %r83
+ print %w83
+ %r84 = fptosi.f32.i32 -129.0
+ %w84 = sext.i32.i64 %r84
+ print %w84
+ %r85 = fptosi.f32.i32 255.5
+ %w85 = sext.i32.i64 %r85
+ print %w85
+ %r86 = fptosi.f32.i32 256.0
+ %w86 = sext.i32.i64 %r86
+ print %w86
+ %r87 = fptosi.f32.i32 65535.9
+ %w87 = sext.i32.i64 %r87
+ print %w87
+ %r88 = fptosi.f32.i32 65536.0
+ %w88 = sext.i32.i64 %r88
+ print %w88
+ %r89 = fptosi.f32.i32 3000000000.0
+ %w89 = sext.i32.i64 %r89
+ print %w89
+ %r90 = fptosi.f32.i32 -3000000000.0
+ %w90 = sext.i32.i64 %r90
+ print %w90
+ %r91 = fptosi.f32.i32 -2147483648.5
+ %w91 = sext.i32.i64 %r91
+ print %w91
+ %r92 = fptosi.f32.i32 2147483647.9
+ %w92 = sext.i32.i64 %r92
+ print %w92
+ %r93 = fptosi.f32.i32 9223372036854775808.0
+ %w93 = sext.i32.i64 %r93
+ print %w93
+ %r94 = fptosi.f32.i32 -9223372036854775808.0
+ %w94 = sext.i32.i64 %r94
+ print %w94
+ %r95 = fptosi.f32.i32 9223372036854774784.0
+ %w95 = sext.i32.i64 %r95
+ print %w95
+ %r96 = fptosi.f32.i32 18446744073709549568.0
+ %w96 = sext.i32.i64 %r96
+ print %w96
+ jmp b96
+b96:
+ %r97 = fptosi.f32.i32 18446744073709551616.0
+ %w97 = sext.i32.i64 %r97
+ print %w97
+ %r98 = fptosi.f32.i32 1500000000000000000000000000000.0
+ %w98 = sext.i32.i64 %r98
+ print %w98
+ %r99 = fptosi.f32.i32 -1500000000000000000000000000000.0
+ %w99 = sext.i32.i64 %r99
+ print %w99
+ %r100 = fptosi.f32.i32 4503599627370497.0
+ %w100 = sext.i32.i64 %r100
+ print %w100
+ %r101 = fptosi.f32.i32 16777217.0
+ %w101 = sext.i32.i64 %r101
+ print %w101
+ %r102 = fptosi.f32.i32 0.000000000000000000000000000001
+ %w102 = sext.i32.i64 %r102
+ print %w102
+ %s103 = div.f32 0.0, 0.0
+ %r103 = fptosi.f32.i32 %s103
+ %w103 = sext.i32.i64 %r103
+ print %w103
+ %s104 = div.f32 1.0, 0.0
+ %r104 = fptosi.f32.i32 %s104
+ %w104 = sext.i32.i64 %r104
+ print %w104
+ %s105 = div.f32 -1.0, 0.0
+ %r105 = fptosi.f32.i32 %s105
+ %w105 = sext.i32.i64 %r105
+ print %w105
+ %r106 = fptosi.f32.i64 0.0
+ print %r106
+ %r107 = fptosi.f32.i64 -0.0
+ print %r107
+ %r108 = fptosi.f32.i64 0.5
+ print %r108
+ %r109 = fptosi.f32.i64 -0.5
+ print %r109
+ %r110 = fptosi.f32.i64 0.99999999
+ print %r110
+ %r111 = fptosi.f32.i64 1.0
+ print %r111
+ %r112 = fptosi.f32.i64 -1.0
+ print %r112
+ %r113 = fptosi.f32.i64 -1.5
+ print %r113
+ %r114 = fptosi.f32.i64 2.5
+ print %r114
+ %r115 = fptosi.f32.i64 -2.5
+ print %r115
+ %r116 = fptosi.f32.i64 127.9
+ print %r116
+ %r117 = fptosi.f32.i64 128.0
+ print %r117
+ %r118 = fptosi.f32.i64 -128.9
+ print %r118
+ %r119 = fptosi.f32.i64 -129.0
+ print %r119
+ %r120 = fptosi.f32.i64 255.5
+ print %r120
+ jmp b120
+b120:
+ %r121 = fptosi.f32.i64 256.0
+ print %r121
+ %r122 = fptosi.f32.i64 65535.9
+ print %r122
+ %r123 = fptosi.f32.i64 65536.0
+ print %r123
+ %r124 = fptosi.f32.i64 3000000000.0
+ print %r124
+ %r125 = fptosi.f32.i64 -3000000000.0
+ print %r125
+ %r126 = fptosi.f32.i64 -2147483648.5
+ print %r126
+ %r127 = fptosi.f32.i64 2147483647.9
+ print %r127
+ %r128 = fptosi.f32.i64 9223372036854775808.0
+ print %r128
+ %r129 = fptosi.f32.i64 -9223372036854775808.0
+ print %r129
+ %r130 = fptosi.f32.i64 9223372036854774784.0
+ print %r130
+ %r131 = fptosi.f32.i64 18446744073709549568.0
+ print %r131
+ %r132 = fptosi.f32.i64 18446744073709551616.0
+ print %r132
+ %r133 = fptosi.f32.i64 1500000000000000000000000000000.0
+ print %r133
+ %r134 = fptosi.f32.i64 -1500000000000000000000000000000.0
+ print %r134
+ %r135 = fptosi.f32.i64 4503599627370497.0
+ print %r135
+ %r136 = fptosi.f32.i64 16777217.0
+ print %r136
+ %r137 = fptosi.f32.i64 0.000000000000000000000000000001
+ print %r137
+ %s138 = div.f32 0.0, 0.0
+ %r138 = fptosi.f32.i64 %s138
+ print %r138
+ %s139 = div.f32 1.0, 0.0
+ %r139 = fptosi.f32.i64 %s139
+ print %r139
+ %s140 = div.f32 -1.0, 0.0
+ %r140 = fptosi.f32.i64 %s140
+ print %r140
+ %r141 = fptosi.f64.i8 0.0
+ %w141 = sext.i8.i64 %r141
+ print %w141
+ %r142 = fptosi.f64.i8 -0.0
+ %w142 = sext.i8.i64 %r142
+ print %w142
+ %r143 = fptosi.f64.i8 0.5
+ %w143 = sext.i8.i64 %r143
+ print %w143
+ %r144 = fptosi.f64.i8 -0.5
+ %w144 = sext.i8.i64 %r144
+ print %w144
+ jmp b144
+b144:
+ %r145 = fptosi.f64.i8 0.99999999
+ %w145 = sext.i8.i64 %r145
+ print %w145
+ %r146 = fptosi.f64.i8 1.0
+ %w146 = sext.i8.i64 %r146
+ print %w146
+ %r147 = fptosi.f64.i8 -1.0
+ %w147 = sext.i8.i64 %r147
+ print %w147
+ %r148 = fptosi.f64.i8 -1.5
+ %w148 = sext.i8.i64 %r148
+ print %w148
+ %r149 = fptosi.f64.i8 2.5
+ %w149 = sext.i8.i64 %r149
+ print %w149
+ %r150 = fptosi.f64.i8 -2.5
+ %w150 = sext.i8.i64 %r150
+ print %w150
+ %r151 = fptosi.f64.i8 127.9
+ %w151 = sext.i8.i64 %r151
+ print %w151
+ %r152 = fptosi.f64.i8 128.0
+ %w152 = sext.i8.i64 %r152
+ print %w152
+ %r153 = fptosi.f64.i8 -128.9
+ %w153 = sext.i8.i64 %r153
+ print %w153
+ %r154 = fptosi.f64.i8 -129.0
+ %w154 = sext.i8.i64 %r154
+ print %w154
+ %r155 = fptosi.f64.i8 255.5
+ %w155 = sext.i8.i64 %r155
+ print %w155
+ %r156 = fptosi.f64.i8 256.0
+ %w156 = sext.i8.i64 %r156
+ print %w156
+ %r157 = fptosi.f64.i8 65535.9
+ %w157 = sext.i8.i64 %r157
+ print %w157
+ %r158 = fptosi.f64.i8 65536.0
+ %w158 = sext.i8.i64 %r158
+ print %w158
+ %r159 = fptosi.f64.i8 3000000000.0
+ %w159 = sext.i8.i64 %r159
+ print %w159
+ %r160 = fptosi.f64.i8 -3000000000.0
+ %w160 = sext.i8.i64 %r160
+ print %w160
+ %r161 = fptosi.f64.i8 -2147483648.5
+ %w161 = sext.i8.i64 %r161
+ print %w161
+ %r162 = fptosi.f64.i8 2147483647.9
+ %w162 = sext.i8.i64 %r162
+ print %w162
+ %r163 = fptosi.f64.i8 9223372036854775808.0
+ %w163 = sext.i8.i64 %r163
+ print %w163
+ %r164 = fptosi.f64.i8 -9223372036854775808.0
+ %w164 = sext.i8.i64 %r164
+ print %w164
+ %r165 = fptosi.f64.i8 9223372036854774784.0
+ %w165 = sext.i8.i64 %r165
+ print %w165
+ %r166 = fptosi.f64.i8 18446744073709549568.0
+ %w166 = sext.i8.i64 %r166
+ print %w166
+ %r167 = fptosi.f64.i8 18446744073709551616.0
+ %w167 = sext.i8.i64 %r167
+ print %w167
+ %r168 = fptosi.f64.i8 1500000000000000000000000000000.0
+ %w168 = sext.i8.i64 %r168
+ print %w168
+ jmp b168
+b168:
+ %r169 = fptosi.f64.i8 -1500000000000000000000000000000.0
+ %w169 = sext.i8.i64 %r169
+ print %w169
+ %r170 = fptosi.f64.i8 4503599627370497.0
+ %w170 = sext.i8.i64 %r170
+ print %w170
+ %r171 = fptosi.f64.i8 16777217.0
+ %w171 = sext.i8.i64 %r171
+ print %w171
+ %r172 = fptosi.f64.i8 0.000000000000000000000000000001
+ %w172 = sext.i8.i64 %r172
+ print %w172
+ %s173 = div.f64 0.0, 0.0
+ %r173 = fptosi.f64.i8 %s173
+ %w173 = sext.i8.i64 %r173
+ print %w173
+ %s174 = div.f64 1.0, 0.0
+ %r174 = fptosi.f64.i8 %s174
+ %w174 = sext.i8.i64 %r174
+ print %w174
+ %s175 = div.f64 -1.0, 0.0
+ %r175 = fptosi.f64.i8 %s175
+ %w175 = sext.i8.i64 %r175
+ print %w175
+ %r176 = fptosi.f64.i16 0.0
+ %w176 = sext.i16.i64 %r176
+ print %w176
+ %r177 = fptosi.f64.i16 -0.0
+ %w177 = sext.i16.i64 %r177
+ print %w177
+ %r178 = fptosi.f64.i16 0.5
+ %w178 = sext.i16.i64 %r178
+ print %w178
+ %r179 = fptosi.f64.i16 -0.5
+ %w179 = sext.i16.i64 %r179
+ print %w179
+ %r180 = fptosi.f64.i16 0.99999999
+ %w180 = sext.i16.i64 %r180
+ print %w180
+ %r181 = fptosi.f64.i16 1.0
+ %w181 = sext.i16.i64 %r181
+ print %w181
+ %r182 = fptosi.f64.i16 -1.0
+ %w182 = sext.i16.i64 %r182
+ print %w182
+ %r183 = fptosi.f64.i16 -1.5
+ %w183 = sext.i16.i64 %r183
+ print %w183
+ %r184 = fptosi.f64.i16 2.5
+ %w184 = sext.i16.i64 %r184
+ print %w184
+ %r185 = fptosi.f64.i16 -2.5
+ %w185 = sext.i16.i64 %r185
+ print %w185
+ %r186 = fptosi.f64.i16 127.9
+ %w186 = sext.i16.i64 %r186
+ print %w186
+ %r187 = fptosi.f64.i16 128.0
+ %w187 = sext.i16.i64 %r187
+ print %w187
+ %r188 = fptosi.f64.i16 -128.9
+ %w188 = sext.i16.i64 %r188
+ print %w188
+ %r189 = fptosi.f64.i16 -129.0
+ %w189 = sext.i16.i64 %r189
+ print %w189
+ %r190 = fptosi.f64.i16 255.5
+ %w190 = sext.i16.i64 %r190
+ print %w190
+ %r191 = fptosi.f64.i16 256.0
+ %w191 = sext.i16.i64 %r191
+ print %w191
+ %r192 = fptosi.f64.i16 65535.9
+ %w192 = sext.i16.i64 %r192
+ print %w192
+ jmp b192
+b192:
+ %r193 = fptosi.f64.i16 65536.0
+ %w193 = sext.i16.i64 %r193
+ print %w193
+ %r194 = fptosi.f64.i16 3000000000.0
+ %w194 = sext.i16.i64 %r194
+ print %w194
+ %r195 = fptosi.f64.i16 -3000000000.0
+ %w195 = sext.i16.i64 %r195
+ print %w195
+ %r196 = fptosi.f64.i16 -2147483648.5
+ %w196 = sext.i16.i64 %r196
+ print %w196
+ %r197 = fptosi.f64.i16 2147483647.9
+ %w197 = sext.i16.i64 %r197
+ print %w197
+ %r198 = fptosi.f64.i16 9223372036854775808.0
+ %w198 = sext.i16.i64 %r198
+ print %w198
+ %r199 = fptosi.f64.i16 -9223372036854775808.0
+ %w199 = sext.i16.i64 %r199
+ print %w199
+ %r200 = fptosi.f64.i16 9223372036854774784.0
+ %w200 = sext.i16.i64 %r200
+ print %w200
+ %r201 = fptosi.f64.i16 18446744073709549568.0
+ %w201 = sext.i16.i64 %r201
+ print %w201
+ %r202 = fptosi.f64.i16 18446744073709551616.0
+ %w202 = sext.i16.i64 %r202
+ print %w202
+ %r203 = fptosi.f64.i16 1500000000000000000000000000000.0
+ %w203 = sext.i16.i64 %r203
+ print %w203
+ %r204 = fptosi.f64.i16 -1500000000000000000000000000000.0
+ %w204 = sext.i16.i64 %r204
+ print %w204
+ %r205 = fptosi.f64.i16 4503599627370497.0
+ %w205 = sext.i16.i64 %r205
+ print %w205
+ %r206 = fptosi.f64.i16 16777217.0
+ %w206 = sext.i16.i64 %r206
+ print %w206
+ %r207 = fptosi.f64.i16 0.000000000000000000000000000001
+ %w207 = sext.i16.i64 %r207
+ print %w207
+ %s208 = div.f64 0.0, 0.0
+ %r208 = fptosi.f64.i16 %s208
+ %w208 = sext.i16.i64 %r208
+ print %w208
+ %s209 = div.f64 1.0, 0.0
+ %r209 = fptosi.f64.i16 %s209
+ %w209 = sext.i16.i64 %r209
+ print %w209
+ %s210 = div.f64 -1.0, 0.0
+ %r210 = fptosi.f64.i16 %s210
+ %w210 = sext.i16.i64 %r210
+ print %w210
+ %r211 = fptosi.f64.i32 0.0
+ %w211 = sext.i32.i64 %r211
+ print %w211
+ %r212 = fptosi.f64.i32 -0.0
+ %w212 = sext.i32.i64 %r212
+ print %w212
+ %r213 = fptosi.f64.i32 0.5
+ %w213 = sext.i32.i64 %r213
+ print %w213
+ %r214 = fptosi.f64.i32 -0.5
+ %w214 = sext.i32.i64 %r214
+ print %w214
+ %r215 = fptosi.f64.i32 0.99999999
+ %w215 = sext.i32.i64 %r215
+ print %w215
+ %r216 = fptosi.f64.i32 1.0
+ %w216 = sext.i32.i64 %r216
+ print %w216
+ jmp b216
+b216:
+ %r217 = fptosi.f64.i32 -1.0
+ %w217 = sext.i32.i64 %r217
+ print %w217
+ %r218 = fptosi.f64.i32 -1.5
+ %w218 = sext.i32.i64 %r218
+ print %w218
+ %r219 = fptosi.f64.i32 2.5
+ %w219 = sext.i32.i64 %r219
+ print %w219
+ %r220 = fptosi.f64.i32 -2.5
+ %w220 = sext.i32.i64 %r220
+ print %w220
+ %r221 = fptosi.f64.i32 127.9
+ %w221 = sext.i32.i64 %r221
+ print %w221
+ %r222 = fptosi.f64.i32 128.0
+ %w222 = sext.i32.i64 %r222
+ print %w222
+ %r223 = fptosi.f64.i32 -128.9
+ %w223 = sext.i32.i64 %r223
+ print %w223
+ %r224 = fptosi.f64.i32 -129.0
+ %w224 = sext.i32.i64 %r224
+ print %w224
+ %r225 = fptosi.f64.i32 255.5
+ %w225 = sext.i32.i64 %r225
+ print %w225
+ %r226 = fptosi.f64.i32 256.0
+ %w226 = sext.i32.i64 %r226
+ print %w226
+ %r227 = fptosi.f64.i32 65535.9
+ %w227 = sext.i32.i64 %r227
+ print %w227
+ %r228 = fptosi.f64.i32 65536.0
+ %w228 = sext.i32.i64 %r228
+ print %w228
+ %r229 = fptosi.f64.i32 3000000000.0
+ %w229 = sext.i32.i64 %r229
+ print %w229
+ %r230 = fptosi.f64.i32 -3000000000.0
+ %w230 = sext.i32.i64 %r230
+ print %w230
+ %r231 = fptosi.f64.i32 -2147483648.5
+ %w231 = sext.i32.i64 %r231
+ print %w231
+ %r232 = fptosi.f64.i32 2147483647.9
+ %w232 = sext.i32.i64 %r232
+ print %w232
+ %r233 = fptosi.f64.i32 9223372036854775808.0
+ %w233 = sext.i32.i64 %r233
+ print %w233
+ %r234 = fptosi.f64.i32 -9223372036854775808.0
+ %w234 = sext.i32.i64 %r234
+ print %w234
+ %r235 = fptosi.f64.i32 9223372036854774784.0
+ %w235 = sext.i32.i64 %r235
+ print %w235
+ %r236 = fptosi.f64.i32 18446744073709549568.0
+ %w236 = sext.i32.i64 %r236
+ print %w236
+ %r237 = fptosi.f64.i32 18446744073709551616.0
+ %w237 = sext.i32.i64 %r237
+ print %w237
+ %r238 = fptosi.f64.i32 1500000000000000000000000000000.0
+ %w238 = sext.i32.i64 %r238
+ print %w238
+ %r239 = fptosi.f64.i32 -1500000000000000000000000000000.0
+ %w239 = sext.i32.i64 %r239
+ print %w239
+ %r240 = fptosi.f64.i32 4503599627370497.0
+ %w240 = sext.i32.i64 %r240
+ print %w240
+ jmp b240
+b240:
+ %r241 = fptosi.f64.i32 16777217.0
+ %w241 = sext.i32.i64 %r241
+ print %w241
+ %r242 = fptosi.f64.i32 0.000000000000000000000000000001
+ %w242 = sext.i32.i64 %r242
+ print %w242
+ %s243 = div.f64 0.0, 0.0
+ %r243 = fptosi.f64.i32 %s243
+ %w243 = sext.i32.i64 %r243
+ print %w243
+ %s244 = div.f64 1.0, 0.0
+ %r244 = fptosi.f64.i32 %s244
+ %w244 = sext.i32.i64 %r244
+ print %w244
+ %s245 = div.f64 -1.0, 0.0
+ %r245 = fptosi.f64.i32 %s245
+ %w245 = sext.i32.i64 %r245
+ print %w245
+ %r246 = fptosi.f64.i64 0.0
+ print %r246
+ %r247 = fptosi.f64.i64 -0.0
+ print %r247
+ %r248 = fptosi.f64.i64 0.5
+ print %r248
+ %r249 = fptosi.f64.i64 -0.5
+ print %r249
+ %r250 = fptosi.f64.i64 0.99999999
+ print %r250
+ %r251 = fptosi.f64.i64 1.0
+ print %r251
+ %r252 = fptosi.f64.i64 -1.0
+ print %r252
+ %r253 = fptosi.f64.i64 -1.5
+ print %r253
+ %r254 = fptosi.f64.i64 2.5
+ print %r254
+ %r255 = fptosi.f64.i64 -2.5
+ print %r255
+ %r256 = fptosi.f64.i64 127.9
+ print %r256
+ %r257 = fptosi.f64.i64 128.0
+ print %r257
+ %r258 = fptosi.f64.i64 -128.9
+ print %r258
+ %r259 = fptosi.f64.i64 -129.0
+ print %r259
+ %r260 = fptosi.f64.i64 255.5
+ print %r260
+ %r261 = fptosi.f64.i64 256.0
+ print %r261
+ %r262 = fptosi.f64.i64 65535.9
+ print %r262
+ %r263 = fptosi.f64.i64 65536.0
+ print %r263
+ %r264 = fptosi.f64.i64 3000000000.0
+ print %r264
+ jmp b264
+b264:
+ %r265 = fptosi.f64.i64 -3000000000.0
+ print %r265
+ %r266 = fptosi.f64.i64 -2147483648.5
+ print %r266
+ %r267 = fptosi.f64.i64 2147483647.9
+ print %r267
+ %r268 = fptosi.f64.i64 9223372036854775808.0
+ print %r268
+ %r269 = fptosi.f64.i64 -9223372036854775808.0
+ print %r269
+ %r270 = fptosi.f64.i64 9223372036854774784.0
+ print %r270
+ %r271 = fptosi.f64.i64 18446744073709549568.0
+ print %r271
+ %r272 = fptosi.f64.i64 18446744073709551616.0
+ print %r272
+ %r273 = fptosi.f64.i64 1500000000000000000000000000000.0
+ print %r273
+ %r274 = fptosi.f64.i64 -1500000000000000000000000000000.0
+ print %r274
+ %r275 = fptosi.f64.i64 4503599627370497.0
+ print %r275
+ %r276 = fptosi.f64.i64 16777217.0
+ print %r276
+ %r277 = fptosi.f64.i64 0.000000000000000000000000000001
+ print %r277
+ %s278 = div.f64 0.0, 0.0
+ %r278 = fptosi.f64.i64 %s278
+ print %r278
+ %s279 = div.f64 1.0, 0.0
+ %r279 = fptosi.f64.i64 %s279
+ print %r279
+ %s280 = div.f64 -1.0, 0.0
+ %r280 = fptosi.f64.i64 %s280
+ print %r280
+ ret.i64 0
+}
