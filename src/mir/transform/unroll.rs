@@ -37,7 +37,10 @@ impl Transform for LoopUnrolling {
             if let Some(count) =
                 count.filter(|n| *n <= 32 && shape.body.len().saturating_mul(*n as usize) <= 192)
             {
-                full_unroll(func, &shape, count);
+                let Some(mut next) = register_base(func) else {
+                    break;
+                };
+                full_unroll(func, &shape, count, &mut next);
             } else {
                 let Some(mut next) = register_base(func) else {
                     break;
@@ -353,7 +356,7 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
             branch(&flag, &probody, &maincheck),
         ],
     );
-    let mut code = shape.body.clone();
+    let mut code = renamed_body(shape, 1, next);
     code.extend([
         binary(IntBinOp::Sub, &remainder, remainder.clone().into(), imm(1)),
         jump(&procheck),
@@ -366,10 +369,7 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
             branch(&flag, &mainbody, &shape.header),
         ],
     );
-    let mut code = Vec::new();
-    for _ in 0..factor {
-        code.extend_from_slice(&shape.body);
-    }
+    let mut code = renamed_body(shape, factor, next);
     code.extend([
         binary(
             IntBinOp::Sub,
@@ -382,11 +382,87 @@ fn partial_unroll(func: &mut Function, shape: &Shape, factor: usize, next: &mut 
     add_block(mainbody, code);
 }
 
-fn full_unroll(func: &mut Function, shape: &Shape, count: u64) {
-    let mut instructions = Vec::new();
+fn renamed_body(shape: &Shape, count: usize, next: &mut u32) -> Vec<Instruction> {
+    let first_fresh = *next;
+    let mut values: HashMap<Register, Operand> = HashMap::new();
+    let mut definitions = Vec::new();
+    let mut code = Vec::new();
+    let only_increment = shape
+        .body
+        .iter()
+        .all(|i| i.def_reg() == Some(&shape.iv) || !i.use_regs().contains(&&shape.iv));
     for _ in 0..count {
-        instructions.extend_from_slice(&shape.body);
+        for i in &shape.body {
+            let Some(dst) = i.def_reg() else {
+                continue;
+            };
+            if !definitions.contains(dst) {
+                definitions.push(dst.clone());
+            }
+            if only_increment && dst == &shape.iv {
+                continue;
+            }
+            let resolve = |o: &Operand| {
+                o.as_register()
+                    .and_then(|r| values.get(r))
+                    .cloned()
+                    .unwrap_or_else(|| o.clone())
+            };
+            let (op, lhs, rhs) = match i {
+                Instruction::IntBinary { op, lhs, rhs, .. } => (*op, resolve(lhs), resolve(rhs)),
+                Instruction::Copy { src, .. } => (IntBinOp::Add, resolve(src), imm(0)),
+                _ => continue,
+            };
+            if matches!(
+                op,
+                IntBinOp::Add | IntBinOp::Sub | IntBinOp::Or | IntBinOp::Xor
+            ) && rhs.integer_constant() == Some(0)
+            {
+                values.insert(dst.clone(), lhs);
+            } else {
+                let result = fresh(next);
+                code.push(binary(op, &result, lhs, rhs));
+                values.insert(dst.clone(), result.into());
+            }
+        }
     }
+    if only_increment && count > 0 {
+        let result = fresh(next);
+        code.push(binary(
+            IntBinOp::Add,
+            &result,
+            shape.iv.clone().into(),
+            imm(count as i64),
+        ));
+        values.insert(shape.iv.clone(), result.into());
+    }
+    let mut copies = Vec::new();
+    for dst in definitions {
+        if let Some(mut src) = values.remove(&dst) {
+            if let Operand::Register(r) = &src {
+                if !matches!(r, Register::Virtual(v) if v.id >= first_fresh) {
+                    let saved = fresh(next);
+                    code.push(Instruction::Copy {
+                        ty: MirType::Scalar(ScalarType::I64),
+                        dst: saved.clone(),
+                        src,
+                    });
+                    src = saved.into();
+                }
+            }
+            copies.push(Instruction::Copy {
+                ty: MirType::Scalar(ScalarType::I64),
+                dst,
+                src,
+            });
+        }
+    }
+    code.extend(copies);
+    code
+}
+
+fn full_unroll(func: &mut Function, shape: &Shape, count: u64, next: &mut u32) {
+    let mut instructions = renamed_body(shape, count as usize, next);
     if let Some(header) = func.get_block_mut(&shape.header) {
         instructions.extend_from_slice(&header.instructions);
         if let Some(Instruction::Br {
@@ -478,6 +554,30 @@ ret.i64 %b
             .functions
             .remove("f")
             .unwrap()
+    }
+
+    #[test]
+    fn renaming_removes_rotation_copies_between_iterations() {
+        let func = counting(0, "%n", "lt");
+        let shape = analyze(&func, &LoopInvariantCodeMotion.find_loops(&func)[0]).unwrap();
+        let mut next = register_base(&func).unwrap();
+        let body = renamed_body(&shape, 8, &mut next);
+        let arithmetic: Vec<_> = body
+            .iter()
+            .filter(|i| matches!(i, Instruction::IntBinary { .. }))
+            .collect();
+        assert_eq!(arithmetic.len(), 9);
+        assert!(body[..8].iter().all(|i| matches!(
+            i,
+            Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ..
+            }
+        )));
+        let mut values = HashSet::new();
+        for i in &body[..8] {
+            assert!(values.insert(i.def_reg().unwrap()));
+        }
     }
 
     #[test]
