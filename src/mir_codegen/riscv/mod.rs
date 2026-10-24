@@ -877,6 +877,12 @@ fn emit_instruction_riscv<W: Write>(
             let caller_saved_mappings = reg_alloc.caller_saved_mappings(live_vregs);
             spill_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
 
+            if name == "writeptr" {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "RISC-V: writeptr is not supported".to_string(),
+                )));
+            }
+
             // Handle print intrinsic
             if name == "print" {
                 if let Some(arg) = args.first() {
@@ -965,6 +971,11 @@ fn emit_instruction_riscv<W: Write>(
             if name == "print" {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "RISC-V: TailCall to print is not supported".to_string(),
+                )));
+            }
+            if name == "writeptr" {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "RISC-V: writeptr is not supported".to_string(),
                 )));
             }
             let arg_regs = RiscVAbi::ARG_REGISTERS;
