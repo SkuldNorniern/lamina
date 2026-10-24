@@ -1665,6 +1665,42 @@ mod tests {
     }
 
     #[test]
+    fn narrow_parameters_are_sign_extended_on_entry() -> Result<(), Box<dyn Error>> {
+        use crate::mir::{Block, Parameter};
+        for (ty, extend) in [
+            (MirType::i8(), "sxtb x0, w0"),
+            (MirType::i16(), "sxth x0, w0"),
+            (MirType::i32(), "sxtw x0, w0"),
+        ] {
+            let reg = Register::Virtual(VirtualReg::gpr(0));
+            let mut func = Function::new(
+                Signature::new("narrow")
+                    .with_params(vec![Parameter::new(reg.clone(), ty)])
+                    .with_return(ty),
+            );
+            let mut block = Block::new("entry");
+            block.push(MirInst::Ret {
+                value: Some(Operand::Register(reg)),
+            });
+            func.add_block(block);
+            let asm = String::from_utf8(
+                compile_single_function_aarch64(
+                    "narrow",
+                    &func,
+                    TargetOperatingSystem::Linux,
+                    &MirCodegenSettings::default(),
+                )
+                .map_err(|error| error.to_string())?,
+            )?;
+            let (prologue, _) = asm
+                .split_once(".L_narrow.entry:")
+                .ok_or("missing entry")?;
+            assert!(prologue.contains(&format!("    {extend}\n")), "{asm}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn float_copy_emits_bit_move_not_add() {
         let ty = MirType::Scalar(ScalarType::F64);
         let src = Register::Virtual(VirtualReg::fpr(0));
