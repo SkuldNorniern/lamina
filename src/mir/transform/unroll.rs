@@ -23,12 +23,24 @@ impl Transform for LoopUnrolling {
         TransformLevel::Experimental
     }
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
-        for info in LoopInvariantCodeMotion.find_loops(func) {
-            if let Some(shape) = analyze(func, &info) {
-                let _ = constant_trip_count(func, &shape);
-            }
+        let mut changed = false;
+        for _ in 0..16 {
+            let candidate = LoopInvariantCodeMotion
+                .find_loops(func)
+                .iter()
+                .find_map(|info| {
+                    let shape = analyze(func, info)?;
+                    let count = constant_trip_count(func, &shape)?;
+                    (count <= 32 && shape.body.len().saturating_mul(count as usize) <= 192)
+                        .then_some((shape, count))
+                });
+            let Some((shape, count)) = candidate else {
+                break;
+            };
+            full_unroll(func, &shape, count);
+            changed = true;
         }
-        Ok(false)
+        Ok(changed)
     }
 }
 
@@ -162,6 +174,34 @@ fn analyze(func: &Function, info: &LoopInfo) -> Option<Shape> {
     })
 }
 
+fn full_unroll(func: &mut Function, shape: &Shape, count: u64) {
+    let mut instructions = Vec::new();
+    for _ in 0..count {
+        instructions.extend_from_slice(&shape.body);
+    }
+    if let Some(header) = func.get_block_mut(&shape.header) {
+        instructions.extend_from_slice(&header.instructions);
+        if let Some(Instruction::Br {
+            true_target,
+            false_target,
+            ..
+        }) = instructions.last()
+        {
+            let exit = if shape.labels.contains(true_target) {
+                false_target
+            } else {
+                true_target
+            }
+            .clone();
+            instructions.pop();
+            instructions.push(Instruction::Jmp { target: exit });
+        }
+        header.instructions = instructions;
+    }
+    func.blocks
+        .retain(|b| b.label == shape.header || !shape.labels.contains(&b.label));
+}
+
 fn constant_trip_count(func: &Function, shape: &Shape) -> Option<u64> {
     let entry = func.get_block(&shape.entry)?;
     let mut values: HashMap<Register, i64> = HashMap::new();
@@ -230,6 +270,20 @@ ret.i64 %b
             .functions
             .remove("f")
             .unwrap()
+    }
+
+    #[test]
+    fn full_unrolling_preserves_zero_and_nonzero_trips() {
+        for count in [0, 1, 7, 8, 9, 16, 32] {
+            let mut func = counting(3, &(3 + count).to_string(), "lt");
+            let before = crate::runtime::executor::interpret_mir_function(&func, &[0]).unwrap();
+            assert!(LoopUnrolling.apply(&mut func).unwrap());
+            assert!(LoopInvariantCodeMotion.find_loops(&func).is_empty());
+            assert_eq!(
+                crate::runtime::executor::interpret_mir_function(&func, &[0]).unwrap(),
+                before
+            );
+        }
     }
 
     #[test]
