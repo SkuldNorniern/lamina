@@ -214,12 +214,22 @@ impl CfgSimplify {
         }
 
         let mut to_remove = Vec::new();
+        let mut touched = HashSet::new();
         for (pred_label, new_target, trivial_label) in merges {
+            if trivial_label == func.entry
+                || trivial_label == new_target
+                || [&pred_label, &new_target, &trivial_label]
+                    .iter()
+                    .any(|label| touched.contains(*label))
+            {
+                continue;
+            }
             if let Some(pred_block) = func.blocks.iter_mut().find(|b| b.label == pred_label)
                 && let Some(pred_term) = pred_block.instructions.last_mut()
                 && let Instruction::Jmp { target } = pred_term
                 && *target == trivial_label
             {
+                touched.extend([pred_label, new_target.clone(), trivial_label.clone()]);
                 *target = new_target;
                 changed = true;
                 to_remove.push(trivial_label);
@@ -399,6 +409,56 @@ mod tests {
                 value: Some(Operand::Immediate(Immediate::I64(0))),
             })
             .build()
+    }
+
+    #[test]
+    fn adjacent_trivial_merges_preserve_branch_targets() {
+        for reverse in [false, true] {
+            let mut func = FunctionBuilder::new("chain")
+                .returns(i64())
+                .block("entry")
+                .instr(Instruction::Jmp {
+                    target: "first".into(),
+                })
+                .block("first")
+                .instr(Instruction::Jmp {
+                    target: "second".into(),
+                })
+                .block("second")
+                .instr(Instruction::Jmp {
+                    target: "exit".into(),
+                })
+                .block("exit")
+                .instr(Instruction::Ret {
+                    value: Some(Operand::imm_i64(42)),
+                })
+                .build();
+            if reverse {
+                func.blocks.swap(1, 2);
+            }
+            for _ in 0..4 {
+                apply_pass(&CfgSimplify, &mut func);
+                assert!(func.get_block(&func.entry).is_some());
+                for block in &func.blocks {
+                    for target in block.successors() {
+                        assert!(func.get_block(target).is_some(), "{target}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn entry_self_loops_survive_trivial_merging() {
+        let mut func = FunctionBuilder::new("cycle")
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "entry".into(),
+            })
+            .build();
+        apply_pass(&CfgSimplify, &mut func);
+        assert_eq!(func.blocks.len(), 1);
+        assert!(func.get_block(&func.entry).is_some());
     }
 
     #[test]
