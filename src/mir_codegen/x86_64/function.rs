@@ -329,7 +329,7 @@ pub(super) fn compile_single_function_x86_64(
         .sig
         .params
         .iter()
-        .map(|param| narrow_param_extension(&param.ty))
+        .map(|param| narrow_param_extension(&param.ty, param.signedness))
         .collect();
     emit_narrow_param_normalization(&mut output, &param_extensions, &self_param_homes)?;
 
@@ -653,8 +653,11 @@ pub(super) fn narrow_extension(ty: &MirType, signedness: Signedness) -> Option<N
     }
 }
 
-pub(super) fn narrow_param_extension(ty: &MirType) -> Option<NarrowExtension> {
-    narrow_extension(ty, Signedness::Signed)
+pub(super) fn narrow_param_extension(
+    ty: &MirType,
+    signedness: Signedness,
+) -> Option<NarrowExtension> {
+    narrow_extension(ty, signedness)
 }
 
 /// Rewrite each narrow parameter home in place to its canonical 64-bit form.
@@ -669,23 +672,25 @@ pub(super) fn emit_narrow_param_normalization<W: Write>(
             continue;
         };
         let insn = match (width, signed) {
-            (1, false) => "movzbl",
             (1, true) => "movsbq",
-            (2, _) => "movswq",
-            _ => "movslq",
+            (2, true) => "movswq",
+            (_, true) => "movslq",
+            (1, false) => "movzbl",
+            (2, false) => "movzwl",
+            (_, false) => "movl",
         };
         if let Some(reg) = home.strip_prefix('%') {
             let source = register_for_size(reg, *width).ok_or_else(|| {
                 CodegenError::InvalidCodegenOptions(format!("no alias for register {reg}"))
             })?;
-            let dest = if insn == "movzbl" {
-                register_for_size(reg, 4).unwrap_or_else(|| reg.to_string())
-            } else {
+            let dest = if *signed {
                 reg.to_string()
+            } else {
+                register_for_size(reg, 4).unwrap_or_else(|| reg.to_string())
             };
             writeln!(writer, "    {insn} %{source}, %{dest}").map_err(io_error)?;
         } else {
-            let dest = if insn == "movzbl" { "eax" } else { "rax" };
+            let dest = if *signed { "rax" } else { "eax" };
             writeln!(writer, "    {insn} {home}, %{dest}").map_err(io_error)?;
             writeln!(writer, "    movq %rax, {home}").map_err(io_error)?;
         }
