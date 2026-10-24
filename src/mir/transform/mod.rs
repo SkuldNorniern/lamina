@@ -315,7 +315,7 @@ impl TransformPipeline {
     /// |-------|-----------------|
     /// | O0    | (none) |
     /// | O1    | CFG simplify, jump threading, branch opt, DCE |
-    /// | O2    | + constant folding, copy propagation, memory opt, tail-call opt, peephole, module inlining |
+    /// | O2    | + constant folding, copy propagation, memory opt, tail-call opt, peephole, module inlining, bounded unrolling |
     /// | O3    | + LICM, strength reduction, CSE, instruction scheduling |
     pub fn default_for_opt_level(opt_level: u8) -> Self {
         let mut pipeline = Self::new();
@@ -354,6 +354,10 @@ impl TransformPipeline {
             {
                 pipeline = pipeline.add_transform(AutoVectorization);
             }
+        }
+
+        if opt_level >= 2 {
+            pipeline = pipeline.add_transform(LoopUnrolling);
         }
 
         pipeline
