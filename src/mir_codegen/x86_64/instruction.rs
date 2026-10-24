@@ -26,6 +26,36 @@ fn widen_external_argument<W: Write>(
     Ok(())
 }
 
+fn load_register_arguments<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
+    writer: &mut RaxTrackingWriter<W>,
+    args: &[Operand],
+    types: &[MirType],
+    locations: &[ArgLocation],
+    arg_regs: &[&str],
+    reg_alloc: &RA,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    for (index, location) in locations.iter().enumerate() {
+        if let ArgLocation::Xmm(xmm) = location {
+            let register = format!("xmm{xmm}");
+            load_float_operand_to_xmm(
+                &args[index],
+                writer,
+                reg_alloc,
+                stack_slots,
+                &register,
+                &types[index],
+            )?;
+        }
+    }
+    for (index, location) in locations.iter().enumerate() {
+        if let ArgLocation::Gpr(gpr) = location {
+            load_operand_to_register(&args[index], writer, reg_alloc, stack_slots, arg_regs[*gpr])?;
+        }
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn emit_instruction_x86_64(
     inst: &MirInst,
@@ -625,8 +655,16 @@ pub(super) fn emit_instruction_x86_64(
             } else {
                 let abi = X86ABI::new(target_os);
                 let arg_regs = abi.arg_registers();
-                let num_reg_args = args.len().min(arg_regs.len());
-                let num_stack_args = args.len().saturating_sub(arg_regs.len());
+                let types = abi_extensions.argument_types(name, args.len());
+                let locations = classify_arguments(&types, target_os);
+                let stack_args: Vec<usize> = locations
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, location)| {
+                        matches!(location, ArgLocation::Stack(_)).then_some(index)
+                    })
+                    .collect();
+                let num_stack_args = stack_args.len();
 
                 if target_os == TargetOperatingSystem::Windows {
                     // Every Windows call gets home space, argument count aside:
@@ -642,12 +680,10 @@ pub(super) fn emit_instruction_x86_64(
                     if total_stack > 0 {
                         writeln!(writer, "    subq ${total_stack}, %rsp")?;
                     }
-                    for i in 0..num_stack_args {
-                        let arg_idx = num_reg_args + i;
-                        let arg = &args[arg_idx];
-                        let stack_offset = shadow_space + (i * stack::SLOT_SIZE);
-                        load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
-                        widen_external_argument(writer, abi_extensions, name, arg_idx, "rax")?;
+                    for (slot, &index) in stack_args.iter().enumerate() {
+                        let stack_offset = shadow_space + (slot * stack::SLOT_SIZE);
+                        load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
+                        widen_external_argument(writer, abi_extensions, name, index, "rax")?;
                         writeln!(writer, "    movq %rax, {stack_offset}(%rsp)")?;
                     }
                 } else {
@@ -655,22 +691,32 @@ pub(super) fn emit_instruction_x86_64(
                     if num_stack_args % 2 == 1 {
                         writeln!(writer, "    subq $8, %rsp")?;
                     }
-                    for i in (0..num_stack_args).rev() {
-                        let arg_idx = num_reg_args + i;
-                        let arg = &args[arg_idx];
-                        load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
-                        widen_external_argument(writer, abi_extensions, name, arg_idx, "rax")?;
+                    for &index in stack_args.iter().rev() {
+                        load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
+                        widen_external_argument(writer, abi_extensions, name, index, "rax")?;
                         writeln!(writer, "    pushq %rax")?;
                     }
                 }
 
-                for i in 0..num_reg_args {
-                    let arg = &args[i];
-                    let dest_reg = arg_regs[i];
-                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
-                }
-                for (i, dest_reg) in arg_regs.iter().take(num_reg_args).enumerate() {
-                    widen_external_argument(writer, abi_extensions, name, i, dest_reg)?;
+                load_register_arguments(
+                    writer,
+                    args,
+                    &types,
+                    &locations,
+                    arg_regs,
+                    reg_alloc,
+                    stack_slots,
+                )?;
+                for (index, location) in locations.iter().enumerate() {
+                    if let ArgLocation::Gpr(gpr) = location {
+                        widen_external_argument(
+                            writer,
+                            abi_extensions,
+                            name,
+                            index,
+                            arg_regs[*gpr],
+                        )?;
+                    }
                 }
 
                 let mangled_name = abi.mangle_function_name(name);
@@ -696,7 +742,9 @@ pub(super) fn emit_instruction_x86_64(
                 if let Some(ret_reg) = ret
                     && let Register::Virtual(vreg) = ret_reg
                 {
-                    if let Some((width, signed)) = abi_extensions.return_extension(name) {
+                    if let Some(ty) = abi_extensions.float_return(name) {
+                        writeln!(writer, "{}", move_xmm_to_rax(&ty, 0))?;
+                    } else if let Some((width, signed)) = abi_extensions.return_extension(name) {
                         extend_integer(writer, "rax", width, signed)?;
                     }
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -828,67 +876,95 @@ pub(super) fn emit_instruction_x86_64(
             }
             let abi = X86ABI::new(target_os);
             let arg_regs = abi.arg_registers();
-            for (index, arg) in args.iter().enumerate().take(arg_regs.len()) {
-                load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[index])?;
-            }
+            let types = abi_extensions.argument_types(func_name, args.len());
+            let locations = classify_arguments(&types, target_os);
+            load_register_arguments(
+                writer,
+                args,
+                &types,
+                &locations,
+                arg_regs,
+                reg_alloc,
+                stack_slots,
+            )?;
             writeln!(writer, "    jmp {}", self_tail_entry_label(func_name))?;
         }
         MirInst::TailCall { name, args } => {
             let abi = X86ABI::new(target_os);
             let arg_regs = abi.arg_registers();
-            let num_reg_args = args.len().min(arg_regs.len());
-            let num_stack_args = args.len().saturating_sub(arg_regs.len());
+            let types = abi_extensions.argument_types(name, args.len());
+            let locations = classify_arguments(&types, target_os);
+            let own_stack_args = stack_argument_count(&classify_arguments(
+                &abi_extensions.parameter_types(func_name),
+                target_os,
+            ));
 
-            // 1. Handle Register Arguments
-            for i in 0..num_reg_args {
-                let arg = &args[i];
-                let dest_reg = arg_regs[i];
-                load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
-            }
-            for (i, dest_reg) in arg_regs.iter().take(num_reg_args).enumerate() {
-                widen_external_argument(writer, abi_extensions, name, i, dest_reg)?;
-            }
-
-            // 2. Handle Stack Arguments (Overwrite incoming args)
-            // Note: TailCallOptimization guarantees args.len() == current_func.args.len()
-            // So we can strictly overwrite our own incoming stack slots.
-            if num_stack_args > 0 {
-                let shadow_space = if target_os == TargetOperatingSystem::Windows {
-                    windows::SHADOW_SPACE_SIZE as usize
+            // The incoming argument area is the caller's, so a jump can only reuse it
+            // when the callee's stack arguments fit there. Otherwise keep the frame and
+            // return whatever the call returns.
+            if stack_argument_count(&locations) > own_stack_args {
+                emit_instruction_x86_64(
+                    &MirInst::Call {
+                        name: name.clone(),
+                        args: args.clone(),
+                        ret: None,
+                    },
+                    writer,
+                    reg_alloc,
+                    stack_slots,
+                    stack_size,
+                    has_frame,
+                    saved_regs,
+                    target_os,
+                    func_name,
+                    def_regs,
+                    settings,
+                    debug_line,
+                    abi_extensions,
+                    next_label,
+                    self_param_homes,
+                    param_extensions,
+                    entry_label,
+                )?;
+                restore_saved_registers(writer, stack_size, saved_regs)?;
+                if has_frame {
+                    X86Frame::generate_epilogue(writer, stack_size)?;
                 } else {
-                    0
-                };
+                    writeln!(writer, "    ret")?;
+                }
+                return Ok(());
+            }
 
-                for i in 0..num_stack_args {
-                    let arg_idx = num_reg_args + i;
-                    let arg = &args[arg_idx];
-
-                    // Incoming args are at RBP + 16 + shadow + i*8
-                    // (Return address is 8, saved RBP pushed, so RBP points to saved RBP)
-                    // Wait:
-                    // Standard Prologue: push rbp; mov rbp, rsp
-                    // Stack:
-                    //   [RBP + 16 + shadow + 8*i] -> Arg N (Stack Arg i)
-                    //   [RBP + 8]  -> Return Address
-                    //   [RBP + 0]  -> Saved RBP
-                    //
-                    // So first stack arg is at RBP + 16 (on Linux/Mac) or RBP + 16 + 32 (Windows? No shadow is allocated by caller?)
-                    // Windows: Shadow space is 32 bytes allocated *by caller* right before return address?
-                    // No, shadow space is allocated by caller *above* return address?
-                    // Microsoft x64: "The caller allocates space for 4 register parameters..."
-                    // Stack: [RetAddr] [Home P1] [Home P2] [Home P3] [Home P4] [Stack Arg 5] ...
-                    // Wait, Home space is "Shadow Space". It's strictly for the first 4 args (which are in regs).
-                    // Stack args start *after* shadow space.
-                    // So RBP + 16 + 32 + i*8.
-
-                    let offset = 16 + shadow_space + (i * stack::SLOT_SIZE);
-
-                    // Load to RAX (scratch) first
-                    load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
-                    widen_external_argument(writer, abi_extensions, name, arg_idx, "rax")?;
-
-                    // Store to incoming slot
+            // Stack arguments go into the incoming slots before any register is
+            // overwritten, since their sources may live in argument registers.
+            let shadow_space = if target_os == TargetOperatingSystem::Windows {
+                windows::SHADOW_SPACE_SIZE as usize
+            } else {
+                0
+            };
+            for (index, location) in locations.iter().enumerate() {
+                if let ArgLocation::Stack(slot) = location {
+                    // Incoming args are at RBP + 16 + shadow + 8*slot: saved RBP and
+                    // the return address sit below them, and on Windows the caller's
+                    // shadow space precedes the stack arguments.
+                    let offset = 16 + shadow_space + (slot * stack::SLOT_SIZE);
+                    load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
+                    widen_external_argument(writer, abi_extensions, name, index, "rax")?;
                     writeln!(writer, "    movq %rax, {offset}(%rbp)")?;
+                }
+            }
+            load_register_arguments(
+                writer,
+                args,
+                &types,
+                &locations,
+                arg_regs,
+                reg_alloc,
+                stack_slots,
+            )?;
+            for (index, location) in locations.iter().enumerate() {
+                if let ArgLocation::Gpr(gpr) = location {
+                    widen_external_argument(writer, abi_extensions, name, index, arg_regs[*gpr])?;
                 }
             }
 
@@ -1100,7 +1176,12 @@ pub(super) fn emit_instruction_x86_64(
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
-                load_operand_to_rax(val, writer, reg_alloc, stack_slots)?;
+                match abi_extensions.float_return(func_name) {
+                    Some(ty) => {
+                        load_float_operand_to_xmm(val, writer, reg_alloc, stack_slots, "xmm0", &ty)?
+                    }
+                    None => load_operand_to_rax(val, writer, reg_alloc, stack_slots)?,
+                }
             }
             // Epilogue
             restore_saved_registers(writer, stack_size, saved_regs)?;
