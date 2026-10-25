@@ -269,3 +269,41 @@ pub fn emit_int_cmp_op<W: Write>(op: &IntCmpOp, writer: &mut W) -> Result<(), Er
     }
     Ok(())
 }
+
+/// Replaces a0 with `limit` when a0 is above it, without branching. `compare` is
+/// `slt` for a signed limit and `sltu` for an unsigned one.
+pub fn clamp_above<W: Write>(writer: &mut W, limit: i64, compare: &str) -> Result<(), Error> {
+    writeln!(writer, "    li t1, {limit}")?;
+    writeln!(writer, "    {compare} t2, t1, a0")?;
+    writeln!(writer, "    neg t2, t2")?;
+    writeln!(writer, "    xor t3, a0, t1")?;
+    writeln!(writer, "    and t3, t3, t2")?;
+    writeln!(writer, "    xor a0, a0, t3")?;
+    Ok(())
+}
+
+/// Replaces a0 with `limit` when a0 is below it, signed.
+pub fn clamp_below<W: Write>(writer: &mut W, limit: i64) -> Result<(), Error> {
+    writeln!(writer, "    li t1, {limit}")?;
+    writeln!(writer, "    slt t2, a0, t1")?;
+    writeln!(writer, "    neg t2, t2")?;
+    writeln!(writer, "    xor t3, a0, t1")?;
+    writeln!(writer, "    and t3, t3, t2")?;
+    writeln!(writer, "    xor a0, a0, t3")?;
+    Ok(())
+}
+
+/// Rewrites a0 as the sign-extended form of its low `bits`, the shape a 64-bit
+/// register holds a narrower value in.
+pub fn sign_extend_to_xlen<W: Write>(writer: &mut W, bits: usize) -> Result<(), Error> {
+    if bits >= 64 {
+        return Ok(());
+    }
+    if bits == 32 {
+        writeln!(writer, "    sext.w a0, a0")?;
+    } else {
+        writeln!(writer, "    slli a0, a0, {}", 64 - bits)?;
+        writeln!(writer, "    srai a0, a0, {}", 64 - bits)?;
+    }
+    Ok(())
+}
