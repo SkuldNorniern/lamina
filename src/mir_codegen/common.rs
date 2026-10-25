@@ -17,7 +17,7 @@ use crate::{
     },
     mir_codegen::{CodegenError, CodegenOptions, MirCodegenSettings},
 };
-use lamina_codegen::{Allocation, LiveInterval};
+use lamina_codegen::{Allocation, LiveInterval, os_uses_coff, os_uses_macho};
 use lamina_platform::TargetOperatingSystem;
 
 pub fn parallel_codegen_error(error: impl Debug) -> LaminaError {
@@ -524,17 +524,13 @@ pub fn emit_gnu_stack_note<W: Write>(
     writer: &mut W,
     target_os: TargetOperatingSystem,
 ) -> Result<(), LaminaError> {
-    if matches!(
-        target_os,
-        TargetOperatingSystem::MacOS
-            | TargetOperatingSystem::IOS
-            | TargetOperatingSystem::TvOS
-            | TargetOperatingSystem::WatchOS
-            | TargetOperatingSystem::VisionOS
-            | TargetOperatingSystem::Windows
-            | TargetOperatingSystem::Cuda
-            | TargetOperatingSystem::AmdHsa
-    ) {
+    if os_uses_macho(target_os)
+        || os_uses_coff(target_os)
+        || matches!(
+            target_os,
+            TargetOperatingSystem::Cuda | TargetOperatingSystem::AmdHsa
+        )
+    {
         return Ok(());
     }
     writeln!(writer, ".section .note.GNU-stack,\"\",@progbits")?;
@@ -550,7 +546,7 @@ pub fn emit_global_data<W: Write>(
     mangle: impl Fn(&str) -> String,
 ) -> Result<(), LaminaError> {
     let (data_section, bss_section) = match target_os {
-        TargetOperatingSystem::MacOS => (".section __DATA,__data", ".section __DATA,__data"),
+        os if os_uses_macho(os) => (".section __DATA,__data", ".section __DATA,__data"),
         _ => (".data", ".bss"),
     };
     let mut names: Vec<&str> = module.globals.keys().map(String::as_str).collect();
@@ -587,7 +583,7 @@ pub fn emit_print_format_section<W: Write>(
     target_os: TargetOperatingSystem,
 ) -> Result<(), LaminaError> {
     match target_os {
-        TargetOperatingSystem::MacOS => {
+        os if os_uses_macho(os) => {
             writeln!(writer, ".section __TEXT,__cstring,cstring_literals")?;
             writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
         }
@@ -1585,6 +1581,8 @@ mod export_linkage_tests {
     };
     use lamina_platform::TargetOperatingSystem;
 
+    use super::emit_print_format_section;
+
     const SOURCE: &str = r#"
 @export fn @answer() -> i64 {
 entry:
@@ -1723,12 +1721,50 @@ entry:
             (TargetOperatingSystem::Linux, true),
             (TargetOperatingSystem::FreeBSD, true),
             (TargetOperatingSystem::MacOS, false),
+            (TargetOperatingSystem::IOS, false),
+            (TargetOperatingSystem::TvOS, false),
+            (TargetOperatingSystem::WatchOS, false),
+            (TargetOperatingSystem::VisionOS, false),
             (TargetOperatingSystem::Windows, false),
+            (TargetOperatingSystem::Horizon, true),
+            (TargetOperatingSystem::Orbis, true),
+            (TargetOperatingSystem::Prospero, true),
         ] {
             let mut output = Vec::new();
             generate_mir_x86_64::<Vec<u8>>(&mir, &mut output, os).expect("emit");
             let text = String::from_utf8(output).expect("utf8 assembly");
             assert_eq!(text.contains(note), expected, "{os:?}: {text}");
         }
+    }
+
+    #[test]
+    fn mach_o_targets_get_cstring_format_section() {
+        for os in [
+            TargetOperatingSystem::MacOS,
+            TargetOperatingSystem::IOS,
+            TargetOperatingSystem::TvOS,
+            TargetOperatingSystem::WatchOS,
+            TargetOperatingSystem::VisionOS,
+        ] {
+            let mut output = Vec::new();
+            emit_print_format_section(&mut output, os).expect("emit");
+            let text = String::from_utf8(output).expect("utf8 assembly");
+            assert_eq!(
+                text,
+                ".section __TEXT,__cstring,cstring_literals\n.L_mir_fmt_int: .asciz \"%lld\\n\"\n",
+                "{os:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn elf_targets_keep_rodata_format_section() {
+        let mut output = Vec::new();
+        emit_print_format_section(&mut output, TargetOperatingSystem::Linux).expect("emit");
+        let text = String::from_utf8(output).expect("utf8 assembly");
+        assert_eq!(
+            text,
+            ".section .rodata\n.L_mir_fmt_int: .string \"%lld\\n\"\n"
+        );
     }
 }
