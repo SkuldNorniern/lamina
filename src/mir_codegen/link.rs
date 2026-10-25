@@ -9,6 +9,7 @@
 //! - Custom linkers
 
 use crate::error::LaminaError;
+use lamina_codegen::os_uses_macho;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{
     env, fs,
@@ -37,7 +38,7 @@ fn get_crt_file(compiler: &str, crt_name: &str) -> Option<String> {
 }
 
 fn get_crt_files(target_os: TargetOperatingSystem) -> Vec<String> {
-    if target_os == TargetOperatingSystem::MacOS {
+    if os_uses_macho(target_os) {
         return Vec::new();
     }
 
@@ -52,7 +53,7 @@ fn get_crt_files(target_os: TargetOperatingSystem) -> Vec<String> {
 }
 
 fn get_crtn_files(target_os: TargetOperatingSystem) -> Vec<String> {
-    if target_os == TargetOperatingSystem::MacOS {
+    if os_uses_macho(target_os) {
         return Vec::new();
     }
 
@@ -253,7 +254,7 @@ fn build_arch_emulation_flags(
 
     match target_arch {
         TargetArchitecture::X86_64 => {
-            if target_os == TargetOperatingSystem::MacOS {
+            if os_uses_macho(target_os) {
                 args.push("-arch".to_string());
                 args.push("x86_64".to_string());
             } else if target_os != TargetOperatingSystem::Windows {
@@ -262,7 +263,7 @@ fn build_arch_emulation_flags(
             }
         }
         TargetArchitecture::Aarch64 => {
-            if target_os == TargetOperatingSystem::MacOS {
+            if os_uses_macho(target_os) {
                 args.push("-arch".to_string());
                 args.push("arm64".to_string());
             } else {
@@ -288,7 +289,7 @@ fn build_arch_emulation_flags(
 }
 
 fn build_crt_args(target_os: TargetOperatingSystem, before_user_object: bool) -> Vec<String> {
-    if target_os == TargetOperatingSystem::MacOS {
+    if os_uses_macho(target_os) {
         return Vec::new();
     }
 
@@ -301,7 +302,7 @@ fn build_crt_args(target_os: TargetOperatingSystem, before_user_object: bool) ->
 
 fn build_entry_point_arg(target_os: TargetOperatingSystem) -> Vec<String> {
     match target_os {
-        TargetOperatingSystem::MacOS => {
+        os if os_uses_macho(os) => {
             vec!["-e".to_string(), "_main".to_string()]
         }
         _ => {
@@ -332,22 +333,20 @@ fn build_dynamic_linker_arg(
 fn build_library_args(target_os: TargetOperatingSystem) -> Vec<String> {
     let mut args = Vec::new();
 
-    match target_os {
-        TargetOperatingSystem::MacOS => {
-            if let Ok(output) = Command::new("xcrun").args(["--show-sdk-path"]).output()
-                && let Ok(sdk_path) = String::from_utf8(output.stdout)
-            {
-                let sdk_path = sdk_path.trim();
-                if !sdk_path.is_empty() {
-                    args.push("-syslibroot".to_string());
-                    args.push(sdk_path.to_string());
-                }
+    if os_uses_macho(target_os) {
+        if target_os == TargetOperatingSystem::MacOS
+            && let Ok(output) = Command::new("xcrun").args(["--show-sdk-path"]).output()
+            && let Ok(sdk_path) = String::from_utf8(output.stdout)
+        {
+            let sdk_path = sdk_path.trim();
+            if !sdk_path.is_empty() {
+                args.push("-syslibroot".to_string());
+                args.push(sdk_path.to_string());
             }
-            args.push("-lSystem".to_string());
         }
-        _ => {
-            args.push("-lc".to_string());
-        }
+        args.push("-lSystem".to_string());
+    } else {
+        args.push("-lc".to_string());
     }
 
     args
@@ -392,8 +391,8 @@ fn build_weld_linker_args(
         TargetOperatingSystem::Windows => {
             // weld detects PE from .exe output suffix; no entry-point arg needed.
         }
-        TargetOperatingSystem::MacOS => {
-            // macOS: link against libSystem (contains printf, fflush, etc.)
+        os if os_uses_macho(os) => {
+            // Mach-O: link against libSystem (contains printf, fflush, etc.)
             args.push("-lSystem".to_string());
         }
         _ => {
@@ -530,7 +529,7 @@ pub fn link(
                     args.insert(0, "-platform_version".to_string());
                 }
             }
-            let cmd = if target_os == TargetOperatingSystem::MacOS {
+            let cmd = if os_uses_macho(target_os) {
                 "ld64.lld"
             } else {
                 "lld"
@@ -678,7 +677,7 @@ pub fn detect_linker_backend(
             }
             LinkerBackend::Msvc // Last resort — will fail gracefully if not found
         }
-        TargetOperatingSystem::MacOS => {
+        os if os_uses_macho(os) => {
             if Command::new("mold").arg("--version").output().is_ok() {
                 return LinkerBackend::Mold;
             }
@@ -869,5 +868,33 @@ mod tests {
             TargetOperatingSystem::Windows,
         )
         .expect("clang lld should be valid for Windows x86_64");
+    }
+
+    #[test]
+    fn apple_mobile_link_args_use_mach_o_conventions() {
+        for os in [
+            TargetOperatingSystem::IOS,
+            TargetOperatingSystem::TvOS,
+            TargetOperatingSystem::WatchOS,
+            TargetOperatingSystem::VisionOS,
+        ] {
+            assert_eq!(
+                build_arch_emulation_flags(TargetArchitecture::Aarch64, os),
+                ["-arch", "arm64"],
+                "{os:?}"
+            );
+            assert_eq!(
+                build_arch_emulation_flags(TargetArchitecture::X86_64, os),
+                ["-arch", "x86_64"],
+                "{os:?}"
+            );
+            assert!(build_crt_args(os, true).is_empty(), "{os:?}");
+            assert!(build_crt_args(os, false).is_empty(), "{os:?}");
+            assert_eq!(build_entry_point_arg(os), ["-e", "_main"], "{os:?}");
+            let libs = build_library_args(os);
+            assert!(libs.iter().any(|a| a == "-lSystem"), "{os:?}");
+            assert!(!libs.iter().any(|a| a == "-lc"), "{os:?}");
+            assert!(!libs.iter().any(|a| a == "-syslibroot"), "{os:?}");
+        }
     }
 }
