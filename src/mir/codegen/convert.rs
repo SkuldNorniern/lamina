@@ -1142,19 +1142,26 @@ fn convert_instruction<'a>(
                     "{name} relates two integers; use fptosi, fptoui, sitofp or uitofp to cross between integers and floats"
                 )));
             }
-            if widening && to.size_bytes() < from.size_bytes() {
+            let bits = |ty: MirType| {
+                if ty == MirType::i1() {
+                    1
+                } else {
+                    ty.size_bytes() * 8
+                }
+            };
+            if widening && bits(to) < bits(from) {
                 return Err(FromIRError::InvalidConversion(format!(
                     "{name} from {source_type} to {target_type} narrows; use trunc"
                 )));
             }
-            if !widening && to.size_bytes() > from.size_bytes() {
+            if !widening && bits(to) > bits(from) {
                 return Err(FromIRError::InvalidConversion(format!(
                     "trunc from {source_type} to {target_type} widens; use zext or sext"
                 )));
             }
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
-            if from.size_bytes() == to.size_bytes() {
+            if from == to {
                 return Ok(vec![Instruction::Copy { ty: to, dst, src }]);
             }
             Ok(vec![Instruction::IntConvert {
@@ -2089,6 +2096,22 @@ ret.ptr %variable
                 "{name}: {error}"
             );
         }
+
+        // bool is one bit, so widening it to a byte is a real conversion.
+        let boolean = parse_module(
+            "fn @flag(bool %b) -> i64 {\nentry:\n%a = zext.bool.i8 %b\n%w = zext.i8.i64 %a\nret.i64 %w\n}",
+        )
+        .expect("parse bool widening");
+        let mir = from_ir(&boolean, "flag").expect("lower bool widening");
+        let function = mir.get_function("flag").expect("flag function");
+        assert!(
+            matches!(
+                function.blocks[0].instructions[0],
+                Instruction::IntConvert { .. }
+            ),
+            "{:?}",
+            function.blocks[0].instructions[0]
+        );
 
         let narrowing =
             parse_module("fn @narrow(i64 %x) -> i64 {\nentry:\n%a = zext.i64.i32 %x\nret.i64 0\n}")
