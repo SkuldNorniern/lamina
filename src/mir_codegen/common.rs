@@ -1651,23 +1651,18 @@ entry:
         )
         .expect("parse global module");
         let mir = from_ir(&ir, "globals").expect("lower global module");
-        let rejecting: [(&str, Emitter, TargetOperatingSystem); 2] = [
-            (
-                "riscv",
-                generate_mir_riscv::<Vec<u8>>,
-                TargetOperatingSystem::Linux,
-            ),
-            (
-                "ppc64",
-                generate_mir_ppc64::<Vec<u8>>,
-                TargetOperatingSystem::Linux,
-            ),
-        ];
+        let rejecting: [(&str, Emitter, TargetOperatingSystem); 1] = [(
+            "ppc64",
+            generate_mir_ppc64::<Vec<u8>>,
+            TargetOperatingSystem::Linux,
+        )];
         for (name, emit, os) in rejecting {
             let mut output = Vec::new();
             let error = emit(&mir, &mut output, os).expect_err(name);
             assert!(
-                error.to_string().contains("does not yet support global variables")
+                error
+                    .to_string()
+                    .contains("does not yet support global variables")
                     || error.to_string().contains("global symbol addresses"),
                 "{name}: {error}"
             );
