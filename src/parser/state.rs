@@ -30,11 +30,7 @@ impl<'a> ParserState<'a> {
     }
 
     pub fn peek_slice(&self, len: usize) -> Option<&'a str> {
-        if self.position + len <= self.input.len() {
-            Some(&self.input[self.position..self.position + len])
-        } else {
-            None
-        }
+        self.input.get(self.position..self.position + len)
     }
 
     /// Advances the parser position by one character.
