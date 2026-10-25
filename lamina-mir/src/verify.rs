@@ -1844,4 +1844,66 @@ mod tests {
 
         assert!(verify_function(&function).is_ok());
     }
+
+    #[test]
+    fn dominator_tree_answers_ancestor_queries_on_long_chain() {
+        let length = 4000;
+        let mut builder = FunctionBuilder::new("chain").block("entry");
+        builder = builder.instr(Instruction::Jmp {
+            target: "b0".to_string(),
+        });
+        for index in 0..length {
+            builder = builder.block(format!("b{index}")).instr(Instruction::Jmp {
+                target: format!("b{}", index + 1),
+            });
+        }
+        let function = builder
+            .block(format!("b{length}"))
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let labels: HashMap<&str, usize> = function
+            .blocks
+            .iter()
+            .enumerate()
+            .map(|(index, block)| (block.label.as_str(), index))
+            .collect();
+        let dominators = calculate_dominators(&function, &labels);
+
+        let entry = labels["entry"];
+        let first = labels["b0"];
+        let middle = labels[format!("b{}", length / 2).as_str()];
+        let last = labels[format!("b{length}").as_str()];
+
+        assert!(dominators.dominates(entry, last));
+        assert!(dominators.dominates(first, middle));
+        assert!(dominators.dominates(middle, last));
+        assert!(!dominators.dominates(last, middle));
+        assert!(!dominators.dominates(middle, first));
+        assert_eq!(dominators.immediate_dominator(first), Some(entry));
+        assert!(dominators.is_reachable(last));
+    }
+
+    #[test]
+    fn unreachable_blocks_dominate_nothing() {
+        let function = FunctionBuilder::new("orphan")
+            .block("entry")
+            .instr(Instruction::Ret { value: None })
+            .block("stranded")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let labels: HashMap<&str, usize> = function
+            .blocks
+            .iter()
+            .enumerate()
+            .map(|(index, block)| (block.label.as_str(), index))
+            .collect();
+        let dominators = calculate_dominators(&function, &labels);
+
+        assert!(dominators.is_reachable(labels["entry"]));
+        assert!(!dominators.is_reachable(labels["stranded"]));
+        assert!(!dominators.dominates(labels["stranded"], labels["entry"]));
+        assert!(!dominators.dominates(labels["entry"], labels["stranded"]));
+    }
 }
