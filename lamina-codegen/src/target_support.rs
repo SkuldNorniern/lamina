@@ -32,6 +32,7 @@ fn os_supported_for_x86_64(os: TargetOperatingSystem) -> bool {
     matches!(
         os,
         TargetOperatingSystem::Linux
+            | TargetOperatingSystem::Android
             | TargetOperatingSystem::MacOS
             | TargetOperatingSystem::Windows
             | TargetOperatingSystem::FreeBSD
@@ -48,6 +49,7 @@ fn os_supported_for_aarch64(os: TargetOperatingSystem) -> bool {
     matches!(
         os,
         TargetOperatingSystem::Linux
+            | TargetOperatingSystem::Android
             | TargetOperatingSystem::MacOS
             | TargetOperatingSystem::Windows
             | TargetOperatingSystem::FreeBSD
@@ -87,6 +89,7 @@ pub fn os_uses_elf(os: TargetOperatingSystem) -> bool {
     matches!(
         os,
         TargetOperatingSystem::Linux
+            | TargetOperatingSystem::Android
             | TargetOperatingSystem::FreeBSD
             | TargetOperatingSystem::OpenBSD
             | TargetOperatingSystem::NetBSD
@@ -171,6 +174,19 @@ mod tests {
             TargetArchitecture::Aarch64,
             TargetOperatingSystem::Unknown
         ));
+    }
+
+    #[test]
+    fn test_android_is_elf_and_assembly_supported() {
+        assert!(is_assembly_supported(
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Android
+        ));
+        assert!(is_assembly_supported(
+            TargetArchitecture::Aarch64,
+            TargetOperatingSystem::Android
+        ));
+        assert!(os_uses_elf(TargetOperatingSystem::Android));
     }
 
     #[test]
