@@ -56,7 +56,10 @@ pub(super) fn aggregate_parameter_function(module: &Module) -> Option<&str> {
     let mut names: Vec<&str> = module
         .functions
         .iter()
-        .filter(|(_, func)| func.sig.params.iter().any(|p| p.aggregate.is_some()))
+        .filter(|(_, func)| {
+            func.sig.ret_aggregate.is_some()
+                || func.sig.params.iter().any(|p| p.aggregate.is_some())
+        })
         .map(|(name, _)| name.as_str())
         .collect();
     names.sort_unstable();

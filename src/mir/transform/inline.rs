@@ -71,6 +71,7 @@ impl ModuleInlining {
                             && !function.sig.no_inline
                             && function.instruction_count() <= 30
                             && function.sig.params.len() == args.len()
+                            && function.sig.ret_aggregate.is_none()
                             && function
                                 .sig
                                 .params

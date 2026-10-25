@@ -37,7 +37,10 @@ pub fn validate_module_call_parameters(
         let mut names: Vec<&String> = module
             .functions
             .iter()
-            .filter(|(_, func)| func.sig.params.iter().any(|p| p.aggregate.is_some()))
+            .filter(|(_, func)| {
+                func.sig.ret_aggregate.is_some()
+                    || func.sig.params.iter().any(|p| p.aggregate.is_some())
+            })
             .map(|(name, _)| name)
             .collect();
         names.sort();
