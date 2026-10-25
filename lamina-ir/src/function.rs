@@ -691,7 +691,9 @@ impl<'a> Function<'a> {
                     Instruction::Ret { ty, value } => {
                         let ret_is_void = matches!(ty, Type::Void);
                         let sig_is_void = matches!(self.signature.return_type, Type::Void);
-                        if ret_is_void != sig_is_void {
+                        if ret_is_void != sig_is_void
+                            || (!ret_is_void && *ty != self.signature.return_type)
+                        {
                             errors.push(format!(
                                 "return in block '{}' of '@{}': return type '{}' does not match signature return type '{}'",
                                 label, self.name, ty, self.signature.return_type
@@ -1272,5 +1274,22 @@ mod tests {
         let f = simple_func(vec![], Type::Void, blocks, "entry");
         let errs = f.validate().unwrap_err();
         assert!(errs.iter().any(|e| e.contains("'%late'")));
+    }
+
+    #[test]
+    fn test_validate_return_value_type_mismatch_fails() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Ret {
+                    ty: Type::Primitive(PrimitiveType::I64),
+                    value: Some(Value::Constant(Literal::I64(0))),
+                }],
+            },
+        );
+        let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("return type")));
     }
 }
