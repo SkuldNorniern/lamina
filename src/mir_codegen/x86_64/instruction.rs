@@ -1012,12 +1012,28 @@ pub(super) fn emit_instruction_x86_64(
                 if let Some(ret_reg) = ret
                     && let Register::Virtual(vreg) = ret_reg
                 {
-                    if let Some(ty) = abi_extensions.float_return(name) {
-                        writeln!(writer, "{}", move_xmm_to_rax(&ty, 0))?;
-                    } else if let Some((width, signed)) = abi_extensions.return_extension(name) {
-                        extend_integer(writer, "rax", width, signed)?;
+                    if let Some(aggregate) = abi_extensions.return_aggregate(name) {
+                        // The result register names the slot the words are written to;
+                        // the caller addresses it with a stack address of its own.
+                        let base = *stack_slots.get(vreg).ok_or_else(|| {
+                            LaminaError::ValidationError(
+                                "aggregate result has no frame slot".to_string(),
+                            )
+                        })?;
+                        writeln!(writer, "    movq %rax, {base}(%rbp)")?;
+                        if aggregate.words() > 1 {
+                            writeln!(writer, "    movq %rdx, {}(%rbp)", base + 8)?;
+                        }
+                        writer.rax_value = None;
+                    } else {
+                        if let Some(ty) = abi_extensions.float_return(name) {
+                            writeln!(writer, "{}", move_xmm_to_rax(&ty, 0))?;
+                        } else if let Some((width, signed)) = abi_extensions.return_extension(name)
+                        {
+                            extend_integer(writer, "rax", width, signed)?;
+                        }
+                        store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                     }
-                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
             }
         }
@@ -1467,11 +1483,24 @@ pub(super) fn emit_instruction_x86_64(
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
-                match abi_extensions.float_return(func_name) {
-                    Some(ty) => {
+                match (
+                    abi_extensions.return_aggregate(func_name),
+                    abi_extensions.float_return(func_name),
+                ) {
+                    // The returned operand addresses the aggregate; the words themselves
+                    // go back in rax and rdx.
+                    (Some(aggregate), _) => {
+                        load_operand_to_rax(val, writer, reg_alloc, stack_slots)?;
+                        if aggregate.words() > 1 {
+                            writeln!(writer, "    movq 8(%rax), %rdx")?;
+                        }
+                        writeln!(writer, "    movq (%rax), %rax")?;
+                        writer.rax_value = None;
+                    }
+                    (None, Some(ty)) => {
                         load_float_operand_to_xmm(val, writer, reg_alloc, stack_slots, "xmm0", &ty)?
                     }
-                    None => load_operand_to_rax(val, writer, reg_alloc, stack_slots)?,
+                    (None, None) => load_operand_to_rax(val, writer, reg_alloc, stack_slots)?,
                 }
             }
             // Epilogue

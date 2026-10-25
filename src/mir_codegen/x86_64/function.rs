@@ -94,6 +94,7 @@ pub(super) fn compile_single_function_x86_64(
 
     ensure_signature_support(&func.sig)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    check_aggregate_return(func.sig.ret_aggregate, target_os)?;
 
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{label}:")
@@ -554,6 +555,23 @@ fn windows_aggregate_fits(aggregate: Aggregate) -> bool {
     matches!(aggregate.size, 1 | 2 | 4 | 8)
 }
 
+/// Reports an aggregate return this backend cannot produce yet.
+pub(super) fn check_aggregate_return(
+    aggregate: Option<Aggregate>,
+    target_os: TargetOperatingSystem,
+) -> Result<(), CodegenError> {
+    let Some(aggregate) = aggregate else {
+        return Ok(());
+    };
+    if target_os == TargetOperatingSystem::Windows && !windows_aggregate_fits(aggregate) {
+        return Err(CodegenError::UnsupportedFeature(format!(
+            "windows x86_64 returns a {} byte aggregate through a hidden pointer, which is not lowered yet",
+            aggregate.size
+        )));
+    }
+    Ok(())
+}
+
 /// Reports aggregates this backend cannot pass yet, so a wrong ABI is never emitted.
 pub(super) fn check_aggregate_arguments(
     descs: &[ArgDesc],
@@ -734,6 +752,7 @@ pub(super) struct AbiExtensions {
     external_arguments: HashMap<String, Vec<Option<NarrowExtension>>>,
     parameter_types: HashMap<String, Vec<MirType>>,
     parameter_aggregates: HashMap<String, Vec<Option<Aggregate>>>,
+    return_aggregates: HashMap<String, Aggregate>,
     return_types: HashMap<String, MirType>,
 }
 
@@ -783,12 +802,18 @@ impl AbiExtensions {
             .iter()
             .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_ty?)))
             .collect();
+        let return_aggregates = module
+            .functions
+            .iter()
+            .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_aggregate?)))
+            .collect();
         Self {
             returns,
             external_arguments,
             parameter_types,
             parameter_aggregates,
             return_types,
+            return_aggregates,
         }
     }
 
@@ -835,6 +860,10 @@ impl AbiExtensions {
                     .and_then(|markers| markers[index]),
             })
             .collect()
+    }
+
+    pub(super) fn return_aggregate(&self, callee: &str) -> Option<Aggregate> {
+        self.return_aggregates.get(callee).copied()
     }
 
     pub(super) fn float_return(&self, callee: &str) -> Option<MirType> {

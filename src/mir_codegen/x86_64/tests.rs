@@ -1269,6 +1269,61 @@ int main(void) {
 }
 "#;
 
+    /// A lamina callee building a result for a C caller, and a lamina caller reading one
+    /// back from C.
+    const RETURNS: &str = r#"
+@export fn @make_pair(i64 %x) -> struct { a: i64, b: i64 } {
+entry:
+ %p = alloc.stack struct { a: i64, b: i64 }
+ %pa = getfieldptr %p, 0
+ %pb = getfieldptr %p, 1
+ store.i64 %pa, %x
+ %y = add.i64 %x, 1
+ store.i64 %pb, %y
+ ret.ptr %p
+}
+@export fn @make_small(i32 %x) -> struct { a: i32, b: i32 } {
+entry:
+ %p = alloc.stack struct { a: i32, b: i32 }
+ %pa = getfieldptr %p, 0
+ %pb = getfieldptr %p, 1
+ store.i32 %pa, %x
+ store.i32 %pb, 9
+ ret.ptr %p
+}
+@extern fn @c_make(i64 %x) -> struct { a: i64, b: i64 } {
+entry:
+ %p = alloc.stack struct { a: i64, b: i64 }
+ ret.ptr %p
+}
+@export fn @take_c() -> i64 {
+entry:
+ %r = call @c_make(10)
+ %ra = getfieldptr %r, 0
+ %rb = getfieldptr %r, 1
+ %a = load.i64 %ra
+ %b = load.i64 %rb
+ %s = add.i64 %a, %b
+ ret.i64 %s
+}
+"#;
+
+    const RETURNS_CALLER: &str = r#"
+#include <stdio.h>
+struct Pair { long a, b; };
+struct Small { int a, b; };
+extern struct Pair make_pair(long);
+extern struct Small make_small(int);
+extern long take_c(void);
+struct Pair c_make(long x) { struct Pair p = {x * 3, x * 5}; return p; }
+int main(void) {
+    struct Pair pair = make_pair(41);
+    struct Small small = make_small(5);
+    printf("%ld %ld %d %d %ld\n", pair.a, pair.b, small.a, small.b, take_c());
+    return 0;
+}
+"#;
+
     #[test]
     fn integer_aggregates_cross_the_c_abi_in_both_directions() -> Result<(), Box<dyn Error>> {
         if !tools_available(&["cc"]) {
@@ -1294,6 +1349,15 @@ int main(void) {
             OUTGOING_CALLEES,
         )?;
         assert_eq!(outgoing, "107 100028\n");
+
+        let returns = build_and_run(
+            &directory,
+            "returns",
+            RETURNS,
+            &["make_pair", "make_small", "take_c"],
+            RETURNS_CALLER,
+        )?;
+        assert_eq!(returns, "41 42 5 9 80\n");
 
         fs::remove_dir_all(directory)?;
         Ok(())

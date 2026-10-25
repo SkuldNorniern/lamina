@@ -1,5 +1,6 @@
-# Integer aggregates passed by value: two words, one packed word, a padded
-# three-field struct, and a call whose aggregate lands on the stack.
+# Integer aggregates crossing a boundary by value: two words, one packed word, a
+# padded three-field struct, a call whose aggregate lands on the stack, and
+# aggregates returned in registers and fed straight back in.
 
 type @Pair = struct { a: i64, b: i64 }
 type @Small = struct { a: i32, b: i32 }
@@ -56,6 +57,27 @@ fn @spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, @Pair %p) -> i64 {
     ret.i64 %total
 }
 
+fn @make_pair(i64 %x) -> @Pair {
+  entry:
+    %p = alloc.stack @Pair
+    %pa = getfieldptr %p, 0
+    %pb = getfieldptr %p, 1
+    store.i64 %pa, %x
+    %y = add.i64 %x, 1
+    store.i64 %pb, %y
+    ret.ptr %p
+}
+
+fn @make_small(i32 %x) -> @Small {
+  entry:
+    %p = alloc.stack @Small
+    %pa = getfieldptr %p, 0
+    %pb = getfieldptr %p, 1
+    store.i32 %pa, %x
+    store.i32 %pb, 9
+    ret.ptr %p
+}
+
 fn @main() -> i64 {
   entry:
     %pair = alloc.stack @Pair
@@ -86,6 +108,14 @@ fn @main() -> i64 {
 
     %spill = call @spilled(1, 2, 3, 4, 5, 6, %pair)
     print %spill
+
+    %made = call @make_pair(41)
+    %made_sum = call @sum_pair(%made)
+    print %made_sum
+
+    %tiny = call @make_small(5)
+    %tiny_sum = call @sum_small(%tiny)
+    print %tiny_sum
 
     ret.i64 0
 }
