@@ -1,10 +1,9 @@
 use crate::mir::register::PhysicalReg;
-use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::common::{
-    reject_module_globals,
-    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
-    self_tail_arguments, self_tail_schedule,
+    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
+    emit_global_directives, self_tail_arguments, self_tail_schedule,
 };
+use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 mod simd;
 use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
@@ -470,7 +469,6 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     };
     validate_module_call_parameters(module, arch)?;
     validate_rv32_i64(module, target)?;
-    reject_module_globals(module, "riscv")?;
     let settings_arc = Arc::new(settings.clone());
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
@@ -494,6 +492,9 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     for result in results {
         writer.write_all(&result.assembly)?;
     }
+    emit_global_data(writer, module, target_os, |name| {
+        abi.mangle_function_name(name)
+    })?;
     emit_gnu_stack_note(writer, target_os)?;
 
     Ok(())
@@ -736,10 +737,18 @@ fn emit_instruction_riscv<W: Write>(
                 Register::Physical(_) => {}
             }
         }
-        MirInst::SymbolAddress { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "riscv global symbol addresses are not yet supported".into(),
-            )));
+        MirInst::SymbolAddress { dst, symbol } => {
+            let label = RiscVAbi::new(ctx.target_os).mangle_function_name(symbol);
+            writeln!(writer, "    la a0, {label}")?;
+            match dst {
+                Register::Virtual(vreg) => {
+                    store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
+                }
+                Register::Physical(phys) if phys.name != "a0" => {
+                    writeln!(writer, "    mv {}, a0", phys.name)?;
+                }
+                Register::Physical(_) => {}
+            }
         }
         MirInst::StackAddr { dst, slot } => {
             let offset = stack_slots.get(slot).ok_or_else(|| {
@@ -2102,6 +2111,23 @@ mod tests {
         )
         .expect("rv64g has mul");
         assert!(String::from_utf8_lossy(&out).contains("mul "));
+    }
+
+    #[test]
+    fn module_globals_are_addressed_through_symbol_loads() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "global @counter: i64 = 41\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 @counter\n  ret.i64 %a\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "globals").expect("lower global module");
+        let mut output = Vec::new();
+        generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(assembly.contains("    la a0, counter\n"), "{assembly}");
+        assert!(
+            assembly.contains(".data\n.p2align 3\ncounter:\n    .byte 0x29, 0x00"),
+            "{assembly}"
+        );
+        Ok(())
     }
 
     #[test]
