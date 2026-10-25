@@ -108,8 +108,11 @@ fn unsized_allocations_are_rejected() -> Result<(), Box<dyn Error>> {
             let source = format!(
                 "{declarations}\nfn @main() -> i64 {{\nentry:\n%p = alloc.{allocation} @Bad\nret.i64 0\n}}\n"
             );
-            let ir = parse_module(&source)?;
-            assert!(from_ir(&ir, "unsized").is_err(), "{source}");
+            let rejected = match parse_module(&source) {
+                Err(_) => true,
+                Ok(ir) => from_ir(&ir, "unsized").is_err(),
+            };
+            assert!(rejected, "{source}");
         }
     }
     for ty in ["void", "[9223372036854775807 x i64]"] {
@@ -117,8 +120,11 @@ fn unsized_allocations_are_rejected() -> Result<(), Box<dyn Error>> {
             let source = format!(
                 "fn @main() -> i64 {{\nentry:\n%p = alloc.{allocation} {ty}\nret.i64 0\n}}\n"
             );
-            let ir = parse_module(&source)?;
-            assert!(from_ir(&ir, "unsized").is_err(), "{source}");
+            let rejected = match parse_module(&source) {
+                Err(_) => true,
+                Ok(ir) => from_ir(&ir, "unsized").is_err(),
+            };
+            assert!(rejected, "{source}");
         }
     }
 
