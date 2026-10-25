@@ -439,6 +439,13 @@ mod tests {
     }
 
     #[test]
+    fn test_non_ascii_identifier_is_rejected_without_panic() {
+        let input = "fn @m\u{e4}in() -> i64 {\n  entry:\n    ret.i64 0\n}\n";
+        let result = parse_module(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_parse_block_missing_terminator() {
         let input = r#"
             fn @bad() -> i32 {
