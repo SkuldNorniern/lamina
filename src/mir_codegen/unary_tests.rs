@@ -1,4 +1,4 @@
-use super::generate_mir_to_target;
+use super::{generate_mir_to_target, test_support::cross_assembler_ready};
 use crate::mir::{
     Block, FloatBinOp, FloatUnOp, Function, Immediate, Instruction, MirType, Module, Operand,
     Parameter, Register, Signature, VirtualReg,
@@ -88,6 +88,10 @@ fn float_unary_cpu_output_assembles() -> Result<(), Box<dyn Error>> {
         } else {
             module.clone()
         };
+        let target_flag = format!("--target={triple}");
+        if !cross_assembler_ready(&dir, &[target_flag.as_str()]) {
+            continue;
+        }
         let mut assembly = Vec::new();
         generate_mir_to_target(
             &module,

@@ -1412,6 +1412,7 @@ fn extend_integer(
 mod tests {
     use super::*;
     use crate::mir::FunctionBuilder;
+    use crate::mir_codegen::test_support::cross_assembler_ready;
     use std::error::Error;
 
     /// Replays the `li`, `slli`, `addi` and `add` lines that build the `t0` and `a0`
@@ -1706,6 +1707,13 @@ mod tests {
             }
         }
         module.add_function(function);
+        if !cross_assembler_ready(
+            &directory,
+            &["--target=riscv32-unknown-elf", "-march=rv32imafd"],
+        ) {
+            fs::remove_dir_all(&directory)?;
+            return Ok(());
+        }
         for allocator in [
             RegallocStrategy::Incremental,
             RegallocStrategy::LinearScanGlobal,
