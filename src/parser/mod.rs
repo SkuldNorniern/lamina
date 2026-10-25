@@ -457,6 +457,14 @@ mod tests {
     }
 
     #[test]
+    fn test_deeply_nested_type_is_rejected_without_overflow() {
+        let nested = format!("{}i64{}", "struct { x: ".repeat(1000), " }".repeat(1000));
+        let input = format!("fn @main() -> i64 {{\n  entry:\n    %a = alloc.stack {nested}\n    ret.i64 0\n}}\n");
+        let err = parse_module(&input).expect_err("deep type");
+        assert!(err.to_string().contains("Type nesting exceeds"));
+    }
+
+    #[test]
     fn test_parse_block_missing_terminator() {
         let input = r#"
             fn @bad() -> i32 {
