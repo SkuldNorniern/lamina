@@ -446,6 +446,14 @@ mod tests {
     }
 
     #[test]
+    fn test_error_context_truncates_on_char_boundary() {
+        let long_line = format!("    %a = add.i64 1, 1 {} ret.i64 0", "\u{e9}".repeat(60));
+        let input = format!("fn @main() -> i64 {{\n  entry:\n{long_line}\n}}\n");
+        let result = parse_module(&input);
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_parse_block_missing_terminator() {
         let input = r#"
             fn @bad() -> i32 {
