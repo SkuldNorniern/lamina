@@ -251,6 +251,9 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
     }
 
     offsets::resolve_field_offsets(&mut module);
+    module
+        .validate()
+        .map_err(|errors| LaminaError::ValidationError(errors.join("\n")))?;
     Ok(module)
 }
 
@@ -851,7 +854,7 @@ fn @test() -> i64 {
 "#;
         assert!(parse_module(source_malformed).is_err());
 
-        // Undefined variable should parse successfully (variables don't need to be pre-declared)
+        // A use of a variable that is never defined is rejected by validation
         let source_undefined_var = r#"
 fn @test() -> i64 {
   entry:
@@ -859,9 +862,8 @@ fn @test() -> i64 {
     ret.i64 %result
 }
 "#;
-        let parsed = parse_module(source_undefined_var)?;
-        assert_eq!(parsed.functions.len(), 1);
-        assert!(parsed.functions.contains_key("test"));
+        let err = parse_module(source_undefined_var).expect_err("undefined variable");
+        assert!(err.to_string().contains("'%undefined'"));
 
         Ok(())
     }

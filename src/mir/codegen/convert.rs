@@ -1762,11 +1762,11 @@ mod tests {
             "fn @f() -> i64 { entry: %x = add.i64 %missing, 1 ret.i64 %x }",
             "fn @f() -> i64 { entry: %x = add.i64 %later, 1 %later = add.i64 1, 2 ret.i64 %x }",
         ] {
-            let ir = parse_module(source).expect("parse invalid definitions");
-            assert!(matches!(
-                from_ir(&ir, "invalid"),
-                Err(FromIRError::InvalidMir(_))
-            ));
+            let rejected = match parse_module(source) {
+                Err(_) => true,
+                Ok(ir) => matches!(from_ir(&ir, "invalid"), Err(FromIRError::InvalidMir(_))),
+            };
+            assert!(rejected, "{source}");
         }
     }
 
