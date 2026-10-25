@@ -151,20 +151,15 @@ fn compile_single_function_aarch64(
 
     frame.frame_size = adjusted_frame_size;
     if adjusted_frame_size > 0 {
-        writeln!(output, "    sub sp, sp, #{adjusted_frame_size}")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        emit_sp_adjust(&mut output, "sub", adjusted_frame_size as u64)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
 
     for (i, p) in func.sig.params.iter().enumerate() {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().unwrap_or("x19");
-            if off >= 0 {
-                writeln!(output, "    add {addr}, x29, #{off}")
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-            } else {
-                writeln!(output, "    sub {}, x29, #{}", addr, -off)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-            }
+            emit_frame_slot_address(&mut output, addr, off)
+                .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
             if i < 8 {
                 emit_narrow_param_extension(&mut output, &format!("x{i}"), &p.ty)
@@ -347,8 +342,8 @@ fn compile_single_function_aarch64(
     writeln!(output, "{epilogue_label}:")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     if adjusted_frame_size > 0 {
-        writeln!(output, "    add sp, sp, #{adjusted_frame_size}")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        emit_sp_adjust(&mut output, "add", adjusted_frame_size as u64)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
     writeln!(output, "    ldp x29, x30, [sp], #16")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
@@ -1074,7 +1069,7 @@ fn emit_block<W: Write>(
                     let stack_space = (stack_args.len() * 8 + 15) & !15;
 
                     if stack_space > 0 {
-                        writeln!(w, "    sub sp, sp, #{stack_space}")?;
+                        emit_sp_adjust(w, "sub", stack_space as u64)?;
                         for (i, a) in stack_args.iter().enumerate() {
                             let offset = i * 8;
                             let scratch = ra.alloc_scratch().unwrap_or("x9");
@@ -1091,7 +1086,7 @@ fn emit_block<W: Write>(
                     writeln!(w, "    bl {target_sym}")?;
 
                     if stack_space > 0 {
-                        writeln!(w, "    add sp, sp, #{stack_space}")?;
+                        emit_sp_adjust(w, "add", stack_space as u64)?;
                     }
 
                     if let Some(dst) = ret {
@@ -1118,7 +1113,7 @@ fn emit_block<W: Write>(
                     .call_stub(name)
                     .unwrap_or_else(|| abi.mangle_function_name(name));
                 if frame.frame_size > 0 {
-                    writeln!(w, "    add sp, sp, #{}", frame.frame_size)?;
+                    emit_sp_adjust(w, "add", frame.frame_size as u64)?;
                 }
                 writeln!(w, "    ldp x29, x30, [sp], #16")?;
                 writeln!(w, "    b {target_sym}")?;
@@ -1242,11 +1237,7 @@ fn load_reg_to<W: Write>(
                             addr = if dest != "x11" { "x11" } else { "x10" };
                         }
                     }
-                    if off >= 0 {
-                        writeln!(w, "    add {addr}, x29, #{off}")?;
-                    } else {
-                        writeln!(w, "    sub {}, x29, #{}", addr, -off)?;
-                    }
+                    emit_frame_slot_address(w, addr, off)?;
                     writeln!(w, "    ldr {dest}, [{addr}]")?;
                     if matches!(addr, "x9" | "x10" | "x11" | "x12") {
                         ra.free_scratch(addr);
@@ -1296,11 +1287,7 @@ fn store_result<W: Write>(
                             addr = if src_reg != "x11" { "x11" } else { "x10" };
                         }
                     }
-                    if off >= 0 {
-                        writeln!(w, "    add {addr}, x29, #{off}")?;
-                    } else {
-                        writeln!(w, "    sub {}, x29, #{}", addr, -off)?;
-                    }
+                    emit_frame_slot_address(w, addr, off)?;
                     writeln!(w, "    str {src_reg}, [{addr}]")?;
                     if matches!(addr, "x9" | "x10" | "x11" | "x12") {
                         ra.free_scratch(addr);
@@ -1370,6 +1357,16 @@ fn load_copy_reg_to<W: Write>(
                 writeln!(w, "    mov {dest}, {source}")?;
             }
         }
+    }
+    Ok(())
+}
+
+fn emit_sp_adjust<W: Write>(w: &mut W, op: &str, amount: u64) -> Result<(), LaminaError> {
+    if amount <= 4095 {
+        writeln!(w, "    {op} sp, sp, #{amount}")?;
+    } else {
+        emit_mov_imm64(w, "x16", amount)?;
+        writeln!(w, "    {op} sp, sp, x16")?;
     }
     Ok(())
 }
@@ -1872,6 +1869,29 @@ mod tests {
             )),
             "{asm}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn frames_beyond_twelve_bit_immediates_are_addressed_through_a_register(
+    ) -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @main() -> i64 {\nentry:\n  %arr = alloc.stack [5000 x i8]\n  %p = getelem.ptr %arr, 4999, i8\n  store.i8 %p, 42\n  %v = load.i8 %p\n  %w = zext.i8.i64 %v\n  ret.i64 %w\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "big_frame").expect("lower big frame module");
+        let mut output = Vec::new();
+        generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        for line in assembly.lines() {
+            if line.contains("sp, sp, #") || line.contains("x29, #") || line.contains("x29, x29, #") {
+                let imm: i64 = line
+                    .rsplit_once('#')
+                    .and_then(|(_, n)| n.trim().parse().ok())
+                    .unwrap_or(0);
+                assert!(imm.abs() <= 4095, "immediate out of range in: {line}\n{assembly}");
+            }
+        }
+        assert!(assembly.contains("sub sp, sp, x16"), "{assembly}");
         Ok(())
     }
 }
