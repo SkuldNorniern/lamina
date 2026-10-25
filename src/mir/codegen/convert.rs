@@ -270,6 +270,7 @@ fn convert_function<'a>(
 ) -> Result<Function, FromIRError> {
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
+    mir_sig.no_inline = f.annotations.contains(&FunctionAnnotation::NoInline);
     if f.annotations.contains(&FunctionAnnotation::Kernel) {
         mir_sig.kernel = Some(Default::default());
     }

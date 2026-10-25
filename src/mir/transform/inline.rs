@@ -68,6 +68,7 @@ impl ModuleInlining {
                             && !module.is_external(callee)
                             && let Some(function) = module.functions.get(callee)
                             && function.sig.kernel.is_none()
+                            && !function.sig.no_inline
                             && function.instruction_count() <= 30
                             && function.sig.params.len() == args.len()
                             && !Self::is_recursive(callee, callee, module, &mut HashSet::new())
@@ -401,6 +402,20 @@ mod tests {
     use super::*;
     use crate::mir::{FunctionBuilder, Immediate, IntBinOp, MirType, ScalarType};
     use crate::{mir::codegen::from_ir, parser::parse_module};
+
+    #[test]
+    fn noinline_callees_are_never_inlined() {
+        let ir = parse_module(
+            "@noinline fn @helper() -> i64 {\nentry:\nret.i64 7\n}\nfn @main() -> i64 {\nentry:\n%v = call @helper()\nret.i64 %v\n}",
+        )
+        .expect("parse noinline caller");
+        let mut module = from_ir(&ir, "noinline caller").expect("lower noinline caller");
+        assert!(module.get_function("helper").expect("callee").sig.no_inline);
+        let count = ModuleInlining::new()
+            .inline_functions(&mut module)
+            .expect("run inlining");
+        assert_eq!(count, 0);
+    }
 
     #[test]
     fn external_callees_are_never_inlined() {
