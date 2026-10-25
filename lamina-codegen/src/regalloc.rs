@@ -146,10 +146,7 @@ fn loop_depths(function: &Function) -> Vec<u32> {
         for successor in block.successors() {
             if let Some(&target) = labels.get(successor) {
                 predecessors[target].push(index);
-                if dominators[index]
-                    .as_ref()
-                    .is_some_and(|set| set.contains(&target))
-                {
+                if dominators.dominates(target, index) {
                     latches[target].push(index);
                 }
             }
@@ -164,11 +161,12 @@ fn loop_depths(function: &Function) -> Vec<u32> {
         let mut pending = tails;
         while let Some(index) = pending.pop() {
             if members.insert(index) {
-                pending.extend(predecessors[index].iter().copied().filter(|predecessor| {
-                    dominators[*predecessor]
-                        .as_ref()
-                        .is_some_and(|set| set.contains(&header))
-                }));
+                pending.extend(
+                    predecessors[index]
+                        .iter()
+                        .copied()
+                        .filter(|predecessor| dominators.dominates(header, *predecessor)),
+                );
             }
         }
         for index in members {
