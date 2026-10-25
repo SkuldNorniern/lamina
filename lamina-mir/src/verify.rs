@@ -130,9 +130,7 @@ pub fn verify_before_phi_lowering(
                     reassignments.contains(register)
                         || (defs.len() == 1
                             && (defs[0].block_index == index
-                                || dominators[index]
-                                    .as_ref()
-                                    .is_some_and(|set| set.contains(&defs[0].block_index))))
+                                || dominators.dominates(defs[0].block_index, index)))
                 });
                 if !dominates {
                     errors.push(location(function, predecessor, format!("expected phi incoming register {register} to have a dominating definition")));
@@ -401,89 +399,190 @@ fn verify_unique_definitions(
 }
 
 /// Compute dominator sets by block index; unreachable blocks have no set.
+/// Dominator tree of a function's reachable blocks, with constant-time ancestor queries.
+pub struct Dominators {
+    idom: Vec<Option<usize>>,
+    entry: Option<usize>,
+    enter: Vec<u32>,
+    leave: Vec<u32>,
+    reachable: Vec<bool>,
+}
+
+impl Dominators {
+    /// Whether the block is reachable from the entry block.
+    pub fn is_reachable(&self, block: usize) -> bool {
+        self.reachable.get(block).copied().unwrap_or(false)
+    }
+
+    /// Whether every path from entry to `block` passes through `dominator`.
+    pub fn dominates(&self, dominator: usize, block: usize) -> bool {
+        if !self.is_reachable(dominator) || !self.is_reachable(block) {
+            return false;
+        }
+        self.enter[dominator] <= self.enter[block] && self.leave[block] <= self.leave[dominator]
+    }
+
+    /// Immediate dominator of a reachable non-entry block.
+    pub fn immediate_dominator(&self, block: usize) -> Option<usize> {
+        self.idom.get(block).copied().flatten()
+    }
+
+    /// Entry block index, absent when the function names no entry block.
+    pub fn entry(&self) -> Option<usize> {
+        self.entry
+    }
+}
+
+/// Dominator tree by the Cooper, Harvey and Kennedy fixpoint over reverse postorder.
 pub fn calculate_dominators(
     function: &Function,
     block_indices: &HashMap<&str, usize>,
-) -> Vec<Option<HashSet<usize>>> {
+) -> Dominators {
     let block_count = function.blocks.len();
-    let mut predecessors = vec![Vec::new(); block_count];
-    for (block_index, block) in function.blocks.iter().enumerate() {
-        if let Some(terminator) = block.instructions.last() {
-            for target in instruction_targets(terminator) {
-                if let Some(target_index) = block_indices.get(target) {
-                    predecessors[*target_index].push(block_index);
-                }
-            }
-        }
-    }
+    let successors = |block_index: usize| -> Vec<usize> {
+        function.blocks[block_index]
+            .instructions
+            .last()
+            .map(|terminator| {
+                instruction_targets(terminator)
+                    .into_iter()
+                    .filter_map(|target| block_indices.get(target).copied())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
 
     let Some(entry_index) = block_indices.get(function.entry.as_str()).copied() else {
-        return vec![None; block_count];
+        return Dominators {
+            idom: vec![None; block_count],
+            entry: None,
+            enter: vec![0; block_count],
+            leave: vec![0; block_count],
+            reachable: vec![false; block_count],
+        };
     };
-    let mut reachable = HashSet::new();
-    let mut worklist = vec![entry_index];
-    while let Some(block_index) = worklist.pop() {
-        if !reachable.insert(block_index) {
+
+    let mut reachable = vec![false; block_count];
+    let mut postorder = Vec::new();
+    let mut stack = vec![(entry_index, 0usize)];
+    reachable[entry_index] = true;
+    while let Some((block_index, next)) = stack.pop() {
+        let edges = successors(block_index);
+        if next < edges.len() {
+            stack.push((block_index, next + 1));
+            let target = edges[next];
+            if !reachable[target] {
+                reachable[target] = true;
+                stack.push((target, 0));
+            }
+        } else {
+            postorder.push(block_index);
+        }
+    }
+
+    let mut postorder_number = vec![usize::MAX; block_count];
+    for (number, block_index) in postorder.iter().enumerate() {
+        postorder_number[*block_index] = number;
+    }
+
+    let mut predecessors = vec![Vec::new(); block_count];
+    for (block_index, live) in reachable.iter().enumerate() {
+        if !live {
             continue;
         }
-        if let Some(terminator) = function.blocks[block_index].instructions.last() {
-            for target in instruction_targets(terminator) {
-                if let Some(target_index) = block_indices.get(target) {
-                    worklist.push(*target_index);
-                }
-            }
+        for target in successors(block_index) {
+            predecessors[target].push(block_index);
         }
     }
 
-    let mut dominators = vec![None; block_count];
-    for block_index in &reachable {
-        dominators[*block_index] = if *block_index == entry_index {
-            Some(HashSet::from([entry_index]))
-        } else {
-            Some(reachable.clone())
-        };
-    }
-
+    let mut idom: Vec<Option<usize>> = vec![None; block_count];
+    idom[entry_index] = Some(entry_index);
     let mut changed = true;
     while changed {
         changed = false;
-        for block_index in &reachable {
-            if *block_index == entry_index {
+        for block_index in postorder.iter().rev().copied() {
+            if block_index == entry_index {
                 continue;
             }
-            let reachable_predecessors: Vec<usize> = predecessors[*block_index]
-                .iter()
-                .copied()
-                .filter(|predecessor| reachable.contains(predecessor))
-                .collect();
-            let mut new_dominators = HashSet::new();
-            if let Some(first_predecessor) = reachable_predecessors.first()
-                && let Some(predecessor_dominators) = &dominators[*first_predecessor]
-            {
-                for dominator in predecessor_dominators {
-                    new_dominators.insert(*dominator);
+            let mut new_idom = None;
+            for predecessor in predecessors[block_index].iter().copied() {
+                if idom[predecessor].is_none() {
+                    continue;
                 }
+                new_idom = match new_idom {
+                    None => Some(predecessor),
+                    Some(current) => {
+                        let mut a = predecessor;
+                        let mut b = current;
+                        loop {
+                            if a == b {
+                                break Some(a);
+                            }
+                            if postorder_number[a] < postorder_number[b] {
+                                match idom[a] {
+                                    Some(next) => a = next,
+                                    None => break None,
+                                }
+                            } else {
+                                match idom[b] {
+                                    Some(next) => b = next,
+                                    None => break None,
+                                }
+                            }
+                        }
+                    }
+                };
             }
-            for predecessor in reachable_predecessors.iter().skip(1) {
-                if let Some(predecessor_dominators) = &dominators[*predecessor] {
-                    new_dominators.retain(|candidate| predecessor_dominators.contains(candidate));
-                }
-            }
-            new_dominators.insert(*block_index);
-            if dominators[*block_index].as_ref() != Some(&new_dominators) {
-                dominators[*block_index] = Some(new_dominators);
+            if new_idom.is_some() && idom[block_index] != new_idom {
+                idom[block_index] = new_idom;
                 changed = true;
             }
         }
     }
 
-    dominators
+    let mut children = vec![Vec::new(); block_count];
+    for (block_index, parent) in idom.iter().enumerate() {
+        if block_index == entry_index || !reachable[block_index] {
+            continue;
+        }
+        if let Some(parent) = parent {
+            children[*parent].push(block_index);
+        }
+    }
+
+    let mut enter = vec![0u32; block_count];
+    let mut leave = vec![0u32; block_count];
+    let mut clock = 0u32;
+    let mut walk = vec![(entry_index, 0usize)];
+    enter[entry_index] = clock;
+    clock += 1;
+    while let Some((block_index, next)) = walk.pop() {
+        if next < children[block_index].len() {
+            walk.push((block_index, next + 1));
+            let child = children[block_index][next];
+            enter[child] = clock;
+            clock += 1;
+            walk.push((child, 0));
+        } else {
+            leave[block_index] = clock;
+            clock += 1;
+        }
+    }
+
+    idom[entry_index] = None;
+    Dominators {
+        idom,
+        entry: Some(entry_index),
+        enter,
+        leave,
+        reachable,
+    }
 }
 
 fn verify_dominance(
     function: &Function,
     definitions: &HashMap<Register, Vec<Definition>>,
-    dominators: &[Option<HashSet<usize>>],
+    dominators: &Dominators,
     errors: &mut Vec<String>,
 ) {
     for (block_index, block) in function.blocks.iter().enumerate() {
@@ -512,11 +611,8 @@ fn verify_dominance(
                         .instruction_index
                         .is_none_or(|definition_index| definition_index < instruction_index)
                 } else {
-                    dominators[block_index]
-                        .as_ref()
-                        .is_none_or(|block_dominators| {
-                            block_dominators.contains(&definition.block_index)
-                        })
+                    !dominators.is_reachable(block_index)
+                        || dominators.dominates(definition.block_index, block_index)
                 };
                 if !dominates {
                     let definition_block = &function.blocks[definition.block_index].label;
