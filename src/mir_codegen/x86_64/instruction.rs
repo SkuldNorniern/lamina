@@ -686,7 +686,7 @@ pub(super) fn emit_instruction_x86_64(
                 if let Some(arg) = args.first() {
                     load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
                     match target_os {
-                        TargetOperatingSystem::MacOS => {
+                        os if os_uses_macho(os) => {
                             writeln!(writer, "    leaq .L_mir_fmt_int(%rip), %rdi")?;
                             writeln!(writer, "    movq %rax, %rsi")?;
                             // al carries the vector-register count for variadic
@@ -726,7 +726,7 @@ pub(super) fn emit_instruction_x86_64(
                 writeln!(writer, "    movb %al, (%rsp)")?;
 
                 match target_os {
-                    TargetOperatingSystem::MacOS => {
+                    os if os_uses_macho(os) => {
                         writeln!(writer, "    movq ${}, %rax", macos::SYS_WRITE)?;
                         writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
                         writeln!(writer, "    movq %rsp, %rsi")?;
@@ -770,7 +770,7 @@ pub(super) fn emit_instruction_x86_64(
                 writeln!(writer, "    subq ${}, %rsp", stack::ALIGNMENT)?;
 
                 match target_os {
-                    TargetOperatingSystem::MacOS => {
+                    os if os_uses_macho(os) => {
                         writeln!(writer, "    movq ${}, %rax", macos::SYS_READ)?;
                         writeln!(writer, "    movq ${}, %rdi", fd::STDIN)?;
                         writeln!(writer, "    movq %rsp, %rsi")?;
@@ -841,9 +841,10 @@ pub(super) fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %rax, %rsi")?;
                         writeln!(writer, "    movq ${width}, %rdx")?;
                         writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
-                        let syscall = match target_os {
-                            TargetOperatingSystem::MacOS => macos::SYS_WRITE,
-                            _ => linux::SYS_WRITE,
+                        let syscall = if os_uses_macho(target_os) {
+                            macos::SYS_WRITE
+                        } else {
+                            linux::SYS_WRITE
                         };
                         writeln!(writer, "    movq ${syscall}, %rax")?;
                         writeln!(writer, "    syscall")?;

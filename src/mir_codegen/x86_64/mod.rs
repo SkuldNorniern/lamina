@@ -21,6 +21,7 @@ pub mod util;
 
 use constants::{fd, linux, macos, stack, windows};
 use lamina_codegen::LocalRegisterAllocator;
+use lamina_codegen::os_uses_macho;
 use lamina_codegen::x86_64::{X64RegAlloc, X86ABI, X86Frame, extend_integer, register_for_size};
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -47,12 +48,13 @@ use lamina_codegen::{
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{collections::hash_map::Entry, sync::Arc};
 
-use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::common::{
     CodegenBase, CopyLocation, assign_stack_slots, assign_stack_slots_where, coalesce_dying_inputs,
-    compile_functions_parallel, emit_global_data, emit_global_directives, emit_print_format_section,
-    parallel_codegen_error, parallel_copy_schedule, self_tail_entry_label, use_counts,
+    compile_functions_parallel, emit_global_data, emit_global_directives,
+    emit_print_format_section, parallel_codegen_error, parallel_copy_schedule,
+    self_tail_entry_label, use_counts,
 };
+use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 
 /// MIR to x86_64 code generator implementing the `Codegen` trait.
 pub struct X86Codegen<'a> {
@@ -209,7 +211,9 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
         writer.write_all(&result.assembly)?;
     }
 
-    emit_global_data(writer, module, target_os, |name| abi.mangle_function_name(name))?;
+    emit_global_data(writer, module, target_os, |name| {
+        abi.mangle_function_name(name)
+    })?;
     emit_gnu_stack_note(writer, target_os)?;
 
     Ok(())
