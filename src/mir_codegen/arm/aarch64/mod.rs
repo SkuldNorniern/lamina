@@ -92,8 +92,15 @@ fn compile_single_function_aarch64(
 
     let mut frame = FrameMap::from_function(func);
 
-    let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> = if settings.regalloc
+    let makes_calls = func
+        .blocks
+        .iter()
+        .flat_map(|b| b.instructions.iter())
+        .any(|i| matches!(i, MirInst::Call { .. }));
+    let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> = if settings
+        .regalloc
         != RegallocStrategy::Incremental
+        && !makes_calls
     {
         let pool = A64RegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
@@ -1781,6 +1788,40 @@ mod tests {
         generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
         let assembly = String::from_utf8(output)?;
         assert!(assembly.contains("bl printf\n"), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn global_allocation_keeps_values_out_of_caller_saved_pool_across_calls(
+    ) -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @id(i64 %x) -> i64 {\nentry:\n  %r = mul.i64 %x, 1\n  ret.i64 %r\n}\nfn @main() -> i64 {\nentry:\n  %a = add.i64 7, 0\n  %b = mul.i64 %a, 3\n  %c = call @id(5)\n  %d = add.i64 %b, %c\n  ret.i64 %d\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "call_crossing").expect("lower call module");
+        for regalloc in [
+            RegallocStrategy::LinearScanGlobal,
+            RegallocStrategy::GraphColorGlobal,
+        ] {
+            let settings = MirCodegenSettings {
+                regalloc,
+                ..Default::default()
+            };
+            let mut output = Vec::new();
+            generate_mir_aarch64_with_units_and_settings(
+                &mir,
+                &mut output,
+                TargetOperatingSystem::Linux,
+                1,
+                &settings,
+            )?;
+            let assembly = String::from_utf8(output)?;
+            let (_, main) = assembly.split_once("\nmain:\n").ok_or("missing main")?;
+            let main = main.split_once(".Lret_main:").ok_or("missing epilogue")?.0;
+            assert!(main.contains("bl id"), "{assembly}");
+            for reg in ["x13", "x14", "x15"] {
+                assert!(!main.contains(reg), "{regalloc:?} uses {reg}: {assembly}");
+            }
+        }
         Ok(())
     }
 }
