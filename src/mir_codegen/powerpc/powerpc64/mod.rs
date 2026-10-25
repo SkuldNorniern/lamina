@@ -783,6 +783,76 @@ fn emit_instruction_ppc64<W: Write>(
                 emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
             }
         }
+        MirInst::FloatToInt {
+            from,
+            to,
+            signed,
+            dst,
+            src,
+        } => {
+            let is_f32 = from.size_bytes() == 4;
+            emit_load_fp_operand(src, writer, reg_alloc, stack_slots, "1", is_f32)?;
+            // The convert saturates but turns NaN into the most negative integer, so
+            // the unordered bit of a self-comparison picks zero instead.
+            writeln!(writer, "    fcmpu 0, 1, 1")?;
+            let convert = if *signed { "fctidz" } else { "fctiduz" };
+            writeln!(writer, "    {convert} 1, 1")?;
+            writeln!(writer, "    stfd 1, -8(1)")?;
+            writeln!(writer, "    ld 3, -8(1)")?;
+            writeln!(writer, "    li 4, 0")?;
+            writeln!(writer, "    isel 3, 4, 3, 3")?;
+            let bits = to.size_bytes() * 8;
+            if bits < 64 {
+                let compare = if *signed { "cmpd" } else { "cmpld" };
+                let max = if *signed {
+                    (1i64 << (bits - 1)) - 1
+                } else {
+                    (1i64 << bits) - 1
+                };
+                emit_load_imm64(writer, 4, max)?;
+                writeln!(writer, "    {compare} 0, 3, 4")?;
+                writeln!(writer, "    isel 3, 4, 3, 1")?;
+                if *signed {
+                    emit_load_imm64(writer, 4, -(1i64 << (bits - 1)))?;
+                    writeln!(writer, "    cmpd 0, 3, 4")?;
+                    writeln!(writer, "    isel 3, 4, 3, 0")?;
+                }
+                extend_integer(writer, "3", to, true)?;
+            }
+            if let Register::Virtual(vreg) = dst {
+                store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            }
+        }
+        MirInst::IntToFloat {
+            from,
+            to,
+            signed,
+            dst,
+            src,
+        } => {
+            let is_f32 = to.size_bytes() == 4;
+            load_operand_to_register(src, writer, reg_alloc, stack_slots, "3")?;
+            let bits = from.size_bytes() * 8;
+            if bits < 64 {
+                if *signed {
+                    extend_integer(writer, "3", from, true)?;
+                } else {
+                    writeln!(writer, "    clrldi 3, 3, {}", 64 - bits)?;
+                }
+            }
+            writeln!(writer, "    std 3, -8(1)")?;
+            writeln!(writer, "    lfd 1, -8(1)")?;
+            let convert = match (*signed, is_f32) {
+                (true, false) => "fcfid",
+                (false, false) => "fcfidu",
+                (true, true) => "fcfids",
+                (false, true) => "fcfidus",
+            };
+            writeln!(writer, "    {convert} 1, 1")?;
+            if let Register::Virtual(vreg) = dst {
+                emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
+            }
+        }
         MirInst::FloatUnary { op, dst, src, ty } => {
             let is_f32 = ty.size_bytes() == 4;
             let suffix = if is_f32 { "s" } else { "" };
@@ -1579,6 +1649,29 @@ mod tests {
                 "{assembly}"
             );
         }
+    }
+
+    #[test]
+    fn conversions_saturate_clamp_and_zero_nan() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @main() -> i64 {\nentry:\n  %f = add.f64 1.5, 0.0\n  %wide = fptosi.f64.i64 %f\n  %narrow = fptosi.f64.i8 %f\n  %unsigned = fptoui.f64.u32 %f\n  %back = sitofp.i64.f64 %wide\n  %from_u = uitofp.u32.f64 %unsigned\n  ret.i64 %wide\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "conversions").expect("lower conversions");
+        let mut output = Vec::new();
+        generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+
+        // The unordered bit of a self-comparison selects zero for NaN, and a narrow
+        // destination is clamped to its own range before it is extended.
+        assert!(assembly.contains("    fcmpu 0, 1, 1\n"), "{assembly}");
+        assert!(assembly.contains("    fctidz 1, 1\n"), "{assembly}");
+        assert!(assembly.contains("    fctiduz 1, 1\n"), "{assembly}");
+        assert!(assembly.contains("    isel 3, 4, 3, 3\n"), "{assembly}");
+        assert!(assembly.contains("    cmpld 0, 3, 4\n"), "{assembly}");
+        assert!(assembly.contains("    extsb 3, 3\n"), "{assembly}");
+        assert!(assembly.contains("    fcfid 1, 1\n"), "{assembly}");
+        assert!(assembly.contains("    fcfidu 1, 1\n"), "{assembly}");
+        Ok(())
     }
 
     #[test]
