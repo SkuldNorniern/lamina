@@ -767,8 +767,13 @@ fn emit_instruction_riscv<W: Write>(
                     format!("RISC-V lea base {base_vreg:?} has no register or stack slot"),
                 )));
             }
-            if *offset != 0 {
-                writeln!(writer, "    addi a0, a0, {offset}")?;
+            if (-2048..=2047).contains(&i64::from(*offset)) {
+                if *offset != 0 {
+                    writeln!(writer, "    addi a0, a0, {offset}")?;
+                }
+            } else {
+                RiscVFrame::load_imm(writer, "t0", i64::from(*offset))?;
+                writeln!(writer, "    add a0, a0, t0")?;
             }
             if let Register::Virtual(vreg) = dst {
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
