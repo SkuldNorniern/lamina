@@ -39,6 +39,29 @@ pub enum Signedness {
     Unsigned,
 }
 
+/// Field makeup of an aggregate crossing a function boundary. Backends classify from
+/// this; lowering only produces `Integer` today and rejects the rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AggregateClass {
+    Integer,
+}
+
+/// An aggregate passed by value. The parameter register holds the address of the
+/// callee's own copy; size and class tell a backend which registers carry it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Aggregate {
+    pub size: usize,
+    pub align: usize,
+    pub class: AggregateClass,
+}
+
+impl Aggregate {
+    /// Eight-byte words the aggregate occupies in registers or on the stack.
+    pub fn words(&self) -> usize {
+        self.size.div_ceil(8)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScalarType {
     I8,

@@ -7,7 +7,7 @@ use crate::{
     instruction::Instruction,
     register::Register,
     register::VirtualReg,
-    types::{MirType, Signedness},
+    types::{Aggregate, MirType, Signedness},
     verify::verify_function,
 };
 use std::collections::HashMap;
@@ -24,6 +24,10 @@ pub struct Parameter {
 
     /// Signedness of an integer parameter
     pub signedness: Signedness,
+
+    /// Set when the parameter is an aggregate passed by value. `reg` then names the
+    /// frame slot holding the callee's copy, and `ty` is the pointer to it.
+    pub aggregate: Option<Aggregate>,
 }
 
 impl Parameter {
@@ -32,11 +36,17 @@ impl Parameter {
             reg,
             ty,
             signedness: Signedness::Signed,
+            aggregate: None,
         }
     }
 
     pub fn with_signedness(mut self, signedness: Signedness) -> Self {
         self.signedness = signedness;
+        self
+    }
+
+    pub fn with_aggregate(mut self, aggregate: Aggregate) -> Self {
+        self.aggregate = Some(aggregate);
         self
     }
 }
