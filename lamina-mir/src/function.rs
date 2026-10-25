@@ -63,6 +63,9 @@ pub struct Signature {
     pub ret_signedness: Signedness,
 
     pub kernel: Option<KernelMetadata>,
+
+    /// Set by `@noinline`; the inliner must leave calls to this function alone.
+    pub no_inline: bool,
 }
 
 impl Signature {
@@ -73,6 +76,7 @@ impl Signature {
             ret_ty: None,
             ret_signedness: Signedness::Signed,
             kernel: None,
+            no_inline: false,
         }
     }
 
