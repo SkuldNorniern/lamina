@@ -1,0 +1,91 @@
+# Integer aggregates passed by value: two words, one packed word, a padded
+# three-field struct, and a call whose aggregate lands on the stack.
+
+type @Pair = struct { a: i64, b: i64 }
+type @Small = struct { a: i32, b: i32 }
+type @Three = struct { a: i32, b: i32, c: i32 }
+
+fn @sum_pair(@Pair %p) -> i64 {
+  entry:
+    %ap = getfieldptr %p, 0
+    %bp = getfieldptr %p, 1
+    %a = load.i64 %ap
+    %b = load.i64 %bp
+    %s = add.i64 %a, %b
+    ret.i64 %s
+}
+
+fn @sum_small(@Small %p) -> i64 {
+  entry:
+    %ap = getfieldptr %p, 0
+    %bp = getfieldptr %p, 1
+    %a = load.i32 %ap
+    %b = load.i32 %bp
+    %s = add.i32 %a, %b
+    %w = sext.i32.i64 %s
+    ret.i64 %w
+}
+
+fn @sum_three(@Three %p) -> i64 {
+  entry:
+    %ap = getfieldptr %p, 0
+    %bp = getfieldptr %p, 1
+    %cp = getfieldptr %p, 2
+    %a = load.i32 %ap
+    %b = load.i32 %bp
+    %c = load.i32 %cp
+    %ab = add.i32 %a, %b
+    %s = add.i32 %ab, %c
+    %w = sext.i32.i64 %s
+    ret.i64 %w
+}
+
+fn @spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, @Pair %p) -> i64 {
+  entry:
+    %ab = add.i64 %a, %b
+    %cd = add.i64 %c, %d
+    %ef = add.i64 %e, %f
+    %abcd = add.i64 %ab, %cd
+    %scalars = add.i64 %abcd, %ef
+    %ap = getfieldptr %p, 0
+    %bp = getfieldptr %p, 1
+    %x = load.i64 %ap
+    %y = load.i64 %bp
+    %xy = add.i64 %x, %y
+    %total = add.i64 %scalars, %xy
+    ret.i64 %total
+}
+
+fn @main() -> i64 {
+  entry:
+    %pair = alloc.stack @Pair
+    %pair_a = getfieldptr %pair, 0
+    %pair_b = getfieldptr %pair, 1
+    store.i64 %pair_a, 17
+    store.i64 %pair_b, 25
+    %sum = call @sum_pair(%pair)
+    print %sum
+
+    %small = alloc.stack @Small
+    %small_a = getfieldptr %small, 0
+    %small_b = getfieldptr %small, 1
+    store.i32 %small_a, 3
+    store.i32 %small_b, 4
+    %packed = call @sum_small(%small)
+    print %packed
+
+    %three = alloc.stack @Three
+    %three_a = getfieldptr %three, 0
+    %three_b = getfieldptr %three, 1
+    %three_c = getfieldptr %three, 2
+    store.i32 %three_a, 1
+    store.i32 %three_b, 2
+    store.i32 %three_c, 3
+    %padded = call @sum_three(%three)
+    print %padded
+
+    %spill = call @spilled(1, 2, 3, 4, 5, 6, %pair)
+    print %spill
+
+    ret.i64 0
+}

@@ -204,15 +204,36 @@ pub(super) fn compile_single_function_x86_64(
     if !func.sig.params.is_empty() {
         let abi_for_func = X86ABI::new(target_os);
         let arg_regs = abi_for_func.arg_registers();
-        let param_types: Vec<MirType> = func.sig.params.iter().map(|p| p.ty).collect();
-        let locations = classify_arguments(&param_types, target_os);
+        let descs: Vec<ArgDesc> = func
+            .sig
+            .params
+            .iter()
+            .map(|p| ArgDesc {
+                ty: p.ty,
+                aggregate: p.aggregate,
+            })
+            .collect();
+        check_aggregate_arguments(&descs, target_os)?;
+        let locations = classify_argument_descs(&descs, target_os);
+        home_aggregate_parameters(
+            &mut output,
+            &func.sig.params,
+            &locations,
+            arg_regs,
+            &stack_slots,
+            target_os,
+        )?;
 
         if settings.regalloc == RegallocStrategy::Incremental {
             for (index, param) in func.sig.params.iter().enumerate() {
+                if param.aggregate.is_some() {
+                    continue;
+                }
                 if let Register::Virtual(vreg) = &param.reg
                     && let Some(slot_off) = stack_slots.get(vreg)
                 {
                     match locations[index] {
+                        ArgLocation::GprWords { .. } | ArgLocation::StackWords { .. } => {}
                         ArgLocation::Gpr(gpr) => {
                             let phys_arg = arg_regs[gpr];
                             let destination = reg_alloc
@@ -267,7 +288,13 @@ pub(super) fn compile_single_function_x86_64(
                     let Register::Virtual(vreg) = &param.reg else {
                         return None;
                     };
+                    if param.aggregate.is_some() {
+                        return None;
+                    }
                     let source = match locations[index] {
+                        ArgLocation::GprWords { .. } | ArgLocation::StackWords { .. } => {
+                            return None;
+                        }
                         ArgLocation::Gpr(gpr) => format!("%{}", arg_regs[gpr]),
                         ArgLocation::Stack(stack_index) => {
                             let home = if target_os == TargetOperatingSystem::Windows {
@@ -492,6 +519,60 @@ pub(super) enum ArgLocation {
     Gpr(usize),
     Xmm(usize),
     Stack(usize),
+    /// An integer aggregate in `words` consecutive general registers from `first`.
+    GprWords {
+        first: usize,
+        words: usize,
+    },
+    /// An integer aggregate in `words` consecutive stack slots from `first`.
+    StackWords {
+        first: usize,
+        words: usize,
+    },
+}
+
+/// One argument as the convention sees it: its scalar type, or the aggregate it is a
+/// pointer to.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ArgDesc {
+    pub(super) ty: MirType,
+    pub(super) aggregate: Option<Aggregate>,
+}
+
+impl ArgDesc {
+    pub(super) fn scalar(ty: MirType) -> Self {
+        Self {
+            ty,
+            aggregate: None,
+        }
+    }
+}
+
+/// Windows passes an aggregate in one register only when its size is exactly that of a
+/// register-width integer; every other size goes by reference, which is not lowered yet.
+fn windows_aggregate_fits(aggregate: Aggregate) -> bool {
+    matches!(aggregate.size, 1 | 2 | 4 | 8)
+}
+
+/// Reports aggregates this backend cannot pass yet, so a wrong ABI is never emitted.
+pub(super) fn check_aggregate_arguments(
+    descs: &[ArgDesc],
+    target_os: TargetOperatingSystem,
+) -> Result<(), CodegenError> {
+    if target_os != TargetOperatingSystem::Windows {
+        return Ok(());
+    }
+    for desc in descs {
+        if let Some(aggregate) = desc.aggregate
+            && !windows_aggregate_fits(aggregate)
+        {
+            return Err(CodegenError::UnsupportedFeature(format!(
+                "windows x86_64 passes a {} byte aggregate by reference, which is not lowered yet",
+                aggregate.size
+            )));
+        }
+    }
+    Ok(())
 }
 
 const SSE_ARGUMENT_COUNT: usize = 8;
@@ -504,13 +585,47 @@ pub(super) fn classify_arguments(
     types: &[MirType],
     target_os: TargetOperatingSystem,
 ) -> Vec<ArgLocation> {
+    let descs: Vec<ArgDesc> = types.iter().copied().map(ArgDesc::scalar).collect();
+    classify_argument_descs(&descs, target_os)
+}
+
+pub(super) fn classify_argument_descs(
+    descs: &[ArgDesc],
+    target_os: TargetOperatingSystem,
+) -> Vec<ArgLocation> {
     let gpr_count = X86ABI::new(target_os).arg_registers().len();
     let windows = target_os == TargetOperatingSystem::Windows;
     let mut gprs = 0;
     let mut sses = 0;
     let mut stack = 0;
-    let mut locations = Vec::with_capacity(types.len());
-    for (position, ty) in types.iter().enumerate() {
+    let mut locations = Vec::with_capacity(descs.len());
+    for (position, desc) in descs.iter().enumerate() {
+        if let Some(aggregate) = desc.aggregate {
+            let words = aggregate.words();
+            let location = if windows {
+                if position < gpr_count {
+                    ArgLocation::Gpr(position)
+                } else {
+                    stack += 1;
+                    ArgLocation::Stack(stack - 1)
+                }
+            } else if gprs + words <= gpr_count {
+                gprs += words;
+                ArgLocation::GprWords {
+                    first: gprs - words,
+                    words,
+                }
+            } else {
+                stack += words;
+                ArgLocation::StackWords {
+                    first: stack - words,
+                    words,
+                }
+            };
+            locations.push(location);
+            continue;
+        }
+        let ty = desc.ty;
         let float = ty.is_float();
         let location = if windows && position < gpr_count {
             if float {
@@ -533,11 +648,72 @@ pub(super) fn classify_arguments(
     locations
 }
 
+/// Writes the incoming words of each aggregate parameter into the frame slot the callee
+/// addresses them through.
+fn home_aggregate_parameters<W: Write>(
+    output: &mut RaxTrackingWriter<W>,
+    params: &[Parameter],
+    locations: &[ArgLocation],
+    arg_regs: &[&str],
+    stack_slots: &HashMap<VirtualReg, i32>,
+    target_os: TargetOperatingSystem,
+) -> Result<(), CodegenError> {
+    let io_error = |e: Error| CodegenError::InvalidCodegenOptions(format!("IO error: {e}"));
+    let home = if target_os == TargetOperatingSystem::Windows {
+        windows::SHADOW_SPACE_SIZE
+    } else {
+        0
+    };
+    for (index, param) in params.iter().enumerate() {
+        if param.aggregate.is_none() {
+            continue;
+        }
+        let Register::Virtual(slot) = &param.reg else {
+            continue;
+        };
+        let Some(&base) = stack_slots.get(slot) else {
+            return Err(CodegenError::InvalidCodegenOptions(
+                "aggregate parameter has no frame slot".to_string(),
+            ));
+        };
+        let sources: Vec<(usize, Option<i32>, &str)> = match locations[index] {
+            ArgLocation::Gpr(gpr) => vec![(0, None, arg_regs[gpr])],
+            ArgLocation::GprWords { first, words } => (0..words)
+                .map(|word| (word, None, arg_regs[first + word]))
+                .collect(),
+            ArgLocation::Stack(slot_index) => {
+                vec![(0, Some(16 + home + (slot_index as i32) * 8), "rax")]
+            }
+            ArgLocation::StackWords { first, words } => (0..words)
+                .map(|word| (word, Some(16 + home + ((first + word) as i32) * 8), "rax"))
+                .collect(),
+            ArgLocation::Xmm(_) => Vec::new(),
+        };
+        for (word, caller, source) in sources {
+            if let Some(caller) = caller {
+                writeln!(output, "    movq {caller}(%rbp), %rax").map_err(io_error)?;
+            }
+            writeln!(
+                output,
+                "    movq %{source}, {}(%rbp)",
+                base + (word as i32) * 8
+            )
+            .map_err(io_error)?;
+        }
+        output.rax_value = None;
+    }
+    Ok(())
+}
+
 pub(super) fn stack_argument_count(locations: &[ArgLocation]) -> usize {
     locations
         .iter()
-        .filter(|location| matches!(location, ArgLocation::Stack(_)))
-        .count()
+        .map(|location| match location {
+            ArgLocation::Stack(_) => 1,
+            ArgLocation::StackWords { words, .. } => *words,
+            _ => 0,
+        })
+        .sum()
 }
 
 /// Moves the float bits of an xmm register into rax, the form every value takes.
@@ -557,6 +733,7 @@ pub(super) struct AbiExtensions {
     returns: HashMap<String, NarrowExtension>,
     external_arguments: HashMap<String, Vec<Option<NarrowExtension>>>,
     parameter_types: HashMap<String, Vec<MirType>>,
+    parameter_aggregates: HashMap<String, Vec<Option<Aggregate>>>,
     return_types: HashMap<String, MirType>,
 }
 
@@ -591,6 +768,16 @@ impl AbiExtensions {
             .iter()
             .map(|(name, func)| (name.clone(), func.sig.params.iter().map(|p| p.ty).collect()))
             .collect();
+        let parameter_aggregates = module
+            .functions
+            .iter()
+            .map(|(name, func)| {
+                (
+                    name.clone(),
+                    func.sig.params.iter().map(|p| p.aggregate).collect(),
+                )
+            })
+            .collect();
         let return_types = module
             .functions
             .iter()
@@ -600,6 +787,7 @@ impl AbiExtensions {
             returns,
             external_arguments,
             parameter_types,
+            parameter_aggregates,
             return_types,
         }
     }
@@ -630,6 +818,23 @@ impl AbiExtensions {
             Some(types) if types.len() == count => types.clone(),
             _ => vec![MirType::i64(); count],
         }
+    }
+
+    /// Arguments of a call as the convention sees them, scalar types paired with the
+    /// aggregate markers of the callee's parameters.
+    pub(super) fn argument_descs(&self, callee: &str, count: usize) -> Vec<ArgDesc> {
+        let types = self.argument_types(callee, count);
+        let aggregates = self.parameter_aggregates.get(callee);
+        types
+            .into_iter()
+            .enumerate()
+            .map(|(index, ty)| ArgDesc {
+                ty,
+                aggregate: aggregates
+                    .filter(|markers| markers.len() == count)
+                    .and_then(|markers| markers[index]),
+            })
+            .collect()
     }
 
     pub(super) fn float_return(&self, callee: &str) -> Option<MirType> {
