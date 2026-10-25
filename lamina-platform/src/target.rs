@@ -112,7 +112,7 @@ impl FromStr for TargetArchitecture {
             "wasm32" => Ok(Self::Wasm32),
             "wasm64" => Ok(Self::Wasm64),
             "wasm" => Ok(Self::Wasm32),
-            "ppc64" | "powerpc64" | "ppc64le" => Ok(Self::PowerPC64),
+            "ppc64" | "ppc64le" => Ok(Self::PowerPC64),
             #[cfg(feature = "nightly")]
             "lisa" => Ok(Self::Lisa),
             _ => Err("Unknown architecture"),
@@ -307,6 +307,15 @@ mod tests {
         assert_eq!(
             Target::from_str("arm32_vita").unwrap(),
             Target::new(TargetArchitecture::Arm32, TargetOperatingSystem::Vita)
+        );
+    }
+
+    #[test]
+    fn rejects_big_endian_powerpc64_name() {
+        assert!(Target::from_str("powerpc64_linux").is_err());
+        assert_eq!(
+            Target::from_str("ppc64le_linux").unwrap(),
+            Target::new(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux)
         );
     }
 
