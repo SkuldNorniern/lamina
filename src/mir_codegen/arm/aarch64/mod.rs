@@ -9,8 +9,8 @@ mod util;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::common::{
-    reject_module_globals,
-    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
+    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
+    emit_global_directives,
     integer_conversion, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::simd::reserve_vector_slots;
@@ -411,7 +411,6 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
-    reject_module_globals(module, "aarch64")?;
     let settings_arc = Arc::new(settings.clone());
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
@@ -434,6 +433,7 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     for result in results {
         writer.write_all(&result.assembly)?;
     }
+    emit_global_data(writer, module, target_os, |name| abi.mangle_function_name(name))?;
     emit_gnu_stack_note(writer, target_os)?;
 
     Ok(())
@@ -459,10 +459,18 @@ fn emit_block<W: Write>(
             writeln!(w, "    .loc 1 {} 0", *debug_line)?;
         }
         match inst {
-            MirInst::SymbolAddress { .. } => {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "aarch64 global symbol addresses are not yet supported".into(),
-                )));
+            MirInst::SymbolAddress { dst, symbol } => {
+                let label = abi.mangle_function_name(symbol);
+                let scratch = ra.alloc_scratch().unwrap_or("x19");
+                if os_uses_macho(abi.target_os()) {
+                    writeln!(w, "    adrp {scratch}, {label}@PAGE")?;
+                    writeln!(w, "    add {scratch}, {scratch}, {label}@PAGEOFF")?;
+                } else {
+                    writeln!(w, "    adrp {scratch}, {label}")?;
+                    writeln!(w, "    add {scratch}, {scratch}, :lo12:{label}")?;
+                }
+                store_result(w, dst, &x_alias(scratch), frame, ra)?;
+                ra.free_scratch(scratch);
             }
             MirInst::Load { ty, .. } | MirInst::Store { ty, .. } if ty.is_vector() => {
                 simd::emit(inst, w, frame, ra)?
@@ -2069,6 +2077,26 @@ mod tests {
         assert!(assembly.contains("csel w"), "{assembly}");
         assert!(assembly.contains("fcvtzu x"), "{assembly}");
         assert!(assembly.contains("ucvtf d0, x"), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn module_globals_are_addressed_through_page_relocations() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "global @counter: i64 = 41\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 @counter\n  ret.i64 %a\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "globals").expect("lower global module");
+        let mut linux = Vec::new();
+        generate_mir_aarch64(&mir, &mut linux, TargetOperatingSystem::Linux)?;
+        let linux = String::from_utf8(linux)?;
+        assert!(linux.contains("adrp x9, counter\n"), "{linux}");
+        assert!(linux.contains("add x9, x9, :lo12:counter\n"), "{linux}");
+        assert!(linux.contains(".data\n.p2align 3\ncounter:\n    .byte 0x29, 0x00"), "{linux}");
+        let mut macho = Vec::new();
+        generate_mir_aarch64(&mir, &mut macho, TargetOperatingSystem::MacOS)?;
+        let macho = String::from_utf8(macho)?;
+        assert!(macho.contains("adrp x9, _counter@PAGE\n"), "{macho}");
+        assert!(macho.contains("add x9, x9, _counter@PAGEOFF\n"), "{macho}");
         Ok(())
     }
 

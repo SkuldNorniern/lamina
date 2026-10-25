@@ -1651,12 +1651,7 @@ entry:
         )
         .expect("parse global module");
         let mir = from_ir(&ir, "globals").expect("lower global module");
-        let rejecting: [(&str, Emitter, TargetOperatingSystem); 3] = [
-            (
-                "aarch64",
-                generate_mir_aarch64::<Vec<u8>>,
-                TargetOperatingSystem::Linux,
-            ),
+        let rejecting: [(&str, Emitter, TargetOperatingSystem); 2] = [
             (
                 "riscv",
                 generate_mir_riscv::<Vec<u8>>,
