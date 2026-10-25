@@ -57,7 +57,7 @@ use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
     powerpc::{
         Ppc64Abi, Ppc64Frame, Ppc64RegAlloc,
-        frame::{r1_address, r1_mem},
+        frame::{load_imm, r1_address, r1_mem},
     },
 };
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
@@ -1073,8 +1073,13 @@ fn emit_instruction_ppc64<W: Write>(
                 }
                 Register::Physical(p) => writeln!(writer, "    mr 3, {}", p.name)?,
             }
-            if *offset != 0 {
-                writeln!(writer, "    addi 3, 3, {offset}")?;
+            if i16::try_from(*offset).is_ok() {
+                if *offset != 0 {
+                    writeln!(writer, "    addi 3, 3, {offset}")?;
+                }
+            } else {
+                load_imm(writer, "0", i64::from(*offset))?;
+                writeln!(writer, "    add 3, 3, 0")?;
             }
             if let Register::Virtual(vreg) = dst {
                 store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -1307,6 +1312,43 @@ mod tests {
             }
         }
         (frame, address)
+    }
+
+    #[test]
+    fn lea_offset_beyond_the_immediate_range_is_added_through_r0() -> Result<(), Box<dyn Error>> {
+        let slot = VirtualReg::gpr(1);
+        let base = Register::Virtual(VirtualReg::gpr(0));
+        let mut function = FunctionBuilder::new("element")
+            .returns(MirType::ptr())
+            .block("entry")
+            .instr(MirInst::StackAddr {
+                dst: base.clone(),
+                slot,
+            })
+            .instr(MirInst::Lea {
+                dst: Register::Virtual(VirtualReg::gpr(2)),
+                base,
+                offset: 39999,
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(2)))),
+            })
+            .build();
+        function.stack_reservations.insert(slot, 4999);
+        let mut module = MirModule::new("element");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_ppc64_with_units_and_settings(
+            &module,
+            &mut output,
+            TargetOperatingSystem::Linux,
+            1,
+            &MirCodegenSettings::default(),
+        )?;
+        let assembly = String::from_utf8(output)?;
+        assert!(!assembly.contains("addi 3, 3, 39999"), "{assembly}");
+        assert!(assembly.contains("    add 3, 3, 0\n"), "{assembly}");
+        Ok(())
     }
 
     #[test]
