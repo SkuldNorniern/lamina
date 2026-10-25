@@ -360,7 +360,15 @@ fn convert_function<'a>(
                 &mut reservations,
                 &register_types,
                 &mut globals,
-            )?;
+            )
+            .map_err(|error| match error {
+                FromIRError::UnsupportedInstruction => FromIRError::UnsupportedInstructionIn {
+                    instruction: instr.to_string(),
+                    block: label.to_string(),
+                    function: f.name.to_string(),
+                },
+                other => other,
+            })?;
             if f.basic_blocks.len() == 1
                 && let IRInst::Binary { result, .. } | IRInst::WriteByte { result, .. } = instr
                 && let Some(last) = mir_instrs.last_mut()
@@ -494,7 +502,12 @@ fn convert_function<'a>(
                             if !visited.contains(pred_label) {
                                 continue;
                             }
-                            let src_op = resolve_operand(val, &mut vreg_alloc, &mut var_to_reg, &mut globals)?;
+                            let src_op = resolve_operand(
+                                val,
+                                &mut vreg_alloc,
+                                &mut var_to_reg,
+                                &mut globals,
+                            )?;
                             let mut mov_like = Instruction::Copy {
                                 ty: mir_ty,
                                 dst: dst_reg.clone(),
@@ -2088,5 +2101,16 @@ fn @main() -> i64 {
                 msg
             );
         }
+    }
+
+    #[test]
+    fn unsupported_instruction_names_its_block_and_function() {
+        let ir = parse_module("fn @main() -> i64 {\nentry:\n%v = load.i64 5\nret.i64 %v\n}")
+            .expect("parse reversed load");
+        let error = from_ir(&ir, "reversed load").expect_err("lowering rejects reversed load");
+        let text = error.to_string();
+        assert!(text.contains("load.i64 5"), "{text}");
+        assert!(text.contains("entry"), "{text}");
+        assert!(text.contains("main"), "{text}");
     }
 }
