@@ -1,4 +1,4 @@
-use super::gpu::{error, kernels};
+use super::gpu::{aggregate_parameter_function, error, kernels};
 use crate::{
     error::LaminaError,
     mir::{
@@ -291,6 +291,11 @@ impl Kernel {
 pub fn emit<W: Write>(module: &Module, writer: &mut W) -> Result<(), LaminaError> {
     if !module.globals.is_empty() {
         return Err(error("PTX does not yet support global variables"));
+    }
+    if let Some(name) = aggregate_parameter_function(module) {
+        return Err(error(&format!(
+            "PTX does not yet pass aggregates by value, as @{name} does"
+        )));
     }
     let mut output = Vec::new();
     writeln!(output, ".version 6.0\n.target sm_60\n.address_size 64")?;

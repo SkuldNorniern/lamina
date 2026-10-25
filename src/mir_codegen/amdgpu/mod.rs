@@ -1,4 +1,4 @@
-use super::gpu::{error, kernels};
+use super::gpu::{aggregate_parameter_function, error, kernels};
 use crate::{
     error::LaminaError,
     mir::{
@@ -641,6 +641,11 @@ pub fn emit_with_target<W: Write>(
 ) -> Result<(), LaminaError> {
     if !module.globals.is_empty() {
         return Err(error("AMDGPU does not yet support global variables"));
+    }
+    if let Some(name) = aggregate_parameter_function(module) {
+        return Err(error(&format!(
+            "AMDGPU does not yet pass aggregates by value, as @{name} does"
+        )));
     }
     let mut output = Vec::new();
     let kernels = kernels(module, true)?;
