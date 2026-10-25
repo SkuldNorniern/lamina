@@ -420,7 +420,8 @@ impl<'a> ParserState<'a> {
         if let Some(line) = line_num.checked_sub(1).and_then(|n| self.input.lines().nth(n)) {
             // Truncate very long lines for readability
             if line.len() > 80 {
-                format!("{}...", &line[..77])
+                let cut = (0..=77).rev().find(|&i| line.is_char_boundary(i)).unwrap_or(0);
+                format!("{}...", &line[..cut])
             } else {
                 line.to_string()
             }
