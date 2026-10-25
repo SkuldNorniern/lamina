@@ -540,7 +540,8 @@ enum RiscVArgPlace {
 }
 
 /// Floats take the next fa register and integers the next a register, from banks that
-/// run out separately.
+/// run out separately. A float left without an fa register falls back to the integer
+/// bank before the stack, carrying its bits.
 fn classify_riscv_arguments(types: &[MirType]) -> Vec<RiscVArgPlace> {
     let banks = RiscVAbi::ARG_REGISTERS.len();
     let mut gprs = 0;
@@ -548,19 +549,12 @@ fn classify_riscv_arguments(types: &[MirType]) -> Vec<RiscVArgPlace> {
     let mut stack = 0;
     let mut places = Vec::with_capacity(types.len());
     for ty in types {
-        let (used, limit) = if ty.is_float() {
-            (&mut fprs, banks)
-        } else {
-            (&mut gprs, banks)
-        };
-        if *used < limit {
-            let index = *used;
-            *used += 1;
-            places.push(if ty.is_float() {
-                RiscVArgPlace::Fpr(index)
-            } else {
-                RiscVArgPlace::Gpr(index)
-            });
+        if ty.is_float() && fprs < banks {
+            places.push(RiscVArgPlace::Fpr(fprs));
+            fprs += 1;
+        } else if gprs < banks {
+            places.push(RiscVArgPlace::Gpr(gprs));
+            gprs += 1;
         } else {
             places.push(RiscVArgPlace::Stack(stack));
             stack += 1;
@@ -2418,6 +2412,44 @@ mod tests {
         let call = caller.split("call add").next().ok_or("missing call")?;
         assert!(call.contains("    fmv.d.x fa0, "), "{assembly}");
         assert!(call.contains("    fmv.d.x fa1, "), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn floats_past_the_float_bank_take_integer_registers() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let params: Vec<String> = (0..10).map(|i| format!("f64 %p{i}")).collect();
+        let sums: Vec<String> = (0..10)
+            .map(|i| format!("  %w{i} = fptosi.f64.i64 %p{i}\n  %a{i} = add.i64 %acc, %w{i}\n  %acc = add.i64 %a{i}, 0"))
+            .collect();
+        let args: Vec<String> = (0..10).map(|i| format!("{i}.5")).collect();
+        let ir = format!(
+            "fn @many({}) -> i64 {{\nentry:\n  %acc = add.i64 0, 0\n{}\n  ret.i64 %acc\n}}\nfn @main() -> i64 {{\nentry:\n  %r = call @many({})\n  ret.i64 %r\n}}\n",
+            params.join(", "),
+            sums.join("\n"),
+            args.join(", ")
+        );
+        let module = parse_module(&ir)?;
+        let mir = from_ir(&module, "overflow").expect("lower overflowing floats");
+        let mut output = Vec::new();
+        generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+
+        // Eight floats fill fa0 to fa7; the ninth and tenth carry their bits in a0 and
+        // a1 rather than going to the stack.
+        let callee = assembly.split("\nmany:\n").nth(1).ok_or("missing many")?;
+        let prologue = callee
+            .split(".L_many.entry:")
+            .next()
+            .ok_or("missing entry")?;
+        assert!(prologue.contains("    fsd fa7, "), "{assembly}");
+        assert!(prologue.contains("    sd a0, "), "{assembly}");
+        assert!(prologue.contains("    sd a1, "), "{assembly}");
+
+        let caller = assembly.split("\nmain:\n").nth(1).ok_or("missing main")?;
+        let call = caller.split("call many").next().ok_or("missing call")?;
+        assert!(call.contains("    li a0, "), "{assembly}");
+        assert!(call.contains("    li a1, "), "{assembly}");
         Ok(())
     }
 

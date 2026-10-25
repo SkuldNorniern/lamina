@@ -103,11 +103,17 @@ pub fn load_operand_to_register<W: Write>(
                         writeln!(writer, "    li {dest_reg}, {v}")?;
                     }
                 }
-                Immediate::F32(_) | Immediate::F64(_) => {
-                    return Err(Error::new(
-                        ErrorKind::InvalidInput,
-                        "RISC-V: Floating-point immediates not yet implemented. Use integer types or load from memory instead.",
-                    ));
+                // A float in an integer register travels as its bit pattern, which is
+                // how a float crossing a boundary without an fa register is passed.
+                Immediate::F32(v) => {
+                    writeln!(
+                        writer,
+                        "    li {dest_reg}, {}",
+                        i64::from(v.to_bits() as i32)
+                    )?;
+                }
+                Immediate::F64(v) => {
+                    writeln!(writer, "    li {dest_reg}, {}", v.to_bits() as i64)?;
                 }
             }
             Ok(())
