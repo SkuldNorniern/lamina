@@ -551,6 +551,11 @@ fn parse_jmp<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaE
 }
 
 fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
+    if state.current_char() != Some('.') {
+        return Err(state.error(
+            "'ret' needs a type suffix\n  Hint: Use 'ret.void' to return nothing, or 'ret.<type> <value>' (e.g. 'ret.i64 0')",
+        ));
+    }
     state.expect_char('.')?;
     state.skip_whitespace_and_comments();
     if state.peek_slice(4) == Some("void") {

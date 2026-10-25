@@ -210,6 +210,12 @@ pub fn parse_basic_block<'a>(
         instructions.push(instruction);
 
         if is_terminator {
+            state.skip_whitespace_and_comments();
+            if !state.is_eof() && state.current_char() != Some('}') && !state.at_block_label() {
+                return Err(state.error(format!(
+                    "Instruction after the terminator of block '{label}'\n  Hint: A block ends at its first terminator (ret, jmp, br); start a new labeled block for the instruction"
+                )));
+            }
             break;
         }
     }

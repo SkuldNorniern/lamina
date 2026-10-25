@@ -465,6 +465,20 @@ mod tests {
     }
 
     #[test]
+    fn test_instruction_after_terminator_is_rejected() {
+        let input = "fn @main() -> i64 {\n  entry:\n    ret.i64 0\n    ret.i64 1\n}\n";
+        let err = parse_module(input).expect_err("instruction after terminator");
+        assert!(err.to_string().contains("after the terminator of block 'entry'"));
+    }
+
+    #[test]
+    fn test_bare_ret_names_type_suffix() {
+        let input = "fn @main() -> i64 {\n  entry:\n    ret\n}\n";
+        let err = parse_module(input).expect_err("bare ret");
+        assert!(err.to_string().contains("'ret.void'"));
+    }
+
+    #[test]
     fn test_parse_block_missing_terminator() {
         let input = r#"
             fn @bad() -> i32 {
