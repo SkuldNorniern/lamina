@@ -19,8 +19,8 @@ mod util;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::integer_conversion;
 use crate::mir_codegen::common::{
-    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
-    reject_module_globals, self_tail_arguments, self_tail_schedule,
+    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
+    emit_global_directives, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 
@@ -412,7 +412,6 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::PowerPC64)?;
-    reject_module_globals(module, "powerpc64")?;
     let abi = Ppc64Abi::new(target_os);
 
     writeln!(writer, ".abiversion 2")?;
@@ -437,6 +436,9 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     for result in results {
         writer.write_all(&result.assembly)?;
     }
+    emit_global_data(writer, module, target_os, |name| {
+        abi.mangle_function_name(name)
+    })?;
     emit_gnu_stack_note(writer, target_os)?;
 
     Ok(())
@@ -1054,10 +1056,19 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             }
         }
-        MirInst::SymbolAddress { .. } => {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                "powerpc64 global symbol addresses are not yet supported".into(),
-            )));
+        MirInst::SymbolAddress { dst, symbol } => {
+            let label = Ppc64Abi::new(target_os).mangle_function_name(symbol);
+            writeln!(writer, "    addis 3, 2, {label}@toc@ha")?;
+            writeln!(writer, "    addi 3, 3, {label}@toc@l")?;
+            match dst {
+                Register::Virtual(vreg) => {
+                    store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
+                Register::Physical(phys) if phys.name != "3" => {
+                    writeln!(writer, "    mr {}, 3", phys.name)?;
+                }
+                Register::Physical(_) => {}
+            }
         }
         MirInst::StackAddr { dst, slot } => {
             let offset = stack_slots.get(slot).ok_or_else(|| {
@@ -1568,6 +1579,30 @@ mod tests {
                 "{assembly}"
             );
         }
+    }
+
+    #[test]
+    fn module_globals_are_addressed_through_toc_relocations() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "global @counter: i64 = 41\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 @counter\n  ret.i64 %a\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "globals").expect("lower global module");
+        let mut output = Vec::new();
+        generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(
+            assembly.contains("    addis 3, 2, counter@toc@ha\n"),
+            "{assembly}"
+        );
+        assert!(
+            assembly.contains("    addi 3, 3, counter@toc@l\n"),
+            "{assembly}"
+        );
+        assert!(
+            assembly.contains(".data\n.p2align 3\ncounter:\n    .byte 0x29, 0x00"),
+            "{assembly}"
+        );
+        Ok(())
     }
 
     #[test]

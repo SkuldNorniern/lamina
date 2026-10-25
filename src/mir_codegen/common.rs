@@ -1651,19 +1651,19 @@ entry:
         )
         .expect("parse global module");
         let mir = from_ir(&ir, "globals").expect("lower global module");
-        let rejecting: [(&str, Emitter, TargetOperatingSystem); 1] = [(
-            "ppc64",
-            generate_mir_ppc64::<Vec<u8>>,
-            TargetOperatingSystem::Linux,
-        )];
-        for (name, emit, os) in rejecting {
+        use crate::mir_codegen::{amdgpu, ptx};
+        type GpuEmitter = fn(&MirModule, &mut Vec<u8>) -> Result<(), LaminaError>;
+        let rejecting: [(&str, GpuEmitter); 2] = [
+            ("amdgpu", amdgpu::emit::<Vec<u8>>),
+            ("ptx", ptx::emit::<Vec<u8>>),
+        ];
+        for (name, emit) in rejecting {
             let mut output = Vec::new();
-            let error = emit(&mir, &mut output, os).expect_err(name);
+            let error = emit(&mir, &mut output).expect_err(name);
             assert!(
                 error
                     .to_string()
-                    .contains("does not yet support global variables")
-                    || error.to_string().contains("global symbol addresses"),
+                    .contains("does not yet support global variables"),
                 "{name}: {error}"
             );
         }
