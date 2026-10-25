@@ -25,7 +25,11 @@ use crate::mir_codegen::common::{
     self_tail_arguments, self_tail_schedule,
 };
 
-use std::{collections::HashMap, io::Write, sync::Arc};
+use std::{
+    collections::{BTreeSet, HashMap},
+    io::Write,
+    sync::Arc,
+};
 use util::{
     load_operand_to_register, load_register_to_r3, load_register_to_register, store_r3_to_register,
 };
@@ -43,7 +47,7 @@ use crate::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
         capability::CapabilitySet,
         common::{
-            CodegenBase, assign_stack_slots, compile_functions_parallel, parallel_codegen_error,
+            CodegenBase, compile_functions_parallel, parallel_codegen_error,
         },
         validate_module_call_parameters,
     },
@@ -158,10 +162,70 @@ impl<'a> Codegen for Ppc64Codegen<'a> {
     }
 }
 
-fn ppc64_stack_offset_for_linear_spill(off: i32) -> i32 {
+/// Spill slots from the linear allocator are numbered from zero, so they start after the
+/// slots that `assign_ppc64_slots` handed out and cannot share one with a reservation.
+fn ppc64_stack_offset_for_linear_spill(off: i32, first_free_slot: usize) -> i32 {
     let k = ((-off) / 8) as usize;
-    let slot_ix = k.saturating_sub(1);
+    let slot_ix = first_free_slot + k.saturating_sub(1);
     Ppc64Frame::calculate_stack_offset(slot_ix)
+}
+
+/// Gives `vreg` the slot at the bottom of its block. Slots grow upward from `r1`, so the
+/// extra slots of a reservation sit above the address the register holds.
+fn claim_ppc64_slot(
+    func: &Function,
+    vreg: &VirtualReg,
+    slots: &mut HashMap<VirtualReg, i32>,
+    next: &mut usize,
+) {
+    let extra = func.stack_reservations.get(vreg).copied().unwrap_or(0);
+    slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(*next));
+    *next += extra + 1;
+}
+
+/// Gives every register that needs a slot one, defined registers first, and returns the
+/// number of slots used.
+fn assign_ppc64_slots(func: &Function) -> (HashMap<VirtualReg, i32>, usize) {
+    let mut defined = BTreeSet::new();
+    let mut used = BTreeSet::new();
+    for inst in func.blocks.iter().flat_map(|b| &b.instructions) {
+        if let Some(Register::Virtual(vreg)) = inst.def_reg() {
+            defined.insert(*vreg);
+        }
+        if let MirInst::StackAddr { slot, .. } = inst {
+            used.insert(*slot);
+        }
+        for reg in inst.use_regs() {
+            if let Register::Virtual(vreg) = reg {
+                used.insert(*vreg);
+            }
+        }
+    }
+    let mut slots = HashMap::new();
+    let mut next = 0usize;
+    for vreg in &defined {
+        claim_ppc64_slot(func, vreg, &mut slots, &mut next);
+    }
+    for vreg in &used {
+        if !defined.contains(vreg) {
+            claim_ppc64_slot(func, vreg, &mut slots, &mut next);
+        }
+    }
+    (slots, next)
+}
+
+/// Bytes of frame locals, measured from the end of the linkage area to the highest byte
+/// that any slot or reservation reaches.
+fn ppc64_local_bytes(func: &Function, slots: &HashMap<VirtualReg, i32>) -> usize {
+    let base = i64::from(Ppc64Frame::calculate_stack_offset(0));
+    slots
+        .iter()
+        .map(|(vreg, off)| {
+            let extra = func.stack_reservations.get(vreg).copied().unwrap_or(0) as i64;
+            i64::from(*off) + 8 * (extra + 1)
+        })
+        .max()
+        .map_or(0, |top| (top - base).max(0) as usize)
 }
 
 fn compile_single_function_ppc64(
@@ -182,7 +246,8 @@ fn compile_single_function_ppc64(
     let mut stack_slots: HashMap<VirtualReg, i32> = HashMap::new();
 
     if settings.regalloc != RegallocStrategy::Incremental {
-        (stack_slots, _, _) = assign_stack_slots(func, Ppc64Frame::calculate_stack_offset);
+        let (assigned, first_free_slot) = assign_ppc64_slots(func);
+        stack_slots = assigned;
         let pool = Ppc64RegAlloc::gpr_pool_for_global_allocation();
         let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
             .into_iter()
@@ -205,7 +270,7 @@ fn compile_single_function_ppc64(
         reg_alloc = Ppc64RegAlloc::from_global_plan(target_os, &plan);
         for (v, a) in &plan {
             if let MirAllocation::Spill(off) = a {
-                stack_slots.insert(*v, ppc64_stack_offset_for_linear_spill(*off));
+                stack_slots.insert(*v, ppc64_stack_offset_for_linear_spill(*off, first_free_slot));
             }
         }
     } else {
@@ -216,28 +281,25 @@ fn compile_single_function_ppc64(
                     && let Register::Virtual(vreg) = dst
                     && !stack_slots.contains_key(vreg)
                 {
-                    stack_slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(next_slot));
-                    next_slot += 1;
+                    claim_ppc64_slot(func, vreg, &mut stack_slots, &mut next_slot);
                 }
                 for reg in inst.use_regs() {
                     if let Register::Virtual(vreg) = reg
                         && !stack_slots.contains_key(vreg)
                     {
-                        stack_slots.insert(*vreg, Ppc64Frame::calculate_stack_offset(next_slot));
-                        next_slot += 1;
+                        claim_ppc64_slot(func, vreg, &mut stack_slots, &mut next_slot);
                     }
                 }
                 if let MirInst::StackAddr { slot, .. } = inst
                     && !stack_slots.contains_key(slot)
                 {
-                    stack_slots.insert(*slot, Ppc64Frame::calculate_stack_offset(next_slot));
-                    next_slot += 1;
+                    claim_ppc64_slot(func, slot, &mut stack_slots, &mut next_slot);
                 }
             }
         }
     }
 
-    let local_bytes = stack_slots.len() * 8;
+    let local_bytes = ppc64_local_bytes(func, &stack_slots);
     Ppc64Frame::generate_prologue(&mut output, local_bytes)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
@@ -1186,6 +1248,7 @@ fn extend_integer(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::error::Error;
     use crate::mir::{
         FunctionBuilder,
         instruction::{Instruction, IntBinOp, Operand},
@@ -1200,6 +1263,93 @@ mod tests {
             .build();
         m.add_function(f);
         m
+    }
+
+    /// Replays the constant loads that build the frame size and the first address built
+    /// from `r1`. Returns the frame size and that address, both as offsets from `r1`.
+    fn ppc64_frame_arithmetic(asm: &str) -> (i64, Option<i64>) {
+        let mut regs: HashMap<&str, i64> = HashMap::new();
+        let (mut frame, mut address) = (0i64, None);
+        for line in asm.lines().map(str::trim) {
+            let (op, args) = line.split_once(' ').unwrap_or((line, ""));
+            let parts: Vec<&str> = args.split(", ").collect();
+            match (op, parts.as_slice()) {
+                ("li", [r, v]) => {
+                    regs.insert(r, v.parse().unwrap_or(0));
+                }
+                ("lis", [r, v]) => {
+                    regs.insert(r, v.parse::<i64>().unwrap_or(0) << 16);
+                }
+                ("ori", [r, _, v]) => {
+                    *regs.entry(r).or_insert(0) |= v.parse::<i64>().unwrap_or(0);
+                }
+                ("addis", [r, base, v]) => {
+                    let base = if *base == "0" {
+                        0
+                    } else {
+                        regs.get(base).copied().unwrap_or(0)
+                    };
+                    regs.insert(r, base + (v.parse::<i64>().unwrap_or(0) << 16));
+                }
+                ("stdux", _) => frame = -regs.get("12").copied().unwrap_or(0),
+                ("stdu", [_, v]) => {
+                    frame = -v.trim_end_matches("(1)").parse::<i64>().unwrap_or(0);
+                }
+                ("addi", ["3", "1", v]) => {
+                    let v = v.parse().unwrap_or(0);
+                    regs.insert("3", v);
+                    address.get_or_insert(v);
+                }
+                ("add", ["3", "1", "3"]) => {
+                    address.get_or_insert(regs.get("3").copied().unwrap_or(0));
+                }
+                _ => {}
+            }
+        }
+        (frame, address)
+    }
+
+    #[test]
+    fn stack_reservation_is_reserved_in_the_prologue() -> Result<(), Box<dyn Error>> {
+        let slot = VirtualReg::gpr(1);
+        let mut function = FunctionBuilder::new("reserved")
+            .returns(MirType::ptr())
+            .block("entry")
+            .instr(MirInst::StackAddr {
+                dst: Register::Virtual(VirtualReg::gpr(0)),
+                slot,
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(0)))),
+            })
+            .build();
+        function.stack_reservations.insert(slot, 4999);
+        let mut module = MirModule::new("reserved");
+        module.add_function(function);
+        for regalloc in [
+            RegallocStrategy::Incremental,
+            RegallocStrategy::LinearScanGlobal,
+            RegallocStrategy::GraphColorGlobal,
+        ] {
+            let settings = MirCodegenSettings {
+                regalloc,
+                ..Default::default()
+            };
+            let mut output = Vec::new();
+            generate_mir_ppc64_with_units_and_settings(
+                &module,
+                &mut output,
+                TargetOperatingSystem::Linux,
+                1,
+                &settings,
+            )?;
+            let assembly = String::from_utf8(output)?;
+            let (frame, address) = ppc64_frame_arithmetic(&assembly);
+            let address = address.unwrap_or(i64::MIN);
+            assert!(frame >= address + 40000, "{regalloc:?}: frame {frame} {assembly}");
+            assert!(address >= 32, "{regalloc:?}: address {address} {assembly}");
+        }
+        Ok(())
     }
 
     #[test]
