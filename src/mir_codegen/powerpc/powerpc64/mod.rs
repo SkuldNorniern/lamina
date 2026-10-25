@@ -942,12 +942,22 @@ fn emit_instruction_ppc64<W: Write>(
             let abi = Ppc64Abi::new(target_os);
             let arg_regs = Ppc64Abi::ARG_REGISTERS;
 
-            if name == "writeptr" {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "PowerPC64: writeptr is not supported".to_string(),
-                )));
-            }
-            if name == "print" {
+            if name == "writeptr" && args.len() == 2 {
+                // write(1, ptr, width): the pointee's bytes go out straight from memory.
+                let Operand::Immediate(Immediate::I64(width)) = &args[1] else {
+                    return Err(LaminaError::ValidationError(
+                        "writeptr width must be an immediate".to_string(),
+                    ));
+                };
+                load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "4")?;
+                writeln!(writer, "    li 5, {width}")?;
+                writeln!(writer, "    li 3, 1")?;
+                let write = abi
+                    .call_stub("write")
+                    .unwrap_or_else(|| abi.mangle_function_name("write"));
+                writeln!(writer, "    bl {write}")?;
+                writeln!(writer, "    nop")?;
+            } else if name == "print" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    addis 3, 2, .L_mir_fmt_int@toc@ha")?;
                     writeln!(writer, "    addi 3, 3, .L_mir_fmt_int@toc@l")?;
@@ -1649,6 +1659,21 @@ mod tests {
                 "{assembly}"
             );
         }
+    }
+
+    #[test]
+    fn writeptr_sends_the_pointee_bytes_through_write() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @main() -> i32 {\nentry:\n  %p = alloc.stack i32\n  store.i32 %p, 72\n  %n = writeptr %p\n  ret.i32 0\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "writeptr").expect("lower writeptr");
+        let mut output = Vec::new();
+        generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(assembly.contains("    li 5, 4\n"), "{assembly}");
+        assert!(assembly.contains("    li 3, 1\n"), "{assembly}");
+        assert!(assembly.contains("    bl write\n"), "{assembly}");
+        Ok(())
     }
 
     #[test]
