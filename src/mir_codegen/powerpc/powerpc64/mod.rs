@@ -17,13 +17,12 @@
 mod util;
 
 use crate::mir::register::PhysicalReg;
-use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::common::integer_conversion;
 use crate::mir_codegen::common::{
-    reject_module_globals,
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_directives,
-    self_tail_arguments, self_tail_schedule,
+    reject_module_globals, self_tail_arguments, self_tail_schedule,
 };
+use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -237,7 +236,14 @@ fn compile_single_function_ppc64(
 
     let label = abi.mangle_function_name(func_name);
     let block_prefix = format!(".L_{}.", label.trim_start_matches('.'));
+    let entry = format!(".L_gep_{}", label.trim_start_matches('.'));
+    let local = format!(".L_lep_{}", label.trim_start_matches('.'));
     writeln!(output, "{label}:")
+        .and_then(|()| writeln!(output, "{entry}:"))
+        .and_then(|()| writeln!(output, "    addis 2, 12, .TOC.-{entry}@ha"))
+        .and_then(|()| writeln!(output, "    addi 2, 2, .TOC.-{entry}@l"))
+        .and_then(|()| writeln!(output, "{local}:"))
+        .and_then(|()| writeln!(output, "    .localentry {label}, {local}-{entry}"))
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("I/O error: {e}")))?;
 
     let mut reg_alloc = Ppc64RegAlloc::new(target_os);
@@ -409,6 +415,7 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     reject_module_globals(module, "powerpc64")?;
     let abi = Ppc64Abi::new(target_os);
 
+    writeln!(writer, ".abiversion 2")?;
     writeln!(writer, "{}", abi.get_data_section())?;
     writeln!(writer, "{}", abi.get_print_format())?;
     writeln!(writer, "{}", abi.get_text_section())?;
