@@ -37,6 +37,8 @@ pub enum FromIRError {
     UnsupportedGlobal(String),
     /// An aggregate crosses a function boundary in a form lowering cannot classify yet.
     UnsupportedAggregate(String),
+    /// A width conversion names a source and destination it cannot relate.
+    InvalidConversion(String),
 }
 
 impl fmt::Display for FromIRError {
@@ -82,6 +84,9 @@ impl fmt::Display for FromIRError {
             }
             FromIRError::UnsupportedAggregate(reason) => {
                 write!(f, "aggregate not yet supported: {reason}")
+            }
+            FromIRError::InvalidConversion(reason) => {
+                write!(f, "invalid conversion: {reason}")
             }
             FromIRError::InvalidMir(errors) => {
                 write!(f, "lowering produced invalid MIR: {}", errors.join("; "))
