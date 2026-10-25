@@ -474,7 +474,7 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
 enum PpcArgPlace {
     Gpr(usize),
     Fpr(usize),
-    Stack(usize),
+    Stack,
 }
 
 /// f1 to f13 carry floats.
@@ -492,7 +492,7 @@ fn classify_ppc64_arguments(types: &[MirType]) -> Vec<PpcArgPlace> {
             } else if index < Ppc64Abi::ARG_REGISTERS.len() {
                 PpcArgPlace::Gpr(index)
             } else {
-                PpcArgPlace::Stack(index)
+                PpcArgPlace::Stack
             }
         })
         .collect()
@@ -1109,7 +1109,7 @@ fn emit_instruction_ppc64<W: Write>(
                                 ty.size_bytes() == 4,
                             )?;
                         }
-                        PpcArgPlace::Stack(_) => {}
+                        PpcArgPlace::Stack => {}
                     }
                 }
 
@@ -1122,7 +1122,7 @@ fn emit_instruction_ppc64<W: Write>(
                     writeln!(writer, "    stdu 1, -{frame}(1)")?;
                     let moved = biased_slots(stack_slots, frame as i32);
                     for ((index, arg), place) in args.iter().enumerate().zip(&places) {
-                        if !matches!(place, PpcArgPlace::Stack(_)) {
+                        if !matches!(place, PpcArgPlace::Stack) {
                             continue;
                         }
                         load_operand_to_register(arg, writer, reg_alloc, &moved, "11")?;
