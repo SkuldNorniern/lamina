@@ -70,20 +70,64 @@ const DIRECT_BRANCH_BYTES: usize = 512 * 1024;
 /// word; an integer aggregate is as many as its size needs.
 #[derive(Clone, Copy)]
 enum ArgPlace {
-    Gpr { first: usize, words: usize },
-    Stack { first: usize, words: usize },
+    Gpr {
+        first: usize,
+        words: usize,
+    },
+    /// A float in v`index`, which aapcs64 draws from a bank of its own.
+    Fpr {
+        index: usize,
+    },
+    Stack {
+        first: usize,
+        words: usize,
+    },
 }
 
 const ARGUMENT_REGISTERS: usize = 8;
 
-/// An aggregate that does not fit in the registers left goes to the stack whole, and
-/// takes the remaining registers out of play, which is what the convention requires.
-fn classify_aarch64_arguments(aggregates: &[Option<Aggregate>]) -> Vec<ArgPlace> {
+/// One argument as the convention sees it: a float, an integer aggregate, or a plain
+/// integer word.
+#[derive(Clone, Copy)]
+struct ArgKind {
+    float: bool,
+    ty_is_f32: bool,
+    aggregate: Option<Aggregate>,
+}
+
+impl ArgKind {
+    fn of(ty: MirType, aggregate: Option<Aggregate>) -> Self {
+        Self {
+            float: aggregate.is_none() && ty.is_float(),
+            ty_is_f32: ty.size_bytes() == 4,
+            aggregate,
+        }
+    }
+}
+
+/// Floats take the next v register and integers the next x register, from banks that
+/// run out separately. An aggregate that does not fit in the registers left goes to
+/// the stack whole, and takes the remaining ones out of play.
+fn classify_aarch64_arguments(kinds: &[ArgKind]) -> Vec<ArgPlace> {
     let mut gprs = 0;
+    let mut fprs = 0;
     let mut stack = 0;
-    let mut places = Vec::with_capacity(aggregates.len());
-    for aggregate in aggregates {
-        let words = aggregate.map_or(1, |a| a.words());
+    let mut places = Vec::with_capacity(kinds.len());
+    for kind in kinds {
+        if kind.float {
+            if fprs < ARGUMENT_REGISTERS {
+                places.push(ArgPlace::Fpr { index: fprs });
+                fprs += 1;
+            } else {
+                places.push(ArgPlace::Stack {
+                    first: stack,
+                    words: 1,
+                });
+                stack += 1;
+            }
+            continue;
+        }
+        let words = kind.aggregate.map_or(1, |a| a.words());
         if gprs + words <= ARGUMENT_REGISTERS {
             places.push(ArgPlace::Gpr { first: gprs, words });
             gprs += words;
@@ -103,8 +147,9 @@ fn classify_aarch64_arguments(aggregates: &[Option<Aggregate>]) -> Vec<ArgPlace>
 /// reads its arguments and hands back its result.
 #[derive(Default)]
 struct AggregateSignatures {
-    params: HashMap<String, Vec<Option<Aggregate>>>,
+    params: HashMap<String, Vec<ArgKind>>,
     returns: HashMap<String, Aggregate>,
+    float_returns: HashMap<String, MirType>,
 }
 
 impl AggregateSignatures {
@@ -116,7 +161,11 @@ impl AggregateSignatures {
                 .map(|(name, func)| {
                     (
                         name.clone(),
-                        func.sig.params.iter().map(|p| p.aggregate).collect(),
+                        func.sig
+                            .params
+                            .iter()
+                            .map(|p| ArgKind::of(p.ty, p.aggregate))
+                            .collect(),
                     )
                 })
                 .collect(),
@@ -125,18 +174,31 @@ impl AggregateSignatures {
                 .iter()
                 .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_aggregate?)))
                 .collect(),
+            float_returns: module
+                .functions
+                .iter()
+                .filter_map(|(name, func)| {
+                    let ty = func.sig.ret_ty?;
+                    (func.sig.ret_aggregate.is_none() && ty.is_float()).then(|| (name.clone(), ty))
+                })
+                .collect(),
         }
     }
 
-    fn arguments(&self, callee: &str, count: usize) -> Vec<Option<Aggregate>> {
+    /// An undeclared callee has no signature, so its arguments pass as integers.
+    fn arguments(&self, callee: &str, count: usize) -> Vec<ArgKind> {
         match self.params.get(callee) {
-            Some(markers) if markers.len() == count => markers.clone(),
-            _ => vec![None; count],
+            Some(kinds) if kinds.len() == count => kinds.clone(),
+            _ => vec![ArgKind::of(MirType::i64(), None); count],
         }
     }
 
     fn result(&self, callee: &str) -> Option<Aggregate> {
         self.returns.get(callee).copied()
+    }
+
+    fn float_result(&self, callee: &str) -> Option<MirType> {
+        self.float_returns.get(callee).copied()
     }
 }
 
@@ -259,9 +321,13 @@ fn compile_single_function_aarch64_with(
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
 
-    let param_aggregates: Vec<Option<Aggregate>> =
-        func.sig.params.iter().map(|p| p.aggregate).collect();
-    let param_places = classify_aarch64_arguments(&param_aggregates);
+    let param_kinds: Vec<ArgKind> = func
+        .sig
+        .params
+        .iter()
+        .map(|p| ArgKind::of(p.ty, p.aggregate))
+        .collect();
+    let param_places = classify_aarch64_arguments(&param_kinds);
     for (p, place) in func.sig.params.iter().zip(&param_places) {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().unwrap_or("x19");
@@ -269,6 +335,27 @@ fn compile_single_function_aarch64_with(
                 .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
             match *place {
+                ArgPlace::Fpr { index } => {
+                    // The slot holds the bits, so the float register is moved through a
+                    // general one on its way in.
+                    let value = ra_pro.alloc_scratch().unwrap_or("x20");
+                    if p.ty.size_bytes() == 4 {
+                        writeln!(&mut output, "    fmov {}, s{index}", w_alias(value))
+                            .and_then(|()| {
+                                writeln!(&mut output, "    str {}, [{addr}]", w_alias(value))
+                            })
+                            .map_err(|e| {
+                                CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                            })?;
+                    } else {
+                        writeln!(&mut output, "    fmov {value}, d{index}")
+                            .and_then(|()| writeln!(&mut output, "    str {value}, [{addr}]"))
+                            .map_err(|e| {
+                                CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                            })?;
+                    }
+                    ra_pro.free_scratch(value);
+                }
                 ArgPlace::Gpr { first, words } => {
                     for word in 0..words {
                         let source = format!("x{}", first + word);
@@ -461,6 +548,7 @@ fn compile_single_function_aarch64_with(
                         long_branches,
                         signatures,
                         func.sig.ret_aggregate,
+                        func.sig.ret_ty.filter(|ty| ty.is_float()),
                     )?;
                 }
                 position += 1;
@@ -569,6 +657,7 @@ fn emit_block<W: Write>(
     long_branches: bool,
     signatures: &AggregateSignatures,
     ret_aggregate: Option<Aggregate>,
+    ret_float: Option<MirType>,
 ) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines {
@@ -607,6 +696,7 @@ fn emit_block<W: Write>(
                         long_branches,
                         signatures,
                         ret_aggregate,
+                        ret_float,
                     )?;
                 }
             }
@@ -1225,44 +1315,66 @@ fn emit_block<W: Write>(
                         }
                     }
                 } else {
-                    let aggregates = signatures.arguments(name, args.len());
-                    let places = classify_aarch64_arguments(&aggregates);
-                    for ((argument, aggregate), place) in args.iter().zip(&aggregates).zip(&places)
-                    {
-                        let ArgPlace::Gpr { first, words } = *place else {
-                            continue;
-                        };
-                        if aggregate.is_none() {
-                            emit_materialize_operand(w, argument, &format!("x{first}"), frame, ra)?;
-                            continue;
+                    let kinds = signatures.arguments(name, args.len());
+                    let places = classify_aarch64_arguments(&kinds);
+                    for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
+                        match *place {
+                            ArgPlace::Fpr { index } => {
+                                // Values are held as bits in general registers, so a
+                                // float argument moves across on the way out.
+                                let bits = ra.alloc_scratch().unwrap_or("x9");
+                                emit_materialize_operand(w, argument, bits, frame, ra)?;
+                                if kind.ty_is_f32 {
+                                    writeln!(w, "    fmov s{index}, {}", w_alias(bits))?;
+                                } else {
+                                    writeln!(w, "    fmov d{index}, {bits}")?;
+                                }
+                                ra.free_scratch(bits);
+                            }
+                            ArgPlace::Gpr { first, words } => {
+                                if kind.aggregate.is_none() {
+                                    emit_materialize_operand(
+                                        w,
+                                        argument,
+                                        &format!("x{first}"),
+                                        frame,
+                                        ra,
+                                    )?;
+                                    continue;
+                                }
+                                let address = ra.alloc_scratch().unwrap_or("x9");
+                                emit_materialize_operand(w, argument, address, frame, ra)?;
+                                for word in 0..words {
+                                    writeln!(
+                                        w,
+                                        "    ldr x{}, [{address}, #{}]",
+                                        first + word,
+                                        word * 8
+                                    )?;
+                                }
+                                ra.free_scratch(address);
+                            }
+                            ArgPlace::Stack { .. } => {}
                         }
-                        let address = ra.alloc_scratch().unwrap_or("x9");
-                        emit_materialize_operand(w, argument, address, frame, ra)?;
-                        for word in 0..words {
-                            writeln!(w, "    ldr x{}, [{address}, #{}]", first + word, word * 8)?;
-                        }
-                        ra.free_scratch(address);
                     }
 
                     let stack_words: usize = places
                         .iter()
                         .map(|place| match place {
                             ArgPlace::Stack { words, .. } => *words,
-                            ArgPlace::Gpr { .. } => 0,
+                            ArgPlace::Gpr { .. } | ArgPlace::Fpr { .. } => 0,
                         })
                         .sum();
                     let stack_space = (stack_words * 8 + 15) & !15;
 
                     if stack_space > 0 {
                         emit_sp_adjust(w, "sub", stack_space as u64)?;
-                        for ((argument, aggregate), place) in
-                            args.iter().zip(&aggregates).zip(&places)
-                        {
+                        for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
                             let ArgPlace::Stack { first, words } = *place else {
                                 continue;
                             };
                             let scratch = ra.alloc_scratch().unwrap_or("x9");
-                            if aggregate.is_none() {
+                            if kind.aggregate.is_none() {
                                 emit_materialize_operand(w, argument, scratch, frame, ra)?;
                                 writeln!(w, "    str {scratch}, [sp, #{}]", first * 8)?;
                             } else {
@@ -1292,7 +1404,17 @@ fn emit_block<W: Write>(
                         emit_sp_adjust(w, "add", stack_space as u64)?;
                     }
 
-                    if let Some(dst) = ret {
+                    if let Some(dst) = ret
+                        && let Some(ty) = signatures.float_result(name)
+                    {
+                        // The result arrives in v0 and the body wants its bits.
+                        if ty.size_bytes() == 4 {
+                            writeln!(w, "    fmov w0, s0")?;
+                        } else {
+                            writeln!(w, "    fmov x0, d0")?;
+                        }
+                        store_result(w, dst, "x0", frame, ra)?;
+                    } else if let Some(dst) = ret {
                         match signatures.result(name) {
                             // The result register names the slot the words land in; the
                             // body addresses it with a stack address of its own.
@@ -1316,19 +1438,30 @@ fn emit_block<W: Write>(
                 }
             }
             MirInst::TailCall { name, args } => {
-                let num_reg_args = args.len().min(8);
-                for (i, a) in args.iter().enumerate().take(num_reg_args) {
-                    emit_materialize_operand(w, a, &format!("x{i}"), frame, ra)?;
-                }
-                let num_stack_args = args.len().saturating_sub(8);
-                if num_stack_args > 0 {
-                    let scratch = ra.alloc_scratch().unwrap_or("x9");
-                    for (j, a) in args.iter().enumerate().skip(8) {
-                        let caller_offset = 16i32 + (j as i32 - 8) * 8;
-                        emit_materialize_operand(w, a, scratch, frame, ra)?;
-                        writeln!(w, "    str {scratch}, [x29, #{caller_offset}]")?;
+                let kinds = signatures.arguments(name, args.len());
+                let places = classify_aarch64_arguments(&kinds);
+                for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
+                    match *place {
+                        ArgPlace::Fpr { index } => {
+                            let bits = ra.alloc_scratch().unwrap_or("x9");
+                            emit_materialize_operand(w, argument, bits, frame, ra)?;
+                            if kind.ty_is_f32 {
+                                writeln!(w, "    fmov s{index}, {}", w_alias(bits))?;
+                            } else {
+                                writeln!(w, "    fmov d{index}, {bits}")?;
+                            }
+                            ra.free_scratch(bits);
+                        }
+                        ArgPlace::Gpr { first, .. } => {
+                            emit_materialize_operand(w, argument, &format!("x{first}"), frame, ra)?;
+                        }
+                        ArgPlace::Stack { first, .. } => {
+                            let scratch = ra.alloc_scratch().unwrap_or("x9");
+                            emit_materialize_operand(w, argument, scratch, frame, ra)?;
+                            writeln!(w, "    str {scratch}, [x29, #{}]", 16 + first * 8)?;
+                            ra.free_scratch(scratch);
+                        }
                     }
-                    ra.free_scratch(scratch);
                 }
                 let target_sym: String = abi
                     .call_stub(name)
@@ -1340,6 +1473,21 @@ fn emit_block<W: Write>(
                 writeln!(w, "    b {target_sym}")?;
             }
             MirInst::Ret { value } => {
+                if let Some(v) = value
+                    && ret_aggregate.is_none()
+                    && let Some(ty) = ret_float
+                {
+                    let bits = ra.alloc_scratch().unwrap_or("x9");
+                    emit_materialize_operand(w, v, bits, frame, ra)?;
+                    if ty.size_bytes() == 4 {
+                        writeln!(w, "    fmov s0, {}", w_alias(bits))?;
+                    } else {
+                        writeln!(w, "    fmov d0, {bits}")?;
+                    }
+                    ra.free_scratch(bits);
+                    writeln!(w, "    b {epilogue_label}")?;
+                    continue;
+                }
                 if let Some(v) = value {
                     match ret_aggregate {
                         // The returned operand addresses the aggregate; the words
@@ -2383,6 +2531,44 @@ mod tests {
         assert!(!wide.contains("str x7, "), "{assembly}");
         assert!(wide.contains("ldr x11, [x29, #16]"), "{assembly}");
         assert!(wide.contains("ldr x11, [x29, #24]"), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn floats_cross_the_boundary_in_v_registers() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @add(f64 %a, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  ret.f64 %s\n}\nfn @addf(f32 %a, i64 %n) -> f32 {\nentry:\n  %s = add.f32 %a, 1.0\n  ret.f32 %s\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(1.5, 2.5)\n  %i = fptosi.f64.i64 %r\n  ret.i64 %i\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "floats").expect("lower floats");
+        let mut output = Vec::new();
+        generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+
+        // Both arguments arrive in the float bank, and the result leaves in d0.
+        let callee = assembly.split("\nadd:\n").nth(1).ok_or("missing add")?;
+        let prologue = callee
+            .split(".L_add.entry:")
+            .next()
+            .ok_or("missing entry")?;
+        assert!(prologue.contains("fmov x"), "{assembly}");
+        assert!(prologue.contains(", d0\n"), "{assembly}");
+        assert!(prologue.contains(", d1\n"), "{assembly}");
+        assert!(callee.contains("    fmov d0, x"), "{assembly}");
+
+        // A float and an integer draw from separate banks, so the integer still takes x0.
+        let mixed = assembly.split("\naddf:\n").nth(1).ok_or("missing addf")?;
+        let mixed_prologue = mixed
+            .split(".L_addf.entry:")
+            .next()
+            .ok_or("missing entry")?;
+        assert!(mixed_prologue.contains(", s0\n"), "{assembly}");
+        assert!(mixed_prologue.contains("    str x0, "), "{assembly}");
+
+        let caller = assembly.split("\nmain:\n").nth(1).ok_or("missing main")?;
+        let call = caller.split("bl add").next().ok_or("missing call")?;
+        assert!(call.contains("    fmov d0, x"), "{assembly}");
+        assert!(call.contains("    fmov d1, x"), "{assembly}");
+        assert!(caller.contains("    fmov x0, d0\n"), "{assembly}");
         Ok(())
     }
 
