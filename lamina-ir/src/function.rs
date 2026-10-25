@@ -679,6 +679,14 @@ impl<'a> Function<'a> {
                                 default, label, self.name
                             ));
                         }
+                        for (i, (value, _)) in cases.iter().enumerate() {
+                            if cases[..i].iter().any(|(earlier, _)| earlier == value) {
+                                errors.push(format!(
+                                    "switch in block '{}' of '@{}' repeats case value {}",
+                                    label, self.name, value
+                                ));
+                            }
+                        }
                         for (_, case_label) in cases {
                             if !self.basic_blocks.contains_key(case_label) {
                                 errors.push(format!(
@@ -1336,5 +1344,33 @@ mod tests {
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
         let errs = f.validate().unwrap_err();
         assert!(errs.iter().any(|e| e.contains("'ghost'")));
+    }
+
+    #[test]
+    fn test_validate_duplicate_switch_case_fails() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Switch {
+                    ty: PrimitiveType::I32,
+                    value: Value::Constant(Literal::I32(1)),
+                    default: "done",
+                    cases: vec![(Literal::I32(1), "done"), (Literal::I32(1), "done")],
+                }],
+            },
+        );
+        blocks.insert(
+            "done",
+            BasicBlock {
+                instructions: vec![Instruction::Ret {
+                    ty: Type::Void,
+                    value: None,
+                }],
+            },
+        );
+        let f = simple_func(vec![], Type::Void, blocks, "entry");
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("repeats case value")));
     }
 }
