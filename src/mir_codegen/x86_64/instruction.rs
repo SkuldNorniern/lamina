@@ -298,15 +298,27 @@ pub(super) fn emit_instruction_x86_64(
                     "x86_64 backend does not support vector Copy of type {ty}"
                 )));
             }
-            load_copy_operand_to_rax(ty, src, writer, reg_alloc, stack_slots)?;
-            match dst {
-                Register::Virtual(vreg) => {
-                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+            let src_phys = match src {
+                Operand::Register(Register::Virtual(v)) => reg_alloc.get_mapping_for(v),
+                Operand::Register(Register::Physical(p)) => Some(p.name),
+                Operand::Immediate(_) => None,
+            };
+            let dst_phys = match dst {
+                Register::Virtual(v) => reg_alloc.get_mapping_for(v),
+                Register::Physical(p) => Some(p.name),
+            };
+            let in_place = ty.size_bytes() == 8 && src_phys.is_some() && src_phys == dst_phys;
+            if !in_place {
+                load_copy_operand_to_rax(ty, src, writer, reg_alloc, stack_slots)?;
+                match dst {
+                    Register::Virtual(vreg) => {
+                        store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                    }
+                    Register::Physical(phys) if phys.name != "rax" => {
+                        writeln!(writer, "    movq %rax, %{}", phys.name)?;
+                    }
+                    Register::Physical(_) => {}
                 }
-                Register::Physical(phys) if phys.name != "rax" => {
-                    writeln!(writer, "    movq %rax, %{}", phys.name)?;
-                }
-                Register::Physical(_) => {}
             }
         }
         MirInst::IntBinary {
