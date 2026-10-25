@@ -213,7 +213,7 @@ fn compile_single_function_riscv(
         plan = coalesce_dying_inputs(func, &intervals, &plan, |_, _| true);
         live_across_calls = live_vregs_across_calls(func, &intervals);
         reg_alloc = RiscVRegAlloc::from_global_plan(target_os, target, &plan, &stack_slots);
-    } else if reserved.is_some() {
+    } else if !func.stack_reservations.is_empty() {
         (stack_slots, _, _) =
             assign_stack_slots(func, |i| RiscVFrame::calculate_stack_offset(i, slot_target));
     } else {
@@ -1408,6 +1408,66 @@ mod tests {
     use super::*;
     use crate::mir::FunctionBuilder;
     use std::error::Error;
+
+    /// Replays the `li`, `slli`, `addi` and `add` lines that build the `t0` and `a0`
+    /// values. Returns what the prologue does to `sp`, and the first address built from `fp`.
+    fn riscv_frame_arithmetic(asm: &str) -> (i64, i64) {
+        let (mut t0, mut a0, mut sp_delta, mut address) = (0i64, 0i64, 0i64, None);
+        let mut in_prologue = true;
+        for line in asm.lines().map(str::trim) {
+            if line.starts_with(".L_reserved.") {
+                in_prologue = false;
+            }
+            let (op, args) = line.split_once(' ').unwrap_or((line, ""));
+            let parts: Vec<&str> = args.split(", ").collect();
+            match (op, parts.as_slice()) {
+                ("li", [r, v]) => {
+                    *(if *r == "t0" { &mut t0 } else { &mut a0 }) = v.parse().unwrap_or(0)
+                }
+                ("slli", [r, _, k]) => {
+                    let v = if *r == "t0" { &mut t0 } else { &mut a0 };
+                    *v = v.wrapping_shl(k.parse().unwrap_or(0));
+                }
+                ("addi", ["sp", "sp", v]) if in_prologue => {
+                    sp_delta += v.parse::<i64>().unwrap_or(0)
+                }
+                ("addi", [r, _, v]) => {
+                    let v_ref = if *r == "t0" { &mut t0 } else { &mut a0 };
+                    *v_ref = v_ref.wrapping_add(v.parse().unwrap_or(0));
+                }
+                ("add", ["sp", "sp", "t0"]) if in_prologue => sp_delta += t0,
+                ("add", ["a0", "fp", "a0"]) => address = Some(a0),
+                _ => {}
+            }
+        }
+        (sp_delta, address.unwrap_or(i64::MIN))
+    }
+
+    #[test]
+    fn stack_reservation_is_reserved_in_the_prologue() -> Result<(), Box<dyn Error>> {
+        let slot = VirtualReg::gpr(1);
+        let mut function = FunctionBuilder::new("reserved")
+            .returns(MirType::ptr())
+            .block("entry")
+            .instr(MirInst::StackAddr {
+                dst: Register::Virtual(VirtualReg::gpr(0)),
+                slot,
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(0)))),
+            })
+            .build();
+        function.stack_reservations.insert(slot, 4999);
+        let mut module = MirModule::new("reserved");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_riscv(&module, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        let (sp_delta, address) = riscv_frame_arithmetic(&assembly);
+        assert_eq!(sp_delta, -(16 + 40000 + 16), "{assembly}");
+        assert_eq!(address, -(16 + 40000 + 8), "{assembly}");
+        Ok(())
+    }
 
     #[test]
     fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
