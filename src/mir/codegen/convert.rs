@@ -280,15 +280,16 @@ fn convert_function<'a>(
         other => {
             let resolved = resolve_type_names(other, &module.type_declarations)
                 .ok_or(FromIRError::UnsupportedType)?;
-            if is_aggregate(&resolved) {
-                return Err(FromIRError::UnsupportedAggregate(format!(
-                    "@{name} returns an aggregate; only aggregate parameters cross a boundary so far"
-                )));
+            if let Some(aggregate) = classify_aggregate(&resolved, &format!("return of @{name}"))? {
+                mir_sig = mir_sig
+                    .with_return(MirType::ptr())
+                    .with_return_aggregate(aggregate);
+            } else {
+                let ty = map_ir_type(other)?;
+                mir_sig = mir_sig
+                    .with_return(ty)
+                    .with_return_signedness(signedness_of(other));
             }
-            let ty = map_ir_type(other)?;
-            mir_sig = mir_sig
-                .with_return(ty)
-                .with_return_signedness(signedness_of(other));
         }
     }
 
@@ -422,6 +423,30 @@ fn convert_function<'a>(
                 var_to_reg.insert(result, fresh);
             }
             for mut mir_instr in mir_instrs {
+                let mut result_address = None;
+                if let Instruction::Call {
+                    name, ret: Some(_), ..
+                } = &mir_instr
+                    && let Some(callee) = module.functions.get(name.as_str())
+                    && let Some(resolved) =
+                        resolve_type_names(&callee.signature.return_type, &module.type_declarations)
+                    && let Some(aggregate) =
+                        classify_aggregate(&resolved, &format!("return of @{name}"))?
+                {
+                    let slot = vreg_alloc.allocate_gpr();
+                    let words = aggregate.words();
+                    if words > 1 {
+                        reservations.insert(slot, words - 1);
+                    }
+                    let Instruction::Call { ret, .. } = &mut mir_instr else {
+                        return Err(FromIRError::InvalidIR);
+                    };
+                    let address = ret
+                        .replace(Register::Virtual(slot))
+                        .ok_or(FromIRError::InvalidIR)?;
+                    register_types.insert(address.clone(), MirType::ptr());
+                    result_address = Some(Instruction::StackAddr { dst: address, slot });
+                }
                 if let Instruction::Call { name, args, .. } = &mut mir_instr
                     && let Some(callee) = module.functions.get(name.as_str())
                 {
@@ -468,6 +493,12 @@ fn convert_function<'a>(
                     defined_in_block.insert(dst.clone());
                 }
                 mir_block.push(mir_instr);
+                if let Some(address) = result_address {
+                    if let Some(dst) = address.def_reg() {
+                        defined_in_block.insert(dst.clone());
+                    }
+                    mir_block.push(address);
+                }
             }
         }
 
@@ -1980,14 +2011,46 @@ ret.ptr %variable
         assert!(error.to_string().contains("is 24 bytes"), "{error}");
 
         let returned = parse_module(
-            "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n%p = alloc.stack struct { a: i64, b: i64 }\nret.ptr %p\n}",
+            "fn @make() -> struct { a: f64, b: f64 } {\nentry:\n%p = alloc.stack struct { a: f64, b: f64 }\nret.ptr %p\n}",
         )
-        .expect("parse aggregate return");
-        let error = from_ir(&returned, "make").expect_err("aggregate return rejected");
+        .expect("parse float aggregate return");
+        let error = from_ir(&returned, "make").expect_err("float aggregate return rejected");
         assert!(
-            error.to_string().contains("@make returns an aggregate"),
+            error
+                .to_string()
+                .contains("return of @make has a float field"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn integer_aggregate_return_lands_in_slot_the_caller_addresses() {
+        let ir = parse_module(
+            "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n%p = alloc.stack struct { a: i64, b: i64 }\nret.ptr %p\n}\nfn @use() -> i64 {\nentry:\n%r = call @make()\n%ap = getfieldptr %r, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
+        )
+        .expect("parse aggregate return");
+        let mir = from_ir(&ir, "returns").expect("lower aggregate return");
+
+        let make = mir.get_function("make").expect("make function");
+        assert_eq!(make.sig.ret_ty, Some(MirType::ptr()));
+        let aggregate = make.sig.ret_aggregate.expect("return marker");
+        assert_eq!(aggregate.words(), 2);
+
+        let caller = mir.get_function("use").expect("use function");
+        let Instruction::Call {
+            ret: Some(slot), ..
+        } = &caller.blocks[0].instructions[0]
+        else {
+            panic!("expected call");
+        };
+        let Instruction::StackAddr {
+            slot: addressed, ..
+        } = &caller.blocks[0].instructions[1]
+        else {
+            panic!("expected stack address after call");
+        };
+        assert_eq!(&Register::Virtual(*addressed), slot);
+        assert_eq!(caller.stack_reservations[addressed], 1);
     }
 
     #[test]

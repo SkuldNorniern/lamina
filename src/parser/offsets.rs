@@ -17,14 +17,20 @@ use std::collections::HashMap;
 
 pub fn resolve_field_offsets(module: &mut Module<'_>) {
     let types = module.type_declarations.clone();
+    let returns: HashMap<Identifier<'_>, Type<'_>> = module
+        .functions
+        .iter()
+        .map(|(name, func)| (*name, func.signature.return_type.clone()))
+        .collect();
     for func in module.functions.values_mut() {
-        resolve_in_function(func, &types);
+        resolve_in_function(func, &types, &returns);
     }
 }
 
 fn resolve_in_function<'a>(
     func: &mut Function<'a>,
     types: &HashMap<Identifier<'a>, TypeDeclaration<'a>>,
+    returns: &HashMap<Identifier<'a>, Type<'a>>,
 ) {
     let mut pointee: HashMap<Identifier<'a>, Type<'a>> = HashMap::new();
 
@@ -64,6 +70,20 @@ fn resolve_in_function<'a>(
                         _ => None,
                     });
                     pointee.insert(*result, elem.unwrap_or_else(|| element_type.clone()));
+                }
+                Instruction::Call {
+                    result: Some(result),
+                    func_name,
+                    ..
+                } => {
+                    // An aggregate result reaches the caller as a pointer to its copy.
+                    if let Some(ty) = returns
+                        .get(func_name)
+                        .and_then(|ty| resolve_type_names(ty, types))
+                        && struct_fields(&ty).is_some()
+                    {
+                        pointee.insert(*result, ty);
+                    }
                 }
                 Instruction::WritePtr {
                     ptr, pointee_size, ..
