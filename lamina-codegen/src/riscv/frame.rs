@@ -178,7 +178,7 @@ impl RiscVFrame {
             return writeln!(writer, "    li {reg}, {value}");
         }
         let low = ((value & 0xfff) ^ 0x800) - 0x800;
-        Self::load_imm(writer, reg, (value - low) >> 12)?;
+        Self::load_imm(writer, reg, value.wrapping_sub(low) >> 12)?;
         writeln!(writer, "    slli {reg}, {reg}, 12")?;
         if low != 0 {
             writeln!(writer, "    addi {reg}, {reg}, {low}")?;
