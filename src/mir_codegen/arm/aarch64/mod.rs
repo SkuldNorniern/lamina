@@ -149,6 +149,7 @@ fn compile_single_function_aarch64(
         frame.frame_size
     };
 
+    frame.frame_size = adjusted_frame_size;
     if adjusted_frame_size > 0 {
         writeln!(output, "    sub sp, sp, #{adjusted_frame_size}")
             .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
@@ -1822,6 +1823,55 @@ mod tests {
                 assert!(!main.contains(reg), "{regalloc:?} uses {reg}: {assembly}");
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn tail_call_releases_the_frame_the_prologue_reserved() -> Result<(), Box<dyn Error>> {
+        use crate::mir::{Block, Parameter};
+        let x = Register::Virtual(VirtualReg::gpr(0));
+        let mut func = Function::new(
+            Signature::new("f")
+                .with_params(vec![Parameter::new(x.clone(), MirType::i64())])
+                .with_return(MirType::i64()),
+        );
+        let mut block = Block::new("entry");
+        let mut prev = Operand::Register(x);
+        for id in 1..=101 {
+            let dst = Register::Virtual(VirtualReg::gpr(id));
+            block.push(MirInst::IntBinary {
+                op: IntBinOp::Add,
+                ty: MirType::i64(),
+                dst: dst.clone(),
+                lhs: prev,
+                rhs: Operand::Immediate(Immediate::I64(1)),
+            });
+            prev = Operand::Register(dst);
+        }
+        block.push(MirInst::TailCall {
+            name: "g".into(),
+            args: vec![prev],
+        });
+        func.add_block(block);
+        let asm = String::from_utf8(
+            compile_single_function_aarch64(
+                "f",
+                &func,
+                TargetOperatingSystem::Linux,
+                &MirCodegenSettings::default(),
+            )
+            .map_err(|error| error.to_string())?,
+        )?;
+        let reserved = asm
+            .lines()
+            .find_map(|line| line.strip_prefix("    sub sp, sp, #"))
+            .ok_or("missing frame reservation")?;
+        assert!(
+            asm.contains(&format!(
+                "    add sp, sp, #{reserved}\n    ldp x29, x30, [sp], #16\n    b g\n"
+            )),
+            "{asm}"
+        );
         Ok(())
     }
 }
