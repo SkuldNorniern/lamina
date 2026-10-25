@@ -1521,6 +1521,12 @@ pub(super) fn emit_int_compare(
             Operand::Register(Register::Virtual(vreg)) => reg_alloc.get_mapping_for(vreg),
             _ => None,
         };
+        if let Some(left) = physical(lhs) {
+            if let Some(v) = cmp_immediate(rhs, ty, unsigned) {
+                writeln!(writer, "    cmpq ${v}, %{left}")?;
+                return Ok("");
+            }
+        }
         if let (Some(left), Some(right)) = (physical(lhs), physical(rhs)) {
             writeln!(writer, "    cmpq %{right}, %{left}")?;
             return Ok("");
