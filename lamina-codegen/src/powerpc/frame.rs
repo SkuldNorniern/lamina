@@ -11,7 +11,8 @@
 use std::io::{self, Write};
 
 /// Minimum linkage area size (back-chain + cr save + LR save + padding).
-const LINKAGE_SIZE: usize = 32;
+/// Back chain, CR, LR and TOC, below the parameter save area.
+pub const LINKAGE_SIZE: usize = 32;
 
 /// Range of the signed 16-bit displacement of D-form loads, stores and `addi`.
 const IMM16_MIN: i64 = -32768;

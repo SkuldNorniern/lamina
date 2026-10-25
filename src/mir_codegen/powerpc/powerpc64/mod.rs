@@ -54,7 +54,7 @@ use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
     powerpc::{
         Ppc64Abi, Ppc64Frame, Ppc64RegAlloc,
-        frame::{load_imm, r1_address, r1_mem},
+        frame::{LINKAGE_SIZE, load_imm, r1_address, r1_mem},
     },
 };
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
@@ -320,9 +320,9 @@ fn compile_single_function_ppc64(
                 r1_mem(&mut output, "std", src, *offset)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
             } else {
-                let disp = Ppc64Frame::aligned_frame_size(local_bytes)
-                    + (index - Ppc64Abi::ARG_REGISTERS.len()) * 8;
-                r1_mem(&mut output, "ld", "0", disp as i32)
+                let disp = Ppc64Frame::aligned_frame_size(local_bytes) as i32
+                    + parameter_save_offset(index);
+                r1_mem(&mut output, "ld", "0", disp)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 extend_param(&mut output, "0", &param.ty)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
@@ -998,19 +998,17 @@ fn emit_instruction_ppc64<W: Write>(
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[i])?;
                 }
 
-                let stack_space = ((num_stack_args * 8) + 15) & !15;
-                if stack_space > 32767 {
-                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                        format!(
-                            "PowerPC64 call to {name} passes {stack_space} bytes of stack arguments, past the 16-bit displacement range"
-                        ),
-                    )));
-                }
-                if stack_space > 0 {
-                    writeln!(writer, "    addi 1, 1, -{stack_space}")?;
-                    for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
-                        load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
-                        r1_mem(writer, "std", "11", (i * 8) as i32)?;
+                let outgoing = outgoing_frame_size(args.len())?;
+                if let Some(frame) = outgoing {
+                    // The parameter save area starts above the linkage area and holds a
+                    // slot for every parameter, register ones included. `stdu` moves r1
+                    // and writes the back chain in one step, which the slot offsets then
+                    // have to account for.
+                    writeln!(writer, "    stdu 1, -{frame}(1)")?;
+                    let moved = biased_slots(stack_slots, frame as i32);
+                    for (index, arg) in args.iter().enumerate().skip(num_reg_args) {
+                        load_operand_to_register(arg, writer, reg_alloc, &moved, "11")?;
+                        r1_mem(writer, "std", "11", parameter_save_offset(index))?;
                     }
                 }
 
@@ -1020,8 +1018,8 @@ fn emit_instruction_ppc64<W: Write>(
                 writeln!(writer, "    bl {target_sym}")?;
                 writeln!(writer, "    nop")?;
 
-                if stack_space > 0 {
-                    writeln!(writer, "    addi 1, 1, {stack_space}")?;
+                if let Some(frame) = outgoing {
+                    writeln!(writer, "    addi 1, 1, {frame}")?;
                 }
             }
 
@@ -1044,21 +1042,32 @@ fn emit_instruction_ppc64<W: Write>(
             for (i, arg) in args.iter().take(num_reg_args).enumerate() {
                 load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[i])?;
             }
-            let frame_size = Ppc64Frame::aligned_frame_size(local_bytes);
-            if num_stack_args > 0 {
-                for (j, arg) in args.iter().skip(num_reg_args).enumerate() {
-                    let disp = frame_size as i32 + (j as i32) * 8;
-                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
-                    r1_mem(writer, "std", "11", disp)?;
-                }
-            }
-            Ppc64Frame::generate_tail_epilogue(writer, local_bytes).map_err(|e| {
-                LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
-            })?;
             let target_sym = abi
                 .call_stub(name)
                 .unwrap_or_else(|| abi.mangle_function_name(name));
-            writeln!(writer, "    b {target_sym}")?;
+            if num_stack_args == 0 {
+                Ppc64Frame::generate_tail_epilogue(writer, local_bytes).map_err(|e| {
+                    LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
+                })?;
+                writeln!(writer, "    b {target_sym}")?;
+            } else {
+                // Stack arguments belong in this frame's own save area, which the
+                // caller's frame has no room for, so the tail call becomes a call and
+                // a return.
+                let frame = outgoing_frame_size(args.len())?.unwrap_or(0);
+                writeln!(writer, "    stdu 1, -{frame}(1)")?;
+                let moved = biased_slots(stack_slots, frame as i32);
+                for (index, arg) in args.iter().enumerate().skip(num_reg_args) {
+                    load_operand_to_register(arg, writer, reg_alloc, &moved, "11")?;
+                    r1_mem(writer, "std", "11", parameter_save_offset(index))?;
+                }
+                writeln!(writer, "    bl {target_sym}")?;
+                writeln!(writer, "    nop")?;
+                writeln!(writer, "    addi 1, 1, {frame}")?;
+                Ppc64Frame::generate_epilogue(writer, local_bytes).map_err(|e| {
+                    LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
+                })?;
+            }
         }
         MirInst::Load {
             dst,
@@ -1310,6 +1319,38 @@ fn emit_load_fp_operand<W: Write>(
 }
 
 /// Materialise a full 64-bit constant. `li` only carries a signed 16-bit field.
+/// Offset of a parameter's slot in the caller's save area. Every parameter has one,
+/// including those passed in registers, so the slots of the first eight are skipped
+/// rather than reused.
+fn parameter_save_offset(index: usize) -> i32 {
+    (LINKAGE_SIZE + index * 8) as i32
+}
+
+/// Frame a call needs for its stack arguments, or `None` when every argument fits in
+/// a register.
+fn outgoing_frame_size(args: usize) -> Result<Option<usize>, LaminaError> {
+    if args <= Ppc64Abi::ARG_REGISTERS.len() {
+        return Ok(None);
+    }
+    let frame = (LINKAGE_SIZE + args * 8 + 15) & !15;
+    if frame > 32767 {
+        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!(
+                "PowerPC64 call needs a {frame} byte parameter save area, past the 16-bit displacement range"
+            ),
+        )));
+    }
+    Ok(Some(frame))
+}
+
+/// Frame slot offsets seen from an r1 that has moved down by `frame`.
+fn biased_slots(slots: &HashMap<VirtualReg, i32>, frame: i32) -> HashMap<VirtualReg, i32> {
+    slots
+        .iter()
+        .map(|(vreg, offset)| (*vreg, offset + frame))
+        .collect()
+}
+
 fn emit_load_imm64<W: Write>(writer: &mut W, reg: u8, value: i64) -> Result<(), LaminaError> {
     if (-0x8000..0x8000).contains(&value) {
         writeln!(writer, "    li {reg}, {value}")?;
@@ -1684,6 +1725,43 @@ mod tests {
                 "{assembly}"
             );
         }
+    }
+
+    #[test]
+    fn stack_arguments_sit_in_the_parameter_save_area() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @ten(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h, i64 %i, i64 %j) -> i64 {\nentry:\n  %s = add.i64 %i, %j\n  ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n  %r = call @ten(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)\n  ret.i64 %r\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "stack_args").expect("lower stack arguments");
+        let mut output = Vec::new();
+        generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+
+        // The ninth and tenth parameters sit at 32 + index * 8 of the caller's frame,
+        // which `stdu` claims while writing the back chain.
+        let caller = assembly.split("\nmain:\n").nth(1).ok_or("missing main")?;
+        assert!(caller.contains("    stdu 1, -112(1)\n"), "{assembly}");
+        assert!(caller.contains("    std 11, 96(1)\n"), "{assembly}");
+        assert!(caller.contains("    std 11, 104(1)\n"), "{assembly}");
+        assert!(caller.contains("    addi 1, 1, 112\n"), "{assembly}");
+
+        let callee = assembly.split("\nten:\n").nth(1).ok_or("missing ten")?;
+        let frame = callee
+            .lines()
+            .find_map(|line| {
+                let rest = line.trim().strip_prefix("stdu 1, -")?;
+                rest.strip_suffix("(1)")?.parse::<i32>().ok()
+            })
+            .ok_or("missing frame")?;
+        assert!(
+            callee.contains(&format!("    ld 0, {}(1)\n", frame + 96)),
+            "{assembly}"
+        );
+        assert!(
+            callee.contains(&format!("    ld 0, {}(1)\n", frame + 104)),
+            "{assembly}"
+        );
+        Ok(())
     }
 
     #[test]
