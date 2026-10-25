@@ -903,11 +903,20 @@ fn emit_block<W: Write>(
                 store_result(w, dst, t, frame, ra)?;
                 ra.free_scratch(t);
             }
-            MirInst::IntToFloat { .. } | MirInst::FloatToInt { .. } => {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "AArch64 backend does not support integer/float conversions yet".to_string(),
-                )));
-            }
+            MirInst::IntToFloat {
+                from,
+                to,
+                signed,
+                dst,
+                src,
+            } => emit_int_to_float(w, from, to, *signed, dst, src, frame, ra)?,
+            MirInst::FloatToInt {
+                from,
+                to,
+                signed,
+                dst,
+                src,
+            } => emit_float_to_int(w, from, to, *signed, dst, src, frame, ra)?,
             MirInst::Call { name, args, ret } => {
                 if name == "print" && args.len() == 1 {
                     // Special-case intrinsic: print(integer) via printf("%lld\n", value)
@@ -1662,6 +1671,90 @@ fn emit_narrow_param_extension(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn emit_int_to_float<W: Write>(
+    w: &mut W,
+    from: &MirType,
+    to: &MirType,
+    signed: bool,
+    dst: &Register,
+    src: &Operand,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(), LaminaError> {
+    let s_s = ra.alloc_scratch().unwrap_or("x19");
+    let s_d = ra.alloc_scratch().unwrap_or("x20");
+    emit_materialize_operand(w, src, s_s, frame, ra)?;
+    extend_integer(w, s_s, from, signed)?;
+    let cvt = if signed { "scvtf" } else { "ucvtf" };
+    if to.size_bytes() == 4 {
+        writeln!(w, "    {cvt} s0, {s_s}")?;
+        writeln!(w, "    fmov {}, s0", w_alias(s_d))?;
+    } else {
+        writeln!(w, "    {cvt} d0, {s_s}")?;
+        writeln!(w, "    fmov {s_d}, d0")?;
+    }
+    store_result(w, dst, &x_alias(s_d), frame, ra)?;
+    ra.free_scratch(s_s);
+    ra.free_scratch(s_d);
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_float_to_int<W: Write>(
+    w: &mut W,
+    from: &MirType,
+    to: &MirType,
+    signed: bool,
+    dst: &Register,
+    src: &Operand,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(), LaminaError> {
+    let s_s = ra.alloc_scratch().unwrap_or("x19");
+    let s_d = ra.alloc_scratch().unwrap_or("x20");
+    let s_t = ra.alloc_scratch().unwrap_or("x21");
+    emit_materialize_operand(w, src, s_s, frame, ra)?;
+    if from.size_bytes() == 4 {
+        writeln!(w, "    fmov s0, {}", w_alias(s_s))?;
+    } else {
+        writeln!(w, "    fmov d0, {s_s}")?;
+    }
+    let bits = to.size_bytes() * 8;
+    let d32 = w_alias(s_d);
+    let t32 = w_alias(s_t);
+    if bits == 64 {
+        let cvt = if signed { "fcvtzs" } else { "fcvtzu" };
+        let from_suffix = if from.size_bytes() == 4 { "s0" } else { "d0" };
+        writeln!(w, "    {cvt} {s_d}, {from_suffix}")?;
+    } else {
+        let cvt = if signed { "fcvtzs" } else { "fcvtzu" };
+        let from_suffix = if from.size_bytes() == 4 { "s0" } else { "d0" };
+        writeln!(w, "    {cvt} {d32}, {from_suffix}")?;
+        if bits < 32 {
+            let (min, max) = if signed {
+                (-(1i64 << (bits - 1)), (1i64 << (bits - 1)) - 1)
+            } else {
+                (0, (1i64 << bits) - 1)
+            };
+            writeln!(w, "    mov {t32}, #{max}")?;
+            writeln!(w, "    cmp {d32}, {t32}")?;
+            writeln!(w, "    csel {d32}, {d32}, {t32}, {}", if signed { "le" } else { "ls" })?;
+            if signed {
+                writeln!(w, "    mov {t32}, #{min}")?;
+                writeln!(w, "    cmp {d32}, {t32}")?;
+                writeln!(w, "    csel {d32}, {d32}, {t32}, ge")?;
+            }
+        }
+    }
+    extend_integer(w, s_d, to, signed)?;
+    store_result(w, dst, s_d, frame, ra)?;
+    ra.free_scratch(s_s);
+    ra.free_scratch(s_d);
+    ra.free_scratch(s_t);
+    Ok(())
+}
+
 fn extend_integer(
     w: &mut impl Write,
     register: &str,
@@ -1958,6 +2051,24 @@ mod tests {
         let assembly = String::from_utf8(output)?;
         assert!(!assembly.contains("mov x9, #100000"), "{assembly}");
         assert!(assembly.contains("movz x9, #34464, lsl #0"), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn integer_float_conversions_select_width_and_saturation_forms() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @main() -> i64 {\nentry:\n  %a = sitofp.i8.f32 -3\n  %b = fptosi.f64.i8 2.5\n  %c = fptoui.f64.u64 1.0\n  %d = uitofp.u64.f64 7\n  ret.i64 0\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "conversions").expect("lower conversion module");
+        let mut output = Vec::new();
+        generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(assembly.contains("sbfx x"), "{assembly}");
+        assert!(assembly.contains("scvtf s0, x"), "{assembly}");
+        assert!(assembly.contains("fcvtzs w"), "{assembly}");
+        assert!(assembly.contains("csel w"), "{assembly}");
+        assert!(assembly.contains("fcvtzu x"), "{assembly}");
+        assert!(assembly.contains("ucvtf d0, x"), "{assembly}");
         Ok(())
     }
 
