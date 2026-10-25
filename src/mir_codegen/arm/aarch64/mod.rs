@@ -1175,7 +1175,7 @@ fn emit_block<W: Write>(
                 let t = ra.alloc_scratch().unwrap_or("x19");
                 load_reg_to(w, value, t, frame, ra)?;
                 for (case_val, case_label) in cases {
-                    writeln!(w, "    mov x9, #{case_val}")?;
+                    emit_mov_imm64(w, "x9", *case_val as u64)?;
                     writeln!(w, "    cmp {}, x9", x_alias(t))?;
                     emit_branch_if(w, "eq", &format!("{block_prefix}{case_label}"), long_branches)?;
                 }
@@ -1944,6 +1944,20 @@ mod tests {
             String::from_utf8(long)?,
             "    b.ge 9f\n    b .L_f.far\n9:\n"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn switch_case_constants_are_materialized_without_immediate_range_limits() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @main() -> i64 {\nentry:\n  %x = add.i64 100000, 0\n  switch.i64 %x, default, [100000, hit], [-5, neg]\nhit:\n  ret.i64 1\nneg:\n  ret.i64 2\ndefault:\n  ret.i64 3\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "switch_range").expect("lower switch module");
+        let mut output = Vec::new();
+        generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(!assembly.contains("mov x9, #100000"), "{assembly}");
+        assert!(assembly.contains("movz x9, #34464, lsl #0"), "{assembly}");
         Ok(())
     }
 
