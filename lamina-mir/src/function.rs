@@ -72,6 +72,10 @@ pub struct Signature {
     /// Signedness of an integer return value
     pub ret_signedness: Signedness,
 
+    /// Set when the function returns an aggregate by value. `ret_ty` is then the pointer
+    /// to it, and a call's result register names the caller's slot for the copy.
+    pub ret_aggregate: Option<Aggregate>,
+
     pub kernel: Option<KernelMetadata>,
 
     /// Set by `@noinline`; the inliner must leave calls to this function alone.
@@ -85,6 +89,7 @@ impl Signature {
             params: Vec::new(),
             ret_ty: None,
             ret_signedness: Signedness::Signed,
+            ret_aggregate: None,
             kernel: None,
             no_inline: false,
         }
@@ -107,6 +112,11 @@ impl Signature {
 
     pub fn with_return_signedness(mut self, signedness: Signedness) -> Self {
         self.ret_signedness = signedness;
+        self
+    }
+
+    pub fn with_return_aggregate(mut self, aggregate: Aggregate) -> Self {
+        self.ret_aggregate = Some(aggregate);
         self
     }
 
