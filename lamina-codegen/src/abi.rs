@@ -88,6 +88,7 @@
 //! - `riscv::abi` - RISC-V calling convention
 //! - `wasm::abi` - WebAssembly stack-based calling
 
+use crate::target_support::os_uses_macho;
 use lamina_platform::TargetOperatingSystem;
 use std::{collections::HashMap, env};
 
@@ -200,7 +201,7 @@ pub fn mangle_macos_name(name: &str) -> String {
 /// Returns "_printf" on macOS, "printf" on other platforms.
 pub fn get_printf_symbol(target_os: TargetOperatingSystem) -> &'static str {
     match target_os {
-        TargetOperatingSystem::MacOS => "_printf",
+        os if os_uses_macho(os) => "_printf",
         _ => "printf",
     }
 }
@@ -210,7 +211,7 @@ pub fn get_printf_symbol(target_os: TargetOperatingSystem) -> &'static str {
 /// Returns "_malloc" on macOS, "malloc" on other platforms.
 pub fn get_malloc_symbol(target_os: TargetOperatingSystem) -> &'static str {
     match target_os {
-        TargetOperatingSystem::MacOS => "_malloc",
+        os if os_uses_macho(os) => "_malloc",
         _ => "malloc",
     }
 }
@@ -220,7 +221,7 @@ pub fn get_malloc_symbol(target_os: TargetOperatingSystem) -> &'static str {
 /// Returns "_free" on macOS, "free" on other platforms.
 pub fn get_free_symbol(target_os: TargetOperatingSystem) -> &'static str {
     match target_os {
-        TargetOperatingSystem::MacOS => "_free",
+        os if os_uses_macho(os) => "_free",
         _ => "free",
     }
 }
@@ -248,6 +249,8 @@ mod tests {
     #[test]
     fn test_get_printf_symbol() {
         assert_eq!(get_printf_symbol(TargetOperatingSystem::MacOS), "_printf");
+        assert_eq!(get_printf_symbol(TargetOperatingSystem::IOS), "_printf");
+        assert_eq!(get_printf_symbol(TargetOperatingSystem::VisionOS), "_printf");
         assert_eq!(get_printf_symbol(TargetOperatingSystem::Linux), "printf");
         assert_eq!(get_printf_symbol(TargetOperatingSystem::Windows), "printf");
     }
@@ -255,6 +258,7 @@ mod tests {
     #[test]
     fn test_get_malloc_symbol() {
         assert_eq!(get_malloc_symbol(TargetOperatingSystem::MacOS), "_malloc");
+        assert_eq!(get_malloc_symbol(TargetOperatingSystem::IOS), "_malloc");
         assert_eq!(get_malloc_symbol(TargetOperatingSystem::Linux), "malloc");
         assert_eq!(get_malloc_symbol(TargetOperatingSystem::Windows), "malloc");
     }
@@ -262,6 +266,7 @@ mod tests {
     #[test]
     fn test_get_free_symbol() {
         assert_eq!(get_free_symbol(TargetOperatingSystem::MacOS), "_free");
+        assert_eq!(get_free_symbol(TargetOperatingSystem::TvOS), "_free");
         assert_eq!(get_free_symbol(TargetOperatingSystem::Linux), "free");
         assert_eq!(get_free_symbol(TargetOperatingSystem::Windows), "free");
     }

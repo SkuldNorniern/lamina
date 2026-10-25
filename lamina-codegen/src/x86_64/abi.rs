@@ -1,6 +1,7 @@
 //! x86_64 ABI utilities for different platforms.
 
 use crate::abi::{Abi, common_call_stub, mangle_macos_name};
+use crate::target_support::os_uses_macho;
 use lamina_platform::TargetOperatingSystem;
 
 /// Platform-specific ABI utilities for x86_64 code generation.
@@ -17,7 +18,7 @@ impl X86ABI {
     /// Returns the mangled function name with platform-specific prefix.
     pub fn mangle_function_name(&self, name: &str) -> String {
         match self.target_os {
-            TargetOperatingSystem::MacOS => mangle_macos_name(name),
+            os if os_uses_macho(os) => mangle_macos_name(name),
             TargetOperatingSystem::Windows => {
                 if name == "main" {
                     "main".to_string()
@@ -95,6 +96,10 @@ mod tests {
         let abi_macos = X86ABI::new(TargetOperatingSystem::MacOS);
         assert_eq!(abi_macos.mangle_function_name("main"), "_main");
         assert_eq!(abi_macos.mangle_function_name("foo"), "_foo");
+
+        let abi_ios = X86ABI::new(TargetOperatingSystem::IOS);
+        assert_eq!(abi_ios.mangle_function_name("main"), "_main");
+        assert_eq!(abi_ios.mangle_function_name("foo"), "_foo");
 
         let abi_windows = X86ABI::new(TargetOperatingSystem::Windows);
         assert_eq!(abi_windows.mangle_function_name("main"), "main");
