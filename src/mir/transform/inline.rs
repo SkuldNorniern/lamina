@@ -71,6 +71,11 @@ impl ModuleInlining {
                             && !function.sig.no_inline
                             && function.instruction_count() <= 30
                             && function.sig.params.len() == args.len()
+                            && function
+                                .sig
+                                .params
+                                .iter()
+                                .all(|param| param.aggregate.is_none())
                             && !Self::is_recursive(callee, callee, module, &mut HashSet::new())
                             && function
                                 .blocks

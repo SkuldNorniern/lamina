@@ -32,9 +32,10 @@ use util::*;
 use crate::{
     error::LaminaError,
     mir::{
-        AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
-        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
-        Signedness, VirtualReg, instruction::Immediate, register::RegisterClass,
+        AddressMode, Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
+        Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
+        Parameter, Register, ScalarType, Signature, Signedness, VirtualReg, instruction::Immediate,
+        register::RegisterClass,
     },
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,

@@ -67,6 +67,21 @@ fn load_register_arguments<W: Write, RA: LocalRegisterAllocator<PhysReg = &'stat
     Ok(())
 }
 
+/// Loads one eight-byte word of an aggregate into rax. The argument operand holds the
+/// address of the caller's copy.
+fn load_aggregate_word<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str>>(
+    arg: &Operand,
+    word: usize,
+    writer: &mut RaxTrackingWriter<W>,
+    reg_alloc: &RA,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
+    writeln!(writer, "    movq {}(%rax), %rax", word * 8)?;
+    writer.rax_value = None;
+    Ok(())
+}
+
 fn fixed_bits(value: f64, is_f32: bool) -> i64 {
     if is_f32 {
         i64::from((value as f32).to_bits())
@@ -859,13 +874,22 @@ pub(super) fn emit_instruction_x86_64(
             } else {
                 let abi = X86ABI::new(target_os);
                 let arg_regs = abi.arg_registers();
-                let types = abi_extensions.argument_types(name, args.len());
-                let locations = classify_arguments(&types, target_os);
-                let stack_args: Vec<usize> = locations
+                let descs = abi_extensions.argument_descs(name, args.len());
+                check_aggregate_arguments(&descs, target_os)
+                    .map_err(|e| LaminaError::ValidationError(e.to_string()))?;
+                let types: Vec<MirType> = descs.iter().map(|desc| desc.ty).collect();
+                let locations = classify_argument_descs(&descs, target_os);
+                // One entry per eight-byte slot, lowest slot first: an aggregate on the
+                // stack occupies as many as it has words.
+                let stack_args: Vec<(usize, usize)> = locations
                     .iter()
                     .enumerate()
-                    .filter_map(|(index, location)| {
-                        matches!(location, ArgLocation::Stack(_)).then_some(index)
+                    .flat_map(|(index, location)| match location {
+                        ArgLocation::Stack(_) => vec![(index, 0)],
+                        ArgLocation::StackWords { words, .. } => {
+                            (0..*words).map(|word| (index, word)).collect()
+                        }
+                        _ => Vec::new(),
                     })
                     .collect();
                 let num_stack_args = stack_args.len();
@@ -884,10 +908,20 @@ pub(super) fn emit_instruction_x86_64(
                     if total_stack > 0 {
                         writeln!(writer, "    subq ${total_stack}, %rsp")?;
                     }
-                    for (slot, &index) in stack_args.iter().enumerate() {
+                    for (slot, &(index, word)) in stack_args.iter().enumerate() {
                         let stack_offset = shadow_space + (slot * stack::SLOT_SIZE);
-                        load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
-                        widen_external_argument(writer, abi_extensions, name, index, "rax")?;
+                        if descs[index].aggregate.is_some() {
+                            load_aggregate_word(
+                                &args[index],
+                                word,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                            )?;
+                        } else {
+                            load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
+                            widen_external_argument(writer, abi_extensions, name, index, "rax")?;
+                        }
                         writeln!(writer, "    movq %rax, {stack_offset}(%rsp)")?;
                     }
                 } else {
@@ -895,10 +929,36 @@ pub(super) fn emit_instruction_x86_64(
                     if num_stack_args % 2 == 1 {
                         writeln!(writer, "    subq $8, %rsp")?;
                     }
-                    for &index in stack_args.iter().rev() {
-                        load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
-                        widen_external_argument(writer, abi_extensions, name, index, "rax")?;
+                    for &(index, word) in stack_args.iter().rev() {
+                        if descs[index].aggregate.is_some() {
+                            load_aggregate_word(
+                                &args[index],
+                                word,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                            )?;
+                        } else {
+                            load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
+                            widen_external_argument(writer, abi_extensions, name, index, "rax")?;
+                        }
                         writeln!(writer, "    pushq %rax")?;
+                    }
+                }
+
+                // Aggregate words are staged on the stack so that loading the scalar
+                // arguments cannot clobber an argument register already filled.
+                let mut staged: Vec<&str> = Vec::new();
+                for (index, location) in locations.iter().enumerate() {
+                    let (first, words) = match location {
+                        ArgLocation::GprWords { first, words } => (*first, *words),
+                        ArgLocation::Gpr(gpr) if descs[index].aggregate.is_some() => (*gpr, 1),
+                        _ => continue,
+                    };
+                    for word in 0..words {
+                        load_aggregate_word(&args[index], word, writer, reg_alloc, stack_slots)?;
+                        writeln!(writer, "    pushq %rax")?;
+                        staged.push(arg_regs[first + word]);
                     }
                 }
 
@@ -911,8 +971,14 @@ pub(super) fn emit_instruction_x86_64(
                     reg_alloc,
                     stack_slots,
                 )?;
+
+                for register in staged.iter().rev() {
+                    writeln!(writer, "    popq %{register}")?;
+                }
                 for (index, location) in locations.iter().enumerate() {
-                    if let ArgLocation::Gpr(gpr) = location {
+                    if let ArgLocation::Gpr(gpr) = location
+                        && descs[index].aggregate.is_none()
+                    {
                         widen_external_argument(
                             writer,
                             abi_extensions,

@@ -1145,3 +1145,157 @@ int main(void) {
         Ok(())
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod aggregate_c_abi_tests {
+    use super::c_abi_harness::build_and_run;
+    use crate::mir_codegen::simd_support::tools_available;
+    use std::{env, error::Error, fs, process};
+
+    /// Two words, one packed word, a padded twelve bytes, and an aggregate pushed past
+    /// the last argument register.
+    const INCOMING: &str = r#"
+@export fn @take_pair(struct { a: i64, b: i64 } %p) -> i64 {
+entry:
+ %ap = getfieldptr %p, 0
+ %bp = getfieldptr %p, 1
+ %a = load.i64 %ap
+ %b = load.i64 %bp
+ %s = add.i64 %a, %b
+ ret.i64 %s
+}
+@export fn @take_small(struct { a: i32, b: i32 } %p) -> i64 {
+entry:
+ %ap = getfieldptr %p, 0
+ %bp = getfieldptr %p, 1
+ %a = load.i32 %ap
+ %b = load.i32 %bp
+ %s = add.i32 %a, %b
+ %w = sext.i32.i64 %s
+ ret.i64 %w
+}
+@export fn @take_three(struct { a: i32, b: i32, c: i32 } %p) -> i64 {
+entry:
+ %ap = getfieldptr %p, 0
+ %bp = getfieldptr %p, 1
+ %cp = getfieldptr %p, 2
+ %a = load.i32 %ap
+ %b = load.i32 %bp
+ %c = load.i32 %cp
+ %ab = add.i32 %a, %b
+ %s = add.i32 %ab, %c
+ %w = sext.i32.i64 %s
+ ret.i64 %w
+}
+@export fn @take_spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, struct { a: i64, b: i64 } %p) -> i64 {
+entry:
+ %ab = add.i64 %a, %b
+ %cd = add.i64 %c, %d
+ %ef = add.i64 %e, %f
+ %abcd = add.i64 %ab, %cd
+ %scalars = add.i64 %abcd, %ef
+ %ap = getfieldptr %p, 0
+ %bp = getfieldptr %p, 1
+ %x = load.i64 %ap
+ %y = load.i64 %bp
+ %xy = add.i64 %x, %y
+ %total = add.i64 %scalars, %xy
+ ret.i64 %total
+}
+"#;
+
+    const INCOMING_CALLER: &str = r#"
+#include <stdio.h>
+struct Pair { long a, b; };
+struct Small { int a, b; };
+struct Three { int a, b, c; };
+extern long take_pair(struct Pair);
+extern long take_small(struct Small);
+extern long take_three(struct Three);
+extern long take_spilled(long, long, long, long, long, long, struct Pair);
+int main(void) {
+    struct Pair pair = {17, 25};
+    struct Small small = {3, 4};
+    struct Three three = {1, 2, 3};
+    printf("%ld %ld %ld %ld\n", take_pair(pair), take_small(small), take_three(three),
+           take_spilled(1, 2, 3, 4, 5, 6, pair));
+    return 0;
+}
+"#;
+
+    const OUTGOING: &str = r#"
+@extern fn @c_pair(struct { a: i64, b: i64 } %p) -> i64 {
+entry:
+ ret.i64 0
+}
+@extern fn @c_spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, struct { a: i64, b: i64 } %p) -> i64 {
+entry:
+ ret.i64 0
+}
+@export fn @send_pair() -> i64 {
+entry:
+ %q = alloc.stack struct { a: i64, b: i64 }
+ %qa = getfieldptr %q, 0
+ %qb = getfieldptr %q, 1
+ store.i64 %qa, 100
+ store.i64 %qb, 7
+ %r = call @c_pair(%q)
+ ret.i64 %r
+}
+@export fn @send_spilled() -> i64 {
+entry:
+ %q = alloc.stack struct { a: i64, b: i64 }
+ %qa = getfieldptr %q, 0
+ %qb = getfieldptr %q, 1
+ store.i64 %qa, 100
+ store.i64 %qb, 7
+ %r = call @c_spilled(1, 2, 3, 4, 5, 6, %q)
+ ret.i64 %r
+}
+"#;
+
+    const OUTGOING_CALLEES: &str = r#"
+#include <stdio.h>
+struct Pair { long a, b; };
+long c_pair(struct Pair p) { return p.a + p.b; }
+long c_spilled(long a, long b, long c, long d, long e, long f, struct Pair p) {
+    return a + b + c + d + e + f + p.a * 1000 + p.b;
+}
+extern long send_pair(void);
+extern long send_spilled(void);
+int main(void) {
+    printf("%ld %ld\n", send_pair(), send_spilled());
+    return 0;
+}
+"#;
+
+    #[test]
+    fn integer_aggregates_cross_the_c_abi_in_both_directions() -> Result<(), Box<dyn Error>> {
+        if !tools_available(&["cc"]) {
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-aggregate-abi-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+
+        let incoming = build_and_run(
+            &directory,
+            "incoming",
+            INCOMING,
+            &["take_pair", "take_small", "take_three", "take_spilled"],
+            INCOMING_CALLER,
+        )?;
+        assert_eq!(incoming, "42 7 6 63\n");
+
+        let outgoing = build_and_run(
+            &directory,
+            "outgoing",
+            OUTGOING,
+            &["send_pair", "send_spilled"],
+            OUTGOING_CALLEES,
+        )?;
+        assert_eq!(outgoing, "107 100028\n");
+
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+}
