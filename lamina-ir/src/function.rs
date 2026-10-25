@@ -227,7 +227,7 @@ use std::{
 
 use crate::{
     instruction::Instruction,
-    types::{Identifier, Label, Type},
+    types::{Identifier, Label, PrimitiveType, Type},
 };
 
 /// Function annotations that provide metadata about function behavior.
@@ -710,7 +710,9 @@ impl<'a> Function<'a> {
                         let ret_is_void = matches!(ty, Type::Void);
                         let sig_is_void = matches!(self.signature.return_type, Type::Void);
                         if ret_is_void != sig_is_void
-                            || (!ret_is_void && *ty != self.signature.return_type)
+                            || (!ret_is_void
+                                && *ty != self.signature.return_type
+                                && !is_pointer_either(ty, &self.signature.return_type))
                         {
                             errors.push(format!(
                                 "return in block '{}' of '@{}': return type '{}' does not match signature return type '{}'",
@@ -760,6 +762,11 @@ impl<'a> Function<'a> {
 }
 
 // --- Display Implementations ---
+
+fn is_pointer_either(a: &Type<'_>, b: &Type<'_>) -> bool {
+    matches!(a, Type::Primitive(PrimitiveType::Ptr))
+        || matches!(b, Type::Primitive(PrimitiveType::Ptr))
+}
 
 impl fmt::Display for FunctionAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1372,5 +1379,21 @@ mod tests {
         let f = simple_func(vec![], Type::Void, blocks, "entry");
         let errs = f.validate().unwrap_err();
         assert!(errs.iter().any(|e| e.contains("repeats case value")));
+    }
+
+    #[test]
+    fn test_validate_pointer_return_for_integer_signature_passes() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Ret {
+                    ty: Type::Primitive(PrimitiveType::I64),
+                    value: Some(Value::Constant(Literal::I64(0))),
+                }],
+            },
+        );
+        let f = simple_func(vec![], Type::Primitive(PrimitiveType::Ptr), blocks, "entry");
+        assert!(f.validate().is_ok());
     }
 }
