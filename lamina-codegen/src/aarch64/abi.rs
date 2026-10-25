@@ -1,6 +1,7 @@
 //! AArch64 ABI utilities for symbol naming and calling conventions.
 
 use crate::abi::{Abi, common_call_stub, mangle_macos_name};
+use crate::target_support::os_uses_macho;
 use lamina_platform::TargetOperatingSystem;
 
 /// Platform-specific ABI utilities for AArch64 code generation.
@@ -17,7 +18,7 @@ impl AArch64ABI {
     /// Returns the mangled function name with platform-specific prefix.
     pub fn mangle_function_name(&self, name: &str) -> String {
         match self.target_os {
-            TargetOperatingSystem::MacOS => mangle_macos_name(name),
+            os if os_uses_macho(os) => mangle_macos_name(name),
             _ => name.to_string(),
         }
     }
@@ -25,7 +26,7 @@ impl AArch64ABI {
     /// Returns the global declaration directive for a function.
     pub fn get_global_directive(&self, func_name: &str) -> Option<String> {
         match self.target_os {
-            TargetOperatingSystem::MacOS => Some(format!(".globl _{func_name}")),
+            os if os_uses_macho(os) => Some(format!(".globl _{func_name}")),
             _ => Some(format!(".globl {func_name}")),
         }
     }
@@ -150,6 +151,13 @@ mod tests {
         assert_eq!(
             abi_macos.get_global_directive("foo"),
             Some(".globl _foo".to_string())
+        );
+
+        let abi_ios = AArch64ABI::new(TargetOperatingSystem::IOS);
+        assert_eq!(abi_ios.mangle_function_name("main"), "_main");
+        assert_eq!(
+            abi_ios.get_global_directive("main"),
+            Some(".globl _main".to_string())
         );
     }
 }
