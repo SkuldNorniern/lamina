@@ -100,7 +100,14 @@ pub fn os_uses_elf(os: TargetOperatingSystem) -> bool {
 
 /// Returns true if the given OS uses Mach-O (macOS).
 pub fn os_uses_macho(os: TargetOperatingSystem) -> bool {
-    os == TargetOperatingSystem::MacOS
+    matches!(
+        os,
+        TargetOperatingSystem::MacOS
+            | TargetOperatingSystem::IOS
+            | TargetOperatingSystem::TvOS
+            | TargetOperatingSystem::WatchOS
+            | TargetOperatingSystem::VisionOS
+    )
 }
 
 /// Returns true if the given OS uses COFF/PE (Windows).
@@ -187,6 +194,19 @@ mod tests {
             TargetOperatingSystem::Android
         ));
         assert!(os_uses_elf(TargetOperatingSystem::Android));
+    }
+
+    #[test]
+    fn test_apple_mobile_oses_use_macho() {
+        for os in [
+            TargetOperatingSystem::IOS,
+            TargetOperatingSystem::TvOS,
+            TargetOperatingSystem::WatchOS,
+            TargetOperatingSystem::VisionOS,
+        ] {
+            assert!(os_uses_macho(os), "{os} should use Mach-O");
+            assert!(!os_uses_elf(os), "{os} should not use ELF");
+        }
     }
 
     #[test]
