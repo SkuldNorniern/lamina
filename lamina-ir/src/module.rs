@@ -132,10 +132,14 @@
 //! let module = builder.build();
 //! ```
 
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+};
 
 use crate::{
     function::Function,
+    instruction::Instruction,
     types::{Identifier, Type, Value},
 };
 
@@ -351,11 +355,100 @@ impl<'a> Module<'a> {
                 all_errors.extend(errs);
             }
         }
+        self.validate_named_types(&mut all_errors);
         if all_errors.is_empty() {
             Ok(())
         } else {
             Err(all_errors)
         }
+    }
+
+    fn validate_named_types(&self, errors: &mut Vec<String>) {
+        let mut uses: Vec<(String, &Type<'_>)> = Vec::new();
+        for decl in self.type_declarations.values() {
+            uses.push((format!("type '@{}'", decl.name), &decl.ty));
+        }
+        for global in self.global_declarations.values() {
+            uses.push((format!("global '@{}'", global.name), &global.ty));
+        }
+        for func in self.functions.values() {
+            for param in &func.signature.params {
+                uses.push((
+                    format!("parameter '%{}' of '@{}'", param.name, func.name),
+                    &param.ty,
+                ));
+            }
+            uses.push((
+                format!("return type of '@{}'", func.name),
+                &func.signature.return_type,
+            ));
+            for block in func.basic_blocks.values() {
+                for instr in &block.instructions {
+                    if let Instruction::Alloc { allocated_ty, .. } = instr {
+                        uses.push((format!("alloc in '@{}'", func.name), allocated_ty));
+                    }
+                }
+            }
+        }
+
+        for (owner, ty) in &uses {
+            let mut refs = Vec::new();
+            named_type_refs(ty, &mut refs);
+            for name in refs {
+                if !self.type_declarations.contains_key(name) {
+                    errors.push(format!("unknown type '@{name}' used in {owner}"));
+                }
+            }
+        }
+
+        let mut names: Vec<&str> = self.type_declarations.keys().copied().collect();
+        names.sort_unstable();
+        for name in names {
+            if self.type_contains_itself(name) {
+                errors.push(format!(
+                    "type '@{name}' contains itself, so its size is infinite"
+                ));
+            }
+        }
+    }
+
+    fn type_contains_itself(&self, name: &str) -> bool {
+        let mut stack: Vec<&str> = vec![name];
+        let mut seen: HashSet<&str> = HashSet::new();
+        while let Some(current) = stack.pop() {
+            let Some(decl) = self.type_declarations.get(current) else {
+                continue;
+            };
+            let mut refs = Vec::new();
+            named_type_refs(&decl.ty, &mut refs);
+            for referenced in refs {
+                if referenced == name {
+                    return true;
+                }
+                if seen.insert(referenced) {
+                    stack.push(referenced);
+                }
+            }
+        }
+        false
+    }
+}
+
+fn named_type_refs<'a>(ty: &Type<'a>, out: &mut Vec<&'a str>) {
+    match ty {
+        Type::Named(name) => out.push(name),
+        Type::Array { element_type, .. } => named_type_refs(element_type, out),
+        Type::Struct(fields) => {
+            for field in fields {
+                named_type_refs(&field.ty, out);
+            }
+        }
+        Type::Tuple(elements) => {
+            for element in elements {
+                named_type_refs(element, out);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -543,5 +636,39 @@ mod tests {
     fn test_display_empty_module() {
         let module = Module::<'static>::new();
         assert_eq!(format!("{}", module), "");
+    }
+
+    #[test]
+    fn test_validate_unknown_named_type_fails() {
+        let mut module = Module::<'static>::new();
+        module.type_declarations.insert(
+            "pair",
+            TypeDeclaration {
+                name: "pair",
+                ty: Type::Struct(vec![StructField {
+                    name: "x",
+                    ty: Type::Named("missing"),
+                }]),
+            },
+        );
+        let errs = module.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("unknown type '@missing'")));
+    }
+
+    #[test]
+    fn test_validate_self_containing_type_fails() {
+        let mut module = Module::<'static>::new();
+        module.type_declarations.insert(
+            "node",
+            TypeDeclaration {
+                name: "node",
+                ty: Type::Struct(vec![StructField {
+                    name: "next",
+                    ty: Type::Named("node"),
+                }]),
+            },
+        );
+        let errs = module.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("'@node' contains itself")));
     }
 }
