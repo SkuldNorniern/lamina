@@ -35,6 +35,8 @@ pub enum FromIRError {
     InvalidMir(Vec<String>),
     /// A global declaration uses a form the backend cannot lower yet.
     UnsupportedGlobal(String),
+    /// An aggregate crosses a function boundary in a form lowering cannot classify yet.
+    UnsupportedAggregate(String),
 }
 
 impl fmt::Display for FromIRError {
@@ -77,6 +79,9 @@ impl fmt::Display for FromIRError {
             ),
             FromIRError::UnsupportedGlobal(reason) => {
                 write!(f, "global not yet supported: {reason}")
+            }
+            FromIRError::UnsupportedAggregate(reason) => {
+                write!(f, "aggregate not yet supported: {reason}")
             }
             FromIRError::InvalidMir(errors) => {
                 write!(f, "lowering produced invalid MIR: {}", errors.join("; "))

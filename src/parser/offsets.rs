@@ -28,6 +28,17 @@ fn resolve_in_function<'a>(
 ) {
     let mut pointee: HashMap<Identifier<'a>, Type<'a>> = HashMap::new();
 
+    // An aggregate parameter reaches the body as a pointer to the callee's copy, so its
+    // fields are addressed the same way an alloc's are.
+    for param in &func.signature.params {
+        let Some(ty) = resolve_type_names(&param.ty, types) else {
+            continue;
+        };
+        if struct_fields(&ty).is_some() {
+            pointee.insert(param.name, ty);
+        }
+    }
+
     let labels: Vec<_> = func.basic_blocks.keys().copied().collect();
     for label in labels {
         let Some(block) = func.basic_blocks.get_mut(label) else {
