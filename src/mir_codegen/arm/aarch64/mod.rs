@@ -1765,9 +1765,10 @@ mod tests {
 
     #[test]
     fn mach_o_targets_call_underscored_libc_symbols() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
         let ir = "fn @main() -> i64 {\nentry:\n  %v = add.i64 1, 2\n  call @print(%v)\n  ret.i64 0\n}\n";
-        let module = crate::parser::parse_module(ir)?;
-        let mir = crate::mir::codegen::from_ir(&module, "print_test").expect("lower print module");
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "print_test").expect("lower print module");
         for os in [TargetOperatingSystem::MacOS, TargetOperatingSystem::IOS] {
             let mut output = Vec::new();
             generate_mir_aarch64(&mir, &mut output, os)?;
