@@ -7,12 +7,11 @@ mod simd;
 mod util;
 
 use crate::mir::register::PhysicalReg;
-use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
-    emit_global_directives,
-    integer_conversion, self_tail_arguments, self_tail_schedule,
+    emit_global_directives, integer_conversion, self_tail_arguments, self_tail_schedule,
 };
+use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::simd::reserve_vector_slots;
 
 use std::{collections::HashMap, io::Write, slice, str, sync::Arc};
@@ -22,7 +21,7 @@ use util::{emit_mov_imm64, imm_to_u64};
 use crate::{
     error::LaminaError,
     mir::{
-        AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Immediate,
+        AddressMode, Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Immediate,
         Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
         Register, ScalarType, Signature, VirtualReg, register::RegisterClass,
     },
@@ -37,11 +36,11 @@ use crate::{
     },
 };
 
+use lamina_codegen::os_uses_macho;
 use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
     aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
 };
-use lamina_codegen::os_uses_macho;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
@@ -66,24 +65,92 @@ fn x_alias(reg: &str) -> String {
 /// bound keeps direct conditional branches; larger ones use inverted branches.
 const DIRECT_BRANCH_BYTES: usize = 512 * 1024;
 
+/// Where one argument sits under AAPCS64: `words` consecutive general registers from
+/// `first`, or `words` consecutive eight-byte stack slots from `first`. A scalar is one
+/// word; an integer aggregate is as many as its size needs.
+#[derive(Clone, Copy)]
+enum ArgPlace {
+    Gpr { first: usize, words: usize },
+    Stack { first: usize, words: usize },
+}
+
+const ARGUMENT_REGISTERS: usize = 8;
+
+/// An aggregate that does not fit in the registers left goes to the stack whole, and
+/// takes the remaining registers out of play, which is what the convention requires.
+fn classify_aarch64_arguments(aggregates: &[Option<Aggregate>]) -> Vec<ArgPlace> {
+    let mut gprs = 0;
+    let mut stack = 0;
+    let mut places = Vec::with_capacity(aggregates.len());
+    for aggregate in aggregates {
+        let words = aggregate.map_or(1, |a| a.words());
+        if gprs + words <= ARGUMENT_REGISTERS {
+            places.push(ArgPlace::Gpr { first: gprs, words });
+            gprs += words;
+        } else {
+            gprs = ARGUMENT_REGISTERS;
+            places.push(ArgPlace::Stack {
+                first: stack,
+                words,
+            });
+            stack += words;
+        }
+    }
+    places
+}
+
+/// Aggregate markers of each function's parameters, so a call site knows how the
+/// callee reads its arguments.
+type AggregateSignatures = HashMap<String, Vec<Option<Aggregate>>>;
+
+fn aggregate_signatures(module: &MirModule) -> AggregateSignatures {
+    module
+        .functions
+        .iter()
+        .map(|(name, func)| {
+            (
+                name.clone(),
+                func.sig.params.iter().map(|p| p.aggregate).collect(),
+            )
+        })
+        .collect()
+}
+
+fn call_aggregates(
+    signatures: &AggregateSignatures,
+    callee: &str,
+    count: usize,
+) -> Vec<Option<Aggregate>> {
+    match signatures.get(callee) {
+        Some(markers) if markers.len() == count => markers.clone(),
+        _ => vec![None; count],
+    }
+}
+
 fn compile_single_function_aarch64(
     func_name: &str,
     func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
+    signatures: &AggregateSignatures,
 ) -> Result<Vec<u8>, CodegenError> {
-    let direct = compile_single_function_aarch64_with(func_name, func, target_os, settings, false)?;
+    let direct = compile_single_function_aarch64_with(
+        func_name, func, target_os, settings, signatures, false,
+    )?;
     let instructions = direct
         .split(|&b| b == b'\n')
         .filter(|line| {
             let line = str::from_utf8(line).unwrap_or("").trim_start();
-            !line.is_empty() && !line.starts_with('.') && !line.starts_with("//") && !line.ends_with(':')
+            !line.is_empty()
+                && !line.starts_with('.')
+                && !line.starts_with("//")
+                && !line.ends_with(':')
         })
         .count();
     if instructions * 4 < DIRECT_BRANCH_BYTES {
         return Ok(direct);
     }
-    compile_single_function_aarch64_with(func_name, func, target_os, settings, true)
+    compile_single_function_aarch64_with(func_name, func, target_os, settings, signatures, true)
 }
 
 fn compile_single_function_aarch64_with(
@@ -91,6 +158,7 @@ fn compile_single_function_aarch64_with(
     func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
+    signatures: &AggregateSignatures,
     long_branches: bool,
 ) -> Result<Vec<u8>, CodegenError> {
     let reserved = reserve_vector_slots(func);
@@ -122,44 +190,42 @@ fn compile_single_function_aarch64_with(
         .iter()
         .flat_map(|b| b.instructions.iter())
         .any(|i| matches!(i, MirInst::Call { .. }));
-    let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> = if settings
-        .regalloc
-        != RegallocStrategy::Incremental
-        && !makes_calls
-    {
-        let pool = A64RegAlloc::gpr_pool_for_global_allocation();
-        let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
-            .into_iter()
-            .filter(|i| {
-                i.vreg.class == RegisterClass::Gpr && !func.stack_reservations.contains_key(&i.vreg)
-            })
-            .collect();
-        let mut plan = match settings.regalloc {
-            RegallocStrategy::LinearScanGlobal => {
-                LinearScanAllocator::allocate(&intervals, pool.as_slice())
+    let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> =
+        if settings.regalloc != RegallocStrategy::Incremental && !makes_calls {
+            let pool = A64RegAlloc::gpr_pool_for_global_allocation();
+            let intervals: Vec<_> = LinearScanAllocator::compute_intervals(func)
+                .into_iter()
+                .filter(|i| {
+                    i.vreg.class == RegisterClass::Gpr
+                        && !func.stack_reservations.contains_key(&i.vreg)
+                })
+                .collect();
+            let mut plan = match settings.regalloc {
+                RegallocStrategy::LinearScanGlobal => {
+                    LinearScanAllocator::allocate(&intervals, pool.as_slice())
+                }
+                RegallocStrategy::GraphColorGlobal => {
+                    GraphColorAllocator::allocate(&intervals, pool.as_slice())
+                }
+                RegallocStrategy::Incremental => {
+                    return Err(CodegenError::InvalidCodegenOptions(
+                        "internal: incremental in global branch".to_string(),
+                    ));
+                }
+            };
+            plan = coalesce_dying_inputs(func, &intervals, &plan, |_, _| true);
+            for (v, a) in &plan {
+                if reserved.is_none()
+                    && let MirAllocation::Spill(off) = a
+                {
+                    frame.slots.insert(Register::Virtual(*v), *off);
+                }
             }
-            RegallocStrategy::GraphColorGlobal => {
-                GraphColorAllocator::allocate(&intervals, pool.as_slice())
-            }
-            RegallocStrategy::Incremental => {
-                return Err(CodegenError::InvalidCodegenOptions(
-                    "internal: incremental in global branch".to_string(),
-                ));
-            }
+            frame.recompute_frame_size_from_slots();
+            Some(plan)
+        } else {
+            None
         };
-        plan = coalesce_dying_inputs(func, &intervals, &plan, |_, _| true);
-        for (v, a) in &plan {
-            if reserved.is_none()
-                && let MirAllocation::Spill(off) = a
-            {
-                frame.slots.insert(Register::Virtual(*v), *off);
-            }
-        }
-        frame.recompute_frame_size_from_slots();
-        Some(plan)
-    } else {
-        None
-    };
 
     let has_many_vars = func
         .blocks
@@ -180,27 +246,47 @@ fn compile_single_function_aarch64_with(
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
 
-    for (i, p) in func.sig.params.iter().enumerate() {
+    let param_aggregates: Vec<Option<Aggregate>> =
+        func.sig.params.iter().map(|p| p.aggregate).collect();
+    let param_places = classify_aarch64_arguments(&param_aggregates);
+    for (p, place) in func.sig.params.iter().zip(&param_places) {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().unwrap_or("x19");
             emit_frame_slot_address(&mut output, addr, off)
                 .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
-            if i < 8 {
-                emit_narrow_param_extension(&mut output, &format!("x{i}"), &p.ty)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                writeln!(output, "    str x{i}, [{addr}]")
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-            } else {
-                let caller_offset = 16 + (i - 8) * 8;
-                let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
-                writeln!(output, "    ldr {val_reg}, [x29, #{caller_offset}]")
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                emit_narrow_param_extension(&mut output, val_reg, &p.ty)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                writeln!(output, "    str {val_reg}, [{addr}]")
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                ra_pro.free_scratch(val_reg);
+            match *place {
+                ArgPlace::Gpr { first, words } => {
+                    for word in 0..words {
+                        let source = format!("x{}", first + word);
+                        if p.aggregate.is_none() {
+                            emit_narrow_param_extension(&mut output, &source, &p.ty).map_err(
+                                |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                            )?;
+                        }
+                        writeln!(output, "    str {source}, [{addr}, #{}]", word * 8).map_err(
+                            |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                        )?;
+                    }
+                }
+                ArgPlace::Stack { first, words } => {
+                    let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
+                    for word in 0..words {
+                        let caller_offset = 16 + (first + word) * 8;
+                        writeln!(output, "    ldr {val_reg}, [x29, #{caller_offset}]").map_err(
+                            |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                        )?;
+                        if p.aggregate.is_none() {
+                            emit_narrow_param_extension(&mut output, val_reg, &p.ty).map_err(
+                                |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                            )?;
+                        }
+                        writeln!(output, "    str {val_reg}, [{addr}, #{}]", word * 8).map_err(
+                            |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                        )?;
+                    }
+                    ra_pro.free_scratch(val_reg);
+                }
             }
             ra_pro.free_scratch(addr);
         }
@@ -336,7 +422,12 @@ fn compile_single_function_aarch64_with(
                             (IntCmpOp::UGt, false) | (IntCmpOp::ULe, true) => "hi",
                             (IntCmpOp::UGe, false) | (IntCmpOp::ULt, true) => "hs",
                         };
-                        emit_branch_if(output, cond, &format!("{block_prefix}{taken}"), long_branches)?;
+                        emit_branch_if(
+                            output,
+                            cond,
+                            &format!("{block_prefix}{taken}"),
+                            long_branches,
+                        )?;
                         if let Some(other) = other {
                             writeln!(output, "    b {block_prefix}{other}")?;
                         }
@@ -355,6 +446,7 @@ fn compile_single_function_aarch64_with(
                         settings,
                         debug_line,
                         long_branches,
+                        signatures,
                     )?;
                 }
                 position += 1;
@@ -412,9 +504,16 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
     let settings_arc = Arc::new(settings.clone());
+    let signatures = Arc::new(aggregate_signatures(module));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
-            compile_single_function_aarch64(name, func, os, settings_arc.as_ref())
+            compile_single_function_aarch64(
+                name,
+                func,
+                os,
+                settings_arc.as_ref(),
+                signatures.as_ref(),
+            )
         })
         .map_err(parallel_codegen_error)?;
 
@@ -433,7 +532,9 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
     for result in results {
         writer.write_all(&result.assembly)?;
     }
-    emit_global_data(writer, module, target_os, |name| abi.mangle_function_name(name))?;
+    emit_global_data(writer, module, target_os, |name| {
+        abi.mangle_function_name(name)
+    })?;
     emit_gnu_stack_note(writer, target_os)?;
 
     Ok(())
@@ -452,6 +553,7 @@ fn emit_block<W: Write>(
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
     long_branches: bool,
+    signatures: &AggregateSignatures,
 ) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines {
@@ -488,6 +590,7 @@ fn emit_block<W: Write>(
                         settings,
                         debug_line,
                         long_branches,
+                        signatures,
                     )?;
                 }
             }
@@ -1106,20 +1209,59 @@ fn emit_block<W: Write>(
                         }
                     }
                 } else {
-                    for (i, a) in args.iter().enumerate().take(8) {
-                        emit_materialize_operand(w, a, &format!("x{i}"), frame, ra)?;
+                    let aggregates = call_aggregates(signatures, name, args.len());
+                    let places = classify_aarch64_arguments(&aggregates);
+                    for ((argument, aggregate), place) in args.iter().zip(&aggregates).zip(&places)
+                    {
+                        let ArgPlace::Gpr { first, words } = *place else {
+                            continue;
+                        };
+                        if aggregate.is_none() {
+                            emit_materialize_operand(w, argument, &format!("x{first}"), frame, ra)?;
+                            continue;
+                        }
+                        let address = ra.alloc_scratch().unwrap_or("x9");
+                        emit_materialize_operand(w, argument, address, frame, ra)?;
+                        for word in 0..words {
+                            writeln!(w, "    ldr x{}, [{address}, #{}]", first + word, word * 8)?;
+                        }
+                        ra.free_scratch(address);
                     }
 
-                    let stack_args = if args.len() > 8 { &args[8..] } else { &[] };
-                    let stack_space = (stack_args.len() * 8 + 15) & !15;
+                    let stack_words: usize = places
+                        .iter()
+                        .map(|place| match place {
+                            ArgPlace::Stack { words, .. } => *words,
+                            ArgPlace::Gpr { .. } => 0,
+                        })
+                        .sum();
+                    let stack_space = (stack_words * 8 + 15) & !15;
 
                     if stack_space > 0 {
                         emit_sp_adjust(w, "sub", stack_space as u64)?;
-                        for (i, a) in stack_args.iter().enumerate() {
-                            let offset = i * 8;
+                        for ((argument, aggregate), place) in
+                            args.iter().zip(&aggregates).zip(&places)
+                        {
+                            let ArgPlace::Stack { first, words } = *place else {
+                                continue;
+                            };
                             let scratch = ra.alloc_scratch().unwrap_or("x9");
-                            emit_materialize_operand(w, a, scratch, frame, ra)?;
-                            writeln!(w, "    str {scratch}, [sp, #{offset}]")?;
+                            if aggregate.is_none() {
+                                emit_materialize_operand(w, argument, scratch, frame, ra)?;
+                                writeln!(w, "    str {scratch}, [sp, #{}]", first * 8)?;
+                            } else {
+                                let address = ra.alloc_scratch().unwrap_or("x10");
+                                emit_materialize_operand(w, argument, address, frame, ra)?;
+                                for word in 0..words {
+                                    writeln!(w, "    ldr {scratch}, [{address}, #{}]", word * 8)?;
+                                    writeln!(
+                                        w,
+                                        "    str {scratch}, [sp, #{}]",
+                                        (first + word) * 8
+                                    )?;
+                                }
+                                ra.free_scratch(address);
+                            }
                             ra.free_scratch(scratch);
                         }
                     }
@@ -1180,7 +1322,12 @@ fn emit_block<W: Write>(
                 let t = ra.alloc_scratch().unwrap_or("x19");
                 load_reg_to(w, cond, t, frame, ra)?;
                 writeln!(w, "    cmp {}, #0", x_alias(t))?;
-                emit_branch_if(w, "ne", &format!("{block_prefix}{true_target}"), long_branches)?;
+                emit_branch_if(
+                    w,
+                    "ne",
+                    &format!("{block_prefix}{true_target}"),
+                    long_branches,
+                )?;
                 writeln!(w, "    b {block_prefix}{false_target}")?;
                 ra.free_scratch(t);
             }
@@ -1194,7 +1341,12 @@ fn emit_block<W: Write>(
                 for (case_val, case_label) in cases {
                     emit_mov_imm64(w, "x9", *case_val as u64)?;
                     writeln!(w, "    cmp {}, x9", x_alias(t))?;
-                    emit_branch_if(w, "eq", &format!("{block_prefix}{case_label}"), long_branches)?;
+                    emit_branch_if(
+                        w,
+                        "eq",
+                        &format!("{block_prefix}{case_label}"),
+                        long_branches,
+                    )?;
                 }
                 writeln!(w, "    b {block_prefix}{default}")?;
                 ra.free_scratch(t);
@@ -1428,9 +1580,9 @@ fn emit_branch_if<W: Write>(
         "ls" => "hi",
         "hi" => "ls",
         other => {
-            return Err(LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(
-                format!("unknown AArch64 condition {other}"),
-            )));
+            return Err(LaminaError::CodegenError(
+                CodegenError::InvalidCodegenOptions(format!("unknown AArch64 condition {other}")),
+            ));
         }
     };
     writeln!(w, "    b.{inverse} 9f")?;
@@ -1747,7 +1899,11 @@ fn emit_float_to_int<W: Write>(
             };
             writeln!(w, "    mov {t32}, #{max}")?;
             writeln!(w, "    cmp {d32}, {t32}")?;
-            writeln!(w, "    csel {d32}, {d32}, {t32}, {}", if signed { "le" } else { "ls" })?;
+            writeln!(
+                w,
+                "    csel {d32}, {d32}, {t32}, {}",
+                if signed { "le" } else { "ls" }
+            )?;
             if signed {
                 writeln!(w, "    mov {t32}, #{min}")?;
                 writeln!(w, "    cmp {d32}, {t32}")?;
@@ -1815,6 +1971,7 @@ mod tests {
                     &func,
                     TargetOperatingSystem::Linux,
                     &settings,
+                    &AggregateSignatures::new(),
                 )
                 .map_err(|error| error.to_string())?,
             )?;
@@ -1858,12 +2015,11 @@ mod tests {
                     &func,
                     TargetOperatingSystem::Linux,
                     &MirCodegenSettings::default(),
+                    &AggregateSignatures::new(),
                 )
                 .map_err(|error| error.to_string())?,
             )?;
-            let (prologue, _) = asm
-                .split_once(".L_narrow.entry:")
-                .ok_or("missing entry")?;
+            let (prologue, _) = asm.split_once(".L_narrow.entry:").ok_or("missing entry")?;
             assert!(prologue.contains(&format!("    {extend}\n")), "{asm}");
         }
         Ok(())
@@ -1890,6 +2046,7 @@ mod tests {
                 &func,
                 TargetOperatingSystem::Linux,
                 &MirCodegenSettings::default(),
+                &AggregateSignatures::new(),
             )
             .map_err(|error| error.to_string())?,
         )?;
@@ -1933,7 +2090,8 @@ mod tests {
     #[test]
     fn mach_o_targets_call_underscored_libc_symbols() -> Result<(), Box<dyn Error>> {
         use crate::{mir::codegen::from_ir, parser::parse_module};
-        let ir = "fn @main() -> i64 {\nentry:\n  %v = add.i64 1, 2\n  call @print(%v)\n  ret.i64 0\n}\n";
+        let ir =
+            "fn @main() -> i64 {\nentry:\n  %v = add.i64 1, 2\n  call @print(%v)\n  ret.i64 0\n}\n";
         let module = parse_module(ir)?;
         let mir = from_ir(&module, "print_test").expect("lower print module");
         for os in [TargetOperatingSystem::MacOS, TargetOperatingSystem::IOS] {
@@ -1952,8 +2110,8 @@ mod tests {
     }
 
     #[test]
-    fn global_allocation_keeps_values_out_of_caller_saved_pool_across_calls(
-    ) -> Result<(), Box<dyn Error>> {
+    fn global_allocation_keeps_values_out_of_caller_saved_pool_across_calls()
+    -> Result<(), Box<dyn Error>> {
         use crate::{mir::codegen::from_ir, parser::parse_module};
         let ir = "fn @id(i64 %x) -> i64 {\nentry:\n  %r = mul.i64 %x, 1\n  ret.i64 %r\n}\nfn @main() -> i64 {\nentry:\n  %a = add.i64 7, 0\n  %b = mul.i64 %a, 3\n  %c = call @id(5)\n  %d = add.i64 %b, %c\n  ret.i64 %d\n}\n";
         let module = parse_module(ir)?;
@@ -2018,6 +2176,7 @@ mod tests {
                 &func,
                 TargetOperatingSystem::Linux,
                 &MirCodegenSettings::default(),
+                &AggregateSignatures::new(),
             )
             .map_err(|error| error.to_string())?,
         )?;
@@ -2035,7 +2194,8 @@ mod tests {
     }
 
     #[test]
-    fn long_conditional_branches_are_inverted_over_unconditional_branches() -> Result<(), Box<dyn Error>> {
+    fn long_conditional_branches_are_inverted_over_unconditional_branches()
+    -> Result<(), Box<dyn Error>> {
         let mut direct = Vec::new();
         emit_branch_if(&mut direct, "lt", ".L_f.far", false)?;
         assert_eq!(String::from_utf8(direct)?, "    b.lt .L_f.far\n");
@@ -2049,7 +2209,8 @@ mod tests {
     }
 
     #[test]
-    fn switch_case_constants_are_materialized_without_immediate_range_limits() -> Result<(), Box<dyn Error>> {
+    fn switch_case_constants_are_materialized_without_immediate_range_limits()
+    -> Result<(), Box<dyn Error>> {
         use crate::{mir::codegen::from_ir, parser::parse_module};
         let ir = "fn @main() -> i64 {\nentry:\n  %x = add.i64 100000, 0\n  switch.i64 %x, default, [100000, hit], [-5, neg]\nhit:\n  ret.i64 1\nneg:\n  ret.i64 2\ndefault:\n  ret.i64 3\n}\n";
         let module = parse_module(ir)?;
@@ -2091,7 +2252,10 @@ mod tests {
         let linux = String::from_utf8(linux)?;
         assert!(linux.contains("adrp x9, counter\n"), "{linux}");
         assert!(linux.contains("add x9, x9, :lo12:counter\n"), "{linux}");
-        assert!(linux.contains(".data\n.p2align 3\ncounter:\n    .byte 0x29, 0x00"), "{linux}");
+        assert!(
+            linux.contains(".data\n.p2align 3\ncounter:\n    .byte 0x29, 0x00"),
+            "{linux}"
+        );
         let mut macho = Vec::new();
         generate_mir_aarch64(&mir, &mut macho, TargetOperatingSystem::MacOS)?;
         let macho = String::from_utf8(macho)?;
@@ -2101,8 +2265,8 @@ mod tests {
     }
 
     #[test]
-    fn frames_beyond_twelve_bit_immediates_are_addressed_through_a_register(
-    ) -> Result<(), Box<dyn Error>> {
+    fn frames_beyond_twelve_bit_immediates_are_addressed_through_a_register()
+    -> Result<(), Box<dyn Error>> {
         use crate::{mir::codegen::from_ir, parser::parse_module};
         let ir = "fn @main() -> i64 {\nentry:\n  %arr = alloc.stack [5000 x i8]\n  %p = getelem.ptr %arr, 4999, i8\n  store.i8 %p, 42\n  %v = load.i8 %p\n  %w = zext.i8.i64 %v\n  ret.i64 %w\n}\n";
         let module = parse_module(ir)?;
@@ -2111,15 +2275,67 @@ mod tests {
         generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
         let assembly = String::from_utf8(output)?;
         for line in assembly.lines() {
-            if line.contains("sp, sp, #") || line.contains("x29, #") || line.contains("x29, x29, #") {
+            if line.contains("sp, sp, #") || line.contains("x29, #") || line.contains("x29, x29, #")
+            {
                 let imm: i64 = line
                     .rsplit_once('#')
                     .and_then(|(_, n)| n.trim().parse().ok())
                     .unwrap_or(0);
-                assert!(imm.abs() <= 4095, "immediate out of range in: {line}\n{assembly}");
+                assert!(
+                    imm.abs() <= 4095,
+                    "immediate out of range in: {line}\n{assembly}"
+                );
             }
         }
         assert!(assembly.contains("sub sp, sp, x16"), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn integer_aggregates_use_consecutive_x_registers() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @sum(struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  %ap = getfieldptr %p, 0\n  %a = load.i64 %ap\n  ret.i64 %a\n}\nfn @wide(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64 }\n  %r = call @sum(%q)\n  %s = call @wide(1, 2, 3, 4, 5, 6, 7, %q)\n  ret.i64 %r\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "aggregates").expect("lower aggregates");
+        let mut output = Vec::new();
+        generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+
+        let prologue = assembly
+            .split("\nsum:\n")
+            .nth(1)
+            .and_then(|body| body.split(".L_sum.entry:").next())
+            .ok_or("missing sum prologue")?;
+        let home = prologue
+            .lines()
+            .filter(|line| line.contains(", x29, #"))
+            .find_map(|line| line.trim().strip_prefix("sub ")?.split(',').next())
+            .ok_or("missing frame address")?
+            .to_string();
+        assert!(
+            prologue.contains(&format!("str x0, [{home}, #0]")),
+            "{assembly}"
+        );
+        assert!(
+            prologue.contains(&format!("str x1, [{home}, #8]")),
+            "{assembly}"
+        );
+
+        let caller = assembly.split("\nmain:\n").nth(1).ok_or("missing main")?;
+        let call = caller.split("bl sum").next().ok_or("missing call")?;
+        assert!(call.contains("ldr x0, ["), "{assembly}");
+        assert!(call.contains("ldr x1, ["), "{assembly}");
+
+        // Seven scalars leave one register, which is too few for two words, so the
+        // aggregate goes to the stack whole and x7 stays unused.
+        let wide = assembly
+            .split("\nwide:\n")
+            .nth(1)
+            .and_then(|body| body.split(".L_wide.entry:").next())
+            .ok_or("missing wide prologue")?;
+        assert!(!wide.contains("str x7, "), "{assembly}");
+        assert!(wide.contains("ldr x11, [x29, #16]"), "{assembly}");
+        assert!(wide.contains("ldr x11, [x29, #24]"), "{assembly}");
         Ok(())
     }
 }
