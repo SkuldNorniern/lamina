@@ -27,7 +27,7 @@ use crate::{
         RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
-            mapping::{map_ir_prim, map_ir_type, signedness_of},
+            mapping::{classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, signedness_of},
         },
         verify::{PhiVerification, verify_before_phi_lowering},
     },
@@ -278,6 +278,13 @@ fn convert_function<'a>(
     match &f.signature.return_type {
         IRType::Void => {}
         other => {
+            let resolved = resolve_type_names(other, &module.type_declarations)
+                .ok_or(FromIRError::UnsupportedType)?;
+            if is_aggregate(&resolved) {
+                return Err(FromIRError::UnsupportedAggregate(format!(
+                    "@{name} returns an aggregate; only aggregate parameters cross a boundary so far"
+                )));
+            }
             let ty = map_ir_type(other)?;
             mir_sig = mir_sig
                 .with_return(ty)
@@ -291,7 +298,30 @@ fn convert_function<'a>(
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
     let mut globals = GlobalAddresses::new(module);
 
+    let mut aggregate_prelude = Vec::new();
     for param in &f.signature.params {
+        let resolved = resolve_type_names(&param.ty, &module.type_declarations)
+            .ok_or(FromIRError::UnsupportedType)?;
+        if let Some(aggregate) =
+            classify_aggregate(&resolved, &format!("%{} of @{name}", param.name))?
+        {
+            let slot = vreg_alloc.allocate_gpr();
+            let words = aggregate.words();
+            if words > 1 {
+                reservations.insert(slot, words - 1);
+            }
+            let addr = Register::Virtual(vreg_alloc.allocate_gpr());
+            register_types.insert(addr.clone(), MirType::ptr());
+            mir_sig.params.push(
+                Parameter::new(Register::Virtual(slot), MirType::ptr()).with_aggregate(aggregate),
+            );
+            aggregate_prelude.push(Instruction::StackAddr {
+                dst: addr.clone(),
+                slot,
+            });
+            var_to_reg.insert(param.name, addr);
+            continue;
+        }
         let class = reg_class_for_type(&param.ty);
         let v = match class {
             RegisterClass::Fpr => Register::Virtual(vreg_alloc.allocate_fpr()),
@@ -396,6 +426,12 @@ fn convert_function<'a>(
                     && let Some(callee) = module.functions.get(name.as_str())
                 {
                     for (argument, parameter) in args.iter_mut().zip(&callee.signature.params) {
+                        if is_aggregate(&parameter.ty)
+                            || resolve_type_names(&parameter.ty, &module.type_declarations)
+                                .is_some_and(|ty| is_aggregate(&ty))
+                        {
+                            continue;
+                        }
                         let ty = map_ir_type(&parameter.ty)?;
                         normalize_lowered_literal(argument, ty);
                     }
@@ -533,7 +569,8 @@ fn convert_function<'a>(
             }
         }
 
-        let prelude = globals.prelude();
+        let mut prelude = aggregate_prelude;
+        prelude.extend(globals.prelude());
         if !prelude.is_empty()
             && let Some(entry) = mir_func.get_block_mut(f.entry_block)
         {
@@ -1896,6 +1933,61 @@ ret.ptr %variable
             assert_eq!(Some(source), pair[0].def_reg());
             assert_ne!(source, dst);
         }
+    }
+
+    #[test]
+    fn integer_aggregate_parameter_arrives_as_pointer_to_its_own_slot() {
+        let ir = parse_module(
+            "fn @sum(struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n%ap = getfieldptr %p, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
+        )
+        .expect("parse aggregate parameter");
+        let mir = from_ir(&ir, "sum").expect("lower aggregate parameter");
+        let function = mir.get_function("sum").expect("sum function");
+        let parameter = &function.sig.params[0];
+        assert_eq!(parameter.ty, MirType::ptr());
+        let aggregate = parameter.aggregate.expect("aggregate marker");
+        assert_eq!(aggregate.size, 16);
+        assert_eq!(aggregate.words(), 2);
+        let Register::Virtual(slot) = &parameter.reg else {
+            panic!("expected virtual slot");
+        };
+        assert_eq!(function.stack_reservations[slot], 1);
+        let Instruction::StackAddr {
+            slot: addressed, ..
+        } = &function.blocks[0].instructions[0]
+        else {
+            panic!("expected stack address prelude");
+        };
+        assert_eq!(addressed, slot);
+    }
+
+    #[test]
+    fn float_and_oversized_aggregates_are_rejected_by_name() {
+        let float =
+            parse_module("fn @take(struct { a: f64, b: f64 } %p) -> i64 {\nentry:\nret.i64 0\n}")
+                .expect("parse float aggregate");
+        let error = from_ir(&float, "take").expect_err("float aggregate rejected");
+        assert!(
+            error.to_string().contains("%p of @take has a float field"),
+            "{error}"
+        );
+
+        let wide = parse_module(
+            "fn @take(struct { a: i64, b: i64, c: i64 } %p) -> i64 {\nentry:\nret.i64 0\n}",
+        )
+        .expect("parse wide aggregate");
+        let error = from_ir(&wide, "take").expect_err("wide aggregate rejected");
+        assert!(error.to_string().contains("is 24 bytes"), "{error}");
+
+        let returned = parse_module(
+            "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n%p = alloc.stack struct { a: i64, b: i64 }\nret.ptr %p\n}",
+        )
+        .expect("parse aggregate return");
+        let error = from_ir(&returned, "make").expect_err("aggregate return rejected");
+        assert!(
+            error.to_string().contains("@make returns an aggregate"),
+            "{error}"
+        );
     }
 
     #[test]
