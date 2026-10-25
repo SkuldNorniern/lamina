@@ -11,8 +11,9 @@ mod util;
 use crate::mir_codegen::common::integer_conversion_with_width;
 
 use util::{
-    emit_int_cmp_op, load_fp_operand_to_register, load_operand_to_register,
-    load_register_to_register, store_fp_register_to_register, store_register_to_register,
+    clamp_above, clamp_below, emit_int_cmp_op, load_fp_operand_to_register,
+    load_operand_to_register, load_register_to_register, sign_extend_to_xlen,
+    store_fp_register_to_register, store_register_to_register,
 };
 
 use crate::{
@@ -1225,6 +1226,82 @@ fn emit_instruction_riscv<W: Write>(
                 store_fp_register_to_register("fa0", vreg, writer, reg_alloc, stack_slots, is_f32)?;
             }
         }
+        MirInst::FloatToInt {
+            from,
+            to,
+            signed,
+            dst,
+            src,
+        } => {
+            let is_f32 = from.size_bytes() == 4;
+            ctx.target
+                .require_float(is_f32)
+                .map_err(|e| LaminaError::ValidationError(format!("floattoint: {e}")))?;
+            if ctx.target.xlen == Xlen::Rv32 {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "RV32 float to integer conversion is not supported".to_string(),
+                )));
+            }
+            let suffix = if is_f32 { "s" } else { "d" };
+            load_fp_operand_to_register(src, writer, reg_alloc, stack_slots, "fa0", is_f32)?;
+            // fcvt saturates to the 64-bit range already; NaN yields the maximum, so
+            // mask it to zero with the ordered comparison.
+            let form = if *signed { "l" } else { "lu" };
+            writeln!(writer, "    fcvt.{form}.{suffix} a0, fa0, rtz")?;
+            writeln!(writer, "    feq.{suffix} t0, fa0, fa0")?;
+            writeln!(writer, "    neg t0, t0")?;
+            writeln!(writer, "    and a0, a0, t0")?;
+            let bits = to.size_bytes() * 8;
+            if bits < 64 {
+                let compare = if *signed { "slt" } else { "sltu" };
+                let max = if *signed {
+                    (1i64 << (bits - 1)) - 1
+                } else {
+                    (1i64 << bits) - 1
+                };
+                clamp_above(writer, max, compare)?;
+                if *signed {
+                    clamp_below(writer, -(1i64 << (bits - 1)))?;
+                }
+                sign_extend_to_xlen(writer, bits)?;
+            }
+            if let Register::Virtual(vreg) = dst {
+                store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
+            }
+        }
+        MirInst::IntToFloat {
+            from,
+            to,
+            signed,
+            dst,
+            src,
+        } => {
+            let is_f32 = to.size_bytes() == 4;
+            ctx.target
+                .require_float(is_f32)
+                .map_err(|e| LaminaError::ValidationError(format!("inttofloat: {e}")))?;
+            if ctx.target.xlen == Xlen::Rv32 {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "RV32 integer to float conversion is not supported".to_string(),
+                )));
+            }
+            load_operand_to_register(src, writer, reg_alloc, stack_slots, "a0")?;
+            let bits = from.size_bytes() * 8;
+            if bits < 64 {
+                if *signed {
+                    sign_extend_to_xlen(writer, bits)?;
+                } else {
+                    writeln!(writer, "    slli a0, a0, {}", 64 - bits)?;
+                    writeln!(writer, "    srli a0, a0, {}", 64 - bits)?;
+                }
+            }
+            let suffix = if is_f32 { "s" } else { "d" };
+            let form = if *signed { "l" } else { "lu" };
+            writeln!(writer, "    fcvt.{suffix}.{form} fa0, a0")?;
+            if let Register::Virtual(vreg) = dst {
+                store_fp_register_to_register("fa0", vreg, writer, reg_alloc, stack_slots, is_f32)?;
+            }
+        }
         MirInst::FloatUnary { op, dst, src, ty } => {
             let is_f32 = ty.size_bytes() == 4;
             let suffix = if is_f32 { "s" } else { "d" };
@@ -2127,6 +2204,35 @@ mod tests {
             assembly.contains(".data\n.p2align 3\ncounter:\n    .byte 0x29, 0x00"),
             "{assembly}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn conversions_saturate_clamp_and_zero_nan() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @main() -> i64 {\nentry:\n  %f = add.f64 1.5, 0.0\n  %wide = fptosi.f64.i64 %f\n  %narrow = fptosi.f64.i8 %f\n  %unsigned = fptoui.f64.u32 %f\n  %back = sitofp.i64.f64 %wide\n  %from_u = uitofp.u32.f64 %unsigned\n  ret.i64 %wide\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "conversions").expect("lower conversions");
+        let mut output = Vec::new();
+        generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+
+        // Every float to integer conversion masks NaN to zero after the saturating
+        // convert, and a narrow destination is clamped to its own range.
+        assert!(
+            assembly.contains("    fcvt.l.d a0, fa0, rtz\n"),
+            "{assembly}"
+        );
+        assert!(
+            assembly.contains("    fcvt.lu.d a0, fa0, rtz\n"),
+            "{assembly}"
+        );
+        assert!(assembly.contains("    feq.d t0, fa0, fa0\n"), "{assembly}");
+        assert!(assembly.contains("    li t1, 127\n"), "{assembly}");
+        assert!(assembly.contains("    li t1, -128\n"), "{assembly}");
+        assert!(assembly.contains("    sltu t2, t1, a0\n"), "{assembly}");
+        assert!(assembly.contains("    fcvt.d.l fa0, a0\n"), "{assembly}");
+        assert!(assembly.contains("    fcvt.d.lu fa0, a0\n"), "{assembly}");
         Ok(())
     }
 
