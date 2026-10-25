@@ -15,7 +15,7 @@ use crate::mir_codegen::common::{
 };
 use crate::mir_codegen::simd::reserve_vector_slots;
 
-use std::{collections::HashMap, io::Write, slice, sync::Arc};
+use std::{collections::HashMap, io::Write, slice, str, sync::Arc};
 
 use util::{emit_mov_imm64, imm_to_u64};
 
@@ -62,11 +62,36 @@ fn x_alias(reg: &str) -> String {
     }
 }
 
+/// Conditional branches reach +-1MB. A function whose encoding stays under this
+/// bound keeps direct conditional branches; larger ones use inverted branches.
+const DIRECT_BRANCH_BYTES: usize = 512 * 1024;
+
 fn compile_single_function_aarch64(
     func_name: &str,
     func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
+) -> Result<Vec<u8>, CodegenError> {
+    let direct = compile_single_function_aarch64_with(func_name, func, target_os, settings, false)?;
+    let instructions = direct
+        .split(|&b| b == b'\n')
+        .filter(|line| {
+            let line = str::from_utf8(line).unwrap_or("").trim_start();
+            !line.is_empty() && !line.starts_with('.') && !line.starts_with("//") && !line.ends_with(':')
+        })
+        .count();
+    if instructions * 4 < DIRECT_BRANCH_BYTES {
+        return Ok(direct);
+    }
+    compile_single_function_aarch64_with(func_name, func, target_os, settings, true)
+}
+
+fn compile_single_function_aarch64_with(
+    func_name: &str,
+    func: &Function,
+    target_os: TargetOperatingSystem,
+    settings: &MirCodegenSettings,
+    long_branches: bool,
 ) -> Result<Vec<u8>, CodegenError> {
     let reserved = reserve_vector_slots(func);
     let func = reserved.as_ref().unwrap_or(func);
@@ -311,7 +336,7 @@ fn compile_single_function_aarch64(
                             (IntCmpOp::UGt, false) | (IntCmpOp::ULe, true) => "hi",
                             (IntCmpOp::UGe, false) | (IntCmpOp::ULt, true) => "hs",
                         };
-                        writeln!(output, "    b.{cond} {block_prefix}{taken}")?;
+                        emit_branch_if(output, cond, &format!("{block_prefix}{taken}"), long_branches)?;
                         if let Some(other) = other {
                             writeln!(output, "    b {block_prefix}{other}")?;
                         }
@@ -329,6 +354,7 @@ fn compile_single_function_aarch64(
                         &block_prefix,
                         settings,
                         debug_line,
+                        long_branches,
                     )?;
                 }
                 position += 1;
@@ -425,6 +451,7 @@ fn emit_block<W: Write>(
     block_prefix: &str,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
+    long_branches: bool,
 ) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines {
@@ -452,6 +479,7 @@ fn emit_block<W: Write>(
                         block_prefix,
                         settings,
                         debug_line,
+                        long_branches,
                     )?;
                 }
             }
@@ -1135,7 +1163,7 @@ fn emit_block<W: Write>(
                 let t = ra.alloc_scratch().unwrap_or("x19");
                 load_reg_to(w, cond, t, frame, ra)?;
                 writeln!(w, "    cmp {}, #0", x_alias(t))?;
-                writeln!(w, "    b.ne {block_prefix}{true_target}")?;
+                emit_branch_if(w, "ne", &format!("{block_prefix}{true_target}"), long_branches)?;
                 writeln!(w, "    b {block_prefix}{false_target}")?;
                 ra.free_scratch(t);
             }
@@ -1149,7 +1177,7 @@ fn emit_block<W: Write>(
                 for (case_val, case_label) in cases {
                     writeln!(w, "    mov x9, #{case_val}")?;
                     writeln!(w, "    cmp {}, x9", x_alias(t))?;
-                    writeln!(w, "    b.eq {block_prefix}{case_label}")?;
+                    emit_branch_if(w, "eq", &format!("{block_prefix}{case_label}"), long_branches)?;
                 }
                 writeln!(w, "    b {block_prefix}{default}")?;
                 ra.free_scratch(t);
@@ -1358,6 +1386,39 @@ fn load_copy_reg_to<W: Write>(
             }
         }
     }
+    Ok(())
+}
+
+fn emit_branch_if<W: Write>(
+    w: &mut W,
+    cond: &str,
+    target: &str,
+    long: bool,
+) -> Result<(), LaminaError> {
+    if !long {
+        writeln!(w, "    b.{cond} {target}")?;
+        return Ok(());
+    }
+    let inverse = match cond {
+        "eq" => "ne",
+        "ne" => "eq",
+        "lt" => "ge",
+        "ge" => "lt",
+        "le" => "gt",
+        "gt" => "le",
+        "lo" => "hs",
+        "hs" => "lo",
+        "ls" => "hi",
+        "hi" => "ls",
+        other => {
+            return Err(LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(
+                format!("unknown AArch64 condition {other}"),
+            )));
+        }
+    };
+    writeln!(w, "    b.{inverse} 9f")?;
+    writeln!(w, "    b {target}")?;
+    writeln!(w, "9:")?;
     Ok(())
 }
 
@@ -1868,6 +1929,20 @@ mod tests {
                 "    add sp, sp, #{reserved}\n    ldp x29, x30, [sp], #16\n    b g\n"
             )),
             "{asm}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn long_conditional_branches_are_inverted_over_unconditional_branches() -> Result<(), Box<dyn Error>> {
+        let mut direct = Vec::new();
+        emit_branch_if(&mut direct, "lt", ".L_f.far", false)?;
+        assert_eq!(String::from_utf8(direct)?, "    b.lt .L_f.far\n");
+        let mut long = Vec::new();
+        emit_branch_if(&mut long, "lt", ".L_f.far", true)?;
+        assert_eq!(
+            String::from_utf8(long)?,
+            "    b.ge 9f\n    b .L_f.far\n9:\n"
         );
         Ok(())
     }
