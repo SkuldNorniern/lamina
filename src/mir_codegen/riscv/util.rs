@@ -10,7 +10,7 @@ use crate::mir::{
 };
 use lamina_codegen::{
     LocalRegisterAllocator as RegisterAllocator,
-    riscv::{RiscVRegAlloc, Xlen},
+    riscv::{RiscVFrame, RiscVRegAlloc, Xlen},
 };
 
 /// Load a virtual register into a destination register
@@ -24,10 +24,12 @@ pub fn load_register_to_register<W: Write>(
     if let Some(phys) = reg_alloc.get_mapping(src) {
         writeln!(writer, "    mv {dest_reg}, {phys}")?;
     } else if let Some(offset) = stack_slots.get(src) {
-        writeln!(
+        RiscVFrame::fp_load(
             writer,
-            "    {} {dest_reg}, {offset}(fp)",
-            reg_alloc.target().load_word()
+            reg_alloc.target().load_word(),
+            dest_reg,
+            *offset,
+            dest_reg,
         )?;
     } else {
         return Err(Error::new(
@@ -49,10 +51,12 @@ pub fn store_register_to_register<W: Write>(
     if let Some(phys) = reg_alloc.get_mapping(dst) {
         writeln!(writer, "    mv {phys}, {src_reg}")?;
     } else if let Some(offset) = stack_slots.get(dst) {
-        writeln!(
+        RiscVFrame::fp_store(
             writer,
-            "    {} {src_reg}, {offset}(fp)",
-            reg_alloc.target().store_word()
+            reg_alloc.target().store_word(),
+            src_reg,
+            *offset,
+            "t0",
         )?;
     } else {
         return Err(Error::new(
@@ -126,11 +130,8 @@ pub fn load_fp_operand_to_register<W: Write>(
             Register::Virtual(v) => {
                 // Load from stack to integer register, then move to FP register
                 if let Some(offset) = stack_slots.get(v) {
-                    if is_f32 {
-                        writeln!(writer, "    flw {dest_fp_reg}, {offset}(fp)")?;
-                    } else {
-                        writeln!(writer, "    fld {dest_fp_reg}, {offset}(fp)")?;
-                    }
+                    let load = if is_f32 { "flw" } else { "fld" };
+                    RiscVFrame::fp_load(writer, load, dest_fp_reg, *offset, "t0")?;
                 } else if let Some(phys) = reg_alloc.get_mapping(v) {
                     // Move from integer register to FP register
                     if is_f32 {
@@ -223,11 +224,8 @@ pub fn store_fp_register_to_register<W: Write>(
         }
     } else if let Some(offset) = stack_slots.get(dst) {
         // Store directly from FP register to stack
-        if is_f32 {
-            writeln!(writer, "    fsw {src_fp_reg}, {offset}(fp)")?;
-        } else {
-            writeln!(writer, "    fsd {src_fp_reg}, {offset}(fp)")?;
-        }
+        let store = if is_f32 { "fsw" } else { "fsd" };
+        RiscVFrame::fp_store(writer, store, src_fp_reg, *offset, "t0")?;
     } else {
         return Err(Error::new(
             ErrorKind::InvalidData,

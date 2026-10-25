@@ -279,25 +279,26 @@ fn compile_single_function_riscv(
                         CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
                     })?;
                 } else {
-                    writeln!(
-                        output,
-                        "    {} {}, {slot_off}(fp)",
+                    RiscVFrame::fp_store(
+                        &mut output,
                         target.store_word(),
-                        arg_regs[index]
+                        arg_regs[index],
+                        *slot_off,
+                        "t0",
                     )
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 }
             } else {
                 // fp is the caller's sp, so stack args start there and go up.
                 let caller_off = (index - arg_regs.len()) as i32 * target.word_bytes();
-                writeln!(output, "    {} t0, {caller_off}(fp)", target.load_word())
+                RiscVFrame::fp_load(&mut output, target.load_word(), "t0", caller_off, "t0")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 if let Some(physical) = reg_alloc.get_mapping(vreg) {
                     writeln!(output, "    mv {physical}, t0").map_err(|e| {
                         CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
                     })?;
                 } else {
-                    writeln!(output, "    {} t0, {slot_off}(fp)", target.store_word()).map_err(
+                    RiscVFrame::fp_store(&mut output, target.store_word(), "t0", *slot_off, "t0").map_err(
                         |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
                     )?;
                 }
@@ -686,10 +687,12 @@ fn emit_instruction_riscv<W: Write>(
                     if let Some(physical) = reg_alloc.get_mapping(vreg) {
                         writeln!(writer, "    mv a0, {physical}")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        writeln!(
+                        RiscVFrame::fp_load(
                             writer,
-                            "    {} a0, {offset}(fp)",
-                            copy_load_mnemonic(ty, ctx.target)
+                            copy_load_mnemonic(ty, ctx.target),
+                            "a0",
+                            *offset,
+                            "a0",
                         )?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
@@ -718,7 +721,7 @@ fn emit_instruction_riscv<W: Write>(
                     if let Some(physical) = reg_alloc.get_mapping(vreg) {
                         writeln!(writer, "    mv {physical}, a0")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        writeln!(writer, "    {} a0, {offset}(fp)", ctx.target.store_word())?;
+                        RiscVFrame::fp_store(writer, ctx.target.store_word(), "a0", *offset, "t0")?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!(
@@ -744,7 +747,7 @@ fn emit_instruction_riscv<W: Write>(
                     "RISC-V stack address {slot:?} has no frame slot"
                 )))
             })?;
-            writeln!(writer, "    addi a0, fp, {offset}")?;
+            RiscVFrame::fp_address(writer, "a0", *offset)?;
             if let Register::Virtual(vreg) = dst {
                 store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
             }
@@ -758,7 +761,7 @@ fn emit_instruction_riscv<W: Write>(
             if let Some(physical) = reg_alloc.get_mapping(base_vreg) {
                 writeln!(writer, "    mv a0, {physical}")?;
             } else if let Some(slot) = stack_slots.get(base_vreg) {
-                writeln!(writer, "    {} a0, {slot}(fp)", ctx.target.load_word())?;
+                RiscVFrame::fp_load(writer, ctx.target.load_word(), "a0", *slot, "a0")?;
             } else {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     format!("RISC-V lea base {base_vreg:?} has no register or stack slot"),
@@ -937,7 +940,7 @@ fn emit_instruction_riscv<W: Write>(
 
                 if stack_space > 0 {
                     // Allocate stack space
-                    writeln!(writer, "    addi sp, sp, -{stack_space}")?;
+                    RiscVFrame::adjust_sp(writer, -(stack_space as i64))?;
 
                     // Store arguments on stack (in order, starting at sp+0)
                     for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
@@ -961,7 +964,7 @@ fn emit_instruction_riscv<W: Write>(
 
                 // Clean up stack arguments
                 if stack_space > 0 {
-                    writeln!(writer, "    addi sp, sp, {stack_space}")?;
+                    RiscVFrame::adjust_sp(writer, stack_space as i64)?;
                 }
             }
 
@@ -997,11 +1000,12 @@ fn emit_instruction_riscv<W: Write>(
             if num_stack_args > 0 {
                 for (j, arg) in args.iter().skip(num_reg_args).enumerate() {
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
-                    writeln!(
+                    RiscVFrame::fp_store(
                         writer,
-                        "    {} t0, {}(fp)",
                         ctx.target.store_word(),
-                        j as i32 * ctx.target.word_bytes()
+                        "t0",
+                        j as i32 * ctx.target.word_bytes(),
+                        "t0",
                     )?;
                 }
             }
@@ -1345,11 +1349,7 @@ fn spill_caller_saved<W: Write>(
                 "RISC-V caller-saved value {vreg:?} has no spill slot"
             )))
         })?;
-        writeln!(
-            writer,
-            "    {} {physical}, {offset}(fp)",
-            target.store_word()
-        )?;
+        RiscVFrame::fp_store(writer, target.store_word(), physical, *offset, "t0")?;
     }
     Ok(())
 }
@@ -1366,11 +1366,7 @@ fn reload_caller_saved<W: Write>(
                 "RISC-V caller-saved value {vreg:?} has no spill slot"
             )))
         })?;
-        writeln!(
-            writer,
-            "    {} {physical}, {offset}(fp)",
-            target.load_word()
-        )?;
+        RiscVFrame::fp_load(writer, target.load_word(), physical, *offset, physical)?;
     }
     Ok(())
 }
