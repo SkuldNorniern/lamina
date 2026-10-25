@@ -34,6 +34,10 @@ fn os_supported_for_x86_64(os: TargetOperatingSystem) -> bool {
         TargetOperatingSystem::Linux
             | TargetOperatingSystem::Android
             | TargetOperatingSystem::MacOS
+            | TargetOperatingSystem::IOS
+            | TargetOperatingSystem::TvOS
+            | TargetOperatingSystem::WatchOS
+            | TargetOperatingSystem::VisionOS
             | TargetOperatingSystem::Windows
             | TargetOperatingSystem::FreeBSD
             | TargetOperatingSystem::OpenBSD
@@ -51,6 +55,10 @@ fn os_supported_for_aarch64(os: TargetOperatingSystem) -> bool {
         TargetOperatingSystem::Linux
             | TargetOperatingSystem::Android
             | TargetOperatingSystem::MacOS
+            | TargetOperatingSystem::IOS
+            | TargetOperatingSystem::TvOS
+            | TargetOperatingSystem::WatchOS
+            | TargetOperatingSystem::VisionOS
             | TargetOperatingSystem::Windows
             | TargetOperatingSystem::FreeBSD
             | TargetOperatingSystem::OpenBSD
@@ -184,6 +192,19 @@ mod tests {
             TargetArchitecture::Aarch64,
             TargetOperatingSystem::Unknown
         ));
+    }
+
+    #[test]
+    fn test_apple_mobile_assembly_supported() {
+        for os in [
+            TargetOperatingSystem::IOS,
+            TargetOperatingSystem::TvOS,
+            TargetOperatingSystem::WatchOS,
+            TargetOperatingSystem::VisionOS,
+        ] {
+            assert!(is_assembly_supported(TargetArchitecture::X86_64, os), "{os}");
+            assert!(is_assembly_supported(TargetArchitecture::Aarch64, os), "{os}");
+        }
     }
 
     #[test]
