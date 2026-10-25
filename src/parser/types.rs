@@ -88,6 +88,13 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
 
 /// Parses a type (primitive, composite, named, or tuple).
 pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
+    state.enter_type()?;
+    let ty = parse_type_inner(state);
+    state.leave_type();
+    ty
+}
+
+fn parse_type_inner<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
     match state.current_char() {
         Some('@') => Ok(Type::Named(state.parse_type_identifier()?)),

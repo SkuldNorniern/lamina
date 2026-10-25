@@ -8,7 +8,10 @@ pub struct ParserState<'a> {
     input: &'a str,
     bytes: &'a [u8],
     position: usize,
+    type_depth: usize,
 }
+
+pub const MAX_TYPE_DEPTH: usize = 256;
 
 impl<'a> ParserState<'a> {
     /// Creates a new parser state for the given input.
@@ -17,7 +20,22 @@ impl<'a> ParserState<'a> {
             input,
             bytes: input.as_bytes(),
             position: 0,
+            type_depth: 0,
         }
+    }
+
+    pub fn enter_type(&mut self) -> Result<(), LaminaError> {
+        if self.type_depth >= MAX_TYPE_DEPTH {
+            return Err(self.error(format!(
+                "Type nesting exceeds {MAX_TYPE_DEPTH} levels\n  Hint: Simplify the type by naming an intermediate struct with a 'type' declaration"
+            )));
+        }
+        self.type_depth += 1;
+        Ok(())
+    }
+
+    pub fn leave_type(&mut self) {
+        self.type_depth -= 1;
     }
 
     /// Returns the current character.
