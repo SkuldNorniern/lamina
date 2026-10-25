@@ -19,7 +19,7 @@ fn operand_slot(operand: &Operand, slots: &HashMap<VirtualReg, i32>) -> Result<i
 }
 
 fn address(w: &mut impl Write, offset: i32) -> Result<(), LaminaError> {
-    writeln!(w, "    li a1, {offset}\n    add a1, fp, a1")?;
+    RiscVFrame::fp_address(w, "a1", offset)?;
     Ok(())
 }
 
@@ -179,8 +179,20 @@ pub(super) fn emit(
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
+    use super::*;
     use crate::mir::{VectorLane, VectorOp};
     use crate::mir_codegen::simd_support::*;
+
+    #[test]
+    fn vector_slot_address_beyond_the_immediate_range_avoids_li() {
+        let mut out = Vec::new();
+        address(&mut out, -40016).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert_eq!(
+            text,
+            "    li a1, -10\n    slli a1, a1, 12\n    addi a1, a1, 944\n    add a1, fp, a1\n"
+        );
+    }
 
     #[test]
     fn rvv_assembles_every_supported_pair() {
