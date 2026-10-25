@@ -688,6 +688,16 @@ impl<'a> Function<'a> {
                             }
                         }
                     }
+                    Instruction::Phi { incoming, .. } => {
+                        for (_, pred) in incoming {
+                            if !self.basic_blocks.contains_key(pred) {
+                                errors.push(format!(
+                                    "phi in block '{}' of '@{}' has incoming edge from undefined block '{}'",
+                                    label, self.name, pred
+                                ));
+                            }
+                        }
+                    }
                     Instruction::Ret { ty, value } => {
                         let ret_is_void = matches!(ty, Type::Void);
                         let sig_is_void = matches!(self.signature.return_type, Type::Void);
@@ -1291,5 +1301,40 @@ mod tests {
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
         let errs = f.validate().unwrap_err();
         assert!(errs.iter().any(|e| e.contains("return type")));
+    }
+
+    #[test]
+    fn test_validate_phi_from_undefined_block_fails() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Jmp {
+                    target_label: "join",
+                }],
+            },
+        );
+        blocks.insert(
+            "join",
+            BasicBlock {
+                instructions: vec![
+                    Instruction::Phi {
+                        result: "p",
+                        ty: Type::Primitive(PrimitiveType::I32),
+                        incoming: vec![
+                            (Value::Constant(Literal::I32(1)), "entry"),
+                            (Value::Constant(Literal::I32(2)), "ghost"),
+                        ],
+                    },
+                    Instruction::Ret {
+                        ty: Type::Primitive(PrimitiveType::I32),
+                        value: Some(Value::Variable("p")),
+                    },
+                ],
+            },
+        );
+        let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("'ghost'")));
     }
 }
