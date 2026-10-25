@@ -890,6 +890,12 @@ fn parse_trunc<'a>(
     let target_type_str = state.parse_identifier_str()?;
     let target_type = parse_primitive_from_ident(state, target_type_str)?;
 
+    if source_type == target_type {
+        return Err(state.error(format!(
+            "Source and target types must be different for conversion: {source_type_str}"
+        )));
+    }
+
     let value = parse_value(state)?;
     Ok(Instruction::Trunc {
         result,
@@ -910,6 +916,12 @@ fn parse_sext<'a>(
     state.expect_char('.')?;
     let target_type_str = state.parse_identifier_str()?;
     let target_type = parse_primitive_from_ident(state, target_type_str)?;
+
+    if source_type == target_type {
+        return Err(state.error(format!(
+            "Source and target types must be different for conversion: {source_type_str}"
+        )));
+    }
 
     let value = parse_value(state)?;
     Ok(Instruction::SignExtend {

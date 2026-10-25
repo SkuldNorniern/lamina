@@ -1129,12 +1129,34 @@ fn convert_instruction<'a>(
             let from = map_ir_prim(*source_type)?;
             let to = map_ir_prim(*target_type)?;
             let signed = matches!(instr, IRInst::SignExtend { .. });
-            if from.is_float() || to.is_float() || (signed && from.size_bytes() >= to.size_bytes())
-            {
-                return Err(FromIRError::UnsupportedType);
+            let widening = !matches!(instr, IRInst::Trunc { .. });
+            let name = if signed {
+                "sext"
+            } else if widening {
+                "zext"
+            } else {
+                "trunc"
+            };
+            if from.is_float() || to.is_float() {
+                return Err(FromIRError::InvalidConversion(format!(
+                    "{name} relates two integers; use fptosi, fptoui, sitofp or uitofp to cross between integers and floats"
+                )));
+            }
+            if widening && to.size_bytes() < from.size_bytes() {
+                return Err(FromIRError::InvalidConversion(format!(
+                    "{name} from {source_type} to {target_type} narrows; use trunc"
+                )));
+            }
+            if !widening && to.size_bytes() > from.size_bytes() {
+                return Err(FromIRError::InvalidConversion(format!(
+                    "trunc from {source_type} to {target_type} widens; use zext or sext"
+                )));
             }
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             let src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
+            if from.size_bytes() == to.size_bytes() {
+                return Ok(vec![Instruction::Copy { ty: to, dst, src }]);
+            }
             Ok(vec![Instruction::IntConvert {
                 from,
                 to,
@@ -2051,6 +2073,40 @@ ret.ptr %variable
         };
         assert_eq!(&Register::Virtual(*addressed), slot);
         assert_eq!(caller.stack_reservations[addressed], 1);
+    }
+
+    #[test]
+    fn width_conversions_reject_equal_widths_and_wrong_directions() {
+        for name in ["sext", "trunc", "zext"] {
+            let source = format!(
+                "fn @same(i64 %x) -> i64 {{\nentry:\n%a = {name}.i64.i64 %x\nret.i64 %a\n}}"
+            );
+            let error = parse_module(&source).expect_err("equal width conversion rejected");
+            assert!(
+                error
+                    .to_string()
+                    .contains("Source and target types must be different"),
+                "{name}: {error}"
+            );
+        }
+
+        let narrowing =
+            parse_module("fn @narrow(i64 %x) -> i64 {\nentry:\n%a = zext.i64.i32 %x\nret.i64 0\n}")
+                .expect("parse narrowing zext");
+        let error = from_ir(&narrowing, "narrow").expect_err("narrowing zext rejected");
+        assert!(
+            error.to_string().contains("zext from i64 to i32 narrows"),
+            "{error}"
+        );
+
+        let widening =
+            parse_module("fn @widen(i32 %x) -> i64 {\nentry:\n%a = trunc.i32.i64 %x\nret.i64 0\n}")
+                .expect("parse widening trunc");
+        let error = from_ir(&widening, "widen").expect_err("widening trunc rejected");
+        assert!(
+            error.to_string().contains("trunc from i32 to i64 widens"),
+            "{error}"
+        );
     }
 
     #[test]
