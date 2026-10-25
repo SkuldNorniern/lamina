@@ -84,7 +84,7 @@ pub fn supported_assembly_targets_hint() -> &'static str {
     "Supported: x86_64/aarch64/riscv32/riscv64/wasm32 on Linux, macOS, Windows, BSD, Redox \n and for bare-metal. Use lamina_platform::Target for cross-compilation."
 }
 
-/// Returns true if the given OS uses ELF object format (Linux, BSD, Redox).
+/// Returns true if the given OS uses ELF object format (Linux, BSD, Redox, Horizon, Orbis, Prospero).
 pub fn os_uses_elf(os: TargetOperatingSystem) -> bool {
     matches!(
         os,
@@ -95,6 +95,9 @@ pub fn os_uses_elf(os: TargetOperatingSystem) -> bool {
             | TargetOperatingSystem::NetBSD
             | TargetOperatingSystem::DragonFly
             | TargetOperatingSystem::Redox
+            | TargetOperatingSystem::Horizon
+            | TargetOperatingSystem::Orbis
+            | TargetOperatingSystem::Prospero
     )
 }
 
@@ -222,6 +225,9 @@ mod tests {
         assert!(os_uses_elf(TargetOperatingSystem::Linux));
         assert!(os_uses_elf(TargetOperatingSystem::FreeBSD));
         assert!(os_uses_elf(TargetOperatingSystem::Redox));
+        assert!(os_uses_elf(TargetOperatingSystem::Horizon));
+        assert!(os_uses_elf(TargetOperatingSystem::Orbis));
+        assert!(os_uses_elf(TargetOperatingSystem::Prospero));
         assert!(!os_uses_elf(TargetOperatingSystem::MacOS));
         assert!(!os_uses_elf(TargetOperatingSystem::Windows));
     }
