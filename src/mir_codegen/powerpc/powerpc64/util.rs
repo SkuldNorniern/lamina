@@ -10,7 +10,7 @@ use crate::mir::{
     instruction::Immediate,
     register::{Register, VirtualReg},
 };
-use lamina_codegen::LocalRegisterAllocator as RegisterAllocator;
+use lamina_codegen::{LocalRegisterAllocator as RegisterAllocator, powerpc::frame::r1_mem};
 
 /// Load a virtual register into GPR `r3` (the primary scratch/return reg).
 pub fn load_register_to_r3<W: Write, RA: RegisterAllocator<PhysReg = &'static str>>(
@@ -22,7 +22,7 @@ pub fn load_register_to_r3<W: Write, RA: RegisterAllocator<PhysReg = &'static st
     if let Some(phys) = reg_alloc.get_mapping(reg) {
         writeln!(writer, "    mr 3, {phys}")
     } else if let Some(offset) = stack_slots.get(reg) {
-        writeln!(writer, "    ld 3, {offset}(1)")
+        r1_mem(writer, "ld", "3", *offset)
     } else {
         Err(Error::new(
             ErrorKind::InvalidData,
@@ -41,7 +41,7 @@ pub fn store_r3_to_register<W: Write, RA: RegisterAllocator<PhysReg = &'static s
     if let Some(phys) = reg_alloc.get_mapping(reg) {
         writeln!(writer, "    mr {phys}, 3")
     } else if let Some(offset) = stack_slots.get(reg) {
-        writeln!(writer, "    std 3, {offset}(1)")
+        r1_mem(writer, "std", "3", *offset)
     } else {
         Err(Error::new(
             ErrorKind::InvalidData,
@@ -61,7 +61,7 @@ pub fn load_register_to_register<W: Write, RA: RegisterAllocator<PhysReg = &'sta
     if let Some(phys) = reg_alloc.get_mapping(src) {
         writeln!(writer, "    mr {dest_reg}, {phys}")
     } else if let Some(offset) = stack_slots.get(src) {
-        writeln!(writer, "    ld {dest_reg}, {offset}(1)")
+        r1_mem(writer, "ld", dest_reg, *offset)
     } else {
         Err(Error::new(
             ErrorKind::InvalidData,

@@ -51,7 +51,10 @@ use crate::{
 
 use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
-    powerpc::{Ppc64Abi, Ppc64Frame, Ppc64RegAlloc},
+    powerpc::{
+        Ppc64Abi, Ppc64Frame, Ppc64RegAlloc,
+        frame::{r1_address, r1_mem},
+    },
 };
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
@@ -245,16 +248,16 @@ fn compile_single_function_ppc64(
             if let Some(src) = Ppc64Abi::ARG_REGISTERS.get(index) {
                 extend_param(&mut output, src, &param.ty)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                writeln!(output, "    std {src}, {offset}(1)")
+                r1_mem(&mut output, "std", src, *offset)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
             } else {
                 let disp = Ppc64Frame::aligned_frame_size(local_bytes)
                     + (index - Ppc64Abi::ARG_REGISTERS.len()) * 8;
-                writeln!(output, "    ld 0, {disp}(1)")
+                r1_mem(&mut output, "ld", "0", disp as i32)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 extend_param(&mut output, "0", &param.ty)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                writeln!(output, "    std 0, {offset}(1)")
+                r1_mem(&mut output, "std", "0", *offset)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
             }
         }
@@ -264,7 +267,7 @@ fn compile_single_function_ppc64(
             && let Some(reg) = reg_alloc.get_mapping_for(vreg)
             && let Some(offset) = stack_slots.get(vreg)
         {
-            writeln!(output, "    ld {reg}, {offset}(1)")
+            r1_mem(&mut output, "ld", reg, *offset)
                 .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
     }
@@ -273,6 +276,7 @@ fn compile_single_function_ppc64(
         target_os,
         block_prefix: &block_prefix,
         settings,
+        local_bytes,
     };
     let mut debug_line: u32 = 0;
     let mut cmp_seq: u32 = 0;
@@ -373,6 +377,7 @@ struct Ppc64Emit<'a> {
     target_os: TargetOperatingSystem,
     block_prefix: &'a str,
     settings: &'a MirCodegenSettings,
+    local_bytes: usize,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -499,6 +504,7 @@ fn emit_instruction_ppc64<W: Write>(
         target_os,
         block_prefix,
         settings,
+        local_bytes,
     } = *emit;
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
@@ -533,7 +539,7 @@ fn emit_instruction_ppc64<W: Write>(
                     if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
                         writeln!(writer, "    mr 3, {physical}")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        writeln!(writer, "    {} 3, {offset}(1)", copy_load_mnemonic(ty))?;
+                        r1_mem(writer, copy_load_mnemonic(ty), "3", *offset)?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!("PowerPC64 Copy source {vreg:?} has no register or stack slot"),
@@ -553,7 +559,7 @@ fn emit_instruction_ppc64<W: Write>(
                     if let Some(physical) = reg_alloc.get_mapping_for(vreg) {
                         writeln!(writer, "    mr {physical}, 3")?;
                     } else if let Some(offset) = stack_slots.get(vreg) {
-                        writeln!(writer, "    std 3, {offset}(1)")?;
+                        r1_mem(writer, "std", "3", *offset)?;
                     } else {
                         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                             format!(
@@ -816,11 +822,16 @@ fn emit_instruction_ppc64<W: Write>(
                 }
 
                 let stack_space = ((num_stack_args * 8) + 15) & !15;
+                if stack_space > 32767 {
+                    return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                        format!("PowerPC64 call to {name} passes {stack_space} bytes of stack arguments, past the 16-bit displacement range"),
+                    )));
+                }
                 if stack_space > 0 {
                     writeln!(writer, "    addi 1, 1, -{stack_space}")?;
                     for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
                         load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
-                        writeln!(writer, "    std 11, {}(1)", i * 8)?;
+                        r1_mem(writer, "std", "11", (i * 8) as i32)?;
                     }
                 }
 
@@ -854,13 +865,12 @@ fn emit_instruction_ppc64<W: Write>(
             for (i, arg) in args.iter().take(num_reg_args).enumerate() {
                 load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[i])?;
             }
-            let local_bytes = stack_slots.len() * 8;
             let frame_size = Ppc64Frame::aligned_frame_size(local_bytes);
             if num_stack_args > 0 {
                 for (j, arg) in args.iter().skip(num_reg_args).enumerate() {
                     let disp = frame_size as i32 + (j as i32) * 8;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
-                    writeln!(writer, "    std 11, {disp}(1)")?;
+                    r1_mem(writer, "std", "11", disp)?;
                 }
             }
             Ppc64Frame::generate_tail_epilogue(writer, local_bytes).map_err(|e| {
@@ -983,7 +993,7 @@ fn emit_instruction_ppc64<W: Write>(
                     "PowerPC64 stack address {slot:?} has no frame slot"
                 )))
             })?;
-            writeln!(writer, "    addi 3, 1, {offset}")?;
+            r1_address(writer, "3", *offset)?;
             match dst {
                 Register::Virtual(vreg) => {
                     store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
@@ -1030,7 +1040,6 @@ fn emit_instruction_ppc64<W: Write>(
             if let Some(val) = value {
                 load_operand_to_register(val, writer, reg_alloc, stack_slots, "3")?;
             }
-            let local_bytes = stack_slots.len() * 8;
             Ppc64Frame::generate_epilogue(writer, local_bytes).map_err(|e| {
                 LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
             })?;
@@ -1074,7 +1083,7 @@ fn emit_load_fp_operand<W: Write>(
             match reg {
                 Register::Virtual(v) => {
                     if let Some(offset) = stack_slots.get(v) {
-                        writeln!(writer, "    {load_fp} {fpr}, {offset}(1)")?;
+                        r1_mem(writer, load_fp, fpr, *offset)?;
                     } else if let Some(phys) = reg_alloc.get_mapping_for(v) {
                         // Store to temp stack location then load as float
                         writeln!(writer, "    std {phys}, -8(1)")?;
@@ -1137,7 +1146,7 @@ fn emit_store_fp_result<W: Write>(
 ) -> Result<(), LaminaError> {
     let store_fp = if is_f32 { "stfs" } else { "stfd" };
     if let Some(offset) = stack_slots.get(vreg) {
-        writeln!(writer, "    {store_fp} {fpr}, {offset}(1)")?;
+        r1_mem(writer, store_fp, fpr, *offset)?;
     } else if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
         writeln!(writer, "    {store_fp} {fpr}, -8(1)")?;
         writeln!(writer, "    ld {phys}, -8(1)")?;
