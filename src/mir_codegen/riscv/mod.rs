@@ -1415,9 +1415,10 @@ mod tests {
     use std::error::Error;
 
     /// Replays the `li`, `slli`, `addi` and `add` lines that build the `t0` and `a0`
-    /// values. Returns what the prologue does to `sp`, and the first address built from `fp`.
-    fn riscv_frame_arithmetic(asm: &str) -> (i64, i64) {
-        let (mut t0, mut a0, mut sp_delta, mut address) = (0i64, 0i64, 0i64, None);
+    /// values. Returns what the prologue does to `sp`, and each address that is built
+    /// from `fp` or offset from an address already in `a0`.
+    fn riscv_frame_arithmetic(asm: &str) -> (i64, Vec<i64>) {
+        let (mut t0, mut a0, mut sp_delta, mut addresses) = (0i64, 0i64, 0i64, Vec::new());
         let mut in_prologue = true;
         for line in asm.lines().map(str::trim) {
             if line.starts_with(".L_reserved.") {
@@ -1441,11 +1442,15 @@ mod tests {
                     *v_ref = v_ref.wrapping_add(v.parse().unwrap_or(0));
                 }
                 ("add", ["sp", "sp", "t0"]) if in_prologue => sp_delta += t0,
-                ("add", ["a0", "fp", "a0"]) => address = Some(a0),
+                ("add", ["a0", "fp", "a0"]) => addresses.push(a0),
+                ("add", ["a0", "a0", "t0"]) => {
+                    a0 = a0.wrapping_add(t0);
+                    addresses.push(a0);
+                }
                 _ => {}
             }
         }
-        (sp_delta, address.unwrap_or(i64::MIN))
+        (sp_delta, addresses)
     }
 
     #[test]
@@ -1468,9 +1473,41 @@ mod tests {
         let mut output = Vec::new();
         generate_mir_riscv(&module, &mut output, TargetOperatingSystem::Linux)?;
         let assembly = String::from_utf8(output)?;
-        let (sp_delta, address) = riscv_frame_arithmetic(&assembly);
+        let (sp_delta, addresses) = riscv_frame_arithmetic(&assembly);
         assert_eq!(sp_delta, -(16 + 40000 + 16), "{assembly}");
-        assert_eq!(address, -(16 + 40000 + 8), "{assembly}");
+        assert_eq!(addresses, [-(16 + 40000 + 8)], "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn lea_offset_beyond_the_immediate_range_reaches_the_element() -> Result<(), Box<dyn Error>> {
+        let slot = VirtualReg::gpr(1);
+        let base = Register::Virtual(VirtualReg::gpr(0));
+        let mut function = FunctionBuilder::new("element")
+            .returns(MirType::ptr())
+            .block("entry")
+            .instr(MirInst::StackAddr {
+                dst: base.clone(),
+                slot,
+            })
+            .instr(MirInst::Lea {
+                dst: Register::Virtual(VirtualReg::gpr(2)),
+                base,
+                offset: 39999,
+            })
+            .instr(MirInst::Ret {
+                value: Some(Operand::Register(Register::Virtual(VirtualReg::gpr(2)))),
+            })
+            .build();
+        function.stack_reservations.insert(slot, 4999);
+        let mut module = MirModule::new("element");
+        module.add_function(function);
+        let mut output = Vec::new();
+        generate_mir_riscv(&module, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(!assembly.contains("addi a0, a0, 39999"), "{assembly}");
+        let (_, addresses) = riscv_frame_arithmetic(&assembly);
+        assert_eq!(addresses, [-(16 + 40000 + 16), -(16 + 40000 + 16) + 39999], "{assembly}");
         Ok(())
     }
 
