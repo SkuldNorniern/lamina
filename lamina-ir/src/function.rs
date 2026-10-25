@@ -622,6 +622,16 @@ impl<'a> Function<'a> {
             ));
         }
 
+        let mut defining_blocks: HashMap<&str, HashSet<&str>> = HashMap::new();
+        for (label, block) in &self.basic_blocks {
+            for instr in &block.instructions {
+                if let Some(def) = instr.defined_var() {
+                    defining_blocks.entry(def).or_default().insert(*label);
+                }
+            }
+        }
+        let params: HashSet<&str> = self.signature.params.iter().map(|p| p.name).collect();
+
         for (label, block) in &self.basic_blocks {
             let last = block.instructions.last();
             let has_terminator = last.is_some_and(Instruction::is_terminator);
@@ -632,7 +642,7 @@ impl<'a> Function<'a> {
                 ));
             }
 
-            let mut defined: HashSet<&str> = self.signature.params.iter().map(|p| p.name).collect();
+            let mut defined: HashSet<&str> = HashSet::new();
 
             for instr in &block.instructions {
                 match instr {
@@ -703,9 +713,12 @@ impl<'a> Function<'a> {
                     _ => {}
                 }
 
-                // 5. SSA: check uses come after definitions (within-block only).
+                // 5. SSA: a use needs a definition earlier in its block or in another block.
                 for used in instr.used_vars() {
-                    if !defined.contains(used) {
+                    let defined_elsewhere = defining_blocks
+                        .get(used)
+                        .is_some_and(|blocks| blocks.iter().any(|b| *b != *label));
+                    if !params.contains(used) && !defined.contains(used) && !defined_elsewhere {
                         errors.push(format!(
                             "use of undefined variable '%{}' in block '{}' of '@{}'",
                             used, label, self.name
@@ -1193,5 +1206,71 @@ mod tests {
         );
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
         assert!(f.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_value_used_in_later_block_is_accepted() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![
+                    Instruction::Binary {
+                        op: BinaryOp::Add,
+                        result: "sum",
+                        ty: PrimitiveType::I32,
+                        lhs: Value::Constant(Literal::I32(1)),
+                        rhs: Value::Constant(Literal::I32(2)),
+                    },
+                    Instruction::Jmp {
+                        target_label: "next",
+                    },
+                ],
+            },
+        );
+        blocks.insert(
+            "next",
+            BasicBlock {
+                instructions: vec![Instruction::Ret {
+                    ty: Type::Primitive(PrimitiveType::I32),
+                    value: Some(Value::Variable("sum")),
+                }],
+            },
+        );
+        let f = simple_func(vec![], Type::Primitive(PrimitiveType::I32), blocks, "entry");
+        assert!(f.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_use_before_definition_in_same_block_fails() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![
+                    Instruction::Binary {
+                        op: BinaryOp::Add,
+                        result: "early",
+                        ty: PrimitiveType::I32,
+                        lhs: Value::Variable("late"),
+                        rhs: Value::Constant(Literal::I32(1)),
+                    },
+                    Instruction::Binary {
+                        op: BinaryOp::Add,
+                        result: "late",
+                        ty: PrimitiveType::I32,
+                        lhs: Value::Constant(Literal::I32(1)),
+                        rhs: Value::Constant(Literal::I32(1)),
+                    },
+                    Instruction::Ret {
+                        ty: Type::Void,
+                        value: None,
+                    },
+                ],
+            },
+        );
+        let f = simple_func(vec![], Type::Void, blocks, "entry");
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("'%late'")));
     }
 }
