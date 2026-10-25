@@ -105,7 +105,7 @@ mod tests {
     use lamina_mir::Immediate;
 
     #[test]
-    fn only_classifying_backends_accept_aggregate_parameters() {
+    fn only_classifying_backends_accept_aggregates_at_boundaries() {
         use lamina_mir::{Aggregate, AggregateClass};
         let slot = VirtualReg::gpr(0);
         let aggregate = Aggregate {
@@ -115,39 +115,47 @@ mod tests {
         };
         let parameter =
             Parameter::new(Register::Virtual(slot), MirType::ptr()).with_aggregate(aggregate);
-        let mut func = Function::new(
-            Signature::new("take")
-                .with_params(vec![parameter])
-                .with_return(MirType::i64()),
-        );
-        let mut entry = Block::new("entry");
-        entry.push(Instruction::StackAddr {
-            dst: Register::Virtual(VirtualReg::gpr(1)),
-            slot,
-        });
-        entry.push(Instruction::Ret {
-            value: Some(Operand::Immediate(Immediate::I64(0))),
-        });
-        func.add_block(entry);
-        let mut module = MirModule::new("aggregates");
-        module.add_function(func);
+        let by_parameter = Signature::new("take")
+            .with_params(vec![parameter])
+            .with_return(MirType::i64());
+        let by_return = Signature::new("take")
+            .with_return(MirType::ptr())
+            .with_return_aggregate(aggregate);
 
-        for arch in [TargetArchitecture::X86_64, TargetArchitecture::Aarch64] {
-            validate_module_call_parameters(&module, arch).expect("classifying backend");
-        }
-        for arch in [
-            TargetArchitecture::Riscv64,
-            TargetArchitecture::PowerPC64,
-            TargetArchitecture::Wasm64,
-        ] {
-            let error = validate_module_call_parameters(&module, arch)
-                .expect_err("backend without classification");
-            assert!(
-                error
-                    .to_string()
-                    .contains("does not yet pass aggregates by value"),
-                "{arch:?}: {error}"
-            );
+        let pointer = Operand::Register(Register::Virtual(VirtualReg::gpr(1)));
+        let returned = [
+            (by_parameter, Operand::Immediate(Immediate::I64(0))),
+            (by_return, pointer),
+        ];
+        for (signature, value) in returned {
+            let mut func = Function::new(signature);
+            let mut entry = Block::new("entry");
+            entry.push(Instruction::StackAddr {
+                dst: Register::Virtual(VirtualReg::gpr(1)),
+                slot,
+            });
+            entry.push(Instruction::Ret { value: Some(value) });
+            func.add_block(entry);
+            let mut module = MirModule::new("aggregates");
+            module.add_function(func);
+
+            for arch in [TargetArchitecture::X86_64, TargetArchitecture::Aarch64] {
+                validate_module_call_parameters(&module, arch).expect("classifying backend");
+            }
+            for arch in [
+                TargetArchitecture::Riscv64,
+                TargetArchitecture::PowerPC64,
+                TargetArchitecture::Wasm64,
+            ] {
+                let error = validate_module_call_parameters(&module, arch)
+                    .expect_err("backend without classification");
+                assert!(
+                    error
+                        .to_string()
+                        .contains("does not yet pass aggregates by value"),
+                    "{arch:?}: {error}"
+                );
+            }
         }
     }
 
