@@ -992,7 +992,6 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             } else {
                 let num_reg_args = args.len().min(arg_regs.len());
-                let num_stack_args = args.len().saturating_sub(arg_regs.len());
 
                 for (i, arg) in args.iter().take(num_reg_args).enumerate() {
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[i])?;
