@@ -286,7 +286,21 @@ mod tests {
 
     #[test]
     fn load_imm_builds_every_tested_value() -> Result<(), Box<dyn Error>> {
-        for value in [0, 1, -1, 2047, -2048, 2048, -2049, 40016, -40016, 1 << 31, i32::MIN as i64, i64::MAX, i64::MIN] {
+        for value in [
+            0,
+            1,
+            -1,
+            2047,
+            -2048,
+            2048,
+            -2049,
+            40016,
+            -40016,
+            1 << 31,
+            i32::MIN as i64,
+            i64::MAX,
+            i64::MIN,
+        ] {
             let mut out = Vec::new();
             RiscVFrame::load_imm(&mut out, "t0", value)?;
             let asm = String::from_utf8(out)?;

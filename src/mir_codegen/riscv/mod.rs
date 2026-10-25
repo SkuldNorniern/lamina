@@ -1507,7 +1507,11 @@ mod tests {
         let assembly = String::from_utf8(output)?;
         assert!(!assembly.contains("addi a0, a0, 39999"), "{assembly}");
         let (_, addresses) = riscv_frame_arithmetic(&assembly);
-        assert_eq!(addresses, [-(16 + 40000 + 16), -(16 + 40000 + 16) + 39999], "{assembly}");
+        assert_eq!(
+            addresses,
+            [-(16 + 40000 + 16), -(16 + 40000 + 16) + 39999],
+            "{assembly}"
+        );
         Ok(())
     }
 
