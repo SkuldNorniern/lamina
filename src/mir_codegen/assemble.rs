@@ -6,6 +6,7 @@
 //! - WASM: wat2wasm
 
 use crate::error::LaminaError;
+use lamina_codegen::os_uses_macho;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use ras::{ObjectWriteOptions, Ras, is_object_file_supported};
 use std::{
@@ -214,35 +215,7 @@ fn assemble_native(
 
     let (cmd, args) = match backend {
         AssemblerBackend::Gas => {
-            let mut args = vec![];
-            // Set architecture-specific flags for gas/as
-            match target_arch {
-                TargetArchitecture::X86_64 => {
-                    if target_os != TargetOperatingSystem::MacOS {
-                        args.push("--64".to_string());
-                    }
-                }
-                TargetArchitecture::Aarch64 => {
-                    // macOS as doesn't support -march, it auto-detects from -arch
-                    if target_os == TargetOperatingSystem::MacOS {
-                        args.push("-arch".to_string());
-                        args.push("arm64".to_string());
-                    } else {
-                        args.push("-march=aarch64".to_string());
-                    }
-                }
-                TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
-                    args.push(format!(
-                        "-march=rv{}",
-                        if matches!(target_arch, TargetArchitecture::Riscv64) {
-                            "64"
-                        } else {
-                            "32"
-                        }
-                    ));
-                }
-                _ => {}
-            }
+            let mut args = gas_arch_flags(target_arch, target_os);
             args.push(input_path.to_string_lossy().to_string());
             args.push("-o".to_string());
             args.push(output_path.to_string_lossy().to_string());
@@ -372,6 +345,41 @@ pub fn get_assembly_output_extension(target_arch: TargetArchitecture) -> &'stati
 }
 
 /// Intermediate assembly/WAT file extension for the given target.
+fn gas_arch_flags(
+    target_arch: TargetArchitecture,
+    target_os: TargetOperatingSystem,
+) -> Vec<String> {
+    let mut args = vec![];
+    match target_arch {
+        TargetArchitecture::X86_64 => {
+            if !os_uses_macho(target_os) {
+                args.push("--64".to_string());
+            }
+        }
+        TargetArchitecture::Aarch64 => {
+            // Mach-O assemblers take -arch instead of -march
+            if os_uses_macho(target_os) {
+                args.push("-arch".to_string());
+                args.push("arm64".to_string());
+            } else {
+                args.push("-march=aarch64".to_string());
+            }
+        }
+        TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => {
+            args.push(format!(
+                "-march=rv{}",
+                if matches!(target_arch, TargetArchitecture::Riscv64) {
+                    "64"
+                } else {
+                    "32"
+                }
+            ));
+        }
+        _ => {}
+    }
+    args
+}
+
 pub fn get_intermediate_extension(
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
@@ -485,5 +493,31 @@ mod tests {
         )
         .expect_err("gas should be rejected on Windows targets");
         assert!(error.to_string().contains("GNU as/gas"));
+    }
+
+    #[test]
+    fn gas_flags_follow_mach_o_predicate() {
+        for os in [
+            TargetOperatingSystem::MacOS,
+            TargetOperatingSystem::IOS,
+            TargetOperatingSystem::TvOS,
+            TargetOperatingSystem::WatchOS,
+            TargetOperatingSystem::VisionOS,
+        ] {
+            assert!(gas_arch_flags(TargetArchitecture::X86_64, os).is_empty(), "{os:?}");
+            assert_eq!(
+                gas_arch_flags(TargetArchitecture::Aarch64, os),
+                ["-arch", "arm64"],
+                "{os:?}"
+            );
+        }
+        assert_eq!(
+            gas_arch_flags(TargetArchitecture::X86_64, TargetOperatingSystem::Linux),
+            ["--64"]
+        );
+        assert_eq!(
+            gas_arch_flags(TargetArchitecture::Aarch64, TargetOperatingSystem::Linux),
+            ["-march=aarch64"]
+        );
     }
 }
