@@ -41,6 +41,7 @@ use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
     aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
 };
+use lamina_codegen::os_uses_macho;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
@@ -881,7 +882,7 @@ fn emit_block<W: Write>(
                     // Special-case intrinsic: print(integer) via printf("%lld\n", value)
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                     match abi.target_os() {
-                        TargetOperatingSystem::MacOS => {
+                        os if os_uses_macho(os) => {
                             // Darwin AArch64 variadic ABI requires arguments to be available in the stack home area
                             // Ensure 16-byte alignment and spill the first vararg to stack
                             writeln!(w, "    sub sp, sp, #32")?; // create home area
@@ -909,7 +910,7 @@ fn emit_block<W: Write>(
                 } else if name == "writebyte" && args.len() == 1 {
                     // Write a single byte to stdout using macOS ARM64 syscall
                     match abi.target_os() {
-                        TargetOperatingSystem::MacOS => {
+                        os if os_uses_macho(os) => {
                             writeln!(w, "    sub sp, sp, #16")?;
                             emit_materialize_operand(w, &args[0], "x9", frame, ra)?;
                             writeln!(w, "    strb {}, [sp]", w_alias("x9"))?;
@@ -941,7 +942,7 @@ fn emit_block<W: Write>(
                     }
                 } else if name == "readbyte" && args.is_empty() {
                     match abi.target_os() {
-                        TargetOperatingSystem::MacOS => {
+                        os if os_uses_macho(os) => {
                             writeln!(w, "    sub sp, sp, #16")?;
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    mov x1, sp")?;
@@ -999,7 +1000,7 @@ fn emit_block<W: Write>(
                     writeln!(w, "    mov x2, #{width}")?;
                     writeln!(w, "    mov x0, #1")?;
                     match abi.target_os() {
-                        TargetOperatingSystem::MacOS => {
+                        os if os_uses_macho(os) => {
                             writeln!(w, "    mov x16, #4")?;
                             writeln!(w, "    svc #0")?;
                         }
@@ -1012,7 +1013,7 @@ fn emit_block<W: Write>(
                     }
                 } else if name == "write" && args.len() == 2 {
                     match abi.target_os() {
-                        TargetOperatingSystem::MacOS => {
+                        os if os_uses_macho(os) => {
                             // write(fd=1, buf=args[0], size=args[1])
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
@@ -1035,7 +1036,7 @@ fn emit_block<W: Write>(
                     }
                 } else if name == "read" && args.len() == 2 {
                     match abi.target_os() {
-                        TargetOperatingSystem::MacOS => {
+                        os if os_uses_macho(os) => {
                             // read(fd=0, buf=args[0], size=args[1])
                             emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                             emit_materialize_operand(w, &args[1], "x2", frame, ra)?;
@@ -1760,5 +1761,25 @@ mod tests {
             !assembly.contains("fadd"),
             "unexpected float add: {assembly}"
         );
+    }
+
+    #[test]
+    fn mach_o_targets_call_underscored_libc_symbols() -> Result<(), Box<dyn Error>> {
+        let ir = "fn @main() -> i64 {\nentry:\n  %v = add.i64 1, 2\n  call @print(%v)\n  ret.i64 0\n}\n";
+        let module = crate::parser::parse_module(ir)?;
+        let mir = crate::mir::codegen::from_ir(&module, "print_test").expect("lower print module");
+        for os in [TargetOperatingSystem::MacOS, TargetOperatingSystem::IOS] {
+            let mut output = Vec::new();
+            generate_mir_aarch64(&mir, &mut output, os)?;
+            let assembly = String::from_utf8(output)?;
+            assert!(assembly.contains("bl _printf\n"), "{os:?}: {assembly}");
+            assert!(assembly.contains("_main:\n"), "{os:?}: {assembly}");
+            assert!(!assembly.contains("bl printf\n"), "{os:?}: {assembly}");
+        }
+        let mut output = Vec::new();
+        generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(assembly.contains("bl printf\n"), "{assembly}");
+        Ok(())
     }
 }
