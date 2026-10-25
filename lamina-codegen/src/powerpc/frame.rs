@@ -196,7 +196,18 @@ mod tests {
 
     #[test]
     fn test_load_imm_covers_the_32_bit_range() {
-        for value in [0i64, 1, -1, 32767, -32768, 32768, 40032, 65536, 0x7FFF_0000, -40032] {
+        for value in [
+            0i64,
+            1,
+            -1,
+            32767,
+            -32768,
+            32768,
+            40032,
+            65536,
+            0x7FFF_0000,
+            -40032,
+        ] {
             let mut buf = Vec::new();
             load_imm(&mut buf, "12", value).unwrap();
             let s = String::from_utf8(buf).unwrap();

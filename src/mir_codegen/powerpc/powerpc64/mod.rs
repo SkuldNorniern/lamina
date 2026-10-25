@@ -46,9 +46,7 @@ use crate::{
     mir_codegen::{
         Codegen, CodegenError, CodegenOptions, MirCodegenSettings, RegallocStrategy,
         capability::CapabilitySet,
-        common::{
-            CodegenBase, compile_functions_parallel, parallel_codegen_error,
-        },
+        common::{CodegenBase, compile_functions_parallel, parallel_codegen_error},
         validate_module_call_parameters,
     },
 };
@@ -270,7 +268,10 @@ fn compile_single_function_ppc64(
         reg_alloc = Ppc64RegAlloc::from_global_plan(target_os, &plan);
         for (v, a) in &plan {
             if let MirAllocation::Spill(off) = a {
-                stack_slots.insert(*v, ppc64_stack_offset_for_linear_spill(*off, first_free_slot));
+                stack_slots.insert(
+                    *v,
+                    ppc64_stack_offset_for_linear_spill(*off, first_free_slot),
+                );
             }
         }
     } else {
@@ -886,7 +887,9 @@ fn emit_instruction_ppc64<W: Write>(
                 let stack_space = ((num_stack_args * 8) + 15) & !15;
                 if stack_space > 32767 {
                     return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                        format!("PowerPC64 call to {name} passes {stack_space} bytes of stack arguments, past the 16-bit displacement range"),
+                        format!(
+                            "PowerPC64 call to {name} passes {stack_space} bytes of stack arguments, past the 16-bit displacement range"
+                        ),
                     )));
                 }
                 if stack_space > 0 {
@@ -1253,11 +1256,11 @@ fn extend_integer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::error::Error;
     use crate::mir::{
         FunctionBuilder,
         instruction::{Instruction, IntBinOp, Operand},
     };
+    use std::error::Error;
 
     fn make_module_with_empty_func() -> MirModule {
         let mut m = MirModule::new("test_ppc64");
@@ -1388,7 +1391,10 @@ mod tests {
             let assembly = String::from_utf8(output)?;
             let (frame, address) = ppc64_frame_arithmetic(&assembly);
             let address = address.unwrap_or(i64::MIN);
-            assert!(frame >= address + 40000, "{regalloc:?}: frame {frame} {assembly}");
+            assert!(
+                frame >= address + 40000,
+                "{regalloc:?}: frame {frame} {assembly}"
+            );
             assert!(address >= 32, "{regalloc:?}: address {address} {assembly}");
         }
         Ok(())
