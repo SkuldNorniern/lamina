@@ -50,6 +50,19 @@ pub(super) fn kernels(
     }).collect()
 }
 
+/// Name of the first function taking an aggregate by value, for backends that have no
+/// classification for one.
+pub(super) fn aggregate_parameter_function(module: &Module) -> Option<&str> {
+    let mut names: Vec<&str> = module
+        .functions
+        .iter()
+        .filter(|(_, func)| func.sig.params.iter().any(|p| p.aggregate.is_some()))
+        .map(|(name, _)| name.as_str())
+        .collect();
+    names.sort_unstable();
+    names.first().copied()
+}
+
 pub(super) fn error(message: &str) -> LaminaError {
     LaminaError::ValidationError(format!("GPU code emission: {message}"))
 }

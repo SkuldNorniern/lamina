@@ -18,14 +18,35 @@ use lamina_platform::TargetArchitecture;
 /// in practice; this is a Lamina policy limit (stack use, encoder immediates, test surface).
 pub const MAX_MIR_CALL_PARAMETERS: usize = 256;
 
-/// Rejects modules whose signatures or call sites exceed [`MAX_MIR_CALL_PARAMETERS`].
-///
-/// `target_arch` is reserved for future per-target caps (e.g. stricter WASM tooling).
+/// Architectures with an aggregate classification. The others reject a module that
+/// passes an aggregate by value rather than guess at an ABI for it.
+fn classifies_aggregates(target_arch: TargetArchitecture) -> bool {
+    matches!(
+        target_arch,
+        TargetArchitecture::X86_64 | TargetArchitecture::Aarch64
+    )
+}
+
+/// Rejects modules whose signatures or call sites exceed [`MAX_MIR_CALL_PARAMETERS`],
+/// and those passing an aggregate by value to a backend that cannot classify one.
 pub fn validate_module_call_parameters(
     module: &Module,
     target_arch: TargetArchitecture,
 ) -> Result<(), LaminaError> {
-    let _ = target_arch;
+    if !classifies_aggregates(target_arch) {
+        let mut names: Vec<&String> = module
+            .functions
+            .iter()
+            .filter(|(_, func)| func.sig.params.iter().any(|p| p.aggregate.is_some()))
+            .map(|(name, _)| name)
+            .collect();
+        names.sort();
+        if let Some(name) = names.first() {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!("{target_arch:?} does not yet pass aggregates by value, as @{name} does"),
+            )));
+        }
+    }
     module
         .validate_in_pipeline()
         .map_err(CodegenError::InvalidMir)
@@ -75,9 +96,57 @@ mod tests {
 
     use super::*;
     use crate::mir::{
-        Block, Function, MirType, Operand, Parameter, Register, ScalarType, Signature, VirtualReg,
+        Block, Function, MirType, Module as MirModule, Operand, Parameter, Register, ScalarType,
+        Signature, VirtualReg,
     };
     use lamina_mir::Immediate;
+
+    #[test]
+    fn only_classifying_backends_accept_aggregate_parameters() {
+        use lamina_mir::{Aggregate, AggregateClass};
+        let slot = VirtualReg::gpr(0);
+        let aggregate = Aggregate {
+            size: 16,
+            align: 8,
+            class: AggregateClass::Integer,
+        };
+        let parameter =
+            Parameter::new(Register::Virtual(slot), MirType::ptr()).with_aggregate(aggregate);
+        let mut func = Function::new(
+            Signature::new("take")
+                .with_params(vec![parameter])
+                .with_return(MirType::i64()),
+        );
+        let mut entry = Block::new("entry");
+        entry.push(Instruction::StackAddr {
+            dst: Register::Virtual(VirtualReg::gpr(1)),
+            slot,
+        });
+        entry.push(Instruction::Ret {
+            value: Some(Operand::Immediate(Immediate::I64(0))),
+        });
+        func.add_block(entry);
+        let mut module = MirModule::new("aggregates");
+        module.add_function(func);
+
+        for arch in [TargetArchitecture::X86_64, TargetArchitecture::Aarch64] {
+            validate_module_call_parameters(&module, arch).expect("classifying backend");
+        }
+        for arch in [
+            TargetArchitecture::Riscv64,
+            TargetArchitecture::PowerPC64,
+            TargetArchitecture::Wasm64,
+        ] {
+            let error = validate_module_call_parameters(&module, arch)
+                .expect_err("backend without classification");
+            assert!(
+                error
+                    .to_string()
+                    .contains("does not yet pass aggregates by value"),
+                "{arch:?}: {error}"
+            );
+        }
+    }
 
     #[test]
     fn rejects_call_over_limit() {
