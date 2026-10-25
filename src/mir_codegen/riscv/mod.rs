@@ -158,6 +158,7 @@ fn compile_single_function_riscv(
     target: RiscVTarget,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
+    signatures: &RiscVSignatures,
 ) -> Result<Vec<u8>, CodegenError> {
     let reserved = reserve_vector_slots(func);
     let func = reserved.as_ref().unwrap_or(func);
@@ -266,23 +267,37 @@ fn compile_single_function_riscv(
 
     if !func.sig.params.is_empty() {
         let arg_regs = RiscVAbi::ARG_REGISTERS;
-        for (index, param) in func.sig.params.iter().enumerate() {
+        let param_types: Vec<MirType> = func.sig.params.iter().map(|p| p.ty).collect();
+        let places = classify_riscv_arguments(&param_types);
+        for (param, place) in func.sig.params.iter().zip(&places) {
             let Register::Virtual(vreg) = &param.reg else {
                 continue;
             };
             let Some(slot_off) = stack_slots.get(vreg) else {
                 continue;
             };
-            if index < arg_regs.len() {
+            if let RiscVArgPlace::Fpr(bank) = *place {
+                store_fp_register_to_register(
+                    &format!("fa{bank}"),
+                    vreg,
+                    &mut output,
+                    &reg_alloc,
+                    &stack_slots,
+                    param.ty.size_bytes() == 4,
+                )
+                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                continue;
+            }
+            if let RiscVArgPlace::Gpr(bank) = *place {
                 if let Some(physical) = reg_alloc.get_mapping(vreg) {
-                    writeln!(output, "    mv {physical}, {}", arg_regs[index]).map_err(|e| {
+                    writeln!(output, "    mv {physical}, {}", arg_regs[bank]).map_err(|e| {
                         CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
                     })?;
                 } else {
                     RiscVFrame::fp_store(
                         &mut output,
                         target.store_word(),
-                        arg_regs[index],
+                        arg_regs[bank],
                         *slot_off,
                         "t0",
                     )
@@ -290,7 +305,10 @@ fn compile_single_function_riscv(
                 }
             } else {
                 // fp is the caller's sp, so stack args start there and go up.
-                let caller_off = (index - arg_regs.len()) as i32 * target.word_bytes();
+                let RiscVArgPlace::Stack(slot) = *place else {
+                    continue;
+                };
+                let caller_off = slot as i32 * target.word_bytes();
                 RiscVFrame::fp_load(&mut output, target.load_word(), "t0", caller_off, "t0")
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 if let Some(physical) = reg_alloc.get_mapping(vreg) {
@@ -316,6 +334,8 @@ fn compile_single_function_riscv(
         live_across_calls,
         stack_size,
         callee_saved_registers,
+        signatures,
+        ret_float: func.sig.ret_ty.filter(MirType::is_float),
     };
     let plan = FunctionEmissionPlan::new(func);
     if plan
@@ -471,9 +491,17 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     validate_module_call_parameters(module, arch)?;
     validate_rv32_i64(module, target)?;
     let settings_arc = Arc::new(settings.clone());
+    let signatures = Arc::new(RiscVSignatures::from_module(module));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
-            compile_single_function_riscv(name, func, target, os, settings_arc.as_ref())
+            compile_single_function_riscv(
+                name,
+                func,
+                target,
+                os,
+                settings_arc.as_ref(),
+                signatures.as_ref(),
+            )
         })
         .map_err(parallel_codegen_error)?;
 
@@ -502,6 +530,82 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
 }
 
 /// Per-function state shared by the block and instruction emitters.
+/// Where an argument sits under lp64d: an integer register, a float register from a
+/// bank of its own, or an eight-byte stack slot.
+#[derive(Clone, Copy)]
+enum RiscVArgPlace {
+    Gpr(usize),
+    Fpr(usize),
+    Stack(usize),
+}
+
+/// Floats take the next fa register and integers the next a register, from banks that
+/// run out separately.
+fn classify_riscv_arguments(types: &[MirType]) -> Vec<RiscVArgPlace> {
+    let banks = RiscVAbi::ARG_REGISTERS.len();
+    let mut gprs = 0;
+    let mut fprs = 0;
+    let mut stack = 0;
+    let mut places = Vec::with_capacity(types.len());
+    for ty in types {
+        let (used, limit) = if ty.is_float() {
+            (&mut fprs, banks)
+        } else {
+            (&mut gprs, banks)
+        };
+        if *used < limit {
+            let index = *used;
+            *used += 1;
+            places.push(if ty.is_float() {
+                RiscVArgPlace::Fpr(index)
+            } else {
+                RiscVArgPlace::Gpr(index)
+            });
+        } else {
+            places.push(RiscVArgPlace::Stack(stack));
+            stack += 1;
+        }
+    }
+    places
+}
+
+/// Parameter and result types of each function, so a call site knows which bank an
+/// argument belongs in.
+#[derive(Default)]
+struct RiscVSignatures {
+    params: HashMap<String, Vec<MirType>>,
+    returns: HashMap<String, MirType>,
+}
+
+impl RiscVSignatures {
+    fn from_module(module: &MirModule) -> Self {
+        Self {
+            params: module
+                .functions
+                .iter()
+                .map(|(name, func)| (name.clone(), func.sig.params.iter().map(|p| p.ty).collect()))
+                .collect(),
+            returns: module
+                .functions
+                .iter()
+                .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_ty?)))
+                .collect(),
+        }
+    }
+
+    /// An undeclared callee has no signature, so its arguments pass as integers.
+    fn arguments(&self, callee: &str, count: usize) -> Vec<MirType> {
+        match self.params.get(callee) {
+            Some(types) if types.len() == count => types.clone(),
+            _ => vec![MirType::i64(); count],
+        }
+    }
+
+    fn float_result(&self, callee: &str) -> Option<MirType> {
+        self.returns.get(callee).copied().filter(MirType::is_float)
+    }
+}
+
 struct EmitCtx<'a> {
     func_name: &'a str,
     target: RiscVTarget,
@@ -513,6 +617,9 @@ struct EmitCtx<'a> {
     live_across_calls: HashMap<usize, Vec<VirtualReg>>,
     stack_size: usize,
     callee_saved_registers: Vec<&'static str>,
+    signatures: &'a RiscVSignatures,
+    /// Set when this function returns a float, which leaves in fa0.
+    ret_float: Option<MirType>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -968,14 +1075,37 @@ fn emit_instruction_riscv<W: Write>(
                 // RISC-V calling convention: first 8 args in a0-a7, remaining on stack
 
                 let arg_regs = RiscVAbi::ARG_REGISTERS;
-                let num_reg_args = args.len().min(arg_regs.len());
-                let num_stack_args = args.len().saturating_sub(arg_regs.len());
+                let types = ctx.signatures.arguments(name, args.len());
+                let places = classify_riscv_arguments(&types);
+                let num_stack_args = places
+                    .iter()
+                    .filter(|place| matches!(place, RiscVArgPlace::Stack(_)))
+                    .count();
 
-                // Pass register arguments (a0-a7)
-                for i in 0..num_reg_args {
-                    let arg = &args[i];
-                    let dest_reg = arg_regs[i];
-                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, dest_reg)?;
+                // Pass register arguments, each from the bank its type belongs to.
+                for ((arg, ty), place) in args.iter().zip(&types).zip(&places) {
+                    match *place {
+                        RiscVArgPlace::Gpr(bank) => {
+                            load_operand_to_register(
+                                arg,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                                arg_regs[bank],
+                            )?;
+                        }
+                        RiscVArgPlace::Fpr(bank) => {
+                            load_fp_operand_to_register(
+                                arg,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                                &format!("fa{bank}"),
+                                ty.size_bytes() == 4,
+                            )?;
+                        }
+                        RiscVArgPlace::Stack(_) => {}
+                    }
                 }
 
                 // Pass stack arguments (16-byte aligned)
@@ -991,8 +1121,11 @@ fn emit_instruction_riscv<W: Write>(
                     RiscVFrame::adjust_sp(writer, -(stack_space as i64))?;
 
                     // Store arguments on stack (in order, starting at sp+0)
-                    for (i, arg) in args.iter().skip(num_reg_args).enumerate() {
-                        let offset = i * ctx.target.word_bytes() as usize;
+                    for (arg, place) in args.iter().zip(&places) {
+                        let RiscVArgPlace::Stack(slot) = *place else {
+                            continue;
+                        };
+                        let offset = slot * ctx.target.word_bytes() as usize;
                         // Load argument to a temporary register (use t0)
                         load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
                         // Store to stack
@@ -1018,11 +1151,21 @@ fn emit_instruction_riscv<W: Write>(
 
             reload_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
 
-            // Handle return value (always in a0)
+            // Handle return value: a0, or fa0 when the callee returns a float.
             if let Some(ret_reg) = ret
                 && let Register::Virtual(vreg) = ret_reg
             {
-                store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?;
+                match ctx.signatures.float_result(name) {
+                    Some(ty) => store_fp_register_to_register(
+                        "fa0",
+                        vreg,
+                        writer,
+                        reg_alloc,
+                        stack_slots,
+                        ty.size_bytes() == 4,
+                    )?,
+                    None => store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?,
+                }
             }
         }
         MirInst::TailCall { name, args } => {
@@ -1205,7 +1348,17 @@ fn emit_instruction_riscv<W: Write>(
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
-                load_operand_to_register(val, writer, reg_alloc, stack_slots, "a0")?;
+                match ctx.ret_float {
+                    Some(ty) => load_fp_operand_to_register(
+                        val,
+                        writer,
+                        reg_alloc,
+                        stack_slots,
+                        "fa0",
+                        ty.size_bytes() == 4,
+                    )?,
+                    None => load_operand_to_register(val, writer, reg_alloc, stack_slots, "a0")?,
+                }
             }
             // Epilogue
             RiscVFrame::generate_epilogue(
@@ -2237,6 +2390,34 @@ mod tests {
             assembly.contains(".data\n.p2align 3\ncounter:\n    .byte 0x29, 0x00"),
             "{assembly}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn floats_cross_the_boundary_in_fa_registers() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @add(f64 %a, i64 %n, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  %w = sitofp.i64.f64 %n\n  %t = add.f64 %s, %w\n  ret.f64 %t\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(1.5, 7, 2.5)\n  %i = fptosi.f64.i64 %r\n  ret.i64 %i\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "floats").expect("lower floats");
+        let mut output = Vec::new();
+        generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+
+        // The banks run out separately, so the integer still takes a0 while the two
+        // floats take fa0 and fa1.
+        let callee = assembly.split("\nadd:\n").nth(1).ok_or("missing add")?;
+        let prologue = callee
+            .split(".L_add.entry:")
+            .next()
+            .ok_or("missing entry")?;
+        assert!(prologue.contains("    fsd fa0, "), "{assembly}");
+        assert!(prologue.contains("    fsd fa1, "), "{assembly}");
+        assert!(prologue.contains("    sd a0, "), "{assembly}");
+
+        let caller = assembly.split("\nmain:\n").nth(1).ok_or("missing main")?;
+        let call = caller.split("call add").next().ok_or("missing call")?;
+        assert!(call.contains("    fmv.d.x fa0, "), "{assembly}");
+        assert!(call.contains("    fmv.d.x fa1, "), "{assembly}");
         Ok(())
     }
 
