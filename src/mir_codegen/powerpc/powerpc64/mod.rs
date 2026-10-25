@@ -230,6 +230,7 @@ fn compile_single_function_ppc64(
     func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
+    signatures: &Ppc64Signatures,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut output = Vec::new();
     let abi = Ppc64Abi::new(target_os);
@@ -310,11 +311,23 @@ fn compile_single_function_ppc64(
     Ppc64Frame::generate_prologue(&mut output, local_bytes)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
+    let param_types: Vec<MirType> = func.sig.params.iter().map(|p| p.ty).collect();
+    let param_places = classify_ppc64_arguments(&param_types);
     for (index, param) in func.sig.params.iter().enumerate() {
         if let Register::Virtual(vreg) = &param.reg
             && let Some(offset) = stack_slots.get(vreg)
         {
-            if let Some(src) = Ppc64Abi::ARG_REGISTERS.get(index) {
+            if let PpcArgPlace::Fpr(bank) = param_places[index] {
+                emit_store_fp_result(
+                    &bank.to_string(),
+                    vreg,
+                    &mut output,
+                    &reg_alloc,
+                    &stack_slots,
+                    param.ty.size_bytes() == 4,
+                )
+                .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+            } else if let Some(src) = Ppc64Abi::ARG_REGISTERS.get(index) {
                 extend_param(&mut output, src, &param.ty)
                     .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                 r1_mem(&mut output, "std", src, *offset)
@@ -346,6 +359,8 @@ fn compile_single_function_ppc64(
         block_prefix: &block_prefix,
         settings,
         local_bytes,
+        signatures,
+        ret_float: func.sig.ret_ty.filter(MirType::is_float),
     };
     let mut debug_line: u32 = 0;
     let mut cmp_seq: u32 = 0;
@@ -427,9 +442,16 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     }
 
     let settings_arc = Arc::new(settings.clone());
+    let signatures = Arc::new(Ppc64Signatures::from_module(module));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
-            compile_single_function_ppc64(name, func, os, settings_arc.as_ref())
+            compile_single_function_ppc64(
+                name,
+                func,
+                os,
+                settings_arc.as_ref(),
+                signatures.as_ref(),
+            )
         })
         .map_err(parallel_codegen_error)?;
 
@@ -445,11 +467,82 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
 }
 
 #[allow(clippy::too_many_lines)]
+/// Where an argument sits under elfv2: a general register, a float register, or the
+/// parameter save area. A float takes the next f register while still consuming its
+/// parameter slot, which leaves the matching general register unused.
+#[derive(Clone, Copy)]
+enum PpcArgPlace {
+    Gpr(usize),
+    Fpr(usize),
+    Stack(usize),
+}
+
+/// f1 to f13 carry floats.
+const FLOAT_ARGUMENT_REGISTERS: usize = 13;
+
+fn classify_ppc64_arguments(types: &[MirType]) -> Vec<PpcArgPlace> {
+    let mut floats = 0;
+    types
+        .iter()
+        .enumerate()
+        .map(|(index, ty)| {
+            if ty.is_float() && floats < FLOAT_ARGUMENT_REGISTERS {
+                floats += 1;
+                PpcArgPlace::Fpr(floats)
+            } else if index < Ppc64Abi::ARG_REGISTERS.len() {
+                PpcArgPlace::Gpr(index)
+            } else {
+                PpcArgPlace::Stack(index)
+            }
+        })
+        .collect()
+}
+
+/// Parameter and result types of each function, so a call site knows which bank an
+/// argument belongs in.
+#[derive(Default)]
+struct Ppc64Signatures {
+    params: HashMap<String, Vec<MirType>>,
+    returns: HashMap<String, MirType>,
+}
+
+impl Ppc64Signatures {
+    fn from_module(module: &MirModule) -> Self {
+        Self {
+            params: module
+                .functions
+                .iter()
+                .map(|(name, func)| (name.clone(), func.sig.params.iter().map(|p| p.ty).collect()))
+                .collect(),
+            returns: module
+                .functions
+                .iter()
+                .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_ty?)))
+                .collect(),
+        }
+    }
+
+    /// An undeclared callee has no signature, so its arguments pass as integers.
+    fn arguments(&self, callee: &str, count: usize) -> Vec<MirType> {
+        match self.params.get(callee) {
+            Some(types) if types.len() == count => types.clone(),
+            _ => vec![MirType::i64(); count],
+        }
+    }
+
+    fn float_result(&self, callee: &str) -> Option<MirType> {
+        self.returns.get(callee).copied().filter(MirType::is_float)
+    }
+}
+
 struct Ppc64Emit<'a> {
     target_os: TargetOperatingSystem,
     block_prefix: &'a str,
     settings: &'a MirCodegenSettings,
     local_bytes: usize,
+    signatures: &'a Ppc64Signatures,
+    /// Set when this function returns a float, which leaves in f1.
+    ret_float: Option<MirType>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -577,6 +670,8 @@ fn emit_instruction_ppc64<W: Write>(
         block_prefix,
         settings,
         local_bytes,
+        signatures,
+        ret_float,
     } = *emit;
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
@@ -991,10 +1086,31 @@ fn emit_instruction_ppc64<W: Write>(
                     writeln!(writer, "    nop")?;
                 }
             } else {
-                let num_reg_args = args.len().min(arg_regs.len());
-
-                for (i, arg) in args.iter().take(num_reg_args).enumerate() {
-                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[i])?;
+                let types = signatures.arguments(name, args.len());
+                let places = classify_ppc64_arguments(&types);
+                for ((arg, ty), place) in args.iter().zip(&types).zip(&places) {
+                    match *place {
+                        PpcArgPlace::Gpr(bank) => {
+                            load_operand_to_register(
+                                arg,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                                arg_regs[bank],
+                            )?;
+                        }
+                        PpcArgPlace::Fpr(bank) => {
+                            emit_load_fp_operand(
+                                arg,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                                &bank.to_string(),
+                                ty.size_bytes() == 4,
+                            )?;
+                        }
+                        PpcArgPlace::Stack(_) => {}
+                    }
                 }
 
                 let outgoing = outgoing_frame_size(args.len())?;
@@ -1005,7 +1121,10 @@ fn emit_instruction_ppc64<W: Write>(
                     // have to account for.
                     writeln!(writer, "    stdu 1, -{frame}(1)")?;
                     let moved = biased_slots(stack_slots, frame as i32);
-                    for (index, arg) in args.iter().enumerate().skip(num_reg_args) {
+                    for ((index, arg), place) in args.iter().enumerate().zip(&places) {
+                        if !matches!(place, PpcArgPlace::Stack(_)) {
+                            continue;
+                        }
                         load_operand_to_register(arg, writer, reg_alloc, &moved, "11")?;
                         r1_mem(writer, "std", "11", parameter_save_offset(index))?;
                     }
@@ -1025,7 +1144,17 @@ fn emit_instruction_ppc64<W: Write>(
             if let Some(ret_reg) = ret
                 && let Register::Virtual(vreg) = ret_reg
             {
-                store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                match signatures.float_result(name) {
+                    Some(ty) => emit_store_fp_result(
+                        "1",
+                        vreg,
+                        writer,
+                        reg_alloc,
+                        stack_slots,
+                        ty.size_bytes() == 4,
+                    )?,
+                    None => store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?,
+                }
             }
         }
         MirInst::TailCall { name, args } => {
@@ -1239,7 +1368,17 @@ fn emit_instruction_ppc64<W: Write>(
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
-                load_operand_to_register(val, writer, reg_alloc, stack_slots, "3")?;
+                match ret_float {
+                    Some(ty) => emit_load_fp_operand(
+                        val,
+                        writer,
+                        reg_alloc,
+                        stack_slots,
+                        "1",
+                        ty.size_bytes() == 4,
+                    )?,
+                    None => load_operand_to_register(val, writer, reg_alloc, stack_slots, "3")?,
+                }
             }
             Ppc64Frame::generate_epilogue(writer, local_bytes).map_err(|e| {
                 LaminaError::CodegenError(CodegenError::InvalidCodegenOptions(e.to_string()))
@@ -1792,6 +1931,36 @@ mod tests {
         assert!(assembly.contains("    li 5, 4\n"), "{assembly}");
         assert!(assembly.contains("    li 3, 1\n"), "{assembly}");
         assert!(assembly.contains("    bl write\n"), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn floats_cross_the_boundary_in_f_registers() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @add(i64 %n, f64 %a, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  %w = sitofp.i64.f64 %n\n  %t = add.f64 %s, %w\n  ret.f64 %t\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(7, 1.5, 2.5)\n  %i = fptosi.f64.i64 %r\n  ret.i64 %i\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "floats").expect("lower floats");
+        let mut output = Vec::new();
+        generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+
+        // The integer takes r3 by its parameter position, while the two floats take f1
+        // and f2 and leave r4 and r5 unused.
+        let callee = assembly.split("\nadd:\n").nth(1).ok_or("missing add")?;
+        let prologue = callee
+            .split(".L_add.entry:")
+            .next()
+            .ok_or("missing entry")?;
+        assert!(prologue.contains("    std 3, "), "{assembly}");
+        assert!(prologue.contains("    stfd 1, "), "{assembly}");
+        assert!(prologue.contains("    stfd 2, "), "{assembly}");
+        assert!(!prologue.contains("    std 4, "), "{assembly}");
+        assert!(callee.contains("    lfd 1, "), "{assembly}");
+
+        let caller = assembly.split("\nmain:\n").nth(1).ok_or("missing main")?;
+        let call = caller.split("bl add").next().ok_or("missing call")?;
+        assert!(call.contains("    lfd 1, "), "{assembly}");
+        assert!(call.contains("    lfd 2, "), "{assembly}");
         Ok(())
     }
 
