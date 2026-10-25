@@ -903,14 +903,22 @@ fn emit_instruction_riscv<W: Write>(
             let caller_saved_mappings = reg_alloc.caller_saved_mappings(live_vregs);
             spill_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
 
-            if name == "writeptr" {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "RISC-V: writeptr is not supported".to_string(),
-                )));
-            }
-
             // Handle print intrinsic
-            if name == "print" {
+            if name == "writeptr" && args.len() == 2 {
+                // write(1, ptr, width): the pointee's bytes go out straight from memory.
+                let Operand::Immediate(Immediate::I64(width)) = &args[1] else {
+                    return Err(LaminaError::ValidationError(
+                        "writeptr width must be an immediate".to_string(),
+                    ));
+                };
+                load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
+                writeln!(writer, "    li a2, {width}")?;
+                writeln!(writer, "    li a0, 1")?;
+                let write = abi
+                    .call_stub("write")
+                    .unwrap_or_else(|| "write".to_string());
+                writeln!(writer, "    call {write}")?;
+            } else if name == "print" {
                 if let Some(arg) = args.first() {
                     // Load format string address to a0
                     match target_os {
@@ -2233,6 +2241,21 @@ mod tests {
         assert!(assembly.contains("    sltu t2, t1, a0\n"), "{assembly}");
         assert!(assembly.contains("    fcvt.d.l fa0, a0\n"), "{assembly}");
         assert!(assembly.contains("    fcvt.d.lu fa0, a0\n"), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn writeptr_sends_the_pointee_bytes_through_write() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @main() -> i32 {\nentry:\n  %p = alloc.stack i32\n  store.i32 %p, 72\n  %n = writeptr %p\n  ret.i32 0\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "writeptr").expect("lower writeptr");
+        let mut output = Vec::new();
+        generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(assembly.contains("    li a2, 4\n"), "{assembly}");
+        assert!(assembly.contains("    li a0, 1\n"), "{assembly}");
+        assert!(assembly.contains("    call write\n"), "{assembly}");
         Ok(())
     }
 
