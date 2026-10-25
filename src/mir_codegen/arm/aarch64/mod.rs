@@ -99,31 +99,44 @@ fn classify_aarch64_arguments(aggregates: &[Option<Aggregate>]) -> Vec<ArgPlace>
     places
 }
 
-/// Aggregate markers of each function's parameters, so a call site knows how the
-/// callee reads its arguments.
-type AggregateSignatures = HashMap<String, Vec<Option<Aggregate>>>;
-
-fn aggregate_signatures(module: &MirModule) -> AggregateSignatures {
-    module
-        .functions
-        .iter()
-        .map(|(name, func)| {
-            (
-                name.clone(),
-                func.sig.params.iter().map(|p| p.aggregate).collect(),
-            )
-        })
-        .collect()
+/// Aggregate markers of each function's boundary, so a call site knows how the callee
+/// reads its arguments and hands back its result.
+#[derive(Default)]
+struct AggregateSignatures {
+    params: HashMap<String, Vec<Option<Aggregate>>>,
+    returns: HashMap<String, Aggregate>,
 }
 
-fn call_aggregates(
-    signatures: &AggregateSignatures,
-    callee: &str,
-    count: usize,
-) -> Vec<Option<Aggregate>> {
-    match signatures.get(callee) {
-        Some(markers) if markers.len() == count => markers.clone(),
-        _ => vec![None; count],
+impl AggregateSignatures {
+    fn from_module(module: &MirModule) -> Self {
+        Self {
+            params: module
+                .functions
+                .iter()
+                .map(|(name, func)| {
+                    (
+                        name.clone(),
+                        func.sig.params.iter().map(|p| p.aggregate).collect(),
+                    )
+                })
+                .collect(),
+            returns: module
+                .functions
+                .iter()
+                .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_aggregate?)))
+                .collect(),
+        }
+    }
+
+    fn arguments(&self, callee: &str, count: usize) -> Vec<Option<Aggregate>> {
+        match self.params.get(callee) {
+            Some(markers) if markers.len() == count => markers.clone(),
+            _ => vec![None; count],
+        }
+    }
+
+    fn result(&self, callee: &str) -> Option<Aggregate> {
+        self.returns.get(callee).copied()
     }
 }
 
@@ -447,6 +460,7 @@ fn compile_single_function_aarch64_with(
                         debug_line,
                         long_branches,
                         signatures,
+                        func.sig.ret_aggregate,
                     )?;
                 }
                 position += 1;
@@ -504,7 +518,7 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::Aarch64)?;
     let settings_arc = Arc::new(settings.clone());
-    let signatures = Arc::new(aggregate_signatures(module));
+    let signatures = Arc::new(AggregateSignatures::from_module(module));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
             compile_single_function_aarch64(
@@ -554,6 +568,7 @@ fn emit_block<W: Write>(
     debug_line: &mut u32,
     long_branches: bool,
     signatures: &AggregateSignatures,
+    ret_aggregate: Option<Aggregate>,
 ) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines {
@@ -591,6 +606,7 @@ fn emit_block<W: Write>(
                         debug_line,
                         long_branches,
                         signatures,
+                        ret_aggregate,
                     )?;
                 }
             }
@@ -1209,7 +1225,7 @@ fn emit_block<W: Write>(
                         }
                     }
                 } else {
-                    let aggregates = call_aggregates(signatures, name, args.len());
+                    let aggregates = signatures.arguments(name, args.len());
                     let places = classify_aarch64_arguments(&aggregates);
                     for ((argument, aggregate), place) in args.iter().zip(&aggregates).zip(&places)
                     {
@@ -1277,7 +1293,25 @@ fn emit_block<W: Write>(
                     }
 
                     if let Some(dst) = ret {
-                        store_result(w, dst, "x0", frame, ra)?;
+                        match signatures.result(name) {
+                            // The result register names the slot the words land in; the
+                            // body addresses it with a stack address of its own.
+                            Some(aggregate) => {
+                                let off = frame.slot_of(dst).ok_or_else(|| {
+                                    LaminaError::ValidationError(
+                                        "aggregate result has no frame slot".to_string(),
+                                    )
+                                })?;
+                                let addr = ra.alloc_scratch().unwrap_or("x9");
+                                emit_frame_slot_address(w, addr, off)?;
+                                writeln!(w, "    str x0, [{addr}]")?;
+                                if aggregate.words() > 1 {
+                                    writeln!(w, "    str x1, [{addr}, #8]")?;
+                                }
+                                ra.free_scratch(addr);
+                            }
+                            None => store_result(w, dst, "x0", frame, ra)?,
+                        }
                     }
                 }
             }
@@ -1307,7 +1341,20 @@ fn emit_block<W: Write>(
             }
             MirInst::Ret { value } => {
                 if let Some(v) = value {
-                    emit_materialize_operand(w, v, "x0", frame, ra)?;
+                    match ret_aggregate {
+                        // The returned operand addresses the aggregate; the words
+                        // themselves go back in x0 and x1.
+                        Some(aggregate) => {
+                            let addr = ra.alloc_scratch().unwrap_or("x9");
+                            emit_materialize_operand(w, v, addr, frame, ra)?;
+                            if aggregate.words() > 1 {
+                                writeln!(w, "    ldr x1, [{addr}, #8]")?;
+                            }
+                            writeln!(w, "    ldr x0, [{addr}]")?;
+                            ra.free_scratch(addr);
+                        }
+                        None => emit_materialize_operand(w, v, "x0", frame, ra)?,
+                    }
                 }
                 writeln!(w, "    b {epilogue_label}")?;
             }
@@ -1971,7 +2018,7 @@ mod tests {
                     &func,
                     TargetOperatingSystem::Linux,
                     &settings,
-                    &AggregateSignatures::new(),
+                    &AggregateSignatures::default(),
                 )
                 .map_err(|error| error.to_string())?,
             )?;
@@ -2015,7 +2062,7 @@ mod tests {
                     &func,
                     TargetOperatingSystem::Linux,
                     &MirCodegenSettings::default(),
-                    &AggregateSignatures::new(),
+                    &AggregateSignatures::default(),
                 )
                 .map_err(|error| error.to_string())?,
             )?;
@@ -2046,7 +2093,7 @@ mod tests {
                 &func,
                 TargetOperatingSystem::Linux,
                 &MirCodegenSettings::default(),
-                &AggregateSignatures::new(),
+                &AggregateSignatures::default(),
             )
             .map_err(|error| error.to_string())?,
         )?;
@@ -2176,7 +2223,7 @@ mod tests {
                 &func,
                 TargetOperatingSystem::Linux,
                 &MirCodegenSettings::default(),
-                &AggregateSignatures::new(),
+                &AggregateSignatures::default(),
             )
             .map_err(|error| error.to_string())?,
         )?;
@@ -2336,6 +2383,47 @@ mod tests {
         assert!(!wide.contains("str x7, "), "{assembly}");
         assert!(wide.contains("ldr x11, [x29, #16]"), "{assembly}");
         assert!(wide.contains("ldr x11, [x29, #24]"), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn integer_aggregate_returns_come_back_in_x0_and_x1() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir = "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n  %p = alloc.stack struct { a: i64, b: i64 }\n  %pa = getfieldptr %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "returns").expect("lower aggregate return");
+        let mut output = Vec::new();
+        generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+
+        let callee = assembly.split("\nmake:\n").nth(1).ok_or("missing make")?;
+        let epilogue = callee.split(".Lret_make:").next().ok_or("missing return")?;
+        let address = epilogue
+            .lines()
+            .rev()
+            .find_map(|line| {
+                let rest = line.trim().strip_prefix("ldr x0, [")?;
+                rest.strip_suffix(']')
+            })
+            .ok_or("missing result load")?
+            .to_string();
+        assert!(
+            epilogue.contains(&format!("ldr x1, [{address}, #8]")),
+            "{assembly}"
+        );
+
+        let caller = assembly.split("\nmain:\n").nth(1).ok_or("missing main")?;
+        let after = caller.split("bl make").nth(1).ok_or("missing call")?;
+        let home = after
+            .lines()
+            .find_map(|line| line.trim().strip_prefix("sub ")?.split(',').next())
+            .ok_or("missing result slot")?
+            .to_string();
+        assert!(after.contains(&format!("str x0, [{home}]")), "{assembly}");
+        assert!(
+            after.contains(&format!("str x1, [{home}, #8]")),
+            "{assembly}"
+        );
         Ok(())
     }
 }
