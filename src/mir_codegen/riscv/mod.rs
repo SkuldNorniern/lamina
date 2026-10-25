@@ -918,6 +918,31 @@ fn emit_instruction_riscv<W: Write>(
                     .call_stub("write")
                     .unwrap_or_else(|| "write".to_string());
                 writeln!(writer, "    call {write}")?;
+            } else if name == "writebyte" && args.len() == 1 {
+                // putchar reports the character written, or -1; writebyte reports the
+                // byte count, so turn the result into 1 or -1.
+                load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a0")?;
+                writeln!(writer, "    andi a0, a0, 255")?;
+                let putchar = abi
+                    .call_stub("putchar")
+                    .unwrap_or_else(|| abi.mangle_function_name("putchar"));
+                writeln!(writer, "    call {putchar}")?;
+                writeln!(writer, "    li t1, -1")?;
+                writeln!(writer, "    xor t2, a0, t1")?;
+                writeln!(writer, "    seqz t2, t2")?;
+                writeln!(writer, "    neg t2, t2")?;
+                writeln!(writer, "    li a0, 1")?;
+                writeln!(writer, "    or a0, a0, t2")?;
+            } else if name == "readbyte" && args.is_empty() {
+                // getchar reports the byte or -1 at end of input, where readbyte
+                // reports zero.
+                let getchar = abi
+                    .call_stub("getchar")
+                    .unwrap_or_else(|| abi.mangle_function_name("getchar"));
+                writeln!(writer, "    call {getchar}")?;
+                writeln!(writer, "    slti t1, a0, 0")?;
+                writeln!(writer, "    addi t1, t1, -1")?;
+                writeln!(writer, "    and a0, a0, t1")?;
             } else if name == "print" {
                 if let Some(arg) = args.first() {
                     // Load format string address to a0
@@ -2241,6 +2266,23 @@ mod tests {
         assert!(assembly.contains("    sltu t2, t1, a0\n"), "{assembly}");
         assert!(assembly.contains("    fcvt.d.l fa0, a0\n"), "{assembly}");
         assert!(assembly.contains("    fcvt.d.lu fa0, a0\n"), "{assembly}");
+        Ok(())
+    }
+
+    #[test]
+    fn byte_io_goes_through_putchar_and_getchar() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir =
+            "fn @main() -> i64 {\nentry:\n  %w = writebyte 72\n  %r = readbyte\n  ret.i64 %r\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "byte_io").expect("lower byte io");
+        let mut output = Vec::new();
+        generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(assembly.contains("    call putchar\n"), "{assembly}");
+        assert!(assembly.contains("    call getchar\n"), "{assembly}");
+        assert!(!assembly.contains("call writebyte"), "{assembly}");
+        assert!(!assembly.contains("call readbyte"), "{assembly}");
         Ok(())
     }
 

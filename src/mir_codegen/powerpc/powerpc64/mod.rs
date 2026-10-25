@@ -957,6 +957,31 @@ fn emit_instruction_ppc64<W: Write>(
                     .unwrap_or_else(|| abi.mangle_function_name("write"));
                 writeln!(writer, "    bl {write}")?;
                 writeln!(writer, "    nop")?;
+            } else if name == "writebyte" && args.len() == 1 {
+                // putchar reports the character written, or -1; writebyte reports the
+                // byte count, so turn the result into 1 or -1.
+                load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "3")?;
+                writeln!(writer, "    clrldi 3, 3, 56")?;
+                let putchar = abi
+                    .call_stub("putchar")
+                    .unwrap_or_else(|| abi.mangle_function_name("putchar"));
+                writeln!(writer, "    bl {putchar}")?;
+                writeln!(writer, "    nop")?;
+                writeln!(writer, "    li 4, -1")?;
+                writeln!(writer, "    cmpd 0, 3, 4")?;
+                writeln!(writer, "    li 3, 1")?;
+                writeln!(writer, "    isel 3, 4, 3, 2")?;
+            } else if name == "readbyte" && args.is_empty() {
+                // getchar reports the byte or -1 at end of input, where readbyte
+                // reports zero.
+                let getchar = abi
+                    .call_stub("getchar")
+                    .unwrap_or_else(|| abi.mangle_function_name("getchar"));
+                writeln!(writer, "    bl {getchar}")?;
+                writeln!(writer, "    nop")?;
+                writeln!(writer, "    li 4, 0")?;
+                writeln!(writer, "    cmpdi 3, 0")?;
+                writeln!(writer, "    isel 3, 4, 3, 0")?;
             } else if name == "print" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    addis 3, 2, .L_mir_fmt_int@toc@ha")?;
@@ -1659,6 +1684,23 @@ mod tests {
                 "{assembly}"
             );
         }
+    }
+
+    #[test]
+    fn byte_io_goes_through_putchar_and_getchar() -> Result<(), Box<dyn Error>> {
+        use crate::{mir::codegen::from_ir, parser::parse_module};
+        let ir =
+            "fn @main() -> i64 {\nentry:\n  %w = writebyte 72\n  %r = readbyte\n  ret.i64 %r\n}\n";
+        let module = parse_module(ir)?;
+        let mir = from_ir(&module, "byte_io").expect("lower byte io");
+        let mut output = Vec::new();
+        generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+        let assembly = String::from_utf8(output)?;
+        assert!(assembly.contains("    bl putchar\n"), "{assembly}");
+        assert!(assembly.contains("    bl getchar\n"), "{assembly}");
+        assert!(!assembly.contains("bl writebyte"), "{assembly}");
+        assert!(!assembly.contains("bl readbyte"), "{assembly}");
+        Ok(())
     }
 
     #[test]
