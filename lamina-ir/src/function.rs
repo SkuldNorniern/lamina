@@ -227,7 +227,7 @@ use std::{
 
 use crate::{
     instruction::Instruction,
-    types::{Identifier, Label, Literal, PrimitiveType, Type, Value},
+    types::{Identifier, Label, Type},
 };
 
 /// Function annotations that provide metadata about function behavior.
@@ -696,26 +696,7 @@ impl<'a> Function<'a> {
                             }
                         }
                     }
-                    Instruction::Binary { ty, lhs, rhs, .. }
-                    | Instruction::Cmp { ty, lhs, rhs, .. } => {
-                        for operand in [lhs, rhs] {
-                            if let Value::Constant(lit) = operand
-                                && literal_does_not_fit(lit, *ty)
-                            {
-                                errors.push(literal_range_error(lit, *ty, label, self.name));
-                            }
-                        }
-                    }
-                    Instruction::Phi { ty, incoming, .. } => {
-                        if let Type::Primitive(prim) = ty {
-                            for (value, _) in incoming {
-                                if let Value::Constant(lit) = value
-                                    && literal_does_not_fit(lit, *prim)
-                                {
-                                    errors.push(literal_range_error(lit, *prim, label, self.name));
-                                }
-                            }
-                        }
+                    Instruction::Phi { incoming, .. } => {
                         for (_, pred) in incoming {
                             if !self.basic_blocks.contains_key(pred) {
                                 errors.push(format!(
@@ -779,39 +760,6 @@ impl<'a> Function<'a> {
 }
 
 // --- Display Implementations ---
-
-fn literal_does_not_fit(lit: &Literal<'_>, ty: PrimitiveType) -> bool {
-    let value: i128 = match lit {
-        Literal::I8(v) => (*v).into(),
-        Literal::I16(v) => (*v).into(),
-        Literal::I32(v) => (*v).into(),
-        Literal::I64(v) => (*v).into(),
-        Literal::U8(v) => (*v).into(),
-        Literal::U16(v) => (*v).into(),
-        Literal::U32(v) => (*v).into(),
-        Literal::U64(v) => (*v).into(),
-        _ => return false,
-    };
-    let (min, max): (i128, i128) = match ty {
-        PrimitiveType::I8 => (i8::MIN.into(), i8::MAX.into()),
-        PrimitiveType::I16 => (i16::MIN.into(), i16::MAX.into()),
-        PrimitiveType::I32 => (i32::MIN.into(), i32::MAX.into()),
-        PrimitiveType::I64 => (i64::MIN.into(), i64::MAX.into()),
-        PrimitiveType::U8 => (0, u8::MAX.into()),
-        PrimitiveType::U16 => (0, u16::MAX.into()),
-        PrimitiveType::U32 => (0, u32::MAX.into()),
-        PrimitiveType::U64 => (0, u64::MAX.into()),
-        _ => return false,
-    };
-    value < min || value > max
-}
-
-fn literal_range_error(lit: &Literal<'_>, ty: PrimitiveType, label: &str, func: &str) -> String {
-    format!(
-        "literal {lit} in block '{label}' of '@{func}' does not fit in type '{}'",
-        ty.as_str()
-    )
-}
 
 impl fmt::Display for FunctionAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -930,7 +878,7 @@ impl fmt::Display for Function<'_> {
 mod tests {
     use super::*;
     use crate::{
-        instruction::{AllocType, BinaryOp, CmpOp, Instruction},
+        instruction::{AllocType, BinaryOp, Instruction},
         types::{Literal, PrimitiveType, Type, Value},
     };
 
@@ -1424,60 +1372,5 @@ mod tests {
         let f = simple_func(vec![], Type::Void, blocks, "entry");
         let errs = f.validate().unwrap_err();
         assert!(errs.iter().any(|e| e.contains("repeats case value")));
-    }
-
-    #[test]
-    fn test_validate_literal_out_of_range_fails() {
-        let mut blocks = HashMap::new();
-        blocks.insert(
-            "entry",
-            BasicBlock {
-                instructions: vec![
-                    Instruction::Binary {
-                        op: BinaryOp::Add,
-                        result: "a",
-                        ty: PrimitiveType::I8,
-                        lhs: Value::Constant(Literal::I32(300)),
-                        rhs: Value::Constant(Literal::I32(0)),
-                    },
-                    Instruction::Ret {
-                        ty: Type::Void,
-                        value: None,
-                    },
-                ],
-            },
-        );
-        let f = simple_func(vec![], Type::Void, blocks, "entry");
-        let errs = f.validate().unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("does not fit in type 'i8'")));
-    }
-
-    #[test]
-    fn test_validate_negative_literal_for_unsigned_fails() {
-        let mut blocks = HashMap::new();
-        blocks.insert(
-            "entry",
-            BasicBlock {
-                instructions: vec![
-                    Instruction::Cmp {
-                        op: CmpOp::Eq,
-                        result: "c",
-                        ty: PrimitiveType::U32,
-                        lhs: Value::Constant(Literal::I32(-1)),
-                        rhs: Value::Constant(Literal::I32(0)),
-                    },
-                    Instruction::Ret {
-                        ty: Type::Void,
-                        value: None,
-                    },
-                ],
-            },
-        );
-        let f = simple_func(vec![], Type::Void, blocks, "entry");
-        let errs = f.validate().unwrap_err();
-        assert!(
-            errs.iter()
-                .any(|e| e.contains("does not fit in type 'u32'"))
-        );
     }
 }
