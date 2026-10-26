@@ -1727,10 +1727,11 @@ fn emit_block<W: Write>(
                 default,
             } => {
                 let t = ra.alloc_scratch().unwrap_or("x19");
+                let constant = ra.alloc_scratch().unwrap_or("x20");
                 load_reg_to(w, value, t, frame, ra)?;
                 for (case_val, case_label) in cases {
-                    emit_mov_imm64(w, "x9", *case_val as u64)?;
-                    writeln!(w, "    cmp {}, x9", x_alias(t))?;
+                    emit_mov_imm64(w, constant, *case_val as u64)?;
+                    writeln!(w, "    cmp {}, {}", x_alias(t), x_alias(constant))?;
                     emit_branch_if(
                         w,
                         "eq",
@@ -1739,6 +1740,7 @@ fn emit_block<W: Write>(
                     )?;
                 }
                 writeln!(w, "    b {block_prefix}{default}")?;
+                ra.free_scratch(constant);
                 ra.free_scratch(t);
             }
             MirInst::Comment { text } => {
