@@ -150,9 +150,11 @@ def compile_and_run_test(test_path, use_mir=False):
     executable_name = test_path.stem
     if os.name == 'nt':
         executable_name += '.exe'
-    # Resolve against the project root rather than using "./name", which is not a
-    # runnable form on Windows.
-    executable_path = str((Path(project_root) / executable_name).resolve())
+    # Built programs go under target/, which is ignored, so a run never leaves
+    # binaries beside the sources or overwrites a tracked file.
+    output_dir = Path(project_root) / 'target' / 'testcases'
+    output_dir.mkdir(parents=True, exist_ok=True)
+    executable_path = str((output_dir / executable_name).resolve())
     
     # Define stdin input for interactive tests
     stdin_inputs = {
@@ -162,7 +164,9 @@ def compile_and_run_test(test_path, use_mir=False):
 
     # Compile the test
     cmd_flags = "--emit-mir-asm" if use_mir else ""
-    compile_cmd = f"cargo run --release --quiet {test_path} {cmd_flags}"
+    compile_cmd = (
+        f'cargo run --release --quiet -- {test_path} {cmd_flags} -o "{executable_path}"'
+    )
     success, stdout, stderr, _ = run_command(compile_cmd, cwd=project_root)
 
     if not success:
