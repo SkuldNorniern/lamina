@@ -108,7 +108,7 @@ impl Peephole {
                 changed
             }
             Instruction::IntCmp { .. } => self.try_fold_int_cmp(inst),
-            Instruction::FloatUnary { op, src, .. } => self.try_fold_float_unary(op, src),
+            Instruction::FloatUnary { .. } => self.try_fold_float_unary(inst),
             Instruction::Select {
                 cond,
                 true_val,
@@ -482,20 +482,32 @@ impl Peephole {
         false
     }
 
-    fn try_fold_float_unary(&self, op: &mut FloatUnOp, src: &mut Operand) -> bool {
-        let src_imm = extract_float_constant(src);
-
-        if let Some(c) = src_imm {
-            let result = match op {
-                FloatUnOp::FNeg => -c,
-                FloatUnOp::FSqrt if c >= 0.0 => c.sqrt(),
-                _ => return false,
-            };
-            *src = Operand::Immediate(Immediate::F64(result));
-            return true;
-        }
-
-        false
+    fn try_fold_float_unary(&self, inst: &mut Instruction) -> bool {
+        let Instruction::FloatUnary { op, ty, dst, src } = inst else {
+            return false;
+        };
+        let Some(c) = extract_float_constant(src) else {
+            return false;
+        };
+        let result = match op {
+            FloatUnOp::FNeg => -c,
+            FloatUnOp::FSqrt if c >= 0.0 => c.sqrt(),
+            _ => return false,
+        };
+        // The folded value replaces the whole instruction; leaving the operation in
+        // place would apply it a second time at run time.
+        let ty = *ty;
+        let folded = if ty == MirType::f32() {
+            Immediate::F32(result as f32)
+        } else {
+            Immediate::F64(result)
+        };
+        *inst = Instruction::Copy {
+            ty,
+            dst: dst.clone(),
+            src: Operand::Immediate(folded),
+        };
+        true
     }
 
     fn try_fold_select(
@@ -581,6 +593,31 @@ mod tests {
         register::{Register, VirtualReg},
         types::{MirType, ScalarType},
     };
+
+    #[test]
+    fn folded_sqrt_leaves_no_second_root() {
+        let mut func = Function::new(Signature::new("f")).with_entry("entry".to_string());
+        let mut bb = Block::new("entry");
+        bb.push(Instruction::FloatUnary {
+            op: FloatUnOp::FSqrt,
+            ty: MirType::f64(),
+            dst: Register::Virtual(VirtualReg::fpr(0)),
+            src: Operand::Immediate(Immediate::F64(16.0)),
+        });
+        func.add_block(bb);
+
+        let pass = Peephole;
+        assert!(pass.run_on_function(&mut func));
+        // A second run must find nothing left to fold.
+        assert!(!pass.run_on_function(&mut func));
+        assert!(matches!(
+            func.blocks[0].instructions[0],
+            Instruction::Copy {
+                src: Operand::Immediate(Immediate::F64(value)),
+                ..
+            } if value == 4.0
+        ));
+    }
 
     #[test]
     fn fold_add_zero_right() {
