@@ -1,0 +1,24 @@
+fn @main() -> i64 {
+entry:
+  %a = add.i64 5, 0
+  %na = neg.i64 %a
+  print %na
+  %nb = not.i64 %a
+  print %nb
+  %c = add.i32 -7, 0
+  %nc = neg.i32 %c
+  %ncw = sext.i32.i64 %nc
+  print %ncw
+  %f = add.f64 2.0, 0.25
+  %nf = neg.f64 %f
+  print %nf
+  %s = sqrt.f64 16.0
+  print %s
+  %g = add.f32 9.0, 0.0
+  %sg = sqrt.f32 %g
+  print %sg
+  %u = add.u32 1, 0
+  %nu = not.u32 %u
+  print %nu
+  ret.i64 0
+}

@@ -15,16 +15,18 @@ use crate::{
     ir::{
         Module as IRModule,
         function::{Function as IRFunction, FunctionAnnotation},
-        instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst},
+        instruction::{
+            AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst, UnaryOp as IRUnary,
+        },
         types::{
             Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
             align_of_type, resolve_type_names, sizeof_type,
         },
     },
     mir::{
-        AddressMode, Block, FloatBinOp, FloatCmpOp, Function, Global, Immediate, Instruction,
-        IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter, Register,
-        RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
+        AddressMode, Block, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Immediate,
+        Instruction, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter,
+        Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
             mapping::{classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, signedness_of},
@@ -224,7 +226,9 @@ fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'
     for block in f.basic_blocks.values() {
         for instr in &block.instructions {
             let unsigned_result = match instr {
-                IRInst::Binary { result, ty, .. } => unsigned_prim(*ty).then_some(*result),
+                IRInst::Binary { result, ty, .. } | IRInst::Unary { result, ty, .. } => {
+                    unsigned_prim(*ty).then_some(*result)
+                }
                 IRInst::Load { result, ty, .. }
                 | IRInst::Phi { result, ty, .. }
                 | IRInst::Select { result, ty, .. } => unsigned_type(ty).then_some(*result),
@@ -940,6 +944,54 @@ fn convert_instruction<'a>(
             };
             var_to_reg.insert(*result, dst);
             Ok(vec![])
+        }
+        IRInst::Unary {
+            op,
+            result,
+            ty,
+            value,
+        } => {
+            let mir_ty = map_ir_prim(*ty)?;
+            let float = mir_ty.is_float();
+            let dst = if float {
+                let dst = Register::Virtual(vreg_alloc.allocate_fpr());
+                var_to_reg.insert(result, dst.clone());
+                dst
+            } else {
+                resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg)
+            };
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
+            normalize_lowered_literal(&mut src, mir_ty);
+            let instruction = match (op, float) {
+                (IRUnary::Sqrt, true) => Instruction::FloatUnary {
+                    op: FloatUnOp::FSqrt,
+                    ty: mir_ty,
+                    dst,
+                    src,
+                },
+                (IRUnary::Neg, true) => Instruction::FloatUnary {
+                    op: FloatUnOp::FNeg,
+                    ty: mir_ty,
+                    dst,
+                    src,
+                },
+                (IRUnary::Neg, false) => Instruction::IntBinary {
+                    op: IntBinOp::Sub,
+                    ty: mir_ty,
+                    dst,
+                    lhs: Operand::Immediate(zero_immediate(mir_ty)),
+                    rhs: src,
+                },
+                (IRUnary::Not, false) => Instruction::IntBinary {
+                    op: IntBinOp::Xor,
+                    ty: mir_ty,
+                    dst,
+                    lhs: src,
+                    rhs: Operand::Immediate(all_ones_immediate(mir_ty)),
+                },
+                _ => return Err(FromIRError::UnsupportedInstruction),
+            };
+            Ok(vec![instruction])
         }
         IRInst::Cmp {
             op,
@@ -1926,6 +1978,24 @@ fn pointer_base<'a>(
             .ok_or(FromIRError::UnknownVariable),
         IRVal::Global(name) => globals.register(name, vreg_alloc),
         IRVal::Constant(_) => Err(FromIRError::UnsupportedInstruction),
+    }
+}
+
+fn zero_immediate(ty: MirType) -> Immediate {
+    match ty.size_bytes() {
+        1 => Immediate::I8(0),
+        2 => Immediate::I16(0),
+        4 => Immediate::I32(0),
+        _ => Immediate::I64(0),
+    }
+}
+
+fn all_ones_immediate(ty: MirType) -> Immediate {
+    match ty.size_bytes() {
+        1 => Immediate::I8(-1),
+        2 => Immediate::I16(-1),
+        4 => Immediate::I32(-1),
+        _ => Immediate::I64(-1),
     }
 }
 
