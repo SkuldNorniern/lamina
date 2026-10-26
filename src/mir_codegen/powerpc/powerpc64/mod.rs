@@ -1052,6 +1052,15 @@ fn emit_instruction_ppc64<W: Write>(
                     .unwrap_or_else(|| abi.mangle_function_name("write"));
                 writeln!(writer, "    bl {write}")?;
                 writeln!(writer, "    nop")?;
+            } else if (name == "write" || name == "read") && args.len() == 2 {
+                load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "4")?;
+                load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "5")?;
+                writeln!(writer, "    li 3, {}", i32::from(name == "write"))?;
+                let callee = abi
+                    .call_stub(name)
+                    .unwrap_or_else(|| abi.mangle_function_name(name));
+                writeln!(writer, "    bl {callee}")?;
+                writeln!(writer, "    nop")?;
             } else if name == "writebyte" && args.len() == 1 {
                 // putchar reports the character written, or -1; writebyte reports the
                 // byte count, so turn the result into 1 or -1.

@@ -1,0 +1,13 @@
+fn @main() -> i64 {
+entry:
+ %buf = alloc.stack [4 x i8]
+ %b0 = getelem.ptr %buf, 0, i8
+ store.i8 %b0, 79
+ %b1 = getelem.ptr %buf, 1, i8
+ store.i8 %b1, 75
+ %b2 = getelem.ptr %buf, 2, i8
+ store.i8 %b2, 10
+ write %b0, 3, n
+ print %n
+ ret.i64 0
+}

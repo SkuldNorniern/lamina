@@ -1019,6 +1019,14 @@ fn emit_instruction_riscv<W: Write>(
                     .call_stub("write")
                     .unwrap_or_else(|| "write".to_string());
                 writeln!(writer, "    call {write}")?;
+            } else if (name == "write" || name == "read") && args.len() == 2 {
+                load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
+                load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "a2")?;
+                writeln!(writer, "    li a0, {}", i32::from(name == "write"))?;
+                let callee = abi
+                    .call_stub(name)
+                    .unwrap_or_else(|| abi.mangle_function_name(name));
+                writeln!(writer, "    call {callee}")?;
             } else if name == "writebyte" && args.len() == 1 {
                 // putchar reports the character written, or -1; writebyte reports the
                 // byte count, so turn the result into 1 or -1.
