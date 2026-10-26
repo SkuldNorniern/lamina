@@ -62,7 +62,6 @@ pub fn extract_function_name(ir_code: &str) -> Option<&str> {
         let after_fn = &ir_code[start + 4..];
         if let Some(end) = after_fn.find(|c: char| c == '(' || c.is_whitespace()) {
             let name = &after_fn[..end];
-            // Return name with @ prefix
             return Some(name);
         }
     }
@@ -72,7 +71,6 @@ pub fn extract_function_name(ir_code: &str) -> Option<&str> {
         let after_fn = &ir_code[start + 3..];
         if let Some(end) = after_fn.find(|c: char| c == '(' || c.is_whitespace()) {
             let name = &after_fn[..end];
-            // Return as-is
             return Some(name);
         }
     }

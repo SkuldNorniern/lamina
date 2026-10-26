@@ -502,7 +502,6 @@ impl fmt::Display for GlobalDeclaration<'_> {
 
 impl fmt::Display for Module<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Print type declarations first
         for decl in self.type_declarations.values() {
             writeln!(f, "{decl}")?;
         }
@@ -510,7 +509,6 @@ impl fmt::Display for Module<'_> {
             writeln!(f)?;
         }
 
-        // Print global declarations
         for decl in self.global_declarations.values() {
             writeln!(f, "{decl}")?;
         }
@@ -518,7 +516,6 @@ impl fmt::Display for Module<'_> {
             writeln!(f)?;
         }
 
-        // Print functions
         let mut function_names: Vec<_> = self.functions.keys().collect();
         function_names.sort(); // Sort by name for consistent output order
 

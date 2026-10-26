@@ -592,11 +592,8 @@ impl SimdCapabilities {
         }
 
         // Check for SME (Scalable Matrix Extension)
-        // Note: SME detection may not be available in all Rust versions
-        // For now, we'll skip runtime detection of SME and rely on static detection
-        // if is_aarch64_feature_detected!("sme") {
-        //     caps.arm_extensions.push(ArmSimdExtension::Sme);
-        // }
+        // No stable is_aarch64_feature_detected arm for SME, so it is only ever
+        // reported when the build enables it.
 
         // Check for BF16 support
         if is_aarch64_feature_detected!("bf16") {

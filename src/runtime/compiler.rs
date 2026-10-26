@@ -72,8 +72,8 @@ impl RuntimeCompiler {
     /// Compile and get a callable handle.
     ///
     /// The handle owns the executable mapping, so the code stays mapped for as long as
-    /// the handle lives. This used to return a bare function pointer taken from a local
-    /// `ExecutableMemory`, which was unmapped before the caller could call it.
+    /// the handle lives. A bare function pointer would outlive the mapping it points
+    /// into.
     ///
     /// # Safety
     ///

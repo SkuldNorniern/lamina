@@ -12,7 +12,7 @@
 //! - **AArch64**: AAPCS64 (first eight integer/pointer args in `x0`–`x7`, then stack).
 //! - **x86_64** (non-Windows): System V AMD64 (`rdi`…`r9`, then stack).
 //! - **Other hosts** (Windows x86_64, non-x86_64, etc.): fixed transmute table for up to **15**
-//!   `i64` parameters (same as the previous executor path). [`MAX_JIT_ARGS`] is **15** there.
+//!   `i64` parameters. [`MAX_JIT_ARGS`] is **15** there.
 //!
 //! Prefer packing parameters for hot paths; see [`JIT_ARG_SOFT_WARN_THRESHOLD`] for hints.
 
