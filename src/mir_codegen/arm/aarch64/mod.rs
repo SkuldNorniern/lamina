@@ -12,7 +12,9 @@ use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, integer_conversion, self_tail_arguments, self_tail_schedule,
 };
-use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
+use crate::mir_codegen::common::{
+    emit_debug_file, emit_gnu_stack_note, print_format_label, writeptr_width,
+};
 use crate::mir_codegen::simd::reserve_vector_slots;
 
 use std::{collections::HashMap, io::Error as IoError, io::Write, slice, str, sync::Arc};
@@ -22,7 +24,7 @@ use util::{emit_mov_imm64, imm_to_u64};
 use crate::{
     error::LaminaError,
     mir::{
-        AddressMode, Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Immediate,
+        AddressMode, Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
         Instruction as MirInst, IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand,
         Register, ScalarType, Signature, VirtualReg, register::RegisterClass,
     },
@@ -1262,11 +1264,7 @@ fn emit_block<W: Write>(
             }
             MirInst::Call { name, args, ret } => {
                 if (name == "print" || name == "printu") && args.len() == 1 {
-                    let fmt = if name == "printu" {
-                        ".L_mir_fmt_uint"
-                    } else {
-                        ".L_mir_fmt_int"
-                    };
+                    let fmt = print_format_label(name);
                     // Special-case intrinsic: print(integer) via printf("%lld\n", value)
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                     match abi.target_os() {
@@ -1406,11 +1404,7 @@ fn emit_block<W: Write>(
                     }
                 } else if name == "writeptr" && args.len() == 2 {
                     // write(1, ptr, width): the bytes go out straight from memory.
-                    let Operand::Immediate(Immediate::I64(width)) = &args[1] else {
-                        return Err(LaminaError::ValidationError(
-                            "writeptr width must be an immediate".to_string(),
-                        ));
-                    };
+                    let width = writeptr_width(&args[1])?;
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                     writeln!(w, "    mov x2, #{width}")?;
                     writeln!(w, "    mov x0, #1")?;
@@ -2360,7 +2354,7 @@ fn extend_integer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::{FunctionBuilder, ScalarType};
+    use crate::mir::{FunctionBuilder, Immediate, ScalarType};
     use std::error::Error;
 
     #[test]

@@ -577,6 +577,33 @@ pub fn emit_global_data<W: Write>(
     Ok(())
 }
 
+/// Rounds `value` up to the next multiple of `align`, which must be a power of two.
+pub fn align_up(value: usize, align: usize) -> usize {
+    value.div_ceil(align) * align
+}
+
+/// Width in bytes of the pointee `writeptr` sends out. The width travels as an
+/// immediate because the backends unroll the store.
+pub fn writeptr_width(operand: &Operand) -> Result<usize, LaminaError> {
+    match operand {
+        Operand::Immediate(Immediate::I64(width)) => usize::try_from(*width).map_err(|_| {
+            LaminaError::ValidationError("writeptr width must be non-negative".to_string())
+        }),
+        _ => Err(LaminaError::ValidationError(
+            "writeptr width must be an immediate".to_string(),
+        )),
+    }
+}
+
+/// Label of the printf format string the `print` family reads, by call name.
+pub fn print_format_label(call: &str) -> &'static str {
+    match call {
+        "printu" => ".L_mir_fmt_uint",
+        "printf32" | "printf64" => ".L_mir_fmt_float",
+        _ => ".L_mir_fmt_int",
+    }
+}
+
 /// Helper to emit rodata section with format string for print intrinsics.
 pub fn emit_print_format_section<W: Write>(
     writer: &mut W,

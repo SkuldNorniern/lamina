@@ -22,7 +22,9 @@ use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, self_tail_arguments, self_tail_schedule,
 };
-use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
+use crate::mir_codegen::common::{
+    emit_debug_file, emit_gnu_stack_note, print_format_label, writeptr_width,
+};
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -1056,11 +1058,7 @@ fn emit_instruction_ppc64<W: Write>(
 
             if name == "writeptr" && args.len() == 2 {
                 // write(1, ptr, width): the pointee's bytes go out straight from memory.
-                let Operand::Immediate(Immediate::I64(width)) = &args[1] else {
-                    return Err(LaminaError::ValidationError(
-                        "writeptr width must be an immediate".to_string(),
-                    ));
-                };
+                let width = writeptr_width(&args[1])?;
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "4")?;
                 writeln!(writer, "    li 5, {width}")?;
                 writeln!(writer, "    li 3, 1")?;
@@ -1122,11 +1120,7 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             } else if name == "print" || name == "printu" {
                 if let Some(arg) = args.first() {
-                    let fmt = if name == "printu" {
-                        ".L_mir_fmt_uint"
-                    } else {
-                        ".L_mir_fmt_int"
-                    };
+                    let fmt = print_format_label(name);
                     writeln!(writer, "    addis 3, 2, {fmt}@toc@ha")?;
                     writeln!(writer, "    addi 3, 3, {fmt}@toc@l")?;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "4")?;

@@ -1,5 +1,6 @@
 use super::*;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
+use crate::mir_codegen::common::{align_up, print_format_label, writeptr_width};
 
 pub(super) fn restore_saved_registers<W: Write>(
     writer: &mut W,
@@ -12,17 +13,6 @@ pub(super) fn restore_saved_registers<W: Write>(
         writeln!(writer, "    movq {offset}(%rbp), %{reg}")?;
     }
     Ok(())
-}
-
-fn writeptr_width(operand: &Operand) -> Result<usize, LaminaError> {
-    match operand {
-        Operand::Immediate(Immediate::I64(width)) => usize::try_from(*width).map_err(|_| {
-            LaminaError::ValidationError("writeptr width must be non-negative".to_string())
-        }),
-        _ => Err(LaminaError::ValidationError(
-            "writeptr width must be an immediate".to_string(),
-        )),
-    }
 }
 
 fn widen_external_argument<W: Write>(
@@ -700,11 +690,7 @@ pub(super) fn emit_instruction_x86_64(
         }
         MirInst::Call { name, args, ret } => {
             if name == "print" || name == "printu" {
-                let fmt = if name == "printu" {
-                    ".L_mir_fmt_uint"
-                } else {
-                    ".L_mir_fmt_int"
-                };
+                let fmt = print_format_label(name);
                 if let Some(arg) = args.first() {
                     load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
                     match target_os {
@@ -1007,9 +993,10 @@ pub(super) fn emit_instruction_x86_64(
                     // Rounded up so rsp stays 16-aligned at the call; the
                     // padding lands above the arguments, leaving their offsets
                     // from rsp unchanged.
-                    let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
-                        .div_ceil(stack::ALIGNMENT)
-                        * stack::ALIGNMENT;
+                    let total_stack = align_up(
+                        shadow_space + (num_stack_args * stack::SLOT_SIZE),
+                        stack::ALIGNMENT,
+                    );
                     if total_stack > 0 {
                         writeln!(writer, "    subq ${total_stack}, %rsp")?;
                     }
@@ -1105,15 +1092,16 @@ pub(super) fn emit_instruction_x86_64(
                     // the callee may spill into it whether or not it was passed
                     // register arguments.
                     let shadow_space = windows::SHADOW_SPACE_SIZE as usize;
-                    let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
-                        .div_ceil(stack::ALIGNMENT)
-                        * stack::ALIGNMENT;
+                    let total_stack = align_up(
+                        shadow_space + (num_stack_args * stack::SLOT_SIZE),
+                        stack::ALIGNMENT,
+                    );
                     if total_stack > 0 {
                         writeln!(writer, "    addq ${total_stack}, %rsp")?;
                     }
                 } else if num_stack_args > 0 {
                     let pushed = num_stack_args * stack::SLOT_SIZE;
-                    let padded = pushed.div_ceil(stack::ALIGNMENT) * stack::ALIGNMENT;
+                    let padded = align_up(pushed, stack::ALIGNMENT);
                     writeln!(writer, "    addq ${padded}, %rsp")?;
                 }
 
@@ -1504,9 +1492,10 @@ pub(super) fn emit_instruction_x86_64(
 
             if target_os == TargetOperatingSystem::Windows {
                 let shadow_space = windows::SHADOW_SPACE_SIZE as usize;
-                let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
-                    .div_ceil(stack::ALIGNMENT)
-                    * stack::ALIGNMENT;
+                let total_stack = align_up(
+                    shadow_space + (num_stack_args * stack::SLOT_SIZE),
+                    stack::ALIGNMENT,
+                );
                 if total_stack > 0 {
                     writeln!(writer, "    subq ${total_stack}, %rsp")?;
                 }
@@ -1553,15 +1542,16 @@ pub(super) fn emit_instruction_x86_64(
 
             if target_os == TargetOperatingSystem::Windows {
                 let shadow_space = windows::SHADOW_SPACE_SIZE as usize;
-                let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
-                    .div_ceil(stack::ALIGNMENT)
-                    * stack::ALIGNMENT;
+                let total_stack = align_up(
+                    shadow_space + (num_stack_args * stack::SLOT_SIZE),
+                    stack::ALIGNMENT,
+                );
                 if total_stack > 0 {
                     writeln!(writer, "    addq ${total_stack}, %rsp")?;
                 }
             } else if num_stack_args > 0 {
                 let pushed = num_stack_args * stack::SLOT_SIZE;
-                let padded = pushed.div_ceil(stack::ALIGNMENT) * stack::ALIGNMENT;
+                let padded = align_up(pushed, stack::ALIGNMENT);
                 writeln!(writer, "    addq ${padded}, %rsp")?;
             }
 
