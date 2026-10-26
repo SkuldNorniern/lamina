@@ -17,6 +17,8 @@
 //! memory layout and register allocation decisions.
 use std::fmt;
 
+/// Which memory a pointer addresses. Only the gpu backends distinguish them; every
+/// other target treats them all as `Generic`.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AddressSpace {
     #[default]
@@ -62,6 +64,8 @@ impl Aggregate {
     }
 }
 
+/// A value that fits in one register. `I1` is a one-bit boolean, which the backends
+/// still hold in a full register.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ScalarType {
     I8,
@@ -75,6 +79,7 @@ pub enum ScalarType {
     I1,
 }
 
+/// Element type of a vector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VectorLane {
     I8,
@@ -85,12 +90,16 @@ pub enum VectorLane {
     F64,
 }
 
+/// A vector, named by its total width and its lane type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VectorType {
     V128(VectorLane),
     V256(VectorLane),
 }
 
+/// Every type MIR can name. MIR is a register machine, so an aggregate is not one of
+/// them: an aggregate crossing a function boundary travels as a pointer plus an
+/// [`Aggregate`] marker on the parameter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MirType {
     Scalar(ScalarType),
@@ -98,11 +107,13 @@ pub enum MirType {
 }
 
 impl MirType {
+    /// Reads `value` as this type's two's complement, sign-extended to 64 bits.
     pub fn signed_integer(self, value: i64) -> i64 {
         let shift = 64 - self.size_bytes() * 8;
         (value << shift) >> shift
     }
 
+    /// Reads `value` as this type's unsigned bits, zero-extended to 64 bits.
     pub fn unsigned_integer(self, value: i64) -> u64 {
         let shift = 64 - self.size_bytes() * 8;
         ((value as u64) << shift) >> shift
@@ -190,6 +201,7 @@ impl MirType {
         MirType::Scalar(ScalarType::F64)
     }
 
+    /// A pointer into `space`.
     pub fn ptr_in(space: AddressSpace) -> Self {
         Self::Scalar(ScalarType::PtrIn(space))
     }

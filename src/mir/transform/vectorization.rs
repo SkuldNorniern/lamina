@@ -463,7 +463,6 @@ impl AutoVectorization {
             let vector_dst = self.allocate_vector_register();
             let vector_op = self.int_binop_to_vector_op(pattern.operation)?;
 
-            // Create vector load
             block.instructions[pattern.load_idx] = Instruction::Load {
                 ty: MirType::Vector(vector_type),
                 dst: vector_dst.clone(),
@@ -475,7 +474,6 @@ impl AutoVectorization {
                 attrs: Default::default(),
             };
 
-            // Create vector operation
             let vector_lhs_reg = vector_dst.clone();
             let vector_rhs = if matches!(compute_rhs, Operand::Immediate(_)) {
                 // Splat immediate to vector
@@ -521,7 +519,6 @@ impl AutoVectorization {
                 operands: vec![Operand::Register(vector_lhs_reg), vector_rhs],
             };
 
-            // Create vector store
             if let AddressMode::BaseOffset {
                 base: sbase,
                 offset: soffset,
@@ -540,7 +537,6 @@ impl AutoVectorization {
                 };
             }
 
-            // Remove old store instruction
             block.instructions.remove(pattern.store_idx);
 
             Ok(true)

@@ -411,8 +411,8 @@ pub unsafe fn execute_jit_function(
         )));
     }
 
-    // Historical safety valve: the AArch64 encoder used to be incomplete, and we interpreted MIR.
-    // Keep this behavior opt-in for debugging, but default to executing the generated code.
+    // LAMINA_JIT_INTERPRET walks the MIR instead of running the code, for comparing the
+    // two when a backend is suspect.
     if let Some(function) = function
         && env::var_os("LAMINA_JIT_INTERPRET").is_some()
     {

@@ -70,7 +70,6 @@ impl DeadCodeElimination {
         let mut live_in: HashMap<String, HashSet<Register>> = HashMap::new();
         let mut live_out: HashMap<String, HashSet<Register>> = HashMap::new();
 
-        // Initialize sets
         for block in &func.blocks {
             live_in.insert(block.label.clone(), HashSet::new());
             live_out.insert(block.label.clone(), HashSet::new());
@@ -138,7 +137,6 @@ impl DeadCodeElimination {
 
                 // 2. Calculate LiveIn = Use U (LiveOut - Def)
                 let mut current_live_in = current_live_out.clone();
-                // Iterate backwards through instructions
                 for instr in block.instructions.iter().rev() {
                     if self.is_dead_instruction(instr, &current_live_in) {
                         continue;
@@ -175,7 +173,6 @@ impl DeadCodeElimination {
         let mut removed_count = 0;
         let mut instructions_to_keep = Vec::new();
 
-        // Iterate backwards
         // We collect instructions to keep, then reverse them back
         for instr in block.instructions.iter().rev() {
             if self.is_dead_instruction(instr, live_regs) {
@@ -209,7 +206,6 @@ impl DeadCodeElimination {
             return false;
         }
 
-        // Check if instruction defines a register
         if let Some(def_reg) = instr.def_reg() {
             // If the defined register is not live, instruction is dead
             if !live_regs.contains(def_reg) {

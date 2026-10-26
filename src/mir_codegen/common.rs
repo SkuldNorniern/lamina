@@ -28,8 +28,7 @@ pub fn parallel_codegen_error(error: impl Debug) -> LaminaError {
 
 /// Assign one stack slot per virtual register defined or used in `func`.
 ///
-/// Defined registers are laid out first, then used-only registers, so the slot
-/// indices match the order the per-backend code previously produced. The byte
+/// Defined registers are laid out first, then used-only registers. The byte
 /// offset for each slot index is computed by the backend-specific `offset_for_slot`.
 /// Returns the slot map together with the set of defined registers, which some
 /// backends need when emitting instructions.
