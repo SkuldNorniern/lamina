@@ -504,7 +504,10 @@ mod tests {
             TargetOperatingSystem::WatchOS,
             TargetOperatingSystem::VisionOS,
         ] {
-            assert!(gas_arch_flags(TargetArchitecture::X86_64, os).is_empty(), "{os:?}");
+            assert!(
+                gas_arch_flags(TargetArchitecture::X86_64, os).is_empty(),
+                "{os:?}"
+            );
             assert_eq!(
                 gas_arch_flags(TargetArchitecture::Aarch64, os),
                 ["-arch", "arm64"],
