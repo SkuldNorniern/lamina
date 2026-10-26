@@ -740,7 +740,12 @@ impl<'a> Function<'a> {
                 }
 
                 // 5. SSA: a use needs a definition earlier in its block or in another block.
+                // A phi reads on the incoming edge, not where it sits, so a value a
+                // loop defines later in this same block is in order.
                 for used in instr.used_vars() {
+                    if matches!(instr, Instruction::Phi { .. }) {
+                        continue;
+                    }
                     let defined_elsewhere = defining_blocks
                         .get(used)
                         .is_some_and(|blocks| blocks.iter().any(|b| *b != *label));
@@ -892,6 +897,58 @@ mod tests {
         instruction::{AllocType, BinaryOp, Instruction},
         types::{Literal, PrimitiveType, Type, Value},
     };
+
+    #[test]
+    fn phi_reads_value_its_own_block_defines_later() {
+        let mut blocks = HashMap::new();
+        blocks.insert(
+            "entry",
+            BasicBlock {
+                instructions: vec![Instruction::Jmp {
+                    target_label: "loop",
+                }],
+            },
+        );
+        blocks.insert(
+            "loop",
+            BasicBlock {
+                instructions: vec![
+                    Instruction::Phi {
+                        result: "i",
+                        ty: Type::Primitive(PrimitiveType::I64),
+                        incoming: vec![
+                            (Value::Constant(Literal::I64(0)), "entry"),
+                            (Value::Variable("next"), "loop"),
+                        ],
+                    },
+                    Instruction::Binary {
+                        op: BinaryOp::Add,
+                        result: "next",
+                        ty: PrimitiveType::I64,
+                        lhs: Value::Variable("i"),
+                        rhs: Value::Constant(Literal::I64(1)),
+                    },
+                    Instruction::Br {
+                        condition: Value::Variable("next"),
+                        true_label: "loop",
+                        false_label: "loop",
+                    },
+                ],
+            },
+        );
+        let func = Function {
+            name: "spin",
+            signature: FunctionSignature {
+                params: vec![],
+                return_type: Type::Void,
+            },
+            annotations: vec![],
+            basic_blocks: blocks,
+            entry_block: "entry",
+        };
+
+        assert_eq!(func.validate(), Ok(()));
+    }
 
     #[test]
     fn test_display_function_annotation() {
