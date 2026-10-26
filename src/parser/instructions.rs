@@ -48,6 +48,8 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "tuple" => parse_tuple(state, result),
             "extract" => parse_extract_tuple(state, result),
             "call" => parse_call(state, Some(result)),
+            "funcaddr" => parse_func_addr(state, result),
+            "callptr" => parse_call_indirect(state, Some(result)),
             "phi" => parse_phi(state, result),
             "write" => parse_write_assignment(state, result),
             "read" => parse_read_assignment(state, result),
@@ -91,6 +93,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "ret" => parse_ret(state),
             "dealloc" => parse_dealloc(state),
             "call" => parse_call(state, None),
+            "callptr" => parse_call_indirect(state, None),
             "print" => parse_print(state),
             "write" => parse_write(state),
             "read" => parse_read(state),
@@ -525,6 +528,44 @@ fn parse_call<'a>(
         result,
         func_name,
         args,
+    })
+}
+
+fn parse_func_addr<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    let func_name = state.parse_type_identifier()?;
+    Ok(Instruction::FuncAddr { result, func_name })
+}
+
+fn parse_call_indirect<'a>(
+    state: &mut ParserState<'a>,
+    result: Option<Identifier<'a>>,
+) -> Result<Instruction<'a>, LaminaError> {
+    let return_type = parse_type_suffix(state)?;
+    let target = parse_value(state)?;
+    state.expect_char('(')?;
+    let mut args = Vec::new();
+    loop {
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some(')') {
+            state.advance();
+            break;
+        }
+        args.push(parse_value(state)?);
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some(')') {
+            state.advance();
+            break;
+        }
+        state.expect_char(',')?;
+    }
+    Ok(Instruction::CallIndirect {
+        result,
+        target,
+        args,
+        return_type,
     })
 }
 

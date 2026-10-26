@@ -614,6 +614,7 @@ fn convert_function<'a>(
                         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
                             Some(MirType::i1())
                         }
+                        Instruction::CallIndirect { ret_ty, .. } => *ret_ty,
                         Instruction::Call { name, .. } => module
                             .functions
                             .get(name.as_str())
@@ -1294,6 +1295,47 @@ fn convert_instruction<'a>(
                 name: (*func_name).to_string(),
                 args: mir_args,
                 ret,
+            }])
+        }
+        IRInst::FuncAddr { result, func_name } => {
+            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            Ok(vec![Instruction::SymbolAddress {
+                dst,
+                symbol: (*func_name).to_string(),
+            }])
+        }
+        IRInst::CallIndirect {
+            result,
+            target,
+            args,
+            return_type,
+        } => {
+            let target = resolve_operand(target, vreg_alloc, var_to_reg, globals)?;
+            let mut mir_args = Vec::new();
+            let mut arg_types = Vec::new();
+            for argument in args {
+                let operand = resolve_operand(argument, vreg_alloc, var_to_reg, globals)?;
+                arg_types.push(operand_type(&operand, register_types));
+                mir_args.push(operand);
+            }
+            let ret_ty = match return_type {
+                IRType::Void => None,
+                other => Some(map_ir_type(other)?),
+            };
+            let ret = result.map(|name| match ret_ty {
+                Some(ty) if ty.is_float() => {
+                    let dst = Register::Virtual(vreg_alloc.allocate_fpr());
+                    var_to_reg.insert(name, dst.clone());
+                    dst
+                }
+                _ => resolve_or_alloc_gpr(name, vreg_alloc, var_to_reg),
+            });
+            Ok(vec![Instruction::CallIndirect {
+                target,
+                arg_types,
+                args: mir_args,
+                ret,
+                ret_ty,
             }])
         }
         IRInst::ZeroExtend {

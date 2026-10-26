@@ -263,6 +263,7 @@ impl DeadCodeElimination {
             Instruction::Load { .. } // Reads memory (could fault)
             | Instruction::Store { .. }
             | Instruction::Call { .. }
+            | Instruction::CallIndirect { .. }
             | Instruction::TailCall { .. }
             | Instruction::Ret { .. }
             | Instruction::Jmp { .. }

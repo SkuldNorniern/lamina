@@ -259,7 +259,7 @@ pub(crate) fn interpret_mir_function(
                         "Interpreter: unreachable executed".to_owned(),
                     ));
                 }
-                Instruction::Call { .. } => {
+                Instruction::Call { .. } | Instruction::CallIndirect { .. } => {
                     return Err(LaminaError::RuntimeError(
                         "Interpreter: call not supported".to_owned(),
                     ));

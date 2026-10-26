@@ -50,6 +50,33 @@ pub fn validate_module_call_parameters(
             )));
         }
     }
+    if !matches!(
+        target_arch,
+        TargetArchitecture::X86_64
+            | TargetArchitecture::Aarch64
+            | TargetArchitecture::Riscv64
+            | TargetArchitecture::PowerPC64
+    ) {
+        let mut names: Vec<&String> = module
+            .functions
+            .iter()
+            .filter(|(_, func)| {
+                func.blocks.iter().any(|block| {
+                    block
+                        .instructions
+                        .iter()
+                        .any(|i| matches!(i, Instruction::CallIndirect { .. }))
+                })
+            })
+            .map(|(name, _)| name)
+            .collect();
+        names.sort();
+        if let Some(name) = names.first() {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!("{target_arch:?} does not yet call through a pointer, as @{name} does"),
+            )));
+        }
+    }
     module
         .validate_in_pipeline()
         .map_err(CodegenError::InvalidMir)
