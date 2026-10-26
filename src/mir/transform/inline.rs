@@ -316,6 +316,7 @@ impl ModuleInlining {
             | Instruction::IntConvert { dst, src, .. }
             | Instruction::IntToFloat { dst, src, .. }
             | Instruction::FloatToInt { dst, src, .. }
+            | Instruction::FloatConvert { dst, src, .. }
             | Instruction::Bitcast { dst, src, .. }
             | Instruction::FloatUnary { dst, src, .. } => {
                 *dst = map(dst);

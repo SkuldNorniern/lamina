@@ -124,6 +124,15 @@ pub(crate) fn interpret_mir_function(
                     };
                     register_values.insert(dst.clone(), result);
                 }
+                Instruction::FloatConvert { to, dst, src, .. } => {
+                    let bits = evaluate_operand(src, &register_values)?;
+                    let result = if matches!(to, MirType::Scalar(ScalarType::F32)) {
+                        i64::from((f64::from_bits(bits as u64) as f32).to_bits())
+                    } else {
+                        f64::from(f32::from_bits(bits as u32)).to_bits() as i64
+                    };
+                    register_values.insert(dst.clone(), result);
+                }
                 Instruction::FloatToInt {
                     from,
                     to,
@@ -543,7 +552,10 @@ mod tests {
         assert_eq!(interpret_mir_function(&unsigned, &[255]).unwrap(), Some(0));
         let unsigned_byte =
             narrow_compare_func(MirType::Scalar(ScalarType::I8), IntCmpOp::UGt, 127);
-        assert_eq!(interpret_mir_function(&unsigned_byte, &[-1]).unwrap(), Some(1));
+        assert_eq!(
+            interpret_mir_function(&unsigned_byte, &[-1]).unwrap(),
+            Some(1)
+        );
     }
 
     #[test]

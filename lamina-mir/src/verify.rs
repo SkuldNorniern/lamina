@@ -752,6 +752,22 @@ fn verify_instruction_types(
                         &mut instruction_errors,
                     );
                 }
+                Instruction::FloatConvert { from, to, dst, src } => {
+                    if !is_float_scalar(*from) || !is_float_scalar(*to) || from == to {
+                        instruction_errors.push(
+                            "expected FloatConvert between the two float scalar types".into(),
+                        );
+                    }
+                    verify_destination(dst, *to, "FloatConvert", config, &mut instruction_errors);
+                    verify_operand(
+                        src,
+                        *from,
+                        "FloatConvert source",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
                 Instruction::FloatToInt {
                     from, to, dst, src, ..
                 } => {
@@ -1100,6 +1116,7 @@ fn instruction_definition_type(instruction: &Instruction) -> Option<MirType> {
         Instruction::IntConvert { to, .. }
         | Instruction::IntToFloat { to, .. }
         | Instruction::FloatToInt { to, .. }
+        | Instruction::FloatConvert { to, .. }
         | Instruction::Bitcast { to, .. } => Some(*to),
         Instruction::Lea { .. }
         | Instruction::StackAddr { .. }

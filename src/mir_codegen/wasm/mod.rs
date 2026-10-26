@@ -941,6 +941,24 @@ fn emit_instruction_wasm(
             }
             store_to_register_wasm(dst, writer, vreg_to_local)?;
         }
+        MirInst::FloatConvert { from, to, dst, src } => {
+            load_operand_wasm(src, writer, vreg_to_local)?;
+            if from.size_bytes() == 4 {
+                writeln!(writer, "      i32.wrap_i64")?;
+                writeln!(writer, "      f32.reinterpret_i32")?;
+            } else {
+                writeln!(writer, "      f64.reinterpret_i64")?;
+            }
+            if to.size_bytes() == 4 {
+                writeln!(writer, "      f32.demote_f64")?;
+                writeln!(writer, "      i32.reinterpret_f32")?;
+                writeln!(writer, "      i64.extend_i32_u")?;
+            } else {
+                writeln!(writer, "      f64.promote_f32")?;
+                writeln!(writer, "      i64.reinterpret_f64")?;
+            }
+            store_to_register_wasm(dst, writer, vreg_to_local)?;
+        }
         MirInst::FloatToInt {
             from,
             to,

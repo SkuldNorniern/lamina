@@ -668,6 +668,15 @@ pub enum Instruction {
         src: Operand,
     },
 
+    /// Float to float. Widening is exact; narrowing rounds to nearest, ties to even.
+    /// See IR `FloatConvert` for the contract.
+    FloatConvert {
+        from: MirType,
+        to: MirType,
+        dst: Register,
+        src: Operand,
+    },
+
     /// Float to integer, truncating toward zero with saturation. NaN yields 0.
     /// See IR `FloatToInt` for the contract.
     FloatToInt {
@@ -889,6 +898,7 @@ impl Instruction {
             | Instruction::IntConvert { from: ty, src, .. }
             | Instruction::IntToFloat { from: ty, src, .. }
             | Instruction::FloatToInt { from: ty, src, .. }
+            | Instruction::FloatConvert { from: ty, src, .. }
             | Instruction::Bitcast { from: ty, src, .. } => {
                 normalize_immediate(src, *ty);
             }
@@ -925,6 +935,7 @@ impl Instruction {
             | Instruction::IntConvert { dst, .. }
             | Instruction::IntToFloat { dst, .. }
             | Instruction::FloatToInt { dst, .. }
+            | Instruction::FloatConvert { dst, .. }
             | Instruction::Bitcast { dst, .. }
             | Instruction::StackAddr { dst, .. }
             | Instruction::Lea { dst, .. }
@@ -963,6 +974,10 @@ impl Instruction {
                 ..
             }
             | Instruction::FloatToInt {
+                src: Operand::Register(r),
+                ..
+            }
+            | Instruction::FloatConvert {
                 src: Operand::Register(r),
                 ..
             }
@@ -1297,6 +1312,9 @@ impl fmt::Display for Instruction {
                 dst,
                 src,
             } => write!(f, "{dst} = floattoint.{from}.{to} signed={signed} {src}"),
+            Instruction::FloatConvert { from, to, dst, src } => {
+                write!(f, "{dst} = floatconvert.{from}.{to} {src}")
+            }
             Instruction::StackAddr { dst, slot } => write!(f, "{dst} = stackaddr {slot}"),
             Instruction::Lea { dst, base, offset } => {
                 write!(f, "lea {dst}, {base}, {offset}")

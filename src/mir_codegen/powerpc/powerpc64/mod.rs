@@ -948,6 +948,23 @@ fn emit_instruction_ppc64<W: Write>(
                 emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, is_f32)?;
             }
         }
+        MirInst::FloatConvert { from, to, dst, src } => {
+            let to_f32 = to.size_bytes() == 4;
+            emit_load_fp_operand(
+                src,
+                writer,
+                reg_alloc,
+                stack_slots,
+                "1",
+                from.size_bytes() == 4,
+            )?;
+            if to_f32 {
+                writeln!(writer, "    frsp 1, 1")?;
+            }
+            if let Register::Virtual(vreg) = dst {
+                emit_store_fp_result("1", vreg, writer, reg_alloc, stack_slots, to_f32)?;
+            }
+        }
         MirInst::FloatUnary { op, dst, src, ty } => {
             let is_f32 = ty.size_bytes() == 4;
             let suffix = if is_f32 { "s" } else { "" };

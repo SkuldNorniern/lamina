@@ -1461,6 +1461,17 @@ pub(super) fn emit_instruction_x86_64(
             dst,
             src,
         } => emit_float_to_int(writer, reg_alloc, stack_slots, from, to, *signed, dst, src)?,
+        MirInst::FloatConvert { from, to, dst, src } => {
+            load_float_operand_to_xmm(src, writer, reg_alloc, stack_slots, "xmm0", from)?;
+            if is_f32(to) {
+                writeln!(writer, "    cvtsd2ss %xmm0, %xmm0")?;
+            } else {
+                writeln!(writer, "    cvtss2sd %xmm0, %xmm0")?;
+            }
+            if let Register::Virtual(vreg) = dst {
+                store_xmm_to_register("xmm0", vreg, writer, reg_alloc, stack_slots, to)?;
+            }
+        }
         MirInst::FloatUnary { op, ty, dst, src } => {
             load_float_operand_to_xmm(src, writer, reg_alloc, stack_slots, "xmm0", ty)?;
             match op {

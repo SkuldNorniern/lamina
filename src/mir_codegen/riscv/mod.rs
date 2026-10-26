@@ -1518,6 +1518,25 @@ fn emit_instruction_riscv<W: Write>(
                 store_fp_register_to_register("fa0", vreg, writer, reg_alloc, stack_slots, is_f32)?;
             }
         }
+        MirInst::FloatConvert { from, to, dst, src } => {
+            let to_f32 = to.size_bytes() == 4;
+            ctx.target
+                .require_float(true)
+                .map_err(|e| LaminaError::ValidationError(format!("floatconvert: {e}")))?;
+            ctx.target
+                .require_float(false)
+                .map_err(|e| LaminaError::ValidationError(format!("floatconvert: {e}")))?;
+            let from_f32 = from.size_bytes() == 4;
+            load_fp_operand_to_register(src, writer, reg_alloc, stack_slots, "fa0", from_f32)?;
+            if to_f32 {
+                writeln!(writer, "    fcvt.s.d fa0, fa0")?;
+            } else {
+                writeln!(writer, "    fcvt.d.s fa0, fa0")?;
+            }
+            if let Register::Virtual(vreg) = dst {
+                store_fp_register_to_register("fa0", vreg, writer, reg_alloc, stack_slots, to_f32)?;
+            }
+        }
         MirInst::FloatUnary { op, dst, src, ty } => {
             let is_f32 = ty.size_bytes() == 4;
             let suffix = if is_f32 { "s" } else { "d" };
