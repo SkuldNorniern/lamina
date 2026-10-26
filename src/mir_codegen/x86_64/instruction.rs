@@ -697,12 +697,17 @@ pub(super) fn emit_instruction_x86_64(
             }
         }
         MirInst::Call { name, args, ret } => {
-            if name == "print" {
+            if name == "print" || name == "printu" {
+                let fmt = if name == "printu" {
+                    ".L_mir_fmt_uint"
+                } else {
+                    ".L_mir_fmt_int"
+                };
                 if let Some(arg) = args.first() {
                     load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
                     match target_os {
                         os if os_uses_macho(os) => {
-                            writeln!(writer, "    leaq .L_mir_fmt_int(%rip), %rdi")?;
+                            writeln!(writer, "    leaq {fmt}(%rip), %rdi")?;
                             writeln!(writer, "    movq %rax, %rsi")?;
                             // al carries the vector-register count for variadic
                             // calls; printf reads it before saving xmm state.
@@ -713,7 +718,7 @@ pub(super) fn emit_instruction_x86_64(
                         }
                         TargetOperatingSystem::Windows => {
                             writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                            writeln!(writer, "    leaq .L_mir_fmt_int(%rip), %rcx")?;
+                            writeln!(writer, "    leaq {fmt}(%rip), %rcx")?;
                             writeln!(writer, "    movq %rax, %rdx")?;
                             writeln!(writer, "    call printf")?;
                             writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
@@ -723,7 +728,7 @@ pub(super) fn emit_instruction_x86_64(
                             writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
                         }
                         _ => {
-                            writeln!(writer, "    leaq .L_mir_fmt_int(%rip), %rdi")?;
+                            writeln!(writer, "    leaq {fmt}(%rip), %rdi")?;
                             writeln!(writer, "    movq %rax, %rsi")?;
                             writeln!(writer, "    xorl %eax, %eax")?;
                             writeln!(writer, "    call printf")?;

@@ -1,0 +1,25 @@
+global @big: u64 = 9223372036854775807
+
+fn @scale(u64 %x) -> u64 {
+entry:
+ %y = mul.u64 %x, 4
+ ret.u64 %y
+}
+
+fn @main() -> i64 {
+entry:
+ %a = load.u64 @big
+ %b = add.u64 %a, 1
+ print %b
+ %c = call @scale(%b)
+ print %c
+ %d = sub.u64 0, 1
+ print %d
+ %e = div.u64 %d, 3
+ print %e
+ %f = trunc.u64.u32 %d
+ print %f
+ %g = sub.i64 0, 1
+ print %g
+ ret.i64 0
+}

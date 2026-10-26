@@ -183,6 +183,80 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     Ok(mir_module)
 }
 
+/// What lowering knows about the values in a function beyond the MIR types: the
+/// type of each register, and which names hold an unsigned integer.
+struct ValueFacts<'t, 'a> {
+    types: &'t HashMap<Register, MirType>,
+    unsigned: &'t HashSet<&'a str>,
+}
+
+/// Names of values whose IR type is an unsigned integer. `print` needs this because
+/// MIR keeps no signedness on a register.
+fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'a str> {
+    fn unsigned_prim(p: IRPrim) -> bool {
+        matches!(p, IRPrim::U8 | IRPrim::U16 | IRPrim::U32 | IRPrim::U64)
+    }
+    fn unsigned_type(ty: &IRType<'_>) -> bool {
+        matches!(ty, IRType::Primitive(p) if unsigned_prim(*p))
+    }
+
+    let mut names = HashSet::new();
+    for param in &f.signature.params {
+        if unsigned_type(&param.ty) {
+            names.insert(param.name);
+        }
+    }
+    for block in f.basic_blocks.values() {
+        for instr in &block.instructions {
+            let unsigned_result = match instr {
+                IRInst::Binary { result, ty, .. } => unsigned_prim(*ty).then_some(*result),
+                IRInst::Load { result, ty, .. }
+                | IRInst::Phi { result, ty, .. }
+                | IRInst::Select { result, ty, .. } => unsigned_type(ty).then_some(*result),
+                IRInst::ZeroExtend {
+                    result,
+                    target_type,
+                    ..
+                }
+                | IRInst::Trunc {
+                    result,
+                    target_type,
+                    ..
+                }
+                | IRInst::SignExtend {
+                    result,
+                    target_type,
+                    ..
+                }
+                | IRInst::Bitcast {
+                    result,
+                    target_type,
+                    ..
+                }
+                | IRInst::FloatToInt {
+                    result,
+                    target_type,
+                    ..
+                } => unsigned_prim(*target_type).then_some(*result),
+                IRInst::Call {
+                    result: Some(result),
+                    func_name,
+                    ..
+                } => module
+                    .functions
+                    .get(func_name)
+                    .filter(|callee| unsigned_type(&callee.signature.return_type))
+                    .map(|_| *result),
+                _ => None,
+            };
+            if let Some(name) = unsigned_result {
+                names.insert(name);
+            }
+        }
+    }
+    names
+}
+
 fn global_initializer(
     name: &str,
     ty: MirType,
@@ -295,6 +369,7 @@ fn convert_function<'a>(
 
     let mut var_to_reg: HashMap<&'a str, Register> = HashMap::new();
     let mut register_types = HashMap::new();
+    let unsigned = unsigned_results(f, module);
     let mut stack_allocs: HashSet<&'a str> = HashSet::new();
     let mut reservations: HashMap<VirtualReg, usize> = HashMap::new();
     let mut globals = GlobalAddresses::new(module);
@@ -390,7 +465,10 @@ fn convert_function<'a>(
                 &mut var_to_reg,
                 &mut stack_allocs,
                 &mut reservations,
-                &register_types,
+                &ValueFacts {
+                    types: &register_types,
+                    unsigned: &unsigned,
+                },
                 &mut globals,
             )
             .map_err(|error| match error {
@@ -712,9 +790,11 @@ fn convert_instruction<'a>(
     var_to_reg: &mut HashMap<&'a str, Register>,
     stack_allocs: &mut HashSet<&'a str>,
     reservations: &mut HashMap<VirtualReg, usize>,
-    register_types: &HashMap<Register, MirType>,
+    facts: &ValueFacts<'_, 'a>,
     globals: &mut GlobalAddresses<'a>,
 ) -> Result<Vec<Instruction>, FromIRError> {
+    let register_types = facts.types;
+    let unsigned = facts.unsigned;
     #[cfg(feature = "nightly")]
     fn ir_address_mode_to_mir<'b>(
         ptr: &IRVal<'b>,
@@ -1475,16 +1555,36 @@ fn convert_instruction<'a>(
                 return Err(FromIRError::PrintStringLiteralUnsupported);
             }
             let arg = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
-            let name = match operand_type(&arg, register_types) {
+            let ty = operand_type(&arg, register_types);
+            let is_unsigned = matches!(value, IRVal::Variable(id) if unsigned.contains(id));
+            let name = match ty {
                 MirType::Scalar(ScalarType::F32) => "printf32",
                 MirType::Scalar(ScalarType::F64) => "printf64",
+                _ if is_unsigned => "printu",
                 _ => "print",
             };
-            Ok(vec![Instruction::Call {
+            // A narrow value sits sign-extended in its register, so an unsigned one
+            // needs widening before printf reads all 64 bits.
+            let mut out = Vec::new();
+            let arg = if is_unsigned && ty.size_bytes() < 8 {
+                let wide = Register::Virtual(vreg_alloc.allocate_gpr());
+                out.push(Instruction::IntConvert {
+                    from: ty,
+                    to: MirType::i64(),
+                    signed: false,
+                    dst: wide.clone(),
+                    src: arg,
+                });
+                Operand::Register(wide)
+            } else {
+                arg
+            };
+            out.push(Instruction::Call {
                 name: name.to_string(),
                 args: vec![arg],
                 ret: None,
-            }])
+            });
+            Ok(out)
         }
         IRInst::Write {
             buffer,

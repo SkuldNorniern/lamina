@@ -38,9 +38,11 @@ impl RiscVAbi {
     pub fn get_print_format(&self) -> &'static str {
         match self.target_os {
             TargetOperatingSystem::MacOS => {
-                "__mir_fmt_int: .asciz \"%lld\\n\"\n__mir_fmt_float: .asciz \"%g\\n\""
+                "__mir_fmt_int: .asciz \"%lld\\n\"\n__mir_fmt_uint: .asciz \"%llu\\n\"\n__mir_fmt_float: .asciz \"%g\\n\""
             }
-            _ => ".L_mir_fmt_int: .string \"%lld\\n\"\n.L_mir_fmt_float: .string \"%g\\n\"",
+            _ => {
+                ".L_mir_fmt_int: .string \"%lld\\n\"\n.L_mir_fmt_uint: .string \"%llu\\n\"\n.L_mir_fmt_float: .string \"%g\\n\""
+            }
         }
     }
 

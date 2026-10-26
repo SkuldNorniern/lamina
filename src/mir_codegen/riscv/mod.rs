@@ -1066,12 +1066,18 @@ fn emit_instruction_riscv<W: Write>(
                     });
                     writeln!(writer, "    call {printf_name}")?;
                 }
-            } else if name == "print" {
+            } else if name == "print" || name == "printu" {
                 if let Some(arg) = args.first() {
                     // Load format string address to a0
                     match target_os {
+                        TargetOperatingSystem::MacOS if name == "printu" => {
+                            writeln!(writer, "    la a0, __mir_fmt_uint")?;
+                        }
                         TargetOperatingSystem::MacOS => {
                             writeln!(writer, "    la a0, __mir_fmt_int")?;
+                        }
+                        _ if name == "printu" => {
+                            writeln!(writer, "    la a0, .L_mir_fmt_uint")?;
                         }
                         _ => {
                             writeln!(writer, "    la a0, .L_mir_fmt_int")?;
