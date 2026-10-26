@@ -8,7 +8,9 @@ mod simd;
 use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
 
-use crate::mir_codegen::common::integer_conversion_with_width;
+use crate::mir_codegen::common::{
+    integer_conversion_with_width, print_format_label, writeptr_width,
+};
 
 use util::{
     clamp_above, clamp_below, emit_int_cmp_op, load_fp_operand_to_register,
@@ -545,6 +547,24 @@ enum RiscVArgPlace {
 /// Floats take the next fa register and integers the next a register, from banks that
 /// run out separately. A float left without an fa register falls back to the integer
 /// bank before the stack, carrying its bits.
+/// Format label for a print intrinsic. Mach-O has no local label prefix, so the same
+/// strings are emitted with two leading underscores there.
+fn fmt_label(call: &str, target_os: TargetOperatingSystem) -> String {
+    let label = print_format_label(call);
+    match target_os {
+        TargetOperatingSystem::MacOS => format!("__{}", label.trim_start_matches(".L_")),
+        _ => label.to_string(),
+    }
+}
+
+/// Name of printf for this target, honouring any stub the ABI prefers.
+fn printf_symbol(abi: &RiscVAbi, target_os: TargetOperatingSystem) -> String {
+    abi.call_stub("print").unwrap_or_else(|| match target_os {
+        TargetOperatingSystem::MacOS => "_printf".to_string(),
+        _ => "printf".to_string(),
+    })
+}
+
 fn classify_riscv_arguments(types: &[MirType]) -> Vec<RiscVArgPlace> {
     let banks = RiscVAbi::ARG_REGISTERS.len();
     let mut gprs = 0;
@@ -1010,11 +1030,7 @@ fn emit_instruction_riscv<W: Write>(
             // Handle print intrinsic
             if name == "writeptr" && args.len() == 2 {
                 // write(1, ptr, width): the pointee's bytes go out straight from memory.
-                let Operand::Immediate(Immediate::I64(width)) = &args[1] else {
-                    return Err(LaminaError::ValidationError(
-                        "writeptr width must be an immediate".to_string(),
-                    ));
-                };
+                let width = writeptr_width(&args[1])?;
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
                 writeln!(writer, "    li a2, {width}")?;
                 writeln!(writer, "    li a0, 1")?;
@@ -1057,50 +1073,21 @@ fn emit_instruction_riscv<W: Write>(
                 writeln!(writer, "    and a0, a0, t1")?;
             } else if name == "printf32" || name == "printf64" {
                 if let Some(arg) = args.first() {
-                    match target_os {
-                        TargetOperatingSystem::MacOS => {
-                            writeln!(writer, "    la a0, __mir_fmt_float")?;
-                        }
-                        _ => {
-                            writeln!(writer, "    la a0, .L_mir_fmt_float")?;
-                        }
-                    }
+                    writeln!(writer, "    la a0, {}", fmt_label(name, target_os))?;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
                     if name == "printf32" {
                         writeln!(writer, "    fmv.w.x ft0, a1")?;
                         writeln!(writer, "    fcvt.d.s ft0, ft0")?;
                         writeln!(writer, "    fmv.x.d a1, ft0")?;
                     }
-                    let printf_name = abi.call_stub("print").unwrap_or_else(|| match target_os {
-                        TargetOperatingSystem::MacOS => "_printf".to_string(),
-                        _ => "printf".to_string(),
-                    });
+                    let printf_name = printf_symbol(&abi, target_os);
                     writeln!(writer, "    call {printf_name}")?;
                 }
             } else if name == "print" || name == "printu" {
                 if let Some(arg) = args.first() {
-                    // Load format string address to a0
-                    match target_os {
-                        TargetOperatingSystem::MacOS if name == "printu" => {
-                            writeln!(writer, "    la a0, __mir_fmt_uint")?;
-                        }
-                        TargetOperatingSystem::MacOS => {
-                            writeln!(writer, "    la a0, __mir_fmt_int")?;
-                        }
-                        _ if name == "printu" => {
-                            writeln!(writer, "    la a0, .L_mir_fmt_uint")?;
-                        }
-                        _ => {
-                            writeln!(writer, "    la a0, .L_mir_fmt_int")?;
-                        }
-                    }
-                    // Load value to print to a1
+                    writeln!(writer, "    la a0, {}", fmt_label(name, target_os))?;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
-                    // Call printf
-                    let printf_name = abi.call_stub("print").unwrap_or_else(|| match target_os {
-                        TargetOperatingSystem::MacOS => "_printf".to_string(),
-                        _ => "printf".to_string(),
-                    });
+                    let printf_name = printf_symbol(&abi, target_os);
                     writeln!(writer, "    call {printf_name}")?;
                 }
             } else {
