@@ -1,0 +1,17 @@
+global @tiny: f64 = 1.5e-3
+
+fn @main() -> i64 {
+entry:
+  %a = add.f64 1.0e40, 0.0
+  %b = fptrunc.f64.f32 %a
+  print %b
+  %c = add.f64 2.5E3, 0.5
+  print %c
+  %d = add.f32 1.25e2, 0.0
+  print %d
+  %e = load.f64 @tiny
+  print %e
+  %f = sub.f64 0.0, 3.0e-2
+  print %f
+  ret.i64 0
+}
