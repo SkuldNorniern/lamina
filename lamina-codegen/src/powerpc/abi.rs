@@ -42,7 +42,7 @@ impl Ppc64Abi {
     }
 
     pub fn get_print_format(&self) -> &'static str {
-        ".L_mir_fmt_int: .string \"%lld\\n\"\n.L_mir_fmt_float: .string \"%g\\n\""
+        ".L_mir_fmt_int: .string \"%lld\\n\"\n.L_mir_fmt_uint: .string \"%llu\\n\"\n.L_mir_fmt_float: .string \"%g\\n\""
     }
 
     pub const ARG_REGISTERS: &'static [&'static str] = &["3", "4", "5", "6", "7", "8", "9", "10"];

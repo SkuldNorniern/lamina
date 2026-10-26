@@ -1135,7 +1135,12 @@ fn emit_block<W: Write>(
                 src,
             } => emit_float_to_int(w, from, to, *signed, dst, src, frame, ra)?,
             MirInst::Call { name, args, ret } => {
-                if name == "print" && args.len() == 1 {
+                if (name == "print" || name == "printu") && args.len() == 1 {
+                    let fmt = if name == "printu" {
+                        ".L_mir_fmt_uint"
+                    } else {
+                        ".L_mir_fmt_int"
+                    };
                     // Special-case intrinsic: print(integer) via printf("%lld\n", value)
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                     match abi.target_os() {
@@ -1143,8 +1148,8 @@ fn emit_block<W: Write>(
                             // Darwin AArch64 variadic ABI requires arguments to be available in the stack home area
                             // Ensure 16-byte alignment and spill the first vararg to stack
                             writeln!(w, "    sub sp, sp, #32")?; // create home area
-                            writeln!(w, "    adrp x0, .L_mir_fmt_int@PAGE")?;
-                            writeln!(w, "    add x0, x0, .L_mir_fmt_int@PAGEOFF")?;
+                            writeln!(w, "    adrp x0, {fmt}@PAGE")?;
+                            writeln!(w, "    add x0, x0, {fmt}@PAGEOFF")?;
                             writeln!(w, "    str x1, [sp]")?; // spill the vararg as required by ABI
                             writeln!(w, "    bl _printf")?;
                             // Flush stdout to ensure output appears immediately when mixing with syscall I/O
@@ -1153,8 +1158,8 @@ fn emit_block<W: Write>(
                             writeln!(w, "    add sp, sp, #32")?; // restore stack
                         }
                         _ => {
-                            writeln!(w, "    adrp x0, .L_mir_fmt_int")?;
-                            writeln!(w, "    add x0, x0, :lo12:.L_mir_fmt_int")?;
+                            writeln!(w, "    adrp x0, {fmt}")?;
+                            writeln!(w, "    add x0, x0, :lo12:{fmt}")?;
                             writeln!(w, "    bl printf")?;
                             // Flush stdout to ensure output appears immediately when mixing with syscall I/O
                             writeln!(w, "    mov x0, #0")?; // NULL flushes all streams

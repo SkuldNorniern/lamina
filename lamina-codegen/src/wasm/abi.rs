@@ -27,7 +27,7 @@ impl WasmABI {
 
     /// Get the WASM import for the print function.
     pub fn get_print_import(&self) -> &'static str {
-        "(import \"console\" \"log\" (func $log (param i64)))\n  (import \"console\" \"logf\" (func $logf (param f64)))"
+        "(import \"console\" \"log\" (func $log (param i64)))\n  (import \"console\" \"logu\" (func $logu (param i64)))\n  (import \"console\" \"logf\" (func $logf (param f64)))"
     }
 
     /// Runtime helpers the backend calls but does not emit bodies for.

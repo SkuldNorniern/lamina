@@ -620,11 +620,15 @@ fn emit_instruction_wasm(
             }
         }
         MirInst::Call { name, args, ret } => {
-            if name == "print" {
+            if name == "print" || name == "printu" {
                 // Handle print intrinsic
                 if let Some(arg) = args.first() {
                     load_operand_wasm(arg, writer, vreg_to_local)?;
-                    writeln!(writer, "      call $log")?;
+                    if name == "printu" {
+                        writeln!(writer, "      call $logu")?;
+                    } else {
+                        writeln!(writer, "      call $log")?;
+                    }
                 }
             } else if name == "printf32" || name == "printf64" {
                 if let Some(arg) = args.first() {
@@ -1222,6 +1226,9 @@ for imp in module.imports:
     def callback(*args, name=imp.name):
         if name == 'log':
             print(*args)
+            return None
+        if name == 'logu':
+            print(args[0] & 0xffffffffffffffff)
             return None
         if name == 'logf':
             print('%g' % args[0])

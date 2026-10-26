@@ -1094,10 +1094,15 @@ fn emit_instruction_ppc64<W: Write>(
                     writeln!(writer, "    bl printf")?;
                     writeln!(writer, "    nop")?;
                 }
-            } else if name == "print" {
+            } else if name == "print" || name == "printu" {
                 if let Some(arg) = args.first() {
-                    writeln!(writer, "    addis 3, 2, .L_mir_fmt_int@toc@ha")?;
-                    writeln!(writer, "    addi 3, 3, .L_mir_fmt_int@toc@l")?;
+                    let fmt = if name == "printu" {
+                        ".L_mir_fmt_uint"
+                    } else {
+                        ".L_mir_fmt_int"
+                    };
+                    writeln!(writer, "    addis 3, 2, {fmt}@toc@ha")?;
+                    writeln!(writer, "    addi 3, 3, {fmt}@toc@l")?;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "4")?;
                     writeln!(writer, "    bl printf")?;
                     writeln!(writer, "    nop")?;
