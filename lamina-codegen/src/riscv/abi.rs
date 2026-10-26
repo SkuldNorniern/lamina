@@ -34,11 +34,13 @@ impl RiscVAbi {
         ".text"
     }
 
-    /// Get the format string for printing integers
+    /// Get the format strings for printing integers and floats
     pub fn get_print_format(&self) -> &'static str {
         match self.target_os {
-            TargetOperatingSystem::MacOS => "__mir_fmt_int: .asciz \"%lld\\n\"",
-            _ => ".L_mir_fmt_int: .string \"%lld\\n\"",
+            TargetOperatingSystem::MacOS => {
+                "__mir_fmt_int: .asciz \"%lld\\n\"\n__mir_fmt_float: .asciz \"%g\\n\""
+            }
+            _ => ".L_mir_fmt_int: .string \"%lld\\n\"\n.L_mir_fmt_float: .string \"%g\\n\"",
         }
     }
 

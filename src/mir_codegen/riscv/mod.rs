@@ -1044,6 +1044,28 @@ fn emit_instruction_riscv<W: Write>(
                 writeln!(writer, "    slti t1, a0, 0")?;
                 writeln!(writer, "    addi t1, t1, -1")?;
                 writeln!(writer, "    and a0, a0, t1")?;
+            } else if name == "printf32" || name == "printf64" {
+                if let Some(arg) = args.first() {
+                    match target_os {
+                        TargetOperatingSystem::MacOS => {
+                            writeln!(writer, "    la a0, __mir_fmt_float")?;
+                        }
+                        _ => {
+                            writeln!(writer, "    la a0, .L_mir_fmt_float")?;
+                        }
+                    }
+                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
+                    if name == "printf32" {
+                        writeln!(writer, "    fmv.w.x ft0, a1")?;
+                        writeln!(writer, "    fcvt.d.s ft0, ft0")?;
+                        writeln!(writer, "    fmv.x.d a1, ft0")?;
+                    }
+                    let printf_name = abi.call_stub("print").unwrap_or_else(|| match target_os {
+                        TargetOperatingSystem::MacOS => "_printf".to_string(),
+                        _ => "printf".to_string(),
+                    });
+                    writeln!(writer, "    call {printf_name}")?;
+                }
             } else if name == "print" {
                 if let Some(arg) = args.first() {
                     // Load format string address to a0

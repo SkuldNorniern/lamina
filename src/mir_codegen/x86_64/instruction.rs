@@ -732,6 +732,46 @@ pub(super) fn emit_instruction_x86_64(
                         }
                     }
                 }
+            } else if (name == "printf32" || name == "printf64") && args.len() == 1 {
+                let arg = args.first().ok_or_else(|| {
+                    LaminaError::ValidationError("print requires one argument".to_string())
+                })?;
+                let ty = if name == "printf32" {
+                    MirType::f32()
+                } else {
+                    MirType::f64()
+                };
+                load_float_operand_to_xmm(arg, writer, reg_alloc, stack_slots, "xmm0", &ty)?;
+                if name == "printf32" {
+                    writeln!(writer, "    cvtss2sd %xmm0, %xmm0")?;
+                }
+                match target_os {
+                    os if os_uses_macho(os) => {
+                        writeln!(writer, "    leaq .L_mir_fmt_float(%rip), %rdi")?;
+                        writeln!(writer, "    movl $1, %eax")?;
+                        writeln!(writer, "    call _printf")?;
+                        writeln!(writer, "    movq $0, %rdi")?;
+                        writeln!(writer, "    call _fflush")?;
+                    }
+                    TargetOperatingSystem::Windows => {
+                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    leaq .L_mir_fmt_float(%rip), %rcx")?;
+                        writeln!(writer, "    movq %xmm0, %rdx")?;
+                        writeln!(writer, "    call printf")?;
+                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    movq $0, %rcx")?;
+                        writeln!(writer, "    call fflush")?;
+                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                    }
+                    _ => {
+                        writeln!(writer, "    leaq .L_mir_fmt_float(%rip), %rdi")?;
+                        writeln!(writer, "    movl $1, %eax")?;
+                        writeln!(writer, "    call printf")?;
+                        writeln!(writer, "    movq $0, %rdi")?;
+                        writeln!(writer, "    call fflush")?;
+                    }
+                }
             } else if name == "writebyte" && args.len() == 1 {
                 let arg = args.first().ok_or_else(|| {
                     LaminaError::ValidationError("writebyte requires one argument".to_string())

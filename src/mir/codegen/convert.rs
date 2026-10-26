@@ -1475,8 +1475,13 @@ fn convert_instruction<'a>(
                 return Err(FromIRError::PrintStringLiteralUnsupported);
             }
             let arg = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
+            let name = match operand_type(&arg, register_types) {
+                MirType::Scalar(ScalarType::F32) => "printf32",
+                MirType::Scalar(ScalarType::F64) => "printf64",
+                _ => "print",
+            };
             Ok(vec![Instruction::Call {
-                name: "print".to_string(),
+                name: name.to_string(),
                 args: vec![arg],
                 ret: None,
             }])
@@ -1744,6 +1749,8 @@ fn operand_type(operand: &Operand, types: &HashMap<Register, MirType>) -> MirTyp
         Operand::Immediate(Immediate::I8(_)) => MirType::Scalar(ScalarType::I8),
         Operand::Immediate(Immediate::I16(_)) => MirType::Scalar(ScalarType::I16),
         Operand::Immediate(Immediate::I32(_)) => MirType::i32(),
+        Operand::Immediate(Immediate::F32(_)) => MirType::f32(),
+        Operand::Immediate(Immediate::F64(_)) => MirType::f64(),
         _ => MirType::i64(),
     }
 }

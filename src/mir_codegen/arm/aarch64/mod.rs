@@ -1164,6 +1164,33 @@ fn emit_block<W: Write>(
                     if let Some(dst) = ret {
                         store_result(w, dst, "x0", frame, ra)?;
                     }
+                } else if (name == "printf32" || name == "printf64") && args.len() == 1 {
+                    emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
+                    if name == "printf32" {
+                        writeln!(w, "    fmov s0, w1")?;
+                        writeln!(w, "    fcvt d0, s0")?;
+                        writeln!(w, "    fmov x1, d0")?;
+                    }
+                    match abi.target_os() {
+                        os if os_uses_macho(os) => {
+                            writeln!(w, "    sub sp, sp, #32")?;
+                            writeln!(w, "    adrp x0, .L_mir_fmt_float@PAGE")?;
+                            writeln!(w, "    add x0, x0, .L_mir_fmt_float@PAGEOFF")?;
+                            writeln!(w, "    str x1, [sp]")?;
+                            writeln!(w, "    bl _printf")?;
+                            writeln!(w, "    mov x0, #0")?;
+                            writeln!(w, "    bl _fflush")?;
+                            writeln!(w, "    add sp, sp, #32")?;
+                        }
+                        _ => {
+                            writeln!(w, "    fmov d0, x1")?;
+                            writeln!(w, "    adrp x0, .L_mir_fmt_float")?;
+                            writeln!(w, "    add x0, x0, :lo12:.L_mir_fmt_float")?;
+                            writeln!(w, "    bl printf")?;
+                            writeln!(w, "    mov x0, #0")?;
+                            writeln!(w, "    bl fflush")?;
+                        }
+                    }
                 } else if name == "writebyte" && args.len() == 1 {
                     // Write a single byte to stdout using macOS ARM64 syscall
                     match abi.target_os() {

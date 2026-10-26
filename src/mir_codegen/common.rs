@@ -586,18 +586,22 @@ pub fn emit_print_format_section<W: Write>(
         os if os_uses_macho(os) => {
             writeln!(writer, ".section __TEXT,__cstring,cstring_literals")?;
             writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
+            writeln!(writer, ".L_mir_fmt_float: .asciz \"%g\\n\"")?;
         }
         TargetOperatingSystem::Windows => {
             writeln!(writer, ".section .rdata,\"dr\"")?;
             writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
+            writeln!(writer, ".L_mir_fmt_float: .asciz \"%g\\n\"")?;
         }
         TargetOperatingSystem::Linux => {
             writeln!(writer, ".section .rodata")?;
             writeln!(writer, ".L_mir_fmt_int: .string \"%lld\\n\"")?;
+            writeln!(writer, ".L_mir_fmt_float: .string \"%g\\n\"")?;
         }
         _ => {
             writeln!(writer, ".section .rodata")?;
             writeln!(writer, ".L_mir_fmt_int: .asciz \"%lld\\n\"")?;
+            writeln!(writer, ".L_mir_fmt_float: .asciz \"%g\\n\"")?;
         }
     }
     Ok(())
@@ -1741,7 +1745,7 @@ entry:
             let text = String::from_utf8(output).expect("utf8 assembly");
             assert_eq!(
                 text,
-                ".section __TEXT,__cstring,cstring_literals\n.L_mir_fmt_int: .asciz \"%lld\\n\"\n",
+                ".section __TEXT,__cstring,cstring_literals\n.L_mir_fmt_int: .asciz \"%lld\\n\"\n.L_mir_fmt_float: .asciz \"%g\\n\"\n",
                 "{os:?}"
             );
         }
@@ -1754,7 +1758,7 @@ entry:
         let text = String::from_utf8(output).expect("utf8 assembly");
         assert_eq!(
             text,
-            ".section .rodata\n.L_mir_fmt_int: .string \"%lld\\n\"\n"
+            ".section .rodata\n.L_mir_fmt_int: .string \"%lld\\n\"\n.L_mir_fmt_float: .string \"%g\\n\"\n"
         );
     }
 }
