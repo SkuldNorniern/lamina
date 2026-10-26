@@ -1,0 +1,21 @@
+fn @half(f64 %x) -> f64 {
+entry:
+ %h = div.f64 %x, 2.0
+ ret.f64 %h
+}
+
+fn @main() -> i64 {
+entry:
+ %a = add.f64 1.5, 2.25
+ print %a
+ %b = call @half(%a)
+ print %b
+ %c = add.f32 0.5, 0.25
+ print %c
+ print 3.5
+ %d = div.f64 1.0, 3.0
+ print %d
+ %e = sub.f64 0.0, 2.5
+ print %e
+ ret.i64 0
+}

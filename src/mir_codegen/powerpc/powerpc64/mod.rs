@@ -1077,6 +1077,23 @@ fn emit_instruction_ppc64<W: Write>(
                 writeln!(writer, "    li 4, 0")?;
                 writeln!(writer, "    cmpdi 3, 0")?;
                 writeln!(writer, "    isel 3, 4, 3, 0")?;
+            } else if name == "printf32" || name == "printf64" {
+                if let Some(arg) = args.first() {
+                    writeln!(writer, "    addis 3, 2, .L_mir_fmt_float@toc@ha")?;
+                    writeln!(writer, "    addi 3, 3, .L_mir_fmt_float@toc@l")?;
+                    emit_load_fp_operand(
+                        arg,
+                        writer,
+                        reg_alloc,
+                        stack_slots,
+                        "1",
+                        name == "printf32",
+                    )?;
+                    writeln!(writer, "    stfd 1, -8(1)")?;
+                    writeln!(writer, "    ld 4, -8(1)")?;
+                    writeln!(writer, "    bl printf")?;
+                    writeln!(writer, "    nop")?;
+                }
             } else if name == "print" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    addis 3, 2, .L_mir_fmt_int@toc@ha")?;

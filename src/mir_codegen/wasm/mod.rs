@@ -626,6 +626,14 @@ fn emit_instruction_wasm(
                     load_operand_wasm(arg, writer, vreg_to_local)?;
                     writeln!(writer, "      call $log")?;
                 }
+            } else if name == "printf32" || name == "printf64" {
+                if let Some(arg) = args.first() {
+                    load_operand_wasm(arg, writer, vreg_to_local)?;
+                    if name == "printf32" {
+                        writeln!(writer, "      f64.promote_f32")?;
+                    }
+                    writeln!(writer, "      call $logf")?;
+                }
             } else {
                 // General function call implementation
                 // WebAssembly passes all arguments on the stack in order
@@ -1214,6 +1222,9 @@ for imp in module.imports:
     def callback(*args, name=imp.name):
         if name == 'log':
             print(*args)
+            return None
+        if name == 'logf':
+            print('%g' % args[0])
             return None
         return None if name == 'free' else 0
     linker.define(store, imp.module, imp.name,
