@@ -1,0 +1,66 @@
+type @Quad = struct { a: i64, b: i64, c: i64, d: i64 }
+type @Pair = struct { x: i64, y: i64 }
+
+fn @big(i64 %p0, i64 %p1, f64 %f0, @Pair %pr, i64 %p2, i64 %p3, f64 %f1, @Quad %q, i64 %p4, i64 %p5, i64 %p6) -> @Quad {
+entry:
+  %out = alloc.stack @Quad
+  %px = getfieldptr.ptr %pr, 0
+  %x = load.i64 %px
+  %py = getfieldptr.ptr %pr, 1
+  %y = load.i64 %py
+  %qa = getfieldptr.ptr %q, 0
+  %a = load.i64 %qa
+  %qd = getfieldptr.ptr %q, 3
+  %d = load.i64 %qd
+  %s0 = add.i64 %p0, %p1
+  %s1 = add.i64 %s0, %p2
+  %s2 = add.i64 %s1, %p3
+  %s3 = add.i64 %s2, %p4
+  %s4 = add.i64 %s3, %p5
+  %s5 = add.i64 %s4, %p6
+  %s6 = add.i64 %s5, %x
+  %s7 = add.i64 %s6, %y
+  %s8 = add.i64 %s7, %a
+  %s9 = add.i64 %s8, %d
+  %fs = add.f64 %f0, %f1
+  %fi = fptosi.f64.i64 %fs
+  %s10 = add.i64 %s9, %fi
+  %o0 = getfieldptr.ptr %out, 0
+  store.i64 %o0, %s10
+  %o1 = getfieldptr.ptr %out, 1
+  store.i64 %o1, %x
+  %o2 = getfieldptr.ptr %out, 2
+  store.i64 %o2, %a
+  %o3 = getfieldptr.ptr %out, 3
+  store.i64 %o3, %fi
+  ret.ptr %out
+}
+
+fn @main() -> i64 {
+entry:
+  %pr = alloc.stack @Pair
+  %px = getfieldptr.ptr %pr, 0
+  store.i64 %px, 100
+  %py = getfieldptr.ptr %pr, 1
+  store.i64 %py, 200
+  %q = alloc.stack @Quad
+  %qa = getfieldptr.ptr %q, 0
+  store.i64 %qa, 1
+  %qb = getfieldptr.ptr %q, 1
+  store.i64 %qb, 2
+  %qc = getfieldptr.ptr %q, 2
+  store.i64 %qc, 3
+  %qd = getfieldptr.ptr %q, 3
+  store.i64 %qd, 4
+  %r = call @big(1, 2, 1.5, %pr, 3, 4, 2.5, %q, 5, 6, 7)
+  %r0 = getfieldptr.ptr %r, 0
+  %v0 = load.i64 %r0
+  print %v0
+  %r1 = getfieldptr.ptr %r, 1
+  %v1 = load.i64 %r1
+  print %v1
+  %r3 = getfieldptr.ptr %r, 3
+  %v3 = load.i64 %r3
+  print %v3
+  ret.i64 0
+}
