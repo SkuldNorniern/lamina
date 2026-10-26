@@ -67,6 +67,8 @@ pub struct PhysicalReg {
 }
 
 impl PhysicalReg {
+    /// `name` is used verbatim as the register name, such as one written in `__asm__`; it is
+    /// not checked against the target.
     pub const fn new(name: &'static str, class: RegisterClass) -> Self {
         Self { name, class }
     }
@@ -130,10 +132,12 @@ pub struct VirtualRegAllocator {
 }
 
 impl VirtualRegAllocator {
+    /// Ids start at 0 and count up until `reset`.
     pub fn new() -> Self {
         Self { next_id: 0 }
     }
 
+    /// Returns a fresh register that no earlier call returned, until `reset` restarts the ids.
     pub fn allocate(&mut self, class: RegisterClass) -> VirtualReg {
         let id = self.next_id;
         self.next_id += 1;

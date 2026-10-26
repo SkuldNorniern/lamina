@@ -258,6 +258,8 @@ impl ModuleBuilder {
         self
     }
 
+    /// Returns the module without running `Module::validate`; validate separately if the
+    /// inputs are untrusted.
     pub fn build(self) -> Module {
         self.module
     }

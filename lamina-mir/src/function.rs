@@ -31,6 +31,8 @@ pub struct Parameter {
 }
 
 impl Parameter {
+    /// Creates a signed parameter that is not an aggregate; chain `with_signedness` or
+    /// `with_aggregate` for others.
     pub fn new(reg: Register, ty: MirType) -> Self {
         Self {
             reg,
@@ -51,6 +53,9 @@ impl Parameter {
     }
 }
 
+/// Launch limits for a GPU kernel. GPU codegen rejects a zero workgroup dimension, a
+/// workgroup larger than 1024 threads or than `max_threads`, and a `max_threads` outside
+/// 1..=1024.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KernelMetadata {
     pub required_workgroup_size: Option<[u32; 3]>,
@@ -83,6 +88,7 @@ pub struct Signature {
 }
 
 impl Signature {
+    /// Creates a void, parameterless, non-kernel signature that the inliner may inline.
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -95,6 +101,8 @@ impl Signature {
         }
     }
 
+    /// Marks the function as a GPU kernel, which GPU codegen requires to be void with a
+    /// single block.
     pub fn with_kernel(mut self, metadata: KernelMetadata) -> Self {
         self.kernel = Some(metadata);
         self
@@ -124,6 +132,8 @@ impl Signature {
         self.params.len()
     }
 
+    /// True when there is no return value. An aggregate return is not void, since `ret_ty`
+    /// then holds the pointer.
     pub fn is_void(&self) -> bool {
         self.ret_ty.is_none()
     }

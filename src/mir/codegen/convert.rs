@@ -151,6 +151,13 @@ fn normalize_lowered_literal(operand: &mut Operand, ty: MirType) {
     }
 }
 
+/// Lowers an IR module to MIR, named `name`.
+///
+/// The result is target independent: an aggregate crossing a function boundary keeps
+/// its layout in an [`Aggregate`](crate::mir::types::Aggregate) marker and each backend
+/// decides where the words go. Phis survive, so the caller lowers them before handing
+/// the module to a backend. Anything MIR cannot express comes back as a
+/// [`FromIRError`] naming the value.
 pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     let mut mir_module = Module::new(name);
 
