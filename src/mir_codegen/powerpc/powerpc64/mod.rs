@@ -53,7 +53,7 @@ use crate::{
 };
 
 use lamina_codegen::{
-    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
+    Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator, LiveInterval,
     powerpc::{
         Ppc64Abi, Ppc64Frame, Ppc64RegAlloc,
         frame::{LINKAGE_SIZE, load_imm, r1_address, r1_mem},
@@ -260,12 +260,29 @@ fn compile_single_function_ppc64(
             .into_iter()
             .filter(|i| i.vreg.class == RegisterClass::Gpr)
             .collect();
+        // Every allocatable register is volatile in ELFv2, so a bl destroys whatever the
+        // plan is holding across it.
+        let calls: Vec<bool> = func
+            .blocks
+            .iter()
+            .flat_map(|block| &block.instructions)
+            .map(|inst| {
+                matches!(
+                    inst,
+                    MirInst::Call { .. } | MirInst::CallIndirect { .. } | MirInst::TailCall { .. }
+                )
+            })
+            .collect();
+        let allowed = |interval: &LiveInterval, _reg| {
+            let end = interval.end.min(calls.len().saturating_sub(1));
+            !calls[interval.start..=end].iter().any(|call| *call)
+        };
         let mut plan = match settings.regalloc {
             RegallocStrategy::LinearScanGlobal => {
-                LinearScanAllocator::allocate(&intervals, pool.as_slice())
+                LinearScanAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
             }
             RegallocStrategy::GraphColorGlobal => {
-                GraphColorAllocator::allocate(&intervals, pool.as_slice())
+                GraphColorAllocator::allocate_with_constraints(&intervals, pool.as_slice(), allowed)
             }
             RegallocStrategy::Incremental => {
                 return Err(CodegenError::InvalidCodegenOptions(
@@ -273,7 +290,7 @@ fn compile_single_function_ppc64(
                 ));
             }
         };
-        plan = coalesce_dying_inputs(func, &intervals, &plan, |_, _| true);
+        plan = coalesce_dying_inputs(func, &intervals, &plan, allowed);
         reg_alloc = Ppc64RegAlloc::from_global_plan(target_os, &plan);
         for (v, a) in &plan {
             if let MirAllocation::Spill(off) = a {

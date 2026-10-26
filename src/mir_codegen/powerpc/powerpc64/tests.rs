@@ -558,3 +558,67 @@ fn float_copy_emits_bit_move_not_add() {
         "unexpected float add: {assembly}"
     );
 }
+
+#[test]
+fn global_allocation_spills_values_that_outlive_a_call() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ir = "fn @id(i64 %x) -> i64 {\nentry:\n  %r = mul.i64 %x, 1\n  ret.i64 %r\n}\nfn @main() -> i64 {\nentry:\n  %a = add.i64 7, 0\n  %b = mul.i64 %a, 3\n  %c = call @id(5)\n  %d = add.i64 %b, %c\n  ret.i64 %d\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir(&module, "across_call").expect("lower call");
+    for regalloc in [
+        RegallocStrategy::LinearScanGlobal,
+        RegallocStrategy::GraphColorGlobal,
+    ] {
+        let settings = MirCodegenSettings {
+            regalloc,
+            ..Default::default()
+        };
+        let mut output = Vec::new();
+        generate_mir_ppc64_with_units_and_settings(
+            &mir,
+            &mut output,
+            TargetOperatingSystem::Linux,
+            1,
+            &settings,
+        )?;
+        let assembly = String::from_utf8(output)?;
+        let body = assembly
+            .split("\n.L_main.entry:")
+            .nth(1)
+            .ok_or("missing main body")?;
+        let mut sides = body.split("    bl id");
+        let before = sides.next().ok_or("missing call")?;
+        let after = sides.next().ok_or("missing call")?;
+        let operands = |line: &str| -> Vec<String> {
+            line.trim()
+                .split_once(' ')
+                .map_or_else(Vec::new, |(_, rest)| {
+                    rest.split(',').map(|o| o.trim().to_string()).collect()
+                })
+        };
+        let volatile = ["6", "7", "8", "9", "10", "11", "12"];
+        let mut live: Vec<String> = Vec::new();
+        for line in before.lines() {
+            let ops = operands(line);
+            if let Some(dst) = ops.first()
+                && volatile.contains(&dst.as_str())
+                && !live.contains(dst)
+            {
+                live.push(dst.clone());
+            }
+        }
+        for line in after.lines().take_while(|l| !l.trim().starts_with("blr")) {
+            let ops = operands(line);
+            for source in ops.iter().skip(1) {
+                assert!(
+                    !live.contains(source),
+                    "{regalloc:?} reads r{source} across the call: {assembly}"
+                );
+            }
+            if let Some(dst) = ops.first() {
+                live.retain(|reg| reg != dst);
+            }
+        }
+    }
+    Ok(())
+}
