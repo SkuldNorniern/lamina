@@ -1,6 +1,7 @@
 use super::*;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir_codegen::common::FunctionEmissionPlan;
+use crate::mir_codegen::common::io_codegen_error;
 
 pub(super) fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
     matches!(reg, "rbx" | "r12" | "r13" | "r14" | "r15")
@@ -98,8 +99,7 @@ pub(super) fn compile_single_function_x86_64(
     check_aggregate_return(func.sig.ret_aggregate, target_os)?;
 
     let label = abi.mangle_function_name(func_name);
-    writeln!(output, "{label}:")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, "{label}:").map_err(io_codegen_error)?;
 
     // A self tail call lowers to a jump back past the prologue, so it neither needs a
     // frame nor clobbers anything a real call would.
@@ -258,18 +258,14 @@ pub(super) fn compile_single_function_x86_64(
                             if source == destination {
                                 continue;
                             }
-                            writeln!(output, "    movq {source}, {destination}").map_err(|e| {
-                                CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                            })?;
+                            writeln!(output, "    movq {source}, {destination}")
+                                .map_err(|e| io_codegen_error(e))?;
                         }
                         ArgLocation::Xmm(xmm) => {
-                            writeln!(output, "{}", move_xmm_to_rax(&param.ty, xmm)).map_err(
-                                |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
-                            )?;
+                            writeln!(output, "{}", move_xmm_to_rax(&param.ty, xmm))
+                                .map_err(io_codegen_error)?;
                             store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
-                                .map_err(|e| {
-                                    CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                                })?;
+                                .map_err(|e| io_codegen_error(e))?;
                         }
                         ArgLocation::Stack(stack_index) => {
                             // Saved rbp and the return address sit at rbp+0 and rbp+8;
@@ -281,13 +277,10 @@ pub(super) fn compile_single_function_x86_64(
                                 0
                             };
                             let caller_off = 16 + home + (stack_index as i32) * 8;
-                            writeln!(output, "    movq {caller_off}(%rbp), %rax").map_err(|e| {
-                                CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                            })?;
+                            writeln!(output, "    movq {caller_off}(%rbp), %rax")
+                                .map_err(|e| io_codegen_error(e))?;
                             store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
-                                .map_err(|e| {
-                                    CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                                })?;
+                                .map_err(|e| io_codegen_error(e))?;
                         }
                     }
                 }
@@ -344,9 +337,9 @@ pub(super) fn compile_single_function_x86_64(
                     continue;
                 }
                 writeln!(output, "{}", move_xmm_to_rax(&param.ty, xmm))
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                    .map_err(io_codegen_error)?;
                 store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                    .map_err(io_codegen_error)?;
             }
         }
     }
@@ -378,8 +371,7 @@ pub(super) fn compile_single_function_x86_64(
     let layout = &plan.order;
     let rotations = &plan.rotations;
     if layout.first().map(|&i| func.blocks[i].label.as_str()) != Some(func.entry.as_str()) {
-        writeln!(output, "    jmp .L_{}.{}", func_name, func.entry)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, "    jmp .L_{}.{}", func_name, func.entry).map_err(io_codegen_error)?;
     }
 
     // A comparison whose only consumer is the branch right after it needs no setCC and no
@@ -398,11 +390,9 @@ pub(super) fn compile_single_function_x86_64(
             .unwrap_or("");
         output.rax_value = None;
         if loop_headers.contains(&block_index) {
-            writeln!(output, "    .p2align 4,,10")
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+            writeln!(output, "    .p2align 4,,10").map_err(io_codegen_error)?;
         }
-        writeln!(output, ".L_{}.{}:", func_name, block.label)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, ".L_{}.{}:", func_name, block.label).map_err(io_codegen_error)?;
 
         let mut skip = 0;
         for (position, inst) in block.instructions.iter().enumerate() {
@@ -449,21 +439,18 @@ pub(super) fn compile_single_function_x86_64(
                 {
                     let inverted = inverted_cmp_suffix(op)
                         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                    writeln!(output, "    j{inverted} .L_{func_name}.{false_target}").map_err(
-                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
-                    )?;
+                    writeln!(output, "    j{inverted} .L_{func_name}.{false_target}")
+                        .map_err(io_codegen_error)?;
                     if true_target != next_label {
                         writeln!(output, "    jmp .L_{func_name}.{true_target}")
                             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
                     }
                 } else {
-                    writeln!(output, "    j{suffix} .L_{func_name}.{true_target}").map_err(
-                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
-                    )?;
+                    writeln!(output, "    j{suffix} .L_{func_name}.{true_target}")
+                        .map_err(io_codegen_error)?;
                     if false_target != next_label {
-                        writeln!(output, "    jmp .L_{func_name}.{false_target}").map_err(|e| {
-                            CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                        })?;
+                        writeln!(output, "    jmp .L_{func_name}.{false_target}")
+                            .map_err(|e| io_codegen_error(e))?;
                     }
                 }
                 if !scratch.is_empty() && scratch != "rbx" {
@@ -702,7 +689,7 @@ fn home_aggregate_parameters<W: Write>(
     stack_slots: &HashMap<VirtualReg, i32>,
     target_os: TargetOperatingSystem,
 ) -> Result<(), CodegenError> {
-    let io_error = |e: Error| CodegenError::InvalidCodegenOptions(format!("IO error: {e}"));
+    let io_error = io_codegen_error;
     let home = if target_os == TargetOperatingSystem::Windows {
         windows::SHADOW_SPACE_SIZE
     } else {
@@ -926,7 +913,7 @@ pub(super) fn emit_narrow_param_normalization<W: Write>(
     extensions: &[Option<(usize, bool)>],
     homes: &[Option<String>],
 ) -> Result<(), CodegenError> {
-    let io_error = |e: Error| CodegenError::InvalidCodegenOptions(format!("IO error: {e}"));
+    let io_error = io_codegen_error;
     for (extension, home) in extensions.iter().zip(homes) {
         let (Some((width, signed)), Some(home)) = (extension, home) else {
             continue;
