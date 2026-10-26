@@ -1,0 +1,31 @@
+fn @main() -> i64 {
+entry:
+  %buf = alloc.stack [8 x i8]
+  %base = getelem.ptr %buf, 0, i8
+  memset %base, 65, 8
+  %p3 = getelem.ptr %buf, 3, i8
+  store.i8 %p3, 90
+  %c3 = load.i8 %p3
+  %c3w = sext.i8.i64 %c3
+  print %c3w
+  %copy = alloc.stack [8 x i8]
+  %cbase = getelem.ptr %copy, 0, i8
+  memcpy %cbase, %base, 8
+  %q3 = getelem.ptr %copy, 3, i8
+  %d3 = load.i8 %q3
+  %d3w = sext.i8.i64 %d3
+  print %d3w
+  %q0 = getelem.ptr %copy, 0, i8
+  memmove %q0, %q3, 4
+  %e0 = load.i8 %q0
+  %e0w = sext.i8.i64 %e0
+  print %e0w
+  %q1 = getelem.ptr %copy, 1, i8
+  %e1 = load.i8 %q1
+  %e1w = sext.i8.i64 %e1
+  print %e1w
+  write %cbase, 8, n
+  %nl = writebyte 10
+  print %n
+  ret.i64 0
+}
