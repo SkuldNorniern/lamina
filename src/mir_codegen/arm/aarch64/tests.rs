@@ -505,3 +505,39 @@ fn stack_aggregate_prologue_keeps_off_callee_saved_registers() -> Result<(), Box
     }
     Ok(())
 }
+
+#[test]
+fn darwin_packs_narrow_stack_arguments_at_natural_size() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ir = "fn @wide(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, i64 %h, i32 %i, i32 %j) -> i64 {\nentry:\n  %x = zext.i32.i64 %i\n  ret.i64 %x\n}\nfn @main() -> i64 {\nentry:\n  %r = call @wide(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)\n  ret.i64 %r\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir(&module, "narrow_stack").expect("lower narrow arguments");
+
+    let emit = |os| -> Result<String, Box<dyn Error>> {
+        let mut output = Vec::new();
+        generate_mir_aarch64(&mir, &mut output, os)?;
+        Ok(String::from_utf8(output)?)
+    };
+
+    let darwin = emit(TargetOperatingSystem::MacOS)?;
+    assert!(darwin.contains("str w9, [sp, #0]"), "{darwin}");
+    assert!(darwin.contains("str w10, [sp, #4]"), "{darwin}");
+    let loaded: Vec<&str> = darwin
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("ldr w") && line.contains("[x29, #"))
+        .collect();
+    assert!(
+        loaded.iter().any(|line| line.ends_with("[x29, #16]")),
+        "{darwin}"
+    );
+    assert!(
+        loaded.iter().any(|line| line.ends_with("[x29, #20]")),
+        "{darwin}"
+    );
+
+    let linux = emit(TargetOperatingSystem::Linux)?;
+    assert!(linux.contains("str x9, [sp, #0]"), "{linux}");
+    assert!(linux.contains("str x10, [sp, #8]"), "{linux}");
+    Ok(())
+}

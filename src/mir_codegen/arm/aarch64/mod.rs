@@ -81,9 +81,10 @@ enum ArgPlace {
     Fpr {
         index: usize,
     },
+    /// `bytes` of outgoing stack space at `offset` from the start of the argument area.
     Stack {
-        first: usize,
-        words: usize,
+        offset: usize,
+        bytes: usize,
     },
 }
 
@@ -95,6 +96,8 @@ const ARGUMENT_REGISTERS: usize = 8;
 struct ArgKind {
     float: bool,
     ty_is_f32: bool,
+    /// Size the convention gives the value, which Darwin packs stack slots to.
+    bytes: usize,
     aggregate: Option<Aggregate>,
     /// aapcs64 hands a composite over 16 bytes to the callee as a pointer to a copy
     /// the caller owns, so it takes one register however large it is.
@@ -103,11 +106,17 @@ struct ArgKind {
 
 impl ArgKind {
     fn of(ty: MirType, aggregate: Option<Aggregate>) -> Self {
+        let by_reference = aggregate.is_some_and(|a| a.size as u64 > MAX_REGISTER_AGGREGATE);
         Self {
             float: aggregate.is_none() && ty.is_float(),
             ty_is_f32: ty.size_bytes() == 4,
+            bytes: if by_reference {
+                8
+            } else {
+                aggregate.map_or(ty.size_bytes(), |a| a.size)
+            },
             aggregate,
-            by_reference: aggregate.is_some_and(|a| a.size as u64 > MAX_REGISTER_AGGREGATE),
+            by_reference,
         }
     }
 }
@@ -134,22 +143,40 @@ fn copy_through_pointer<W: Write>(
     Ok(())
 }
 
-fn classify_aarch64_arguments(kinds: &[ArgKind]) -> Vec<ArgPlace> {
+fn classify_aarch64_arguments(
+    kinds: &[ArgKind],
+    target_os: TargetOperatingSystem,
+) -> Vec<ArgPlace> {
+    // Linux gives every stack argument a whole eight-byte slot. Darwin packs named ones
+    // at their natural size and alignment.
+    let packed = os_uses_macho(target_os);
     let mut gprs = 0;
     let mut fprs = 0;
     let mut stack = 0;
     let mut places = Vec::with_capacity(kinds.len());
+    let on_stack = |stack: &mut usize, kind: &ArgKind| {
+        let bytes = if packed {
+            kind.bytes.max(1)
+        } else {
+            kind.bytes.max(1).div_ceil(8) * 8
+        };
+        let align = if packed {
+            bytes.min(8).next_power_of_two()
+        } else {
+            8
+        };
+        *stack = stack.div_ceil(align) * align;
+        let offset = *stack;
+        *stack += bytes;
+        ArgPlace::Stack { offset, bytes }
+    };
     for kind in kinds {
         if kind.float {
             if fprs < ARGUMENT_REGISTERS {
                 places.push(ArgPlace::Fpr { index: fprs });
                 fprs += 1;
             } else {
-                places.push(ArgPlace::Stack {
-                    first: stack,
-                    words: 1,
-                });
-                stack += 1;
+                places.push(on_stack(&mut stack, kind));
             }
             continue;
         }
@@ -163,14 +190,55 @@ fn classify_aarch64_arguments(kinds: &[ArgKind]) -> Vec<ArgPlace> {
             gprs += words;
         } else {
             gprs = ARGUMENT_REGISTERS;
-            places.push(ArgPlace::Stack {
-                first: stack,
-                words,
-            });
-            stack += words;
+            places.push(on_stack(&mut stack, kind));
         }
     }
     places
+}
+
+/// Bytes of outgoing stack the places need, before the sixteen-byte round up.
+fn aarch64_stack_bytes(places: &[ArgPlace]) -> usize {
+    places
+        .iter()
+        .map(|place| match place {
+            ArgPlace::Stack { offset, bytes } => offset + bytes,
+            ArgPlace::Gpr { .. } | ArgPlace::Fpr { .. } => 0,
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// Store of `bytes` from `source`, narrow forms included so a packed Darwin slot does
+/// not overwrite its neighbour.
+fn store_argument_bytes(
+    w: &mut impl Write,
+    source: &str,
+    base: &str,
+    offset: usize,
+    bytes: usize,
+) -> Result<(), IoError> {
+    match bytes {
+        1 => writeln!(w, "    strb {}, [{base}, #{offset}]", w_alias(source)),
+        2 => writeln!(w, "    strh {}, [{base}, #{offset}]", w_alias(source)),
+        4 => writeln!(w, "    str {}, [{base}, #{offset}]", w_alias(source)),
+        _ => writeln!(w, "    str {source}, [{base}, #{offset}]"),
+    }
+}
+
+/// Load of `bytes` into `destination`, matching `store_argument_bytes`.
+fn load_argument_bytes(
+    w: &mut impl Write,
+    destination: &str,
+    base: &str,
+    offset: usize,
+    bytes: usize,
+) -> Result<(), IoError> {
+    match bytes {
+        1 => writeln!(w, "    ldrb {}, [{base}, #{offset}]", w_alias(destination)),
+        2 => writeln!(w, "    ldrh {}, [{base}, #{offset}]", w_alias(destination)),
+        4 => writeln!(w, "    ldr {}, [{base}, #{offset}]", w_alias(destination)),
+        _ => writeln!(w, "    ldr {destination}, [{base}, #{offset}]"),
+    }
 }
 
 /// Aggregate markers of each function's boundary, so a call site knows how the callee
@@ -366,7 +434,7 @@ fn compile_single_function_aarch64_with(
         .iter()
         .map(|p| ArgKind::of(p.ty, p.aggregate))
         .collect();
-    let param_places = classify_aarch64_arguments(&param_kinds);
+    let param_places = classify_aarch64_arguments(&param_kinds, target_os);
     for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().unwrap_or("x19");
@@ -406,9 +474,9 @@ fn compile_single_function_aarch64_with(
                     )
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 }
-                ArgPlace::Stack { first, .. } if kind.by_reference => {
+                ArgPlace::Stack { offset, .. } if kind.by_reference => {
                     let pointer = ra_pro.alloc_scratch().unwrap_or("x20");
-                    writeln!(output, "    ldr {pointer}, [x29, #{}]", 16 + first * 8).map_err(
+                    writeln!(output, "    ldr {pointer}, [x29, #{}]", 16 + offset).map_err(
                         |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
                     )?;
                     copy_through_pointer(
@@ -434,13 +502,16 @@ fn compile_single_function_aarch64_with(
                         )?;
                     }
                 }
-                ArgPlace::Stack { first, words } => {
+                ArgPlace::Stack { offset, bytes } => {
                     let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
+                    let words = bytes.div_ceil(8).max(1);
                     for word in 0..words {
-                        let caller_offset = 16 + (first + word) * 8;
-                        writeln!(output, "    ldr {val_reg}, [x29, #{caller_offset}]").map_err(
-                            |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
-                        )?;
+                        let caller_offset = 16 + offset + word * 8;
+                        let width = (bytes - word * 8).min(8);
+                        load_argument_bytes(&mut output, val_reg, "x29", caller_offset, width)
+                            .map_err(|e| {
+                                CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
+                            })?;
                         if p.aggregate.is_none() {
                             emit_narrow_param_extension(&mut output, val_reg, &p.ty).map_err(
                                 |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
@@ -1214,24 +1285,17 @@ fn emit_block<W: Write>(
             } => {
                 let kinds: Vec<ArgKind> =
                     arg_types.iter().map(|ty| ArgKind::of(*ty, None)).collect();
-                let places = classify_aarch64_arguments(&kinds);
-                let stack_words: usize = places
-                    .iter()
-                    .map(|place| match place {
-                        ArgPlace::Stack { words, .. } => *words,
-                        ArgPlace::Gpr { .. } | ArgPlace::Fpr { .. } => 0,
-                    })
-                    .sum();
-                let stack_space = (stack_words * 8 + 15) & !15;
+                let places = classify_aarch64_arguments(&kinds, abi.target_os());
+                let stack_space = (aarch64_stack_bytes(&places) + 15) & !15;
                 if stack_space > 0 {
                     emit_sp_adjust(w, "sub", stack_space as u64)?;
                     for (argument, place) in args.iter().zip(&places) {
-                        let ArgPlace::Stack { first, .. } = *place else {
+                        let ArgPlace::Stack { offset, bytes } = *place else {
                             continue;
                         };
                         let scratch = ra.alloc_scratch().unwrap_or("x9");
                         emit_materialize_operand(w, argument, scratch, frame, ra)?;
-                        writeln!(w, "    str {scratch}, [sp, #{}]", first * 8)?;
+                        store_argument_bytes(w, scratch, "sp", offset, bytes)?;
                         ra.free_scratch(scratch);
                     }
                 }
@@ -1480,7 +1544,7 @@ fn emit_block<W: Write>(
                     }
                 } else {
                     let kinds = signatures.arguments(name, args.len());
-                    let places = classify_aarch64_arguments(&kinds);
+                    let places = classify_aarch64_arguments(&kinds, abi.target_os());
                     for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
                         match *place {
                             ArgPlace::Fpr { index } => {
@@ -1523,31 +1587,25 @@ fn emit_block<W: Write>(
                         }
                     }
 
-                    let stack_words: usize = places
-                        .iter()
-                        .map(|place| match place {
-                            ArgPlace::Stack { words, .. } => *words,
-                            ArgPlace::Gpr { .. } | ArgPlace::Fpr { .. } => 0,
-                        })
-                        .sum();
+                    let stack_bytes = aarch64_stack_bytes(&places);
                     // Each by-reference aggregate needs a copy of its own, which the
                     // callee may write to. They sit above the stack arguments.
                     let mut copy_offsets = Vec::with_capacity(kinds.len());
                     let mut copy_bytes = 0;
                     for kind in &kinds {
                         if kind.by_reference {
-                            copy_offsets.push(Some(((stack_words * 8 + 15) & !15) + copy_bytes));
+                            copy_offsets.push(Some(((stack_bytes + 15) & !15) + copy_bytes));
                             copy_bytes += (kind.aggregate.map_or(0, |a| a.words()) * 8 + 15) & !15;
                         } else {
                             copy_offsets.push(None);
                         }
                     }
-                    let stack_space = (((stack_words * 8 + 15) & !15) + copy_bytes + 15) & !15;
+                    let stack_space = (((stack_bytes + 15) & !15) + copy_bytes + 15) & !15;
 
                     if stack_space > 0 {
                         emit_sp_adjust(w, "sub", stack_space as u64)?;
                         for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
-                            let ArgPlace::Stack { first, words } = *place else {
+                            let ArgPlace::Stack { offset, bytes } = *place else {
                                 continue;
                             };
                             if kind.by_reference {
@@ -1556,17 +1614,13 @@ fn emit_block<W: Write>(
                             let scratch = ra.alloc_scratch().unwrap_or("x9");
                             if kind.aggregate.is_none() {
                                 emit_materialize_operand(w, argument, scratch, frame, ra)?;
-                                writeln!(w, "    str {scratch}, [sp, #{}]", first * 8)?;
+                                store_argument_bytes(w, scratch, "sp", offset, bytes)?;
                             } else {
                                 let address = ra.alloc_scratch().unwrap_or("x10");
                                 emit_materialize_operand(w, argument, address, frame, ra)?;
-                                for word in 0..words {
+                                for word in 0..bytes.div_ceil(8) {
                                     writeln!(w, "    ldr {scratch}, [{address}, #{}]", word * 8)?;
-                                    writeln!(
-                                        w,
-                                        "    str {scratch}, [sp, #{}]",
-                                        (first + word) * 8
-                                    )?;
+                                    writeln!(w, "    str {scratch}, [sp, #{}]", offset + word * 8)?;
                                 }
                                 ra.free_scratch(address);
                             }
@@ -1592,8 +1646,8 @@ fn emit_block<W: Write>(
                             ArgPlace::Gpr { first, .. } => {
                                 writeln!(w, "    mov x{first}, {target}")?;
                             }
-                            ArgPlace::Stack { first, .. } => {
-                                writeln!(w, "    str {target}, [sp, #{}]", first * 8)?;
+                            ArgPlace::Stack { offset, .. } => {
+                                writeln!(w, "    str {target}, [sp, #{offset}]")?;
                             }
                             ArgPlace::Fpr { .. } => {}
                         }
@@ -1656,7 +1710,7 @@ fn emit_block<W: Write>(
             }
             MirInst::TailCall { name, args } => {
                 let kinds = signatures.arguments(name, args.len());
-                let places = classify_aarch64_arguments(&kinds);
+                let places = classify_aarch64_arguments(&kinds, abi.target_os());
                 for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
                     match *place {
                         ArgPlace::Fpr { index } => {
@@ -1672,10 +1726,10 @@ fn emit_block<W: Write>(
                         ArgPlace::Gpr { first, .. } => {
                             emit_materialize_operand(w, argument, &format!("x{first}"), frame, ra)?;
                         }
-                        ArgPlace::Stack { first, .. } => {
+                        ArgPlace::Stack { offset, bytes } => {
                             let scratch = ra.alloc_scratch().unwrap_or("x9");
                             emit_materialize_operand(w, argument, scratch, frame, ra)?;
-                            writeln!(w, "    str {scratch}, [x29, #{}]", 16 + first * 8)?;
+                            store_argument_bytes(w, scratch, "x29", 16 + offset, bytes)?;
                             ra.free_scratch(scratch);
                         }
                     }
