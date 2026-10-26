@@ -1,0 +1,22 @@
+type @Pair = struct { a: i32, b: i64 }
+global @pair: @Pair = {7, 9}
+global @mixed: struct { k: i8, v: f64 } = {65, 2.5}
+
+fn @main() -> i64 {
+entry:
+  %f0 = getfieldptr.ptr @pair, 0
+  %a = load.i32 %f0
+  %aw = sext.i32.i64 %a
+  print %aw
+  %f1 = getfieldptr.ptr @pair, 1
+  %b = load.i64 %f1
+  print %b
+  %g0 = getfieldptr.ptr @mixed, 0
+  %k = load.i8 %g0
+  %kw = sext.i8.i64 %k
+  print %kw
+  %g1 = getfieldptr.ptr @mixed, 1
+  %v = load.f64 %g1
+  print %v
+  ret.i64 0
+}

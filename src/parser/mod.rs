@@ -207,7 +207,8 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
             if exported_global {
                 state.consume_keyword("@export")?;
             }
-            let decl = parse_global_declaration(&mut state, exported_global)?;
+            let decl =
+                parse_global_declaration(&mut state, exported_global, &module.type_declarations)?;
             let name = decl.name;
             if !seen_names.insert(name) {
                 return Err(state.error(format!(
