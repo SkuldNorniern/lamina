@@ -21,7 +21,7 @@ use crate::{
         module::GlobalInit,
         types::{
             Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
-            align_of_type, resolve_type_names, sizeof_type,
+            align_of_type, resolve_type_names, sizeof_type, struct_field_byte_offset,
         },
     },
     mir::{
@@ -284,24 +284,60 @@ fn element_list_bytes(
     size: usize,
     elements: &[IRLit<'_>],
 ) -> Result<Vec<u8>, FromIRError> {
-    let IRType::Array { element_type, .. } = ty else {
-        return Err(FromIRError::UnsupportedGlobal(format!(
-            "@{name} takes an element list only as an array"
-        )));
+    // (offset, width) of every slot the list can fill, in order.
+    let slots: Vec<(usize, usize)> = match ty {
+        IRType::Array { element_type, size } => {
+            let stride = sizeof_type(element_type).ok_or(FromIRError::UnsupportedType)? as usize;
+            (0..*size as usize)
+                .map(|at| (at * stride, stride))
+                .collect()
+        }
+        IRType::Struct(fields) => fields
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                let at = struct_field_byte_offset(fields, index)
+                    .ok_or(FromIRError::UnsupportedType)? as usize;
+                let width = sizeof_type(&field.ty).ok_or(FromIRError::UnsupportedType)? as usize;
+                Ok((at, width))
+            })
+            .collect::<Result<_, FromIRError>>()?,
+        IRType::Tuple(element_types) => {
+            let mut at: usize = 0;
+            let mut slots = Vec::with_capacity(element_types.len());
+            for element in element_types {
+                let width = sizeof_type(element).ok_or(FromIRError::UnsupportedType)? as usize;
+                let align = align_of_type(element) as usize;
+                at = at.next_multiple_of(align);
+                slots.push((at, width));
+                at += width;
+            }
+            slots
+        }
+        _ => {
+            return Err(FromIRError::UnsupportedGlobal(format!(
+                "@{name} takes an element list only as an array, struct or tuple"
+            )));
+        }
     };
-    let stride = sizeof_type(element_type).ok_or(FromIRError::UnsupportedType)? as usize;
-    let element_ty = map_ir_type(element_type)?;
+    if elements.len() > slots.len() {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} holds {} elements, too few for the {} given",
+            slots.len(),
+            elements.len()
+        )));
+    }
     let mut bytes = vec![0u8; size];
     for (index, literal) in elements.iter().enumerate() {
+        let (at, width) = slots[index];
         let encoded = literal_bytes(name, literal)?;
-        if encoded.len() != stride {
+        if encoded.len() != width {
             return Err(FromIRError::UnsupportedGlobal(format!(
-                "@{name} element {index} is {} bytes, not the {stride} its type {element_ty} takes",
+                "@{name} element {index} is {} bytes, not the {width} its slot takes",
                 encoded.len()
             )));
         }
-        let at = index * stride;
-        bytes[at..at + stride].copy_from_slice(&encoded);
+        bytes[at..at + width].copy_from_slice(&encoded);
     }
     Ok(bytes)
 }

@@ -1,8 +1,13 @@
 //! Global variable parsing for Lamina IR.
 
+use std::collections::HashMap;
+
 use crate::{
     LaminaError,
-    ir::{GlobalDeclaration, GlobalInit, Literal, PrimitiveType, Type, Value},
+    ir::{
+        GlobalDeclaration, GlobalInit, Identifier, Literal, PrimitiveType, Type, TypeDeclaration,
+        Value, types::resolve_type_names,
+    },
     parser::{state::ParserState, types::parse_type},
 };
 
@@ -10,6 +15,7 @@ use crate::{
 pub fn parse_global_declaration<'a>(
     state: &mut ParserState<'a>,
     exported: bool,
+    types: &HashMap<Identifier<'a>, TypeDeclaration<'a>>,
 ) -> Result<GlobalDeclaration<'a>, LaminaError> {
     state.consume_keyword("global")?;
     let name = state.parse_type_identifier()?;
@@ -20,8 +26,9 @@ pub fn parse_global_declaration<'a>(
     let initializer = if state.current_char() == Some('=') {
         state.advance();
         state.skip_whitespace_and_comments();
-        if state.current_char() == Some('[') {
-            Some(GlobalInit::List(parse_initializer_list(state, &ty)?))
+        if state.current_char() == Some('[') || state.current_char() == Some('{') {
+            let resolved = resolve_type_names(&ty, types).unwrap_or_else(|| ty.clone());
+            Some(GlobalInit::List(parse_initializer_list(state, &resolved)?))
         } else {
             Some(GlobalInit::Value(parse_value_with_type_hint(state, &ty)?))
         }
@@ -37,41 +44,53 @@ pub fn parse_global_declaration<'a>(
     })
 }
 
-/// Parses `[a, b, c]`, the element-by-element initializer of an array global.
+/// Parses `[a, b, c]` for an array global, or `{a, b, c}` for a struct or tuple one.
 fn parse_initializer_list<'a>(
     state: &mut ParserState<'a>,
     ty: &Type<'a>,
 ) -> Result<Vec<Literal<'a>>, LaminaError> {
-    let Type::Array { element_type, size } = ty else {
-        return Err(state.error(format!(
-            "An element list initializes an array, but this global has type {ty}"
-        )));
+    let (open, close, hints, capacity) = match ty {
+        Type::Array { element_type, size } => (
+            '[',
+            ']',
+            vec![element_type.as_ref().clone(); *size as usize],
+            *size as usize,
+        ),
+        Type::Struct(fields) => (
+            '{',
+            '}',
+            fields.iter().map(|field| field.ty.clone()).collect(),
+            fields.len(),
+        ),
+        Type::Tuple(elements) => ('{', '}', elements.clone(), elements.len()),
+        _ => {
+            return Err(state.error(format!(
+                "An element list initializes an array, struct or tuple, but this global has type {ty}"
+            )));
+        }
     };
-    state.expect_char('[')?;
+    state.expect_char(open)?;
     let mut elements = Vec::new();
     loop {
         state.skip_whitespace_and_comments();
-        if state.current_char() == Some(']') {
+        if state.current_char() == Some(close) {
             state.advance();
             break;
         }
-        let value = parse_value_with_type_hint(state, element_type)?;
+        let hint = hints.get(elements.len()).ok_or_else(|| {
+            state.error(format!("{capacity} elements fit here, this is one more"))
+        })?;
+        let value = parse_value_with_type_hint(state, hint)?;
         let Value::Constant(literal) = value else {
             return Err(state.error("An element list takes literals only"));
         };
         elements.push(literal);
         state.skip_whitespace_and_comments();
-        if state.current_char() == Some(']') {
+        if state.current_char() == Some(close) {
             state.advance();
             break;
         }
         state.expect_char(',')?;
-    }
-    if elements.len() > *size as usize {
-        return Err(state.error(format!(
-            "{} elements do not fit in an array of {size}",
-            elements.len()
-        )));
     }
     Ok(elements)
 }
@@ -229,7 +248,14 @@ fn parse_integer_literal<'a>(
         _ => return Ok(None),
     };
 
-    if state.peek_slice(20).unwrap_or("").contains('.') {
+    // Only this literal's own characters decide whether it is a float; a later
+    // element in a list carries its own point.
+    let token = state.peek_slice(24).unwrap_or("");
+    let digits = token
+        .strip_prefix('-')
+        .unwrap_or(token)
+        .trim_start_matches(|c: char| c.is_ascii_digit());
+    if digits.starts_with('.') {
         return Err(state.error(format!(
             "Float literal cannot be used with {name} type hint"
         )));
