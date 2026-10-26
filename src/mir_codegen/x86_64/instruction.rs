@@ -1,5 +1,4 @@
 use super::*;
-use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir_codegen::common::{align_up, print_format_label, writeptr_width};
 
 pub(super) fn restore_saved_registers<W: Write>(
@@ -960,15 +959,12 @@ pub(super) fn emit_instruction_x86_64(
                 let abi = X86ABI::new(target_os);
                 let arg_regs = abi.arg_registers();
                 let descs = abi_extensions.argument_descs(name, args.len());
-                check_aggregate_arguments(&descs, target_os)
-                    .map_err(|e| LaminaError::ValidationError(e.to_string()))?;
                 let types: Vec<MirType> = descs.iter().map(|desc| desc.ty).collect();
                 // A callee returning a large aggregate writes it through a hidden
                 // pointer, which takes the first general register.
-                let sret_result = (target_os != TargetOperatingSystem::Windows)
-                    .then(|| abi_extensions.return_aggregate(name))
-                    .flatten()
-                    .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE)
+                let sret_result = abi_extensions
+                    .return_aggregate(name)
+                    .filter(|aggregate| returns_through_pointer(*aggregate, target_os))
                     .and_then(|_| match ret {
                         Some(Register::Virtual(vreg)) => stack_slots.get(vreg).copied(),
                         _ => None,
@@ -990,6 +986,26 @@ pub(super) fn emit_instruction_x86_64(
                     .collect();
                 let num_stack_args = stack_args.len();
 
+                // Windows takes an aggregate that is not register sized as a pointer to a
+                // copy belonging to the caller, which goes above the outgoing arguments.
+                let mut copy_offsets: Vec<Option<usize>> = vec![None; descs.len()];
+                let mut copy_bytes = 0;
+                if target_os == TargetOperatingSystem::Windows {
+                    let base = align_up(
+                        windows::SHADOW_SPACE_SIZE as usize + (num_stack_args * stack::SLOT_SIZE),
+                        stack::ALIGNMENT,
+                    );
+                    for (index, desc) in descs.iter().enumerate() {
+                        if let Some(aggregate) = desc.aggregate
+                            && passed_by_reference(aggregate, target_os)
+                        {
+                            copy_offsets[index] = Some(base + copy_bytes);
+                            copy_bytes +=
+                                align_up(aggregate.words() * stack::SLOT_SIZE, stack::ALIGNMENT);
+                        }
+                    }
+                }
+
                 if target_os == TargetOperatingSystem::Windows {
                     // Every Windows call gets home space, argument count aside:
                     // the callee may spill into it whether or not it was passed
@@ -1001,12 +1017,33 @@ pub(super) fn emit_instruction_x86_64(
                     let total_stack = align_up(
                         shadow_space + (num_stack_args * stack::SLOT_SIZE),
                         stack::ALIGNMENT,
-                    );
+                    ) + copy_bytes;
                     if total_stack > 0 {
                         writeln!(writer, "    subq ${total_stack}, %rsp")?;
                     }
+                    for (index, at) in copy_offsets.iter().enumerate() {
+                        let Some(at) = *at else {
+                            continue;
+                        };
+                        let words = descs[index].aggregate.map_or(0, |a| a.words());
+                        for word in 0..words {
+                            load_aggregate_word(
+                                &args[index],
+                                word,
+                                writer,
+                                reg_alloc,
+                                stack_slots,
+                            )?;
+                            writeln!(writer, "    movq %rax, {}(%rsp)", at + word * 8)?;
+                        }
+                    }
                     for (slot, &(index, word)) in stack_args.iter().enumerate() {
                         let stack_offset = shadow_space + (slot * stack::SLOT_SIZE);
+                        if let Some(at) = copy_offsets[index] {
+                            writeln!(writer, "    leaq {at}(%rsp), %rax")?;
+                            writeln!(writer, "    movq %rax, {stack_offset}(%rsp)")?;
+                            continue;
+                        }
                         if descs[index].aggregate.is_some() {
                             load_aggregate_word(
                                 &args[index],
@@ -1043,10 +1080,22 @@ pub(super) fn emit_instruction_x86_64(
                     }
                 }
 
+                // A by-reference aggregate's register holds the address of the copy, so
+                // the scalar pass must leave it alone.
+                let mut scalar_locations = locations.clone();
+                for (index, at) in copy_offsets.iter().enumerate() {
+                    if at.is_some() {
+                        scalar_locations[index] = ArgLocation::Stack(usize::MAX);
+                    }
+                }
+
                 // Aggregate words are staged on the stack so that loading the scalar
                 // arguments cannot clobber an argument register already filled.
                 let mut staged: Vec<&str> = Vec::new();
                 for (index, location) in locations.iter().enumerate() {
+                    if copy_offsets[index].is_some() {
+                        continue;
+                    }
                     let (first, words) = match location {
                         ArgLocation::GprWords { first, words } => (*first, *words),
                         ArgLocation::Gpr(gpr) if descs[index].aggregate.is_some() => (*gpr, 1),
@@ -1063,7 +1112,7 @@ pub(super) fn emit_instruction_x86_64(
                     writer,
                     args,
                     &types,
-                    &locations,
+                    &scalar_locations,
                     arg_regs,
                     reg_alloc,
                     stack_slots,
@@ -1086,8 +1135,13 @@ pub(super) fn emit_instruction_x86_64(
                     }
                 }
 
+                for (index, at) in copy_offsets.iter().enumerate() {
+                    if let (Some(at), ArgLocation::Gpr(gpr)) = (*at, &locations[index]) {
+                        writeln!(writer, "    leaq {at}(%rsp), %{}", arg_regs[*gpr])?;
+                    }
+                }
                 if let Some(offset) = sret_result {
-                    writeln!(writer, "    leaq {offset}(%rbp), %rdi")?;
+                    writeln!(writer, "    leaq {offset}(%rbp), %{}", arg_regs[0])?;
                 }
                 let mangled_name = abi.mangle_function_name(name);
                 writeln!(writer, "    call {mangled_name}")?;
@@ -1100,7 +1154,7 @@ pub(super) fn emit_instruction_x86_64(
                     let total_stack = align_up(
                         shadow_space + (num_stack_args * stack::SLOT_SIZE),
                         stack::ALIGNMENT,
-                    );
+                    ) + copy_bytes;
                     if total_stack > 0 {
                         writeln!(writer, "    addq ${total_stack}, %rsp")?;
                     }
