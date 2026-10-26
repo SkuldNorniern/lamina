@@ -72,6 +72,22 @@ fn integer_fields_only(ty: &IRType<'_>) -> bool {
 /// the error text. Scalars return `Ok(None)`; aggregates outside the supported subset
 /// are an error rather than a wrong ABI.
 pub fn classify_aggregate(ty: &IRType<'_>, what: &str) -> Result<Option<Aggregate>, FromIRError> {
+    classify_aggregate_within(ty, what, None)
+}
+
+/// Classifies an aggregate that must fit in registers, such as a return value.
+pub fn classify_small_aggregate(
+    ty: &IRType<'_>,
+    what: &str,
+) -> Result<Option<Aggregate>, FromIRError> {
+    classify_aggregate_within(ty, what, Some(MAX_REGISTER_AGGREGATE))
+}
+
+fn classify_aggregate_within(
+    ty: &IRType<'_>,
+    what: &str,
+    max: Option<u64>,
+) -> Result<Option<Aggregate>, FromIRError> {
     if !is_aggregate(ty) {
         return Ok(None);
     }
@@ -81,9 +97,16 @@ pub fn classify_aggregate(ty: &IRType<'_>, what: &str) -> Result<Option<Aggregat
         )));
     }
     let size = sizeof_type(ty).ok_or(FromIRError::UnsupportedType)?;
-    if size == 0 || size > MAX_REGISTER_AGGREGATE {
+    if size == 0 {
         return Err(FromIRError::UnsupportedAggregate(format!(
-            "{what} is {size} bytes; only 1 to {MAX_REGISTER_AGGREGATE} bytes cross a boundary so far"
+            "{what} is empty; an aggregate crossing a boundary holds at least one byte"
+        )));
+    }
+    if let Some(max) = max
+        && size > max
+    {
+        return Err(FromIRError::UnsupportedAggregate(format!(
+            "{what} is {size} bytes; only 1 to {max} bytes come back in registers so far"
         )));
     }
     Ok(Some(Aggregate {
