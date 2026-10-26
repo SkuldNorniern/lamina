@@ -7,7 +7,7 @@
 
 use crate::{
     error::LaminaError,
-    mir::{Instruction, Module, codegen::MAX_REGISTER_AGGREGATE},
+    mir::{Instruction, Module},
     mir_codegen::CodegenError,
 };
 use lamina_platform::TargetArchitecture;
@@ -47,28 +47,6 @@ pub fn validate_module_call_parameters(
         if let Some(name) = names.first() {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                 format!("{target_arch:?} does not yet pass aggregates by value, as @{name} does"),
-            )));
-        }
-    }
-    if target_arch == TargetArchitecture::Aarch64 {
-        // aapcs64 returns a composite over 16 bytes through the pointer in x8, which
-        // is not lowered yet. Arguments of that size go by reference, which is.
-        let mut names: Vec<&String> = module
-            .functions
-            .iter()
-            .filter(|(_, func)| {
-                func.sig
-                    .ret_aggregate
-                    .is_some_and(|a| a.size as u64 > MAX_REGISTER_AGGREGATE)
-            })
-            .map(|(name, _)| name)
-            .collect();
-        names.sort();
-        if let Some(name) = names.first() {
-            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                format!(
-                    "Aarch64 does not yet return an aggregate over {MAX_REGISTER_AGGREGATE} bytes, as @{name} does"
-                ),
             )));
         }
     }
