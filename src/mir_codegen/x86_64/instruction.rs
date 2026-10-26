@@ -15,6 +15,62 @@ pub(super) fn restore_saved_registers<W: Write>(
     Ok(())
 }
 
+/// Where the value printf reads is waiting.
+#[derive(Clone, Copy)]
+enum PrintArg {
+    /// In rax.
+    Integer,
+    /// In xmm0, already widened to double.
+    Double,
+}
+
+/// Calls printf with `fmt` and one value, then flushes, so printed output keeps its
+/// order against the writes that go out through a syscall.
+fn emit_printf_and_flush<W: Write>(
+    writer: &mut RaxTrackingWriter<W>,
+    target_os: TargetOperatingSystem,
+    fmt: &str,
+    arg: PrintArg,
+) -> Result<(), LaminaError> {
+    let shadow = windows::SHADOW_SPACE_SIZE;
+    if target_os == TargetOperatingSystem::Windows {
+        writeln!(writer, "    subq ${shadow}, %rsp")?;
+        writeln!(writer, "    leaq {fmt}(%rip), %rcx")?;
+        match arg {
+            PrintArg::Integer => writeln!(writer, "    movq %rax, %rdx")?,
+            PrintArg::Double => writeln!(writer, "    movq %xmm0, %rdx")?,
+        }
+        writeln!(writer, "    call printf")?;
+        writeln!(writer, "    addq ${shadow}, %rsp")?;
+        writeln!(writer, "    subq ${shadow}, %rsp")?;
+        writeln!(writer, "    movq $0, %rcx")?;
+        writeln!(writer, "    call fflush")?;
+        writeln!(writer, "    addq ${shadow}, %rsp")?;
+        return Ok(());
+    }
+
+    let prefix = if os_uses_macho(target_os) { "_" } else { "" };
+    writeln!(writer, "    leaq {fmt}(%rip), %rdi")?;
+    if let PrintArg::Integer = arg {
+        writeln!(writer, "    movq %rax, %rsi")?;
+    }
+    // al carries the vector-register count for a variadic call; printf reads it
+    // before saving xmm state.
+    let vector_count = match arg {
+        PrintArg::Integer => 0,
+        PrintArg::Double => 1,
+    };
+    if vector_count == 0 {
+        writeln!(writer, "    xorl %eax, %eax")?;
+    } else {
+        writeln!(writer, "    movl ${vector_count}, %eax")?;
+    }
+    writeln!(writer, "    call {prefix}printf")?;
+    writeln!(writer, "    movq $0, %rdi")?;
+    writeln!(writer, "    call {prefix}fflush")?;
+    Ok(())
+}
+
 fn widen_external_argument<W: Write>(
     writer: &mut W,
     abi_extensions: &AbiExtensions,
@@ -693,37 +749,7 @@ pub(super) fn emit_instruction_x86_64(
                 let fmt = print_format_label(name);
                 if let Some(arg) = args.first() {
                     load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
-                    match target_os {
-                        os if os_uses_macho(os) => {
-                            writeln!(writer, "    leaq {fmt}(%rip), %rdi")?;
-                            writeln!(writer, "    movq %rax, %rsi")?;
-                            // al carries the vector-register count for variadic
-                            // calls; printf reads it before saving xmm state.
-                            writeln!(writer, "    xorl %eax, %eax")?;
-                            writeln!(writer, "    call _printf")?;
-                            writeln!(writer, "    movq $0, %rdi")?;
-                            writeln!(writer, "    call _fflush")?;
-                        }
-                        TargetOperatingSystem::Windows => {
-                            writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                            writeln!(writer, "    leaq {fmt}(%rip), %rcx")?;
-                            writeln!(writer, "    movq %rax, %rdx")?;
-                            writeln!(writer, "    call printf")?;
-                            writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                            writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                            writeln!(writer, "    movq $0, %rcx")?;
-                            writeln!(writer, "    call fflush")?;
-                            writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        }
-                        _ => {
-                            writeln!(writer, "    leaq {fmt}(%rip), %rdi")?;
-                            writeln!(writer, "    movq %rax, %rsi")?;
-                            writeln!(writer, "    xorl %eax, %eax")?;
-                            writeln!(writer, "    call printf")?;
-                            writeln!(writer, "    movq $0, %rdi")?;
-                            writeln!(writer, "    call fflush")?;
-                        }
-                    }
+                    emit_printf_and_flush(writer, target_os, fmt, PrintArg::Integer)?;
                 }
             } else if (name == "printf32" || name == "printf64") && args.len() == 1 {
                 let arg = args.first().ok_or_else(|| {
@@ -738,33 +764,12 @@ pub(super) fn emit_instruction_x86_64(
                 if name == "printf32" {
                     writeln!(writer, "    cvtss2sd %xmm0, %xmm0")?;
                 }
-                match target_os {
-                    os if os_uses_macho(os) => {
-                        writeln!(writer, "    leaq .L_mir_fmt_float(%rip), %rdi")?;
-                        writeln!(writer, "    movl $1, %eax")?;
-                        writeln!(writer, "    call _printf")?;
-                        writeln!(writer, "    movq $0, %rdi")?;
-                        writeln!(writer, "    call _fflush")?;
-                    }
-                    TargetOperatingSystem::Windows => {
-                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        writeln!(writer, "    leaq .L_mir_fmt_float(%rip), %rcx")?;
-                        writeln!(writer, "    movq %xmm0, %rdx")?;
-                        writeln!(writer, "    call printf")?;
-                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        writeln!(writer, "    movq $0, %rcx")?;
-                        writeln!(writer, "    call fflush")?;
-                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                    }
-                    _ => {
-                        writeln!(writer, "    leaq .L_mir_fmt_float(%rip), %rdi")?;
-                        writeln!(writer, "    movl $1, %eax")?;
-                        writeln!(writer, "    call printf")?;
-                        writeln!(writer, "    movq $0, %rdi")?;
-                        writeln!(writer, "    call fflush")?;
-                    }
-                }
+                emit_printf_and_flush(
+                    writer,
+                    target_os,
+                    print_format_label(name),
+                    PrintArg::Double,
+                )?;
             } else if name == "writebyte" && args.len() == 1 {
                 let arg = args.first().ok_or_else(|| {
                     LaminaError::ValidationError("writebyte requires one argument".to_string())
