@@ -2,7 +2,7 @@
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
-    fmt::Debug,
+    fmt::{Debug, Display},
     io::Write,
     mem,
     sync::{Arc, mpsc},
@@ -575,6 +575,48 @@ pub fn emit_global_data<W: Write>(
         }
     }
     Ok(())
+}
+
+/// The scalar types each function takes and returns, so a call site can classify its
+/// arguments without looking the callee up again.
+pub struct CallSignatures {
+    params: HashMap<String, Vec<MirType>>,
+    returns: HashMap<String, MirType>,
+}
+
+impl CallSignatures {
+    pub fn from_module(module: &MirModule) -> Self {
+        Self {
+            params: module
+                .functions
+                .iter()
+                .map(|(name, func)| (name.clone(), func.sig.params.iter().map(|p| p.ty).collect()))
+                .collect(),
+            returns: module
+                .functions
+                .iter()
+                .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_ty?)))
+                .collect(),
+        }
+    }
+
+    /// An undeclared callee has no signature, so its arguments pass as integers.
+    pub fn arguments(&self, callee: &str, count: usize) -> Vec<MirType> {
+        match self.params.get(callee) {
+            Some(types) if types.len() == count => types.clone(),
+            _ => vec![MirType::i64(); count],
+        }
+    }
+
+    pub fn float_result(&self, callee: &str) -> Option<MirType> {
+        self.returns.get(callee).copied().filter(MirType::is_float)
+    }
+}
+
+/// Wraps a failed write to the assembly buffer. Every backend writes through
+/// `std::io::Write`, where the only realistic failure is an allocation one.
+pub fn io_codegen_error(error: impl Display) -> CodegenError {
+    CodegenError::InvalidCodegenOptions(format!("IO error: {error}"))
 }
 
 /// Rounds `value` up to the next multiple of `align`, which must be a power of two.
