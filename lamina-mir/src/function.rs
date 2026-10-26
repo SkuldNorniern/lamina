@@ -335,7 +335,13 @@ mod tests {
     fn test_function_validation() {
         let mut func = Function::new(Signature::new("test"));
 
-        // Missing entry block
+        // No blocks at all is a declaration, which carries only its signature.
+        assert!(func.validate().is_ok());
+
+        // A block that the entry does not name leaves the entry dangling.
+        let mut other = Block::new("other");
+        other.push(Instruction::Ret { value: None });
+        func.add_block(other);
         assert!(func.validate().is_err());
 
         // Add entry block with terminator

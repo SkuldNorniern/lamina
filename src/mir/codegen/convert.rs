@@ -470,6 +470,11 @@ fn convert_function<'a>(
         var_to_reg.insert(param.name, v);
     }
 
+    if f.basic_blocks.is_empty() && f.annotations.contains(&FunctionAnnotation::Extern) {
+        // A declaration carries no body; the signature is what callers need.
+        return Ok(Function::new(mir_sig));
+    }
+
     let mut mir_func = Function::new(mir_sig).with_entry(f.entry_block);
 
     let mut names: HashSet<&str> = f.signature.params.iter().map(|p| p.name).collect();

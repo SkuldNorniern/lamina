@@ -209,6 +209,10 @@ fn function_errors_with_config(
     module: Option<&Module>,
 ) -> Vec<String> {
     let mut errors = Vec::new();
+    if function.blocks.is_empty() {
+        // A declaration: the signature is all there is to check.
+        return errors;
+    }
     let block_indices = verify_structure(function, config, &mut errors);
     let definitions = collect_definitions(function, config, module, &mut errors);
     if config.verify_dominance {

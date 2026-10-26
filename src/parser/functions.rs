@@ -99,6 +99,18 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
     state.consume_keyword("fn")?;
     let name = state.parse_type_identifier()?;
     let signature = parse_fn_signature(state)?;
+
+    state.skip_whitespace_and_comments();
+    if annotations.contains(&FunctionAnnotation::Extern) && state.current_char() != Some('{') {
+        return Ok(Function {
+            name,
+            signature,
+            annotations,
+            basic_blocks: HashMap::new(),
+            entry_block: "",
+        });
+    }
+
     state.expect_char('{')?;
 
     let mut basic_blocks = HashMap::new();
