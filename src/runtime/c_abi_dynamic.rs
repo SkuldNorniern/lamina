@@ -47,6 +47,10 @@ use crate::mir_codegen::MAX_MIR_CALL_PARAMETERS;
 /// Upper bound for [`call_function_dynamic`] on AArch64 and SysV x86_64 (stack shim).
 pub const MAX_JIT_ARGS: usize = MAX_MIR_CALL_PARAMETERS;
 
+#[cfg(any(
+    target_arch = "aarch64",
+    all(target_arch = "x86_64", not(target_os = "windows")),
+))]
 /// Room left below the switched stack pointer for the callee's own frame.
 ///
 /// The outgoing arguments only occupy memory at and above the new `sp`; the
