@@ -162,9 +162,7 @@ impl CopyPropagation {
                 changed |= self.replace_operand(false_val, value_map);
             }
             Instruction::Load { addr, .. } => {
-                if let AddressMode::BaseOffset {
-                    base, ..
-                } = addr
+                if let AddressMode::BaseOffset { base, .. } = addr
                     && let Some(new_base) = value_map.get(base)
                     && let Operand::Register(new_reg) = new_base
                 {
@@ -174,9 +172,7 @@ impl CopyPropagation {
             }
             Instruction::Store { src, addr, .. } => {
                 changed |= self.replace_operand(src, value_map);
-                if let AddressMode::BaseOffset {
-                    base, ..
-                } = addr
+                if let AddressMode::BaseOffset { base, .. } = addr
                     && let Some(new_base) = value_map.get(base)
                     && let Operand::Register(new_reg) = new_base
                 {

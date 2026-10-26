@@ -250,7 +250,10 @@ mod tests {
     fn test_get_printf_symbol() {
         assert_eq!(get_printf_symbol(TargetOperatingSystem::MacOS), "_printf");
         assert_eq!(get_printf_symbol(TargetOperatingSystem::IOS), "_printf");
-        assert_eq!(get_printf_symbol(TargetOperatingSystem::VisionOS), "_printf");
+        assert_eq!(
+            get_printf_symbol(TargetOperatingSystem::VisionOS),
+            "_printf"
+        );
         assert_eq!(get_printf_symbol(TargetOperatingSystem::Linux), "printf");
         assert_eq!(get_printf_symbol(TargetOperatingSystem::Windows), "printf");
     }

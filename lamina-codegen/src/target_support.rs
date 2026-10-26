@@ -202,8 +202,14 @@ mod tests {
             TargetOperatingSystem::WatchOS,
             TargetOperatingSystem::VisionOS,
         ] {
-            assert!(is_assembly_supported(TargetArchitecture::X86_64, os), "{os}");
-            assert!(is_assembly_supported(TargetArchitecture::Aarch64, os), "{os}");
+            assert!(
+                is_assembly_supported(TargetArchitecture::X86_64, os),
+                "{os}"
+            );
+            assert!(
+                is_assembly_supported(TargetArchitecture::Aarch64, os),
+                "{os}"
+            );
         }
     }
 
