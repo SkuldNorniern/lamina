@@ -15,3 +15,4 @@ mod mapping;
 
 pub use convert::from_ir;
 pub use error::FromIRError;
+pub use mapping::MAX_REGISTER_AGGREGATE;

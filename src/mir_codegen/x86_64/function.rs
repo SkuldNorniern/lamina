@@ -1,4 +1,5 @@
 use super::*;
+use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir_codegen::common::FunctionEmissionPlan;
 
 pub(super) fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
@@ -627,7 +628,7 @@ pub(super) fn classify_argument_descs(
                     stack += 1;
                     ArgLocation::Stack(stack - 1)
                 }
-            } else if gprs + words <= gpr_count {
+            } else if words * 8 <= MAX_REGISTER_AGGREGATE as usize && gprs + words <= gpr_count {
                 gprs += words;
                 ArgLocation::GprWords {
                     first: gprs - words,
