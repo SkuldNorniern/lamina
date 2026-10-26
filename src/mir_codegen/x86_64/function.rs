@@ -96,7 +96,6 @@ pub(super) fn compile_single_function_x86_64(
 
     ensure_signature_support(&func.sig)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-    check_aggregate_return(func.sig.ret_aggregate, target_os)?;
 
     let label = abi.mangle_function_name(func_name);
     writeln!(output, "{label}:").map_err(io_codegen_error)?;
@@ -181,12 +180,13 @@ pub(super) fn compile_single_function_x86_64(
             assign_stack_slots(func, X86Frame::calculate_stack_offset);
     }
 
-    // System V returns an aggregate too large for rax:rdx through a hidden pointer the
-    // caller passes in rdi. The callee keeps that pointer in a slot of its own.
-    let sret = (target_os != TargetOperatingSystem::Windows)
-        .then_some(func.sig.ret_aggregate)
-        .flatten()
-        .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE);
+    // An aggregate too large for the return registers travels through a hidden pointer
+    // the caller passes in the first argument register. The callee keeps it in a slot
+    // of its own, since the calls it makes would clobber that register.
+    let sret = func
+        .sig
+        .ret_aggregate
+        .filter(|aggregate| returns_through_pointer(*aggregate, target_os));
     let sret_slot = sret.map(|_| X86Frame::calculate_stack_offset(total_slots + saved_regs.len()));
     let stack_size = (total_slots + saved_regs.len() + usize::from(sret.is_some())) * 8;
     let has_frame = settings.regalloc == RegallocStrategy::Incremental
@@ -211,7 +211,8 @@ pub(super) fn compile_single_function_x86_64(
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
     if let Some(offset) = sret_slot {
-        writeln!(output, "    movq %rdi, {offset}(%rbp)")
+        let hidden = abi.arg_registers()[0];
+        writeln!(output, "    movq %{hidden}, {offset}(%rbp)")
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
 
@@ -227,7 +228,6 @@ pub(super) fn compile_single_function_x86_64(
                 aggregate: p.aggregate,
             })
             .collect();
-        check_aggregate_arguments(&descs, target_os)?;
         let locations = classify_argument_descs_with_sret(&descs, target_os, sret.is_some());
         home_aggregate_parameters(
             &mut output,
@@ -550,48 +550,28 @@ impl ArgDesc {
     }
 }
 
-/// Windows passes an aggregate in one register only when its size is exactly that of a
-/// register-width integer; every other size goes by reference, which is not lowered yet.
-fn windows_aggregate_fits(aggregate: Aggregate) -> bool {
+/// Whether Windows passes this aggregate in a register. Only the sizes of a
+/// register-width integer go by value; every other size goes by reference, to a copy
+/// the caller owns.
+pub(super) fn windows_aggregate_fits(aggregate: Aggregate) -> bool {
     matches!(aggregate.size, 1 | 2 | 4 | 8)
 }
 
-/// Reports an aggregate return this backend cannot produce yet.
-pub(super) fn check_aggregate_return(
-    aggregate: Option<Aggregate>,
+/// Whether an aggregate return travels through a hidden pointer rather than registers.
+pub(super) fn returns_through_pointer(
+    aggregate: Aggregate,
     target_os: TargetOperatingSystem,
-) -> Result<(), CodegenError> {
-    let Some(aggregate) = aggregate else {
-        return Ok(());
-    };
-    if target_os == TargetOperatingSystem::Windows && !windows_aggregate_fits(aggregate) {
-        return Err(CodegenError::UnsupportedFeature(format!(
-            "windows x86_64 returns a {} byte aggregate through a hidden pointer, which is not lowered yet",
-            aggregate.size
-        )));
+) -> bool {
+    if target_os == TargetOperatingSystem::Windows {
+        !windows_aggregate_fits(aggregate)
+    } else {
+        aggregate.size as u64 > MAX_REGISTER_AGGREGATE
     }
-    Ok(())
 }
 
-/// Reports aggregates this backend cannot pass yet, so a wrong ABI is never emitted.
-pub(super) fn check_aggregate_arguments(
-    descs: &[ArgDesc],
-    target_os: TargetOperatingSystem,
-) -> Result<(), CodegenError> {
-    if target_os != TargetOperatingSystem::Windows {
-        return Ok(());
-    }
-    for desc in descs {
-        if let Some(aggregate) = desc.aggregate
-            && !windows_aggregate_fits(aggregate)
-        {
-            return Err(CodegenError::UnsupportedFeature(format!(
-                "windows x86_64 passes a {} byte aggregate by reference, which is not lowered yet",
-                aggregate.size
-            )));
-        }
-    }
-    Ok(())
+/// Whether an aggregate argument travels as a pointer to a copy the caller owns.
+pub(super) fn passed_by_reference(aggregate: Aggregate, target_os: TargetOperatingSystem) -> bool {
+    target_os == TargetOperatingSystem::Windows && !windows_aggregate_fits(aggregate)
 }
 
 const SSE_ARGUMENT_COUNT: usize = 8;
@@ -707,6 +687,27 @@ fn home_aggregate_parameters<W: Write>(
                 "aggregate parameter has no frame slot".to_string(),
             ));
         };
+        let Some(aggregate) = param.aggregate else {
+            continue;
+        };
+        if passed_by_reference(aggregate, target_os) {
+            let pointer = match locations[index] {
+                ArgLocation::Gpr(gpr) => format!("%{}", arg_regs[gpr]),
+                ArgLocation::Stack(slot_index) => {
+                    let at = 16 + home + (slot_index as i32) * 8;
+                    writeln!(output, "    movq {at}(%rbp), %r11").map_err(io_error)?;
+                    "%r11".to_string()
+                }
+                _ => continue,
+            };
+            for word in 0..aggregate.words() {
+                let at = (word as i32) * 8;
+                writeln!(output, "    movq {at}({pointer}), %rax").map_err(io_error)?;
+                writeln!(output, "    movq %rax, {}(%rbp)", base + at).map_err(io_error)?;
+            }
+            output.rax_value = None;
+            continue;
+        }
         let sources: Vec<(usize, Option<i32>, &str)> = match locations[index] {
             ArgLocation::Gpr(gpr) => vec![(0, None, arg_regs[gpr])],
             ArgLocation::GprWords { first, words } => (0..words)
