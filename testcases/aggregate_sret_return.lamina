@@ -1,0 +1,45 @@
+type @Quad = struct { a: i64, b: i64, c: i64, d: i64 }
+
+fn @make(i64 %k) -> @Quad {
+entry:
+  %q = alloc.stack @Quad
+  %f0 = getfieldptr.ptr %q, 0
+  store.i64 %f0, %k
+  %k1 = add.i64 %k, 1
+  %f1 = getfieldptr.ptr %q, 1
+  store.i64 %f1, %k1
+  %k2 = add.i64 %k, 2
+  %f2 = getfieldptr.ptr %q, 2
+  store.i64 %f2, %k2
+  %k3 = add.i64 %k, 3
+  %f3 = getfieldptr.ptr %q, 3
+  store.i64 %f3, %k3
+  ret.ptr %q
+}
+
+fn @sum(@Quad %q) -> i64 {
+entry:
+  %pa = getfieldptr.ptr %q, 0
+  %a = load.i64 %pa
+  %pb = getfieldptr.ptr %q, 1
+  %b = load.i64 %pb
+  %pc = getfieldptr.ptr %q, 2
+  %c = load.i64 %pc
+  %pd = getfieldptr.ptr %q, 3
+  %d = load.i64 %pd
+  %s1 = add.i64 %a, %b
+  %s2 = add.i64 %s1, %c
+  %s3 = add.i64 %s2, %d
+  ret.i64 %s3
+}
+
+fn @main() -> i64 {
+entry:
+  %q = call @make(10)
+  %p1 = getfieldptr.ptr %q, 1
+  %v1 = load.i64 %p1
+  print %v1
+  %t = call @sum(%q)
+  print %t
+  ret.i64 0
+}

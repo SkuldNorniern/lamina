@@ -30,10 +30,7 @@ use crate::{
         Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
         codegen::{
             error::FromIRError,
-            mapping::{
-                classify_aggregate, classify_small_aggregate, is_aggregate, map_ir_prim,
-                map_ir_type, signedness_of,
-            },
+            mapping::{classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, signedness_of},
         },
         verify::{PhiVerification, verify_before_phi_lowering},
     },
@@ -491,9 +488,7 @@ fn convert_function<'a>(
         other => {
             let resolved = resolve_type_names(other, &module.type_declarations)
                 .ok_or(FromIRError::UnsupportedType)?;
-            if let Some(aggregate) =
-                classify_small_aggregate(&resolved, &format!("return of @{name}"))?
-            {
+            if let Some(aggregate) = classify_aggregate(&resolved, &format!("return of @{name}"))? {
                 mir_sig = mir_sig
                     .with_return(MirType::ptr())
                     .with_return_aggregate(aggregate);
@@ -653,7 +648,7 @@ fn convert_function<'a>(
                     && let Some(resolved) =
                         resolve_type_names(&callee.signature.return_type, &module.type_declarations)
                     && let Some(aggregate) =
-                        classify_small_aggregate(&resolved, &format!("return of @{name}"))?
+                        classify_aggregate(&resolved, &format!("return of @{name}"))?
                 {
                     let slot = vreg_alloc.allocate_gpr();
                     let words = aggregate.words();
@@ -2422,12 +2417,23 @@ ret.ptr %variable
     }
 
     #[test]
-    fn aggregate_parameter_of_any_size_carries_its_layout() {
+    fn aggregate_of_any_size_carries_its_layout() {
         let wide = parse_module(
+            "fn @make() -> struct { a: i64, b: i64, c: i64 } {\nentry:\n%p = alloc.stack struct { a: i64, b: i64, c: i64 }\nret.ptr %p\n}",
+        )
+        .expect("parse wide aggregate return");
+        let module = from_ir(&wide, "make").expect("wide aggregate return");
+        let aggregate = module.functions["make"]
+            .sig
+            .ret_aggregate
+            .expect("return aggregate");
+        assert_eq!(aggregate.size, 24);
+
+        let taken = parse_module(
             "fn @take(struct { a: i64, b: i64, c: i64 } %p) -> i64 {\nentry:\nret.i64 0\n}",
         )
         .expect("parse wide aggregate");
-        let module = from_ir(&wide, "take").expect("wide aggregate parameter");
+        let module = from_ir(&taken, "take").expect("wide aggregate parameter");
         let aggregate = module.functions["take"].sig.params[0]
             .aggregate
             .expect("aggregate marker");
@@ -2445,13 +2451,6 @@ ret.ptr %variable
             error.to_string().contains("%p of @take has a float field"),
             "{error}"
         );
-
-        let wide = parse_module(
-            "fn @make() -> struct { a: i64, b: i64, c: i64 } {\nentry:\n%p = alloc.stack struct { a: i64, b: i64, c: i64 }\nret.ptr %p\n}",
-        )
-        .expect("parse wide aggregate return");
-        let error = from_ir(&wide, "make").expect_err("wide aggregate return rejected");
-        assert!(error.to_string().contains("is 24 bytes"), "{error}");
 
         let returned = parse_module(
             "fn @make() -> struct { a: f64, b: f64 } {\nentry:\n%p = alloc.stack struct { a: f64, b: f64 }\nret.ptr %p\n}",

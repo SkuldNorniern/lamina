@@ -75,14 +75,6 @@ pub fn classify_aggregate(ty: &IRType<'_>, what: &str) -> Result<Option<Aggregat
     classify_aggregate_within(ty, what, None)
 }
 
-/// Classifies an aggregate that must fit in registers, such as a return value.
-pub fn classify_small_aggregate(
-    ty: &IRType<'_>,
-    what: &str,
-) -> Result<Option<Aggregate>, FromIRError> {
-    classify_aggregate_within(ty, what, Some(MAX_REGISTER_AGGREGATE))
-}
-
 fn classify_aggregate_within(
     ty: &IRType<'_>,
     what: &str,

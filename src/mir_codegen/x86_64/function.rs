@@ -181,7 +181,14 @@ pub(super) fn compile_single_function_x86_64(
             assign_stack_slots(func, X86Frame::calculate_stack_offset);
     }
 
-    let stack_size = (total_slots + saved_regs.len()) * 8;
+    // System V returns an aggregate too large for rax:rdx through a hidden pointer the
+    // caller passes in rdi. The callee keeps that pointer in a slot of its own.
+    let sret = (target_os != TargetOperatingSystem::Windows)
+        .then_some(func.sig.ret_aggregate)
+        .flatten()
+        .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE);
+    let sret_slot = sret.map(|_| X86Frame::calculate_stack_offset(total_slots + saved_regs.len()));
+    let stack_size = (total_slots + saved_regs.len() + usize::from(sret.is_some())) * 8;
     let has_frame = settings.regalloc == RegallocStrategy::Incremental
         || !is_leaf
         || stack_size != 0
@@ -203,6 +210,11 @@ pub(super) fn compile_single_function_x86_64(
     writeln!(output, "{}:", self_tail_entry_label(func_name))
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
+    if let Some(offset) = sret_slot {
+        writeln!(output, "    movq %rdi, {offset}(%rbp)")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
+
     if !func.sig.params.is_empty() {
         let abi_for_func = X86ABI::new(target_os);
         let arg_regs = abi_for_func.arg_registers();
@@ -216,7 +228,7 @@ pub(super) fn compile_single_function_x86_64(
             })
             .collect();
         check_aggregate_arguments(&descs, target_os)?;
-        let locations = classify_argument_descs(&descs, target_os);
+        let locations = classify_argument_descs_with_sret(&descs, target_os, sret.is_some());
         home_aggregate_parameters(
             &mut output,
             &func.sig.params,
@@ -479,6 +491,7 @@ pub(super) fn compile_single_function_x86_64(
                 &self_param_homes,
                 &param_extensions,
                 &func.entry,
+                sret_slot,
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
@@ -612,18 +625,29 @@ pub(super) fn classify_argument_descs(
     descs: &[ArgDesc],
     target_os: TargetOperatingSystem,
 ) -> Vec<ArgLocation> {
+    classify_argument_descs_with_sret(descs, target_os, false)
+}
+
+/// `sret` reserves the first general register for the hidden pointer a large
+/// aggregate return is written through, which shifts every other argument along.
+pub(super) fn classify_argument_descs_with_sret(
+    descs: &[ArgDesc],
+    target_os: TargetOperatingSystem,
+    sret: bool,
+) -> Vec<ArgLocation> {
     let gpr_count = X86ABI::new(target_os).arg_registers().len();
     let windows = target_os == TargetOperatingSystem::Windows;
-    let mut gprs = 0;
+    let mut gprs = usize::from(sret);
     let mut sses = 0;
     let mut stack = 0;
     let mut locations = Vec::with_capacity(descs.len());
     for (position, desc) in descs.iter().enumerate() {
         if let Some(aggregate) = desc.aggregate {
             let words = aggregate.words();
+            let slot = position + usize::from(sret);
             let location = if windows {
-                if position < gpr_count {
-                    ArgLocation::Gpr(position)
+                if slot < gpr_count {
+                    ArgLocation::Gpr(slot)
                 } else {
                     stack += 1;
                     ArgLocation::Stack(stack - 1)
@@ -646,11 +670,12 @@ pub(super) fn classify_argument_descs(
         }
         let ty = desc.ty;
         let float = ty.is_float();
-        let location = if windows && position < gpr_count {
+        let slot = position + usize::from(sret);
+        let location = if windows && slot < gpr_count {
             if float {
-                ArgLocation::Xmm(position)
+                ArgLocation::Xmm(slot)
             } else {
-                ArgLocation::Gpr(position)
+                ArgLocation::Gpr(slot)
             }
         } else if !windows && float && sses < SSE_ARGUMENT_COUNT {
             sses += 1;

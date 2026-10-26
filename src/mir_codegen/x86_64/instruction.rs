@@ -1,4 +1,5 @@
 use super::*;
+use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 
 pub(super) fn restore_saved_registers<W: Write>(
     writer: &mut W,
@@ -274,6 +275,7 @@ pub(super) fn emit_instruction_x86_64(
     self_param_homes: &[Option<String>],
     param_extensions: &[Option<(usize, bool)>],
     entry_label: &str,
+    sret_slot: Option<i32>,
 ) -> Result<(), LaminaError> {
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
@@ -970,7 +972,18 @@ pub(super) fn emit_instruction_x86_64(
                 check_aggregate_arguments(&descs, target_os)
                     .map_err(|e| LaminaError::ValidationError(e.to_string()))?;
                 let types: Vec<MirType> = descs.iter().map(|desc| desc.ty).collect();
-                let locations = classify_argument_descs(&descs, target_os);
+                // A callee returning a large aggregate writes it through a hidden
+                // pointer, which takes the first general register.
+                let sret_result = (target_os != TargetOperatingSystem::Windows)
+                    .then(|| abi_extensions.return_aggregate(name))
+                    .flatten()
+                    .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE)
+                    .and_then(|_| match ret {
+                        Some(Register::Virtual(vreg)) => stack_slots.get(vreg).copied(),
+                        _ => None,
+                    });
+                let locations =
+                    classify_argument_descs_with_sret(&descs, target_os, sret_result.is_some());
                 // One entry per eight-byte slot, lowest slot first: an aggregate on the
                 // stack occupies as many as it has words.
                 let stack_args: Vec<(usize, usize)> = locations
@@ -1081,6 +1094,9 @@ pub(super) fn emit_instruction_x86_64(
                     }
                 }
 
+                if let Some(offset) = sret_result {
+                    writeln!(writer, "    leaq {offset}(%rbp), %rdi")?;
+                }
                 let mangled_name = abi.mangle_function_name(name);
                 writeln!(writer, "    call {mangled_name}")?;
 
@@ -1104,7 +1120,10 @@ pub(super) fn emit_instruction_x86_64(
                 if let Some(ret_reg) = ret
                     && let Register::Virtual(vreg) = ret_reg
                 {
-                    if let Some(aggregate) = abi_extensions.return_aggregate(name) {
+                    if sret_result.is_some() {
+                        // The callee wrote the words into the slot already.
+                        writer.rax_value = None;
+                    } else if let Some(aggregate) = abi_extensions.return_aggregate(name) {
                         // The result register names the slot the words are written to;
                         // the caller addresses it with a stack address of its own.
                         let base = *stack_slots.get(vreg).ok_or_else(|| {
@@ -1303,6 +1322,7 @@ pub(super) fn emit_instruction_x86_64(
                     self_param_homes,
                     param_extensions,
                     entry_label,
+                    sret_slot,
                 )?;
                 restore_saved_registers(writer, stack_size, saved_regs)?;
                 if has_frame {
@@ -1683,14 +1703,25 @@ pub(super) fn emit_instruction_x86_64(
                     abi_extensions.return_aggregate(func_name),
                     abi_extensions.float_return(func_name),
                 ) {
-                    // The returned operand addresses the aggregate; the words themselves
-                    // go back in rax and rdx.
+                    // The returned operand addresses the aggregate. Small ones go back
+                    // in rax and rdx; a large one is copied to the caller's buffer and
+                    // its address comes back in rax.
                     (Some(aggregate), _) => {
                         load_operand_to_rax(val, writer, reg_alloc, stack_slots)?;
-                        if aggregate.words() > 1 {
-                            writeln!(writer, "    movq 8(%rax), %rdx")?;
+                        if let Some(offset) = sret_slot {
+                            writeln!(writer, "    movq {offset}(%rbp), %rcx")?;
+                            for word in 0..aggregate.words() {
+                                let at = word * 8;
+                                writeln!(writer, "    movq {at}(%rax), %rdx")?;
+                                writeln!(writer, "    movq %rdx, {at}(%rcx)")?;
+                            }
+                            writeln!(writer, "    movq %rcx, %rax")?;
+                        } else {
+                            if aggregate.words() > 1 {
+                                writeln!(writer, "    movq 8(%rax), %rdx")?;
+                            }
+                            writeln!(writer, "    movq (%rax), %rax")?;
                         }
-                        writeln!(writer, "    movq (%rax), %rax")?;
                         writer.rax_value = None;
                     }
                     (None, Some(ty)) => {
