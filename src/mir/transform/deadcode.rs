@@ -244,6 +244,7 @@ impl DeadCodeElimination {
             | Instruction::IntConvert { .. }
             | Instruction::IntToFloat { .. }
             | Instruction::FloatToInt { .. }
+            | Instruction::FloatConvert { .. }
             | Instruction::Bitcast { .. }
             | Instruction::StackAddr { .. }
             | Instruction::SymbolAddress { .. }

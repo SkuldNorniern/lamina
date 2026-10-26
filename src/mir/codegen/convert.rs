@@ -596,9 +596,11 @@ fn convert_function<'a>(
                 mir_instr.normalize_integer_immediates(mir_func.sig.ret_ty);
                 if let Some(dst) = mir_instr.def_reg() {
                     let ty = match &mir_instr {
-                        Instruction::IntConvert { to, .. } | Instruction::Bitcast { to, .. } => {
-                            Some(*to)
-                        }
+                        Instruction::IntConvert { to, .. }
+                        | Instruction::Bitcast { to, .. }
+                        | Instruction::FloatConvert { to, .. }
+                        | Instruction::IntToFloat { to, .. }
+                        | Instruction::FloatToInt { to, .. } => Some(*to),
                         Instruction::Copy { ty, .. }
                         | Instruction::IntBinary { ty, .. }
                         | Instruction::FloatBinary { ty, .. }
@@ -1352,6 +1354,30 @@ fn convert_instruction<'a>(
                 dst,
                 src,
             }])
+        }
+        IRInst::FloatConvert {
+            result,
+            source_type,
+            target_type,
+            value,
+        } => {
+            let from = map_ir_prim(*source_type)?;
+            let to = map_ir_prim(*target_type)?;
+            if from == to || !from.is_float() || !to.is_float() {
+                return Err(FromIRError::InvalidConversion(format!(
+                    "{} from {source_type} to {target_type} converts between the float types only",
+                    if to.size_bytes() > from.size_bytes() {
+                        "fpext"
+                    } else {
+                        "fptrunc"
+                    }
+                )));
+            }
+            let dst = Register::Virtual(vreg_alloc.allocate_fpr());
+            var_to_reg.insert(result, dst.clone());
+            let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
+            normalize_lowered_literal(&mut src, from);
+            Ok(vec![Instruction::FloatConvert { from, to, dst, src }])
         }
         IRInst::Bitcast {
             result,

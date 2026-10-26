@@ -33,6 +33,8 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "uitofp" => parse_int_to_float(state, result, false),
             "fptosi" => parse_float_to_int(state, result, true),
             "fptoui" => parse_float_to_int(state, result, false),
+            "fpext" => parse_float_convert(state, result, true),
+            "fptrunc" => parse_float_convert(state, result, false),
             "select" => parse_select(state, result),
             "alloc" => parse_alloc(state, result),
             "load" => parse_load(state, result),
@@ -872,6 +874,40 @@ fn parse_float_to_int<'a>(
     Ok(Instruction::FloatToInt {
         result,
         signed,
+        source_type,
+        target_type,
+        value,
+    })
+}
+
+/// Parses `fpext.f32.f64` and `fptrunc.f64.f32`.
+fn parse_float_convert<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+    widening: bool,
+) -> Result<Instruction<'a>, LaminaError> {
+    let mnemonic = if widening { "fpext" } else { "fptrunc" };
+    state.expect_char('.')?;
+    let source_str = state.parse_identifier_str()?;
+    let source_type = parse_primitive_from_ident(state, source_str)?;
+    state.expect_char('.')?;
+    let target_str = state.parse_identifier_str()?;
+    let target_type = parse_primitive_from_ident(state, target_str)?;
+
+    let (want_source, want_target) = if widening {
+        (PrimitiveType::F32, PrimitiveType::F64)
+    } else {
+        (PrimitiveType::F64, PrimitiveType::F32)
+    };
+    if source_type != want_source || target_type != want_target {
+        return Err(state.error(format!(
+            "{mnemonic} converts {want_source} to {want_target}, found {source_str} to {target_str}"
+        )));
+    }
+
+    let value = parse_value(state)?;
+    Ok(Instruction::FloatConvert {
+        result,
         source_type,
         target_type,
         value,

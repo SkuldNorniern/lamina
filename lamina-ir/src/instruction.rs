@@ -516,6 +516,18 @@ pub enum Instruction<'a> {
         target_type: PrimitiveType,
         value: Value<'a>,
     },
+    /// Convert between the floating-point types.
+    ///
+    /// `fpext` widens `f32` to `f64` exactly. `fptrunc` narrows `f64` to `f32`,
+    /// rounding to nearest with ties to even; a magnitude above the largest `f32`
+    /// becomes an infinity of the same sign, and one below the smallest subnormal
+    /// becomes a zero of the same sign. NaN stays NaN.
+    FloatConvert {
+        result: Identifier<'a>,
+        source_type: PrimitiveType,
+        target_type: PrimitiveType,
+        value: Value<'a>,
+    },
     // --- Control Flow ---
     /// Multi-way branch based on an integer or boolean value.
     ///
@@ -877,6 +889,8 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "uitofp",
         "fptosi",
         "fptoui",
+        "fpext",
+        "fptrunc",
         "select",
         // Memory operations (from Instruction::Alloc, Instruction::Load, etc.)
         "alloc",
@@ -935,6 +949,8 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "uitofp",
         "fptosi",
         "fptoui",
+        "fpext",
+        "fptrunc",
         "select",
         "alloc",
         "load",
@@ -1019,6 +1035,7 @@ impl<'a> Instruction<'a> {
             | Instruction::Bitcast { result, .. }
             | Instruction::IntToFloat { result, .. }
             | Instruction::FloatToInt { result, .. }
+            | Instruction::FloatConvert { result, .. }
             | Instruction::Select { result, .. }
             | Instruction::GetElemPtr { result, .. }
             | Instruction::GetFieldPtr { result, .. }
@@ -1076,7 +1093,8 @@ impl<'a> Instruction<'a> {
             | Instruction::Trunc { value, .. }
             | Instruction::Bitcast { value, .. }
             | Instruction::IntToFloat { value, .. }
-            | Instruction::FloatToInt { value, .. } => push_value(value, &mut vars),
+            | Instruction::FloatToInt { value, .. }
+            | Instruction::FloatConvert { value, .. } => push_value(value, &mut vars),
             Instruction::Call { args, .. } => {
                 for arg in args {
                     push_value(arg, &mut vars);
@@ -1194,6 +1212,19 @@ impl fmt::Display for Instruction<'_> {
                 value,
             } => {
                 let op = if *signed { "fptosi" } else { "fptoui" };
+                write!(f, "%{result} = {op}.{source_type}.{target_type} {value}")
+            }
+            Instruction::FloatConvert {
+                result,
+                source_type,
+                target_type,
+                value,
+            } => {
+                let op = if source_type == target_type || *source_type == PrimitiveType::F32 {
+                    "fpext"
+                } else {
+                    "fptrunc"
+                };
                 write!(f, "%{result} = {op}.{source_type}.{target_type} {value}")
             }
             Instruction::Switch {

@@ -1127,6 +1127,9 @@ fn emit_block<W: Write>(
                 dst,
                 src,
             } => emit_int_to_float(w, from, to, *signed, dst, src, frame, ra)?,
+            MirInst::FloatConvert { to, dst, src, .. } => {
+                emit_float_convert(w, to, dst, src, frame, ra)?;
+            }
             MirInst::FloatToInt {
                 from,
                 to,
@@ -2084,6 +2087,30 @@ fn emit_int_to_float<W: Write>(
     store_result(w, dst, &x_alias(s_d), frame, ra)?;
     ra.free_scratch(s_s);
     ra.free_scratch(s_d);
+    Ok(())
+}
+
+fn emit_float_convert<W: Write>(
+    w: &mut W,
+    to: &MirType,
+    dst: &Register,
+    src: &Operand,
+    frame: &FrameMap,
+    ra: &mut A64RegAlloc,
+) -> Result<(), LaminaError> {
+    let s_s = ra.alloc_scratch().unwrap_or("x19");
+    emit_materialize_operand(w, src, s_s, frame, ra)?;
+    if to.size_bytes() == 4 {
+        writeln!(w, "    fmov d0, {s_s}")?;
+        writeln!(w, "    fcvt s0, d0")?;
+        writeln!(w, "    fmov {}, s0", w_alias(s_s))?;
+    } else {
+        writeln!(w, "    fmov s0, {}", w_alias(s_s))?;
+        writeln!(w, "    fcvt d0, s0")?;
+        writeln!(w, "    fmov {s_s}, d0")?;
+    }
+    store_result(w, dst, &x_alias(s_s), frame, ra)?;
+    ra.free_scratch(s_s);
     Ok(())
 }
 

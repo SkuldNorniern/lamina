@@ -1,0 +1,15 @@
+fn @main() -> i64 {
+entry:
+  %a = add.f32 1.5, 0.25
+  %b = fpext.f32.f64 %a
+  print %b
+  %c = div.f64 1.0, 3.0
+  %d = fptrunc.f64.f32 %c
+  print %d
+  %e = fpext.f32.f64 %d
+  print %e
+  %big = add.f64 100000000000000000000000000000000000000000.0, 0.0
+  %inf = fptrunc.f64.f32 %big
+  print %inf
+  ret.i64 0
+}
