@@ -615,6 +615,10 @@ impl<'a> Function<'a> {
     pub fn validate(&self) -> Result<(), Vec<String>> {
         let mut errors: Vec<String> = Vec::new();
 
+        if self.annotations.contains(&FunctionAnnotation::Extern) && self.basic_blocks.is_empty() {
+            return Ok(());
+        }
+
         if !self.basic_blocks.contains_key(self.entry_block) {
             errors.push(format!(
                 "entry block '{}' does not exist in function '@{}'",

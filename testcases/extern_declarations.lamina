@@ -1,0 +1,21 @@
+global @text: [6 x i8] = "abcde"
+
+@extern
+fn @strlen(ptr %s) -> i64
+
+@extern
+fn @putchar(i32 %c) -> i32
+
+@extern
+fn @ldexp(f64 %a, i32 %b) -> f64
+
+fn @main() -> i64 {
+entry:
+  %p = getelem.ptr @text, 0, i8
+  %n = call @strlen(%p)
+  print %n
+  %c = call @putchar(10)
+  %m = call @ldexp(2.5, 3)
+  print %m
+  ret.i64 0
+}
