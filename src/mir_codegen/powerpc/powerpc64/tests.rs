@@ -3,6 +3,7 @@ use crate::mir::{
     FunctionBuilder,
     instruction::{Instruction, IntBinOp, Operand},
 };
+use lamina_codegen::powerpc::frame::LOCALS_BASE;
 use std::error::Error;
 
 fn make_module_with_empty_func() -> MirModule {
@@ -182,16 +183,17 @@ fn stack_address_reserves_slot_without_register_use() {
         )
         .unwrap();
         let assembly = String::from_utf8(output).unwrap();
+        let slot = LOCALS_BASE + 8;
         assert!(
-            assembly.contains("    stdu 1, -48(1)"),
+            assembly.contains(&format!("    stdu 1, -{}(1)", slot + 8)),
             "{regalloc:?}: {assembly}"
         );
         assert!(
-            assembly.contains("    addi 3, 1, 40"),
+            assembly.contains(&format!("    addi 3, 1, {slot}")),
             "{regalloc:?}: {assembly}"
         );
         assert!(
-            !assembly.contains("    ld 3, 40(1)"),
+            !assembly.contains(&format!("    ld 3, {slot}(1)")),
             "{regalloc:?}: {assembly}"
         );
     }
