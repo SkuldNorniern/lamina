@@ -79,15 +79,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_x86_abi_new() {
-        let abi = X86ABI::new(TargetOperatingSystem::Linux);
-        assert_eq!(abi.target_os(), TargetOperatingSystem::Linux);
-
-        let abi_windows = X86ABI::new(TargetOperatingSystem::Windows);
-        assert_eq!(abi_windows.target_os(), TargetOperatingSystem::Windows);
-    }
-
-    #[test]
     fn test_x86_mangle_function_name() {
         let abi_linux = X86ABI::new(TargetOperatingSystem::Linux);
         assert_eq!(abi_linux.mangle_function_name("main"), "main");

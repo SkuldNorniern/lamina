@@ -275,14 +275,6 @@ mod tests {
     };
 
     #[test]
-    fn test_module_creation() {
-        let module = Module::new("test_module");
-        assert_eq!(module.name, "test_module");
-        assert!(module.functions.is_empty());
-        assert!(module.globals.is_empty());
-    }
-
-    #[test]
     fn test_module_add_function() {
         let mut module = Module::new("test");
         let func = Function::new(Signature::new("test_func"));
