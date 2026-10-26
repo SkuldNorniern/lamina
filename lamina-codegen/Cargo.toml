@@ -1,6 +1,6 @@
 [package]
 name = "lamina-codegen"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Eira <eira@nornity.com>"]
@@ -11,8 +11,8 @@ categories = ["compilers", "development-tools"]
 repository = "https://github.com/SkuldNorniern/lamina"
 
 [dependencies]
-lamina-platform = { path = "../lamina-platform", version = "0.1.1" }
-lamina-mir = { path = "../lamina-mir", version = "0.1.0" }
+lamina-platform = { path = "../lamina-platform", version = "0.1.2" }
+lamina-mir = { path = "../lamina-mir", version = "0.1.1" }
 
 [features]
 default = []

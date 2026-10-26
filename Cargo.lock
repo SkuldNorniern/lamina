@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "lamina"
-version = "0.0.10"
+version = "0.1.0"
 dependencies = [
- "lamina-codegen 0.1.1",
+ "lamina-codegen",
  "lamina-ir",
  "lamina-mir",
  "lamina-platform",
@@ -15,17 +15,7 @@ dependencies = [
 
 [[package]]
 name = "lamina-codegen"
-version = "0.1.1"
-dependencies = [
- "lamina-mir",
- "lamina-platform",
-]
-
-[[package]]
-name = "lamina-codegen"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ce5d2bb9a8899403185a469c56e6adc587f2ee043a605c829cf3de12d403895"
+version = "0.1.2"
 dependencies = [
  "lamina-mir",
  "lamina-platform",
@@ -33,21 +23,21 @@ dependencies = [
 
 [[package]]
 name = "lamina-ir"
-version = "0.1.0"
-
-[[package]]
-name = "lamina-mir"
-version = "0.1.0"
-
-[[package]]
-name = "lamina-platform"
 version = "0.1.1"
 
 [[package]]
+name = "lamina-mir"
+version = "0.1.1"
+
+[[package]]
+name = "lamina-platform"
+version = "0.1.2"
+
+[[package]]
 name = "lamina-ras"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
- "lamina-codegen 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lamina-codegen",
  "lamina-mir",
  "lamina-platform",
  "libc",

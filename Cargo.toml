@@ -4,7 +4,7 @@ members = ["lamina-codegen", "lamina-ir", "lamina-mir", "lamina-platform"]
 
 [package]
 name = "lamina"
-version = "0.0.10"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Eira <eira@nornity.com>"]
@@ -34,11 +34,11 @@ name = "lamina"
 path = "src/main.rs"
 
 [dependencies]
-ras = { package = "lamina-ras", version = "0.1.4", features = ["encoder"] }
-lamina-ir = { path = "lamina-ir", version = "0.1.0" }
-lamina-platform = { path = "lamina-platform", version = "0.1.1" }
-lamina-mir = { path = "lamina-mir", version = "0.1.0" }
-lamina-codegen = { path = "lamina-codegen", version = "0.1.1" }
+ras = { package = "lamina-ras", version = "0.1.5", features = ["encoder"] }
+lamina-ir = { path = "lamina-ir", version = "0.1.1" }
+lamina-platform = { path = "lamina-platform", version = "0.1.2" }
+lamina-mir = { path = "lamina-mir", version = "0.1.1" }
+lamina-codegen = { path = "lamina-codegen", version = "0.1.2" }
 
 [features]
 default = ["encoder"]
@@ -58,3 +58,4 @@ nightly = [
 [patch.crates-io]
 lamina-platform = { path = "lamina-platform" }
 lamina-mir = { path = "lamina-mir" }
+lamina-codegen = { path = "lamina-codegen" }
