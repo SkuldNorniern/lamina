@@ -142,69 +142,71 @@ pub fn parse_value_with_type_hint<'a>(
                 return Err(state.error("Expected float literal for F64 hint"));
             }
 
-            match type_hint {
-                Type::Primitive(PrimitiveType::I8) => {
-                    let peek_string = state.peek_slice(20).unwrap_or("");
-                    if peek_string.contains('.') {
-                        return Err(state.error("Float literal cannot be used with I8 type hint"));
-                    }
-
-                    let i_val = state.parse_integer()?;
-                    if i_val < i8::MIN as i64 || i_val > i8::MAX as i64 {
-                        return Err(state.error(format!(
-                            "Integer literal {} out of range for i8 (must be between {} and {})",
-                            i_val,
-                            i8::MIN,
-                            i8::MAX
-                        )));
-                    }
-                    Ok(Value::Constant(Literal::I8(i_val as i8)))
-                }
-                Type::Primitive(PrimitiveType::I32) => {
-                    let peek_string = state.peek_slice(20).unwrap_or("");
-                    if peek_string.contains('.') {
-                        return Err(state.error("Float literal cannot be used with I32 type hint"));
-                    }
-
-                    let i_val = state.parse_integer()?;
-                    if i_val < i32::MIN as i64 || i_val > i32::MAX as i64 {
-                        return Err(state.error(format!(
-                            "Integer literal {} out of range for i32 (must be between {} and {})",
-                            i_val,
-                            i32::MIN,
-                            i32::MAX
-                        )));
-                    }
-                    Ok(Value::Constant(Literal::I32(i_val as i32)))
-                }
-                Type::Primitive(PrimitiveType::I64) => {
-                    let peek_string = state.peek_slice(20).unwrap_or("");
-                    if peek_string.contains('.') {
-                        return Err(state.error("Float literal cannot be used with I64 type hint"));
-                    }
-
-                    let i_val = state.parse_integer()?;
-                    Ok(Value::Constant(Literal::I64(i_val)))
-                }
-                _ => {
-                    state.set_position(start_pos);
-                    if let Ok(i_val) = state.parse_integer() {
-                        return if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
-                            Ok(Value::Constant(Literal::I32(i_val as i32)))
-                        } else {
-                            Ok(Value::Constant(Literal::I64(i_val)))
-                        };
-                    }
-
-                    state.set_position(start_pos);
-                    if let Ok(f_val) = state.parse_float() {
-                        return Ok(Value::Constant(Literal::F64(f_val)));
-                    }
-
-                    Err(state.error("Expected a numeric literal"))
-                }
+            if let Type::Primitive(p) = type_hint
+                && let Some(literal) = parse_integer_literal(state, *p)?
+            {
+                return Ok(Value::Constant(literal));
             }
+
+            state.set_position(start_pos);
+            if let Ok(i_val) = state.parse_integer() {
+                return if i_val >= i32::MIN as i64 && i_val <= i32::MAX as i64 {
+                    Ok(Value::Constant(Literal::I32(i_val as i32)))
+                } else {
+                    Ok(Value::Constant(Literal::I64(i_val)))
+                };
+            }
+
+            state.set_position(start_pos);
+            if let Ok(f_val) = state.parse_float() {
+                return Ok(Value::Constant(Literal::F64(f_val)));
+            }
+
+            Err(state.error("Expected a numeric literal"))
         }
         _ => Err(state.error("Expected value (%, @, literal)")),
     }
+}
+
+/// Parses an integer literal at the declared width. Returns `None` when the hint is
+/// not an integer type, so the caller can fall back to inference.
+fn parse_integer_literal<'a>(
+    state: &mut ParserState<'a>,
+    hint: PrimitiveType,
+) -> Result<Option<Literal<'a>>, LaminaError> {
+    let (name, min, max) = match hint {
+        PrimitiveType::I8 => ("i8", i8::MIN as i128, i8::MAX as i128),
+        PrimitiveType::I16 => ("i16", i16::MIN as i128, i16::MAX as i128),
+        PrimitiveType::I32 => ("i32", i32::MIN as i128, i32::MAX as i128),
+        PrimitiveType::I64 => ("i64", i64::MIN as i128, i64::MAX as i128),
+        PrimitiveType::U8 => ("u8", 0, u8::MAX as i128),
+        PrimitiveType::U16 => ("u16", 0, u16::MAX as i128),
+        PrimitiveType::U32 => ("u32", 0, u32::MAX as i128),
+        PrimitiveType::U64 => ("u64", 0, u64::MAX as i128),
+        _ => return Ok(None),
+    };
+
+    if state.peek_slice(20).unwrap_or("").contains('.') {
+        return Err(state.error(format!(
+            "Float literal cannot be used with {name} type hint"
+        )));
+    }
+
+    let value = i128::from(state.parse_integer()?);
+    if value < min || value > max {
+        return Err(state.error(format!(
+            "Integer literal {value} out of range for {name} (must be between {min} and {max})"
+        )));
+    }
+
+    Ok(Some(match hint {
+        PrimitiveType::I8 => Literal::I8(value as i8),
+        PrimitiveType::I16 => Literal::I16(value as i16),
+        PrimitiveType::I32 => Literal::I32(value as i32),
+        PrimitiveType::I64 => Literal::I64(value as i64),
+        PrimitiveType::U8 => Literal::U8(value as u8),
+        PrimitiveType::U16 => Literal::U16(value as u16),
+        PrimitiveType::U32 => Literal::U32(value as u32),
+        _ => Literal::U64(value as u64),
+    }))
 }

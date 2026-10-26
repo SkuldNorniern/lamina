@@ -377,6 +377,28 @@ mod tests {
     }
 
     #[test]
+    fn global_initializer_takes_width_of_declared_type() {
+        let input = r#"
+            global @a: u64 = 9
+            global @b: i16 = -3
+            global @c: u8 = 200
+        "#;
+        let module = parse_module(input).expect("Parsing failed");
+        let literal = |name: &str| {
+            module.global_declarations[name]
+                .initializer
+                .clone()
+                .expect("initializer")
+        };
+        assert_eq!(literal("a"), Value::Constant(Literal::U64(9)));
+        assert_eq!(literal("b"), Value::Constant(Literal::I16(-3)));
+        assert_eq!(literal("c"), Value::Constant(Literal::U8(200)));
+
+        assert!(parse_module("global @d: u8 = 300").is_err());
+        assert!(parse_module("global @e: u32 = -1").is_err());
+    }
+
+    #[test]
     fn test_parse_global_declarations() {
         let input = r#"
             global @count: i64 = 10
@@ -459,7 +481,9 @@ mod tests {
     #[test]
     fn test_deeply_nested_type_is_rejected_without_overflow() {
         let nested = format!("{}i64{}", "struct { x: ".repeat(1000), " }".repeat(1000));
-        let input = format!("fn @main() -> i64 {{\n  entry:\n    %a = alloc.stack {nested}\n    ret.i64 0\n}}\n");
+        let input = format!(
+            "fn @main() -> i64 {{\n  entry:\n    %a = alloc.stack {nested}\n    ret.i64 0\n}}\n"
+        );
         let err = parse_module(&input).expect_err("deep type");
         assert!(err.to_string().contains("Type nesting exceeds"));
     }
@@ -468,7 +492,10 @@ mod tests {
     fn test_instruction_after_terminator_is_rejected() {
         let input = "fn @main() -> i64 {\n  entry:\n    ret.i64 0\n    ret.i64 1\n}\n";
         let err = parse_module(input).expect_err("instruction after terminator");
-        assert!(err.to_string().contains("after the terminator of block 'entry'"));
+        assert!(
+            err.to_string()
+                .contains("after the terminator of block 'entry'")
+        );
     }
 
     #[test]
