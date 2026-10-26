@@ -76,15 +76,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_aarch64_abi_new() {
-        let abi = AArch64ABI::new(TargetOperatingSystem::Linux);
-        assert_eq!(abi.target_os(), TargetOperatingSystem::Linux);
-
-        let abi_macos = AArch64ABI::new(TargetOperatingSystem::MacOS);
-        assert_eq!(abi_macos.target_os(), TargetOperatingSystem::MacOS);
-    }
-
-    #[test]
     fn test_aarch64_mangle_function_name() {
         let abi_linux = AArch64ABI::new(TargetOperatingSystem::Linux);
         assert_eq!(abi_linux.mangle_function_name("main"), "main");

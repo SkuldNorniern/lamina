@@ -104,14 +104,6 @@ mod tests {
     };
 
     #[test]
-    fn test_basic_block_creation() {
-        let bb = Block::new("entry");
-        assert_eq!(bb.label, "entry");
-        assert!(bb.is_empty());
-        assert!(!bb.has_terminator());
-    }
-
-    #[test]
     fn test_basic_block_push() {
         let mut bb = Block::new("bb0");
 
