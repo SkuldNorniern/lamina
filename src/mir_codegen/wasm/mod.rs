@@ -613,7 +613,11 @@ fn emit_instruction_wasm(
                 if let Some(arg) = args.first() {
                     load_operand_wasm(arg, writer, vreg_to_local)?;
                     if name == "printf32" {
+                        writeln!(writer, "      i32.wrap_i64")?;
+                        writeln!(writer, "      f32.reinterpret_i32")?;
                         writeln!(writer, "      f64.promote_f32")?;
+                    } else {
+                        writeln!(writer, "      f64.reinterpret_i64")?;
                     }
                     writeln!(writer, "      call $logf")?;
                 }

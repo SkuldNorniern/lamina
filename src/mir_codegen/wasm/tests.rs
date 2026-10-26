@@ -242,3 +242,18 @@ fn optimized_tail_calls_run_in_constant_stack() {
     };
     assert_eq!(stdout, "main returned 42\n");
 }
+
+#[test]
+fn printed_floats_reach_the_host_as_floats() {
+    let Some(stdout) = run_wasm_main(
+        "floats",
+        "fn @main() -> i64 {\nentry:\n %a = add.f64 1.5, 2.25\n print %a\n %b = add.f32 0.5, 0.25\n print %b\n ret.i64 0\n}",
+        0,
+    ) else {
+        return;
+    };
+    assert!(
+        stdout.starts_with("3.75\n0.75\n"),
+        "unexpected output: {stdout}"
+    );
+}
