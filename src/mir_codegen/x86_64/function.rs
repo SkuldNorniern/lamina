@@ -259,13 +259,13 @@ pub(super) fn compile_single_function_x86_64(
                                 continue;
                             }
                             writeln!(output, "    movq {source}, {destination}")
-                                .map_err(|e| io_codegen_error(e))?;
+                                .map_err(io_codegen_error)?;
                         }
                         ArgLocation::Xmm(xmm) => {
                             writeln!(output, "{}", move_xmm_to_rax(&param.ty, xmm))
                                 .map_err(io_codegen_error)?;
                             store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
-                                .map_err(|e| io_codegen_error(e))?;
+                                .map_err(io_codegen_error)?;
                         }
                         ArgLocation::Stack(stack_index) => {
                             // Saved rbp and the return address sit at rbp+0 and rbp+8;
@@ -278,9 +278,9 @@ pub(super) fn compile_single_function_x86_64(
                             };
                             let caller_off = 16 + home + (stack_index as i32) * 8;
                             writeln!(output, "    movq {caller_off}(%rbp), %rax")
-                                .map_err(|e| io_codegen_error(e))?;
+                                .map_err(io_codegen_error)?;
                             store_rax_to_register(vreg, &mut output, &reg_alloc, &stack_slots)
-                                .map_err(|e| io_codegen_error(e))?;
+                                .map_err(io_codegen_error)?;
                         }
                     }
                 }
@@ -450,7 +450,7 @@ pub(super) fn compile_single_function_x86_64(
                         .map_err(io_codegen_error)?;
                     if false_target != next_label {
                         writeln!(output, "    jmp .L_{func_name}.{false_target}")
-                            .map_err(|e| io_codegen_error(e))?;
+                            .map_err(io_codegen_error)?;
                     }
                 }
                 if !scratch.is_empty() && scratch != "rbx" {
