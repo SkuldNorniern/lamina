@@ -482,6 +482,18 @@ enum PpcArgPlace {
 /// f1 to f13 carry floats.
 const FLOAT_ARGUMENT_REGISTERS: usize = 13;
 
+/// Flushes every stream after a print.
+///
+/// The print intrinsics go through buffered `printf` while the byte intrinsics write
+/// straight out, so without this the two leave in a different order here than on the
+/// other backends.
+fn emit_flush<W: Write>(writer: &mut W) -> Result<(), LaminaError> {
+    writeln!(writer, "    li 3, 0")?;
+    writeln!(writer, "    bl fflush")?;
+    writeln!(writer, "    nop")?;
+    Ok(())
+}
+
 fn classify_ppc64_arguments(types: &[MirType]) -> Vec<PpcArgPlace> {
     let mut floats = 0;
     types
@@ -1081,6 +1093,7 @@ fn emit_instruction_ppc64<W: Write>(
                     writeln!(writer, "    ld 4, -8(1)")?;
                     writeln!(writer, "    bl printf")?;
                     writeln!(writer, "    nop")?;
+                    emit_flush(writer)?;
                 }
             } else if name == "print" || name == "printu" {
                 if let Some(arg) = args.first() {
@@ -1090,6 +1103,7 @@ fn emit_instruction_ppc64<W: Write>(
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "4")?;
                     writeln!(writer, "    bl printf")?;
                     writeln!(writer, "    nop")?;
+                    emit_flush(writer)?;
                 }
             } else {
                 let types = signatures.arguments(name, args.len());

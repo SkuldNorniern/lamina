@@ -608,6 +608,25 @@ fn fmt_label(call: &str, target_os: TargetOperatingSystem) -> String {
     }
 }
 
+/// Flushes every stream after a print.
+///
+/// The print intrinsics go through buffered `printf` while the byte intrinsics write
+/// straight out, so without this the two leave in a different order here than on the
+/// other backends.
+fn emit_flush<W: Write>(
+    writer: &mut W,
+    abi: &RiscVAbi,
+    target_os: TargetOperatingSystem,
+) -> Result<(), LaminaError> {
+    let fflush = abi.call_stub("fflush").unwrap_or_else(|| match target_os {
+        TargetOperatingSystem::MacOS => "_fflush".to_string(),
+        _ => "fflush".to_string(),
+    });
+    writeln!(writer, "    li a0, 0")?;
+    writeln!(writer, "    call {fflush}")?;
+    Ok(())
+}
+
 /// Name of printf for this target, honouring any stub the ABI prefers.
 fn printf_symbol(abi: &RiscVAbi, target_os: TargetOperatingSystem) -> String {
     abi.call_stub("print").unwrap_or_else(|| match target_os {
@@ -1095,15 +1114,15 @@ fn emit_instruction_riscv<W: Write>(
                         writeln!(writer, "    fcvt.d.s ft0, ft0")?;
                         writeln!(writer, "    fmv.x.d a1, ft0")?;
                     }
-                    let printf_name = printf_symbol(&abi, target_os);
-                    writeln!(writer, "    call {printf_name}")?;
+                    writeln!(writer, "    call {}", printf_symbol(&abi, target_os))?;
+                    emit_flush(writer, &abi, target_os)?;
                 }
             } else if name == "print" || name == "printu" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    la a0, {}", fmt_label(name, target_os))?;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
-                    let printf_name = printf_symbol(&abi, target_os);
-                    writeln!(writer, "    call {printf_name}")?;
+                    writeln!(writer, "    call {}", printf_symbol(&abi, target_os))?;
+                    emit_flush(writer, &abi, target_os)?;
                 }
             } else {
                 // General function call implementation
