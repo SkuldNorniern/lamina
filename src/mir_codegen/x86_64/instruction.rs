@@ -1143,6 +1143,15 @@ pub(super) fn emit_instruction_x86_64(
                 if let Some(offset) = sret_result {
                     writeln!(writer, "    leaq {offset}(%rbp), %{}", arg_regs[0])?;
                 }
+                if target_os != TargetOperatingSystem::Windows
+                    && !abi_extensions.knows_signature(name, args.len())
+                {
+                    let xmm_count = locations
+                        .iter()
+                        .filter(|location| matches!(location, ArgLocation::Xmm(_)))
+                        .count();
+                    writeln!(writer, "    movl ${xmm_count}, %eax")?;
+                }
                 let mangled_name = abi.mangle_function_name(name);
                 writeln!(writer, "    call {mangled_name}")?;
 

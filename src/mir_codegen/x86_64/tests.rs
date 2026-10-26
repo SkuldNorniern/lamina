@@ -6,6 +6,28 @@ use crate::{
 use std::{error::Error as StdError, slice};
 
 #[test]
+fn prototypeless_call_reports_vector_count_in_al() {
+    let ir = parse_module(
+        "fn @known(i64 %a) -> i64 {\nentry:\n    ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n    %k = call @known(1)\n    %u = call @unknown(1)\n    ret.i64 %k\n}\n",
+    )
+    .unwrap();
+    let mir = from_ir(&ir, "al").unwrap();
+    let mut output = Vec::new();
+    generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
+    let assembly = String::from_utf8(output).unwrap();
+
+    let before = |call: &str| -> String {
+        let head = assembly.split(call).next().unwrap();
+        head.lines().rev().take(3).collect::<Vec<_>>().join("\n")
+    };
+    assert!(
+        before("    call unknown").contains("movl $0, %eax"),
+        "{assembly}"
+    );
+    assert!(!before("    call known").contains("%eax"), "{assembly}");
+}
+
+#[test]
 fn rotated_loops_with_shared_exit_branch_back_conditionally() {
     let ir = parse_module(
         r#"
