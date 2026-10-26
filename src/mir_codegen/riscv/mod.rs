@@ -9,7 +9,7 @@ use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
 
 use crate::mir_codegen::common::{
-    CallSignatures, integer_conversion_with_width, print_format_label, writeptr_width,
+    CallSignatures, align_up, integer_conversion_with_width, print_format_label, writeptr_width,
 };
 
 use util::{
@@ -547,6 +547,57 @@ enum RiscVArgPlace {
 /// Floats take the next fa register and integers the next a register, from banks that
 /// run out separately. A float left without an fa register falls back to the integer
 /// bank before the stack, carrying its bits.
+/// Puts each argument where the call expects it and reserves the outgoing stack area,
+/// returning how many bytes of it to release after the call.
+fn pass_riscv_arguments<W: Write>(
+    writer: &mut W,
+    reg_alloc: &mut RiscVRegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+    args: &[Operand],
+    types: &[MirType],
+    target: RiscVTarget,
+) -> Result<usize, LaminaError> {
+    let arg_regs = RiscVAbi::ARG_REGISTERS;
+    let places = classify_riscv_arguments(types);
+    for ((arg, ty), place) in args.iter().zip(types).zip(&places) {
+        match *place {
+            RiscVArgPlace::Gpr(bank) => {
+                load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[bank])?;
+            }
+            RiscVArgPlace::Fpr(bank) => {
+                load_fp_operand_to_register(
+                    arg,
+                    writer,
+                    reg_alloc,
+                    stack_slots,
+                    &format!("fa{bank}"),
+                    ty.size_bytes() == 4,
+                )?;
+            }
+            RiscVArgPlace::Stack(_) => {}
+        }
+    }
+
+    let stack_args = places
+        .iter()
+        .filter(|place| matches!(place, RiscVArgPlace::Stack(_)))
+        .count();
+    if stack_args == 0 {
+        return Ok(0);
+    }
+    let stack_space = align_up(stack_args * target.word_bytes() as usize, 16);
+    RiscVFrame::adjust_sp(writer, -(stack_space as i64))?;
+    for (arg, place) in args.iter().zip(&places) {
+        let RiscVArgPlace::Stack(slot) = *place else {
+            continue;
+        };
+        let offset = slot * target.word_bytes() as usize;
+        load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
+        writeln!(writer, "    {} t0, {offset}(sp)", target.store_word())?;
+    }
+    Ok(stack_space)
+}
+
 /// Format label for a print intrinsic. Mach-O has no local label prefix, so the same
 /// strings are emitted with two leading underscores there.
 fn fmt_label(call: &str, target_os: TargetOperatingSystem) -> String {
@@ -1058,64 +1109,9 @@ fn emit_instruction_riscv<W: Write>(
                 // General function call implementation
                 // RISC-V calling convention: first 8 args in a0-a7, remaining on stack
 
-                let arg_regs = RiscVAbi::ARG_REGISTERS;
                 let types = ctx.signatures.arguments(name, args.len());
-                let places = classify_riscv_arguments(&types);
-                let num_stack_args = places
-                    .iter()
-                    .filter(|place| matches!(place, RiscVArgPlace::Stack(_)))
-                    .count();
-
-                // Pass register arguments, each from the bank its type belongs to.
-                for ((arg, ty), place) in args.iter().zip(&types).zip(&places) {
-                    match *place {
-                        RiscVArgPlace::Gpr(bank) => {
-                            load_operand_to_register(
-                                arg,
-                                writer,
-                                reg_alloc,
-                                stack_slots,
-                                arg_regs[bank],
-                            )?;
-                        }
-                        RiscVArgPlace::Fpr(bank) => {
-                            load_fp_operand_to_register(
-                                arg,
-                                writer,
-                                reg_alloc,
-                                stack_slots,
-                                &format!("fa{bank}"),
-                                ty.size_bytes() == 4,
-                            )?;
-                        }
-                        RiscVArgPlace::Stack(_) => {}
-                    }
-                }
-
-                // Pass stack arguments (16-byte aligned)
-                let stack_space = if num_stack_args > 0 {
-                    // Align to 16 bytes
-                    ((num_stack_args * ctx.target.word_bytes() as usize) + 15) & !15
-                } else {
-                    0
-                };
-
-                if stack_space > 0 {
-                    // Allocate stack space
-                    RiscVFrame::adjust_sp(writer, -(stack_space as i64))?;
-
-                    // Store arguments on stack (in order, starting at sp+0)
-                    for (arg, place) in args.iter().zip(&places) {
-                        let RiscVArgPlace::Stack(slot) = *place else {
-                            continue;
-                        };
-                        let offset = slot * ctx.target.word_bytes() as usize;
-                        // Load argument to a temporary register (use t0)
-                        load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
-                        // Store to stack
-                        writeln!(writer, "    {} t0, {offset}(sp)", ctx.target.store_word())?;
-                    }
-                }
+                let stack_space =
+                    pass_riscv_arguments(writer, reg_alloc, stack_slots, args, &types, ctx.target)?;
 
                 // Resolve function name (check for intrinsic stubs first)
                 let target_sym = if let Some(stub) = abi.call_stub(name) {
@@ -1167,54 +1163,11 @@ fn emit_instruction_riscv<W: Write>(
             let caller_saved_mappings = reg_alloc.caller_saved_mappings(live_vregs);
             spill_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
 
-            let arg_regs = RiscVAbi::ARG_REGISTERS;
-            let places = classify_riscv_arguments(arg_types);
-            let num_stack_args = places
-                .iter()
-                .filter(|place| matches!(place, RiscVArgPlace::Stack(_)))
-                .count();
-            for ((arg, ty), place) in args.iter().zip(arg_types).zip(&places) {
-                match *place {
-                    RiscVArgPlace::Gpr(bank) => {
-                        load_operand_to_register(
-                            arg,
-                            writer,
-                            reg_alloc,
-                            stack_slots,
-                            arg_regs[bank],
-                        )?;
-                    }
-                    RiscVArgPlace::Fpr(bank) => {
-                        load_fp_operand_to_register(
-                            arg,
-                            writer,
-                            reg_alloc,
-                            stack_slots,
-                            &format!("fa{bank}"),
-                            ty.size_bytes() == 4,
-                        )?;
-                    }
-                    RiscVArgPlace::Stack(_) => {}
-                }
-            }
-            let stack_space = if num_stack_args > 0 {
-                ((num_stack_args * ctx.target.word_bytes() as usize) + 15) & !15
-            } else {
-                0
-            };
-            // t1 is a temporary the argument registers never overlap.
+            // t1 is a temporary the argument registers never overlap, so the target
+            // survives the argument setup.
             load_operand_to_register(target, writer, reg_alloc, stack_slots, "t1")?;
-            if stack_space > 0 {
-                RiscVFrame::adjust_sp(writer, -(stack_space as i64))?;
-                for (arg, place) in args.iter().zip(&places) {
-                    let RiscVArgPlace::Stack(slot) = *place else {
-                        continue;
-                    };
-                    let offset = slot * ctx.target.word_bytes() as usize;
-                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
-                    writeln!(writer, "    {} t0, {offset}(sp)", ctx.target.store_word())?;
-                }
-            }
+            let stack_space =
+                pass_riscv_arguments(writer, reg_alloc, stack_slots, args, arg_types, ctx.target)?;
             writeln!(writer, "    jalr t1")?;
             if stack_space > 0 {
                 RiscVFrame::adjust_sp(writer, stack_space as i64)?;
