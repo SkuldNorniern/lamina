@@ -287,6 +287,36 @@ dealloc.heap %hptr
 %value = load.i32 %elem_ptr
 ```
 
+### Conversions
+
+```
+# Between integer widths
+%wide = sext.i32.i64 %narrow
+%narrow = trunc.i64.i32 %wide
+
+# Between integers and floats
+%f = sitofp.i64.f64 %i
+%i = fptosi.f64.i64 %f
+
+# Between float widths
+%d = fpext.f32.f64 %s
+%s = fptrunc.f64.f32 %d
+```
+
+### Unary Operations
+
+```
+%negated = neg.i64 %x      # also f32 and f64
+%flipped = not.u32 %mask
+%root = sqrt.f64 %x
+```
+
+### Function Pointers
+
+```
+%f = funcaddr @twice
+%r = callptr.i64 %f(%v)
+```
 
 ## Future Directions
 
