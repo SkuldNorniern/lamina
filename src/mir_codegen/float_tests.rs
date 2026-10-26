@@ -7,7 +7,6 @@ use std::{
 };
 
 #[test]
-#[cfg(all(target_arch = "x86_64", target_os = "linux"))]
 fn float_comparisons_match_gcc() -> Result<(), Box<dyn Error>> {
     let dir = temp_dir().join(format!("lamina-float-comparisons-{}", process::id()));
     fs::create_dir_all(&dir)?;
