@@ -276,15 +276,8 @@ fn compile_single_function_aarch64_with(
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
     let mut ra_pro = A64RegAlloc::new();
-    let s0 = ra_pro.alloc_scratch().unwrap_or("x19");
-    let s1 = ra_pro.alloc_scratch().unwrap_or("x20");
-    if s0 != "x29" || s1 != "x30" {
-        writeln!(output, "    stp x29, x30, [sp, #-16]!")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    } else {
-        writeln!(output, "    stp {s0}, {s1}, [sp, #-16]!")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    }
+    writeln!(output, "    stp x29, x30, [sp, #-16]!")
+        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
     writeln!(output, "    mov x29, sp")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 

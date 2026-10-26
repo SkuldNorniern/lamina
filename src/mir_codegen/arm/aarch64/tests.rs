@@ -392,8 +392,19 @@ fn integer_aggregates_use_consecutive_x_registers() -> Result<(), Box<dyn Error>
         .and_then(|body| body.split(".L_wide.entry:").next())
         .ok_or("missing wide prologue")?;
     assert!(!wide.contains("str x7, "), "{assembly}");
-    assert!(wide.contains("ldr x11, [x29, #16]"), "{assembly}");
-    assert!(wide.contains("ldr x11, [x29, #24]"), "{assembly}");
+    let loaded: Vec<&str> = wide
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("ldr ") && line.contains("[x29, #"))
+        .collect();
+    assert!(
+        loaded.iter().any(|line| line.ends_with("[x29, #16]")),
+        "{assembly}"
+    );
+    assert!(
+        loaded.iter().any(|line| line.ends_with("[x29, #24]")),
+        "{assembly}"
+    );
     Ok(())
 }
 
@@ -473,5 +484,24 @@ fn integer_aggregate_returns_come_back_in_x0_and_x1() -> Result<(), Box<dyn Erro
         after.contains(&format!("str x1, [{home}, #8]")),
         "{assembly}"
     );
+    Ok(())
+}
+
+#[test]
+fn stack_aggregate_prologue_keeps_off_callee_saved_registers() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ir = "fn @big(i64 %p0, i64 %p1, i64 %p2, i64 %p3, i64 %p4, i64 %p5, i64 %p6, i64 %p7, struct { a: i64, b: i64, c: i64, d: i64 } %q) -> i64 {\nentry:\n  %qa = getfieldptr %q, 0\n  %a = load.i64 %qa\n  ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64, c: i64, d: i64 }\n  %r = call @big(1, 2, 3, 4, 5, 6, 7, 8, %q)\n  ret.i64 %r\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir(&module, "stack_aggregate").expect("lower aggregate");
+    let mut output = Vec::new();
+    generate_mir_aarch64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    let assembly = String::from_utf8(output)?;
+
+    for index in 19..=28 {
+        assert!(
+            !assembly.contains(&format!("x{index},")) && !assembly.contains(&format!("x{index}]")),
+            "x{index} used without a save: {assembly}"
+        );
+    }
     Ok(())
 }
