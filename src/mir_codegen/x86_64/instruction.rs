@@ -1144,7 +1144,7 @@ pub(super) fn emit_instruction_x86_64(
                     writeln!(writer, "    leaq {offset}(%rbp), %{}", arg_regs[0])?;
                 }
                 if target_os != TargetOperatingSystem::Windows
-                    && !abi_extensions.knows_signature(name, args.len())
+                    && abi_extensions.may_be_variadic(name, args.len())
                 {
                     let xmm_count = locations
                         .iter()

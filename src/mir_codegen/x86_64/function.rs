@@ -768,6 +768,7 @@ pub(super) struct AbiExtensions {
     parameter_aggregates: HashMap<String, Vec<Option<Aggregate>>>,
     return_aggregates: HashMap<String, Aggregate>,
     return_types: HashMap<String, MirType>,
+    external: HashSet<String>,
 }
 
 impl AbiExtensions {
@@ -828,6 +829,7 @@ impl AbiExtensions {
             parameter_aggregates,
             return_types,
             return_aggregates,
+            external: module.external_functions.iter().cloned().collect(),
         }
     }
 
@@ -876,13 +878,15 @@ impl AbiExtensions {
             .collect()
     }
 
-    /// Whether the callee's parameter list is known to match the call. A mismatch means
-    /// the callee is undeclared or variadic, and the caller must meet the variadic
-    /// convention.
-    pub(super) fn knows_signature(&self, callee: &str, count: usize) -> bool {
-        self.parameter_types
-            .get(callee)
-            .is_some_and(|types| types.len() == count)
+    /// Whether the callee may read its arguments the way a variadic C function does. A
+    /// parameter list that does not match the call means the callee is undeclared, and a
+    /// declared external may be variadic behind a fixed prototype.
+    pub(super) fn may_be_variadic(&self, callee: &str, count: usize) -> bool {
+        self.external.contains(callee)
+            || !self
+                .parameter_types
+                .get(callee)
+                .is_some_and(|types| types.len() == count)
     }
 
     pub(super) fn return_aggregate(&self, callee: &str) -> Option<Aggregate> {
