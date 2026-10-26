@@ -413,12 +413,12 @@ fn validate_rv32_i64(module: &MirModule, target: RiscVTarget) -> Result<(), Lami
     let has_i64_global = module.globals.values().any(|global| i64_type(&global.ty));
     let has_i64_function = module.functions.values().any(|function| {
         function.sig.params.iter().any(|param| i64_type(&param.ty))
-            || function.sig.ret_ty.as_ref().is_some_and(&i64_type)
+            || function.sig.ret_ty.as_ref().is_some_and(i64_type)
             || function.blocks.iter().any(|block| {
                 block
                     .instructions
                     .iter()
-                    .any(|i| instruction_type(i).is_some_and(&i64_type)
+                    .any(|i| instruction_type(i).is_some_and(i64_type)
                         || matches!(i, MirInst::IntConvert { from, to, .. } if i64_type(from) || i64_type(to)))
             })
     });
