@@ -424,11 +424,11 @@ fn global_addresses(module: &MirModule) -> Result<BTreeMap<String, u32>, LaminaE
     let mut next = WASM_GLOBAL_BASE;
     for name in names {
         let global = &module.globals[name];
-        let align = u32::try_from(global.ty.alignment())
+        let align = u32::try_from(global.align)
             .map_err(|_| LaminaError::ValidationError("global alignment overflow".into()))?;
         next = next.div_ceil(align) * align;
         addresses.insert(name.to_string(), next);
-        let size = u32::try_from(global.ty.size_bytes())
+        let size = u32::try_from(global.size)
             .map_err(|_| LaminaError::ValidationError("global size overflow".into()))?;
         next = next
             .checked_add(size)

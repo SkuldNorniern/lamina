@@ -18,7 +18,7 @@ use crate::{
         instruction::{AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst},
         types::{
             Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
-            resolve_type_names, sizeof_type,
+            align_of_type, resolve_type_names, sizeof_type,
         },
     },
     mir::{
@@ -152,12 +152,27 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
     let mut mir_module = Module::new(name);
 
     for (global_name, decl) in &ir.global_declarations {
-        let ty = map_ir_type(&decl.ty)?;
-        let initializer = global_initializer(global_name, ty, decl.initializer.as_ref())?;
-        let mut global = Global::new(*global_name, ty);
-        if let Some(bytes) = initializer {
-            global = global.with_initializer(bytes);
-        }
+        let resolved = resolve_type_names(&decl.ty, &ir.type_declarations)
+            .ok_or(FromIRError::UnsupportedType)?;
+        let mut global = if is_aggregate(&resolved) {
+            let size = sizeof_type(&resolved).ok_or(FromIRError::UnsupportedType)? as usize;
+            let align = align_of_type(&resolved) as usize;
+            let bytes =
+                aggregate_global_bytes(global_name, &resolved, size, decl.initializer.as_ref())?;
+            let mut global = Global::new(*global_name, MirType::i8()).with_layout(size, align);
+            if let Some(bytes) = bytes {
+                global = global.with_initializer(bytes);
+            }
+            global
+        } else {
+            let ty = map_ir_type(&resolved)?;
+            let initializer = global_initializer(global_name, ty, decl.initializer.as_ref())?;
+            let mut global = Global::new(*global_name, ty);
+            if let Some(bytes) = initializer {
+                global = global.with_initializer(bytes);
+            }
+            global
+        };
         if decl.exported {
             global = global.exported();
         }
@@ -255,6 +270,45 @@ fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'
         }
     }
     names
+}
+
+/// Bytes for an aggregate global. Only a string literal in a byte array carries data
+/// today; every other aggregate starts zeroed.
+fn aggregate_global_bytes(
+    name: &str,
+    ty: &IRType<'_>,
+    size: usize,
+    value: Option<&IRVal<'_>>,
+) -> Result<Option<Vec<u8>>, FromIRError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let IRVal::Constant(IRLit::String(text)) = value else {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} needs a string literal initializer; other aggregate initializers are not supported yet"
+        )));
+    };
+    let element_is_byte = matches!(
+        ty,
+        IRType::Array { element_type, .. }
+            if matches!(
+                element_type.as_ref(),
+                IRType::Primitive(IRPrim::I8 | IRPrim::U8 | IRPrim::Char | IRPrim::Bool)
+            )
+    );
+    if !element_is_byte {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} takes a string literal only in a byte array"
+        )));
+    }
+    if text.len() >= size {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} holds {size} bytes, too few for \"{text}\" and its terminator"
+        )));
+    }
+    let mut bytes = text.as_bytes().to_vec();
+    bytes.resize(size, 0);
+    Ok(Some(bytes))
 }
 
 fn global_initializer(
@@ -1428,13 +1482,7 @@ fn convert_instruction<'a>(
             field_index,
             field_byte_offset,
         } => {
-            let base = match struct_ptr {
-                IRVal::Variable(id) => var_to_reg
-                    .get(id)
-                    .cloned()
-                    .ok_or(FromIRError::UnknownVariable)?,
-                _ => return Err(FromIRError::UnsupportedInstruction),
-            };
+            let base = pointer_base(struct_ptr, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             // Use the pre-computed ABI-correct offset when available; otherwise
             // fall back to a fixed 8-byte-per-field stride (preserves behaviour
@@ -1451,13 +1499,7 @@ fn convert_instruction<'a>(
             element_type,
         } => {
             // Constant-index GEP -> single LEA; variable index currently unsupported in MIR single-op model
-            let base = match array_ptr {
-                IRVal::Variable(id) => var_to_reg
-                    .get(id)
-                    .cloned()
-                    .ok_or(FromIRError::UnknownVariable)?,
-                _ => return Err(FromIRError::UnsupportedInstruction),
-            };
+            let base = pointer_base(array_ptr, vreg_alloc, var_to_reg, globals)?;
             let elem_size = sizeof_type(element_type)
                 .and_then(|size| i64::try_from(size).ok())
                 .ok_or(FromIRError::UnsupportedInstruction)?;
@@ -1843,6 +1885,24 @@ fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
     Ok(imm)
 }
 
+/// Register holding the address a field or element offset applies to. A global name
+/// resolves to its symbol address, the same register `load` and `store` use.
+fn pointer_base<'a>(
+    ptr: &IRVal<'a>,
+    vreg_alloc: &mut VirtualRegAllocator,
+    var_to_reg: &HashMap<&'a str, Register>,
+    globals: &mut GlobalAddresses<'a>,
+) -> Result<Register, FromIRError> {
+    match ptr {
+        IRVal::Variable(id) => var_to_reg
+            .get(id)
+            .cloned()
+            .ok_or(FromIRError::UnknownVariable),
+        IRVal::Global(name) => globals.register(name, vreg_alloc),
+        IRVal::Constant(_) => Err(FromIRError::UnsupportedInstruction),
+    }
+}
+
 fn operand_type(operand: &Operand, types: &HashMap<Register, MirType>) -> MirType {
     match operand {
         Operand::Register(register) => types.get(register).copied().unwrap_or(MirType::i64()),
@@ -1926,12 +1986,21 @@ mod tests {
     }
 
     #[test]
-    fn array_global_is_rejected_cleanly() {
-        let error = lowered_global_module(
+    fn string_global_keeps_its_bytes_and_layout() {
+        let module = lowered_global_module(
             "global @s: [4 x i8] = \"abc\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
         )
-        .expect_err("array global");
-        assert!(matches!(error, FromIRError::UnsupportedType));
+        .expect("string global");
+        let global = &module.globals["s"];
+        assert_eq!(global.initializer.as_deref(), Some(&b"abc\0"[..]));
+        assert_eq!(global.size, 4);
+        assert_eq!(global.align, 1);
+
+        let error = lowered_global_module(
+            "global @s: [3 x i8] = \"abc\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        )
+        .expect_err("string without room for its terminator");
+        assert!(matches!(error, FromIRError::UnsupportedGlobal(_)));
     }
 
     use crate::mir::TransformPipeline;

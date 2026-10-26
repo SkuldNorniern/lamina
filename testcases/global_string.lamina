@@ -1,0 +1,26 @@
+global @greeting: [6 x i8] = "hello"
+global @blank: [4 x i8]
+
+fn @main() -> i64 {
+entry:
+ %p = getelem.ptr @greeting, 0, i8
+ write %p, 5, n
+ %nl = writebyte 10
+ print %n
+ %c = load.i8 %p
+ %cw = sext.i8.i64 %c
+ print %cw
+ %p4 = getelem.ptr @greeting, 4, i8
+ %c4 = load.i8 %p4
+ %c4w = sext.i8.i64 %c4
+ print %c4w
+ %b = getelem.ptr @blank, 0, i8
+ %z = load.i8 %b
+ %zw = sext.i8.i64 %z
+ print %zw
+ store.i8 %b, 90
+ %z2 = load.i8 %b
+ %z2w = sext.i8.i64 %z2
+ print %z2w
+ ret.i64 0
+}
