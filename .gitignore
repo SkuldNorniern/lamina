@@ -152,6 +152,35 @@ benchmarks/*/_*
 # lamina-c example binaries
 /lamina-c/examples/builder_aot
 /lamina-c/examples/raw_ir
+/aggregate_memory_params
+/aggregate_mixed_args
+/aggregate_params
+/aggregate_sret_return
+/binary_op_rhs_in_destination
+/char_signedness
+/extern_declarations
+/float_exponent_literals
+/float_width_conversions
+/fptosi_conversions
+/fptoui_conversions
+/function_pointers
+/global_element_list
+/global_string
+/global_struct_init
+/globals_address
+/globals_export
+/globals_float
+/globals_int
+/globals_zero_init
+/io_write
+/memory_intrinsics
+/print_float
+/print_unsigned
+/sitofp_conversions
+/switch_dispatch
+/tail_stack_address
+/uitofp_conversions
+/unary_ops
 
 # Local-only cargo config (points lamina-ras at the sibling ras checkout)
 .cargo/
