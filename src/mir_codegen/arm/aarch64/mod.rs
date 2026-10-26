@@ -345,9 +345,25 @@ fn compile_single_function_aarch64_with(
         frame.frame_size
     };
 
+    // aapcs64 hands a composite over 16 bytes back through the caller's buffer,
+    // whose address arrives in x8. It has to outlive the calls the body makes.
+    let sret_slot = func
+        .sig
+        .ret_aggregate
+        .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE)
+        .map(|_| -adjusted_frame_size - 8);
+    let adjusted_frame_size = match sret_slot {
+        Some(_) => adjusted_frame_size + 16,
+        None => adjusted_frame_size,
+    };
+
     frame.frame_size = adjusted_frame_size;
     if adjusted_frame_size > 0 {
         emit_sp_adjust(&mut output, "sub", adjusted_frame_size as u64)
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+    }
+    if let Some(offset) = sret_slot {
+        emit_frame_slot_store(&mut output, "x8", offset)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
 
@@ -605,6 +621,7 @@ fn compile_single_function_aarch64_with(
                         signatures,
                         func.sig.ret_aggregate,
                         func.sig.ret_ty.filter(|ty| ty.is_float()),
+                        sret_slot,
                     )?;
                 }
                 position += 1;
@@ -714,6 +731,7 @@ fn emit_block<W: Write>(
     signatures: &AggregateSignatures,
     ret_aggregate: Option<Aggregate>,
     ret_float: Option<MirType>,
+    sret_slot: Option<i32>,
 ) -> Result<(), LaminaError> {
     for inst in insts {
         if settings.emit_asm_debug_lines {
@@ -753,6 +771,7 @@ fn emit_block<W: Write>(
                         signatures,
                         ret_aggregate,
                         ret_float,
+                        sret_slot,
                     )?;
                 }
             }
@@ -1592,7 +1611,15 @@ fn emit_block<W: Write>(
                     let target_sym: String = abi
                         .call_stub(name)
                         .unwrap_or_else(|| abi.mangle_function_name(name));
-                    writeln!(w, "    mov x8, xzr")?;
+                    match signatures
+                        .result(name)
+                        .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE)
+                        .and(ret.as_ref())
+                        .and_then(|dst| frame.slot_of(dst))
+                    {
+                        Some(off) => emit_frame_slot_address(w, "x8", off)?,
+                        None => writeln!(w, "    mov x8, xzr")?,
+                    }
                     writeln!(w, "    bl {target_sym}")?;
 
                     if stack_space > 0 {
@@ -1612,8 +1639,9 @@ fn emit_block<W: Write>(
                     } else if let Some(dst) = ret {
                         match signatures.result(name) {
                             // The result register names the slot the words land in; the
-                            // body addresses it with a stack address of its own.
-                            Some(aggregate) => {
+                            // body addresses it with a stack address of its own. A large
+                            // one was written through x8 by the callee already.
+                            Some(aggregate) if aggregate.size as u64 <= MAX_REGISTER_AGGREGATE => {
                                 let off = frame.slot_of(dst).ok_or_else(|| {
                                     LaminaError::ValidationError(
                                         "aggregate result has no frame slot".to_string(),
@@ -1627,6 +1655,7 @@ fn emit_block<W: Write>(
                                 }
                                 ra.free_scratch(addr);
                             }
+                            Some(_) => {}
                             None => store_result(w, dst, "x0", frame, ra)?,
                         }
                     }
@@ -1690,10 +1719,21 @@ fn emit_block<W: Write>(
                         Some(aggregate) => {
                             let addr = ra.alloc_scratch().unwrap_or("x9");
                             emit_materialize_operand(w, v, addr, frame, ra)?;
-                            if aggregate.words() > 1 {
-                                writeln!(w, "    ldr x1, [{addr}, #8]")?;
+                            match sret_slot {
+                                Some(offset) => {
+                                    let buffer = ra.alloc_scratch().unwrap_or("x10");
+                                    emit_frame_slot_load(w, buffer, offset)?;
+                                    copy_through_pointer(w, addr, buffer, aggregate.words(), ra)?;
+                                    writeln!(w, "    mov x0, {buffer}")?;
+                                    ra.free_scratch(buffer);
+                                }
+                                None => {
+                                    if aggregate.words() > 1 {
+                                        writeln!(w, "    ldr x1, [{addr}, #8]")?;
+                                    }
+                                    writeln!(w, "    ldr x0, [{addr}]")?;
+                                }
                             }
-                            writeln!(w, "    ldr x0, [{addr}]")?;
                             ra.free_scratch(addr);
                         }
                         None => emit_materialize_operand(w, v, "x0", frame, ra)?,
@@ -1989,6 +2029,34 @@ fn emit_sp_adjust<W: Write>(w: &mut W, op: &str, amount: u64) -> Result<(), Lami
     } else {
         emit_mov_imm64(w, "x16", amount)?;
         writeln!(w, "    {op} sp, sp, x16")?;
+    }
+    Ok(())
+}
+
+/// Stores a register into a frame slot, going through a scratch when the offset is
+/// past the reach of `stur`.
+fn emit_frame_slot_store<W: Write>(
+    w: &mut W,
+    source: &str,
+    offset: i32,
+) -> Result<(), LaminaError> {
+    if (-256..=255).contains(&offset) {
+        writeln!(w, "    stur {source}, [x29, #{offset}]")?;
+    } else {
+        emit_frame_slot_address(w, "x16", offset)?;
+        writeln!(w, "    str {source}, [x16]")?;
+    }
+    Ok(())
+}
+
+/// Loads a frame slot into a register, going through a scratch when the offset is
+/// past the reach of `ldur`.
+fn emit_frame_slot_load<W: Write>(w: &mut W, dest: &str, offset: i32) -> Result<(), LaminaError> {
+    if (-256..=255).contains(&offset) {
+        writeln!(w, "    ldur {dest}, [x29, #{offset}]")?;
+    } else {
+        emit_frame_slot_address(w, dest, offset)?;
+        writeln!(w, "    ldr {dest}, [{dest}]")?;
     }
     Ok(())
 }
