@@ -110,7 +110,7 @@ def load_expected_output(test_path):
 
     if test_path.name == 'io_types.lamina':
         with open(expected_path, 'rb') as f:
-            return f.read()
+            return f.read().replace(b"\r\n", b"\n")
 
     with open(expected_path, 'rb') as f:
         text = f.read().decode('utf-8', errors='replace')
@@ -141,7 +141,7 @@ def run_raw_output(executable_path, project_root):
             result.stderr.decode('utf-8', errors='replace'),
             result.returncode,
         )
-    return True, result.stdout
+    return True, result.stdout.replace(b"\r\n", b"\n")
 
 def compile_and_run_test(test_path, use_mir=False):
     """Compile and run a test case, return the output lines"""
@@ -214,7 +214,7 @@ def compile_and_run_test(test_path, use_mir=False):
 
 def run_tests(use_mir=False):
     """Run all test cases and report results"""
-    mode = "MIR Codegen" if use_mir else "Legacy Codegen"
+    mode = "MIR assembly" if use_mir else "default"
     print_colored(f"🧪 Running Lamina Test Suite ({mode})", Colors.BOLD + Colors.BLUE)
     print_colored("=" * 50, Colors.BLUE)
     
