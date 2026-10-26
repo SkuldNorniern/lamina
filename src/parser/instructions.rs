@@ -3,8 +3,8 @@
 use crate::{
     LaminaError,
     ir::{
-        AllocType, BinaryOp, CmpOp, Identifier, Instruction, Literal, PrimitiveType, Type, Value,
-        types::sizeof_type,
+        AllocType, BinaryOp, CmpOp, Identifier, Instruction, Literal, PrimitiveType, Type, UnaryOp,
+        Value, types::sizeof_type,
     },
     parser::{state::ParserState, types::parse_type, values::parse_value},
 };
@@ -24,6 +24,7 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "add" | "sub" | "mul" | "div" | "rem" | "and" | "or" | "xor" | "shl" | "shr" => {
                 parse_binary_op(state, result, opcode_str)
             }
+            "neg" | "not" | "sqrt" => parse_unary_op(state, result, opcode_str),
             "eq" | "ne" | "gt" | "ge" | "lt" | "le" => parse_cmp_op(state, result, opcode_str),
             "zext" => parse_zext(state, result),
             "trunc" => parse_trunc(state, result),
@@ -160,6 +161,36 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
 fn parse_type_suffix<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.expect_char('.')?;
     parse_type(state) // Can be any type after the dot
+}
+
+fn parse_unary_op<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+    op_str: &str,
+) -> Result<Instruction<'a>, LaminaError> {
+    let op = match op_str {
+        "neg" => UnaryOp::Neg,
+        "not" => UnaryOp::Not,
+        _ => UnaryOp::Sqrt,
+    };
+    let ty = parse_primitive_type_suffix(state)?;
+    let float = matches!(ty, PrimitiveType::F32 | PrimitiveType::F64);
+    match op {
+        UnaryOp::Not if float => {
+            return Err(state.error(format!("not takes an integer type, found {ty}")));
+        }
+        UnaryOp::Sqrt if !float => {
+            return Err(state.error(format!("sqrt takes f32 or f64, found {ty}")));
+        }
+        _ => {}
+    }
+    let value = narrow_float_literal(parse_value(state)?, ty);
+    Ok(Instruction::Unary {
+        op,
+        result,
+        ty,
+        value,
+    })
 }
 
 fn parse_binary_op<'a>(

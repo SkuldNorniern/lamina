@@ -294,6 +294,40 @@ impl fmt::Display for BinaryOp {
     }
 }
 
+/// Operations on a single value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOp {
+    /// Arithmetic negation: `result = -value`. Integer results wrap, so negating
+    /// the minimum of a signed type yields that minimum again. On a float this
+    /// flips the sign bit, including on NaN and on zero.
+    Neg,
+    /// Bitwise complement: `result = !value`. Integer types only.
+    Not,
+    /// Square root, rounded to nearest with ties to even. Float types only.
+    /// A negative input other than `-0.0` yields NaN.
+    Sqrt,
+}
+
+impl UnaryOp {
+    pub fn all_names() -> &'static [&'static str] {
+        &["neg", "not", "sqrt"]
+    }
+
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            UnaryOp::Neg => "neg",
+            UnaryOp::Not => "not",
+            UnaryOp::Sqrt => "sqrt",
+        }
+    }
+}
+
+impl fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 /// Comparison operations that produce boolean results.
 ///
 /// These operations compare two values and return a boolean indicating
@@ -408,6 +442,17 @@ pub enum Instruction<'a> {
         ty: PrimitiveType,
         lhs: Value<'a>,
         rhs: Value<'a>,
+    },
+    /// Apply an operation to one value.
+    ///
+    /// # Preconditions
+    /// - `value` must have type `ty`.
+    /// - `Not` takes an integer type, `Sqrt` a float type, `Neg` either.
+    Unary {
+        op: UnaryOp,
+        result: Identifier<'a>,
+        ty: PrimitiveType,
+        value: Value<'a>,
     },
     /// Compare two values and produce a boolean result.
     ///
@@ -891,6 +936,9 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "fptoui",
         "fpext",
         "fptrunc",
+        "neg",
+        "not",
+        "sqrt",
         "select",
         // Memory operations (from Instruction::Alloc, Instruction::Load, etc.)
         "alloc",
@@ -951,6 +999,9 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "fptoui",
         "fpext",
         "fptrunc",
+        "neg",
+        "not",
+        "sqrt",
         "select",
         "alloc",
         "load",
@@ -1036,6 +1087,7 @@ impl<'a> Instruction<'a> {
             | Instruction::IntToFloat { result, .. }
             | Instruction::FloatToInt { result, .. }
             | Instruction::FloatConvert { result, .. }
+            | Instruction::Unary { result, .. }
             | Instruction::Select { result, .. }
             | Instruction::GetElemPtr { result, .. }
             | Instruction::GetFieldPtr { result, .. }
@@ -1094,7 +1146,8 @@ impl<'a> Instruction<'a> {
             | Instruction::Bitcast { value, .. }
             | Instruction::IntToFloat { value, .. }
             | Instruction::FloatToInt { value, .. }
-            | Instruction::FloatConvert { value, .. } => push_value(value, &mut vars),
+            | Instruction::FloatConvert { value, .. }
+            | Instruction::Unary { value, .. } => push_value(value, &mut vars),
             Instruction::Call { args, .. } => {
                 for arg in args {
                     push_value(arg, &mut vars);
@@ -1227,6 +1280,12 @@ impl fmt::Display for Instruction<'_> {
                 };
                 write!(f, "%{result} = {op}.{source_type}.{target_type} {value}")
             }
+            Instruction::Unary {
+                op,
+                result,
+                ty,
+                value,
+            } => write!(f, "%{result} = {op}.{ty} {value}"),
             Instruction::Switch {
                 ty,
                 value,
