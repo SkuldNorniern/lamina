@@ -1125,7 +1125,9 @@ fn emit_instruction_ppc64<W: Write>(
             } else {
                 let types = signatures.arguments(name, args.len());
                 let places = classify_ppc64_arguments(&types);
-                for ((arg, ty), place) in args.iter().zip(&types).zip(&places) {
+                let shadow_floats = signatures.may_be_variadic(name, args.len());
+                for (index, ((arg, ty), place)) in args.iter().zip(&types).zip(&places).enumerate()
+                {
                     match *place {
                         PpcArgPlace::Gpr(bank) => {
                             load_operand_to_register(
@@ -1145,6 +1147,12 @@ fn emit_instruction_ppc64<W: Write>(
                                 &bank.to_string(),
                                 ty.size_bytes() == 4,
                             )?;
+                            // ELFv2 hands a variadic callee its floats in both banks, and
+                            // the callee reads whichever one its va_arg takes.
+                            if shadow_floats && index < arg_regs.len() {
+                                writeln!(writer, "    stfd {bank}, -8(1)")?;
+                                writeln!(writer, "    ld {}, -8(1)", arg_regs[index])?;
+                            }
                         }
                         PpcArgPlace::Stack => {}
                     }

@@ -622,3 +622,32 @@ fn global_allocation_spills_values_that_outlive_a_call() -> Result<(), Box<dyn E
     }
     Ok(())
 }
+
+#[test]
+fn variadic_callee_receives_floats_in_both_banks() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ir = "@extern\nfn @printf(ptr %fmt, f64 %x) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(ptr %fmt, f64 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.ptr @fmt, 0, i8\n  %c = call @printf(%p, 2.5)\n  %d = call @sink(%p, 2.5)\n  ret.i64 0\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir(&module, "variadic").expect("lower extern call");
+    let mut output = Vec::new();
+    generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    let assembly = String::from_utf8(output)?;
+
+    let before = |call: &str| -> String {
+        assembly
+            .split(call)
+            .next()
+            .unwrap_or_default()
+            .lines()
+            .rev()
+            .take(4)
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    assert!(
+        before("    bl printf").contains("ld 4, -8(1)"),
+        "{assembly}"
+    );
+    assert!(!before("    bl sink").contains("ld 4, -8(1)"), "{assembly}");
+    Ok(())
+}

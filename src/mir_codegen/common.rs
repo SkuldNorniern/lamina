@@ -581,6 +581,7 @@ pub fn emit_global_data<W: Write>(
 pub struct CallSignatures {
     params: HashMap<String, Vec<MirType>>,
     returns: HashMap<String, MirType>,
+    external: HashSet<String>,
 }
 
 impl CallSignatures {
@@ -596,7 +597,19 @@ impl CallSignatures {
                 .iter()
                 .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_ty?)))
                 .collect(),
+            external: module.external_functions.iter().cloned().collect(),
         }
+    }
+
+    /// Whether the callee may read its arguments the way a variadic C function does. A
+    /// parameter list that does not match the call means the callee is undeclared, and a
+    /// declared external may be variadic behind a fixed prototype.
+    pub fn may_be_variadic(&self, callee: &str, count: usize) -> bool {
+        self.external.contains(callee)
+            || !self
+                .params
+                .get(callee)
+                .is_some_and(|types| types.len() == count)
     }
 
     /// An undeclared callee has no signature, so its arguments pass as integers.
