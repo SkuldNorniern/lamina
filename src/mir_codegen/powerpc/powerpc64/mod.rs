@@ -1205,6 +1205,75 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             }
         }
+        MirInst::CallIndirect {
+            target,
+            arg_types,
+            args,
+            ret,
+            ret_ty,
+        } => {
+            let arg_regs = Ppc64Abi::ARG_REGISTERS;
+            let places = classify_ppc64_arguments(arg_types);
+            for ((arg, ty), place) in args.iter().zip(arg_types).zip(&places) {
+                match *place {
+                    PpcArgPlace::Gpr(bank) => {
+                        load_operand_to_register(
+                            arg,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            arg_regs[bank],
+                        )?;
+                    }
+                    PpcArgPlace::Fpr(bank) => {
+                        emit_load_fp_operand(
+                            arg,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            &bank.to_string(),
+                            ty.size_bytes() == 4,
+                        )?;
+                    }
+                    PpcArgPlace::Stack => {}
+                }
+            }
+            // ELFv2 wants the entry point in r12, and the global entry sequence
+            // rebuilds r2 from it.
+            load_operand_to_register(target, writer, reg_alloc, stack_slots, "12")?;
+            let outgoing = outgoing_frame_size(args.len())?;
+            if let Some(frame) = outgoing {
+                writeln!(writer, "    stdu 1, -{frame}(1)")?;
+                let moved = biased_slots(stack_slots, frame as i32);
+                for ((index, arg), place) in args.iter().enumerate().zip(&places) {
+                    if !matches!(place, PpcArgPlace::Stack) {
+                        continue;
+                    }
+                    load_operand_to_register(arg, writer, reg_alloc, &moved, "11")?;
+                    r1_mem(writer, "std", "11", parameter_save_offset(index))?;
+                }
+            }
+            writeln!(writer, "    std 2, 24(1)")?;
+            writeln!(writer, "    mtctr 12")?;
+            writeln!(writer, "    bctrl")?;
+            writeln!(writer, "    ld 2, 24(1)")?;
+            if let Some(frame) = outgoing {
+                writeln!(writer, "    addi 1, 1, {frame}")?;
+            }
+            if let Some(Register::Virtual(vreg)) = ret {
+                match ret_ty {
+                    Some(ty) if ty.is_float() => emit_store_fp_result(
+                        "1",
+                        vreg,
+                        writer,
+                        reg_alloc,
+                        stack_slots,
+                        ty.size_bytes() == 4,
+                    )?,
+                    _ => store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?,
+                }
+            }
+        }
         MirInst::TailCall { name, args } => {
             if name == "writeptr" {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(

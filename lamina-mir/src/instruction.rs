@@ -730,6 +730,16 @@ pub enum Instruction {
         ret: Option<Register>,
     },
 
+    /// Call through a pointer. The argument and return types travel with the
+    /// instruction because there is no callee name to look a signature up by.
+    CallIndirect {
+        target: Operand,
+        arg_types: Vec<MirType>,
+        args: Vec<Operand>,
+        ret: Option<Register>,
+        ret_ty: Option<MirType>,
+    },
+
     // Tail call - function call in tail position that can be optimized to a jump
     TailCall {
         name: String,
@@ -951,7 +961,8 @@ impl Instruction {
             | Instruction::AtomicLoad { dst, .. }
             | Instruction::AtomicBinary { dst, .. }
             | Instruction::AtomicCompareExchange { dst, .. } => Some(dst),
-            Instruction::Call { ret: Some(dst), .. } => Some(dst),
+            Instruction::Call { ret: Some(dst), .. }
+            | Instruction::CallIndirect { ret: Some(dst), .. } => Some(dst),
             _ => None,
         }
     }
@@ -1179,6 +1190,16 @@ impl Instruction {
                     }
                 }
             }
+            Instruction::CallIndirect { target, args, .. } => {
+                if let Operand::Register(r) = target {
+                    regs.push(r);
+                }
+                for arg in args {
+                    if let Operand::Register(r) = arg {
+                        regs.push(r);
+                    }
+                }
+            }
             Instruction::Ret {
                 value: Some(Operand::Register(r)),
                 ..
@@ -1370,6 +1391,15 @@ impl fmt::Display for Instruction {
                     write!(f, "{a}")?;
                 }
                 write!(f, ")")
+            }
+            Instruction::CallIndirect {
+                target, args, ret, ..
+            } => {
+                let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+                match ret {
+                    Some(dst) => write!(f, "{dst} = callptr {target}({})", args.join(", ")),
+                    None => write!(f, "callptr {target}({})", args.join(", ")),
+                }
             }
             Instruction::TailCall { name, args } => {
                 write!(f, "tailcall {name}(")?;

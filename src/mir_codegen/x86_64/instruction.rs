@@ -1461,6 +1461,99 @@ pub(super) fn emit_instruction_x86_64(
             dst,
             src,
         } => emit_float_to_int(writer, reg_alloc, stack_slots, from, to, *signed, dst, src)?,
+        MirInst::CallIndirect {
+            target,
+            arg_types,
+            args,
+            ret,
+            ret_ty,
+        } => {
+            let abi = X86ABI::new(target_os);
+            let arg_regs = abi.arg_registers();
+            let descs: Vec<ArgDesc> = arg_types.iter().copied().map(ArgDesc::scalar).collect();
+            let types: Vec<MirType> = arg_types.clone();
+            let locations = classify_argument_descs(&descs, target_os);
+            let stack_indices: Vec<usize> = locations
+                .iter()
+                .enumerate()
+                .filter_map(|(index, location)| {
+                    matches!(location, ArgLocation::Stack(_)).then_some(index)
+                })
+                .collect();
+            let num_stack_args = stack_indices.len();
+
+            if target_os == TargetOperatingSystem::Windows {
+                let shadow_space = windows::SHADOW_SPACE_SIZE as usize;
+                let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
+                    .div_ceil(stack::ALIGNMENT)
+                    * stack::ALIGNMENT;
+                if total_stack > 0 {
+                    writeln!(writer, "    subq ${total_stack}, %rsp")?;
+                }
+                for (slot, &index) in stack_indices.iter().enumerate() {
+                    let stack_offset = shadow_space + (slot * stack::SLOT_SIZE);
+                    load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
+                    writeln!(writer, "    movq %rax, {stack_offset}(%rsp)")?;
+                }
+            } else {
+                if num_stack_args % 2 == 1 {
+                    writeln!(writer, "    subq $8, %rsp")?;
+                }
+                for &index in stack_indices.iter().rev() {
+                    load_operand_to_rax(&args[index], writer, reg_alloc, stack_slots)?;
+                    writeln!(writer, "    pushq %rax")?;
+                }
+            }
+
+            // r11 is caller-saved and never an argument register, so the target
+            // survives loading the arguments.
+            load_operand_to_rax(target, writer, reg_alloc, stack_slots)?;
+            writeln!(writer, "    movq %rax, %r11")?;
+
+            load_register_arguments(
+                writer,
+                args,
+                &types,
+                &locations,
+                arg_regs,
+                reg_alloc,
+                stack_slots,
+            )?;
+
+            if target_os != TargetOperatingSystem::Windows {
+                // al carries the vector-register count for a variadic callee, and a
+                // prototypeless target may be one.
+                let xmm_count = locations
+                    .iter()
+                    .filter(|location| matches!(location, ArgLocation::Xmm(_)))
+                    .count();
+                writeln!(writer, "    movl ${xmm_count}, %eax")?;
+            }
+            writeln!(writer, "    call *%r11")?;
+
+            if target_os == TargetOperatingSystem::Windows {
+                let shadow_space = windows::SHADOW_SPACE_SIZE as usize;
+                let total_stack = (shadow_space + (num_stack_args * stack::SLOT_SIZE))
+                    .div_ceil(stack::ALIGNMENT)
+                    * stack::ALIGNMENT;
+                if total_stack > 0 {
+                    writeln!(writer, "    addq ${total_stack}, %rsp")?;
+                }
+            } else if num_stack_args > 0 {
+                let pushed = num_stack_args * stack::SLOT_SIZE;
+                let padded = pushed.div_ceil(stack::ALIGNMENT) * stack::ALIGNMENT;
+                writeln!(writer, "    addq ${padded}, %rsp")?;
+            }
+
+            if let Some(Register::Virtual(vreg)) = ret {
+                match ret_ty {
+                    Some(ty) if ty.is_float() => {
+                        store_xmm_to_register("xmm0", vreg, writer, reg_alloc, stack_slots, ty)?;
+                    }
+                    _ => store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?,
+                }
+            }
+        }
         MirInst::FloatConvert { from, to, dst, src } => {
             load_float_operand_to_xmm(src, writer, reg_alloc, stack_slots, "xmm0", from)?;
             if is_f32(to) {

@@ -383,7 +383,10 @@ fn live_vregs_across_calls(
     let mut instruction_index = 0;
     for block in &function.blocks {
         for instruction in &block.instructions {
-            if matches!(instruction, MirInst::Call { .. }) {
+            if matches!(
+                instruction,
+                MirInst::Call { .. } | MirInst::CallIndirect { .. }
+            ) {
                 let mut live: Vec<_> = intervals
                     .iter()
                     .filter(|interval| {
@@ -1195,6 +1198,88 @@ fn emit_instruction_riscv<W: Write>(
                         ty.size_bytes() == 4,
                     )?,
                     None => store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?,
+                }
+            }
+        }
+        MirInst::CallIndirect {
+            target,
+            arg_types,
+            args,
+            ret,
+            ret_ty,
+        } => {
+            let live_vregs = ctx
+                .live_across_calls
+                .get(&instruction_index)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let caller_saved_mappings = reg_alloc.caller_saved_mappings(live_vregs);
+            spill_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
+
+            let arg_regs = RiscVAbi::ARG_REGISTERS;
+            let places = classify_riscv_arguments(arg_types);
+            let num_stack_args = places
+                .iter()
+                .filter(|place| matches!(place, RiscVArgPlace::Stack(_)))
+                .count();
+            for ((arg, ty), place) in args.iter().zip(arg_types).zip(&places) {
+                match *place {
+                    RiscVArgPlace::Gpr(bank) => {
+                        load_operand_to_register(
+                            arg,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            arg_regs[bank],
+                        )?;
+                    }
+                    RiscVArgPlace::Fpr(bank) => {
+                        load_fp_operand_to_register(
+                            arg,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            &format!("fa{bank}"),
+                            ty.size_bytes() == 4,
+                        )?;
+                    }
+                    RiscVArgPlace::Stack(_) => {}
+                }
+            }
+            let stack_space = if num_stack_args > 0 {
+                ((num_stack_args * ctx.target.word_bytes() as usize) + 15) & !15
+            } else {
+                0
+            };
+            // t1 is a temporary the argument registers never overlap.
+            load_operand_to_register(target, writer, reg_alloc, stack_slots, "t1")?;
+            if stack_space > 0 {
+                RiscVFrame::adjust_sp(writer, -(stack_space as i64))?;
+                for (arg, place) in args.iter().zip(&places) {
+                    let RiscVArgPlace::Stack(slot) = *place else {
+                        continue;
+                    };
+                    let offset = slot * ctx.target.word_bytes() as usize;
+                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
+                    writeln!(writer, "    {} t0, {offset}(sp)", ctx.target.store_word())?;
+                }
+            }
+            writeln!(writer, "    jalr t1")?;
+            if stack_space > 0 {
+                RiscVFrame::adjust_sp(writer, stack_space as i64)?;
+            }
+            reload_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
+            if let Some(Register::Virtual(vreg)) = ret {
+                match ret_ty {
+                    Some(ty) if ty.is_float() => store_fp_register_to_register(
+                        "fa0",
+                        vreg,
+                        writer,
+                        reg_alloc,
+                        stack_slots,
+                        ty.size_bytes() == 4,
+                    )?,
+                    _ => store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?,
                 }
             }
         }

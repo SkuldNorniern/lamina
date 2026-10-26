@@ -264,7 +264,7 @@ fn compile_single_function_aarch64_with(
         .blocks
         .iter()
         .flat_map(|b| b.instructions.iter())
-        .any(|i| matches!(i, MirInst::Call { .. }));
+        .any(|i| matches!(i, MirInst::Call { .. } | MirInst::CallIndirect { .. }));
     let global_plan: Option<HashMap<VirtualReg, MirAllocation<&'static str>>> =
         if settings.regalloc != RegallocStrategy::Incremental && !makes_calls {
             let pool = A64RegAlloc::gpr_pool_for_global_allocation();
@@ -1137,6 +1137,75 @@ fn emit_block<W: Write>(
                 dst,
                 src,
             } => emit_float_to_int(w, from, to, *signed, dst, src, frame, ra)?,
+            MirInst::CallIndirect {
+                target,
+                arg_types,
+                args,
+                ret,
+                ret_ty,
+            } => {
+                let kinds: Vec<ArgKind> =
+                    arg_types.iter().map(|ty| ArgKind::of(*ty, None)).collect();
+                let places = classify_aarch64_arguments(&kinds);
+                let stack_words: usize = places
+                    .iter()
+                    .map(|place| match place {
+                        ArgPlace::Stack { words, .. } => *words,
+                        ArgPlace::Gpr { .. } | ArgPlace::Fpr { .. } => 0,
+                    })
+                    .sum();
+                let stack_space = (stack_words * 8 + 15) & !15;
+                if stack_space > 0 {
+                    emit_sp_adjust(w, "sub", stack_space as u64)?;
+                    for (argument, place) in args.iter().zip(&places) {
+                        let ArgPlace::Stack { first, .. } = *place else {
+                            continue;
+                        };
+                        let scratch = ra.alloc_scratch().unwrap_or("x9");
+                        emit_materialize_operand(w, argument, scratch, frame, ra)?;
+                        writeln!(w, "    str {scratch}, [sp, #{}]", first * 8)?;
+                        ra.free_scratch(scratch);
+                    }
+                }
+                for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
+                    match *place {
+                        ArgPlace::Fpr { index } => {
+                            let bits = ra.alloc_scratch().unwrap_or("x9");
+                            emit_materialize_operand(w, argument, bits, frame, ra)?;
+                            if kind.ty_is_f32 {
+                                writeln!(w, "    fmov s{index}, {}", w_alias(bits))?;
+                            } else {
+                                writeln!(w, "    fmov d{index}, {bits}")?;
+                            }
+                            ra.free_scratch(bits);
+                        }
+                        ArgPlace::Gpr { first, .. } => {
+                            emit_materialize_operand(w, argument, &format!("x{first}"), frame, ra)?;
+                        }
+                        ArgPlace::Stack { .. } => {}
+                    }
+                }
+                // x16 is the intra-procedure scratch register, so it is free here and
+                // is not one of the argument registers already filled.
+                emit_materialize_operand(w, target, "x16", frame, ra)?;
+                writeln!(w, "    blr x16")?;
+                if stack_space > 0 {
+                    emit_sp_adjust(w, "add", stack_space as u64)?;
+                }
+                if let Some(dst) = ret {
+                    match ret_ty {
+                        Some(ty) if ty.is_float() && ty.size_bytes() == 4 => {
+                            writeln!(w, "    fmov w0, s0")?;
+                            store_result(w, dst, "x0", frame, ra)?;
+                        }
+                        Some(ty) if ty.is_float() => {
+                            writeln!(w, "    fmov x0, d0")?;
+                            store_result(w, dst, "x0", frame, ra)?;
+                        }
+                        _ => store_result(w, dst, "x0", frame, ra)?,
+                    }
+                }
+            }
             MirInst::Call { name, args, ret } => {
                 if (name == "print" || name == "printu") && args.len() == 1 {
                     let fmt = if name == "printu" {

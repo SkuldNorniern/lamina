@@ -1,0 +1,38 @@
+fn @twice(i64 %x) -> i64 {
+entry:
+  %r = mul.i64 %x, 2
+  ret.i64 %r
+}
+
+fn @thrice(i64 %x) -> i64 {
+entry:
+  %r = mul.i64 %x, 3
+  ret.i64 %r
+}
+
+fn @scale(f64 %x, i64 %k) -> f64 {
+entry:
+  %kf = sitofp.i64.f64 %k
+  %r = mul.f64 %x, %kf
+  ret.f64 %r
+}
+
+fn @apply(ptr %f, i64 %v) -> i64 {
+entry:
+  %r = callptr.i64 %f(%v)
+  ret.i64 %r
+}
+
+fn @main() -> i64 {
+entry:
+  %a = funcaddr @twice
+  %b = funcaddr @thrice
+  %r1 = call @apply(%a, 21)
+  print %r1
+  %r2 = call @apply(%b, 21)
+  print %r2
+  %s = funcaddr @scale
+  %r3 = callptr.f64 %s(1.5, 4)
+  print %r3
+  ret.i64 0
+}

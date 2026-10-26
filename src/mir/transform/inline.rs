@@ -380,6 +380,17 @@ impl ModuleInlining {
                     *dst = map(dst);
                 }
             }
+            Instruction::CallIndirect {
+                target, args, ret, ..
+            } => {
+                operand(target, map);
+                for value in args {
+                    operand(value, map);
+                }
+                if let Some(dst) = ret {
+                    *dst = map(dst);
+                }
+            }
             Instruction::TailCall { args, .. } => {
                 for value in args {
                     operand(value, map);

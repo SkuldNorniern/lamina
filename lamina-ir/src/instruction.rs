@@ -573,6 +573,22 @@ pub enum Instruction<'a> {
         target_type: PrimitiveType,
         value: Value<'a>,
     },
+    /// Address of a function, as a pointer value.
+    FuncAddr {
+        result: Identifier<'a>,
+        func_name: Identifier<'a>,
+    },
+    /// Call through a function pointer.
+    ///
+    /// # Preconditions
+    /// - `target` must hold the address of a function whose signature matches the
+    ///   arguments given and `return_type`.
+    CallIndirect {
+        result: Option<Identifier<'a>>,
+        target: Value<'a>,
+        args: Vec<Value<'a>>,
+        return_type: Type<'a>,
+    },
     // --- Control Flow ---
     /// Multi-way branch based on an integer or boolean value.
     ///
@@ -939,6 +955,8 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "neg",
         "not",
         "sqrt",
+        "funcaddr",
+        "callptr",
         "select",
         // Memory operations (from Instruction::Alloc, Instruction::Load, etc.)
         "alloc",
@@ -1002,6 +1020,8 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "neg",
         "not",
         "sqrt",
+        "funcaddr",
+        "callptr",
         "select",
         "alloc",
         "load",
@@ -1040,6 +1060,7 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         "switch",
         // Function calls (from Instruction::Call - without result)
         "call",
+        "callptr",
         // Memory operations (from Instruction::Store, Instruction::Dealloc, etc.)
         "store",
         "dealloc",
@@ -1088,6 +1109,7 @@ impl<'a> Instruction<'a> {
             | Instruction::FloatToInt { result, .. }
             | Instruction::FloatConvert { result, .. }
             | Instruction::Unary { result, .. }
+            | Instruction::FuncAddr { result, .. }
             | Instruction::Select { result, .. }
             | Instruction::GetElemPtr { result, .. }
             | Instruction::GetFieldPtr { result, .. }
@@ -1102,6 +1124,10 @@ impl<'a> Instruction<'a> {
             | Instruction::PtrToInt { result, .. }
             | Instruction::IntToPtr { result, .. }
             | Instruction::Call {
+                result: Some(result),
+                ..
+            }
+            | Instruction::CallIndirect {
                 result: Some(result),
                 ..
             } => Some(result),
@@ -1148,6 +1174,12 @@ impl<'a> Instruction<'a> {
             | Instruction::FloatToInt { value, .. }
             | Instruction::FloatConvert { value, .. }
             | Instruction::Unary { value, .. } => push_value(value, &mut vars),
+            Instruction::CallIndirect { target, args, .. } => {
+                push_value(target, &mut vars);
+                for arg in args {
+                    push_value(arg, &mut vars);
+                }
+            }
             Instruction::Call { args, .. } => {
                 for arg in args {
                     push_value(arg, &mut vars);
@@ -1286,6 +1318,25 @@ impl fmt::Display for Instruction<'_> {
                 ty,
                 value,
             } => write!(f, "%{result} = {op}.{ty} {value}"),
+            Instruction::FuncAddr { result, func_name } => {
+                write!(f, "%{result} = funcaddr @{func_name}")
+            }
+            Instruction::CallIndirect {
+                result,
+                target,
+                args,
+                return_type,
+            } => {
+                let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+                match result {
+                    Some(result) => write!(
+                        f,
+                        "%{result} = callptr.{return_type} {target}({})",
+                        args.join(", ")
+                    ),
+                    None => write!(f, "callptr.{return_type} {target}({})", args.join(", ")),
+                }
+            }
             Instruction::Switch {
                 ty,
                 value,
