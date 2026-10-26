@@ -111,8 +111,16 @@ jobs:
       - name: Metadata
         id: meta
         run: |
-          VERSION=$(grep '^version' lamina-c/Cargo.toml | head -1 | sed 's/.*= *"\(.*\)"/\1/')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          manifest_version() {
+            grep '^version' "$1" | head -1 | sed 's/.*= *"\(.*\)"/\1/'
+          }
+          LAMINA_VERSION=$(manifest_version Cargo.toml)
+          if [ "v${LAMINA_VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not name lamina ${LAMINA_VERSION}" >&2
+            exit 1
+          fi
+          # The C SDK archives are named by lamina-c, which versions separately.
+          echo "sdk_version=$(manifest_version lamina-c/Cargo.toml)" >> "$GITHUB_OUTPUT"
 
       - name: Publish release (permanent — never deleted)
         id: auto_release
@@ -133,7 +141,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=${{ steps.meta.outputs.version }}
+          VERSION=${{ steps.meta.outputs.sdk_version }}
           TAG=${GITHUB_REF_NAME}
           NOTES_FILE=$(mktemp)
           {
