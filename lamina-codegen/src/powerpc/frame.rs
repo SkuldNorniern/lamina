@@ -1,9 +1,10 @@
 //! PowerPC64 ELFv2 stack frame management.
 //!
-//! ELFv2 minimum frame layout:
+//! ELFv2 frame layout:
 //!   [sp+0]   back-chain pointer (previous sp)
 //!   [sp+16]  LR save area
-//!   [sp+32+] local variables
+//!   [sp+32]  parameter save area, which a callee may write
+//!   [sp+96+] local variables
 //!
 //! The frame is grown by subtracting from r1 and the back-chain must be
 //! written before we clobber anything.
@@ -14,6 +15,14 @@ use std::io::{self, Write};
 /// Back chain, CR, LR and TOC, below the parameter save area.
 pub const LINKAGE_SIZE: usize = 32;
 
+/// Bytes the caller reserves above its linkage area for the parameter save area.
+/// It belongs to the callee, which may spill its register parameters into it; a
+/// variadic callee always does.
+pub const PARAM_SAVE_SIZE: usize = 64;
+
+/// Where local slots begin, in bytes from the new r1.
+pub const LOCALS_BASE: usize = LINKAGE_SIZE + PARAM_SAVE_SIZE;
+
 /// Range of the signed 16-bit displacement of D-form loads, stores and `addi`.
 const IMM16_MIN: i64 = -32768;
 const IMM16_MAX: i64 = 32767;
@@ -23,7 +32,7 @@ pub struct Ppc64Frame;
 impl Ppc64Frame {
     /// Total stack frame size (linkage + locals), 16-byte aligned.
     pub fn aligned_frame_size(local_bytes: usize) -> usize {
-        ((LINKAGE_SIZE + local_bytes) + 15) & !15
+        ((LOCALS_BASE + local_bytes) + 15) & !15
     }
 
     /// Calculate the stack offset for local slot `n` (0-based).
@@ -31,9 +40,9 @@ impl Ppc64Frame {
     /// Slots start above the linkage area and grow upward in address
     /// (i.e., at higher positive offsets from the old sp stored as
     /// back-chain).  In the prologue we subtract `frame_size` from r1,
-    /// so slot `n` is at `LINKAGE_SIZE + n*8` from the new r1.
+    /// so slot `n` is at `LOCALS_BASE + n*8` from the new r1.
     pub fn calculate_stack_offset(slot: usize) -> i32 {
-        (LINKAGE_SIZE + slot * 8) as i32
+        (LOCALS_BASE + slot * 8) as i32
     }
 
     /// Emit the function prologue.
@@ -141,14 +150,14 @@ mod tests {
 
     #[test]
     fn test_stack_offset_slot_0() {
-        assert_eq!(Ppc64Frame::calculate_stack_offset(0), LINKAGE_SIZE as i32);
+        assert_eq!(Ppc64Frame::calculate_stack_offset(0), LOCALS_BASE as i32);
     }
 
     #[test]
     fn test_stack_offset_slot_1() {
         assert_eq!(
             Ppc64Frame::calculate_stack_offset(1),
-            (LINKAGE_SIZE + 8) as i32
+            (LOCALS_BASE + 8) as i32
         );
     }
 
@@ -168,7 +177,7 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         assert!(!s.contains("stdu 1"), "{s}");
         assert!(s.contains("stdux 1, 1, 12"), "{s}");
-        assert_eq!(ppc_value_of(&s, "12"), -40032, "{s}");
+        assert_eq!(ppc_value_of(&s, "12"), -40096, "{s}");
     }
 
     #[test]
@@ -177,7 +186,7 @@ mod tests {
         Ppc64Frame::generate_epilogue(&mut buf, 40000).unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("add 1, 1, 12"), "{s}");
-        assert_eq!(ppc_value_of(&s, "12"), 40032, "{s}");
+        assert_eq!(ppc_value_of(&s, "12"), 40096, "{s}");
     }
 
     /// Replays the `li`, `lis`, `addis` and `ori` lines that load `reg`.
@@ -204,10 +213,10 @@ mod tests {
             32767,
             -32768,
             32768,
-            40032,
+            40096,
             65536,
             0x7FFF_0000,
-            -40032,
+            -40096,
         ] {
             let mut buf = Vec::new();
             load_imm(&mut buf, "12", value).unwrap();
