@@ -311,6 +311,24 @@ dealloc.heap %hptr
 %root = sqrt.f64 %x
 ```
 
+### Globals
+
+```
+global @counter: i64 = 41
+global @squares: [6 x i64] = [0, 1, 4, 9, 16, 25]
+global @greeting: [6 x i8] = "hello"
+@export global @shared: u32 = 7
+```
+
+### External Functions
+
+```
+@extern
+fn @strlen(ptr %s) -> i64
+
+%n = call @strlen(%p)
+```
+
 ### Function Pointers
 
 ```
