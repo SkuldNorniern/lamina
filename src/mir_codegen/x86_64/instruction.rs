@@ -871,6 +871,53 @@ pub(super) fn emit_instruction_x86_64(
                 {
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
+            } else if (name == "write" || name == "read") && args.len() == 2 {
+                let writing = name == "write";
+                load_operand_to_rax(&args[0], writer, reg_alloc, stack_slots)?;
+                writeln!(writer, "    movq %rax, %r10")?;
+                load_operand_to_rax(&args[1], writer, reg_alloc, stack_slots)?;
+                match target_os {
+                    TargetOperatingSystem::Windows => {
+                        // Windows syscall numbers are unstable, so the CRT does the work.
+                        writeln!(writer, "    movq %rax, %r8")?;
+                        writeln!(writer, "    movq %r10, %rdx")?;
+                        writeln!(
+                            writer,
+                            "    movq ${}, %rcx",
+                            if writing { fd::STDOUT } else { fd::STDIN }
+                        )?;
+                        writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(
+                            writer,
+                            "    call {}",
+                            if writing { "_write" } else { "_read" }
+                        )?;
+                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    movslq %eax, %rax")?;
+                    }
+                    _ => {
+                        writeln!(writer, "    movq %rax, %rdx")?;
+                        writeln!(writer, "    movq %r10, %rsi")?;
+                        writeln!(
+                            writer,
+                            "    movq ${}, %rdi",
+                            if writing { fd::STDOUT } else { fd::STDIN }
+                        )?;
+                        let syscall = match (os_uses_macho(target_os), writing) {
+                            (true, true) => macos::SYS_WRITE,
+                            (true, false) => macos::SYS_READ,
+                            (false, true) => linux::SYS_WRITE,
+                            (false, false) => linux::SYS_READ,
+                        };
+                        writeln!(writer, "    movq ${syscall}, %rax")?;
+                        writeln!(writer, "    syscall")?;
+                    }
+                }
+                if let Some(ret_reg) = ret
+                    && let Register::Virtual(vreg) = ret_reg
+                {
+                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
+                }
             } else if name == "writeptr" && args.len() == 2 {
                 let width = writeptr_width(&args[1])?;
                 match target_os {
