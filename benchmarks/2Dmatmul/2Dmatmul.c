@@ -1,7 +1,15 @@
+#define _POSIX_C_SOURCE 200809L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
+
+static double now_seconds(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
 
 // Get element from matrix A at position [i,k]
 int64_t get_matrix_a_element(int64_t i, int64_t k) {
@@ -40,7 +48,7 @@ int64_t matmul_2d(int64_t n_rows, int64_t k_dim, int64_t n_cols) {
     
     // Start timing
     printf("Starting computation...\n");
-    clock_t start_time = clock();
+    double start_time = now_seconds();
     
     // Calculate expected result size and operations
     int64_t result_size = n_rows * n_cols;
@@ -72,7 +80,7 @@ int64_t matmul_2d(int64_t n_rows, int64_t k_dim, int64_t n_cols) {
             // Report progress every 5%
             if (cells_done >= next_report) {
                 double percent = (double)cells_done * 100.0 / result_size;
-                double elapsed = (double)(clock() - start_time) / CLOCKS_PER_SEC;
+                double elapsed = now_seconds() - start_time;
                 printf("Progress: %.1f%% (%.2f seconds elapsed)\n", percent, elapsed);
                 next_report += result_size / 20;
             }
@@ -80,14 +88,18 @@ int64_t matmul_2d(int64_t n_rows, int64_t k_dim, int64_t n_cols) {
     }
     
     // Calculate total time
-    double total_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
-    
+    double total_time = now_seconds() - start_time;
+
     // Print results
     printf("\nComputation complete!\n");
     printf("Total sum: %ld\n", total_sum);
     printf("Total operations: %ld\n", ops_done);
-    printf("Total time: %.2f seconds\n", total_time);
-    printf("Operations per second: %.2f million\n", ops_done / (total_time * 1000000));
+    printf("Total time: %.6f seconds\n", total_time);
+    if (total_time > 0.0) {
+        printf("Operations per second: %.2f million\n", ops_done / (total_time * 1000000));
+    } else {
+        printf("Operations per second: elapsed too small to measure (ops: %ld)\n", ops_done);
+    }
     
     return total_sum;
 }
