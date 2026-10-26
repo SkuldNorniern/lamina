@@ -19,11 +19,11 @@ mod util;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::integer_conversion;
 use crate::mir_codegen::common::{
-    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
-    emit_global_directives, self_tail_arguments, self_tail_schedule,
+    CallSignatures, emit_debug_file, emit_gnu_stack_note, print_format_label, writeptr_width,
 };
 use crate::mir_codegen::common::{
-    emit_debug_file, emit_gnu_stack_note, print_format_label, writeptr_width,
+    CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
+    emit_global_directives, self_tail_arguments, self_tail_schedule,
 };
 
 use std::{
@@ -232,7 +232,7 @@ fn compile_single_function_ppc64(
     func: &Function,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
-    signatures: &Ppc64Signatures,
+    signatures: &CallSignatures,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut output = Vec::new();
     let abi = Ppc64Abi::new(target_os);
@@ -444,7 +444,7 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     }
 
     let settings_arc = Arc::new(settings.clone());
-    let signatures = Arc::new(Ppc64Signatures::from_module(module));
+    let signatures = Arc::new(CallSignatures::from_module(module));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
             compile_single_function_ppc64(
@@ -500,49 +500,13 @@ fn classify_ppc64_arguments(types: &[MirType]) -> Vec<PpcArgPlace> {
         .collect()
 }
 
-/// Parameter and result types of each function, so a call site knows which bank an
-/// argument belongs in.
-#[derive(Default)]
-struct Ppc64Signatures {
-    params: HashMap<String, Vec<MirType>>,
-    returns: HashMap<String, MirType>,
-}
-
-impl Ppc64Signatures {
-    fn from_module(module: &MirModule) -> Self {
-        Self {
-            params: module
-                .functions
-                .iter()
-                .map(|(name, func)| (name.clone(), func.sig.params.iter().map(|p| p.ty).collect()))
-                .collect(),
-            returns: module
-                .functions
-                .iter()
-                .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_ty?)))
-                .collect(),
-        }
-    }
-
-    /// An undeclared callee has no signature, so its arguments pass as integers.
-    fn arguments(&self, callee: &str, count: usize) -> Vec<MirType> {
-        match self.params.get(callee) {
-            Some(types) if types.len() == count => types.clone(),
-            _ => vec![MirType::i64(); count],
-        }
-    }
-
-    fn float_result(&self, callee: &str) -> Option<MirType> {
-        self.returns.get(callee).copied().filter(MirType::is_float)
-    }
-}
-
+/// Everything the instruction emitter needs beyond the instruction itself.
 struct Ppc64Emit<'a> {
     target_os: TargetOperatingSystem,
     block_prefix: &'a str,
     settings: &'a MirCodegenSettings,
     local_bytes: usize,
-    signatures: &'a Ppc64Signatures,
+    signatures: &'a CallSignatures,
     /// Set when this function returns a float, which leaves in f1.
     ret_float: Option<MirType>,
 }
