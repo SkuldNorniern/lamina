@@ -282,6 +282,8 @@ pub struct TransformStats {
     pub functions_inlined: usize,
 }
 
+/// An ordered run of transforms, applied until they stop changing the function or the
+/// iteration budget runs out.
 pub struct TransformPipeline {
     transforms: Vec<Box<dyn Transform>>,
     max_total_iterations: usize,
@@ -363,6 +365,8 @@ impl TransformPipeline {
         pipeline
     }
 
+    /// Runs the pipeline over one function to a fixed point. A function far larger than
+    /// anything a frontend emits is refused rather than ground through every pass.
     pub fn apply_to_function(&self, func: &mut Function) -> Result<TransformStats, TransformError> {
         let total_instructions: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
         const MAX_INSTRUCTIONS: usize = 100_000;
@@ -411,6 +415,8 @@ impl TransformPipeline {
         Ok(stats)
     }
 
+    /// Runs the pipeline over every function, then inlines across them when the
+    /// pipeline was built with inlining on.
     pub fn apply_to_module(&self, module: &mut Module) -> Result<TransformStats, TransformError> {
         let mut total_stats = self.apply_function_stages(module)?;
         if self.inline {

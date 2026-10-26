@@ -16,6 +16,8 @@ use crate::{
 /// the value in memory, except ppc64, which is why ppc64 rejects aggregates for now.
 pub const MAX_REGISTER_AGGREGATE: u64 = 16;
 
+/// Maps an IR primitive to the MIR type that holds it. Signedness is dropped, because
+/// MIR carries it on the operation rather than the value; `char` becomes `i8`.
 pub fn map_ir_prim(p: IRPrim) -> Result<MirType, FromIRError> {
     let scalar = match p {
         IRPrim::I8 | IRPrim::U8 | IRPrim::Char => ScalarType::I8,

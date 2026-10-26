@@ -1,3 +1,4 @@
+/// Grid dimension named by the `_x`, `_y` or `_z` suffix of a GPU intrinsic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GpuAxis {
     X,
@@ -5,6 +6,7 @@ pub enum GpuAxis {
     Z,
 }
 
+/// Reserved intrinsic calls that GPU backends lower directly, recognized by `from_name`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GpuIntrinsic {
     ThreadId(GpuAxis),

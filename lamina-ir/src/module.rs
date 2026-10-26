@@ -324,6 +324,8 @@ impl fmt::Display for ModuleAnnotation {
     }
 }
 
+/// A parsed IR file: its type declarations, its globals and its functions. Names are
+/// unique across all three, so `@x` names one thing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module<'a> {
     /// Named type declarations in this module
@@ -351,7 +353,7 @@ pub struct Module<'a> {
 }
 
 impl<'a> Module<'a> {
-    // Basic constructor
+    /// An empty module.
     pub fn new() -> Self {
         #[cfg(feature = "nightly")]
         let annotations = Vec::new();

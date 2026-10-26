@@ -259,12 +259,16 @@ pub enum PrimitiveType {
     Ptr,
 }
 
+/// One named field of a struct type. Fields keep their order, which fixes the layout.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct StructField<'a> {
     pub name: Identifier<'a>,
     pub ty: Type<'a>,
 }
 
+/// Every type the IR can name. A `Named` type stands for a declaration elsewhere in
+/// the module and is resolved with
+/// [`resolve_type_names`](crate::types::resolve_type_names) before layout or lowering.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type<'a> {
     Primitive(PrimitiveType),
@@ -291,6 +295,8 @@ impl From<PrimitiveType> for Type<'_> {
     }
 }
 
+/// A constant written in the source. The variant is the literal's own type, which the
+/// parser picks from the type it is used at, not from the digits.
 #[derive(Debug, Clone, PartialEq)] // Float comparison requires PartialEq only
 pub enum Literal<'a> {
     I8(i8),
@@ -308,6 +314,7 @@ pub enum Literal<'a> {
     String(&'a str),
 }
 
+/// An operand: an SSA variable, a constant, or the address of a global.
 #[derive(Debug, Clone, PartialEq)] // Removed Eq, Hash because f32 doesn't support them
 pub enum Value<'a> {
     Variable(Identifier<'a>),
