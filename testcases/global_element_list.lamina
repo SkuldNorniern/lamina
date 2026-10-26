@@ -1,0 +1,23 @@
+global @squares: [6 x i64] = [0, 1, 4, 9, 16, 25]
+global @bytes: [4 x i8] = [65, 66, 67]
+global @ratios: [3 x f64] = [0.5, 1.5e1, 2.25]
+
+fn @main() -> i64 {
+entry:
+  %i = add.i64 4, 0
+  %p = getelem.ptr @squares, %i, i64
+  %v = load.i64 %p
+  print %v
+  %b = getelem.ptr @bytes, 2, i8
+  %c = load.i8 %b
+  %cw = sext.i8.i64 %c
+  print %cw
+  %b3 = getelem.ptr @bytes, 3, i8
+  %c3 = load.i8 %b3
+  %c3w = sext.i8.i64 %c3
+  print %c3w
+  %r = getelem.ptr @ratios, 1, f64
+  %rv = load.f64 %r
+  print %rv
+  ret.i64 0
+}

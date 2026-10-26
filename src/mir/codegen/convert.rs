@@ -18,6 +18,7 @@ use crate::{
         instruction::{
             AllocType, BinaryOp as IRBin, CmpOp as IRCmp, Instruction as IRInst, UnaryOp as IRUnary,
         },
+        module::GlobalInit,
         types::{
             Literal as IRLit, PrimitiveType as IRPrim, Type as IRType, Value as IRVal,
             align_of_type, resolve_type_names, sizeof_type,
@@ -276,20 +277,52 @@ fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'
     names
 }
 
+/// Bytes for an array global written as an element list. Elements left out are zero.
+fn element_list_bytes(
+    name: &str,
+    ty: &IRType<'_>,
+    size: usize,
+    elements: &[IRLit<'_>],
+) -> Result<Vec<u8>, FromIRError> {
+    let IRType::Array { element_type, .. } = ty else {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} takes an element list only as an array"
+        )));
+    };
+    let stride = sizeof_type(element_type).ok_or(FromIRError::UnsupportedType)? as usize;
+    let element_ty = map_ir_type(element_type)?;
+    let mut bytes = vec![0u8; size];
+    for (index, literal) in elements.iter().enumerate() {
+        let encoded = literal_bytes(name, literal)?;
+        if encoded.len() != stride {
+            return Err(FromIRError::UnsupportedGlobal(format!(
+                "@{name} element {index} is {} bytes, not the {stride} its type {element_ty} takes",
+                encoded.len()
+            )));
+        }
+        let at = index * stride;
+        bytes[at..at + stride].copy_from_slice(&encoded);
+    }
+    Ok(bytes)
+}
+
 /// Bytes for an aggregate global. Only a string literal in a byte array carries data
 /// today; every other aggregate starts zeroed.
 fn aggregate_global_bytes(
     name: &str,
     ty: &IRType<'_>,
     size: usize,
-    value: Option<&IRVal<'_>>,
+    value: Option<&GlobalInit<'_>>,
 ) -> Result<Option<Vec<u8>>, FromIRError> {
     let Some(value) = value else {
         return Ok(None);
     };
-    let IRVal::Constant(IRLit::String(text)) = value else {
+    if let GlobalInit::List(elements) = value {
+        return element_list_bytes(name, ty, size, elements).map(Some);
+    }
+    let GlobalInit::Value(IRVal::Constant(IRLit::String(text))) = value else {
         return Err(FromIRError::UnsupportedGlobal(format!(
-            "@{name} needs a string literal initializer; other aggregate initializers are not supported yet"
+            "@{name} needs a string literal or an element list; other aggregate initializers are not supported yet"
         )));
     };
     let element_is_byte = matches!(
@@ -318,16 +351,27 @@ fn aggregate_global_bytes(
 fn global_initializer(
     name: &str,
     ty: MirType,
-    value: Option<&IRVal<'_>>,
+    value: Option<&GlobalInit<'_>>,
 ) -> Result<Option<Vec<u8>>, FromIRError> {
     let Some(value) = value else {
         return Ok(None);
     };
-    let IRVal::Constant(literal) = value else {
+    let GlobalInit::Value(IRVal::Constant(literal)) = value else {
         return Err(FromIRError::UnsupportedGlobal(format!(
             "@{name} needs a literal initializer"
         )));
     };
+    let bytes = literal_bytes(name, literal)?;
+    if bytes.len() != ty.size_bytes() {
+        return Err(FromIRError::UnsupportedGlobal(format!(
+            "@{name} initializer width does not match its type {ty}"
+        )));
+    }
+    Ok(Some(bytes))
+}
+
+/// Little-endian bytes of a literal, at the width its own type takes.
+fn literal_bytes(name: &str, literal: &IRLit<'_>) -> Result<Vec<u8>, FromIRError> {
     let bytes = match literal {
         IRLit::I8(v) => v.to_le_bytes().to_vec(),
         IRLit::I16(v) => v.to_le_bytes().to_vec(),
@@ -340,18 +384,14 @@ fn global_initializer(
         IRLit::F32(v) => v.to_le_bytes().to_vec(),
         IRLit::F64(v) => v.to_le_bytes().to_vec(),
         IRLit::Bool(b) => vec![u8::from(*b)],
-        IRLit::Char(_) | IRLit::String(_) => {
+        IRLit::Char(c) => vec![*c as u8],
+        IRLit::String(_) => {
             return Err(FromIRError::UnsupportedGlobal(format!(
                 "@{name} initializer must be an integer, float or bool literal"
             )));
         }
     };
-    if bytes.len() != ty.size_bytes() {
-        return Err(FromIRError::UnsupportedGlobal(format!(
-            "@{name} initializer width does not match its type {ty}"
-        )));
-    }
-    Ok(Some(bytes))
+    Ok(bytes)
 }
 
 /// Address registers for referenced globals. Each global gets one register,

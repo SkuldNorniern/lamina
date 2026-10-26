@@ -2,7 +2,7 @@
 
 use crate::{
     LaminaError,
-    ir::{GlobalDeclaration, Literal, PrimitiveType, Type, Value},
+    ir::{GlobalDeclaration, GlobalInit, Literal, PrimitiveType, Type, Value},
     parser::{state::ParserState, types::parse_type},
 };
 
@@ -19,8 +19,12 @@ pub fn parse_global_declaration<'a>(
     state.skip_whitespace_and_comments();
     let initializer = if state.current_char() == Some('=') {
         state.advance();
-        let value = parse_value_with_type_hint(state, &ty)?;
-        Some(value)
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some('[') {
+            Some(GlobalInit::List(parse_initializer_list(state, &ty)?))
+        } else {
+            Some(GlobalInit::Value(parse_value_with_type_hint(state, &ty)?))
+        }
     } else {
         None
     };
@@ -31,6 +35,45 @@ pub fn parse_global_declaration<'a>(
         initializer,
         exported,
     })
+}
+
+/// Parses `[a, b, c]`, the element-by-element initializer of an array global.
+fn parse_initializer_list<'a>(
+    state: &mut ParserState<'a>,
+    ty: &Type<'a>,
+) -> Result<Vec<Literal<'a>>, LaminaError> {
+    let Type::Array { element_type, size } = ty else {
+        return Err(state.error(format!(
+            "An element list initializes an array, but this global has type {ty}"
+        )));
+    };
+    state.expect_char('[')?;
+    let mut elements = Vec::new();
+    loop {
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some(']') {
+            state.advance();
+            break;
+        }
+        let value = parse_value_with_type_hint(state, element_type)?;
+        let Value::Constant(literal) = value else {
+            return Err(state.error("An element list takes literals only"));
+        };
+        elements.push(literal);
+        state.skip_whitespace_and_comments();
+        if state.current_char() == Some(']') {
+            state.advance();
+            break;
+        }
+        state.expect_char(',')?;
+    }
+    if elements.len() > *size as usize {
+        return Err(state.error(format!(
+            "{} elements do not fit in an array of {size}",
+            elements.len()
+        )));
+    }
+    Ok(elements)
 }
 
 /// Parses a value using type hints for integer literals.

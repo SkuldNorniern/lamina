@@ -263,7 +263,8 @@ mod tests {
 
     use super::*;
     use crate::ir::{
-        BinaryOp, CmpOp, IRBuilder, Instruction, Literal, Type, Value, builder::i32 as ir_i32,
+        BinaryOp, CmpOp, GlobalInit, IRBuilder, Instruction, Literal, Type, Value,
+        builder::i32 as ir_i32,
     };
     use std::fs;
 
@@ -390,9 +391,18 @@ mod tests {
                 .clone()
                 .expect("initializer")
         };
-        assert_eq!(literal("a"), Value::Constant(Literal::U64(9)));
-        assert_eq!(literal("b"), Value::Constant(Literal::I16(-3)));
-        assert_eq!(literal("c"), Value::Constant(Literal::U8(200)));
+        assert_eq!(
+            literal("a"),
+            GlobalInit::Value(Value::Constant(Literal::U64(9)))
+        );
+        assert_eq!(
+            literal("b"),
+            GlobalInit::Value(Value::Constant(Literal::I16(-3)))
+        );
+        assert_eq!(
+            literal("c"),
+            GlobalInit::Value(Value::Constant(Literal::U8(200)))
+        );
 
         assert!(parse_module("global @d: u8 = 300").is_err());
         assert!(parse_module("global @e: u32 = -1").is_err());
@@ -414,7 +424,7 @@ mod tests {
         assert_eq!(count.ty, Type::Primitive(PrimitiveType::I64));
         assert_eq!(
             count.initializer.as_ref(),
-            Some(&Value::Constant(Literal::I64(10)))
+            Some(&GlobalInit::Value(Value::Constant(Literal::I64(10))))
         );
 
         let message = module.global_declarations.get("message").unwrap();
@@ -427,7 +437,9 @@ mod tests {
         }
         assert_eq!(
             message.initializer.as_ref(),
-            Some(&Value::Constant(Literal::String("hello world")))
+            Some(&GlobalInit::Value(Value::Constant(Literal::String(
+                "hello world"
+            ))))
         );
 
         let uninit = module.global_declarations.get("uninit_ptr").unwrap();
