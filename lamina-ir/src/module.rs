@@ -140,7 +140,7 @@ use std::{
 use crate::{
     function::Function,
     instruction::Instruction,
-    types::{Identifier, Type, Value},
+    types::{Identifier, Literal, Type, Value},
 };
 
 /// A named type declaration (e.g., `type @Vec2 = struct { ... }`).
@@ -170,6 +170,27 @@ pub struct TypeDeclaration<'a> {
     pub ty: Type<'a>,
 }
 
+/// How a global variable is initialized.
+#[derive(Debug, Clone, PartialEq)]
+pub enum GlobalInit<'a> {
+    /// One value, for a global of primitive type.
+    Value(Value<'a>),
+    /// One literal per element, for a global of array type. Elements left out are zero.
+    List(Vec<Literal<'a>>),
+}
+
+impl fmt::Display for GlobalInit<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            GlobalInit::Value(value) => write!(f, "{value}"),
+            GlobalInit::List(elements) => {
+                let elements: Vec<String> = elements.iter().map(ToString::to_string).collect();
+                write!(f, "[{}]", elements.join(", "))
+            }
+        }
+    }
+}
+
 /// A global variable declaration (e.g., `global @message: [5 x i8] = "hello"`).
 ///
 /// Global variables are module-level data that persists for the lifetime of the program.
@@ -178,7 +199,7 @@ pub struct TypeDeclaration<'a> {
 /// # Examples
 ///
 /// ```rust
-/// use lamina_ir::{GlobalDeclaration, Type, PrimitiveType, Value, Literal};
+/// use lamina_ir::{GlobalDeclaration, GlobalInit, Type, PrimitiveType, Value, Literal};
 ///
 /// let message_global = GlobalDeclaration {
 ///     name: "message",
@@ -186,7 +207,7 @@ pub struct TypeDeclaration<'a> {
 ///         element_type: Box::new(Type::Primitive(PrimitiveType::I8)),
 ///         size: 13,
 ///     },
-///     initializer: Some(Value::Constant(Literal::String("Hello, World!"))),
+///     initializer: Some(GlobalInit::Value(Value::Constant(Literal::String("Hello, World!")))),
 ///     exported: false,
 /// };
 /// ```
@@ -196,8 +217,8 @@ pub struct GlobalDeclaration<'a> {
     pub name: Identifier<'a>, // e.g., "@message"
     /// The type of the global variable
     pub ty: Type<'a>,
-    /// Optional initializer value (None for external symbols)
-    pub initializer: Option<Value<'a>>, // Globals might be uninitialized (extern)
+    /// Optional initializer (None for external symbols)
+    pub initializer: Option<GlobalInit<'a>>,
     /// Whether the global is visible to other modules (declared with `@export`)
     pub exported: bool,
 }
@@ -539,7 +560,7 @@ mod tests {
         let decl1 = GlobalDeclaration {
             name: "count",
             ty: Type::Primitive(PrimitiveType::I32),
-            initializer: Some(Value::Constant(Literal::I32(0))),
+            initializer: Some(GlobalInit::Value(Value::Constant(Literal::I32(0)))),
             exported: false,
         };
         assert_eq!(format!("{}", decl1), "global @count: i32 = 0");
@@ -582,7 +603,7 @@ mod tests {
             GlobalDeclaration {
                 name: "PI",
                 ty: Type::Primitive(PrimitiveType::F32),
-                initializer: Some(Value::Constant(Literal::F32(PI))),
+                initializer: Some(GlobalInit::Value(Value::Constant(Literal::F32(PI)))),
                 exported: false,
             },
         );

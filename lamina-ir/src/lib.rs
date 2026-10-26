@@ -36,6 +36,6 @@ pub use instruction::{
 pub use instruction::{AtomicBinOp, MemoryOrdering, SimdOp};
 #[cfg(feature = "nightly")]
 pub use module::ModuleAnnotation;
-pub use module::{GlobalDeclaration, Module, TypeDeclaration};
+pub use module::{GlobalDeclaration, GlobalInit, Module, TypeDeclaration};
 pub use owned::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
 pub use types::{Identifier, Literal, PrimitiveType, StructField, Type, Value};
