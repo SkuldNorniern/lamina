@@ -1,7 +1,7 @@
 mod simd;
 pub mod util;
 
-use crate::mir_codegen::common::integer_conversion;
+use crate::mir_codegen::common::{integer_conversion, io_codegen_error};
 use crate::mir_codegen::simd::vector_slots;
 
 use std::{
@@ -172,17 +172,14 @@ fn compile_single_function_wasm(
     let abi = WasmABI::new(target_os);
 
     let mangled_name = abi.mangle_function_name(func_name);
-    writeln!(output, "  (func ${mangled_name}")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, "  (func ${mangled_name}").map_err(io_codegen_error)?;
 
     for (i, _param) in func.sig.params.iter().enumerate() {
-        writeln!(output, "    (param $p{i} i64)")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, "    (param $p{i} i64)").map_err(io_codegen_error)?;
     }
 
     if func.sig.ret_ty.is_some() {
-        writeln!(output, "    (result i64)")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, "    (result i64)").map_err(io_codegen_error)?;
     }
 
     let vectors: HashSet<_> = vector_slots(func).into_iter().map(|(v, _)| v).collect();
@@ -216,8 +213,7 @@ fn compile_single_function_wasm(
         } else {
             abi.generate_local_decl(local_idx)
         };
-        writeln!(output, "{declaration}")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, "{declaration}").map_err(io_codegen_error)?;
     }
 
     let mut block_labels: HashMap<&str, usize> = HashMap::new();
@@ -225,11 +221,9 @@ fn compile_single_function_wasm(
         block_labels.insert(&block.label, idx);
     }
 
-    writeln!(output, "    (local $pc i64)")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, "    (local $pc i64)").map_err(io_codegen_error)?;
     if frame.size > 0 {
-        writeln!(output, "    (local $fp i64)")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, "    (local $fp i64)").map_err(io_codegen_error)?;
     }
     for (i, param) in func.sig.params.iter().enumerate() {
         writeln!(output, "    local.get $p{i}")
@@ -243,40 +237,29 @@ fn compile_single_function_wasm(
             output,
             "    global.get $sp\n    i32.const {size}\n    i32.lt_u\n    (if (then unreachable))\n    global.get $sp\n    i32.const {size}\n    i32.sub\n    global.set $sp\n    global.get $sp\n    i64.extend_i32_u\n    local.set $fp"
         )
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        .map_err(io_codegen_error)?;
     }
     let entry_idx = block_labels.get(func.entry.as_str()).copied().unwrap_or(0);
-    writeln!(output, "    i64.const {entry_idx}")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    writeln!(output, "    local.set $pc")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    writeln!(output, "    (loop $dispatch_loop")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, "    i64.const {entry_idx}").map_err(io_codegen_error)?;
+    writeln!(output, "    local.set $pc").map_err(io_codegen_error)?;
+    writeln!(output, "    (loop $dispatch_loop").map_err(io_codegen_error)?;
 
     let num_blocks = func.blocks.len();
     for i in (0..num_blocks).rev() {
-        writeln!(output, "      (block $block_{i}")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, "      (block $block_{i}").map_err(io_codegen_error)?;
     }
 
-    writeln!(output, "        local.get $pc")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    writeln!(output, "        i32.wrap_i64")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    write!(output, "        br_table")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, "        local.get $pc").map_err(io_codegen_error)?;
+    writeln!(output, "        i32.wrap_i64").map_err(io_codegen_error)?;
+    write!(output, "        br_table").map_err(io_codegen_error)?;
     for i in 0..num_blocks {
-        write!(output, " {i}")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        write!(output, " {i}").map_err(io_codegen_error)?;
     }
-    writeln!(output, " 0")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, " 0").map_err(io_codegen_error)?;
 
     for block in func.blocks.iter() {
-        writeln!(output, "      )")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-        writeln!(output, "      ;; Block: {}", block.label)
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, "      )").map_err(io_codegen_error)?;
+        writeln!(output, "      ;; Block: {}", block.label).map_err(io_codegen_error)?;
         for inst in &block.instructions {
             emit_instruction_wasm(
                 inst,
@@ -288,20 +271,16 @@ fn compile_single_function_wasm(
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
-        writeln!(output, "      br $dispatch_loop")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, "      br $dispatch_loop").map_err(io_codegen_error)?;
     }
 
-    writeln!(output, "    )")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, "    )").map_err(io_codegen_error)?;
 
     if func.sig.ret_ty.is_some() {
-        writeln!(output, "    i64.const 0")
-            .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+        writeln!(output, "    i64.const 0").map_err(io_codegen_error)?;
     }
 
-    writeln!(output, "  )")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, "  )").map_err(io_codegen_error)?;
 
     Ok(output)
 }
