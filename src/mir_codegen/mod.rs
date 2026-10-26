@@ -521,7 +521,8 @@ pub(crate) mod simd_support;
 #[cfg(test)]
 pub(crate) mod test_support;
 
-#[cfg(test)]
+// Every test in it builds and runs a native program with the host toolchain.
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod float_tests;
 
 #[cfg(test)]
