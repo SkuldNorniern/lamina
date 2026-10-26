@@ -6,6 +6,7 @@
 mod simd;
 mod util;
 
+use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
@@ -14,7 +15,7 @@ use crate::mir_codegen::common::{
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 use crate::mir_codegen::simd::reserve_vector_slots;
 
-use std::{collections::HashMap, io::Write, slice, str, sync::Arc};
+use std::{collections::HashMap, io::Error as IoError, io::Write, slice, str, sync::Arc};
 
 use util::{emit_mov_imm64, imm_to_u64};
 
@@ -93,6 +94,9 @@ struct ArgKind {
     float: bool,
     ty_is_f32: bool,
     aggregate: Option<Aggregate>,
+    /// aapcs64 hands a composite over 16 bytes to the callee as a pointer to a copy
+    /// the caller owns, so it takes one register however large it is.
+    by_reference: bool,
 }
 
 impl ArgKind {
@@ -101,6 +105,7 @@ impl ArgKind {
             float: aggregate.is_none() && ty.is_float(),
             ty_is_f32: ty.size_bytes() == 4,
             aggregate,
+            by_reference: aggregate.is_some_and(|a| a.size as u64 > MAX_REGISTER_AGGREGATE),
         }
     }
 }
@@ -108,6 +113,25 @@ impl ArgKind {
 /// Floats take the next v register and integers the next x register, from banks that
 /// run out separately. An aggregate that does not fit in the registers left goes to
 /// the stack whole, and takes the remaining ones out of play.
+/// Copies `words` eight-byte words from the address in `pointer` to the address in
+/// `destination`.
+fn copy_through_pointer<W: Write>(
+    w: &mut W,
+    pointer: &str,
+    destination: &str,
+    words: usize,
+    ra: &mut A64RegAlloc,
+) -> Result<(), IoError> {
+    let value = ra.alloc_scratch().unwrap_or("x21");
+    for word in 0..words {
+        let at = word * 8;
+        writeln!(w, "    ldr {value}, [{pointer}, #{at}]")?;
+        writeln!(w, "    str {value}, [{destination}, #{at}]")?;
+    }
+    ra.free_scratch(value);
+    Ok(())
+}
+
 fn classify_aarch64_arguments(kinds: &[ArgKind]) -> Vec<ArgPlace> {
     let mut gprs = 0;
     let mut fprs = 0;
@@ -127,7 +151,11 @@ fn classify_aarch64_arguments(kinds: &[ArgKind]) -> Vec<ArgPlace> {
             }
             continue;
         }
-        let words = kind.aggregate.map_or(1, |a| a.words());
+        let words = if kind.by_reference {
+            1
+        } else {
+            kind.aggregate.map_or(1, |a| a.words())
+        };
         if gprs + words <= ARGUMENT_REGISTERS {
             places.push(ArgPlace::Gpr { first: gprs, words });
             gprs += words;
@@ -328,7 +356,7 @@ fn compile_single_function_aarch64_with(
         .map(|p| ArgKind::of(p.ty, p.aggregate))
         .collect();
     let param_places = classify_aarch64_arguments(&param_kinds);
-    for (p, place) in func.sig.params.iter().zip(&param_places) {
+    for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().unwrap_or("x19");
             emit_frame_slot_address(&mut output, addr, off)
@@ -355,6 +383,32 @@ fn compile_single_function_aarch64_with(
                             })?;
                     }
                     ra_pro.free_scratch(value);
+                }
+                ArgPlace::Gpr { first, words } if kind.by_reference => {
+                    let _ = words;
+                    copy_through_pointer(
+                        &mut output,
+                        &format!("x{first}"),
+                        addr,
+                        p.aggregate.map_or(0, |a| a.words()),
+                        &mut ra_pro,
+                    )
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                }
+                ArgPlace::Stack { first, .. } if kind.by_reference => {
+                    let pointer = ra_pro.alloc_scratch().unwrap_or("x20");
+                    writeln!(output, "    ldr {pointer}, [x29, #{}]", 16 + first * 8).map_err(
+                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
+                    )?;
+                    copy_through_pointer(
+                        &mut output,
+                        pointer,
+                        addr,
+                        p.aggregate.map_or(0, |a| a.words()),
+                        &mut ra_pro,
+                    )
+                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+                    ra_pro.free_scratch(pointer);
                 }
                 ArgPlace::Gpr { first, words } => {
                     for word in 0..words {
@@ -1435,6 +1489,7 @@ fn emit_block<W: Write>(
                                 }
                                 ra.free_scratch(bits);
                             }
+                            ArgPlace::Gpr { .. } if kind.by_reference => {}
                             ArgPlace::Gpr { first, words } => {
                                 if kind.aggregate.is_none() {
                                     emit_materialize_operand(
@@ -1469,7 +1524,19 @@ fn emit_block<W: Write>(
                             ArgPlace::Gpr { .. } | ArgPlace::Fpr { .. } => 0,
                         })
                         .sum();
-                    let stack_space = (stack_words * 8 + 15) & !15;
+                    // Each by-reference aggregate needs a copy of its own, which the
+                    // callee may write to. They sit above the stack arguments.
+                    let mut copy_offsets = Vec::with_capacity(kinds.len());
+                    let mut copy_bytes = 0;
+                    for kind in &kinds {
+                        if kind.by_reference {
+                            copy_offsets.push(Some(((stack_words * 8 + 15) & !15) + copy_bytes));
+                            copy_bytes += (kind.aggregate.map_or(0, |a| a.words()) * 8 + 15) & !15;
+                        } else {
+                            copy_offsets.push(None);
+                        }
+                    }
+                    let stack_space = (((stack_words * 8 + 15) & !15) + copy_bytes + 15) & !15;
 
                     if stack_space > 0 {
                         emit_sp_adjust(w, "sub", stack_space as u64)?;
@@ -1477,6 +1544,9 @@ fn emit_block<W: Write>(
                             let ArgPlace::Stack { first, words } = *place else {
                                 continue;
                             };
+                            if kind.by_reference {
+                                continue;
+                            }
                             let scratch = ra.alloc_scratch().unwrap_or("x9");
                             if kind.aggregate.is_none() {
                                 emit_materialize_operand(w, argument, scratch, frame, ra)?;
@@ -1496,6 +1566,33 @@ fn emit_block<W: Write>(
                             }
                             ra.free_scratch(scratch);
                         }
+                    }
+
+                    for ((argument, kind), (place, copy_at)) in args
+                        .iter()
+                        .zip(&kinds)
+                        .zip(places.iter().zip(&copy_offsets))
+                    {
+                        let Some(copy_at) = *copy_at else {
+                            continue;
+                        };
+                        let words = kind.aggregate.map_or(0, |a| a.words());
+                        let source = ra.alloc_scratch().unwrap_or("x9");
+                        let target = ra.alloc_scratch().unwrap_or("x10");
+                        emit_materialize_operand(w, argument, source, frame, ra)?;
+                        writeln!(w, "    add {target}, sp, #{copy_at}")?;
+                        copy_through_pointer(w, source, target, words, ra)?;
+                        match *place {
+                            ArgPlace::Gpr { first, .. } => {
+                                writeln!(w, "    mov x{first}, {target}")?;
+                            }
+                            ArgPlace::Stack { first, .. } => {
+                                writeln!(w, "    str {target}, [sp, #{}]", first * 8)?;
+                            }
+                            ArgPlace::Fpr { .. } => {}
+                        }
+                        ra.free_scratch(source);
+                        ra.free_scratch(target);
                     }
 
                     let target_sym: String = abi
