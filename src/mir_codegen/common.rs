@@ -554,8 +554,8 @@ pub fn emit_global_data<W: Write>(
     for name in names {
         let global = &module.globals[name];
         let label = mangle(name);
-        let align_log2 = global.ty.alignment().trailing_zeros();
-        let size = global.ty.size_bytes();
+        let align_log2 = global.align.trailing_zeros();
+        let size = global.size;
         match global.initializer.as_deref() {
             Some(bytes) if bytes.iter().any(|&b| b != 0) => {
                 writeln!(writer, "{data_section}")?;

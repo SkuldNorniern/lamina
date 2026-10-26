@@ -29,6 +29,13 @@ pub struct Global {
 
     /// Whether the symbol is visible to other modules
     pub exported: bool,
+
+    /// Bytes the symbol occupies. Larger than `ty` for an aggregate, whose element
+    /// type is all MIR can name.
+    pub size: usize,
+
+    /// Alignment the symbol needs, in bytes.
+    pub align: usize,
 }
 
 impl Global {
@@ -39,7 +46,16 @@ impl Global {
             mutable: true,
             initializer: None,
             exported: false,
+            size: ty.size_bytes(),
+            align: ty.alignment(),
         }
+    }
+
+    /// Give the global a layout of its own, for an aggregate that `ty` cannot describe.
+    pub fn with_layout(mut self, size: usize, align: usize) -> Self {
+        self.size = size;
+        self.align = align;
+        self
     }
 
     pub fn exported(mut self) -> Self {
