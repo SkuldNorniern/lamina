@@ -385,7 +385,7 @@ fn stack_copy_cycle_preserves_saved_value() -> Result<(), Box<dyn StdError>> {
     Ok(())
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod c_caller_abi_tests {
     use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
     use std::{
@@ -576,7 +576,7 @@ int main(void) {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod debug_line_tests {
     use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
     use std::{
@@ -654,7 +654,7 @@ entry:
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod c_abi_harness {
     use crate::mir_codegen::test_support::compile;
     use std::{error::Error, fs, path::Path, process::Command};
@@ -694,7 +694,7 @@ mod c_abi_harness {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod narrow_c_abi_tests {
     use super::c_abi_harness::build_and_run;
     use crate::mir_codegen::{simd_support::tools_available, test_support::compile};
@@ -1006,7 +1006,7 @@ int main(void) {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod float_c_abi_tests {
     use super::c_abi_harness::build_and_run;
     use crate::mir_codegen::simd_support::tools_available;
@@ -1146,7 +1146,7 @@ int main(void) {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
 mod aggregate_c_abi_tests {
     use super::c_abi_harness::build_and_run;
     use crate::mir_codegen::simd_support::tools_available;

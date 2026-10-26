@@ -3,6 +3,7 @@ use crate::mir::{
     Block, FloatBinOp, FloatUnOp, Function, Immediate, Instruction, MirType, Module, Operand,
     Parameter, Register, Signature, VirtualReg,
 };
+use crate::mir_codegen::simd_support::tool_available;
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{
     env::temp_dir,
@@ -138,6 +139,10 @@ fn float_unary_cpu_output_assembles() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn float_unary_wasm_output_validates() -> Result<(), Box<dyn Error>> {
+    // uv fetches wasmtime on demand, which only the Linux leg of CI is set up for.
+    if !cfg!(target_os = "linux") || !tool_available("uv") {
+        return Ok(());
+    }
     let module = unary_module(false);
     let dir = temp_dir().join(format!("lamina-float-unary-wasm-{}", process::id()));
     fs::create_dir_all(&dir)?;
