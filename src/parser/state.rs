@@ -345,6 +345,21 @@ impl<'a> ParserState<'a> {
             return Err(self.error("Expected a floating-point literal\n  Hint: Float literals must contain at least one digit (e.g., 3.14, -0.5, 42.0)"));
         }
 
+        if !self.is_eof() && matches!(self.bytes[self.position], b'e' | b'E') {
+            let before_exponent = self.position;
+            self.advance();
+            if !self.is_eof() && matches!(self.bytes[self.position], b'+' | b'-') {
+                self.advance();
+            }
+            let digits = self.position;
+            while !self.is_eof() && self.bytes[self.position].is_ascii_digit() {
+                self.advance();
+            }
+            if self.position == digits {
+                self.position = before_exponent;
+            }
+        }
+
         let value_str = &self.input[start..self.position];
         value_str
             .parse::<f64>()
