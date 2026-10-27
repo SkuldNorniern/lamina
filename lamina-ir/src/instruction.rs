@@ -821,7 +821,7 @@ pub enum Instruction<'a> {
         /// Pre-computed byte offset of this field using ABI-correct struct layout.
         /// `None` when the struct type is unavailable (e.g., parsed from text without
         /// type context); the backend then falls back to a fixed 8-byte-per-field stride.
-        /// Set by `IRBuilder::struct_gep_typed` when the full field list is known.
+        /// Set by `IRBuilder::getfieldptr_typed` when the full field list is known.
         field_byte_offset: Option<u64>,
     },
     GetElemPtr {

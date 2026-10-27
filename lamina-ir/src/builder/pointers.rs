@@ -56,9 +56,9 @@ impl<'a> IRBuilder<'a> {
 
     /// Gets a pointer to a struct field using a fixed 8-byte-per-field stride.
     ///
-    /// For structs with non-uniform or non-8-byte fields, use [`Self::struct_gep_typed`]
+    /// For structs with non-uniform or non-8-byte fields, use [`Self::getfieldptr_typed`]
     /// which computes the correct ABI offset from the field type list.
-    pub fn struct_gep(
+    pub fn getfieldptr(
         &mut self,
         result: &'a str,
         struct_ptr: Value<'a>,
@@ -78,7 +78,7 @@ impl<'a> IRBuilder<'a> {
     /// which field to address. The byte offset is computed from `fields` using standard
     /// C-ABI alignment rules (natural alignment, no packing) and embedded in the
     /// instruction so the MIR backend uses the correct offset instead of a fixed stride.
-    pub fn struct_gep_typed(
+    pub fn getfieldptr_typed(
         &mut self,
         result: &'a str,
         struct_ptr: Value<'a>,

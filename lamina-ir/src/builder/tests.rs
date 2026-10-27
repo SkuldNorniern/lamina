@@ -564,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn test_struct_gep() {
+    fn test_getfieldptr() {
         let mut builder = IRBuilder::new();
 
         builder
@@ -582,9 +582,9 @@ mod tests {
                     },
                 ]),
             )
-            .struct_gep("x_ptr", var("point"), 0)
+            .getfieldptr("x_ptr", var("point"), 0)
             .store(Type::Primitive(PrimitiveType::I32), var("x_ptr"), i32(10))
-            .struct_gep("y_ptr", var("point"), 1)
+            .getfieldptr("y_ptr", var("point"), 1)
             .store(Type::Primitive(PrimitiveType::I32), var("y_ptr"), i32(20))
             .load("x_val", Type::Primitive(PrimitiveType::I32), var("x_ptr"))
             .ret(Type::Primitive(PrimitiveType::I32), var("x_val"));
@@ -601,7 +601,7 @@ mod tests {
 
         assert_eq!(entry.instructions.len(), 7);
 
-        // Verify struct_gep
+        // Verify getfieldptr
         if let Instruction::GetFieldPtr {
             result,
             field_index,
@@ -1167,7 +1167,7 @@ mod tests {
     }
 
     #[test]
-    fn test_struct_gep_typed() {
+    fn test_getfieldptr_typed() {
         use crate::types::struct_field_byte_offset;
 
         let mut builder = IRBuilder::new();
@@ -1190,9 +1190,9 @@ mod tests {
         builder
             .function("typed_gep", Type::Void)
             .stackalloc("s", Type::Struct(fields.clone()))
-            .struct_gep_typed("flag_ptr", var("s"), &fields, 0)
-            .struct_gep_typed("val_ptr", var("s"), &fields, 1)
-            .struct_gep_typed("ext_ptr", var("s"), &fields, 2)
+            .getfieldptr_typed("flag_ptr", var("s"), &fields, 0)
+            .getfieldptr_typed("val_ptr", var("s"), &fields, 1)
+            .getfieldptr_typed("ext_ptr", var("s"), &fields, 2)
             .ret_void();
 
         let module = builder.build();
