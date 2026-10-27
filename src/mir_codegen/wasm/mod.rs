@@ -397,6 +397,12 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
     let abi = WasmABI::new(target_os);
 
+    // The module is built in memory so every call can be checked against the
+    // functions it declares before any of it reaches the caller.
+    let original_writer = writer;
+    let mut out: Vec<u8> = Vec::new();
+    let writer = &mut out;
+
     // WASM module header
     writeln!(writer, "(module")?;
     let uses = |symbol: &str| results.iter().any(|result| calls(&result.assembly, symbol));
@@ -527,6 +533,49 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
     writeln!(writer, ")")?;
 
+    undeclared_call(&out)?;
+    original_writer.write_all(&out)?;
+
+    Ok(())
+}
+
+/// Names a call may use: a function the module defines or imports.
+fn declared_names(text: &str) -> HashSet<&str> {
+    let mut names = HashSet::new();
+    for (at, _) in text.match_indices("(func $") {
+        let rest = &text[at + "(func $".len()..];
+        let end = rest
+            .find(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+            .unwrap_or(rest.len());
+        names.insert(&rest[..end]);
+    }
+    names
+}
+
+/// Rejects a module that calls a function it never declares. Without this the
+/// backend reports success and writes a module no host can instantiate.
+fn undeclared_call(assembly: &[u8]) -> Result<(), LaminaError> {
+    let Ok(text) = str::from_utf8(assembly) else {
+        return Ok(());
+    };
+    let declared = declared_names(text);
+    let mut missing: Vec<&str> = Vec::new();
+    for (at, _) in text.match_indices("call $") {
+        let rest = &text[at + "call $".len()..];
+        let end = rest
+            .find(|c: char| !c.is_alphanumeric() && c != '_' && c != '.')
+            .unwrap_or(rest.len());
+        let name = &rest[..end];
+        if !declared.contains(name) && !missing.contains(&name) {
+            missing.push(name);
+        }
+    }
+    missing.sort_unstable();
+    if let Some(name) = missing.first() {
+        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            format!("wasm module calls ${name}, which it neither defines nor imports"),
+        )));
+    }
     Ok(())
 }
 

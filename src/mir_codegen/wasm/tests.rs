@@ -479,3 +479,19 @@ fn narrow_loads_sign_extend_like_every_other_backend() {
     fs::remove_dir_all(&dir).expect("cleanup");
     assert_eq!(String::from_utf8_lossy(&output.stdout), "-1\n");
 }
+
+#[test]
+fn call_without_declaration_is_rejected() {
+    let declared = b"(module\n  (func $helper (result i64)\n    i64.const 1\n  )\n  (func $main\n    call $helper\n    drop\n  )\n)\n";
+    undeclared_call(declared).expect("every call is declared");
+
+    let missing = b"(module\n  (func $main\n    call $memset\n    drop\n  )\n)\n";
+    let error = undeclared_call(missing).expect_err("call with no declaration");
+    assert!(error.to_string().contains("$memset"), "{error}");
+}
+
+#[test]
+fn imported_function_counts_as_declared() {
+    let imported = b"(module\n  (import \"env\" \"memset\" (func $memset (param i64 i64 i64)))\n  (func $main\n    call $memset\n  )\n)\n";
+    undeclared_call(imported).expect("an import declares the name");
+}
