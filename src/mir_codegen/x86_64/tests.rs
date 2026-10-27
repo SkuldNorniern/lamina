@@ -8,7 +8,7 @@ use std::{error::Error as StdError, slice};
 #[test]
 fn calls_that_may_be_variadic_report_vector_count_in_al() {
     let ir = parse_module(
-        "@extern\nfn @printf(ptr %fmt, f64 %x) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @known(i64 %a) -> i64 {\nentry:\n    ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n    %k = call @known(1)\n    %u = call @unknown(1)\n    %f = getelem.ptr @fmt, 0, i8\n    %p = call @printf(%f, 2.5)\n    ret.i64 %k\n}\n",
+        "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @known(i64 %a) -> i64 {\nentry:\n    ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n    %k = call @known(1)\n    %u = call @unknown(1)\n    %f = getelem.ptr @fmt, 0, i8\n    %p = call @printf(%f, 2.5)\n    ret.i64 %k\n}\n",
     )
     .unwrap();
     let mir = from_ir(&ir, "al").unwrap();
