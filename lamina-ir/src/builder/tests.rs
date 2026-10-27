@@ -8,7 +8,7 @@ mod tests {
     use crate::{
         builder::{IRBuilder, values::*},
         function::FunctionAnnotation,
-        instruction::{AllocType, BinaryOp, CmpOp, Instruction},
+        instruction::{AllocType, BinaryOp, CmpOp, Instruction, UnaryOp},
         types::{Literal, PrimitiveType, StructField, Type},
     };
     #[cfg(feature = "nightly")]
@@ -1415,5 +1415,289 @@ mod tests {
         } else {
             panic!("Expected SimdBinary instruction");
         }
+    }
+
+    #[test]
+    fn test_unary_builders() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("unary", Type::Primitive(PrimitiveType::I32))
+            .neg("n", PrimitiveType::I32, var("a"))
+            .not("m", PrimitiveType::U8, var("b"))
+            .sqrt("r", PrimitiveType::F64, var("c"))
+            .ret(Type::Primitive(PrimitiveType::I32), var("n"));
+
+        let module = builder.build();
+        let instructions = &module.functions["unary"].basic_blocks["entry"].instructions;
+        assert_eq!(
+            instructions[0],
+            Instruction::Unary {
+                op: UnaryOp::Neg,
+                result: "n",
+                ty: PrimitiveType::I32,
+                value: var("a"),
+            }
+        );
+        assert_eq!(
+            instructions[1],
+            Instruction::Unary {
+                op: UnaryOp::Not,
+                result: "m",
+                ty: PrimitiveType::U8,
+                value: var("b"),
+            }
+        );
+        assert_eq!(
+            instructions[2],
+            Instruction::Unary {
+                op: UnaryOp::Sqrt,
+                result: "r",
+                ty: PrimitiveType::F64,
+                value: var("c"),
+            }
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "not takes an integer type, found f32")]
+    fn test_not_rejects_float_type() {
+        IRBuilder::new()
+            .function("bad", Type::Primitive(PrimitiveType::I32))
+            .not("m", PrimitiveType::F32, var("b"));
+    }
+
+    #[test]
+    #[should_panic(expected = "sqrt takes f32 or f64, found i64")]
+    fn test_sqrt_rejects_integer_type() {
+        IRBuilder::new()
+            .function("bad", Type::Primitive(PrimitiveType::I32))
+            .sqrt("r", PrimitiveType::I64, var("c"));
+    }
+
+    #[test]
+    fn test_float_conversion_builders() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("convert", Type::Primitive(PrimitiveType::F64))
+            .inttofp("a", PrimitiveType::U32, PrimitiveType::F64, var("x"))
+            .fptoint("b", PrimitiveType::F32, PrimitiveType::I8, var("y"))
+            .fpcast("c", PrimitiveType::F64, PrimitiveType::F32, var("z"))
+            .ret(Type::Primitive(PrimitiveType::F64), var("a"));
+
+        let module = builder.build();
+        let instructions = &module.functions["convert"].basic_blocks["entry"].instructions;
+        assert_eq!(
+            instructions[0],
+            Instruction::IntToFloat {
+                result: "a",
+                signed: false,
+                source_type: PrimitiveType::U32,
+                target_type: PrimitiveType::F64,
+                value: var("x"),
+            }
+        );
+        assert_eq!(
+            instructions[1],
+            Instruction::FloatToInt {
+                result: "b",
+                signed: true,
+                source_type: PrimitiveType::F32,
+                target_type: PrimitiveType::I8,
+                value: var("y"),
+            }
+        );
+        assert_eq!(
+            instructions[2],
+            Instruction::FloatConvert {
+                result: "c",
+                source_type: PrimitiveType::F64,
+                target_type: PrimitiveType::F32,
+                value: var("z"),
+            }
+        );
+    }
+
+    #[test]
+    fn test_inttofp_signedness_comes_from_source_type() {
+        let signed_sources = [
+            PrimitiveType::I8,
+            PrimitiveType::I16,
+            PrimitiveType::I32,
+            PrimitiveType::I64,
+        ];
+        let unsigned_sources = [
+            PrimitiveType::U8,
+            PrimitiveType::U16,
+            PrimitiveType::U32,
+            PrimitiveType::U64,
+        ];
+        let mut builder = IRBuilder::new();
+        builder.function("signedness", Type::Primitive(PrimitiveType::F32));
+        for ty in signed_sources.into_iter().chain(unsigned_sources) {
+            builder.inttofp("r", ty, PrimitiveType::F32, var("v"));
+        }
+        let module = builder.build();
+        let instructions = &module.functions["signedness"].basic_blocks["entry"].instructions;
+        let signs: Vec<bool> = instructions
+            .iter()
+            .map(|inst| match inst {
+                Instruction::IntToFloat { signed, .. } => *signed,
+                other => panic!("Expected IntToFloat instruction, found {other:?}"),
+            })
+            .collect();
+        assert_eq!(signs, [true, true, true, true, false, false, false, false]);
+
+        let mut builder = IRBuilder::new();
+        builder
+            .function("from_u32", Type::Primitive(PrimitiveType::F64))
+            .inttofp("u", PrimitiveType::U32, PrimitiveType::F64, var("x"))
+            .inttofp("s", PrimitiveType::I32, PrimitiveType::F64, var("x"));
+        let module = builder.build();
+        let instructions = &module.functions["from_u32"].basic_blocks["entry"].instructions;
+        assert!(matches!(
+            instructions[0],
+            Instruction::IntToFloat { signed: false, .. }
+        ));
+        assert!(matches!(
+            instructions[1],
+            Instruction::IntToFloat { signed: true, .. }
+        ));
+    }
+
+    #[test]
+    fn test_fptoint_signedness_comes_from_target_type() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("to_int", Type::Primitive(PrimitiveType::I64))
+            .fptoint("a", PrimitiveType::F64, PrimitiveType::U16, var("x"))
+            .fptoint("b", PrimitiveType::F64, PrimitiveType::I64, var("x"));
+        let module = builder.build();
+        let instructions = &module.functions["to_int"].basic_blocks["entry"].instructions;
+        assert!(matches!(
+            instructions[0],
+            Instruction::FloatToInt { signed: false, .. }
+        ));
+        assert!(matches!(
+            instructions[1],
+            Instruction::FloatToInt { signed: true, .. }
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "inttofp source must be an integer type, found f32")]
+    fn test_inttofp_rejects_float_source() {
+        IRBuilder::new()
+            .function("bad", Type::Primitive(PrimitiveType::F64))
+            .inttofp("r", PrimitiveType::F32, PrimitiveType::F64, var("v"));
+    }
+
+    #[test]
+    #[should_panic(expected = "fptoint target must be an integer type, found f64")]
+    fn test_fptoint_rejects_float_target() {
+        IRBuilder::new()
+            .function("bad", Type::Primitive(PrimitiveType::I32))
+            .fptoint("r", PrimitiveType::F32, PrimitiveType::F64, var("v"));
+    }
+
+    #[test]
+    #[should_panic(expected = "fpcast converts between f32 and f64, found i32 to f64")]
+    fn test_fpcast_rejects_integer_source() {
+        IRBuilder::new()
+            .function("bad", Type::Primitive(PrimitiveType::F64))
+            .fpcast("r", PrimitiveType::I32, PrimitiveType::F64, var("v"));
+    }
+
+    #[test]
+    fn test_funcaddr_builder() {
+        let mut builder = IRBuilder::new();
+        builder
+            .function("take_addr", Type::Primitive(PrimitiveType::Ptr))
+            .funcaddr("p", "helper")
+            .ret(Type::Primitive(PrimitiveType::Ptr), var("p"));
+        let module = builder.build();
+        let instructions = &module.functions["take_addr"].basic_blocks["entry"].instructions;
+        assert_eq!(
+            instructions[0],
+            Instruction::FuncAddr {
+                result: "p",
+                func_name: "helper",
+            }
+        );
+    }
+
+    #[test]
+    fn test_callptr_builder() {
+        let i64_ty = Type::Primitive(PrimitiveType::I64);
+        let f32_ty = Type::Primitive(PrimitiveType::F32);
+        let mut builder = IRBuilder::new();
+        builder
+            .function("indirect", Type::Primitive(PrimitiveType::I64))
+            .callptr(
+                Some("r"),
+                i64_ty.clone(),
+                var("f"),
+                vec![(f32_ty.clone(), f32(1.5)), (i64_ty.clone(), var("n"))],
+                None,
+            )
+            .callptr(None, Type::Void, var("g"), vec![], None)
+            .callptr(
+                Some("v"),
+                Type::Primitive(PrimitiveType::I32),
+                var("h"),
+                vec![
+                    (Type::Primitive(PrimitiveType::Ptr), var("fmt")),
+                    (Type::Primitive(PrimitiveType::F64), var("x")),
+                ],
+                Some(1),
+            );
+        let module = builder.build();
+        let instructions = &module.functions["indirect"].basic_blocks["entry"].instructions;
+        assert_eq!(
+            instructions[0],
+            Instruction::CallIndirect {
+                result: Some("r"),
+                target: var("f"),
+                args: vec![(f32_ty, f32(1.5)), (i64_ty.clone(), var("n"))],
+                variadic_fixed: None,
+                return_type: i64_ty,
+            }
+        );
+        assert_eq!(
+            instructions[1],
+            Instruction::CallIndirect {
+                result: None,
+                target: var("g"),
+                args: vec![],
+                variadic_fixed: None,
+                return_type: Type::Void,
+            }
+        );
+        assert_eq!(
+            instructions[2],
+            Instruction::CallIndirect {
+                result: Some("v"),
+                target: var("h"),
+                args: vec![
+                    (Type::Primitive(PrimitiveType::Ptr), var("fmt")),
+                    (Type::Primitive(PrimitiveType::F64), var("x")),
+                ],
+                variadic_fixed: Some(1),
+                return_type: Type::Primitive(PrimitiveType::I32),
+            }
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "callptr variadic_fixed (2) exceeds the argument count (1)")]
+    fn test_callptr_rejects_variadic_fixed_beyond_arguments() {
+        IRBuilder::new()
+            .function("bad", Type::Primitive(PrimitiveType::I32))
+            .callptr(
+                None,
+                Type::Primitive(PrimitiveType::I32),
+                var("f"),
+                vec![(Type::Primitive(PrimitiveType::I32), i32(1))],
+                Some(2),
+            );
     }
 }

@@ -302,6 +302,54 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a negation instruction (`neg.<ty>`).
+    pub fn neg(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        let t = format!("%{} = neg.{} {}", result.as_ref(), ty.as_str(), value);
+        self.push(t);
+        self
+    }
+
+    /// Appends a bitwise complement instruction (`not.<ty>`).
+    ///
+    /// # Panics
+    /// Panics if `ty` is `f32` or `f64`.
+    pub fn not(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        assert!(
+            !is_float(ty),
+            "not takes an integer type, found {}",
+            ty.as_str()
+        );
+        let t = format!("%{} = not.{} {}", result.as_ref(), ty.as_str(), value);
+        self.push(t);
+        self
+    }
+
+    /// Appends a square root instruction (`sqrt.<ty>`).
+    ///
+    /// # Panics
+    /// Panics if `ty` is not `f32` or `f64`.
+    pub fn sqrt(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        assert!(is_float(ty), "sqrt takes f32 or f64, found {}", ty.as_str());
+        let t = format!("%{} = sqrt.{} {}", result.as_ref(), ty.as_str(), value);
+        self.push(t);
+        self
+    }
+
     // -----------------------------------------------------------------------
     // Control flow
     // -----------------------------------------------------------------------
@@ -346,6 +394,40 @@ impl OwnedIRBuilder {
             format!("%{} = call @{}({})", r, func_name.as_ref(), args_str)
         } else {
             format!("call @{}({})", func_name.as_ref(), args_str)
+        };
+        self.push(t);
+        self
+    }
+
+    /// Appends an indirect call through a function pointer
+    /// (`callptr.<ret-ty> <ptr>(<ty> <arg>, ...)`).
+    ///
+    /// `variadic_fixed` is the number of named parameters when the call is variadic,
+    /// which places the `...` marker after that many arguments.
+    ///
+    /// # Panics
+    /// Panics if `variadic_fixed` exceeds the number of arguments.
+    pub fn callptr(
+        &mut self,
+        result: Option<&str>,
+        return_type: &OwnedType,
+        target: &OwnedValue,
+        args: &[(OwnedType, OwnedValue)],
+        variadic_fixed: Option<usize>,
+    ) -> &mut Self {
+        let mut parts: Vec<String> = args.iter().map(|(ty, v)| format!("{ty} {v}")).collect();
+        if let Some(fixed) = variadic_fixed {
+            assert!(
+                fixed <= args.len(),
+                "callptr variadic_fixed ({fixed}) exceeds the argument count ({})",
+                args.len()
+            );
+            parts.insert(fixed, "...".to_string());
+        }
+        let call = format!("callptr.{return_type} {target}({})", parts.join(", "));
+        let t = match result {
+            Some(r) => format!("%{r} = {call}"),
+            None => call,
         };
         self.push(t);
         self
@@ -536,6 +618,13 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends the address of a function as a pointer value (`funcaddr @name`).
+    pub fn funcaddr(&mut self, result: impl AsRef<str>, func_name: impl AsRef<str>) -> &mut Self {
+        let t = format!("%{} = funcaddr @{}", result.as_ref(), func_name.as_ref());
+        self.push(t);
+        self
+    }
+
     // -----------------------------------------------------------------------
     // Type conversions
     // -----------------------------------------------------------------------
@@ -632,6 +721,101 @@ impl OwnedIRBuilder {
             cond,
             true_val,
             false_val
+        );
+        self.push(t);
+        self
+    }
+
+    /// Appends an integer-to-float conversion (`inttofp.<int>.<float>`).
+    ///
+    /// # Panics
+    /// Panics if `source` is not an integer type or `target` is not `f32` or `f64`.
+    pub fn inttofp(
+        &mut self,
+        result: impl AsRef<str>,
+        source: PrimitiveType,
+        target: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        assert!(
+            is_integer(source),
+            "inttofp source must be an integer type, found {}",
+            source.as_str()
+        );
+        assert!(
+            is_float(target),
+            "inttofp target must be f32 or f64, found {}",
+            target.as_str()
+        );
+        let t = format!(
+            "%{} = inttofp.{}.{} {}",
+            result.as_ref(),
+            source.as_str(),
+            target.as_str(),
+            value
+        );
+        self.push(t);
+        self
+    }
+
+    /// Appends a float-to-integer conversion (`fptoint.<float>.<int>`).
+    ///
+    /// # Panics
+    /// Panics if `source` is not `f32` or `f64` or `target` is not an integer type.
+    pub fn fptoint(
+        &mut self,
+        result: impl AsRef<str>,
+        source: PrimitiveType,
+        target: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        assert!(
+            is_float(source),
+            "fptoint source must be f32 or f64, found {}",
+            source.as_str()
+        );
+        assert!(
+            is_integer(target),
+            "fptoint target must be an integer type, found {}",
+            target.as_str()
+        );
+        let t = format!(
+            "%{} = fptoint.{}.{} {}",
+            result.as_ref(),
+            source.as_str(),
+            target.as_str(),
+            value
+        );
+        self.push(t);
+        self
+    }
+
+    /// Appends an `f32`/`f64` conversion (`fpcast.<float>.<float>`).
+    ///
+    /// # Panics
+    /// Panics unless the pair is `f32` to `f64` or `f64` to `f32`.
+    pub fn fpcast(
+        &mut self,
+        result: impl AsRef<str>,
+        source: PrimitiveType,
+        target: PrimitiveType,
+        value: &OwnedValue,
+    ) -> &mut Self {
+        assert!(
+            matches!(
+                (source, target),
+                (PrimitiveType::F32, PrimitiveType::F64) | (PrimitiveType::F64, PrimitiveType::F32)
+            ),
+            "fpcast converts between f32 and f64, found {} to {}",
+            source.as_str(),
+            target.as_str()
+        );
+        let t = format!(
+            "%{} = fpcast.{}.{} {}",
+            result.as_ref(),
+            source.as_str(),
+            target.as_str(),
+            value
         );
         self.push(t);
         self
@@ -761,6 +945,24 @@ impl OwnedIRBuilder {
 
         out.push_str("}\n");
     }
+}
+
+fn is_integer(ty: PrimitiveType) -> bool {
+    matches!(
+        ty,
+        PrimitiveType::I8
+            | PrimitiveType::I16
+            | PrimitiveType::I32
+            | PrimitiveType::I64
+            | PrimitiveType::U8
+            | PrimitiveType::U16
+            | PrimitiveType::U32
+            | PrimitiveType::U64
+    )
+}
+
+fn is_float(ty: PrimitiveType) -> bool {
+    matches!(ty, PrimitiveType::F32 | PrimitiveType::F64)
 }
 
 // ---------------------------------------------------------------------------

@@ -93,4 +93,9 @@ impl<'a> IRBuilder<'a> {
             field_byte_offset,
         })
     }
+
+    /// Creates the address of a function as a pointer value (`funcaddr @name`).
+    pub fn funcaddr(&mut self, result: &'a str, func_name: &'a str) -> &mut Self {
+        self.inst(Instruction::FuncAddr { result, func_name })
+    }
 }

@@ -1691,6 +1691,46 @@ entry:
         .read("rd", &var("s"), &OwnedValue::I64(8))
         .write_byte("wb", &OwnedValue::I32(65))
         .read_byte("rb")
+        .inttofp("if", PrimitiveType::I64, PrimitiveType::F64, &var("sum"))
+        .inttofp(
+            "uf",
+            PrimitiveType::U8,
+            PrimitiveType::F32,
+            &OwnedValue::U8(3),
+        )
+        .fptoint("fi", PrimitiveType::F64, PrimitiveType::U32, &var("f"))
+        .fptoint(
+            "si",
+            PrimitiveType::F32,
+            PrimitiveType::I8,
+            &OwnedValue::F32(2.5),
+        )
+        .fpcast("fc", PrimitiveType::F64, PrimitiveType::F32, &var("f"))
+        .fpcast(
+            "fw",
+            PrimitiveType::F32,
+            PrimitiveType::F64,
+            &OwnedValue::F32(1.5),
+        )
+        .neg("ng", PrimitiveType::I64, &var("sum"))
+        .neg("nf", PrimitiveType::F64, &var("f"))
+        .not("nt", PrimitiveType::U16, &OwnedValue::U16(1))
+        .sqrt("sq", PrimitiveType::F64, &var("f"))
+        .funcaddr("fa", "helper")
+        .callptr(
+            Some("ci"),
+            &i64t,
+            &var("fa"),
+            &[(i64t.clone(), var("sum"))],
+            None,
+        )
+        .callptr(
+            None,
+            &OwnedType::Void,
+            &var("fa"),
+            &[(i32t.clone(), OwnedValue::I32(1)), (f64t.clone(), var("f"))],
+            Some(1),
+        )
         .call(Some("c"), "helper", &[var("sum")])
         .call(None, "helper", &[OwnedValue::I64(1)])
         .print(&var("c"))
@@ -1713,6 +1753,68 @@ entry:
             b.build_ir_text()
         );
         parse_module(&text).unwrap_or_else(|e| panic!("{e}\n---\n{text}"));
+    }
+
+    #[test]
+    fn builder_conversion_unary_and_call_instructions_round_trip_through_parser() {
+        use crate::ir::builder::{i64 as ir_i64_value, var};
+
+        let i64_ty = Type::Primitive(PrimitiveType::I64);
+        let f64_ty = Type::Primitive(PrimitiveType::F64);
+        let f32_ty = Type::Primitive(PrimitiveType::F32);
+        let i32_ty = Type::Primitive(PrimitiveType::I32);
+        let ptr_ty = Type::Primitive(PrimitiveType::Ptr);
+
+        let mut b = IRBuilder::new();
+        b.function("f", i64_ty.clone())
+            .inttofp("a", PrimitiveType::I64, PrimitiveType::F64, var("x"))
+            .inttofp("b", PrimitiveType::U32, PrimitiveType::F32, var("x"))
+            .fptoint("c", PrimitiveType::F64, PrimitiveType::I8, var("x"))
+            .fptoint("d", PrimitiveType::F32, PrimitiveType::U64, var("x"))
+            .fpcast("e", PrimitiveType::F64, PrimitiveType::F32, var("x"))
+            .fpcast("g", PrimitiveType::F32, PrimitiveType::F64, var("x"))
+            .neg("h", PrimitiveType::I32, var("x"))
+            .neg("h2", PrimitiveType::F32, var("x"))
+            .not("i", PrimitiveType::U8, var("x"))
+            .sqrt("j", PrimitiveType::F64, var("x"))
+            .funcaddr("k", "helper")
+            .callptr(
+                Some("l"),
+                i64_ty.clone(),
+                var("k"),
+                vec![(f32_ty.clone(), var("fx")), (i64_ty.clone(), var("x"))],
+                None,
+            )
+            .callptr(
+                None,
+                Type::Void,
+                var("k"),
+                vec![(ptr_ty.clone(), var("fmt")), (f64_ty.clone(), var("x"))],
+                Some(1),
+            )
+            .callptr(
+                Some("m"),
+                i32_ty.clone(),
+                var("k"),
+                vec![(ptr_ty.clone(), var("fmt"))],
+                Some(1),
+            )
+            .ret(i64_ty.clone(), ir_i64_value(0));
+
+        let module = b.build();
+        let built = module.functions["f"].basic_blocks["entry"]
+            .instructions
+            .clone();
+        let body: Vec<String> = built.iter().map(|inst| format!("  {inst}")).collect();
+        let text = format!(
+            "fn @f(i64 %x, ptr %fmt, f32 %fx) -> i64 {{\nentry:\n{}\n}}",
+            body.join("\n")
+        );
+        let parsed = parse_module(&text).unwrap_or_else(|e| panic!("{e}\n---\n{text}"));
+        assert_eq!(
+            parsed.functions["f"].basic_blocks["entry"].instructions,
+            built
+        );
     }
 
     fn atomic_entry(lines: &[String]) -> String {

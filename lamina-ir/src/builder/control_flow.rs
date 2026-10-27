@@ -91,4 +91,36 @@ impl<'a> IRBuilder<'a> {
             args,
         })
     }
+
+    /// Creates an indirect call through a function pointer (`callptr.<ret-ty> <ptr>(<ty> <arg>, ...)`).
+    ///
+    /// Each argument carries the type the call site declares for it. `variadic_fixed` is
+    /// the number of named parameters when the call is variadic, which places the `...`
+    /// marker after that many arguments; pass `None` for a non-variadic call.
+    ///
+    /// # Panics
+    /// Panics if `variadic_fixed` exceeds the number of arguments.
+    pub fn callptr(
+        &mut self,
+        result: Option<&'a str>,
+        return_type: Type<'a>,
+        target: Value<'a>,
+        args: Vec<(Type<'a>, Value<'a>)>,
+        variadic_fixed: Option<usize>,
+    ) -> &mut Self {
+        if let Some(fixed) = variadic_fixed {
+            assert!(
+                fixed <= args.len(),
+                "callptr variadic_fixed ({fixed}) exceeds the argument count ({})",
+                args.len()
+            );
+        }
+        self.inst(Instruction::CallIndirect {
+            result,
+            target,
+            args,
+            variadic_fixed,
+            return_type,
+        })
+    }
 }
