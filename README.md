@@ -295,12 +295,12 @@ heapfree %hptr
 %narrow = trunc.i64.i32 %wide
 
 # Between integers and floats
-%f = sitofp.i64.f64 %i
-%i = fptosi.f64.i64 %f
+%f = inttofp.i64.f64 %i
+%i = fptoint.f64.i64 %f
 
 # Between float widths
-%d = fpext.f32.f64 %s
-%s = fptrunc.f64.f32 %d
+%d = fpcast.f32.f64 %s
+%s = fpcast.f64.f32 %d
 ```
 
 ### Unary Operations

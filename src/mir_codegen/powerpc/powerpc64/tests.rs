@@ -379,7 +379,7 @@ fn writeptr_sends_the_pointee_bytes_through_write() -> Result<(), Box<dyn Error>
 #[test]
 fn floats_cross_the_boundary_in_f_registers() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @add(i64 %n, f64 %a, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  %w = sitofp.i64.f64 %n\n  %t = add.f64 %s, %w\n  ret.f64 %t\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(7, 1.5, 2.5)\n  %i = fptosi.f64.i64 %r\n  ret.i64 %i\n}\n";
+    let ir = "fn @add(i64 %n, f64 %a, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  %w = inttofp.i64.f64 %n\n  %t = add.f64 %s, %w\n  ret.f64 %t\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(7, 1.5, 2.5)\n  %i = fptoint.f64.i64 %r\n  ret.i64 %i\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "floats").expect("lower floats");
     let mut output = Vec::new();
@@ -409,7 +409,7 @@ fn floats_cross_the_boundary_in_f_registers() -> Result<(), Box<dyn Error>> {
 #[test]
 fn conversions_saturate_clamp_and_zero_nan() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @main() -> i64 {\nentry:\n  %f = add.f64 1.5, 0.0\n  %wide = fptosi.f64.i64 %f\n  %narrow = fptosi.f64.i8 %f\n  %unsigned = fptoui.f64.u32 %f\n  %back = sitofp.i64.f64 %wide\n  %from_u = uitofp.u32.f64 %unsigned\n  ret.i64 %wide\n}\n";
+    let ir = "fn @main() -> i64 {\nentry:\n  %f = add.f64 1.5, 0.0\n  %wide = fptoint.f64.i64 %f\n  %narrow = fptoint.f64.i8 %f\n  %unsigned = fptoint.f64.u32 %f\n  %back = inttofp.i64.f64 %wide\n  %from_u = inttofp.u32.f64 %unsigned\n  ret.i64 %wide\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "conversions").expect("lower conversions");
     let mut output = Vec::new();

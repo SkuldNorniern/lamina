@@ -3,7 +3,7 @@ global @tiny: f64 = 1.5e-3
 fn @main() -> i64 {
 entry:
   %a = add.f64 1.0e40, 0.0
-  %b = fptrunc.f64.f32 %a
+  %b = fpcast.f64.f32 %a
   print %b
   %c = add.f64 2.5E3, 0.5
   print %c

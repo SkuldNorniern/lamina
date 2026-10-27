@@ -412,7 +412,7 @@ fn wasi_has_no_wasm64_form() {
 
 #[test]
 fn imports_declare_the_types_the_host_wrote() {
-    let source = "@extern\nfn @host_scale(f64 %x, i64 %n) -> f64\n\nfn @main() -> i64 {\nentry:\n  %r = call @host_scale(2.5, 3)\n  %b = fptosi.f64.i64 %r\n  ret.i64 %b\n}\n";
+    let source = "@extern\nfn @host_scale(f64 %x, i64 %n) -> f64\n\nfn @main() -> i64 {\nentry:\n  %r = call @host_scale(2.5, 3)\n  %b = fptoint.f64.i64 %r\n  ret.i64 %b\n}\n";
     let wat = emit_wat(source, TargetArchitecture::Wasm32);
 
     let import = wat

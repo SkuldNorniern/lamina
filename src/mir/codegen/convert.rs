@@ -1714,7 +1714,7 @@ fn convert_instruction<'a>(
             };
             if from.is_float() || to.is_float() {
                 return Err(FromIRError::InvalidConversion(format!(
-                    "{name} relates two integers; use fptosi, fptoui, sitofp or uitofp to cross between integers and floats"
+                    "{name} relates two integers; use fptoint or inttofp to cross between integers and floats"
                 )));
             }
             let bits = |ty: MirType| {
@@ -1804,12 +1804,7 @@ fn convert_instruction<'a>(
             let to = map_ir_prim(*target_type)?;
             if from == to || !from.is_float() || !to.is_float() {
                 return Err(FromIRError::InvalidConversion(format!(
-                    "{} from {source_type} to {target_type} converts between the float types only",
-                    if to.size_bytes() > from.size_bytes() {
-                        "fpext"
-                    } else {
-                        "fptrunc"
-                    }
+                    "fpcast from {source_type} to {target_type} converts between the float types only"
                 )));
             }
             let dst = Register::Virtual(vreg_alloc.allocate_fpr());

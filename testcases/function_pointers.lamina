@@ -12,7 +12,7 @@ entry:
 
 fn @scale(f64 %x, i64 %k) -> f64 {
 entry:
-  %kf = sitofp.i64.f64 %k
+  %kf = inttofp.i64.f64 %k
   %r = mul.f64 %x, %kf
   ret.f64 %r
 }

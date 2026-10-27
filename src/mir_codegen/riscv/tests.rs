@@ -712,7 +712,7 @@ fn module_globals_are_addressed_through_symbol_loads() -> Result<(), Box<dyn Err
 #[test]
 fn floats_cross_the_boundary_in_fa_registers() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @add(f64 %a, i64 %n, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  %w = sitofp.i64.f64 %n\n  %t = add.f64 %s, %w\n  ret.f64 %t\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(1.5, 7, 2.5)\n  %i = fptosi.f64.i64 %r\n  ret.i64 %i\n}\n";
+    let ir = "fn @add(f64 %a, i64 %n, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  %w = inttofp.i64.f64 %n\n  %t = add.f64 %s, %w\n  ret.f64 %t\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(1.5, 7, 2.5)\n  %i = fptoint.f64.i64 %r\n  ret.i64 %i\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "floats").expect("lower floats");
     let mut output = Vec::new();
@@ -742,7 +742,7 @@ fn floats_past_the_float_bank_take_integer_registers() -> Result<(), Box<dyn Err
     use crate::{mir::codegen::from_ir, parser::parse_module};
     let params: Vec<String> = (0..10).map(|i| format!("f64 %p{i}")).collect();
     let sums: Vec<String> = (0..10)
-        .map(|i| format!("  %w{i} = fptosi.f64.i64 %p{i}\n  %a{i} = add.i64 %acc, %w{i}\n  %acc = add.i64 %a{i}, 0"))
+        .map(|i| format!("  %w{i} = fptoint.f64.i64 %p{i}\n  %a{i} = add.i64 %acc, %w{i}\n  %acc = add.i64 %a{i}, 0"))
         .collect();
     let args: Vec<String> = (0..10).map(|i| format!("{i}.5")).collect();
     let ir = format!(
@@ -778,7 +778,7 @@ fn floats_past_the_float_bank_take_integer_registers() -> Result<(), Box<dyn Err
 #[test]
 fn conversions_saturate_clamp_and_zero_nan() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @main() -> i64 {\nentry:\n  %f = add.f64 1.5, 0.0\n  %wide = fptosi.f64.i64 %f\n  %narrow = fptosi.f64.i8 %f\n  %unsigned = fptoui.f64.u32 %f\n  %back = sitofp.i64.f64 %wide\n  %from_u = uitofp.u32.f64 %unsigned\n  ret.i64 %wide\n}\n";
+    let ir = "fn @main() -> i64 {\nentry:\n  %f = add.f64 1.5, 0.0\n  %wide = fptoint.f64.i64 %f\n  %narrow = fptoint.f64.i8 %f\n  %unsigned = fptoint.f64.u32 %f\n  %back = inttofp.i64.f64 %wide\n  %from_u = inttofp.u32.f64 %unsigned\n  ret.i64 %wide\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "conversions").expect("lower conversions");
     let mut output = Vec::new();

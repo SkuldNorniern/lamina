@@ -522,10 +522,9 @@ pub enum Instruction<'a> {
     },
     /// Convert an integer to a floating-point type.
     ///
-    /// `signed == true` is `sitofp`: `source_type` is `i8`, `i16`, `i32` or `i64`
-    /// and the value is read as two's complement. `signed == false` is `uitofp`:
-    /// `source_type` is `u8`, `u16`, `u32` or `u64` and the value is read as
-    /// unsigned. `target_type` is `f32` or `f64`.
+    /// Written `inttofp.<source>.<target>`. `signed` follows `source_type`: an
+    /// `i8`, `i16`, `i32` or `i64` is read as two's complement, a `u8`, `u16`,
+    /// `u32` or `u64` as unsigned. `target_type` is `f32` or `f64`.
     ///
     /// Rounding is IEEE 754 round-to-nearest, ties-to-even. Values that are
     /// representable are converted exactly. Conversion never traps and never
@@ -540,9 +539,9 @@ pub enum Instruction<'a> {
     },
     /// Convert a floating-point value to an integer, truncating toward zero.
     ///
-    /// `signed == true` is `fptosi`: `target_type` is `i8`, `i16`, `i32` or `i64`.
-    /// `signed == false` is `fptoui`: `target_type` is `u8`, `u16`, `u32` or `u64`.
-    /// `source_type` is `f32` or `f64`.
+    /// Written `fptoint.<source>.<target>`. `signed` follows `target_type`: an
+    /// `i8`, `i16`, `i32` or `i64` target is signed, a `u8`, `u16`, `u32` or
+    /// `u64` target unsigned. `source_type` is `f32` or `f64`.
     ///
     /// This operation saturates and never traps. It does not depend on the
     /// hardware instruction used by a backend:
@@ -553,7 +552,7 @@ pub enum Instruction<'a> {
     ///   representable target value produces the minimum, including `-inf`.
     /// - For unsigned targets, a value whose truncation is negative produces `0`,
     ///   including `-inf`. Values in `(-1, 0)` truncate to `0`.
-    /// - Values in range truncate toward zero: `fptosi.f64.i8` of `-1.9` is `-1`.
+    /// - Values in range truncate toward zero: `fptoint.f64.i8` of `-1.9` is `-1`.
     FloatToInt {
         result: Identifier<'a>,
         signed: bool,
@@ -563,8 +562,8 @@ pub enum Instruction<'a> {
     },
     /// Convert between the floating-point types.
     ///
-    /// `fpext` widens `f32` to `f64` exactly. `fptrunc` narrows `f64` to `f32`,
-    /// rounding to nearest with ties to even; a magnitude above the largest `f32`
+    /// Written `fpcast.<source>.<target>`. `f32` to `f64` widens exactly. `f64`
+    /// to `f32` narrows, rounding to nearest with ties to even; a magnitude above the largest `f32`
     /// becomes an infinity of the same sign, and one below the smallest subnormal
     /// becomes a zero of the same sign. NaN stays NaN.
     FloatConvert {
@@ -950,12 +949,9 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "trunc",
         "sext",
         "bitcast",
-        "sitofp",
-        "uitofp",
-        "fptosi",
-        "fptoui",
-        "fpext",
-        "fptrunc",
+        "inttofp",
+        "fptoint",
+        "fpcast",
         "neg",
         "not",
         "sqrt",
@@ -1014,12 +1010,9 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "trunc",
         "sext",
         "bitcast",
-        "sitofp",
-        "uitofp",
-        "fptosi",
-        "fptoui",
-        "fpext",
-        "fptrunc",
+        "inttofp",
+        "fptoint",
+        "fpcast",
         "neg",
         "not",
         "sqrt",
@@ -1283,23 +1276,21 @@ impl fmt::Display for Instruction<'_> {
             } => write!(f, "%{result} = bitcast.{source_type}.{target_type} {value}"),
             Instruction::IntToFloat {
                 result,
-                signed,
+                signed: _,
                 source_type,
                 target_type,
                 value,
             } => {
-                let op = if *signed { "sitofp" } else { "uitofp" };
-                write!(f, "%{result} = {op}.{source_type}.{target_type} {value}")
+                write!(f, "%{result} = inttofp.{source_type}.{target_type} {value}")
             }
             Instruction::FloatToInt {
                 result,
-                signed,
+                signed: _,
                 source_type,
                 target_type,
                 value,
             } => {
-                let op = if *signed { "fptosi" } else { "fptoui" };
-                write!(f, "%{result} = {op}.{source_type}.{target_type} {value}")
+                write!(f, "%{result} = fptoint.{source_type}.{target_type} {value}")
             }
             Instruction::FloatConvert {
                 result,
@@ -1307,12 +1298,7 @@ impl fmt::Display for Instruction<'_> {
                 target_type,
                 value,
             } => {
-                let op = if source_type == target_type || *source_type == PrimitiveType::F32 {
-                    "fpext"
-                } else {
-                    "fptrunc"
-                };
-                write!(f, "%{result} = {op}.{source_type}.{target_type} {value}")
+                write!(f, "%{result} = fpcast.{source_type}.{target_type} {value}")
             }
             Instruction::Unary {
                 op,

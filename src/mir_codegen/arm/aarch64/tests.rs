@@ -285,7 +285,7 @@ fn switch_case_constants_are_materialized_without_immediate_range_limits()
 #[test]
 fn integer_float_conversions_select_width_and_saturation_forms() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @main() -> i64 {\nentry:\n  %a = sitofp.i8.f32 -3\n  %b = fptosi.f64.i8 2.5\n  %c = fptoui.f64.u64 1.0\n  %d = uitofp.u64.f64 7\n  ret.i64 0\n}\n";
+    let ir = "fn @main() -> i64 {\nentry:\n  %a = inttofp.i8.f32 -3\n  %b = fptoint.f64.i8 2.5\n  %c = fptoint.f64.u64 1.0\n  %d = inttofp.u64.f64 7\n  ret.i64 0\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "conversions").expect("lower conversion module");
     let mut output = Vec::new();
@@ -411,7 +411,7 @@ fn integer_aggregates_use_consecutive_x_registers() -> Result<(), Box<dyn Error>
 #[test]
 fn floats_cross_the_boundary_in_v_registers() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @add(f64 %a, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  ret.f64 %s\n}\nfn @addf(f32 %a, i64 %n) -> f32 {\nentry:\n  %s = add.f32 %a, 1.0\n  ret.f32 %s\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(1.5, 2.5)\n  %i = fptosi.f64.i64 %r\n  ret.i64 %i\n}\n";
+    let ir = "fn @add(f64 %a, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  ret.f64 %s\n}\nfn @addf(f32 %a, i64 %n) -> f32 {\nentry:\n  %s = add.f32 %a, 1.0\n  ret.f32 %s\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(1.5, 2.5)\n  %i = fptoint.f64.i64 %r\n  ret.i64 %i\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "floats").expect("lower floats");
     let mut output = Vec::new();

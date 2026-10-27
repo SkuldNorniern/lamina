@@ -23,7 +23,7 @@ entry:
   %s8 = add.i64 %s7, %a
   %s9 = add.i64 %s8, %d
   %fs = add.f64 %f0, %f1
-  %fi = fptosi.f64.i64 %fs
+  %fi = fptoint.f64.i64 %fs
   %s10 = add.i64 %s9, %fi
   %o0 = getfieldptr %out, 0
   store.i64 %o0, %s10
