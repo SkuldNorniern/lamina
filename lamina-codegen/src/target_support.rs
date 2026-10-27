@@ -20,7 +20,9 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
             matches!(
                 os,
-                TargetOperatingSystem::Unknown | TargetOperatingSystem::Linux
+                TargetOperatingSystem::Unknown
+                    | TargetOperatingSystem::Linux
+                    | TargetOperatingSystem::Wasi
             )
         }
         _ => false,
@@ -179,6 +181,18 @@ mod tests {
         assert!(is_assembly_supported(
             TargetArchitecture::Wasm32,
             TargetOperatingSystem::Unknown
+        ));
+        assert!(is_assembly_supported(
+            TargetArchitecture::Wasm32,
+            TargetOperatingSystem::Wasi
+        ));
+        assert!(is_assembly_supported(
+            TargetArchitecture::Wasm64,
+            TargetOperatingSystem::Wasi
+        ));
+        assert!(!is_assembly_supported(
+            TargetArchitecture::X86_64,
+            TargetOperatingSystem::Wasi
         ));
     }
 

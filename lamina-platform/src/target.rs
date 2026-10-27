@@ -143,6 +143,7 @@ pub enum TargetOperatingSystem {
     Vita,
     Orbis,
     Prospero,
+    Wasi,
     #[cfg(feature = "nightly")]
     Artery,
     Unknown,
@@ -174,6 +175,7 @@ impl FromStr for TargetOperatingSystem {
             "vita" => Ok(Self::Vita),
             "orbis" | "ps4" => Ok(Self::Orbis),
             "prospero" | "ps5" => Ok(Self::Prospero),
+            "wasi" => Ok(Self::Wasi),
             "unknown" => Ok(Self::Unknown),
             #[cfg(feature = "nightly")]
             "artery" => Ok(Self::Artery),
@@ -231,6 +233,7 @@ impl fmt::Display for TargetOperatingSystem {
             Self::Vita => "vita",
             Self::Orbis => "orbis",
             Self::Prospero => "prospero",
+            Self::Wasi => "wasi",
             #[cfg(feature = "nightly")]
             Self::Artery => "artery",
             Self::Unknown => "unknown",
@@ -269,6 +272,8 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "arx64_unknown",
     "wasm32_unknown",
     "wasm64_unknown",
+    "wasm32_wasi",
+    "wasm64_wasi",
     "riscv32_unknown",
     "riscv64_unknown",
     "ppc64_linux",
@@ -319,6 +324,15 @@ mod tests {
             Target::new(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux)
         );
         assert!(HOST_ARCH_LIST.contains(&"ppc64le_linux"));
+    }
+
+    #[test]
+    fn wasi_targets_round_trip() {
+        for name in ["wasm32_wasi", "wasm64_wasi"] {
+            let target: Target = name.parse().unwrap();
+            assert_eq!(target.to_string(), name);
+            assert!(HOST_ARCH_LIST.contains(&name));
+        }
     }
 
     #[test]
