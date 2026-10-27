@@ -1651,15 +1651,29 @@ fn convert_instruction<'a>(
             result,
             target,
             args,
+            variadic_fixed,
             return_type,
         } => {
             let target = resolve_operand(target, vreg_alloc, var_to_reg, globals)?;
             let mut mir_args = Vec::new();
             let mut arg_types = Vec::new();
-            for (arg_ty, argument) in args {
-                let mir_ty = map_ir_type(arg_ty)?;
+            let mut instructions = Vec::new();
+            let fixed = variadic_fixed.unwrap_or(args.len());
+            for (index, (arg_ty, argument)) in args.iter().enumerate() {
+                let mut mir_ty = map_ir_type(arg_ty)?;
                 let mut operand = resolve_operand(argument, vreg_alloc, var_to_reg, globals)?;
                 normalize_lowered_literal(&mut operand, mir_ty);
+                if index >= fixed && mir_ty == MirType::f32() {
+                    let dst = Register::Virtual(vreg_alloc.allocate_fpr());
+                    instructions.push(Instruction::FloatConvert {
+                        from: MirType::f32(),
+                        to: MirType::f64(),
+                        dst: dst.clone(),
+                        src: operand,
+                    });
+                    operand = Operand::Register(dst);
+                    mir_ty = MirType::f64();
+                }
                 arg_types.push(mir_ty);
                 mir_args.push(operand);
             }
@@ -1675,13 +1689,15 @@ fn convert_instruction<'a>(
                 }
                 _ => resolve_or_alloc(name, vreg_alloc, var_to_reg),
             });
-            Ok(vec![Instruction::CallIndirect {
+            instructions.push(Instruction::CallIndirect {
                 target,
                 arg_types,
                 args: mir_args,
+                variadic_fixed: *variadic_fixed,
                 ret,
                 ret_ty,
-            }])
+            });
+            Ok(instructions)
         }
         IRInst::ZeroExtend {
             result,

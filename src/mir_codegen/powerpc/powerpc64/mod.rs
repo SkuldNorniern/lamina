@@ -1524,6 +1524,7 @@ fn emit_instruction_ppc64<W: Write>(
             target,
             arg_types,
             args,
+            variadic_fixed: _,
             ret,
             ret_ty,
         } => {

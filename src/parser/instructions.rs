@@ -484,11 +484,30 @@ fn parse_call_indirect<'a>(
     let target = parse_value(state)?;
     state.expect_char('(')?;
     let mut args = Vec::new();
+    let mut variadic_fixed = None;
     loop {
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
             state.advance();
             break;
+        }
+        if state.peek_slice(3) == Some("...") {
+            if variadic_fixed.is_some() {
+                return Err(state.error(
+                    "callptr argument list has more than one '...'\n  Hint: One '...' marks where the callee's named parameters end",
+                ));
+            }
+            for _ in 0..3 {
+                state.advance();
+            }
+            variadic_fixed = Some(args.len());
+            state.skip_whitespace_and_comments();
+            if state.current_char() == Some(')') {
+                state.advance();
+                break;
+            }
+            state.expect_char(',')?;
+            continue;
         }
         let ty = parse_type(state).map_err(|_| untyped_call_indirect_error(state))?;
         state.skip_whitespace_and_comments();
@@ -507,6 +526,7 @@ fn parse_call_indirect<'a>(
     Ok(Instruction::CallIndirect {
         result,
         target,
+        variadic_fixed,
         args,
         return_type,
     })

@@ -1,0 +1,11 @@
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+global $fmt: [12 x i8] = "%d %.1f %d\n"
+
+fn @main() -> i64 {
+entry:
+  %p = funcaddr @printf
+  %r = callptr.i32 %p(ptr $fmt, ..., i32 7, f32 2.5, i32 9)
+  ret.i64 0
+}

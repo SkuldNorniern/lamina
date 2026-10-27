@@ -736,6 +736,9 @@ pub enum Instruction {
         target: Operand,
         arg_types: Vec<MirType>,
         args: Vec<Operand>,
+        /// Index of the first argument the convention treats as variadic, when the
+        /// callee is variadic. `None` when it is not.
+        variadic_fixed: Option<usize>,
         ret: Option<Register>,
         ret_ty: Option<MirType>,
     },

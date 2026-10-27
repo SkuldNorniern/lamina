@@ -1561,6 +1561,7 @@ pub(super) fn emit_instruction_x86_64(
             target,
             arg_types,
             args,
+            variadic_fixed: _,
             ret,
             ret_ty,
         } => {

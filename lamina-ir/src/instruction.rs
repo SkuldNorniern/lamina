@@ -583,6 +583,9 @@ pub enum Instruction<'a> {
     /// function signature: `callptr.i64 %f(f32 1.5, i64 %n)`. That type is what a
     /// literal operand is materialised as and what the ABI classifies the argument by.
     ///
+    /// A `...` in the argument list marks where the callee's named parameters end:
+    /// `callptr.i32 %f(ptr %fmt, ..., f64 %x)` passes `%x` under the variadic rules.
+    ///
     /// # Preconditions
     /// - `target` must hold the address of a function whose signature matches the
     ///   argument types given and `return_type`.
@@ -590,6 +593,9 @@ pub enum Instruction<'a> {
         result: Option<Identifier<'a>>,
         target: Value<'a>,
         args: Vec<(Type<'a>, Value<'a>)>,
+        /// Number of arguments the callee names, when `...` marks the rest as
+        /// variadic. `None` when the call is not variadic.
+        variadic_fixed: Option<usize>,
         return_type: Type<'a>,
     },
     // --- Control Flow ---
@@ -1294,9 +1300,14 @@ impl fmt::Display for Instruction<'_> {
                 result,
                 target,
                 args,
+                variadic_fixed,
                 return_type,
             } => {
-                let args: Vec<String> = args.iter().map(|(ty, v)| format!("{ty} {v}")).collect();
+                let mut args: Vec<String> =
+                    args.iter().map(|(ty, v)| format!("{ty} {v}")).collect();
+                if let Some(fixed) = variadic_fixed {
+                    args.insert((*fixed).min(args.len()), "...".to_string());
+                }
                 match result {
                     Some(result) => write!(
                         f,

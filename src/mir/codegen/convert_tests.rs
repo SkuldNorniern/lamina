@@ -681,6 +681,27 @@ fn variadic_f32_argument_widens_to_f64() {
 }
 
 #[test]
+fn variadic_callptr_widens_only_past_its_marker() {
+    let source = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal $fmt: [5 x i8] = \"%g\\n\"\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 $fmt, 0\n  %f = funcaddr @printf\n  %x = add.f32 1.5, 2.25\n  %c = callptr.i32 %f(ptr %p, ..., f32 %x)\n  %d = callptr.i32 %f(ptr %p, f32 %x)\n  ret.i64 0\n}\n";
+    let ir = parse_module(source).expect("parse variadic callptr");
+    let module = from_ir(&ir, "variadic_callptr").expect("lower variadic callptr");
+    let widened: Vec<_> = module.functions["main"].blocks[0]
+        .instructions
+        .iter()
+        .filter(|inst| matches!(inst, Instruction::FloatConvert { .. }))
+        .collect();
+    assert_eq!(widened.len(), 1, "{widened:?}");
+    assert!(
+        matches!(
+            widened[0],
+            Instruction::FloatConvert { from, to, .. }
+                if *from == MirType::f32() && *to == MirType::f64()
+        ),
+        "{widened:?}"
+    );
+}
+
+#[test]
 fn string_global_resolves_escapes() {
     let module = lowered_global_module(
         "global $s: [8 x i8] = \"a\\nb\\t\\x41\\\\\"\n\

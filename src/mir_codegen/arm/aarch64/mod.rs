@@ -1332,12 +1332,13 @@ fn emit_block<W: Write>(
                 target,
                 arg_types,
                 args,
+                variadic_fixed,
                 ret,
                 ret_ty,
             } => {
                 let kinds: Vec<ArgKind> =
                     arg_types.iter().map(|ty| ArgKind::of(*ty, None)).collect();
-                let places = classify_aarch64_arguments(&kinds, abi.target_os(), None);
+                let places = classify_aarch64_arguments(&kinds, abi.target_os(), *variadic_fixed);
                 let stack_space = (aarch64_stack_bytes(&places) + 15) & !15;
                 if stack_space > 0 {
                     emit_sp_adjust(w, "sub", stack_space as u64)?;

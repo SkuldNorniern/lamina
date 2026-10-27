@@ -1561,6 +1561,7 @@ fn emit_instruction_riscv<W: Write>(
             target,
             arg_types,
             args,
+            variadic_fixed: _,
             ret,
             ret_ty,
         } => {
