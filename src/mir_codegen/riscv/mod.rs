@@ -38,6 +38,7 @@ use crate::{
     },
 };
 
+use lamina_codegen::abi::{Abi, RuntimeSymbol};
 use lamina_codegen::{
     GraphColorAllocator, LinearScanAllocator, LiveInterval, LocalRegisterAllocator,
     riscv::{RiscVAbi, RiscVFrame, RiscVRegAlloc, RiscVTarget, Xlen},
@@ -819,26 +820,16 @@ fn fmt_label(call: &str, target_os: TargetOperatingSystem) -> String {
 /// The print intrinsics go through buffered `printf` while the byte intrinsics write
 /// straight out, so without this the two leave in a different order here than on the
 /// other backends.
-fn emit_flush<W: Write>(
-    writer: &mut W,
-    abi: &RiscVAbi,
-    target_os: TargetOperatingSystem,
-) -> Result<(), LaminaError> {
-    let fflush = abi.call_stub("fflush").unwrap_or_else(|| match target_os {
-        TargetOperatingSystem::MacOS => "_fflush".to_string(),
-        _ => "fflush".to_string(),
-    });
+fn emit_flush<W: Write>(writer: &mut W, abi: &RiscVAbi) -> Result<(), LaminaError> {
+    let fflush = abi.builtin_library().symbol(RuntimeSymbol::Fflush);
     writeln!(writer, "    li a0, 0")?;
     writeln!(writer, "    call {fflush}")?;
     Ok(())
 }
 
 /// Name of printf for this target, honouring any stub the ABI prefers.
-fn printf_symbol(abi: &RiscVAbi, target_os: TargetOperatingSystem) -> String {
-    abi.call_stub("print").unwrap_or_else(|| match target_os {
-        TargetOperatingSystem::MacOS => "_printf".to_string(),
-        _ => "printf".to_string(),
-    })
+fn printf_symbol(abi: &RiscVAbi) -> String {
+    abi.builtin_library().symbol(RuntimeSymbol::Printf)
 }
 
 #[derive(Clone, Copy)]
@@ -1452,15 +1443,15 @@ fn emit_instruction_riscv<W: Write>(
                         writeln!(writer, "    fcvt.d.s ft0, ft0")?;
                         writeln!(writer, "    fmv.x.d a1, ft0")?;
                     }
-                    writeln!(writer, "    call {}", printf_symbol(&abi, target_os))?;
-                    emit_flush(writer, &abi, target_os)?;
+                    writeln!(writer, "    call {}", printf_symbol(&abi))?;
+                    emit_flush(writer, &abi)?;
                 }
             } else if name == "lamina.print" || name == "lamina.printu" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    la a0, {}", fmt_label(name, target_os))?;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
-                    writeln!(writer, "    call {}", printf_symbol(&abi, target_os))?;
-                    emit_flush(writer, &abi, target_os)?;
+                    writeln!(writer, "    call {}", printf_symbol(&abi))?;
+                    emit_flush(writer, &abi)?;
                 }
             } else {
                 // General function call implementation

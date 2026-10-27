@@ -75,10 +75,10 @@
 //! LAMINA_BUILTINS="print=printf,malloc=jemalloc_malloc,dealloc=jemalloc_free"
 //! ```
 //!
-//! Default builtins:
-//! - `print` → `printf` (or `_printf` on macOS)
-//! - `malloc` → `malloc` (or `_malloc` on macOS)
-//! - `dealloc` → `free` (or `_free` on macOS)
+//! Every runtime helper the compiler calls is a [`RuntimeSymbol`]. Keys are the
+//! C names (`malloc`, `free`, `printf`, `fflush`, `exit`, `memcpy`, `memmove`,
+//! `memset`), plus the legacy aliases `print` (printf) and `dealloc` (free).
+//! Platform decoration (`_printf` on macOS) is applied to the override as well.
 //!
 //! ## Backend-Specific ABIs
 //!
@@ -92,50 +92,140 @@ use crate::target_support::os_uses_macho;
 use lamina_platform::TargetOperatingSystem;
 use std::{collections::HashMap, env};
 
+/// Runtime helpers the compiler calls by name.
+///
+/// Each variant names a C symbol. Emission sites use the variant, never a string
+/// literal, so `LAMINA_BUILTINS` can retarget every one of them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuntimeSymbol {
+    Malloc,
+    Free,
+    Printf,
+    Fflush,
+    Exit,
+    Memcpy,
+    Memmove,
+    Memset,
+}
+
+impl RuntimeSymbol {
+    pub const ALL: [RuntimeSymbol; 8] = [
+        RuntimeSymbol::Malloc,
+        RuntimeSymbol::Free,
+        RuntimeSymbol::Printf,
+        RuntimeSymbol::Fflush,
+        RuntimeSymbol::Exit,
+        RuntimeSymbol::Memcpy,
+        RuntimeSymbol::Memmove,
+        RuntimeSymbol::Memset,
+    ];
+
+    /// The undecorated C symbol name.
+    pub const fn c_name(self) -> &'static str {
+        match self {
+            RuntimeSymbol::Malloc => "malloc",
+            RuntimeSymbol::Free => "free",
+            RuntimeSymbol::Printf => "printf",
+            RuntimeSymbol::Fflush => "fflush",
+            RuntimeSymbol::Exit => "exit",
+            RuntimeSymbol::Memcpy => "memcpy",
+            RuntimeSymbol::Memmove => "memmove",
+            RuntimeSymbol::Memset => "memset",
+        }
+    }
+
+    /// Looks up a symbol by its C name, as MIR call sites spell it.
+    pub fn from_c_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|symbol| symbol.c_name() == name)
+    }
+
+    /// Looks up a symbol by a `LAMINA_BUILTINS` key or builtin name.
+    ///
+    /// Accepts the C name plus the legacy keys `print` (printf) and `dealloc` (free).
+    pub fn from_builtin_name(name: &str) -> Option<Self> {
+        match name {
+            "dealloc" => Some(RuntimeSymbol::Free),
+            "print" => Some(RuntimeSymbol::Printf),
+            _ => Self::from_c_name(name),
+        }
+    }
+}
+
+/// Resolves runtime helper names to the symbols the emitted code must reference.
+///
+/// Overrides name the C symbol. Platform decoration (the Mach-O leading
+/// underscore) is applied on top, the same way it is for every other C symbol.
 pub struct BuiltinLibrary {
     target_os: TargetOperatingSystem,
-    overrides: HashMap<String, String>,
+    overrides: HashMap<RuntimeSymbol, String>,
 }
 
 impl BuiltinLibrary {
-    pub fn from_env(target_os: TargetOperatingSystem) -> Self {
-        let overrides = builtin_overrides_from_env();
+    pub fn new(
+        target_os: TargetOperatingSystem,
+        overrides: HashMap<RuntimeSymbol, String>,
+    ) -> Self {
         Self {
             target_os,
             overrides,
         }
     }
 
-    pub fn resolve(&self, name: &str) -> Option<String> {
-        self.overrides
-            .get(name)
-            .cloned()
-            .or_else(|| self.default_symbol(name))
+    pub fn from_env(target_os: TargetOperatingSystem) -> Self {
+        Self::new(target_os, builtin_overrides_from_env())
     }
 
-    fn default_symbol(&self, name: &str) -> Option<String> {
-        match name {
-            "print" => Some(get_printf_symbol(self.target_os).to_string()),
-            "malloc" => Some(get_malloc_symbol(self.target_os).to_string()),
-            "dealloc" => Some(get_free_symbol(self.target_os).to_string()),
-            _ => None,
-        }
+    pub fn has_overrides(&self) -> bool {
+        !self.overrides.is_empty()
+    }
+
+    /// The undecorated C name for a symbol. MIR call sites carry this name and the
+    /// backend's function mangling adds any platform prefix.
+    pub fn c_name(&self, symbol: RuntimeSymbol) -> &str {
+        self.overrides
+            .get(&symbol)
+            .map_or(symbol.c_name(), String::as_str)
+    }
+
+    /// The final symbol to reference from directly emitted code.
+    pub fn symbol(&self, symbol: RuntimeSymbol) -> String {
+        decorate_symbol(self.target_os, self.c_name(symbol))
+    }
+
+    pub fn resolve(&self, name: &str) -> Option<String> {
+        RuntimeSymbol::from_builtin_name(name).map(|symbol| self.symbol(symbol))
     }
 }
 
-fn builtin_overrides_from_env() -> HashMap<String, String> {
+fn decorate_symbol(target_os: TargetOperatingSystem, name: &str) -> String {
+    if os_uses_macho(target_os) {
+        format!("_{name}")
+    } else {
+        name.to_string()
+    }
+}
+
+/// Parses `name=symbol,name=symbol`. Entries with an unknown name or an empty side are skipped.
+pub fn parse_builtin_overrides(value: &str) -> HashMap<RuntimeSymbol, String> {
     let mut overrides = HashMap::new();
-    if let Ok(value) = env::var("LAMINA_BUILTINS") {
-        for entry in value.split(',') {
-            let mut parts = entry.splitn(2, '=');
-            let name = parts.next().unwrap_or("").trim();
-            let symbol = parts.next().unwrap_or("").trim();
-            if !name.is_empty() && !symbol.is_empty() {
-                overrides.insert(name.to_string(), symbol.to_string());
-            }
+    for entry in value.split(',') {
+        let mut parts = entry.splitn(2, '=');
+        let name = parts.next().unwrap_or("").trim();
+        let symbol = parts.next().unwrap_or("").trim();
+        if symbol.is_empty() {
+            continue;
+        }
+        if let Some(runtime) = RuntimeSymbol::from_builtin_name(name) {
+            overrides.insert(runtime, symbol.to_string());
         }
     }
     overrides
+}
+
+fn builtin_overrides_from_env() -> HashMap<RuntimeSymbol, String> {
+    env::var("LAMINA_BUILTINS")
+        .map(|value| parse_builtin_overrides(&value))
+        .unwrap_or_default()
 }
 
 /// Trait defining the common interface for all ABI implementations.
@@ -152,7 +242,7 @@ fn builtin_overrides_from_env() -> HashMap<String, String> {
 /// ## Builtins
 /// - Builtins are resolved by `call_stub`, which can be overridden with
 ///   the `LAMINA_BUILTINS` environment variable.
-/// - The default builtin map recognizes `print`, `malloc`, and `dealloc`.
+/// - The builtin map recognizes every [`RuntimeSymbol`].
 ///
 /// ## Naming
 /// - Backends must apply platform-specific symbol mangling, such as
@@ -228,9 +318,8 @@ pub fn get_free_symbol(target_os: TargetOperatingSystem) -> &'static str {
 
 /// Helper function to create a common call_stub implementation.
 ///
-/// This handles the common pattern of mapping "print", "malloc", and "dealloc"
-/// to their platform-specific symbols. Backends can use this to reduce
-/// duplication in their `call_stub` implementations.
+/// Resolves a builtin name through the environment-configured [`BuiltinLibrary`].
+/// Backends can use this to reduce duplication in their `call_stub` implementations.
 pub fn common_call_stub(name: &str, target_os: TargetOperatingSystem) -> Option<String> {
     BuiltinLibrary::from_env(target_os).resolve(name)
 }
@@ -315,5 +404,85 @@ mod tests {
             common_call_stub("unknown", TargetOperatingSystem::Linux),
             None
         );
+    }
+}
+
+#[cfg(test)]
+mod runtime_symbol_tests {
+    use super::*;
+
+    fn all_overridden(os: TargetOperatingSystem) -> BuiltinLibrary {
+        let overrides = RuntimeSymbol::ALL
+            .into_iter()
+            .map(|symbol| (symbol, format!("k_{}", symbol.c_name())))
+            .collect();
+        BuiltinLibrary::new(os, overrides)
+    }
+
+    #[test]
+    fn default_symbols_keep_c_names_and_platform_decoration() {
+        let linux = BuiltinLibrary::new(TargetOperatingSystem::Linux, HashMap::new());
+        let macos = BuiltinLibrary::new(TargetOperatingSystem::MacOS, HashMap::new());
+        assert!(!linux.has_overrides());
+        for symbol in RuntimeSymbol::ALL {
+            assert_eq!(linux.c_name(symbol), symbol.c_name());
+            assert_eq!(linux.symbol(symbol), symbol.c_name());
+            assert_eq!(macos.c_name(symbol), symbol.c_name());
+            assert_eq!(macos.symbol(symbol), format!("_{}", symbol.c_name()));
+        }
+    }
+
+    #[test]
+    fn overrides_replace_every_symbol() {
+        for os in [TargetOperatingSystem::Linux, TargetOperatingSystem::MacOS] {
+            let lib = all_overridden(os);
+            assert!(lib.has_overrides());
+            for symbol in RuntimeSymbol::ALL {
+                let expected_c = format!("k_{}", symbol.c_name());
+                assert_eq!(lib.c_name(symbol), expected_c);
+                assert_eq!(
+                    lib.resolve(symbol.c_name()),
+                    Some(decorate_symbol(os, &expected_c))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resolve_maps_legacy_builtin_keys() {
+        let lib = BuiltinLibrary::new(
+            TargetOperatingSystem::Linux,
+            parse_builtin_overrides("print=k_print,dealloc=k_free"),
+        );
+        assert_eq!(lib.resolve("print"), Some("k_print".to_string()));
+        assert_eq!(lib.resolve("dealloc"), Some("k_free".to_string()));
+        assert_eq!(lib.resolve("free"), Some("k_free".to_string()));
+        assert_eq!(lib.resolve("write"), None);
+    }
+
+    #[test]
+    fn parse_builtin_overrides_skips_unknown_and_empty_entries() {
+        let parsed = parse_builtin_overrides(" malloc = k_alloc ,bogus=x,memset=,=y,exit=k_exit");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(
+            parsed.get(&RuntimeSymbol::Malloc).map(String::as_str),
+            Some("k_alloc")
+        );
+        assert_eq!(
+            parsed.get(&RuntimeSymbol::Exit).map(String::as_str),
+            Some("k_exit")
+        );
+    }
+
+    #[test]
+    fn from_c_name_round_trips_every_symbol() {
+        for symbol in RuntimeSymbol::ALL {
+            assert_eq!(RuntimeSymbol::from_c_name(symbol.c_name()), Some(symbol));
+            assert_eq!(
+                RuntimeSymbol::from_builtin_name(symbol.c_name()),
+                Some(symbol)
+            );
+        }
+        assert_eq!(RuntimeSymbol::from_c_name("print"), None);
     }
 }

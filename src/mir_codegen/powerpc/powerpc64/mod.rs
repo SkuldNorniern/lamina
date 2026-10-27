@@ -53,6 +53,7 @@ use crate::{
     },
 };
 
+use lamina_codegen::abi::{Abi, RuntimeSymbol};
 use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator, LiveInterval,
     powerpc::{
@@ -511,9 +512,9 @@ const FLOAT_ARGUMENT_REGISTERS: usize = 13;
 /// The print intrinsics go through buffered `printf` while the byte intrinsics write
 /// straight out, so without this the two leave in a different order here than on the
 /// other backends.
-fn emit_flush<W: Write>(writer: &mut W) -> Result<(), LaminaError> {
+fn emit_flush<W: Write>(writer: &mut W, fflush: &str) -> Result<(), LaminaError> {
     writeln!(writer, "    li 3, 0")?;
-    writeln!(writer, "    bl fflush")?;
+    writeln!(writer, "    bl {fflush}")?;
     writeln!(writer, "    nop")?;
     Ok(())
 }
@@ -1326,6 +1327,11 @@ fn emit_instruction_ppc64<W: Write>(
                 writeln!(writer, "    cmpdi 3, 0")?;
                 writeln!(writer, "    isel 3, 4, 3, 0")?;
             } else if name == "lamina.printf32" || name == "lamina.printf64" {
+                let runtime = abi.builtin_library();
+                let (printf, fflush) = (
+                    runtime.c_name(RuntimeSymbol::Printf),
+                    runtime.c_name(RuntimeSymbol::Fflush),
+                );
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    addis 3, 2, .L_mir_fmt_float@toc@ha")?;
                     writeln!(writer, "    addi 3, 3, .L_mir_fmt_float@toc@l")?;
@@ -1339,19 +1345,24 @@ fn emit_instruction_ppc64<W: Write>(
                     )?;
                     writeln!(writer, "    stfd 1, -8(1)")?;
                     writeln!(writer, "    ld 4, -8(1)")?;
-                    writeln!(writer, "    bl printf")?;
+                    writeln!(writer, "    bl {printf}")?;
                     writeln!(writer, "    nop")?;
-                    emit_flush(writer)?;
+                    emit_flush(writer, fflush)?;
                 }
             } else if name == "lamina.print" || name == "lamina.printu" {
+                let runtime = abi.builtin_library();
+                let (printf, fflush) = (
+                    runtime.c_name(RuntimeSymbol::Printf),
+                    runtime.c_name(RuntimeSymbol::Fflush),
+                );
                 if let Some(arg) = args.first() {
                     let fmt = print_format_label(name);
                     writeln!(writer, "    addis 3, 2, {fmt}@toc@ha")?;
                     writeln!(writer, "    addi 3, 3, {fmt}@toc@l")?;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "4")?;
-                    writeln!(writer, "    bl printf")?;
+                    writeln!(writer, "    bl {printf}")?;
                     writeln!(writer, "    nop")?;
-                    emit_flush(writer)?;
+                    emit_flush(writer, fflush)?;
                 }
             } else {
                 let types = signatures.arguments(name, args);

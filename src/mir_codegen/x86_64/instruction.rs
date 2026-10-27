@@ -1,5 +1,6 @@
 use super::*;
 use crate::mir_codegen::common::{align_up, print_format_label};
+use lamina_codegen::abi::{BuiltinLibrary, RuntimeSymbol};
 
 pub(super) fn restore_saved_registers<W: Write>(
     writer: &mut W,
@@ -28,10 +29,13 @@ enum PrintArg {
 fn emit_printf_and_flush<W: Write>(
     writer: &mut RaxTrackingWriter<W>,
     target_os: TargetOperatingSystem,
+    builtins: &BuiltinLibrary,
     fmt: &str,
     arg: PrintArg,
 ) -> Result<(), LaminaError> {
     let shadow = windows::SHADOW_SPACE_SIZE;
+    let printf = builtins.symbol(RuntimeSymbol::Printf);
+    let fflush = builtins.symbol(RuntimeSymbol::Fflush);
     if target_os == TargetOperatingSystem::Windows {
         writeln!(writer, "    subq ${shadow}, %rsp")?;
         writeln!(writer, "    leaq {fmt}(%rip), %rcx")?;
@@ -39,16 +43,15 @@ fn emit_printf_and_flush<W: Write>(
             PrintArg::Integer => writeln!(writer, "    movq %rax, %rdx")?,
             PrintArg::Double => writeln!(writer, "    movq %xmm0, %rdx")?,
         }
-        writeln!(writer, "    call printf")?;
+        writeln!(writer, "    call {printf}")?;
         writeln!(writer, "    addq ${shadow}, %rsp")?;
         writeln!(writer, "    subq ${shadow}, %rsp")?;
         writeln!(writer, "    movq $0, %rcx")?;
-        writeln!(writer, "    call fflush")?;
+        writeln!(writer, "    call {fflush}")?;
         writeln!(writer, "    addq ${shadow}, %rsp")?;
         return Ok(());
     }
 
-    let prefix = if os_uses_macho(target_os) { "_" } else { "" };
     writeln!(writer, "    leaq {fmt}(%rip), %rdi")?;
     if let PrintArg::Integer = arg {
         writeln!(writer, "    movq %rax, %rsi")?;
@@ -64,9 +67,9 @@ fn emit_printf_and_flush<W: Write>(
     } else {
         writeln!(writer, "    movl ${vector_count}, %eax")?;
     }
-    writeln!(writer, "    call {prefix}printf")?;
+    writeln!(writer, "    call {printf}")?;
     writeln!(writer, "    movq $0, %rdi")?;
-    writeln!(writer, "    call {prefix}fflush")?;
+    writeln!(writer, "    call {fflush}")?;
     Ok(())
 }
 
@@ -768,7 +771,13 @@ pub(super) fn emit_instruction_x86_64(
                 let fmt = print_format_label(name);
                 if let Some(arg) = args.first() {
                     load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
-                    emit_printf_and_flush(writer, target_os, fmt, PrintArg::Integer)?;
+                    emit_printf_and_flush(
+                        writer,
+                        target_os,
+                        &BuiltinLibrary::from_env(target_os),
+                        fmt,
+                        PrintArg::Integer,
+                    )?;
                 }
             } else if (name == "lamina.printf32" || name == "lamina.printf64") && args.len() == 1 {
                 let arg = args.first().ok_or_else(|| {
@@ -786,6 +795,7 @@ pub(super) fn emit_instruction_x86_64(
                 emit_printf_and_flush(
                     writer,
                     target_os,
+                    &BuiltinLibrary::from_env(target_os),
                     print_format_label(name),
                     PrintArg::Double,
                 )?;
@@ -2231,5 +2241,70 @@ mod narrow_integer_tests {
         }
         fs::remove_dir_all(directory)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod runtime_symbol_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use std::collections::HashMap;
+
+    fn emit_print(
+        target_os: TargetOperatingSystem,
+        overrides: HashMap<RuntimeSymbol, String>,
+    ) -> String {
+        let mut writer = RaxTrackingWriter {
+            inner: Vec::new(),
+            rax_value: None,
+        };
+        let builtins = BuiltinLibrary::new(target_os, overrides);
+        emit_printf_and_flush(&mut writer, target_os, &builtins, "fmt", PrintArg::Integer)
+            .expect("emit");
+        String::from_utf8(writer.inner).expect("utf8")
+    }
+
+    fn overrides() -> HashMap<RuntimeSymbol, String> {
+        [
+            (RuntimeSymbol::Printf, "k_print".to_string()),
+            (RuntimeSymbol::Fflush, "k_flush".to_string()),
+        ]
+        .into_iter()
+        .collect()
+    }
+
+    #[test]
+    fn print_defaults_to_c_names() {
+        let linux = emit_print(TargetOperatingSystem::Linux, HashMap::new());
+        assert!(
+            linux.contains("call printf\n") && linux.contains("call fflush\n"),
+            "{linux}"
+        );
+        let macos = emit_print(TargetOperatingSystem::MacOS, HashMap::new());
+        assert!(
+            macos.contains("call _printf\n") && macos.contains("call _fflush\n"),
+            "{macos}"
+        );
+    }
+
+    #[test]
+    fn print_uses_overrides() {
+        let linux = emit_print(TargetOperatingSystem::Linux, overrides());
+        assert!(
+            linux.contains("call k_print\n") && linux.contains("call k_flush\n"),
+            "{linux}"
+        );
+        assert!(!linux.contains("call printf\n"), "{linux}");
+        let windows = emit_print(TargetOperatingSystem::Windows, overrides());
+        assert!(
+            windows.contains("call k_print\n") && windows.contains("call k_flush\n"),
+            "{windows}"
+        );
+        let macos = emit_print(TargetOperatingSystem::MacOS, overrides());
+        assert!(
+            macos.contains("call _k_print\n") && macos.contains("call _k_flush\n"),
+            "{macos}"
+        );
     }
 }

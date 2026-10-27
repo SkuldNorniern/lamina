@@ -22,13 +22,16 @@ pub use capability::{CapabilitySet, CodegenCapability};
 pub use limits::{MAX_MIR_CALL_PARAMETERS, validate_module_call_parameters};
 pub use settings::{MirCodegenSettings, RegallocStrategy};
 
-use std::{collections::HashMap, fmt, io::Write};
+use std::{borrow::Cow, collections::HashMap, fmt, io::Write};
 
 use crate::{
     error::LaminaError,
     mir::{Global, Instruction, MirType, Module, Signature},
 };
-use lamina_codegen::riscv::{RiscVTarget, Xlen};
+use lamina_codegen::{
+    abi::{BuiltinLibrary, RuntimeSymbol},
+    riscv::{RiscVTarget, Xlen},
+};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Generates assembly from MIR for the requested target architecture and OS.
@@ -49,16 +52,49 @@ pub fn generate_mir_to_target<W: Write>(
     )
 }
 
+/// Rewrites runtime helper calls to the names `LAMINA_BUILTINS` selects.
+///
+/// Only calls whose names match a [`RuntimeSymbol`] are touched, and only when an
+/// override is set, so the default path borrows the module unchanged.
+pub fn retarget_runtime_calls<'a>(
+    module: &'a Module,
+    builtins: &BuiltinLibrary,
+) -> Cow<'a, Module> {
+    if !builtins.has_overrides() {
+        return Cow::Borrowed(module);
+    }
+    let retarget = |name: &mut String| {
+        if let Some(symbol) = RuntimeSymbol::from_c_name(name) {
+            *name = builtins.c_name(symbol).to_string();
+        }
+    };
+    let mut retargeted = module.clone();
+    for function in retargeted.functions.values_mut() {
+        for block in &mut function.blocks {
+            for instruction in &mut block.instructions {
+                if let Instruction::Call { name, .. } | Instruction::TailCall { name, .. } =
+                    instruction
+                {
+                    retarget(name);
+                }
+            }
+        }
+    }
+    Cow::Owned(retargeted)
+}
+
 /// Like [`generate_mir_to_target`], but honors [`MirCodegenSettings`] for register allocation
 /// and optional assembly debug directives.
 pub fn generate_mir_to_target_with_settings<W: Write>(
-    module: &Module,
+    input: &Module,
     writer: &mut W,
     target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
+    let retargeted = retarget_runtime_calls(input, &BuiltinLibrary::from_env(target_os));
+    let module: &Module = &retargeted;
     let effective_caps = {
         #[cfg(feature = "nightly")]
         {
@@ -575,5 +611,112 @@ mod atomic_target_tests {
             assert!(message.contains("atomic_add"), "{backend}: {message}");
             assert!(message.contains(backend), "{backend}: {message}");
         }
+    }
+}
+
+#[cfg(test)]
+mod runtime_symbol_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::*;
+    use crate::{mir::codegen, parser};
+    use std::borrow::Cow;
+
+    const RUNTIME_PROGRAM: &str = r#"
+    fn @main() -> i32 {
+      entry:
+        %p = heapalloc.i64
+        %src = heapalloc.i64
+        memcpy %p, %src, 8
+        memmove %p, %src, 8
+        memset %p, 0, 8
+        heapfree %p
+        ret.i32 0
+    }
+    "#;
+
+    fn lower(input: &str) -> Module {
+        let ir = parser::parse_module(input).expect("parse");
+        codegen::from_ir(&ir, "runtime_symbols").expect("lower")
+    }
+
+    fn emit_x86(module: &Module, target_os: TargetOperatingSystem) -> String {
+        let mut out = Vec::new();
+        generate_mir_to_target(module, &mut out, TargetArchitecture::X86_64, target_os, 1)
+            .expect("emit");
+        String::from_utf8(out).expect("utf8")
+    }
+
+    fn overrides_for(symbols: &[RuntimeSymbol]) -> HashMap<RuntimeSymbol, String> {
+        symbols
+            .iter()
+            .map(|symbol| (*symbol, format!("k_{}", symbol.c_name())))
+            .collect()
+    }
+
+    const MIR_SYMBOLS: [RuntimeSymbol; 5] = [
+        RuntimeSymbol::Malloc,
+        RuntimeSymbol::Free,
+        RuntimeSymbol::Memcpy,
+        RuntimeSymbol::Memmove,
+        RuntimeSymbol::Memset,
+    ];
+
+    #[test]
+    fn default_calls_keep_c_names_and_decoration() {
+        let module = lower(RUNTIME_PROGRAM);
+        let linux = emit_x86(&module, TargetOperatingSystem::Linux);
+        for name in ["malloc", "free", "memcpy", "memmove", "memset"] {
+            assert!(
+                linux.contains(&format!("call {name}\n")),
+                "{name}:\n{linux}"
+            );
+        }
+        let macos = emit_x86(&module, TargetOperatingSystem::MacOS);
+        for name in ["malloc", "free", "memcpy", "memmove", "memset"] {
+            assert!(
+                macos.contains(&format!("call _{name}\n")),
+                "{name}:\n{macos}"
+            );
+        }
+    }
+
+    #[test]
+    fn retarget_is_a_no_op_without_overrides() {
+        let module = lower(RUNTIME_PROGRAM);
+        let lib = BuiltinLibrary::new(TargetOperatingSystem::Linux, HashMap::new());
+        assert!(matches!(
+            retarget_runtime_calls(&module, &lib),
+            Cow::Borrowed(_)
+        ));
+    }
+
+    #[test]
+    fn overrides_reach_every_mir_call_site() {
+        let module = lower(RUNTIME_PROGRAM);
+        let lib = BuiltinLibrary::new(TargetOperatingSystem::Linux, overrides_for(&MIR_SYMBOLS));
+        let retargeted = retarget_runtime_calls(&module, &lib);
+        assert!(matches!(retargeted, Cow::Owned(_)));
+        let asm = emit_x86(&retargeted, TargetOperatingSystem::Linux);
+        for symbol in MIR_SYMBOLS {
+            let call = format!("call k_{}\n", symbol.c_name());
+            assert!(asm.contains(&call), "missing {call}:\n{asm}");
+            assert!(
+                !asm.contains(&format!("call {}\n", symbol.c_name())),
+                "{asm}"
+            );
+        }
+    }
+
+    #[test]
+    fn overrides_get_platform_decoration_like_any_c_symbol() {
+        let module = lower(RUNTIME_PROGRAM);
+        let lib = BuiltinLibrary::new(TargetOperatingSystem::MacOS, overrides_for(&MIR_SYMBOLS));
+        let asm = emit_x86(
+            &retarget_runtime_calls(&module, &lib),
+            TargetOperatingSystem::MacOS,
+        );
+        assert!(asm.contains("call _k_malloc\n"), "{asm}");
+        assert!(asm.contains("call _k_memset\n"), "{asm}");
     }
 }

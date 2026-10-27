@@ -44,6 +44,7 @@ use crate::{
     },
 };
 
+use lamina_codegen::abi::{Abi, RuntimeSymbol};
 use lamina_codegen::os_uses_macho;
 use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
@@ -1397,6 +1398,8 @@ fn emit_block<W: Write>(
             MirInst::Call { name, args, ret } => {
                 if (name == "lamina.print" || name == "lamina.printu") && args.len() == 1 {
                     let fmt = print_format_label(name);
+                    let printf = abi.builtin_library().symbol(RuntimeSymbol::Printf);
+                    let fflush = abi.builtin_library().symbol(RuntimeSymbol::Fflush);
                     // Special-case intrinsic: print(integer) via printf("%lld\n", value)
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                     match abi.target_os() {
@@ -1407,19 +1410,19 @@ fn emit_block<W: Write>(
                             writeln!(w, "    adrp x0, {fmt}@PAGE")?;
                             writeln!(w, "    add x0, x0, {fmt}@PAGEOFF")?;
                             writeln!(w, "    str x1, [sp]")?; // spill the vararg as required by ABI
-                            writeln!(w, "    bl _printf")?;
+                            writeln!(w, "    bl {printf}")?;
                             // Flush stdout to ensure output appears immediately when mixing with syscall I/O
                             writeln!(w, "    mov x0, #0")?; // NULL flushes all streams
-                            writeln!(w, "    bl _fflush")?;
+                            writeln!(w, "    bl {fflush}")?;
                             writeln!(w, "    add sp, sp, #32")?; // restore stack
                         }
                         _ => {
                             writeln!(w, "    adrp x0, {fmt}")?;
                             writeln!(w, "    add x0, x0, :lo12:{fmt}")?;
-                            writeln!(w, "    bl printf")?;
+                            writeln!(w, "    bl {printf}")?;
                             // Flush stdout to ensure output appears immediately when mixing with syscall I/O
                             writeln!(w, "    mov x0, #0")?; // NULL flushes all streams
-                            writeln!(w, "    bl fflush")?;
+                            writeln!(w, "    bl {fflush}")?;
                         }
                     }
                     if let Some(dst) = ret {
@@ -1428,6 +1431,8 @@ fn emit_block<W: Write>(
                 } else if (name == "lamina.printf32" || name == "lamina.printf64")
                     && args.len() == 1
                 {
+                    let printf = abi.builtin_library().symbol(RuntimeSymbol::Printf);
+                    let fflush = abi.builtin_library().symbol(RuntimeSymbol::Fflush);
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
                     if name == "lamina.printf32" {
                         writeln!(w, "    fmov s0, w1")?;
@@ -1440,18 +1445,18 @@ fn emit_block<W: Write>(
                             writeln!(w, "    adrp x0, .L_mir_fmt_float@PAGE")?;
                             writeln!(w, "    add x0, x0, .L_mir_fmt_float@PAGEOFF")?;
                             writeln!(w, "    str x1, [sp]")?;
-                            writeln!(w, "    bl _printf")?;
+                            writeln!(w, "    bl {printf}")?;
                             writeln!(w, "    mov x0, #0")?;
-                            writeln!(w, "    bl _fflush")?;
+                            writeln!(w, "    bl {fflush}")?;
                             writeln!(w, "    add sp, sp, #32")?;
                         }
                         _ => {
                             writeln!(w, "    fmov d0, x1")?;
                             writeln!(w, "    adrp x0, .L_mir_fmt_float")?;
                             writeln!(w, "    add x0, x0, :lo12:.L_mir_fmt_float")?;
-                            writeln!(w, "    bl printf")?;
+                            writeln!(w, "    bl {printf}")?;
                             writeln!(w, "    mov x0, #0")?;
-                            writeln!(w, "    bl fflush")?;
+                            writeln!(w, "    bl {fflush}")?;
                         }
                     }
                 } else if name == "lamina.writebyte" && args.len() == 1 {

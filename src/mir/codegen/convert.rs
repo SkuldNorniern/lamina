@@ -46,6 +46,7 @@ use crate::ir::instruction::{AtomicBinOp as IRAtomicBinOp, MemoryOrdering as IRM
 #[cfg(feature = "nightly")]
 use crate::mir::SimdOp;
 use crate::mir::{AtomicBinOp, MemoryOrdering};
+use lamina_codegen::abi::RuntimeSymbol;
 
 fn ir_ordering_to_mir(ordering: &IRMemOrd) -> MemoryOrdering {
     match ordering {
@@ -1955,7 +1956,7 @@ fn convert_instruction<'a>(
                 resolve_operand(size, vreg_alloc, var_to_reg, globals)?,
             ];
             Ok(vec![Instruction::Call {
-                name: "memcpy".to_string(),
+                name: RuntimeSymbol::Memcpy.c_name().to_string(),
                 args,
                 ret: None,
             }])
@@ -1967,7 +1968,7 @@ fn convert_instruction<'a>(
                 resolve_operand(size, vreg_alloc, var_to_reg, globals)?,
             ];
             Ok(vec![Instruction::Call {
-                name: "memmove".to_string(),
+                name: RuntimeSymbol::Memmove.c_name().to_string(),
                 args,
                 ret: None,
             }])
@@ -1979,7 +1980,7 @@ fn convert_instruction<'a>(
                 resolve_operand(size, vreg_alloc, var_to_reg, globals)?,
             ];
             Ok(vec![Instruction::Call {
-                name: "memset".to_string(),
+                name: RuntimeSymbol::Memset.c_name().to_string(),
                 args,
                 ret: None,
             }])
@@ -2200,7 +2201,7 @@ fn convert_instruction<'a>(
                     }])
                 }
                 AllocType::Heap => Ok(vec![Instruction::Call {
-                    name: "malloc".to_string(),
+                    name: RuntimeSymbol::Malloc.c_name().to_string(),
                     args: vec![Operand::Immediate(Immediate::I64(size))],
                     ret: Some(dst),
                 }]),
@@ -2216,7 +2217,7 @@ fn convert_instruction<'a>(
             }
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg, globals)?;
             Ok(vec![Instruction::Call {
-                name: "free".to_string(),
+                name: RuntimeSymbol::Free.c_name().to_string(),
                 args: vec![p],
                 ret: None,
             }])
