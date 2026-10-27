@@ -213,16 +213,25 @@ impl AutoVectorization {
                 for i in 0..instructions.len().saturating_sub(2) {
                     // Pattern: Load -> Binary Op -> Store
                     if let (
-                        Instruction::Load { ty, dst, addr, .. },
+                        Instruction::Load {
+                            ty,
+                            dst,
+                            addr,
+                            attrs: load_attrs,
+                            ..
+                        },
                         Instruction::IntBinary { op, .. },
                         Instruction::Store {
                             src,
                             addr: store_addr,
+                            attrs: store_attrs,
                             ..
                         },
                     ) = (&instructions[i], &instructions[i + 1], &instructions[i + 2])
                     {
-                        if self.is_vectorizable_type(ty)
+                        if !load_attrs.volatile
+                            && !store_attrs.volatile
+                            && self.is_vectorizable_type(ty)
                             && self.is_sequential_access(addr, store_addr)
                             && self.is_vectorizable_op(*op)
                             && self.matches_load_store(dst, src)
@@ -243,16 +252,25 @@ impl AutoVectorization {
                 // Pattern 2: Load -> FloatBinary -> Store (floating point operations)
                 for i in 0..instructions.len().saturating_sub(2) {
                     if let (
-                        Instruction::Load { ty, dst, addr, .. },
+                        Instruction::Load {
+                            ty,
+                            dst,
+                            addr,
+                            attrs: load_attrs,
+                            ..
+                        },
                         Instruction::FloatBinary { op, .. },
                         Instruction::Store {
                             src,
                             addr: store_addr,
+                            attrs: store_attrs,
                             ..
                         },
                     ) = (&instructions[i], &instructions[i + 1], &instructions[i + 2])
                     {
-                        if self.is_vectorizable_type(ty)
+                        if !load_attrs.volatile
+                            && !store_attrs.volatile
+                            && self.is_vectorizable_type(ty)
                             && self.is_sequential_access(addr, store_addr)
                             && self.is_vectorizable_float_op(*op)
                             && self.matches_load_store(dst, src)
@@ -280,12 +298,19 @@ impl AutoVectorization {
                 // Look for sequences like: load, op, op, store
                 for i in 0..instructions.len().saturating_sub(3) {
                     if let (
-                        Instruction::Load { ty, dst, addr, .. },
+                        Instruction::Load {
+                            ty,
+                            dst,
+                            addr,
+                            attrs: load_attrs,
+                            ..
+                        },
                         Instruction::IntBinary { op: op1, .. },
                         Instruction::IntBinary { op: _op2, .. },
                         Instruction::Store {
                             src,
                             addr: store_addr,
+                            attrs: store_attrs,
                             ..
                         },
                     ) = (
@@ -294,7 +319,9 @@ impl AutoVectorization {
                         &instructions[i + 2],
                         &instructions[i + 3],
                     ) {
-                        if self.is_vectorizable_type(ty)
+                        if !load_attrs.volatile
+                            && !store_attrs.volatile
+                            && self.is_vectorizable_type(ty)
                             && self.is_sequential_access(addr, store_addr)
                             && self.is_vectorizable_op(*op1)
                             && self.matches_load_store(dst, src)
