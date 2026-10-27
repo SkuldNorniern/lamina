@@ -988,7 +988,6 @@ int main(void) {
     const PARAM_WIDTHS: &str = r#"
 @export fn @p_u8(u8 %x) -> u8 { entry: ret.u8 %x }
 @export fn @p_i8(i8 %x) -> i8 { entry: ret.i8 %x }
-@export fn @p_char(char %x) -> char { entry: ret.char %x }
 @export fn @p_u16(u16 %x) -> u16 { entry: ret.u16 %x }
 @export fn @p_i16(i16 %x) -> i16 { entry: ret.i16 %x }
 @export fn @p_u32(u32 %x) -> u32 { entry: ret.u32 %x }
@@ -1010,7 +1009,6 @@ int main(void) {
         for (function, instruction) in [
             ("p_u8", "movsbq"),
             ("p_i8", "movsbq"),
-            ("p_char", "movsbq"),
             ("p_u16", "movswq"),
             ("p_i16", "movswq"),
             ("p_u32", "movslq"),
@@ -1469,15 +1467,7 @@ mod intrinsic_namespace_tests {
     fn a_function_may_take_an_intrinsic_name() -> Result<(), Box<dyn Error>> {
         let directory = env::temp_dir().join(format!("lamina-intrinsic-{}", process::id()));
         fs::create_dir_all(&directory)?;
-        for name in [
-            "print",
-            "printu",
-            "write",
-            "read",
-            "writebyte",
-            "readbyte",
-            "writeptr",
-        ] {
+        for name in ["print", "printu", "write", "read", "writebyte", "readbyte"] {
             let lamina = format!(
                 "fn @{name}(i64 %x) -> i64 {{\nentry:\n  %r = add.i64 %x, 100\n  ret.i64 %r\n}}\n\nfn @main() -> i64 {{\nentry:\n  %v = call @{name}(5)\n  print %v\n  ret.i64 0\n}}\n"
             );

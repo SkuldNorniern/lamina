@@ -67,7 +67,7 @@ fn @test_point3d_operations() -> i64 {
 fn @test_person_operations() -> i64 {
   entry:
     # Allocate Person struct
-    %person = stackalloc.struct { name: [10 x char], age: u8, height: f32 }
+    %person = stackalloc.struct { name: [10 x i8], age: u8, height: f32 }
 
     # Get field pointers
     %name_ptr = getfieldptr %person, 0
@@ -75,12 +75,12 @@ fn @test_person_operations() -> i64 {
     %height_ptr = getfieldptr %person, 2
 
     # Store name (first 3 characters)
-    %name0 = getelem.char %name_ptr, 0
-    %name1 = getelem.char %name_ptr, 1
-    %name2 = getelem.char %name_ptr, 2
-    store.char %name0, 74  # 'J'
-    store.char %name1, 79  # 'O'
-    store.char %name2, 72  # 'H'
+    %name0 = getelem.i8 %name_ptr, 0
+    %name1 = getelem.i8 %name_ptr, 1
+    %name2 = getelem.i8 %name_ptr, 2
+    store.i8 %name0, 74  # 'J'
+    store.i8 %name1, 79  # 'O'
+    store.i8 %name2, 72  # 'H'
 
     # Store age and height
     store.u8 %age_ptr, 25
@@ -88,11 +88,11 @@ fn @test_person_operations() -> i64 {
 
     # Load values
     %age = load.u8 %age_ptr
-    %first_char = load.char %name0
+    %first_char = load.i8 %name0
 
     # Combine results
     %age_i64 = zext.u8.i64 %age
-    %char_i64 = zext.char.i64 %first_char
+    %char_i64 = zext.i8.i64 %first_char
     %combined = add.i64 %age_i64, %char_i64
 
     ret.i64 %combined
@@ -130,7 +130,7 @@ fn @test_complex_data_operations() -> i64 {
 fn @test_mixed_types_operations() -> i64 {
   entry:
     # Allocate MixedTypes struct
-    %mixed = stackalloc.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: char }
+    %mixed = stackalloc.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: i8 }
 
     # Get all field pointers
     %a_ptr = getfieldptr %mixed, 0  # i8
@@ -139,7 +139,7 @@ fn @test_mixed_types_operations() -> i64 {
     %d_ptr = getfieldptr %mixed, 3  # u64
     %e_ptr = getfieldptr %mixed, 4  # f32
     %f_ptr = getfieldptr %mixed, 5  # bool
-    %g_ptr = getfieldptr %mixed, 6  # char
+    %g_ptr = getfieldptr %mixed, 6  # i8
 
     # Store test values
     store.i8 %a_ptr, 10
@@ -148,21 +148,21 @@ fn @test_mixed_types_operations() -> i64 {
     store.u64 %d_ptr, 1000000
     store.f32 %e_ptr, 3.14
     store.bool %f_ptr, 1
-    store.char %g_ptr, 65  # 'A'
+    store.i8 %g_ptr, 65  # 'A'
 
     # Load and sum compatible values
     %a_val = load.i8 %a_ptr
     %b_val = load.u16 %b_ptr
     %c_val = load.i32 %c_ptr
     %f_val = load.bool %f_ptr
-    %g_val = load.char %g_ptr
+    %g_val = load.i8 %g_ptr
 
     # Convert to common type (i64) for summation
     %a_i64 = zext.i8.i64 %a_val
     %b_i64 = zext.u16.i64 %b_val
     %c_i64 = zext.i32.i64 %c_val
     %f_i64 = zext.bool.i64 %f_val
-    %g_i64 = zext.char.i64 %g_val
+    %g_i64 = zext.i8.i64 %g_val
 
     # Calculate sum
     %sum1 = add.i64 %a_i64, %b_i64

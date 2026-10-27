@@ -8,6 +8,12 @@ use crate::{
     parser::state::ParserState,
 };
 
+pub fn removed_char_error(state: &ParserState<'_>) -> LaminaError {
+    state.error(
+        "Type 'char' was removed\n  Hint: Use 'i8' for a signed byte or 'u8' for an unsigned byte",
+    )
+}
+
 /// Parses a type declaration.
 pub fn parse_type_declaration<'a>(
     state: &mut ParserState<'a>,
@@ -86,7 +92,7 @@ pub fn parse_composite_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>,
     }
 }
 
-/// Parses a type (primitive, composite, named, or tuple).
+/// Parses a type (primitive, composite, or named).
 pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.enter_type()?;
     let ty = parse_type_inner(state);
@@ -100,22 +106,6 @@ fn parse_type_inner<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaE
         Some('!') => Ok(Type::Named(state.parse_named_type_identifier()?)),
         Some('[') => parse_composite_type(state),
         Some('s') if state.peek_slice(6) == Some("struct") => parse_composite_type(state),
-        Some('t') if state.peek_slice(5) == Some("tuple") => {
-            state.consume_keyword("tuple")?;
-            state.skip_whitespace_and_comments();
-            let mut element_types = Vec::new();
-            loop {
-                let elem_type = parse_type(state)?;
-                element_types.push(elem_type);
-                state.skip_whitespace_and_comments();
-                if state.current_char() != Some(',') {
-                    break;
-                }
-                state.expect_char(',')?;
-                state.skip_whitespace_and_comments();
-            }
-            Ok(Type::Tuple(element_types))
-        }
         _ => {
             let potential_primitive = state.parse_identifier_str()?;
             match potential_primitive {
@@ -130,7 +120,10 @@ fn parse_type_inner<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaE
                 "f32" => Ok(Type::Primitive(PrimitiveType::F32)),
                 "f64" => Ok(Type::Primitive(PrimitiveType::F64)),
                 "bool" => Ok(Type::Primitive(PrimitiveType::Bool)),
-                "char" => Ok(Type::Primitive(PrimitiveType::Char)),
+                "char" => Err(removed_char_error(state)),
+                "tuple" => Err(state.error(
+                    "Type 'tuple' was removed\n  Hint: Use a struct with named fields, e.g. 'struct { a: i32, b: f64 }'",
+                )),
                 "ptr" => Ok(Type::Primitive(PrimitiveType::Ptr)),
                 "void" => Ok(Type::Void),
                 _ => {

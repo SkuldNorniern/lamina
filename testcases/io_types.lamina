@@ -11,10 +11,11 @@ fn @main() -> i32 {
     store.i16 %buf16, 65535  # Max u16 value
     store.i32 %buf32, 123456
 
-    # Test writeptr operations (write buffer contents to stdout)
-    %w8 = writeptr %buf8    # Write 255 to stdout (1 byte)
-    %w16 = writeptr %buf16  # Write 65535 to stdout (2 bytes)
-    %w32 = writeptr %buf32  # Write 123456 to stdout (4 bytes)
+    # Write buffer contents to stdout: a loaded byte, then raw memory of 2 and 4 bytes
+    %v8 = load.i8 %buf8
+    %w8 = writebyte %v8     # Write 255 to stdout (1 byte)
+    %w16 = write %buf16, 2  # Write 65535 to stdout (2 bytes)
+    %w32 = write %buf32, 4  # Write 123456 to stdout (4 bytes)
 
     # Also test with writebyte for comparison
     %wb = writebyte 65      # Write 'A' (65) to stdout

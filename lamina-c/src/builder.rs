@@ -155,26 +155,6 @@ pub unsafe extern "C" fn lia_type_struct(
     Box::into_raw(Box::new(LaminaType(OwnedType::Struct(owned_fields))))
 }
 
-/// Tuple type from an array of type pointers. Clones all element types.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_type_tuple(
-    types: *const *const LaminaType,
-    count: usize,
-) -> *mut LaminaType {
-    if count > 0 && types.is_null() {
-        return null_mut();
-    }
-    let mut owned = Vec::with_capacity(count);
-    for i in 0..count {
-        let tp = unsafe { *types.add(i) };
-        match unsafe { tp.as_ref() } {
-            Some(t) => owned.push(t.0.clone()),
-            None => return null_mut(),
-        }
-    }
-    Box::into_raw(Box::new(LaminaType(OwnedType::Tuple(owned))))
-}
-
 // ---------------------------------------------------------------------------
 // Value constructors
 // ---------------------------------------------------------------------------
@@ -1015,27 +995,6 @@ pub unsafe extern "C" fn lia_builder_read_byte(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_builder_write_ptr(
-    builder: *mut LaminaBuilder,
-    result: *const c_char,
-    ptr: *const LaminaValue,
-    width: usize,
-) -> LaminaStatus {
-    catch(AssertUnwindSafe(|| unsafe {
-        let b = require_mut!(builder, "builder");
-        let r = require_str!(result, "result");
-        let p = require_ref!(ptr, "ptr");
-        if !matches!(width, 1 | 2 | 4 | 8) {
-            set_error("write_ptr width must be 1, 2, 4 or 8 bytes");
-            return LaminaStatus::ErrorInvalidArgument;
-        }
-        b.0.write_ptr(r, &p.0, width as u64);
-        clear_error();
-        LaminaStatus::Ok
-    }))
-}
-
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn lia_builder_print(
     builder: *mut LaminaBuilder,
     value: *const LaminaValue,
@@ -1163,29 +1122,6 @@ mod tests {
             let ty = lia_type_struct(fields.as_ptr(), 1);
             assert!(!ty.is_null());
             lia_type_free(field_ty);
-            lia_type_free(ty);
-        }
-    }
-
-    #[test]
-    fn type_tuple_empty_returns_non_null() {
-        unsafe {
-            let ty = lia_type_tuple(ptr::null(), 0);
-            assert!(!ty.is_null());
-            lia_type_free(ty);
-        }
-    }
-
-    #[test]
-    fn type_tuple_with_elements_returns_non_null() {
-        unsafe {
-            let t0 = lia_type_i64();
-            let t1 = lia_type_i32();
-            let ptrs: [*const LaminaType; 2] = [t0, t1];
-            let ty = lia_type_tuple(ptrs.as_ptr(), 2);
-            assert!(!ty.is_null());
-            lia_type_free(t0);
-            lia_type_free(t1);
             lia_type_free(ty);
         }
     }

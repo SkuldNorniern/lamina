@@ -9,13 +9,11 @@
 //! - **Integers**: Signed and unsigned integers of various sizes
 //! - **Floats**: Single and double precision floating point numbers
 //! - **Booleans**: True/false values
-//! - **Characters**: Single character values
 //! - **Pointers**: Generic pointer type for memory addresses
 //!
 //! ### Composite Types
 //! - **Arrays**: Fixed-size sequences of elements of the same type
 //! - **Structs**: Named collections of fields with different types
-//! - **Tuples**: Anonymous collections of values with different types
 //! - **Named Types**: User-defined type aliases
 //!
 //! ### Special Types
@@ -74,61 +72,6 @@
 //! - **`write`**: Write buffer contents to stdout
 //! - **`read`**: Read data into buffer from stdin
 //! - **Use case**: Bulk data transfer, file operations, network I/O
-//!
-//! #### **Memory-Value I/O** (NEW):
-//! - **`writeptr`**: Write VALUE stored at pointer to stdout
-//!   //! - **Use case**: Memory inspection, binary data output, serialization
-//!
-//! ### WritePtr Semantics (IMPORTANT):
-//!
-//! **What it does:**
-//! ```text
-//! Memory: [42] <- pointer points here
-//! writeptr(pointer) -> outputs: 42 (binary)
-//! ```
-//!
-//! **NOT the pointer address, but the VALUE stored at that address!**
-//!
-//! **Example:**
-//! ```lamina
-//! %buffer = stackalloc.i32      # Allocate memory
-//! store.i32 %buffer, 72          # Store 72 ('H' in ASCII)
-//! %result = writeptr %buffer     # Outputs: 'H' (binary 72)
-//! ```
-//!
-//! **Common misconception:**
-//! - `writeptr(ptr)` does NOT write the pointer address
-//! - `writeptr(ptr)` writes the VALUE stored at that address
-//! - The number of bytes written is the pointee's size (1, 2, 4 or 8), taken from the
-//!   alloc, getelemptr or getfieldptr that defines `ptr`
-//! - Think of it as "write pointer's value", not "write pointer"
-//!
-//! ### I/O Operation Comparison:
-//!
-//! | Instruction | Input/Output | Data Format | Use Case |
-//! |-------------|--------------|-------------|----------|
-//! | `writebyte` | Single char | ASCII | Simple text |
-//! | `write` | Buffer | Raw bytes | Bulk data |
-//! | `writeptr` | Memory value | Binary | Memory inspection |
-//!
-//! ### Memory Workflow Example:
-//!
-//! ```lamina
-//! # Step 1: Allocate memory
-//! %data = stackalloc.i32
-//!
-//! # Step 2: Store a value
-//! store.i32 %data, 65  # ASCII 'A'
-//!
-//! # Step 3: Load the value (optional, for verification)
-//! %value = load.i32 %data
-//!
-//! # Step 4: Output the stored value
-//! %bytes = writeptr %data  # Outputs: 'A'
-//! ```
-//!
-//! This workflow demonstrates the complete memory manipulation cycle
-//! that forms the foundation of all data processing in Lamina.
 //!
 //! ## Type Safety
 //!
@@ -213,7 +156,6 @@ pub type Label<'a> = &'a str;
 /// # Other Types
 ///
 /// - **Boolean**: `Bool` (true/false)
-/// - **Character**: `Char` (8-bit character)
 /// - **Pointer**: `Ptr` (generic pointer type)
 ///
 /// # Examples
@@ -253,8 +195,6 @@ pub enum PrimitiveType {
     F64,
     /// Boolean value (true or false)
     Bool,
-    /// Single character (8-bit)
-    Char,
     /// Generic pointer type for memory addresses
     Ptr,
 }
@@ -285,7 +225,6 @@ pub enum Type<'a> {
         lanes: u32,
     },
     Struct(Vec<StructField<'a>>),
-    Tuple(Vec<Type<'a>>),
     Void,
 }
 
@@ -310,7 +249,6 @@ pub enum Literal<'a> {
     F32(f32),
     F64(f64),
     Bool(bool),
-    Char(char),
     String(&'a str),
 }
 
@@ -340,7 +278,6 @@ impl PrimitiveType {
             name_for(PrimitiveType::F32),
             name_for(PrimitiveType::F64),
             name_for(PrimitiveType::Bool),
-            name_for(PrimitiveType::Char),
             name_for(PrimitiveType::Ptr),
         ];
         NAMES
@@ -360,7 +297,6 @@ impl PrimitiveType {
             PrimitiveType::F32 => "f32",
             PrimitiveType::F64 => "f64",
             PrimitiveType::Bool => "bool",
-            PrimitiveType::Char => "char",
             PrimitiveType::Ptr => "ptr",
         }
     }
@@ -393,16 +329,6 @@ impl fmt::Display for Type<'_> {
                 }
                 write!(f, " }}")
             }
-            Type::Tuple(types) => {
-                write!(f, "tuple(")?;
-                for (i, ty) in types.iter().enumerate() {
-                    write!(f, "{ty}")?;
-                    if i < types.len() - 1 {
-                        write!(f, ", ")?;
-                    }
-                }
-                write!(f, ")")
-            }
             Type::Void => write!(f, "void"),
         }
     }
@@ -422,7 +348,6 @@ impl fmt::Display for Literal<'_> {
             Literal::F32(v) => write!(f, "{v}"),
             Literal::F64(v) => write!(f, "{v}"),
             Literal::Bool(v) => write!(f, "{v}"),
-            Literal::Char(c) => write!(f, "'{c}'"),
             Literal::String(s) => write!(f, "\"{s}\""), // Note: needs escaping for proper output
         }
     }
@@ -441,7 +366,7 @@ impl fmt::Display for Value<'_> {
 /// Returns the ABI alignment of a primitive type in bytes.
 pub const fn align_of_primitive(ty: PrimitiveType) -> u64 {
     match ty {
-        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
+        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
         PrimitiveType::I16 | PrimitiveType::U16 => 2,
         PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
         PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
@@ -451,7 +376,7 @@ pub const fn align_of_primitive(ty: PrimitiveType) -> u64 {
 /// Returns the size in bytes of a primitive type.
 pub const fn sizeof_primitive(ty: PrimitiveType) -> u64 {
     match ty {
-        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool | PrimitiveType::Char => 1,
+        PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Bool => 1,
         PrimitiveType::I16 | PrimitiveType::U16 => 2,
         PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
         PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
@@ -492,12 +417,6 @@ pub fn resolve_type_names<'a>(
                     })
                     .collect::<Option<_>>()?,
             ),
-            Type::Tuple(elements) => Type::Tuple(
-                elements
-                    .iter()
-                    .map(|ty| resolve(ty, declarations, visiting))
-                    .collect::<Option<_>>()?,
-            ),
             other => other.clone(),
         })
     }
@@ -527,7 +446,6 @@ fn type_layout(ty: &Type<'_>) -> Option<(u64, u64)> {
             Some((element_size.checked_mul(*size)?, alignment))
         }
         Type::Struct(fields) => aggregate_layout(fields.iter().map(|field| &field.ty)),
-        Type::Tuple(elements) => aggregate_layout(elements.iter()),
         _ => None,
     }
 }
@@ -587,7 +505,6 @@ mod tests {
         assert_eq!(format!("{}", PrimitiveType::F32), "f32");
         assert_eq!(format!("{}", PrimitiveType::F64), "f64");
         assert_eq!(format!("{}", PrimitiveType::Bool), "bool");
-        assert_eq!(format!("{}", PrimitiveType::Char), "char");
         assert_eq!(format!("{}", PrimitiveType::Ptr), "ptr");
     }
 
@@ -611,11 +528,6 @@ mod tests {
             },
         ]);
         assert_eq!(format!("{}", struct_type), "struct { x: f32, y: f32 }");
-        let tuple_type = Type::Tuple(vec![
-            Type::Primitive(PrimitiveType::I32),
-            Type::Named("MyBool"),
-        ]);
-        assert_eq!(format!("{}", tuple_type), "tuple(i32, !MyBool)");
         assert_eq!(format!("{}", Type::Void), "void");
         #[cfg(feature = "nightly")]
         {
@@ -646,7 +558,6 @@ mod tests {
         assert_eq!(format!("{}", Literal::F64(2.5)), "2.5");
         assert_eq!(format!("{}", Literal::Bool(true)), "true");
         assert_eq!(format!("{}", Literal::Bool(false)), "false");
-        assert_eq!(format!("{}", Literal::Char('A')), "'A'");
         assert_eq!(format!("{}", Literal::String("hello")), "\"hello\"");
     }
 

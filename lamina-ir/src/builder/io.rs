@@ -38,15 +38,6 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::ReadByte { result })
     }
 
-    /// Writes `width` bytes starting at `ptr` to stdout. `width` must be 1, 2, 4 or 8.
-    pub fn write_ptr(&mut self, ptr: Value<'a>, width: u64, result: &'a str) -> &mut Self {
-        self.inst(Instruction::WritePtr {
-            ptr,
-            result,
-            pointee_size: Some(width),
-        })
-    }
-
     /// Creates a print instruction for debugging. Accepts numeric literals and SSA
     /// variables only; string literals are not supported (use `write_byte` for portable output).
     pub fn print(&mut self, value: Value<'a>) -> &mut Self {

@@ -20,7 +20,7 @@ use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::integer_conversion;
 use crate::mir_codegen::common::{
-    CallSignatures, emit_debug_file, emit_gnu_stack_note, print_format_label, writeptr_width,
+    CallSignatures, emit_debug_file, emit_gnu_stack_note, print_format_label,
 };
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
@@ -1286,18 +1286,7 @@ fn emit_instruction_ppc64<W: Write>(
                 _ => None,
             };
 
-            if name == "lamina.writeptr" && args.len() == 2 {
-                // write(1, ptr, width): the pointee's bytes go out straight from memory.
-                let width = writeptr_width(&args[1])?;
-                load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "4")?;
-                writeln!(writer, "    li 5, {width}")?;
-                writeln!(writer, "    li 3, 1")?;
-                let write = abi
-                    .call_stub("write")
-                    .unwrap_or_else(|| abi.mangle_function_name("write"));
-                writeln!(writer, "    bl {write}")?;
-                writeln!(writer, "    nop")?;
-            } else if (name == "lamina.write" || name == "lamina.read") && args.len() == 2 {
+            if (name == "lamina.write" || name == "lamina.read") && args.len() == 2 {
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "4")?;
                 load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "5")?;
                 writeln!(writer, "    li 3, {}", i32::from(name == "lamina.write"))?;
@@ -1599,11 +1588,6 @@ fn emit_instruction_ppc64<W: Write>(
             }
         }
         MirInst::TailCall { name, args } => {
-            if name == "lamina.writeptr" {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "PowerPC64: writeptr is not supported".to_string(),
-                )));
-            }
             if aggregate_flow || aggregates.takes_aggregate(name) {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "PowerPC64: TailCall with an aggregate is not supported".to_string(),

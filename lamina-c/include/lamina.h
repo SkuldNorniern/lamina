@@ -95,7 +95,6 @@ lia_type_t *lia_type_bool(void); lia_type_t *lia_type_ptr(void);
 lia_type_t *lia_type_named(const char *name);
 lia_type_t *lia_type_array(const lia_type_t *element_type, uint64_t size);
 lia_type_t *lia_type_struct(const lia_struct_field_t *fields, size_t count);
-lia_type_t *lia_type_tuple(const lia_type_t *const *types, size_t count);
 
 void lia_type_free(lia_type_t *ty);
 
@@ -176,8 +175,6 @@ lia_status_t lia_builder_read(lia_builder_t *b, const char *result,
 lia_status_t lia_builder_write_byte(lia_builder_t *b, const char *result,
     const lia_value_t *val);
 lia_status_t lia_builder_read_byte(lia_builder_t *b, const char *result);
-lia_status_t lia_builder_write_ptr(lia_builder_t *b, const char *result,
-    const lia_value_t *ptr, size_t width);
 lia_status_t lia_builder_print(lia_builder_t *b, const lia_value_t *value);
 
 lia_status_t lia_module_emit_ir(const lia_module_t *m, lia_buffer_t *out);

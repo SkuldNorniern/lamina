@@ -212,7 +212,7 @@ fn narrow_compares_normalize_operands_at_their_width() {
 fn narrow_arguments_keep_their_declared_signedness_across_calls() {
     let Some(stdout) = run_wasm_main(
         "boundary_signedness",
-        "fn @mk() -> char {\nentry:\n %v = trunc.i64.char 255\n ret.char %v\n}\nfn @take(u8 %u, char %c) -> i64 {\nentry:\n %a = lt.u8 %u, 1\n print %a\n %b = lt.char %c, 0\n print %b\n ret.i64 0\n}\nfn @main() -> i64 {\nentry:\n %c = call @mk()\n %u = trunc.i64.u8 255\n %r = call @take(%u, %c)\n ret.i64 0\n}",
+        "fn @mk() -> i8 {\nentry:\n %v = trunc.i64.i8 255\n ret.i8 %v\n}\nfn @take(u8 %u, i8 %c) -> i64 {\nentry:\n %a = lt.u8 %u, 1\n print %a\n %b = lt.i8 %c, 0\n print %b\n ret.i64 0\n}\nfn @main() -> i64 {\nentry:\n %c = call @mk()\n %u = trunc.i64.u8 255\n %r = call @take(%u, %c)\n ret.i64 0\n}",
         0,
     ) else {
         return;
@@ -512,7 +512,7 @@ fn emit_wasi(source: &str) -> Result<String, LaminaError> {
 #[test]
 fn wasi_buffered_io_declares_each_helper_it_calls() {
     let wat = emit_wasi(
-        "fn @main() -> i64 {\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, 72\n  %a = writeptr.i8 %p\n  %b = writebyte 105\n  %c = readbyte\n  %d = write %p, 1\n  %e = read %p, 1\n  %f = writebyte %c\n  ret.i64 0\n}\n",
+        "fn @main() -> i64 {\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, 72\n  %a = load.i8 %p\n  %b = writebyte 105\n  %c = readbyte\n  %d = write %p, 1\n  %e = read %p, 1\n  %f = writebyte %c\n  ret.i64 0\n}\n",
     )
     .expect("WASI codegen should succeed");
 
@@ -526,7 +526,7 @@ fn wasi_buffered_io_declares_each_helper_it_calls() {
         "{wat}"
     );
     let declared = declared_names(&wat);
-    for helper in ["writebyte", "readbyte", "writeptr", "write", "read"] {
+    for helper in ["writebyte", "readbyte", "write", "read"] {
         assert!(wat.contains(&format!("call ${helper}")), "{helper}: {wat}");
         assert!(
             declared.contains(helper),
@@ -556,12 +556,12 @@ fn wasm32_keeps_env_helpers() {
 }
 
 #[test]
-fn wasi_writebyte_and_writeptr_reach_stdout() {
+fn wasi_writebyte_reaches_stdout() {
     if !tool_available("wasmtime") {
         return;
     }
     let wat = emit_wasi(
-        "fn @main() -> i64 {\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, 72\n  %a = writeptr.i8 %p\n  %b = writebyte 105\n  %c = writebyte 10\n  ret.i64 0\n}\n",
+        "fn @main() -> i64 {\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, 72\n  %v = load.i8 %p\n  %a = writebyte %v\n  %b = writebyte 105\n  %c = writebyte 10\n  ret.i64 0\n}\n",
     )
     .expect("WASI codegen should succeed");
     let dir = env::temp_dir().join(format!("lamina-wasi-io-{}", id()));

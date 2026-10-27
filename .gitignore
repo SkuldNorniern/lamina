@@ -108,7 +108,6 @@ benchmarks/*/_*
 /io_error_handling
 /io_pointer
 /io_types
-/io_writeptr
 /lamina_demo
 /large_constants
 /load_store_operations

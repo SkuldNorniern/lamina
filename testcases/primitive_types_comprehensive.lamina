@@ -241,28 +241,28 @@ fn @test_bool_operations() -> i64 {
 
 # ===== CHARACTER TYPE =====
 
-# Test char operations
+# Test i8 operations
 fn @test_char_operations() -> i64 {
   entry:
     # Character literals (ASCII values)
-    %char_a = add.char 65, 0     # 'A'
-    %char_b = add.char 66, 0     # 'B'
-    %char_z = add.char 90, 0     # 'Z'
+    %char_a = add.i8 65, 0     # 'A'
+    %char_b = add.i8 66, 0     # 'B'
+    %char_z = add.i8 90, 0     # 'Z'
 
     # Character arithmetic
-    %next_a = add.char %char_a, 1     # 'B'
-    %prev_z = sub.char %char_z, 1     # 'Y'
+    %next_a = add.i8 %char_a, 1     # 'B'
+    %prev_z = sub.i8 %char_z, 1     # 'Y'
 
     # Character differences
-    %diff = sub.char %char_b, %char_a  # 1
+    %diff = sub.i8 %char_b, %char_a  # 1
 
     # Comparisons
-    %cmp1 = eq.char %char_a, 65         # true
-    %cmp2 = lt.char %char_a, %char_z    # true
-    %cmp3 = gt.char %char_z, %char_a    # true
+    %cmp1 = eq.i8 %char_a, 65         # true
+    %cmp2 = lt.i8 %char_a, %char_z    # true
+    %cmp3 = gt.i8 %char_z, %char_a    # true
 
     # Convert to i64 for return
-    %result = add.i64 0, 67             # Return 67 ('C') to indicate char tests passed
+    %result = add.i64 0, 67             # Return 67 ('C') to indicate i8 tests passed
     ret.i64 %result
 }
 

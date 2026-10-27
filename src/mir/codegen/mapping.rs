@@ -17,10 +17,10 @@ use crate::{
 pub const MAX_REGISTER_AGGREGATE: u64 = 16;
 
 /// Maps an IR primitive to the MIR type that holds it. Signedness is dropped, because
-/// MIR carries it on the operation rather than the value; `char` becomes `i8`.
+/// MIR carries it on the operation rather than the value.
 pub fn map_ir_prim(p: IRPrim) -> Result<MirType, FromIRError> {
     let scalar = match p {
-        IRPrim::I8 | IRPrim::U8 | IRPrim::Char => ScalarType::I8,
+        IRPrim::I8 | IRPrim::U8 => ScalarType::I8,
         IRPrim::I16 | IRPrim::U16 => ScalarType::I16,
         IRPrim::I32 | IRPrim::U32 => ScalarType::I32,
         IRPrim::I64 | IRPrim::U64 => ScalarType::I64,
@@ -43,8 +43,8 @@ pub fn signedness_of(ty: &IRType<'_>) -> Signedness {
 
 /// Maps an IR type to a MIR type.
 ///
-/// Currently only primitive types are supported. Composite types (structs,
-/// arrays, tuples) will return an error as they require additional lowering.
+/// Currently only primitive types are supported. Composite types (structs
+/// and arrays) will return an error as they require additional lowering.
 pub fn map_ir_type(ty: &IRType<'_>) -> Result<MirType, FromIRError> {
     match ty {
         IRType::Primitive(p) => map_ir_prim(*p),
@@ -54,17 +54,13 @@ pub fn map_ir_type(ty: &IRType<'_>) -> Result<MirType, FromIRError> {
 
 /// Whether an IR type is an aggregate, after named types have been resolved.
 pub fn is_aggregate(ty: &IRType<'_>) -> bool {
-    matches!(
-        ty,
-        IRType::Struct(_) | IRType::Tuple(_) | IRType::Array { .. }
-    )
+    matches!(ty, IRType::Struct(_) | IRType::Array { .. })
 }
 
 fn integer_fields_only(ty: &IRType<'_>) -> bool {
     match ty {
         IRType::Primitive(p) => !matches!(p, IRPrim::F32 | IRPrim::F64),
         IRType::Struct(fields) => fields.iter().all(|field| integer_fields_only(&field.ty)),
-        IRType::Tuple(elements) => elements.iter().all(integer_fields_only),
         IRType::Array { element_type, .. } => integer_fields_only(element_type),
         _ => false,
     }

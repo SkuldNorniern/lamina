@@ -821,21 +821,6 @@ fn byte_io_goes_through_putchar_and_getchar() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn writeptr_sends_the_pointee_bytes_through_write() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @main() -> i32 {\nentry:\n  %p = stackalloc.i32\n  store.i32 %p, 72\n  %n = writeptr %p\n  ret.i32 0\n}\n";
-    let module = parse_module(ir)?;
-    let mir = from_ir(&module, "writeptr").expect("lower writeptr");
-    let mut output = Vec::new();
-    generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
-    let assembly = String::from_utf8(output)?;
-    assert!(assembly.contains("    li a2, 4\n"), "{assembly}");
-    assert!(assembly.contains("    li a0, 1\n"), "{assembly}");
-    assert!(assembly.contains("    call write\n"), "{assembly}");
-    Ok(())
-}
-
-#[test]
 fn block_labels_are_unique_across_functions() {
     // Both functions have a block called "entry".
     let ty = MirType::Scalar(ScalarType::I64);

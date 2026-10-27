@@ -880,14 +880,6 @@ pub enum Instruction<'a> {
     ReadByte {
         result: Identifier<'a>, // Result byte read (-1 on error)
     },
-    WritePtr {
-        ptr: Value<'a>,         // Pointer to the bytes to write to output
-        result: Identifier<'a>, // Result (bytes written on success, -1 on error)
-        /// Size in bytes of the pointee. `None` when neither the text syntax
-        /// (`writeptr.i32`) nor the builder states it and the pointee type is not known
-        /// from the pointer's defining instruction; lowering then rejects the instruction.
-        pointee_size: Option<u64>,
-    },
 
     // --- Debugging ---
     Print {
@@ -971,7 +963,6 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "read",
         "writebyte",
         "readbyte",
-        "writeptr",
         // Atomic read-modify-write and load (from Instruction::AtomicBinary, Instruction::AtomicLoad)
         "atomic_load",
         "atomic_add",
@@ -1033,7 +1024,6 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "read",
         "writebyte",
         "readbyte",
-        "writeptr",
     ]
 }
 
@@ -1067,7 +1057,6 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         "read",
         "writebyte",
         "readbyte",
-        "writeptr",
         // Debugging (from Instruction::Print)
         "print",
         // Atomic store and fence (from Instruction::AtomicStore, Instruction::Fence)
@@ -1113,7 +1102,6 @@ impl<'a> Instruction<'a> {
             | Instruction::GetFieldPtr { result, .. }
             | Instruction::WriteByte { result, .. }
             | Instruction::ReadByte { result, .. }
-            | Instruction::WritePtr { result, .. }
             | Instruction::Write { result, .. }
             | Instruction::Read { result, .. }
             | Instruction::Phi { result, .. }
@@ -1156,9 +1144,9 @@ impl<'a> Instruction<'a> {
                 push_value(ptr, &mut vars);
                 push_value(value, &mut vars);
             }
-            Instruction::Load { ptr, .. }
-            | Instruction::Dealloc { ptr, .. }
-            | Instruction::WritePtr { ptr, .. } => push_value(ptr, &mut vars),
+            Instruction::Load { ptr, .. } | Instruction::Dealloc { ptr, .. } => {
+                push_value(ptr, &mut vars)
+            }
             Instruction::Alloc { .. } => {}
             Instruction::Br { condition, .. } => push_value(condition, &mut vars),
             Instruction::Ret { value: Some(v), .. } => push_value(v, &mut vars),
@@ -1231,17 +1219,6 @@ impl<'a> Instruction<'a> {
         }
 
         vars
-    }
-}
-
-/// Text-syntax suffix (`writeptr.i32`) naming a pointee width in bytes.
-pub(crate) fn writeptr_width_suffix(width: u64) -> Option<&'static str> {
-    match width {
-        1 => Some("i8"),
-        2 => Some("i16"),
-        4 => Some("i32"),
-        8 => Some("i64"),
-        _ => None,
     }
 }
 
@@ -1576,14 +1553,6 @@ impl fmt::Display for Instruction<'_> {
                 write!(f, "%{result} = writebyte {value}")
             }
             Instruction::ReadByte { result } => write!(f, "%{result} = readbyte"),
-            Instruction::WritePtr {
-                ptr,
-                result,
-                pointee_size,
-            } => match pointee_size.and_then(writeptr_width_suffix) {
-                Some(suffix) => write!(f, "%{result} = writeptr.{suffix} {ptr}"),
-                None => write!(f, "%{result} = writeptr {ptr}"),
-            },
             Instruction::Print { value } => write!(f, "print {value}"),
         }
     }

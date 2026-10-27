@@ -94,7 +94,7 @@ Lamina directly generates machine code for multiple target architectures without
 - **Control Flow**: Conditionals, loops, branching, and phi nodes for SSA
 - **Function Calls**: Recursive and non-recursive function calls with proper ABI
 - **Memory Operations**: Stack and heap allocations, load/store operations
-- **Type System**: Primitives, arrays, structs, tuples, and pointers
+- **Type System**: Primitives, arrays, structs, and pointers
 - **I/O Operations**: Print statements with printf integration for all supported architectures
 - **Performance**: Competitive with systems languages in benchmarks
 - **Optimization Pipeline**: Configurable optimization levels with multiple transform passes

@@ -48,7 +48,7 @@ pub fn parse_global_declaration<'a>(
     })
 }
 
-/// Parses `[a, b, c]` for an array global, or `{a, b, c}` for a struct or tuple one.
+/// Parses `[a, b, c]` for an array global, or `{a, b, c}` for a struct one.
 fn parse_initializer_list<'a>(
     state: &mut ParserState<'a>,
     ty: &Type<'a>,
@@ -68,10 +68,9 @@ fn parse_initializer_list<'a>(
             fields.iter().map(|field| field.ty.clone()).collect(),
             fields.len(),
         ),
-        Type::Tuple(elements) => ('{', '}', None, elements.clone(), elements.len()),
         _ => {
             return Err(state.error(format!(
-                "An element list initializes an array, struct or tuple, but this global has type {ty}"
+                "An element list initializes an array or struct, but this global has type {ty}"
             )));
         }
     };

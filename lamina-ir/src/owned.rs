@@ -7,7 +7,7 @@
 use std::fmt;
 
 use crate::{
-    instruction::{BinaryOp, CmpOp, writeptr_width_suffix},
+    instruction::{BinaryOp, CmpOp},
     types::PrimitiveType,
 };
 
@@ -26,7 +26,6 @@ pub enum OwnedType {
         size: u64,
     },
     Struct(Vec<OwnedStructField>),
-    Tuple(Vec<OwnedType>),
 }
 
 impl From<PrimitiveType> for OwnedType {
@@ -62,16 +61,6 @@ impl fmt::Display for OwnedType {
                     }
                 }
                 write!(f, " }}")
-            }
-            OwnedType::Tuple(types) => {
-                write!(f, "tuple ")?;
-                for (i, ty) in types.iter().enumerate() {
-                    write!(f, "{ty}")?;
-                    if i + 1 < types.len() {
-                        write!(f, ", ")?;
-                    }
-                }
-                Ok(())
             }
         }
     }
@@ -686,21 +675,6 @@ impl OwnedIRBuilder {
     /// Appends a single-byte read syscall.
     pub fn read_byte(&mut self, result: impl AsRef<str>) -> &mut Self {
         let t = format!("%{} = readbyte", result.as_ref());
-        self.push(t);
-        self
-    }
-
-    /// Appends a write of `width` bytes read from `ptr`. `width` must be 1, 2, 4 or 8.
-    pub fn write_ptr(
-        &mut self,
-        result: impl AsRef<str>,
-        ptr: &OwnedValue,
-        width: u64,
-    ) -> &mut Self {
-        let t = match writeptr_width_suffix(width) {
-            Some(suffix) => format!("%{} = writeptr.{} {}", result.as_ref(), suffix, ptr),
-            None => format!("%{} = writeptr {}", result.as_ref(), ptr),
-        };
         self.push(t);
         self
     }

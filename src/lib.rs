@@ -62,7 +62,7 @@
 //!
 //! The IR module provides the fundamental data structures for representing programs:
 //!
-//! - **Types**: Primitive types, structs, arrays, tuples, and function signatures
+//! - **Types**: Primitive types, structs, arrays, and function signatures
 //! - **Instructions**: Arithmetic, memory operations, control flow, and function calls
 //! - **Functions**: Complete function definitions with basic blocks
 //! - **Modules**: Top-level containers for functions, types, and globals

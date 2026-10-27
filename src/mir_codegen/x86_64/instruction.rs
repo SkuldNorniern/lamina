@@ -1,5 +1,5 @@
 use super::*;
-use crate::mir_codegen::common::{align_up, print_format_label, writeptr_width};
+use crate::mir_codegen::common::{align_up, print_format_label};
 
 pub(super) fn restore_saved_registers<W: Write>(
     writer: &mut W,
@@ -925,51 +925,6 @@ pub(super) fn emit_instruction_x86_64(
                         writeln!(writer, "    syscall")?;
                     }
                 }
-                if let Some(ret_reg) = ret
-                    && let Register::Virtual(vreg) = ret_reg
-                {
-                    store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
-                }
-            } else if name == "lamina.writeptr" && args.len() == 2 {
-                let width = writeptr_width(&args[1])?;
-                match target_os {
-                    TargetOperatingSystem::Windows => {
-                        // Windows syscall numbers are unstable; emit each byte through putchar,
-                        // matching writebyte. The pointer is kept in the stack slot across calls.
-                        writeln!(writer, "    subq ${}, %rsp", stack::ALIGNMENT)?;
-                        load_operand_to_rax(&args[0], writer, reg_alloc, stack_slots)?;
-                        writeln!(writer, "    movq %rax, (%rsp)")?;
-                        for offset in 0..width {
-                            writeln!(writer, "    movq (%rsp), %rax")?;
-                            writeln!(writer, "    movzbl {offset}(%rax), %ecx")?;
-                            writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                            writeln!(writer, "    call putchar")?;
-                            writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        }
-                        // putchar yields the character written; report the byte count or -1.
-                        writeln!(writer, "    movl %eax, %ecx")?;
-                        writeln!(writer, "    movl ${width}, %eax")?;
-                        writeln!(writer, "    movl $-1, %edx")?;
-                        writeln!(writer, "    cmpl $-1, %ecx")?;
-                        writeln!(writer, "    cmovel %edx, %eax")?;
-                        writeln!(writer, "    cltq")?;
-                        writeln!(writer, "    addq ${}, %rsp", stack::ALIGNMENT)?;
-                    }
-                    _ => {
-                        load_operand_to_rax(&args[0], writer, reg_alloc, stack_slots)?;
-                        writeln!(writer, "    movq %rax, %rsi")?;
-                        writeln!(writer, "    movq ${width}, %rdx")?;
-                        writeln!(writer, "    movq ${}, %rdi", fd::STDOUT)?;
-                        let syscall = if os_uses_macho(target_os) {
-                            macos::SYS_WRITE
-                        } else {
-                            linux::SYS_WRITE
-                        };
-                        writeln!(writer, "    movq ${syscall}, %rax")?;
-                        writeln!(writer, "    syscall")?;
-                    }
-                }
-
                 if let Some(ret_reg) = ret
                     && let Register::Virtual(vreg) = ret_reg
                 {

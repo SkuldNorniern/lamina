@@ -429,8 +429,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         }
     }
     let wasi_printing = wasi && (uses("$log") || uses("$logu"));
-    let wasi_writing =
-        wasi && (wasi_printing || uses("$writebyte") || uses("$writeptr") || uses("$write"));
+    let wasi_writing = wasi && (wasi_printing || uses("$writebyte") || uses("$write"));
     let wasi_reading = wasi && (uses("$readbyte") || uses("$read"));
     if wasi_writing {
         writeln!(writer, "  {WASI_FD_WRITE_IMPORT}")?;
@@ -641,7 +640,6 @@ const WASI_LOWERED: &[&str] = &[
     "$logf",
     "$writebyte",
     "$readbyte",
-    "$writeptr",
     "$write",
     "$read",
     "$memcpy",
@@ -717,13 +715,6 @@ const WASI_WRITE_HELPERS: &str = r#"  (func $lamina_writeout (param $ptr i32) (p
     i32.store8
     i32.const 16
     i32.const 1
-    call $lamina_writeout
-  )
-  (func $writeptr (param $p i64) (param $n i64) (result i64)
-    local.get $p
-    i32.wrap_i64
-    local.get $n
-    i32.wrap_i64
     call $lamina_writeout
   )
   (func $write (param $p i64) (param $n i64) (result i64)

@@ -1,5 +1,5 @@
 //! Fills in the layout facts that the text syntax leaves out: `field_byte_offset`
-//! on `getfieldptr`, and the pointee width of `writeptr`.
+//! on `getfieldptr`.
 //!
 //! The text syntax carries no type on a `getfieldptr`, so the lowering falls
 //! back to one 8-byte slot per field. That is wrong for any struct with
@@ -11,7 +11,7 @@ use lamina_ir::function::Function;
 use lamina_ir::instruction::Instruction;
 use lamina_ir::module::{Module, TypeDeclaration};
 use lamina_ir::types::{
-    Identifier, StructField, Type, Value, resolve_type_names, sizeof_type, struct_field_byte_offset,
+    Identifier, StructField, Type, Value, resolve_type_names, struct_field_byte_offset,
 };
 use std::collections::HashMap;
 
@@ -85,14 +85,6 @@ fn resolve_in_function<'a>(
                         pointee.insert(*result, ty);
                     }
                 }
-                Instruction::WritePtr {
-                    ptr, pointee_size, ..
-                } => {
-                    if pointee_size.is_none() {
-                        *pointee_size =
-                            pointee_of(ptr, &pointee, types).and_then(|t| sizeof_type(&t));
-                    }
-                }
                 Instruction::GetFieldPtr {
                     result,
                     struct_ptr,
@@ -132,84 +124,6 @@ fn pointee_of<'a>(
 fn struct_fields<'a>(ty: &Type<'a>) -> Option<Vec<StructField<'a>>> {
     match ty {
         Type::Struct(fields) => Some(fields.clone()),
-        Type::Tuple(elements) => Some(
-            elements
-                .iter()
-                .map(|ty| StructField {
-                    name: "",
-                    ty: ty.clone(),
-                })
-                .collect(),
-        ),
         _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::parser::parse_module;
-
-    fn writeptr_widths(source: &str) -> Vec<Option<u64>> {
-        let module = parse_module(source).expect("parse module");
-        let func = &module.functions["main"];
-        func.basic_blocks["entry"]
-            .instructions
-            .iter()
-            .filter_map(|inst| match inst {
-                Instruction::WritePtr { pointee_size, .. } => Some(*pointee_size),
-                _ => None,
-            })
-            .collect()
-    }
-
-    #[test]
-    fn writeptr_pointee_width_follows_alloc_type() {
-        let widths = writeptr_widths(
-            r#"
-fn @main() -> i32 {
-entry:
-    %b8 = stackalloc.i8
-    %b16 = stackalloc.i16
-    %b32 = stackalloc.i32
-    %b64 = stackalloc.i64
-    %w8 = writeptr %b8
-    %w16 = writeptr %b16
-    %w32 = writeptr %b32
-    %w64 = writeptr %b64
-    ret.i32 0
-}
-"#,
-        );
-        assert_eq!(widths, [Some(1), Some(2), Some(4), Some(8)]);
-    }
-
-    #[test]
-    fn writeptr_pointee_width_unknown_for_parameters() {
-        let widths = writeptr_widths(
-            r#"
-fn @main(ptr %p) -> i32 {
-entry:
-    %w = writeptr %p
-    ret.i32 0
-}
-"#,
-        );
-        assert_eq!(widths, [None]);
-    }
-
-    #[test]
-    fn writeptr_suffix_states_width_for_parameters() {
-        let widths = writeptr_widths(
-            r#"
-fn @main(ptr %p, ptr %q) -> i32 {
-entry:
-    %a = writeptr.i32 %p
-    %b = writeptr.i8 %q
-    ret.i32 0
-}
-"#,
-        );
-        assert_eq!(widths, [Some(4), Some(1)]);
     }
 }

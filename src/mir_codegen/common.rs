@@ -807,19 +807,6 @@ pub fn align_up(value: usize, align: usize) -> usize {
     value.div_ceil(align) * align
 }
 
-/// Width in bytes of the pointee `writeptr` sends out. The width travels as an
-/// immediate because the backends unroll the store.
-pub fn writeptr_width(operand: &Operand) -> Result<usize, LaminaError> {
-    match operand {
-        Operand::Immediate(Immediate::I64(width)) => usize::try_from(*width).map_err(|_| {
-            LaminaError::ValidationError("writeptr width must be non-negative".to_string())
-        }),
-        _ => Err(LaminaError::ValidationError(
-            "writeptr width must be an immediate".to_string(),
-        )),
-    }
-}
-
 /// Label of the printf format string the `print` family reads, by call name.
 pub fn print_format_label(call: &str) -> &'static str {
     match call {

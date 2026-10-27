@@ -12,7 +12,7 @@ mod util;
 
 use crate::mir_codegen::common::{
     align_up, integer_conversion_with_width, io_codegen_error, print_format_label,
-    promoted_argument_type, writeptr_width,
+    promoted_argument_type,
 };
 
 use util::{
@@ -1405,17 +1405,7 @@ fn emit_instruction_riscv<W: Write>(
             spill_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
 
             // Handle print intrinsic
-            if name == "lamina.writeptr" && args.len() == 2 {
-                // write(1, ptr, width): the pointee's bytes go out straight from memory.
-                let width = writeptr_width(&args[1])?;
-                load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
-                writeln!(writer, "    li a2, {width}")?;
-                writeln!(writer, "    li a0, 1")?;
-                let write = abi
-                    .call_stub("write")
-                    .unwrap_or_else(|| "write".to_string());
-                writeln!(writer, "    call {write}")?;
-            } else if (name == "lamina.write" || name == "lamina.read") && args.len() == 2 {
+            if (name == "lamina.write" || name == "lamina.read") && args.len() == 2 {
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
                 load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "a2")?;
                 writeln!(writer, "    li a0, {}", i32::from(name == "lamina.write"))?;
@@ -1624,11 +1614,6 @@ fn emit_instruction_riscv<W: Write>(
             if name == "lamina.print" {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "RISC-V: TailCall to print is not supported".to_string(),
-                )));
-            }
-            if name == "lamina.writeptr" {
-                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "RISC-V: writeptr is not supported".to_string(),
                 )));
             }
             if ctx.ret_aggregate.is_some()

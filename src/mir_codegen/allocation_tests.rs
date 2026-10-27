@@ -25,7 +25,10 @@ mod native {
                 "struct { a: i8, b: i64, c: i64 }",
                 "%last = getfieldptr %p, 2",
             ),
-            ("tuple i8, i64, i64", "%last = getfieldptr %p, 2"),
+            (
+                "struct { x: i8, y: i64, z: i64 }",
+                "%last = getfieldptr %p, 2",
+            ),
             (
                 "struct { a: i8, inner: !Pair }",
                 "%inner = getfieldptr %p, 1\n%last = getfieldptr %inner, 1",

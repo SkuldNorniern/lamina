@@ -16,7 +16,6 @@ use crate::mir_codegen::common::{
 };
 use crate::mir_codegen::common::{
     emit_debug_file, emit_gnu_stack_note, print_format_label, promoted_argument_type,
-    writeptr_width,
 };
 use crate::mir_codegen::simd::reserve_vector_slots;
 
@@ -1536,24 +1535,6 @@ fn emit_block<W: Write>(
                             }
                             writeln!(w, "    add sp, sp, #16")?;
                         }
-                    }
-                } else if name == "lamina.writeptr" && args.len() == 2 {
-                    // write(1, ptr, width): the bytes go out straight from memory.
-                    let width = writeptr_width(&args[1])?;
-                    emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
-                    writeln!(w, "    mov x2, #{width}")?;
-                    writeln!(w, "    mov x0, #1")?;
-                    match abi.target_os() {
-                        os if os_uses_macho(os) => {
-                            writeln!(w, "    mov x16, #4")?;
-                            writeln!(w, "    svc #0")?;
-                        }
-                        _ => {
-                            writeln!(w, "    bl write")?;
-                        }
-                    }
-                    if let Some(dst) = ret {
-                        store_result(w, dst, "x0", frame, ra)?;
                     }
                 } else if name == "lamina.write" && args.len() == 2 {
                     match abi.target_os() {

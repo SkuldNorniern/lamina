@@ -466,11 +466,6 @@ fn named_type_refs<'a>(ty: &Type<'a>, out: &mut Vec<&'a str>) {
                 named_type_refs(&field.ty, out);
             }
         }
-        Type::Tuple(elements) => {
-            for element in elements {
-                named_type_refs(element, out);
-            }
-        }
         _ => {}
     }
 }

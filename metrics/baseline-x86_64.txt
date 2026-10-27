@@ -523,42 +523,6 @@ frame print_digits 32
 frame print_number 32
 frame sum_array 16
 
-[char_signedness O0]
-insns 84
-spills 20
-calls 10
-branches 0
-frame main 64
-frame mk_char 16
-frame mk_u8 16
-
-[char_signedness O1]
-insns 84
-spills 20
-calls 10
-branches 0
-frame main 64
-frame mk_char 16
-frame mk_u8 16
-
-[char_signedness O2]
-insns 87
-spills 8
-calls 8
-branches 0
-frame main 32
-frame mk_char 0
-frame mk_u8 0
-
-[char_signedness O3]
-insns 76
-spills 6
-calls 8
-branches 0
-frame main 32
-frame mk_char 0
-frame mk_u8 0
-
 [complex_arithmetic O0]
 insns 159
 spills 51
@@ -2083,6 +2047,42 @@ calls 0
 branches 0
 frame main 16
 
+[i8_signedness O0]
+insns 84
+spills 20
+calls 10
+branches 0
+frame main 64
+frame mk_i8 16
+frame mk_u8 16
+
+[i8_signedness O1]
+insns 84
+spills 20
+calls 10
+branches 0
+frame main 64
+frame mk_i8 16
+frame mk_u8 16
+
+[i8_signedness O2]
+insns 87
+spills 8
+calls 8
+branches 0
+frame main 32
+frame mk_i8 0
+frame mk_u8 0
+
+[i8_signedness O3]
+insns 76
+spills 6
+calls 8
+branches 0
+frame main 32
+frame mk_i8 0
+frame mk_u8 0
+
 [inttofp_signed O0]
 insns 1021
 spills 259
@@ -2280,29 +2280,29 @@ branches 0
 frame main 16
 
 [io_types O0]
-insns 103
-spills 24
+insns 113
+spills 27
 calls 0
 branches 0
 frame main 128
 
 [io_types O1]
-insns 103
-spills 24
+insns 113
+spills 27
 calls 0
 branches 0
 frame main 128
 
 [io_types O2]
-insns 111
-spills 14
+insns 121
+spills 15
 calls 0
 branches 0
 frame main 64
 
 [io_types O3]
-insns 111
-spills 14
+insns 121
+spills 15
 calls 0
 branches 0
 frame main 64
@@ -2332,34 +2332,6 @@ frame main 32
 insns 43
 spills 4
 calls 2
-branches 0
-frame main 32
-
-[io_writeptr O0]
-insns 39
-spills 8
-calls 0
-branches 0
-frame main 48
-
-[io_writeptr O1]
-insns 39
-spills 8
-calls 0
-branches 0
-frame main 48
-
-[io_writeptr O2]
-insns 43
-spills 6
-calls 0
-branches 0
-frame main 32
-
-[io_writeptr O3]
-insns 43
-spills 6
-calls 0
 branches 0
 frame main 32
 
@@ -4080,68 +4052,68 @@ frame test_zext_functions 0
 frame test_zext_overflow 0
 
 [type_conversions_comprehensive O0]
-insns 1102
-spills 571
+insns 1104
+spills 570
 calls 30
 branches 0
 frame main 80
 frame test_bool_conversions 416
-frame test_char_conversions 208
 frame test_i16_conversions 208
 frame test_i32_conversions 208
 frame test_i64_conversions 208
 frame test_i8_conversions 208
+frame test_i8_value_conversions 208
 frame test_u16_conversions 208
 frame test_u32_conversions 208
 frame test_u64_conversions 208
 frame test_u8_conversions 208
 
 [type_conversions_comprehensive O1]
-insns 1102
-spills 571
+insns 1104
+spills 570
 calls 30
 branches 0
 frame main 80
 frame test_bool_conversions 416
-frame test_char_conversions 208
 frame test_i16_conversions 208
 frame test_i32_conversions 208
 frame test_i64_conversions 208
 frame test_i8_conversions 208
+frame test_i8_value_conversions 208
 frame test_u16_conversions 208
 frame test_u32_conversions 208
 frame test_u64_conversions 208
 frame test_u8_conversions 208
 
 [type_conversions_comprehensive O2]
-insns 1540
+insns 1542
 spills 128
 calls 21
 branches 0
 frame main 112
 frame test_bool_conversions 128
-frame test_char_conversions 32
 frame test_i16_conversions 32
 frame test_i32_conversions 32
 frame test_i64_conversions 32
 frame test_i8_conversions 32
+frame test_i8_value_conversions 32
 frame test_u16_conversions 32
 frame test_u32_conversions 32
 frame test_u64_conversions 32
 frame test_u8_conversions 32
 
 [type_conversions_comprehensive O3]
-insns 1426
+insns 1428
 spills 52
 calls 21
 branches 0
 frame main 160
 frame test_bool_conversions 48
-frame test_char_conversions 0
 frame test_i16_conversions 0
 frame test_i32_conversions 0
 frame test_i64_conversions 0
 frame test_i8_conversions 0
+frame test_i8_value_conversions 0
 frame test_u16_conversions 0
 frame test_u32_conversions 0
 frame test_u64_conversions 0

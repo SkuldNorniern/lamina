@@ -929,7 +929,6 @@ mod tests {
             .read(var("buffer"), i32(100), "bytes_read")
             .write_byte(i8(65), "byte_written")
             .read_byte("byte_read")
-            .write_ptr(var("buffer"), 1, "ptr_written")
             .print(i32(42))
             .ret_void();
 
@@ -943,7 +942,7 @@ mod tests {
 
         let entry = &func.basic_blocks["entry"];
 
-        assert_eq!(entry.instructions.len(), 8);
+        assert_eq!(entry.instructions.len(), 7);
 
         // Verify write
         if let Instruction::Write {
@@ -958,8 +957,8 @@ mod tests {
             panic!("Expected Write instruction");
         }
 
-        // Verify print (should be at index 6, ret_void is at 7)
-        if let Instruction::Print { value } = &entry.instructions[6] {
+        // Verify print (should be at index 5, ret_void is at 6)
+        if let Instruction::Print { value } = &entry.instructions[5] {
             assert_eq!(*value, i32(42));
         } else {
             panic!("Expected Print instruction");

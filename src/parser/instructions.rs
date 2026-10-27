@@ -4,10 +4,12 @@ use crate::{
     LaminaError,
     ir::{
         AllocType, AtomicBinOp, BinaryOp, CmpOp, Identifier, Instruction, MemoryOrdering,
-        PrimitiveType, Type, UnaryOp, Value, types::sizeof_type,
+        PrimitiveType, Type, UnaryOp, Value,
     },
     parser::{
-        globals::parse_value_with_type_hint, state::ParserState, types::parse_type,
+        globals::parse_value_with_type_hint,
+        state::ParserState,
+        types::{parse_type, removed_char_error},
         values::parse_value,
     },
 };
@@ -93,7 +95,11 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "read" => parse_read_assignment(state, result),
             "writebyte" => parse_writebyte_assignment(state, result),
             "readbyte" => parse_readbyte_assignment(state, result),
-            "writeptr" => parse_writeptr_assignment(state, result),
+            "writeptr" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'%v = load.<type> <ptr>' then '%r = writebyte %v' for one byte, or '%r = write <ptr>, <size>' for raw bytes",
+            )),
             "atomic_load" => parse_atomic_load(state, result),
             "atomic_add" => parse_atomic_rmw(state, result, AtomicBinOp::Add),
             "atomic_sub" => parse_atomic_rmw(state, result, AtomicBinOp::Sub),
@@ -152,7 +158,11 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "read" => parse_read(state),
             "writebyte" => parse_writebyte(state),
             "readbyte" => parse_readbyte(state),
-            "writeptr" => parse_writeptr(state),
+            "writeptr" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'%v = load.<type> <ptr>' then '%r = writebyte %v' for one byte, or '%r = write <ptr>, <size>' for raw bytes",
+            )),
             "memcpy" => parse_memcpy(state),
             "memmove" => parse_memmove(state),
             "memset" => parse_memset(state),
@@ -303,10 +313,10 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
         "f32" => Ok(PrimitiveType::F32),
         "f64" => Ok(PrimitiveType::F64),
         "bool" => Ok(PrimitiveType::Bool),
-        "char" => Ok(PrimitiveType::Char),
+        "char" => Err(removed_char_error(state)),
         "ptr" => Ok(PrimitiveType::Ptr),
         _ => {
-            let valid_types = "i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, char, ptr";
+            let valid_types = "i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, ptr";
             Err(state.error(format!(
                 "Expected primitive type suffix, found '.{type_str}'\n  Hint: Valid type suffixes are: {valid_types}"
             )))
@@ -831,31 +841,6 @@ fn parse_readbyte_assignment<'a>(
     Ok(Instruction::ReadByte { result })
 }
 
-/// Reads the optional `.<type>` after `writeptr`; its size is the number of bytes written.
-fn parse_writeptr_width<'a>(state: &mut ParserState<'a>) -> Result<Option<u64>, LaminaError> {
-    if state.current_char() != Some('.') {
-        return Ok(None);
-    }
-    let ty = parse_type_suffix(state)?;
-    match sizeof_type(&ty) {
-        Some(width) => Ok(Some(width)),
-        None => Err(state.error("writeptr width must be a sized type such as .i32")),
-    }
-}
-
-fn parse_writeptr_assignment<'a>(
-    state: &mut ParserState<'a>,
-    result: Identifier<'a>,
-) -> Result<Instruction<'a>, LaminaError> {
-    let pointee_size = parse_writeptr_width(state)?;
-    let ptr = parse_value(state)?;
-    Ok(Instruction::WritePtr {
-        ptr,
-        result,
-        pointee_size,
-    })
-}
-
 fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
@@ -892,18 +877,6 @@ fn parse_writebyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, L
 fn parse_readbyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let result = state.parse_identifier_str()?;
     Ok(Instruction::ReadByte { result })
-}
-
-fn parse_writeptr<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    let pointee_size = parse_writeptr_width(state)?;
-    let ptr = parse_value(state)?;
-    state.expect_char(',')?;
-    let result = state.parse_identifier_str()?;
-    Ok(Instruction::WritePtr {
-        ptr,
-        result,
-        pointee_size,
-    })
 }
 
 fn parse_memcpy<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
@@ -951,7 +924,7 @@ fn parse_zext<'a>(
         "f32" => PrimitiveType::F32,
         "f64" => PrimitiveType::F64,
         "bool" => PrimitiveType::Bool,
-        "char" => PrimitiveType::Char,
+        "char" => return Err(removed_char_error(state)),
         _ => return Err(state.error(format!("Invalid source type for zext: {source_type_str}"))),
     };
 
@@ -969,7 +942,7 @@ fn parse_zext<'a>(
         "f32" => PrimitiveType::F32,
         "f64" => PrimitiveType::F64,
         "bool" => PrimitiveType::Bool,
-        "char" => PrimitiveType::Char,
+        "char" => return Err(removed_char_error(state)),
         _ => return Err(state.error(format!("Invalid target type for zext: {target_type_str}"))),
     };
 
@@ -1242,7 +1215,7 @@ fn parse_primitive_from_ident(
         "f32" => Ok(PrimitiveType::F32),
         "f64" => Ok(PrimitiveType::F64),
         "bool" => Ok(PrimitiveType::Bool),
-        "char" => Ok(PrimitiveType::Char),
+        "char" => Err(removed_char_error(state)),
         "ptr" => Ok(PrimitiveType::Ptr),
         other => Err(state.error(format!("Invalid primitive type in conversion: {other}"))),
     }

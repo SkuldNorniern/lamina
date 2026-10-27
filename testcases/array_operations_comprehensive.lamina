@@ -257,29 +257,29 @@ fn @test_bool_array_operations() -> i64 {
     ret.i64 %result
 }
 
-# Test char array operations (string-like)
+# Test i8 array operations (string-like)
 fn @test_char_array_operations() -> i64 {
   entry:
-    # Allocate array of char (like a string)
-    %str = stackalloc.[6 x char]
+    # Allocate array of i8 (like a string)
+    %str = stackalloc.[6 x i8]
 
     # Store "HELLO" (ASCII values)
-    %ptr0 = getelem.char %str, 0
-    %ptr1 = getelem.char %str, 1
-    %ptr2 = getelem.char %str, 2
-    %ptr3 = getelem.char %str, 3
-    %ptr4 = getelem.char %str, 4
-    store.char %ptr0, 72  # 'H'
-    store.char %ptr1, 69  # 'E'
-    store.char %ptr2, 76  # 'L'
-    store.char %ptr3, 76  # 'L'
-    store.char %ptr4, 79  # 'O'
+    %ptr0 = getelem.i8 %str, 0
+    %ptr1 = getelem.i8 %str, 1
+    %ptr2 = getelem.i8 %str, 2
+    %ptr3 = getelem.i8 %str, 3
+    %ptr4 = getelem.i8 %str, 4
+    store.i8 %ptr0, 72  # 'H'
+    store.i8 %ptr1, 69  # 'E'
+    store.i8 %ptr2, 76  # 'L'
+    store.i8 %ptr3, 76  # 'L'
+    store.i8 %ptr4, 79  # 'O'
 
     # Load first character
-    %first_char = load.char %ptr0
+    %first_char = load.i8 %ptr0
 
     # Convert result to i64
-    %result = zext.char.i64 %first_char
+    %result = zext.i8.i64 %first_char
     ret.i64 %result
 }
 

@@ -217,27 +217,27 @@ fn @test_bool_pointer_operations() -> i64 {
     ret.i64 %result
 }
 
-# Test char pointer operations
+# Test i8 pointer operations
 fn @test_char_pointer_operations() -> i64 {
   entry:
-    # Allocate memory for char
-    %ptr = stackalloc.char
+    # Allocate memory for i8
+    %ptr = stackalloc.i8
 
-    # Store and load char values
-    store.char %ptr, 65  # 'A'
-    %loaded_val = load.char %ptr
+    # Store and load i8 values
+    store.i8 %ptr, 65  # 'A'
+    %loaded_val = load.i8 %ptr
 
     # Verify the value
-    %expected = add.char 65, 0
-    %is_correct = eq.char %loaded_val, %expected
+    %expected = add.i8 65, 0
+    %is_correct = eq.i8 %loaded_val, %expected
 
     # Modify the value
-    %new_val = add.char %loaded_val, 1  # 'B'
-    store.char %ptr, %new_val
-    %final_val = load.char %ptr
+    %new_val = add.i8 %loaded_val, 1  # 'B'
+    store.i8 %ptr, %new_val
+    %final_val = load.i8 %ptr
 
     # Convert result to i64
-    %result = zext.char.i64 %final_val
+    %result = zext.i8.i64 %final_val
     ret.i64 %result
 }
 

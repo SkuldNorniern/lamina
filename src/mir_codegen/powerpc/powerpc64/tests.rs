@@ -362,21 +362,6 @@ fn byte_io_goes_through_putchar_and_getchar() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn writeptr_sends_the_pointee_bytes_through_write() -> Result<(), Box<dyn Error>> {
-    use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @main() -> i32 {\nentry:\n  %p = stackalloc.i32\n  store.i32 %p, 72\n  %n = writeptr %p\n  ret.i32 0\n}\n";
-    let module = parse_module(ir)?;
-    let mir = from_ir(&module, "writeptr").expect("lower writeptr");
-    let mut output = Vec::new();
-    generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
-    let assembly = String::from_utf8(output)?;
-    assert!(assembly.contains("    li 5, 4\n"), "{assembly}");
-    assert!(assembly.contains("    li 3, 1\n"), "{assembly}");
-    assert!(assembly.contains("    bl write\n"), "{assembly}");
-    Ok(())
-}
-
-#[test]
 fn floats_cross_the_boundary_in_f_registers() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
     let ir = "fn @add(i64 %n, f64 %a, f64 %b) -> f64 {\nentry:\n  %s = add.f64 %a, %b\n  %w = inttofp.i64.f64 %n\n  %t = add.f64 %s, %w\n  ret.f64 %t\n}\nfn @main() -> i64 {\nentry:\n  %r = call @add(7, 1.5, 2.5)\n  %i = fptoint.f64.i64 %r\n  ret.i64 %i\n}\n";

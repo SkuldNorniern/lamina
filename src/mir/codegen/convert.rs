@@ -195,7 +195,7 @@ fn resolve_or_alloc<'a>(
 /// Bit-width for bitcast: F32 = 32 bits, F64 = 64 bits (valid bitcast widths).
 fn int_bits_for_bitcast(ty: &IRPrim) -> u32 {
     match ty {
-        IRPrim::I8 | IRPrim::U8 | IRPrim::Bool | IRPrim::Char => 8,
+        IRPrim::I8 | IRPrim::U8 | IRPrim::Bool => 8,
         IRPrim::I16 | IRPrim::U16 => 16,
         IRPrim::I32 | IRPrim::U32 | IRPrim::F32 => 32,
         IRPrim::I64 | IRPrim::U64 | IRPrim::F64 | IRPrim::Ptr => 64,
@@ -399,21 +399,9 @@ fn element_list_bytes(
                 })
                 .collect::<Result<Vec<_>, FromIRError>>()?,
         ),
-        IRType::Tuple(element_types) => {
-            let mut at: usize = 0;
-            let mut slots = Vec::with_capacity(element_types.len());
-            for element in element_types {
-                let width = sizeof_type(element).ok_or(FromIRError::UnsupportedType)? as usize;
-                let align = align_of_type(element) as usize;
-                at = at.next_multiple_of(align);
-                slots.push((at, width));
-                at += width;
-            }
-            Slots::Fixed(slots)
-        }
         _ => {
             return Err(FromIRError::UnsupportedGlobal(format!(
-                "@{name} takes an element list only as an array, struct or tuple"
+                "@{name} takes an element list only as an array or struct"
             )));
         }
     };
@@ -471,7 +459,7 @@ fn aggregate_global_bytes(
         IRType::Array { element_type, .. }
             if matches!(
                 element_type.as_ref(),
-                IRType::Primitive(IRPrim::I8 | IRPrim::U8 | IRPrim::Char | IRPrim::Bool)
+                IRType::Primitive(IRPrim::I8 | IRPrim::U8 | IRPrim::Bool)
             )
     );
     if !element_is_byte {
@@ -566,7 +554,6 @@ fn literal_bytes(name: &str, literal: &IRLit<'_>) -> Result<Vec<u8>, FromIRError
         IRLit::F32(v) => v.to_le_bytes().to_vec(),
         IRLit::F64(v) => v.to_le_bytes().to_vec(),
         IRLit::Bool(b) => vec![u8::from(*b)],
-        IRLit::Char(c) => vec![*c as u8],
         IRLit::String(_) => {
             return Err(FromIRError::UnsupportedGlobal(format!(
                 "@{name} initializer must be an integer, float or bool literal"
@@ -1555,7 +1542,6 @@ fn convert_instruction<'a>(
                             0
                         }
                     }
-                    IRLit::Char(c) => *c as i64,
                     IRLit::F32(_) | IRLit::F64(_) | IRLit::String(_) => {
                         return Err(FromIRError::UnsupportedType);
                     }
@@ -2176,22 +2162,6 @@ fn convert_instruction<'a>(
                 ret: Some(dst),
             }])
         }
-        IRInst::WritePtr {
-            ptr,
-            result,
-            pointee_size,
-        } => {
-            let width = pointee_size
-                .filter(|w| matches!(w, 1 | 2 | 4 | 8))
-                .ok_or(FromIRError::WritePtrPointeeUnknown)?;
-            let p = resolve_operand(ptr, vreg_alloc, var_to_reg, globals)?;
-            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
-            Ok(vec![Instruction::Call {
-                name: "lamina.writeptr".to_string(),
-                args: vec![p, Operand::Immediate(Immediate::I64(width as i64))],
-                ret: Some(dst),
-            }])
-        }
         IRInst::Read {
             buffer,
             size,
@@ -2418,7 +2388,6 @@ fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
         IRLit::F32(v) => Immediate::F32(*v),
         IRLit::F64(v) => Immediate::F64(*v),
         IRLit::Bool(b) => Immediate::I8(if *b { 1 } else { 0 }),
-        IRLit::Char(c) => Immediate::I8(*c as i8),
         IRLit::String(_) => return Err(FromIRError::UnsupportedInstruction),
     };
     Ok(imm)

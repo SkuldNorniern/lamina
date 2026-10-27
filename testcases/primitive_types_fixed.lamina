@@ -79,7 +79,7 @@ fn @test_bool_operations() -> i64 {
     ret.i64 %result
 }
 
-# Test char operations
+# Test i8 operations
 fn @test_char_operations() -> i64 {
   entry:
     %char_a = add.i64 65, 0

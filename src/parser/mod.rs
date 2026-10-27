@@ -1419,6 +1419,25 @@ ret.i64 0
     }
 
     #[test]
+    fn test_removed_char_tuple_and_writeptr_are_rejected() {
+        let err = parse_error("%e = add.char 1, 2");
+        assert!(err.contains("'i8'"), "{err}");
+
+        let err = parse_error("%e = stackalloc.char");
+        assert!(err.contains("'i8'"), "{err}");
+
+        let err = parse_error("%e = writeptr %buf");
+        assert!(err.contains("writebyte"), "{err}");
+
+        let err = parse_module(
+            "fn @main() -> i64 {\n  entry:\n    %t = stackalloc.tuple i32, f64\n    ret.i64 0\n}\n",
+        )
+        .expect_err("tuple type should be rejected")
+        .to_string();
+        assert!(err.contains("struct"), "{err}");
+    }
+
+    #[test]
     fn test_getfield_alias_and_ptr_suffix_are_rejected() {
         let input = entry_body("%f = getfieldptr %p, 2");
         assert!(matches!(
@@ -1629,7 +1648,19 @@ entry:
                 ty: i64t.clone(),
             }]),
         )
-        .stackalloc("st", &OwnedType::Tuple(vec![i64t.clone(), f64t.clone()]))
+        .stackalloc(
+            "st",
+            &OwnedType::Struct(vec![
+                OwnedStructField {
+                    name: "a".to_string(),
+                    ty: i64t.clone(),
+                },
+                OwnedStructField {
+                    name: "b".to_string(),
+                    ty: f64t.clone(),
+                },
+            ]),
+        )
         .heapalloc("h", &i64t)
         .store(&i64t, &var("s"), &var("sum"))
         .load("l", &i64t, &var("s"))
@@ -1660,8 +1691,6 @@ entry:
         .read("rd", &var("s"), &OwnedValue::I64(8))
         .write_byte("wb", &OwnedValue::I32(65))
         .read_byte("rb")
-        .write_ptr("wp", &var("s"), 8)
-        .write_ptr("wq", &var("s"), 3)
         .call(Some("c"), "helper", &[var("sum")])
         .call(None, "helper", &[OwnedValue::I64(1)])
         .print(&var("c"))

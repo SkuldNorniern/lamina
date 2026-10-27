@@ -124,7 +124,7 @@ def load_expected_output(test_path):
     return expected_values
 
 def run_raw_output(executable_path, project_root):
-    """Run a binary whose stdout is compared byte for byte (writeptr writes raw memory)."""
+    """Run a binary whose stdout is compared byte for byte (write sends raw memory)."""
     try:
         result = subprocess.run(
             [executable_path],
