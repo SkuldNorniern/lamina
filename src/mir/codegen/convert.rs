@@ -287,6 +287,29 @@ fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'
     names
 }
 
+/// Where each element of a global's initializer list lands.
+enum Slots {
+    Strided { stride: usize, count: usize },
+    Fixed(Vec<(usize, usize)>),
+}
+
+impl Slots {
+    fn len(&self) -> usize {
+        match self {
+            Slots::Strided { count, .. } => *count,
+            Slots::Fixed(slots) => slots.len(),
+        }
+    }
+
+    fn get(&self, index: usize) -> Option<(usize, usize)> {
+        match self {
+            Slots::Strided { stride, count } if index < *count => Some((index * stride, *stride)),
+            Slots::Strided { .. } => None,
+            Slots::Fixed(slots) => slots.get(index).copied(),
+        }
+    }
+}
+
 /// Bytes for an array global written as an element list. Elements left out are zero.
 fn element_list_bytes(
     name: &str,
@@ -294,24 +317,26 @@ fn element_list_bytes(
     size: usize,
     elements: &[IRLit<'_>],
 ) -> Result<Vec<u8>, FromIRError> {
-    // (offset, width) of every slot the list can fill, in order.
-    let slots: Vec<(usize, usize)> = match ty {
-        IRType::Array { element_type, size } => {
-            let stride = sizeof_type(element_type).ok_or(FromIRError::UnsupportedType)? as usize;
-            (0..*size as usize)
-                .map(|at| (at * stride, stride))
-                .collect()
-        }
-        IRType::Struct(fields) => fields
-            .iter()
-            .enumerate()
-            .map(|(index, field)| {
-                let at = struct_field_byte_offset(fields, index)
-                    .ok_or(FromIRError::UnsupportedType)? as usize;
-                let width = sizeof_type(&field.ty).ok_or(FromIRError::UnsupportedType)? as usize;
-                Ok((at, width))
-            })
-            .collect::<Result<_, FromIRError>>()?,
+    // (offset, width) of every slot the list can fill, in order. An array keeps its
+    // stride instead of one entry per element, so a long array costs nothing here.
+    let slots: Slots = match ty {
+        IRType::Array { element_type, size } => Slots::Strided {
+            stride: sizeof_type(element_type).ok_or(FromIRError::UnsupportedType)? as usize,
+            count: usize::try_from(*size).map_err(|_| FromIRError::UnsupportedType)?,
+        },
+        IRType::Struct(fields) => Slots::Fixed(
+            fields
+                .iter()
+                .enumerate()
+                .map(|(index, field)| {
+                    let at = struct_field_byte_offset(fields, index)
+                        .ok_or(FromIRError::UnsupportedType)? as usize;
+                    let width =
+                        sizeof_type(&field.ty).ok_or(FromIRError::UnsupportedType)? as usize;
+                    Ok((at, width))
+                })
+                .collect::<Result<Vec<_>, FromIRError>>()?,
+        ),
         IRType::Tuple(element_types) => {
             let mut at: usize = 0;
             let mut slots = Vec::with_capacity(element_types.len());
@@ -322,7 +347,7 @@ fn element_list_bytes(
                 slots.push((at, width));
                 at += width;
             }
-            slots
+            Slots::Fixed(slots)
         }
         _ => {
             return Err(FromIRError::UnsupportedGlobal(format!(
@@ -337,9 +362,17 @@ fn element_list_bytes(
             elements.len()
         )));
     }
-    let mut bytes = vec![0u8; size];
+    // Only the filled prefix is written out; the tail stays implicit zero, which keeps
+    // a sparsely initialized array global off the heap.
+    let filled = elements
+        .len()
+        .checked_sub(1)
+        .and_then(|last| slots.get(last))
+        .map_or(0, |(at, width)| at + width)
+        .min(size);
+    let mut bytes = vec![0u8; filled];
     for (index, literal) in elements.iter().enumerate() {
-        let (at, width) = slots[index];
+        let (at, width) = slots.get(index).ok_or(FromIRError::UnsupportedType)?;
         let encoded = literal_bytes(name, literal)?;
         if encoded.len() != width {
             return Err(FromIRError::UnsupportedGlobal(format!(

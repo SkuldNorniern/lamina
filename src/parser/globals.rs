@@ -53,20 +53,22 @@ fn parse_initializer_list<'a>(
     state: &mut ParserState<'a>,
     ty: &Type<'a>,
 ) -> Result<Vec<Literal<'a>>, LaminaError> {
-    let (open, close, hints, capacity) = match ty {
+    let (open, close, uniform, hints, capacity) = match ty {
         Type::Array { element_type, size } => (
             '[',
             ']',
-            vec![element_type.as_ref().clone(); *size as usize],
-            *size as usize,
+            Some(element_type.as_ref().clone()),
+            Vec::new(),
+            usize::try_from(*size).unwrap_or(usize::MAX),
         ),
         Type::Struct(fields) => (
             '{',
             '}',
+            None,
             fields.iter().map(|field| field.ty.clone()).collect(),
             fields.len(),
         ),
-        Type::Tuple(elements) => ('{', '}', elements.clone(), elements.len()),
+        Type::Tuple(elements) => ('{', '}', None, elements.clone(), elements.len()),
         _ => {
             return Err(state.error(format!(
                 "An element list initializes an array, struct or tuple, but this global has type {ty}"
@@ -81,9 +83,15 @@ fn parse_initializer_list<'a>(
             state.advance();
             break;
         }
-        let hint = hints.get(elements.len()).ok_or_else(|| {
-            state.error(format!("{capacity} elements fit here, this is one more"))
-        })?;
+        let hint = match &uniform {
+            Some(element) => element,
+            None => hints.get(elements.len()).ok_or_else(|| {
+                state.error(format!("{capacity} elements fit here, this is one more"))
+            })?,
+        };
+        if elements.len() >= capacity {
+            return Err(state.error(format!("{capacity} elements fit here, this is one more")));
+        }
         let value = parse_value_with_type_hint(state, hint)?;
         let Value::Constant(literal) = value else {
             return Err(state.error("An element list takes literals only"));
