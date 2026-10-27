@@ -904,6 +904,7 @@ fn convert_function<'a>(
         edges.sort_by(|left, right| left.0.cmp(&right.0));
         let mut trampoline_counter: u64 = 0;
         for ((pred, succ), moves) in edges {
+            let moves = sequence_parallel_copies(moves, &mut vreg_alloc);
             // Snapshot the current terminator without holding a mutable borrow
             let term = mir_func
                 .get_block(&pred)
@@ -1021,6 +1022,62 @@ fn convert_function<'a>(
     mir_func.stack_reservations = reservations;
 
     Ok(mir_func)
+}
+
+/// Orders the copies on one edge so none overwrites a value another still reads. A phi
+/// reads all of its operands at once, and emitting a swap in source order would make
+/// both destinations hold the same value. A cycle is broken by saving one destination
+/// into a fresh register first.
+fn sequence_parallel_copies(
+    moves: Vec<Instruction>,
+    vreg_alloc: &mut VirtualRegAllocator,
+) -> Vec<Instruction> {
+    let mut pending: Vec<(MirType, Register, Operand)> = Vec::new();
+    let mut others = Vec::new();
+    for instruction in moves {
+        match instruction {
+            Instruction::Copy { ty, dst, src } => pending.push((ty, dst, src)),
+            other => others.push(other),
+        }
+    }
+
+    let source = |operand: &Operand| match operand {
+        Operand::Register(reg) => Some(reg.clone()),
+        Operand::Immediate(_) => None,
+    };
+    let mut out = Vec::with_capacity(pending.len() + others.len());
+    while !pending.is_empty() {
+        let free = pending.iter().position(|(_, dst, _)| {
+            !pending
+                .iter()
+                .any(|(_, other, src)| other != dst && source(src).as_ref() == Some(dst))
+        });
+        if let Some(index) = free {
+            let (ty, dst, src) = pending.remove(index);
+            out.push(Instruction::Copy { ty, dst, src });
+            continue;
+        }
+
+        let (ty, dst, src) = pending.remove(0);
+        let saved = Register::Virtual(if ty.is_float() {
+            vreg_alloc.allocate_fpr()
+        } else {
+            vreg_alloc.allocate_gpr()
+        });
+        out.push(Instruction::Copy {
+            ty,
+            dst: saved.clone(),
+            src: Operand::Register(dst.clone()),
+        });
+        for (_, _, pending_src) in pending.iter_mut() {
+            if source(pending_src).as_ref() == Some(&dst) {
+                *pending_src = Operand::Register(saved.clone());
+            }
+        }
+        out.push(Instruction::Copy { ty, dst, src });
+    }
+    out.extend(others);
+    out
 }
 
 fn convert_instruction<'a>(
