@@ -654,8 +654,17 @@ ret.i64 %s
         let pipeline = TransformPipeline::new()
             .add_transform(CfgSimplify)
             .add_transform(ConstantFolding);
-        let stats = pipeline.apply_to_function(&mut func).unwrap();
-        assert_eq!(stats.transforms_run, 2);
+        pipeline.apply_to_function(&mut func).unwrap();
+        let folded = func.blocks[0].instructions.iter().any(|inst| {
+            matches!(
+                inst,
+                Instruction::Copy {
+                    src: Operand::Immediate(Immediate::I64(8)),
+                    ..
+                }
+            )
+        });
+        assert!(folded, "{:?}", func.blocks[0].instructions);
     }
 
     #[test]
@@ -680,8 +689,12 @@ ret.i64 %s
         let pipeline = TransformPipeline::new()
             .add_transform(Peephole)
             .add_transform(DeadCodeElimination);
-        let stats = pipeline.apply_to_function(&mut func).unwrap();
-        assert_eq!(stats.transforms_run, 2);
+        pipeline.apply_to_function(&mut func).unwrap();
+        let dead = func.blocks[0]
+            .instructions
+            .iter()
+            .any(|inst| matches!(inst, Instruction::IntBinary { .. }));
+        assert!(!dead, "{:?}", func.blocks[0].instructions);
     }
 
     #[test]
