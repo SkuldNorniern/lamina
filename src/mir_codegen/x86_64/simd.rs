@@ -262,7 +262,7 @@ fn lane_access<W: Write>(
 #[allow(clippy::expect_used)]
 mod tests {
 
-    use crate::mir_codegen::simd_support::{run, tools_available};
+    use crate::mir_codegen::simd_support::{declare_uses_as_params, run, tools_available};
 
     use crate::{
         mir::{
@@ -759,12 +759,10 @@ mod tests {
                 f.blocks[0].instructions.retain(|i| {
                     matches!(i, Instruction::VectorOp { .. } | Instruction::Ret { .. })
                 });
+                declare_uses_as_params(&mut f, &MirType::Vector(VectorType::V256(lane)), lane);
                 m.add_function(f);
-                assert!(
-                    emit(&m, RegallocStrategy::Incremental)
-                        .expect_err("V256 unsupported")
-                        .contains("V256")
-                );
+                let error = emit(&m, RegallocStrategy::Incremental).expect_err("V256 unsupported");
+                assert!(error.to_lowercase().contains("v256"), "{error}");
             }
             for store in [false, true] {
                 let mut m = Module::new("negative");
@@ -781,12 +779,11 @@ mod tests {
                         matches!(i, Instruction::Load { .. } | Instruction::Ret { .. })
                     }
                 });
+                declare_uses_as_params(&mut f, &MirType::Vector(VectorType::V256(lane)), lane);
                 m.add_function(f);
-                assert!(
-                    emit(&m, RegallocStrategy::Incremental)
-                        .expect_err("V256 memory unsupported")
-                        .contains("V256")
-                );
+                let error =
+                    emit(&m, RegallocStrategy::Incremental).expect_err("V256 memory unsupported");
+                assert!(error.to_lowercase().contains("v256"), "{error}");
             }
             for op in [VectorOp::VExtractLane, VectorOp::VInsertLane] {
                 for index in [

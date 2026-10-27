@@ -285,6 +285,7 @@ mod tests {
             f.blocks[0]
                 .instructions
                 .retain(|i| matches!(i, Instruction::VectorOp { .. } | Instruction::Ret { .. }));
+            declare_uses_as_params(&mut f, &MirType::Vector(VectorType::V128(lane)), lane);
             module.add_function(f);
             let mut output = Vec::new();
             let error = generate_mir_riscv_with_units_and_settings(

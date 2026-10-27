@@ -2,8 +2,8 @@
 use crate::{
     mir::{
         AddressMode, AddressSpace, Block, Function, Immediate, Instruction, IntBinOp, MemoryAttrs,
-        MirType, Module, Operand, Parameter, Register, ScalarType, Signature, VectorLane, VectorOp,
-        VectorType, VirtualReg,
+        MirType, Module, Operand, Parameter, Register, RegisterClass, ScalarType, Signature,
+        VectorLane, VectorOp, VectorType, VirtualReg,
     },
     mir_codegen::{MirCodegenSettings, RegallocStrategy, generate_mir_to_target_with_settings},
 };
@@ -58,6 +58,39 @@ pub fn addr(id: u32) -> AddressMode {
         address_space: AddressSpace::Generic,
         base: reg(id),
         offset: 1,
+    }
+}
+
+/// Keeping one instruction out of a built function leaves its operands without a
+/// definition. Declaring them as parameters keeps the module verifiable.
+pub fn declare_uses_as_params(f: &mut Function, vector_ty: &MirType, lane: VectorLane) {
+    let mut defined: Vec<Register> = f.sig.params.iter().map(|p| p.reg.clone()).collect();
+    let mut missing: Vec<Register> = Vec::new();
+    let mut bases: Vec<Register> = Vec::new();
+    for block in &f.blocks {
+        for inst in &block.instructions {
+            if let Instruction::Load { addr, .. } | Instruction::Store { addr, .. } = inst
+                && let AddressMode::BaseOffset { base, .. } = addr
+            {
+                bases.push(base.clone());
+            }
+            for reg in inst.use_regs() {
+                if !defined.contains(reg) && !missing.contains(reg) {
+                    missing.push(reg.clone());
+                }
+            }
+            if let Some(dst) = inst.def_reg() {
+                defined.push(dst.clone());
+            }
+        }
+    }
+    for reg in missing {
+        let ty = match reg.class() {
+            RegisterClass::Vec => *vector_ty,
+            _ if bases.contains(&reg) => MirType::ptr(),
+            _ => scalar(lane),
+        };
+        f.sig.params.push(Parameter::new(reg, ty));
     }
 }
 
@@ -405,10 +438,11 @@ pub fn negative(backend: Backend) {
                     1 => matches!(i, Instruction::Store { .. } | Instruction::Ret { .. }),
                     _ => matches!(i, Instruction::VectorOp { .. } | Instruction::Ret { .. }),
                 });
+                declare_uses_as_params(&mut f, &MirType::Vector(VectorType::V256(lane)), lane);
                 m.functions.insert("bad".into(), f);
                 let error =
                     emit(&m, backend, RegallocStrategy::Incremental, true).expect_err("V256");
-                assert!(error.contains("V256"), "{error}");
+                assert!(error.to_lowercase().contains("v256"), "{error}");
             }
             if matches!(op, VectorOp::VExtractLane | VectorOp::VInsertLane) {
                 for index in [

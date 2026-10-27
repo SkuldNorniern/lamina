@@ -31,12 +31,15 @@ const STRICT_CONFIG: VerificationConfig = VerificationConfig {
     verify_register_classes: true,
     verify_immediate_widths: true,
 };
+/// Edge copies give a register one definition per incoming edge, so single
+/// definition is no longer a property to check. Dominance still is: it skips a
+/// register with several definitions and reports one with none.
 const PHI_LOWERED_CONFIG: VerificationConfig = VerificationConfig {
     verify_terminator_placement: true,
     verify_ssa: false,
-    verify_dominance: false,
+    verify_dominance: true,
     verify_register_types: true,
-    verify_register_classes: false,
+    verify_register_classes: true,
     verify_immediate_widths: true,
 };
 
@@ -1549,14 +1552,14 @@ mod tests {
             .block("entry")
             .instr(Instruction::Copy {
                 ty: MirType::f32(),
-                dst: VirtualReg::gpr(0).into(),
+                dst: VirtualReg::fpr(0).into(),
                 src: Operand::imm_f32(1.0),
             })
             .instr(Instruction::Bitcast {
                 from: MirType::f32(),
                 to: MirType::i32(),
                 dst: VirtualReg::gpr(1).into(),
-                src: Operand::v_gpr(0),
+                src: Operand::Register(VirtualReg::fpr(0).into()),
             })
             .instr(Instruction::Ret { value: None })
             .build();
