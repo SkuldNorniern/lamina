@@ -2333,6 +2333,17 @@ fn convert_instruction<'a>(
                 ordering: mir_ordering,
             }])
         }
+        // Lowering for these is not written yet. They are named one by one so a new
+        // nightly variant fails to compile here instead of being swallowed.
+        #[cfg(feature = "nightly")]
+        IRInst::AtomicBinary { .. }
+        | IRInst::AtomicCompareExchange { .. }
+        | IRInst::SimdTernary { .. }
+        | IRInst::SimdShuffle { .. }
+        | IRInst::SimdExtract { .. }
+        | IRInst::SimdInsert { .. }
+        | IRInst::SimdLoad { .. }
+        | IRInst::SimdStore { .. } => Err(FromIRError::UnsupportedInstruction),
     }
 }
 
