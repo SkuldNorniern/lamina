@@ -504,17 +504,21 @@ impl fmt::Display for GlobalDeclaration<'_> {
 
 impl fmt::Display for Module<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for decl in self.type_declarations.values() {
-            writeln!(f, "{decl}")?;
+        let mut type_names: Vec<_> = self.type_declarations.keys().collect();
+        type_names.sort();
+        for name in &type_names {
+            writeln!(f, "{}", self.type_declarations[*name])?;
         }
-        if !self.type_declarations.is_empty() {
+        if !type_names.is_empty() {
             writeln!(f)?;
         }
 
-        for decl in self.global_declarations.values() {
-            writeln!(f, "{decl}")?;
+        let mut global_names: Vec<_> = self.global_declarations.keys().collect();
+        global_names.sort();
+        for name in &global_names {
+            writeln!(f, "{}", self.global_declarations[*name])?;
         }
-        if !self.global_declarations.is_empty() {
+        if !global_names.is_empty() {
             writeln!(f)?;
         }
 
@@ -574,6 +578,48 @@ mod tests {
             exported: false,
         };
         assert_eq!(format!("{}", decl2), "global @external_data: [256 x i8]");
+    }
+
+    #[test]
+    fn test_display_is_independent_of_insertion_order() {
+        let names = [
+            "zeta", "alpha", "mu", "beta", "omega", "gamma", "kappa", "delta",
+        ];
+        let build = |order: &[&'static str]| {
+            let mut module = Module::new();
+            for &name in order {
+                module.type_declarations.insert(
+                    name,
+                    TypeDeclaration {
+                        name,
+                        ty: Type::Struct(vec![StructField {
+                            name: "x",
+                            ty: Type::Primitive(PrimitiveType::I32),
+                        }]),
+                    },
+                );
+                module.global_declarations.insert(
+                    name,
+                    GlobalDeclaration {
+                        name,
+                        ty: Type::Primitive(PrimitiveType::I32),
+                        initializer: Some(GlobalInit::Value(Value::Constant(Literal::I32(1)))),
+                        exported: false,
+                    },
+                );
+            }
+            module
+        };
+
+        let forward = names.to_vec();
+        let mut reversed = forward.clone();
+        reversed.reverse();
+
+        let first = format!("{}", build(&forward));
+        let second = format!("{}", build(&reversed));
+        assert_eq!(first, second);
+        assert!(first.find("type @alpha").unwrap() < first.find("type @zeta").unwrap());
+        assert!(first.find("global @alpha").unwrap() < first.find("global @zeta").unwrap());
     }
 
     #[test]
