@@ -433,3 +433,49 @@ fn imports_declare_the_types_the_host_wrote() {
     assert!(wat.contains("f64.reinterpret_i64"), "{wat}");
     assert!(wat.contains("i64.reinterpret_f64"), "{wat}");
 }
+
+#[test]
+fn narrow_loads_sign_extend_like_every_other_backend() {
+    // x86, riscv, aarch64 and ppc all sign-extend a narrow load, so wasm must too or
+    // the same program prints 255 on one target and -1 on the others.
+    for (ty, signed) in [
+        ("i8", "i64.load8_s"),
+        ("i16", "i64.load16_s"),
+        ("i32", "i64.load32_s"),
+    ] {
+        let source = format!(
+            "fn @main() -> i64 {{\nentry:\n  %p = stackalloc.{ty}\n  store.{ty} %p, -1\n  %x = load.{ty} %p\n  print %x\n  ret.i64 0\n}}\n"
+        );
+        let wat = emit_wat(&source, TargetArchitecture::Wasm32);
+        assert!(wat.contains(signed), "{ty}: {wat}");
+        assert!(!wat.contains(&signed.replace("_s", "_u")), "{ty}: {wat}");
+    }
+
+    if !tool_available("wasmtime") {
+        return;
+    }
+    let ir = parse_module(
+        "fn @main() -> i64 {\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, -1\n  %x = load.i8 %p\n  print %x\n  ret.i64 0\n}\n",
+    )
+    .expect("parse");
+    let mir = from_ir(&ir, "module").expect("lower");
+    let mut wat = Vec::new();
+    generate_mir_wasm(
+        &mir,
+        &mut wat,
+        TargetArchitecture::Wasm32,
+        TargetOperatingSystem::Wasi,
+    )
+    .expect("codegen");
+    let dir = env::temp_dir().join(format!("lamina-narrow-{}", id()));
+    fs::create_dir_all(&dir).expect("create test dir");
+    let path = dir.join("module.wat");
+    fs::write(&path, wat).expect("write wat");
+    let output = Command::new("wasmtime")
+        .arg("run")
+        .arg(&path)
+        .output()
+        .expect("run wasmtime");
+    fs::remove_dir_all(&dir).expect("cleanup");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "-1\n");
+}
