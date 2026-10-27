@@ -614,3 +614,24 @@ fn unsupported_instruction_names_its_block_and_function() {
     assert!(text.contains("entry"), "{text}");
     assert!(text.contains("main"), "{text}");
 }
+
+#[test]
+fn variadic_f32_argument_widens_to_f64() {
+    let source = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(f32 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.ptr @fmt, 0, i8\n  %x = add.f32 1.5, 2.25\n  %c = call @printf(%p, %x)\n  %d = call @sink(%x)\n  ret.i64 0\n}\n";
+    let ir = parse_module(source).expect("parse variadic call");
+    let module = from_ir(&ir, "variadic_f32").expect("lower variadic call");
+    let widened: Vec<_> = module.functions["main"].blocks[0]
+        .instructions
+        .iter()
+        .filter(|inst| matches!(inst, Instruction::FloatConvert { .. }))
+        .collect();
+    assert_eq!(widened.len(), 1, "{widened:?}");
+    assert!(
+        matches!(
+            widened[0],
+            Instruction::FloatConvert { from, to, .. }
+                if *from == MirType::f32() && *to == MirType::f64()
+        ),
+        "{widened:?}"
+    );
+}
