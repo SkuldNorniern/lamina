@@ -11,7 +11,7 @@ use std::{
     sync::Arc,
 };
 
-use std::{io::Write, process::id};
+use std::{io::Write, process::id, str};
 
 use crate::error::LaminaError;
 
@@ -36,15 +36,57 @@ use util::{
     store_fp_to_register_wasm, store_to_register_wasm,
 };
 
+/// Index type of linear memory. MIR holds every pointer in an i64, so wasm32 narrows
+/// one at each memory operation and wasm64 passes it through.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Memory {
+    I32,
+    I64,
+}
+
+impl Memory {
+    fn of(arch: TargetArchitecture) -> Self {
+        match arch {
+            TargetArchitecture::Wasm64 => Self::I64,
+            _ => Self::I32,
+        }
+    }
+
+    fn index_type(self) -> &'static str {
+        match self {
+            Self::I32 => "i32",
+            Self::I64 => "i64",
+        }
+    }
+
+    /// Narrows the address on the stack to what the memory indexes with.
+    fn narrow(self, writer: &mut impl Write, indent: &str) -> Result<(), LaminaError> {
+        if self == Self::I32 {
+            writeln!(writer, "{indent}i32.wrap_i64")?;
+        }
+        Ok(())
+    }
+
+    /// Widens an address that came out of the memory index type back to an i64.
+    fn widen(self, writer: &mut impl Write, indent: &str) -> Result<(), LaminaError> {
+        if self == Self::I32 {
+            writeln!(writer, "{indent}i64.extend_i32_u")?;
+        }
+        Ok(())
+    }
+}
+
 /// Trait-backed MIR ⇒ WebAssembly code generator.
 pub struct WasmCodegen<'a> {
     base: CodegenBase<'a>,
+    memory: Memory,
 }
 
 impl<'a> WasmCodegen<'a> {
-    pub fn new(target_os: TargetOperatingSystem) -> Self {
+    pub fn new(target_arch: TargetArchitecture, target_os: TargetOperatingSystem) -> Self {
         Self {
             base: CodegenBase::new(target_os),
+            memory: Memory::of(target_arch),
         }
     }
 
@@ -65,7 +107,13 @@ impl<'a> WasmCodegen<'a> {
         writer: &mut W,
         codegen_units: usize,
     ) -> Result<(), LaminaError> {
-        generate_mir_wasm_with_units(module, writer, self.base.target_os, codegen_units)
+        generate_mir_wasm_with_units(
+            module,
+            writer,
+            self.memory,
+            self.base.target_os,
+            codegen_units,
+        )
     }
 }
 
@@ -112,7 +160,11 @@ impl<'a> Codegen for WasmCodegen<'a> {
     }
 
     fn emit_asm(&mut self) -> Result<(), CodegenError> {
-        self.base.emit_asm_base(generate_mir_wasm, "WASM")
+        let memory = self.memory;
+        self.base.emit_asm_base(
+            |module, writer, os| generate_mir_wasm_with_units(module, writer, memory, os, 1),
+            "WASM",
+        )
     }
 
     fn emit_bin(&mut self) -> Result<(), CodegenError> {
@@ -165,6 +217,7 @@ impl<'a> Codegen for WasmCodegen<'a> {
 fn compile_single_function_wasm(
     func_name: &str,
     func: &Function,
+    memory: Memory,
     target_os: TargetOperatingSystem,
     globals: &BTreeMap<String, u32>,
 ) -> Result<Vec<u8>, CodegenError> {
@@ -233,11 +286,16 @@ fn compile_single_function_wasm(
     }
     if frame.size > 0 {
         let size = frame.size;
+        let index = memory.index_type();
         writeln!(
             output,
-            "    global.get $sp\n    i32.const {size}\n    i32.lt_u\n    (if (then unreachable))\n    global.get $sp\n    i32.const {size}\n    i32.sub\n    global.set $sp\n    global.get $sp\n    i64.extend_i32_u\n    local.set $fp"
+            "    global.get $sp\n    {index}.const {size}\n    {index}.lt_u\n    (if (then unreachable))\n    global.get $sp\n    {index}.const {size}\n    {index}.sub\n    global.set $sp\n    global.get $sp"
         )
         .map_err(io_codegen_error)?;
+        memory
+            .widen(&mut output, "    ")
+            .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
+        writeln!(output, "    local.set $fp").map_err(io_codegen_error)?;
     }
     let entry_idx = block_labels.get(func.entry.as_str()).copied().unwrap_or(0);
     writeln!(output, "    i64.const {entry_idx}").map_err(io_codegen_error)?;
@@ -264,6 +322,7 @@ fn compile_single_function_wasm(
             emit_instruction_wasm(
                 inst,
                 &mut output,
+                memory,
                 &vreg_to_local,
                 &block_labels,
                 &frame,
@@ -288,22 +347,30 @@ fn compile_single_function_wasm(
 pub fn generate_mir_wasm<W: Write>(
     module: &MirModule,
     writer: &mut W,
+    target_arch: TargetArchitecture,
     target_os: TargetOperatingSystem,
 ) -> Result<(), LaminaError> {
-    generate_mir_wasm_with_units(module, writer, target_os, 1)
+    generate_mir_wasm_with_units(module, writer, Memory::of(target_arch), target_os, 1)
 }
 
 pub fn generate_mir_wasm_with_units<W: Write>(
     module: &MirModule,
     writer: &mut W,
+    memory: Memory,
     target_os: TargetOperatingSystem,
     codegen_units: usize,
 ) -> Result<(), LaminaError> {
-    validate_module_call_parameters(module, TargetArchitecture::Wasm64)?;
+    let arch = match memory {
+        Memory::I32 => TargetArchitecture::Wasm32,
+        Memory::I64 => TargetArchitecture::Wasm64,
+    };
+    validate_module_call_parameters(module, arch)?;
     let global_addresses = Arc::new(global_addresses(module)?);
     let results = compile_functions_parallel(module, target_os, codegen_units, {
         let global_addresses = Arc::clone(&global_addresses);
-        move |name, func, os| compile_single_function_wasm(name, func, os, &global_addresses)
+        move |name, func, os| {
+            compile_single_function_wasm(name, func, memory, os, &global_addresses)
+        }
     })
     .map_err(parallel_codegen_error)?;
 
@@ -314,6 +381,20 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     writeln!(writer, "  {}", abi.get_print_import())?;
     for decl in abi.get_runtime_imports() {
         writeln!(writer, "  {decl}")?;
+    }
+
+    // Global variables for virtual registers
+    let mut global_count = 0;
+    for func in module.functions.values() {
+        for block in &func.blocks {
+            for inst in &block.instructions {
+                if let Some(dst) = inst.def_reg()
+                    && let Register::Virtual(_) = dst
+                {
+                    global_count += 1;
+                }
+            }
+        }
     }
 
     // Emit import declarations for external functions
@@ -339,25 +420,13 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         }
     }
 
-    // Global variables for virtual registers
-    let mut global_count = 0;
-    for func in module.functions.values() {
-        for block in &func.blocks {
-            for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(_) = dst
-                {
-                    global_count += 1;
-                }
-            }
-        }
-    }
-
     // Memory must follow the imports; loads and stores need it declared.
-    writeln!(writer, "  (memory (export \"memory\") 1)")?;
+    let index = memory.index_type();
+    let wide = if memory == Memory::I64 { " i64" } else { "" };
+    writeln!(writer, "  (memory (export \"memory\"){wide} 1)")?;
     writeln!(
         writer,
-        "  (global $sp (mut i32) (i32.const {WASM_STACK_TOP}))"
+        "  (global $sp (mut {index}) ({index}.const {WASM_STACK_TOP}))"
     )?;
     for (name, global) in &module.globals {
         let Some(bytes) = global.initializer.as_deref() else {
@@ -368,7 +437,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         }
         let address = global_addresses[name];
         let escaped: String = bytes.iter().map(|b| format!("\\{b:02x}")).collect();
-        writeln!(writer, "  (data (i32.const {address}) \"{escaped}\")")?;
+        writeln!(writer, "  (data ({index}.const {address}) \"{escaped}\")")?;
     }
 
     for i in 0..global_count {
@@ -449,12 +518,19 @@ fn stack_frame_layout(func: &Function) -> StackFrame {
     }
 }
 
-fn release_stack_frame(writer: &mut impl Write, frame: &StackFrame) -> Result<(), LaminaError> {
+fn release_stack_frame(
+    writer: &mut impl Write,
+    memory: Memory,
+    frame: &StackFrame,
+) -> Result<(), LaminaError> {
     if frame.size > 0 {
         let size = frame.size;
+        let index = memory.index_type();
+        writeln!(writer, "        local.get $fp")?;
+        memory.narrow(writer, "        ")?;
         writeln!(
             writer,
-            "        local.get $fp\n        i32.wrap_i64\n        i32.const {size}\n        i32.add\n        global.set $sp"
+            "        {index}.const {size}\n        {index}.add\n        global.set $sp"
         )?;
     }
     Ok(())
@@ -479,6 +555,7 @@ fn extend_integer_wasm(
 fn emit_instruction_wasm(
     inst: &MirInst,
     writer: &mut impl Write,
+    memory: Memory,
     vreg_to_local: &HashMap<VirtualReg, usize>,
     block_labels: &HashMap<&str, usize>,
     frame: &StackFrame,
@@ -489,6 +566,7 @@ fn emit_instruction_wasm(
             emit_instruction_wasm(
                 &operation,
                 writer,
+                memory,
                 vreg_to_local,
                 block_labels,
                 frame,
@@ -659,8 +737,7 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
-                    // wasm32 memory takes i32 addresses.
-                    writeln!(writer, "      i32.wrap_i64")?;
+                    memory.narrow(writer, "      ")?;
 
                     // Emit load instruction based on type
                     match ty {
@@ -719,7 +796,7 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
-                    writeln!(writer, "      i32.wrap_i64")?;
+                    memory.narrow(writer, "      ")?;
 
                     // Emit load instruction based on type (same as BaseOffset)
                     match ty {
@@ -773,7 +850,7 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
-                    writeln!(writer, "      i32.wrap_i64")?;
+                    memory.narrow(writer, "      ")?;
                 }
                 AddressMode::BaseIndexScale {
                     base,
@@ -800,7 +877,7 @@ fn emit_instruction_wasm(
                         writeln!(writer, "      i64.const {}", *offset as i64)?;
                         writeln!(writer, "      i64.add")?;
                     }
-                    writeln!(writer, "      i32.wrap_i64")?;
+                    memory.narrow(writer, "      ")?;
                 }
             }
 
@@ -848,7 +925,7 @@ fn emit_instruction_wasm(
                 // No return value - use 0
                 writeln!(writer, "        i64.const 0")?;
             }
-            release_stack_frame(writer, frame)?;
+            release_stack_frame(writer, memory, frame)?;
             writeln!(writer, "        return")?;
         }
         MirInst::Jmp { target } => {
@@ -1123,7 +1200,7 @@ fn emit_instruction_wasm(
             } else {
                 // Arguments may point into this frame, so it stays live until the callee returns.
                 writeln!(writer, "        call ${name}")?;
-                release_stack_frame(writer, frame)?;
+                release_stack_frame(writer, memory, frame)?;
                 writeln!(writer, "        return")?;
             }
         }

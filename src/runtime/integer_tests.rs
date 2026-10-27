@@ -219,7 +219,12 @@ fn check_wasm(module: &Module, directory: &Path, traps: bool) -> TestResult {
         return Ok(());
     }
     let mut bytes = Vec::new();
-    generate_mir_wasm(module, &mut bytes, TargetOperatingSystem::Linux)?;
+    generate_mir_wasm(
+        module,
+        &mut bytes,
+        TargetArchitecture::Wasm32,
+        TargetOperatingSystem::Linux,
+    )?;
     let wat = directory.join("test.wat");
     let wasm = directory.join("test.wasm");
     fs::write(&wat, bytes)?;

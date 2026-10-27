@@ -150,7 +150,7 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
             )?;
         }
         TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
-            let mut codegen = wasm::WasmCodegen::new(target_os);
+            let mut codegen = wasm::WasmCodegen::new(target_arch, target_os);
             codegen.set_module(module);
             codegen.emit_into(module, writer, codegen_units)?;
         }

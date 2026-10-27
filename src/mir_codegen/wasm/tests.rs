@@ -25,8 +25,13 @@ fn float_copy_emits_local_move_not_add() {
     let mut module = MirModule::new("copy_test");
     module.add_function(function);
     let mut output = Vec::new();
-    generate_mir_wasm(&module, &mut output, TargetOperatingSystem::Unknown)
-        .expect("WASM codegen should succeed");
+    generate_mir_wasm(
+        &module,
+        &mut output,
+        TargetArchitecture::Wasm32,
+        TargetOperatingSystem::Unknown,
+    )
+    .expect("WASM codegen should succeed");
     let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
 
     assert!(
@@ -60,8 +65,13 @@ fn dispatcher_starts_at_non_leading_entry_block() {
     let mut module = MirModule::new("entry_test");
     module.add_function(function);
     let mut output = Vec::new();
-    generate_mir_wasm(&module, &mut output, TargetOperatingSystem::Unknown)
-        .expect("WASM codegen should succeed");
+    generate_mir_wasm(
+        &module,
+        &mut output,
+        TargetArchitecture::Wasm32,
+        TargetOperatingSystem::Unknown,
+    )
+    .expect("WASM codegen should succeed");
     let assembly = String::from_utf8(output).expect("assembly should be UTF-8");
 
     assert!(
@@ -106,8 +116,13 @@ fn run_wasm_main(test_name: &str, source: &str, opt_level: u8) -> Option<String>
         .apply_to_module(&mut mir)
         .expect("transforms should apply");
     let mut wat = Vec::new();
-    generate_mir_wasm(&mir, &mut wat, TargetOperatingSystem::Unknown)
-        .expect("WASM codegen should succeed");
+    generate_mir_wasm(
+        &mir,
+        &mut wat,
+        TargetArchitecture::Wasm32,
+        TargetOperatingSystem::Unknown,
+    )
+    .expect("WASM codegen should succeed");
     let dir = env::temp_dir().join(format!("lamina-wasm-{test_name}-{}", id()));
     fs::create_dir_all(&dir).expect("create test dir");
     let wat_path = dir.join("module.wat");
@@ -257,3 +272,42 @@ fn printed_floats_reach_the_host_as_floats() {
         "unexpected output: {stdout}"
     );
 }
+
+fn emit_wat(source: &str, arch: TargetArchitecture) -> String {
+    let ir = parse_module(source).expect("source should parse");
+    let mir = from_ir(&ir, "module").expect("source should lower");
+    let mut wat = Vec::new();
+    generate_mir_wasm(&mir, &mut wat, arch, TargetOperatingSystem::Unknown)
+        .expect("WASM codegen should succeed");
+    String::from_utf8(wat).expect("WAT should be UTF-8")
+}
+
+#[test]
+fn wasm64_indexes_memory_with_i64() {
+    let source = "fn @main() -> i64 {\nentry:\n  %p = alloc.stack i64\n  store.i64 %p, 41\n  %v = load.i64 %p\n  ret.i64 %v\n}\n";
+
+    // The address is the line before the memory operation, and only wasm32 narrows it.
+    let narrowed_address = |wat: &str| -> bool {
+        let lines: Vec<&str> = wat.lines().map(str::trim).collect();
+        lines.windows(2).any(|pair| {
+            pair[0] == "i32.wrap_i64" && (pair[1] == "i64.load" || pair[1] == "i64.store")
+        })
+    };
+
+    let narrow = emit_wat(source, TargetArchitecture::Wasm32);
+    assert!(
+        narrow.contains("(memory (export \"memory\") 1)"),
+        "{narrow}"
+    );
+    assert!(narrow.contains("(global $sp (mut i32)"), "{narrow}");
+    assert!(narrowed_address(&narrow), "{narrow}");
+
+    let wide = emit_wat(source, TargetArchitecture::Wasm64);
+    assert!(
+        wide.contains("(memory (export \"memory\") i64 1)"),
+        "{wide}"
+    );
+    assert!(wide.contains("(global $sp (mut i64)"), "{wide}");
+    assert!(!narrowed_address(&wide), "{wide}");
+}
+
