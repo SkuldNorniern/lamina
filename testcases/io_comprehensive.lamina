@@ -8,7 +8,7 @@ fn @main() -> i64 {
     %nl = writebyte 10  # '\n'
 
     # Test 2: Buffer operations
-    %buffer = alloc.stack i64
+    %buffer = stackalloc.i64
     store.i64 %buffer, 12345         # Store known value in buffer
     %buffer_val = load.i64 %buffer    # Load the buffer value for printing
     print %buffer_val             # Should print 12345

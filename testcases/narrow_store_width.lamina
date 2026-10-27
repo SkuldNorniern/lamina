@@ -2,9 +2,9 @@
 # an 8-byte store at index 0 wipes index 5.
 fn @main() -> i64 {
   entry:
-    %arr = alloc.stack [10 x i8]
-    %hi = getelem.ptr %arr, 5, i8
-    %lo = getelem.ptr %arr, 0, i8
+    %arr = stackalloc.[10 x i8]
+    %hi = getelem.i8 %arr, 5
+    %lo = getelem.i8 %arr, 0
     store.i8 %hi, 99
     store.i8 %lo, 1
     %back = load.i8 %hi

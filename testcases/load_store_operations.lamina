@@ -4,16 +4,16 @@
 fn @test_basic_load_store() -> i64 {
   entry:
     # Just allocate and return success
-    %ptr = alloc.stack i64
+    %ptr = stackalloc.i64
     ret.i64 1
 }
 
 # Test multiple load/store operations
 fn @test_multiple_operations() -> i64 {
   entry:
-    %ptr1 = alloc.stack i32
-    %ptr2 = alloc.stack i32
-    %ptr3 = alloc.stack i32
+    %ptr1 = stackalloc.i32
+    %ptr2 = stackalloc.i32
+    %ptr3 = stackalloc.i32
 
     # Store different values
     store.i32 %ptr1, 10
@@ -54,9 +54,9 @@ fn @test_multiple_operations() -> i64 {
 fn @test_different_types() -> i64 {
   entry:
     # Different type allocations
-    %i32_ptr = alloc.stack i32
-    %i64_ptr = alloc.stack i64
-    %bool_ptr = alloc.stack bool
+    %i32_ptr = stackalloc.i32
+    %i64_ptr = stackalloc.i64
+    %bool_ptr = stackalloc.bool
 
     # Store values
     store.i32 %i32_ptr, 100
@@ -83,7 +83,7 @@ fn @test_different_types() -> i64 {
 # fn @test_heap_load_store() -> i64 {
 #   entry:
 #     # Allocate on heap
-#     # %heap_ptr = alloc.heap i64
+#     # %heap_ptr = heapalloc.i64
 #
 #     # Store value
 #     %value = add.i64 999, 0
@@ -100,7 +100,7 @@ fn @test_different_types() -> i64 {
 #     %final = load.i64 %heap_ptr
 #
 #     # TODO: Clean up
-#     # # dealloc.heap %heap_ptr
+#     # # heapfree %heap_ptr
 #
 #     ret.i64 %final  # Should be 1000
 # }
@@ -108,7 +108,7 @@ fn @test_different_types() -> i64 {
 # Test memory aliasing (same pointer used differently)
 fn @test_memory_aliasing() -> i64 {
   entry:
-    %ptr = alloc.stack i64
+    %ptr = stackalloc.i64
 
     # Store initial value
     store.i64 %ptr, 50
@@ -134,7 +134,7 @@ fn @test_memory_aliasing() -> i64 {
 # Test load/store in loop-like patterns
 fn @test_sequential_access() -> i64 {
   entry:
-    %ptr = alloc.stack i64
+    %ptr = stackalloc.i64
 
     # Initialize
     store.i64 %ptr, 0

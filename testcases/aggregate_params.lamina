@@ -59,7 +59,7 @@ fn @spilled(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, @Pair %p) -> i64 {
 
 fn @make_pair(i64 %x) -> @Pair {
   entry:
-    %p = alloc.stack @Pair
+    %p = stackalloc.@Pair
     %pa = getfieldptr %p, 0
     %pb = getfieldptr %p, 1
     store.i64 %pa, %x
@@ -70,7 +70,7 @@ fn @make_pair(i64 %x) -> @Pair {
 
 fn @make_small(i32 %x) -> @Small {
   entry:
-    %p = alloc.stack @Small
+    %p = stackalloc.@Small
     %pa = getfieldptr %p, 0
     %pb = getfieldptr %p, 1
     store.i32 %pa, %x
@@ -80,7 +80,7 @@ fn @make_small(i32 %x) -> @Small {
 
 fn @main() -> i64 {
   entry:
-    %pair = alloc.stack @Pair
+    %pair = stackalloc.@Pair
     %pair_a = getfieldptr %pair, 0
     %pair_b = getfieldptr %pair, 1
     store.i64 %pair_a, 17
@@ -88,7 +88,7 @@ fn @main() -> i64 {
     %sum = call @sum_pair(%pair)
     print %sum
 
-    %small = alloc.stack @Small
+    %small = stackalloc.@Small
     %small_a = getfieldptr %small, 0
     %small_b = getfieldptr %small, 1
     store.i32 %small_a, 3
@@ -96,7 +96,7 @@ fn @main() -> i64 {
     %packed = call @sum_small(%small)
     print %packed
 
-    %three = alloc.stack @Three
+    %three = stackalloc.@Three
     %three_a = getfieldptr %three, 0
     %three_b = getfieldptr %three, 1
     %three_c = getfieldptr %three, 2

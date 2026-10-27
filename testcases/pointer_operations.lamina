@@ -1,17 +1,17 @@
-# Test pointer operations: getelementptr and struct_gep
+# Test pointer operations: getelem and struct_gep
 
-# Test array element access with getelementptr
+# Test array element access with getelem
 fn @test_array_access() -> i64 {
   entry:
     # Allocate array of 5 i64 elements
-    %arr = alloc.stack [5 x i64]
+    %arr = stackalloc.[5 x i64]
 
     # Store values in array elements
-    %elem0_ptr = getelem.ptr %arr, 0, i64
-    %elem1_ptr = getelem.ptr %arr, 1, i64
-    %elem2_ptr = getelem.ptr %arr, 2, i64
-    %elem3_ptr = getelem.ptr %arr, 3, i64
-    %elem4_ptr = getelem.ptr %arr, 4, i64
+    %elem0_ptr = getelem.i64 %arr, 0
+    %elem1_ptr = getelem.i64 %arr, 1
+    %elem2_ptr = getelem.i64 %arr, 2
+    %elem3_ptr = getelem.i64 %arr, 3
+    %elem4_ptr = getelem.i64 %arr, 4
 
     store.i64 %elem0_ptr, 10
     store.i64 %elem1_ptr, 20
@@ -35,7 +35,7 @@ type @Person = struct { name: [10 x i8], age: i32, height: i64 }
 # fn @test_struct_access() -> i64 {
 #   entry:
 #     # Allocate a Point struct
-#     %point = alloc.stack struct { x: i64, y: i64, z: i64 }
+#     %point = stackalloc.struct { x: i64, y: i64, z: i64 }
 #
 #     # Get pointers to struct fields
 #     %x_ptr = getfieldptr %point, 0  # x field
@@ -62,11 +62,11 @@ type @Person = struct { name: [10 x i8], age: i32, height: i64 }
 # fn @test_complex_struct() -> i64 {
 #   entry:
 #     # Allocate a Person struct
-#     %person = alloc.stack struct { name: [10 x i8], age: i32, height: i64 }
+#     %person = stackalloc.struct { name: [10 x i8], age: i32, height: i64 }
 #
 #     # Access name field (array within struct)
 #     %name_ptr = getfieldptr %person, 0
-#     %name_elem_ptr = getelem.ptr %name_ptr, 0, i8
+#     %name_elem_ptr = getelem.i8 %name_ptr, 0
 #     store.i8 %name_elem_ptr, 65  # 'A'
 #
 #     # Access age field
@@ -90,12 +90,12 @@ type @Person = struct { name: [10 x i8], age: i32, height: i64 }
 fn @test_heap_array_operations() -> i64 {
   entry:
     # Allocate array on heap
-    %heap_arr = alloc.heap [3 x i64]
+    %heap_arr = heapalloc.[3 x i64]
 
     # Access elements
-    %elem0 = getelem.ptr %heap_arr, 0, i64
-    %elem1 = getelem.ptr %heap_arr, 1, i64
-    %elem2 = getelem.ptr %heap_arr, 2, i64
+    %elem0 = getelem.i64 %heap_arr, 0
+    %elem1 = getelem.i64 %heap_arr, 1
+    %elem2 = getelem.i64 %heap_arr, 2
 
     store.i64 %elem0, 1
     store.i64 %elem1, 2
@@ -110,7 +110,7 @@ fn @test_heap_array_operations() -> i64 {
     %total = add.i64 %sum1, %val2
 
     # TODO: Clean up heap allocation
-    # dealloc %heap_arr
+    # heapfree %heap_arr
 
     ret.i64 %total
 }
@@ -119,14 +119,14 @@ fn @test_heap_array_operations() -> i64 {
 fn @test_variable_index_gep() -> i64 {
   entry:
     # Allocate array
-    %arr = alloc.stack [5 x i64]
+    %arr = stackalloc.[5 x i64]
 
     # Initialize array with values
-    %ptr0 = getelem.ptr %arr, 0, i64
-    %ptr1 = getelem.ptr %arr, 1, i64
-    %ptr2 = getelem.ptr %arr, 2, i64
-    %ptr3 = getelem.ptr %arr, 3, i64
-    %ptr4 = getelem.ptr %arr, 4, i64
+    %ptr0 = getelem.i64 %arr, 0
+    %ptr1 = getelem.i64 %arr, 1
+    %ptr2 = getelem.i64 %arr, 2
+    %ptr3 = getelem.i64 %arr, 3
+    %ptr4 = getelem.i64 %arr, 4
 
     store.i64 %ptr0, 10
     store.i64 %ptr1, 20
@@ -136,7 +136,7 @@ fn @test_variable_index_gep() -> i64 {
 
     # Test variable index access - this is where segmentation faults occur
     %index = add.i64 0, 2  # Variable index = 2
-    %var_ptr = getelem.ptr %arr, %index, i64  # Use variable index
+    %var_ptr = getelem.i64 %arr, %index  # Use variable index
 
     # Load value using variable index
     %var_val = load.i64 %var_ptr
@@ -148,7 +148,7 @@ fn @test_variable_index_gep() -> i64 {
 fn @test_pointer_movement() -> i64 {
   entry:
     # Allocate tape
-    %tape = alloc.stack [10 x i32]
+    %tape = stackalloc.[10 x i32]
 
     # Initialize data pointer
     %data_ptr = add.i64 0, 0  # Start at index 0
@@ -157,7 +157,7 @@ fn @test_pointer_movement() -> i64 {
     %new_ptr = add.i64 %data_ptr, 1  # Move to index 1
 
     # Access element using variable index
-    %elem_ptr = getelem.ptr %tape, %new_ptr, i32
+    %elem_ptr = getelem.i32 %tape, %new_ptr
 
     # Store and load value
     store.i32 %elem_ptr, 42
@@ -171,7 +171,7 @@ fn @test_pointer_movement() -> i64 {
 fn @main() -> i64 {
   entry:
     # Test simple stack allocation and access first
-    %simple_val = alloc.stack i64
+    %simple_val = stackalloc.i64
     store.i64 %simple_val, 42
     %loaded_val = load.i64 %simple_val
 
@@ -179,8 +179,8 @@ fn @main() -> i64 {
     %nl1 = writebyte 10
 
     # Now test array allocation
-    %arr = alloc.stack [2 x i64]
-    %ptr0 = getelem.ptr %arr, 0, i64
+    %arr = stackalloc.[2 x i64]
+    %ptr0 = getelem.i64 %arr, 0
     store.i64 %ptr0, 100
     %val2 = load.i64 %ptr0
 

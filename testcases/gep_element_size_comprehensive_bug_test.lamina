@@ -5,14 +5,14 @@
 fn @test_i8_array_gep() -> i64 {
   entry:
     # i8 array - element size should be 1 byte
-    %arr_i8 = alloc.stack [5 x i8]
+    %arr_i8 = stackalloc.[5 x i8]
 
     # Store values at different indices
-    %ptr0 = getelem.ptr %arr_i8, 0, i8  # Should be at offset 0
-    %ptr1 = getelem.ptr %arr_i8, 1, i8  # Should be at offset 1 (not 4!)
-    %ptr2 = getelem.ptr %arr_i8, 2, i8  # Should be at offset 2 (not 8!)
-    %ptr3 = getelem.ptr %arr_i8, 3, i8  # Should be at offset 3 (not 12!)
-    %ptr4 = getelem.ptr %arr_i8, 4, i8  # Should be at offset 4 (not 16!)
+    %ptr0 = getelem.i8 %arr_i8, 0  # Should be at offset 0
+    %ptr1 = getelem.i8 %arr_i8, 1  # Should be at offset 1 (not 4!)
+    %ptr2 = getelem.i8 %arr_i8, 2  # Should be at offset 2 (not 8!)
+    %ptr3 = getelem.i8 %arr_i8, 3  # Should be at offset 3 (not 12!)
+    %ptr4 = getelem.i8 %arr_i8, 4  # Should be at offset 4 (not 16!)
 
     store.i8 %ptr0, 1
     store.i8 %ptr1, 10
@@ -51,11 +51,11 @@ fn @test_i8_array_gep() -> i64 {
 fn @test_i16_array_gep() -> i64 {
   entry:
     # i16 array - element size should be 2 bytes
-    %arr_i16 = alloc.stack [3 x i16]
+    %arr_i16 = stackalloc.[3 x i16]
 
-    %ptr0 = getelem.ptr %arr_i16, 0, i16  # Should be at offset 0
-    %ptr1 = getelem.ptr %arr_i16, 1, i16  # Should be at offset 2 (not 4!)
-    %ptr2 = getelem.ptr %arr_i16, 2, i16  # Should be at offset 4 (not 8!)
+    %ptr0 = getelem.i16 %arr_i16, 0  # Should be at offset 0
+    %ptr1 = getelem.i16 %arr_i16, 1  # Should be at offset 2 (not 4!)
+    %ptr2 = getelem.i16 %arr_i16, 2  # Should be at offset 4 (not 8!)
 
     store.i16 %ptr0, 1000
     store.i16 %ptr1, 2000
@@ -82,10 +82,10 @@ fn @test_i16_array_gep() -> i64 {
 fn @test_i64_array_gep() -> i64 {
   entry:
     # i64 array - element size should be 8 bytes (this should work correctly)
-    %arr_i64 = alloc.stack [2 x i64]
+    %arr_i64 = stackalloc.[2 x i64]
 
-    %ptr0 = getelem.ptr %arr_i64, 0, i64  # Should be at offset 0
-    %ptr1 = getelem.ptr %arr_i64, 1, i64  # Should be at offset 8
+    %ptr0 = getelem.i64 %arr_i64, 0  # Should be at offset 0
+    %ptr1 = getelem.i64 %arr_i64, 1  # Should be at offset 8
 
     store.i64 %ptr0, 100000
     store.i64 %ptr1, 200000
@@ -103,8 +103,8 @@ fn @test_i64_array_gep() -> i64 {
 fn @main() -> i64 {
   entry:
     # Very simple test without print
-    %arr = alloc.stack [2 x i64]
-    %ptr = getelem.ptr %arr, 0, i64
+    %arr = stackalloc.[2 x i64]
+    %ptr = getelem.i64 %arr, 0
     store.i64 %ptr, 42
     %val = load.i64 %ptr
     

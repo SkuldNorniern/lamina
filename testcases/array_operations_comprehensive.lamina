@@ -6,12 +6,12 @@
 fn @test_i8_array_operations() -> i64 {
   entry:
     # Allocate array of i8
-    %arr = alloc.stack [10 x i8]
+    %arr = stackalloc.[10 x i8]
 
     # Store values in array
-    %ptr0 = getelem.ptr %arr, 0, i8
-    %ptr1 = getelem.ptr %arr, 1, i8
-    %ptr2 = getelem.ptr %arr, 2, i8
+    %ptr0 = getelem.i8 %arr, 0
+    %ptr1 = getelem.i8 %arr, 1
+    %ptr2 = getelem.i8 %arr, 2
     store.i8 %ptr0, 10
     store.i8 %ptr1, 20
     store.i8 %ptr2, 30
@@ -34,11 +34,11 @@ fn @test_i8_array_operations() -> i64 {
 fn @test_u8_array_operations() -> i64 {
   entry:
     # Allocate array of u8
-    %arr = alloc.stack [5 x u8]
+    %arr = stackalloc.[5 x u8]
 
     # Store values in array
-    %ptr0 = getelem.ptr %arr, 0, u8
-    %ptr1 = getelem.ptr %arr, 1, u8
+    %ptr0 = getelem.u8 %arr, 0
+    %ptr1 = getelem.u8 %arr, 1
     store.u8 %ptr0, 100
     store.u8 %ptr1, 150
 
@@ -48,7 +48,7 @@ fn @test_u8_array_operations() -> i64 {
     %sum = add.u8 %val0, %val1
 
     # Store result back
-    %ptr2 = getelem.ptr %arr, 2, u8
+    %ptr2 = getelem.u8 %arr, 2
     store.u8 %ptr2, %sum
 
     # Load final result
@@ -63,12 +63,12 @@ fn @test_u8_array_operations() -> i64 {
 fn @test_i16_array_operations() -> i64 {
   entry:
     # Allocate array of i16
-    %arr = alloc.stack [8 x i16]
+    %arr = stackalloc.[8 x i16]
 
     # Initialize array with values
-    %ptr0 = getelem.ptr %arr, 0, i16
-    %ptr1 = getelem.ptr %arr, 1, i16
-    %ptr2 = getelem.ptr %arr, 2, i16
+    %ptr0 = getelem.i16 %arr, 0
+    %ptr1 = getelem.i16 %arr, 1
+    %ptr2 = getelem.i16 %arr, 2
     store.i16 %ptr0, 1000
     store.i16 %ptr1, 2000
     store.i16 %ptr2, 3000
@@ -91,12 +91,12 @@ fn @test_i16_array_operations() -> i64 {
 fn @test_u16_array_operations() -> i64 {
   entry:
     # Allocate array of u16
-    %arr = alloc.stack [6 x u16]
+    %arr = stackalloc.[6 x u16]
 
     # Fill array with sequential values
-    %ptr0 = getelem.ptr %arr, 0, u16
-    %ptr1 = getelem.ptr %arr, 1, u16
-    %ptr2 = getelem.ptr %arr, 2, u16
+    %ptr0 = getelem.u16 %arr, 0
+    %ptr1 = getelem.u16 %arr, 1
+    %ptr2 = getelem.u16 %arr, 2
     store.u16 %ptr0, 10000
     store.u16 %ptr1, 20000
     store.u16 %ptr2, 30000
@@ -118,13 +118,13 @@ fn @test_u16_array_operations() -> i64 {
 fn @test_i32_array_operations() -> i64 {
   entry:
     # Allocate array of i32
-    %arr = alloc.stack [10 x i32]
+    %arr = stackalloc.[10 x i32]
 
     # Initialize with Fibonacci-like sequence
-    %ptr0 = getelem.ptr %arr, 0, i32
-    %ptr1 = getelem.ptr %arr, 1, i32
-    %ptr2 = getelem.ptr %arr, 2, i32
-    %ptr3 = getelem.ptr %arr, 3, i32
+    %ptr0 = getelem.i32 %arr, 0
+    %ptr1 = getelem.i32 %arr, 1
+    %ptr2 = getelem.i32 %arr, 2
+    %ptr3 = getelem.i32 %arr, 3
     store.i32 %ptr0, 1
     store.i32 %ptr1, 1
     store.i32 %ptr2, 2
@@ -150,12 +150,12 @@ fn @test_i32_array_operations() -> i64 {
 fn @test_u32_array_operations() -> i64 {
   entry:
     # Allocate array of u32
-    %arr = alloc.stack [4 x u32]
+    %arr = stackalloc.[4 x u32]
 
     # Initialize with powers of 2
-    %ptr0 = getelem.ptr %arr, 0, u32
-    %ptr1 = getelem.ptr %arr, 1, u32
-    %ptr2 = getelem.ptr %arr, 2, u32
+    %ptr0 = getelem.u32 %arr, 0
+    %ptr1 = getelem.u32 %arr, 1
+    %ptr2 = getelem.u32 %arr, 2
     store.u32 %ptr0, 1
     store.u32 %ptr1, 2
     store.u32 %ptr2, 4
@@ -169,7 +169,7 @@ fn @test_u32_array_operations() -> i64 {
     %final = mul.u32 %prod, %val2
 
     # Store result
-    %ptr3 = getelem.ptr %arr, 3, u32
+    %ptr3 = getelem.u32 %arr, 3
     store.u32 %ptr3, %final
 
     # Convert result to i64
@@ -181,12 +181,12 @@ fn @test_u32_array_operations() -> i64 {
 fn @test_i64_array_operations() -> i64 {
   entry:
     # Allocate array of i64
-    %arr = alloc.stack [5 x i64]
+    %arr = stackalloc.[5 x i64]
 
     # Initialize array
-    %ptr0 = getelem.ptr %arr, 0, i64
-    %ptr1 = getelem.ptr %arr, 1, i64
-    %ptr2 = getelem.ptr %arr, 2, i64
+    %ptr0 = getelem.i64 %arr, 0
+    %ptr1 = getelem.i64 %arr, 1
+    %ptr2 = getelem.i64 %arr, 2
     store.i64 %ptr0, 1000000
     store.i64 %ptr1, 2000000
     store.i64 %ptr2, 3000000
@@ -207,11 +207,11 @@ fn @test_i64_array_operations() -> i64 {
 fn @test_u64_array_operations() -> i64 {
   entry:
     # Allocate array of u64
-    %arr = alloc.stack [3 x u64]
+    %arr = stackalloc.[3 x u64]
 
     # Initialize with large values
-    %ptr0 = getelem.ptr %arr, 0, u64
-    %ptr1 = getelem.ptr %arr, 1, u64
+    %ptr0 = getelem.u64 %arr, 0
+    %ptr1 = getelem.u64 %arr, 1
     store.u64 %ptr0, 5000000000
     store.u64 %ptr1, 3000000000
 
@@ -221,7 +221,7 @@ fn @test_u64_array_operations() -> i64 {
     %quotient = div.u64 %val0, %val1
 
     # Store result
-    %ptr2 = getelem.ptr %arr, 2, u64
+    %ptr2 = getelem.u64 %arr, 2
     store.u64 %ptr2, %quotient
 
     # Return a simplified result since u64->i64 conversion is complex
@@ -233,12 +233,12 @@ fn @test_u64_array_operations() -> i64 {
 fn @test_bool_array_operations() -> i64 {
   entry:
     # Allocate array of bool
-    %arr = alloc.stack [4 x bool]
+    %arr = stackalloc.[4 x bool]
 
     # Initialize with boolean values
-    %ptr0 = getelem.ptr %arr, 0, bool
-    %ptr1 = getelem.ptr %arr, 1, bool
-    %ptr2 = getelem.ptr %arr, 2, bool
+    %ptr0 = getelem.bool %arr, 0
+    %ptr1 = getelem.bool %arr, 1
+    %ptr2 = getelem.bool %arr, 2
     store.bool %ptr0, 1  # true
     store.bool %ptr1, 0  # false
     store.bool %ptr2, 1  # true
@@ -261,14 +261,14 @@ fn @test_bool_array_operations() -> i64 {
 fn @test_char_array_operations() -> i64 {
   entry:
     # Allocate array of char (like a string)
-    %str = alloc.stack [6 x char]
+    %str = stackalloc.[6 x char]
 
     # Store "HELLO" (ASCII values)
-    %ptr0 = getelem.ptr %str, 0, char
-    %ptr1 = getelem.ptr %str, 1, char
-    %ptr2 = getelem.ptr %str, 2, char
-    %ptr3 = getelem.ptr %str, 3, char
-    %ptr4 = getelem.ptr %str, 4, char
+    %ptr0 = getelem.char %str, 0
+    %ptr1 = getelem.char %str, 1
+    %ptr2 = getelem.char %str, 2
+    %ptr3 = getelem.char %str, 3
+    %ptr4 = getelem.char %str, 4
     store.char %ptr0, 72  # 'H'
     store.char %ptr1, 69  # 'E'
     store.char %ptr2, 76  # 'L'
@@ -287,11 +287,11 @@ fn @test_char_array_operations() -> i64 {
 fn @test_f32_array_operations() -> i64 {
   entry:
     # Allocate array of f32
-    %arr = alloc.stack [3 x f32]
+    %arr = stackalloc.[3 x f32]
 
     # Initialize with float values
-    %ptr0 = getelem.ptr %arr, 0, f32
-    %ptr1 = getelem.ptr %arr, 1, f32
+    %ptr0 = getelem.f32 %arr, 0
+    %ptr1 = getelem.f32 %arr, 1
     store.f32 %ptr0, 1.5
     store.f32 %ptr1, 2.5
 
@@ -301,7 +301,7 @@ fn @test_f32_array_operations() -> i64 {
     %sum = add.f32 %val0, %val1
 
     # Store result
-    %ptr2 = getelem.ptr %arr, 2, f32
+    %ptr2 = getelem.f32 %arr, 2
     store.f32 %ptr2, %sum
 
     # Return simplified result
@@ -313,10 +313,10 @@ fn @test_f32_array_operations() -> i64 {
 fn @test_f64_array_operations() -> i64 {
   entry:
     # Allocate array of f64
-    %arr = alloc.stack [2 x f64]
+    %arr = stackalloc.[2 x f64]
 
     # Initialize with double values
-    %ptr0 = getelem.ptr %arr, 0, f64
+    %ptr0 = getelem.f64 %arr, 0
     store.f64 %ptr0, 3.14159
 
     # Load and multiply by 2
@@ -324,7 +324,7 @@ fn @test_f64_array_operations() -> i64 {
     %doubled = mul.f64 %val, 2.0
 
     # Store result
-    %ptr1 = getelem.ptr %arr, 1, f64
+    %ptr1 = getelem.f64 %arr, 1
     store.f64 %ptr1, %doubled
 
     # Return simplified result
@@ -336,13 +336,13 @@ fn @test_f64_array_operations() -> i64 {
 fn @test_multidimensional_array() -> i64 {
   entry:
     # Allocate 2D array (array of arrays)
-    %matrix = alloc.stack [2 x [3 x i32]]
+    %matrix = stackalloc.[2 x [3 x i32]]
 
     # Access first row
-    %row0 = getelem.ptr %matrix, 0, [3 x i32]
-    %elem00 = getelem.ptr %row0, 0, i32
-    %elem01 = getelem.ptr %row0, 1, i32
-    %elem02 = getelem.ptr %row0, 2, i32
+    %row0 = getelem.[3 x i32] %matrix, 0
+    %elem00 = getelem.i32 %row0, 0
+    %elem01 = getelem.i32 %row0, 1
+    %elem02 = getelem.i32 %row0, 2
 
     # Store values in first row
     store.i32 %elem00, 1

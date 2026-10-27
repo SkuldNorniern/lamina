@@ -1,6 +1,6 @@
 # Comprehensive test for struct operations with mixed field types
 
-# Struct types are defined inline with alloc.stack
+# Struct types are defined inline with stackalloc
 
 # ===== STRUCT OPERATIONS =====
 
@@ -8,7 +8,7 @@
 fn @test_point2d_operations() -> i64 {
   entry:
     # Allocate Point2D struct
-    %point = alloc.stack struct { x: i32, y: i32 }
+    %point = stackalloc.struct { x: i32, y: i32 }
 
     # Get field pointers
     %x_ptr = getfieldptr %point, 0
@@ -36,7 +36,7 @@ fn @test_point2d_operations() -> i64 {
 fn @test_point3d_operations() -> i64 {
   entry:
     # Allocate Point3D struct
-    %point = alloc.stack struct { x: i64, y: i64, z: i64 }
+    %point = stackalloc.struct { x: i64, y: i64, z: i64 }
 
     # Get field pointers
     %x_ptr = getfieldptr %point, 0
@@ -67,7 +67,7 @@ fn @test_point3d_operations() -> i64 {
 fn @test_person_operations() -> i64 {
   entry:
     # Allocate Person struct
-    %person = alloc.stack struct { name: [10 x char], age: u8, height: f32 }
+    %person = stackalloc.struct { name: [10 x char], age: u8, height: f32 }
 
     # Get field pointers
     %name_ptr = getfieldptr %person, 0
@@ -75,9 +75,9 @@ fn @test_person_operations() -> i64 {
     %height_ptr = getfieldptr %person, 2
 
     # Store name (first 3 characters)
-    %name0 = getelementptr %name_ptr, 0, char
-    %name1 = getelementptr %name_ptr, 1, char
-    %name2 = getelementptr %name_ptr, 2, char
+    %name0 = getelem.char %name_ptr, 0
+    %name1 = getelem.char %name_ptr, 1
+    %name2 = getelem.char %name_ptr, 2
     store.char %name0, 74  # 'J'
     store.char %name1, 79  # 'O'
     store.char %name2, 72  # 'H'
@@ -102,7 +102,7 @@ fn @test_person_operations() -> i64 {
 fn @test_complex_data_operations() -> i64 {
   entry:
     # Allocate ComplexData struct
-    %data = alloc.stack struct { id: u32, value: f64, active: bool }
+    %data = stackalloc.struct { id: u32, value: f64, active: bool }
 
     # Get field pointers
     %id_ptr = getfieldptr %data, 0
@@ -130,7 +130,7 @@ fn @test_complex_data_operations() -> i64 {
 fn @test_mixed_types_operations() -> i64 {
   entry:
     # Allocate MixedTypes struct
-    %mixed = alloc.stack struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: char }
+    %mixed = stackalloc.struct { a: i8, b: u16, c: i32, d: u64, e: f32, f: bool, g: char }
 
     # Get all field pointers
     %a_ptr = getfieldptr %mixed, 0  # i8
@@ -177,8 +177,8 @@ fn @test_mixed_types_operations() -> i64 {
 fn @test_struct_copy_operations() -> i64 {
   entry:
     # Allocate two Point2D structs
-    %point1 = alloc.stack struct { x: i32, y: i32 }
-    %point2 = alloc.stack struct { x: i32, y: i32 }
+    %point1 = stackalloc.struct { x: i32, y: i32 }
+    %point2 = stackalloc.struct { x: i32, y: i32 }
 
     # Initialize point1
     %p1_x_ptr = getfieldptr %point1, 0
@@ -217,7 +217,7 @@ fn @test_nested_struct_operations() -> i64 {
     # Define nested struct type inline
 
     # Allocate Line struct
-    %line = alloc.stack struct { start: struct { x: i32, y: i32 }, end: struct { x: i32, y: i32 } }
+    %line = stackalloc.struct { start: struct { x: i32, y: i32 }, end: struct { x: i32, y: i32 } }
 
     # Get pointers to nested structs
     %start_ptr = getfieldptr %line, 0
@@ -256,12 +256,12 @@ fn @test_nested_struct_operations() -> i64 {
 fn @test_struct_array_operations() -> i64 {
   entry:
     # Allocate array of Point2D structs
-    %points = alloc.stack [3 x struct { x: i32, y: i32 }]
+    %points = stackalloc.[3 x struct { x: i32, y: i32 }]
 
     # Initialize each point
-    %point0 = getelementptr %points, 0, ptr
-    %point1 = getelementptr %points, 1, ptr
-    %point2 = getelementptr %points, 2, ptr
+    %point0 = getelem.ptr %points, 0
+    %point1 = getelem.ptr %points, 1
+    %point2 = getelem.ptr %points, 2
 
     # Set point 0: (1, 1)
     %p0_x_ptr = getfieldptr %point0, 0

@@ -5,7 +5,7 @@
 fn @test_heap_allocation() -> i64 {
   entry:
     # Allocate heap memory for i32
-    %heap_ptr = alloc.heap i32
+    %heap_ptr = heapalloc.i32
 
     # Store a value
     store.i32 %heap_ptr, 12345
@@ -21,12 +21,12 @@ fn @test_heap_allocation() -> i64 {
 fn @test_heap_array() -> i64 {
   entry:
     # Allocate heap array
-    %heap_array = alloc.heap [5 x i32]
+    %heap_array = heapalloc.[5 x i32]
 
     # Store values in array elements
-    %ptr0 = getelem.ptr %heap_array, 0, i32
-    %ptr1 = getelem.ptr %heap_array, 1, i32
-    %ptr2 = getelem.ptr %heap_array, 2, i32
+    %ptr0 = getelem.i32 %heap_array, 0
+    %ptr1 = getelem.i32 %heap_array, 1
+    %ptr2 = getelem.i32 %heap_array, 2
 
     store.i32 %ptr0, 100
     store.i32 %ptr1, 200
@@ -47,7 +47,7 @@ fn @test_heap_array() -> i64 {
 fn @test_heap_struct() -> i64 {
   entry:
     # Allocate heap struct
-    %heap_struct = alloc.heap struct { x: i32, y: i32 }
+    %heap_struct = heapalloc.struct { x: i32, y: i32 }
 
     # Access struct fields
     %ptr_x = getfieldptr %heap_struct, 0
@@ -68,15 +68,15 @@ fn @test_heap_struct() -> i64 {
 fn @test_multiple_allocations() -> i64 {
   entry:
     # Allocate multiple heap objects
-    %ptr1 = alloc.heap i32
-    %ptr2 = alloc.heap i64
-    %ptr3 = alloc.heap [3 x i16]
+    %ptr1 = heapalloc.i32
+    %ptr2 = heapalloc.i64
+    %ptr3 = heapalloc.[3 x i16]
 
     # Use them
     store.i32 %ptr1, 42
     store.i64 %ptr2, 123456789
 
-    %arr_ptr = getelem.ptr %ptr3, 0, i16
+    %arr_ptr = getelem.i16 %ptr3, 0
     store.i16 %arr_ptr, 1000
 
     # Load and combine

@@ -2,7 +2,7 @@
 fn @test_heap_allocation() -> i64 {
   entry:
     # Allocate memory on heap
-    %heap_ptr = alloc.heap i32
+    %heap_ptr = heapalloc.i32
     %value = add.i32 42, 0
 
     # Store value in heap memory
@@ -18,7 +18,7 @@ fn @test_heap_allocation() -> i64 {
     %result = add.i64 %loaded_i64, 8
 
     # Always deallocate heap memory
-    dealloc.heap %heap_ptr
+    heapfree %heap_ptr
 
     ret.i64 %result
 }
@@ -26,9 +26,9 @@ fn @test_heap_allocation() -> i64 {
 fn @test_multiple_heap_allocations() -> i64 {
   entry:
     # Allocate multiple heap objects
-    %ptr1 = alloc.heap i64
-    %ptr2 = alloc.heap i64
-    %ptr3 = alloc.heap i64
+    %ptr1 = heapalloc.i64
+    %ptr2 = heapalloc.i64
+    %ptr3 = heapalloc.i64
 
     # Store different values
     store.i64 %ptr1, 100
@@ -44,9 +44,9 @@ fn @test_multiple_heap_allocations() -> i64 {
     %total = add.i64 %sum1, %val3
 
     # Clean up all allocations
-    dealloc.heap %ptr1
-    dealloc.heap %ptr2
-    dealloc.heap %ptr3
+    heapfree %ptr1
+    heapfree %ptr2
+    heapfree %ptr3
 
     ret.i64 %total
 }

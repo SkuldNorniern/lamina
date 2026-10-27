@@ -21,18 +21,18 @@ fn @test_large_stack_allocation() -> i64 {
 fn @test_many_small_allocations() -> i64 {
   entry:
     # Allocate many small arrays (might cause stack frame to exceed limits)
-    %arr1 = alloc.stack [100 x i32]
-    %arr2 = alloc.stack [100 x i32]
-    %arr3 = alloc.stack [100 x i32]
-    %arr4 = alloc.stack [100 x i32]
-    %arr5 = alloc.stack [100 x i32]
+    %arr1 = stackalloc.[100 x i32]
+    %arr2 = stackalloc.[100 x i32]
+    %arr3 = stackalloc.[100 x i32]
+    %arr4 = stackalloc.[100 x i32]
+    %arr5 = stackalloc.[100 x i32]
 
     # Store values in each array
-    %ptr1 = getelem.ptr %arr1, 50, i32
-    %ptr2 = getelem.ptr %arr2, 50, i32
-    %ptr3 = getelem.ptr %arr3, 50, i32
-    %ptr4 = getelem.ptr %arr4, 50, i32
-    %ptr5 = getelem.ptr %arr5, 50, i32
+    %ptr1 = getelem.i32 %arr1, 50
+    %ptr2 = getelem.i32 %arr2, 50
+    %ptr3 = getelem.i32 %arr3, 50
+    %ptr4 = getelem.i32 %arr4, 50
+    %ptr5 = getelem.i32 %arr5, 50
 
     store.i32 %ptr1, 1
     store.i32 %ptr2, 2
@@ -88,8 +88,8 @@ fn @test_nested_function_calls() -> i64 {
 fn @helper_func_1() -> i64 {
   entry:
     # Allocate some stack space
-    %local = alloc.stack [50 x i64]
-    %ptr = getelem.ptr %local, 25, i64
+    %local = stackalloc.[50 x i64]
+    %ptr = getelem.i64 %local, 25
     store.i64 %ptr, 100
     %val = load.i64 %ptr
     ret.i64 %val
@@ -97,8 +97,8 @@ fn @helper_func_1() -> i64 {
 
 fn @helper_func_2() -> i64 {
   entry:
-    %local = alloc.stack [50 x i64]
-    %ptr = getelem.ptr %local, 25, i64
+    %local = stackalloc.[50 x i64]
+    %ptr = getelem.i64 %local, 25
     store.i64 %ptr, 200
     %val = load.i64 %ptr
     ret.i64 %val
@@ -106,8 +106,8 @@ fn @helper_func_2() -> i64 {
 
 fn @helper_func_3() -> i64 {
   entry:
-    %local = alloc.stack [50 x i64]
-    %ptr = getelem.ptr %local, 25, i64
+    %local = stackalloc.[50 x i64]
+    %ptr = getelem.i64 %local, 25
     store.i64 %ptr, 300
     %val = load.i64 %ptr
     ret.i64 %val

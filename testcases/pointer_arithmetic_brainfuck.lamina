@@ -4,15 +4,15 @@
 fn @main() -> i64 {
   entry:
     # Allocate array and store a value
-    %arr = alloc.stack [3 x i64]
-    %ptr = getelem.ptr %arr, 0, i64
+    %arr = stackalloc.[3 x i64]
+    %ptr = getelem.i64 %arr, 0
     store.i64 %ptr, 42
 
     # Convert pointer to integer for inspection
-    %addr = ptrtoint %ptr, .i64
+    %addr = ptrtoint.i64 %ptr
 
     # Convert back to pointer to verify the round-trip
-    %new_ptr = inttoptr %addr, .i64
+    %new_ptr = inttoptr.i64 %addr
 
     # Load the value to verify it matches what we stored
     %value = load.i64 %new_ptr

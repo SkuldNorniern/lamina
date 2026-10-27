@@ -38,11 +38,11 @@ fn @test_float_to_int_conversion() -> i64 {
 fn @test_float_array() -> i64 {
   entry:
     # Try to create float arrays (might expose register issues)
-    %float_array = alloc.stack [3 x i32]  # Using i32 as placeholder
+    %float_array = stackalloc.[3 x i32]  # Using i32 as placeholder
 
-    %ptr0 = getelem.ptr %float_array, 0, i32
-    %ptr1 = getelem.ptr %float_array, 1, i32
-    %ptr2 = getelem.ptr %float_array, 2, i32
+    %ptr0 = getelem.i32 %float_array, 0
+    %ptr1 = getelem.i32 %float_array, 1
+    %ptr2 = getelem.i32 %float_array, 2
 
     # Store "float" values
     store.i32 %ptr0, 10

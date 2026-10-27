@@ -2,7 +2,7 @@
 fn @main() -> i32 {
   entry:
     # Allocate buffer
-    %buffer = alloc.stack i32
+    %buffer = stackalloc.i32
 
     # Store value in buffer
     store.i32 %buffer, 42

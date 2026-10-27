@@ -1,7 +1,7 @@
 # Test u8 usage
 fn @test_u8() -> i64 {
   entry:
-    %ptr = alloc.stack u8
+    %ptr = stackalloc.u8
     %result = add.i64 0, 42
     ret.i64 %result
 }

@@ -6,7 +6,7 @@
 fn @test_i8_pointer_operations() -> i64 {
   entry:
     # Allocate memory for i8
-    %ptr = alloc.stack i8
+    %ptr = stackalloc.i8
 
     # Store and load i8 values
     store.i8 %ptr, 42
@@ -30,7 +30,7 @@ fn @test_i8_pointer_operations() -> i64 {
 fn @test_u8_pointer_operations() -> i64 {
   entry:
     # Allocate memory for u8
-    %ptr = alloc.stack u8
+    %ptr = stackalloc.u8
 
     # Store and load u8 values
     store.u8 %ptr, 200
@@ -54,7 +54,7 @@ fn @test_u8_pointer_operations() -> i64 {
 fn @test_i16_pointer_operations() -> i64 {
   entry:
     # Allocate memory for i16
-    %ptr = alloc.stack i16
+    %ptr = stackalloc.i16
 
     # Store and load i16 values
     store.i16 %ptr, 1000
@@ -78,7 +78,7 @@ fn @test_i16_pointer_operations() -> i64 {
 fn @test_u16_pointer_operations() -> i64 {
   entry:
     # Allocate memory for u16
-    %ptr = alloc.stack u16
+    %ptr = stackalloc.u16
 
     # Store and load u16 values
     store.u16 %ptr, 50000
@@ -102,7 +102,7 @@ fn @test_u16_pointer_operations() -> i64 {
 fn @test_i32_pointer_operations() -> i64 {
   entry:
     # Allocate memory for i32
-    %ptr = alloc.stack i32
+    %ptr = stackalloc.i32
 
     # Store and load i32 values
     store.i32 %ptr, 100000
@@ -126,7 +126,7 @@ fn @test_i32_pointer_operations() -> i64 {
 fn @test_u32_pointer_operations() -> i64 {
   entry:
     # Allocate memory for u32
-    %ptr = alloc.stack u32
+    %ptr = stackalloc.u32
 
     # Store and load u32 values
     store.u32 %ptr, 3000000000
@@ -150,7 +150,7 @@ fn @test_u32_pointer_operations() -> i64 {
 fn @test_i64_pointer_operations() -> i64 {
   entry:
     # Allocate memory for i64
-    %ptr = alloc.stack i64
+    %ptr = stackalloc.i64
 
     # Store and load i64 values
     store.i64 %ptr, 5000000000
@@ -173,7 +173,7 @@ fn @test_i64_pointer_operations() -> i64 {
 fn @test_u64_pointer_operations() -> i64 {
   entry:
     # Allocate memory for u64
-    %ptr = alloc.stack u64
+    %ptr = stackalloc.u64
 
     # Store and load u64 values
     store.u64 %ptr, 10000000000
@@ -197,7 +197,7 @@ fn @test_u64_pointer_operations() -> i64 {
 fn @test_bool_pointer_operations() -> i64 {
   entry:
     # Allocate memory for bool
-    %ptr = alloc.stack bool
+    %ptr = stackalloc.bool
 
     # Store and load bool values
     store.bool %ptr, 1
@@ -221,7 +221,7 @@ fn @test_bool_pointer_operations() -> i64 {
 fn @test_char_pointer_operations() -> i64 {
   entry:
     # Allocate memory for char
-    %ptr = alloc.stack char
+    %ptr = stackalloc.char
 
     # Store and load char values
     store.char %ptr, 65  # 'A'
@@ -245,7 +245,7 @@ fn @test_char_pointer_operations() -> i64 {
 fn @test_f32_pointer_operations() -> i64 {
   entry:
     # Allocate memory for f32
-    %ptr = alloc.stack f32
+    %ptr = stackalloc.f32
 
     # Store and load f32 values
     store.f32 %ptr, 3.14
@@ -265,7 +265,7 @@ fn @test_f32_pointer_operations() -> i64 {
 fn @test_f64_pointer_operations() -> i64 {
   entry:
     # Allocate memory for f64
-    %ptr = alloc.stack f64
+    %ptr = stackalloc.f64
 
     # Store and load f64 values
     store.f64 %ptr, 2.718
@@ -285,11 +285,11 @@ fn @test_f64_pointer_operations() -> i64 {
 fn @test_pointer_pointer_operations() -> i64 {
   entry:
     # Allocate memory for i32 value
-    %value_ptr = alloc.stack i32
+    %value_ptr = stackalloc.i32
     store.i32 %value_ptr, 42
 
     # Allocate memory for pointer to i32
-    %ptr_ptr = alloc.stack ptr
+    %ptr_ptr = stackalloc.ptr
     store.ptr %ptr_ptr, %value_ptr
 
     # Load the pointer from pointer-to-pointer

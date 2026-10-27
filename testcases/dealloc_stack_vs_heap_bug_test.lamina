@@ -5,14 +5,14 @@
 fn @test_stack_dealloc() -> i64 {
   entry:
     # Allocate on stack
-    %stack_data = alloc.stack i64
+    %stack_data = stackalloc.i64
     store.i64 %stack_data, 42
 
     # Load the value back
     %val = load.i64 %stack_data
 
     # Try to deallocate stack allocation (this should be a no-op or error)
-    dealloc.heap %stack_data
+    heapfree %stack_data
 
     # Return the value
     ret.i64 %val
@@ -21,14 +21,14 @@ fn @test_stack_dealloc() -> i64 {
 fn @test_heap_dealloc() -> i64 {
   entry:
     # Allocate on heap
-    %heap_data = alloc.heap i64
+    %heap_data = heapalloc.i64
     store.i64 %heap_data, 100
 
     # Load the value back
     %val = load.i64 %heap_data
 
     # Deallocate heap allocation (this should work)
-    dealloc.heap %heap_data
+    heapfree %heap_data
 
     # Return the value
     ret.i64 %val

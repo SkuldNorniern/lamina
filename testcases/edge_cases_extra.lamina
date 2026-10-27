@@ -45,9 +45,9 @@ fn @test_wrapping() -> i64 {
 # Test 3: Nested control flow
 fn @test_nested_flow(i64 %limit) -> i64 {
   entry:
-    %sum = alloc.stack i64
+    %sum = stackalloc.i64
     store.i64 %sum, 0
-    %i = alloc.stack i64
+    %i = stackalloc.i64
     store.i64 %i, 0
     jmp loop_header
 

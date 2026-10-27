@@ -4,7 +4,7 @@
 fn @test_load_store_elimination() -> i64 {
   entry:
     # Create a scenario where load/store optimization might be too aggressive
-    %data = alloc.stack i64
+    %data = stackalloc.i64
 
     # Store a value
     store.i64 %data, 100
@@ -29,7 +29,7 @@ fn @test_load_store_elimination() -> i64 {
 
 fn @test_redundant_loads() -> i64 {
   entry:
-    %data = alloc.stack i64
+    %data = stackalloc.i64
     store.i64 %data, 123
 
     # Multiple loads from the same location (optimizer might eliminate some)
@@ -46,8 +46,8 @@ fn @test_redundant_loads() -> i64 {
 
 fn @test_store_forwarding() -> i64 {
   entry:
-    %x = alloc.stack i64
-    %y = alloc.stack i64
+    %x = stackalloc.i64
+    %y = stackalloc.i64
 
     # Store to x
     store.i64 %x, 50
@@ -72,7 +72,7 @@ fn @test_store_forwarding() -> i64 {
 fn @test_partial_overwrites() -> i64 {
   entry:
     # Test with smaller types that might be optimized incorrectly
-    %data = alloc.stack i32
+    %data = stackalloc.i32
 
     # Store full 32-bit value
     store.i32 %data, 305419896  # 0x12345678 in decimal
@@ -88,7 +88,7 @@ fn @test_partial_overwrites() -> i64 {
 fn @test_volatile_access() -> i64 {
   entry:
     # Test case that should NOT be optimized (like volatile access)
-    %counter = alloc.stack i64
+    %counter = stackalloc.i64
     store.i64 %counter, 0
 
     # Simulate increment operations that shouldn't be optimized away

@@ -2,7 +2,7 @@ fn @callee(ptr %p) -> i64 {
 entry:
  %byte = readbyte
  %v = add.i64 %byte, 99
- %slot = alloc.stack i64
+ %slot = stackalloc.i64
  store.i64 %slot, %v
  %x = load.i64 %p
  %c = eq.i64 %x, -999
@@ -15,7 +15,7 @@ done:
 }
 fn @caller(i64 %unused) -> i64 {
 entry:
- %p = alloc.stack i64
+ %p = stackalloc.i64
  %byte = readbyte
  %v = add.i64 %byte, 106
  store.i64 %p, %v

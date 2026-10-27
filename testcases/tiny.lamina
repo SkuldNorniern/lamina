@@ -1,14 +1,14 @@
 fn @main() -> i64 {
 entry:
-  %tape = alloc.stack [100 x i32]
-  %data_ptr = alloc.stack i32
+  %tape = stackalloc.[100 x i32]
+  %data_ptr = stackalloc.i32
   store.i32 %data_ptr, 0
-  %op_counter = alloc.stack i32
+  %op_counter = stackalloc.i32
   store.i32 %op_counter, 0
 
   %idx0 = load.i32 %data_ptr
   %idx0_64 = zext.i32.i64 %idx0
-  %cell_ptr0 = getelem.ptr %tape, %idx0_64, i32
+  %cell_ptr0 = getelem.i32 %tape, %idx0_64
   store.i32 %cell_ptr0, 0
 
   %value0 = load.i32 %cell_ptr0
@@ -20,7 +20,7 @@ entry:
 
   %idx1 = load.i32 %data_ptr
   %idx1_64 = zext.i32.i64 %idx1
-  %cell_ptr1 = getelem.ptr %tape, %idx1_64, i32
+  %cell_ptr1 = getelem.i32 %tape, %idx1_64
   %value2 = load.i32 %cell_ptr1
   %value3 = add.i32 %value2, 1
   store.i32 %cell_ptr1, %value3
@@ -30,7 +30,7 @@ entry:
 
   %idx2 = load.i32 %data_ptr
   %idx2_64 = zext.i32.i64 %idx2
-  %cell_ptr2 = getelem.ptr %tape, %idx2_64, i32
+  %cell_ptr2 = getelem.i32 %tape, %idx2_64
   %current_cell = load.i32 %cell_ptr2
   print %current_cell
 

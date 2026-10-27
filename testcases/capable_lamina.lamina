@@ -6,7 +6,7 @@
 # Define a struct for person data
 fn @create_person(i64 %id, i64 %age) -> ptr {
   entry:
-    %person = alloc.stack struct { id: i64, age: i64, name: ptr }
+    %person = stackalloc.struct { id: i64, age: i64, name: ptr }
     %id_ptr = getfieldptr %person, 0
     %age_ptr = getfieldptr %person, 1
 
@@ -70,7 +70,7 @@ fn @sum_array(ptr %arr, i64 %size) -> i64 {
     br %i_lt_size, loop_body, loop_end
 
   loop_body:
-    %elem_ptr = getelem.ptr %arr, %i, i64
+    %elem_ptr = getelem.i64 %arr, %i
     %elem = load.i64 %elem_ptr
     %sum = add.i64 %sum, %elem
     %i = add.i64 %i, 1
@@ -86,7 +86,7 @@ fn @sum_array(ptr %arr, i64 %size) -> i64 {
 fn @heap_demo() -> i64 {
   entry:
     # Allocate on heap
-    %heap_data = alloc.heap i64
+    %heap_data = heapalloc.i64
     store.i64 %heap_data, 42
 
     # Load and modify
@@ -98,7 +98,7 @@ fn @heap_demo() -> i64 {
     %final_val = load.i64 %heap_data
 
     # Clean up
-    dealloc.heap %heap_data
+    heapfree %heap_data
 
     ret.i64 %final_val
 }
@@ -173,14 +173,14 @@ fn @main() -> i64 {
     %newline6 = writebyte 10
 
     # ===== ARRAY DEMO =====
-    %array = alloc.stack [5 x i64]
+    %array = stackalloc.[5 x i64]
 
     # Initialize array
-    %ptr0 = getelem.ptr %array, 0, i64
-    %ptr1 = getelem.ptr %array, 1, i64
-    %ptr2 = getelem.ptr %array, 2, i64
-    %ptr3 = getelem.ptr %array, 3, i64
-    %ptr4 = getelem.ptr %array, 4, i64
+    %ptr0 = getelem.i64 %array, 0
+    %ptr1 = getelem.i64 %array, 1
+    %ptr2 = getelem.i64 %array, 2
+    %ptr3 = getelem.i64 %array, 3
+    %ptr4 = getelem.i64 %array, 4
 
     store.i64 %ptr0, 10
     store.i64 %ptr1, 20

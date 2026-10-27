@@ -2,9 +2,9 @@
 fn @main() -> i32 {
   entry:
     # Test with different integer types
-    %buf8 = alloc.stack i8
-    %buf16 = alloc.stack i16
-    %buf32 = alloc.stack i32
+    %buf8 = stackalloc.i8
+    %buf16 = stackalloc.i16
+    %buf32 = stackalloc.i32
 
     # Write different values to buffers
     store.i8 %buf8, 255    # Max i8 value

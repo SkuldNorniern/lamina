@@ -13,7 +13,7 @@ fn @test_mixed_field_sizes() -> i64 {
 fn @test_packed_struct() -> i64 {
   entry:
     # Test with uniform i64 fields to expose offset bug
-    %packed = alloc.stack struct { x: i64, y: i64, z: i64 }
+    %packed = stackalloc.struct { x: i64, y: i64, z: i64 }
 
     %ptr_x = getfieldptr %packed, 0  # Should be at offset 0
     %ptr_y = getfieldptr %packed, 1  # Should be at offset 8 (not 8 - this works)

@@ -2,7 +2,7 @@
 fn @main() -> i32 {
   entry:
     # Allocate a buffer and initialize it
-    %buffer = alloc.stack i8
+    %buffer = stackalloc.i8
     store.i8 %buffer, 79  # Store 'O' (ASCII 79)
 
     # Write the buffer value to stdout using writeptr (produces 'O')
