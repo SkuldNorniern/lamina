@@ -13,11 +13,15 @@ use crate::mir_codegen::common::{
     emit_global_directives, integer_conversion, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{
-    emit_debug_file, emit_gnu_stack_note, print_format_label, writeptr_width,
+    emit_debug_file, emit_gnu_stack_note, print_format_label, promoted_argument_type,
+    writeptr_width,
 };
 use crate::mir_codegen::simd::reserve_vector_slots;
 
-use std::{collections::HashMap, io::Error as IoError, io::Write, slice, str, sync::Arc};
+use std::{
+    collections::HashMap, collections::HashSet, io::Error as IoError, io::Write, slice, str,
+    sync::Arc,
+};
 
 use util::{emit_mov_imm64, imm_to_u64};
 
@@ -143,18 +147,21 @@ fn copy_through_pointer<W: Write>(
     Ok(())
 }
 
+/// Places `kinds` by AAPCS64. `fixed` is the count of named arguments when the callee
+/// is variadic, which Darwin needs because it puts the rest on the stack.
 fn classify_aarch64_arguments(
     kinds: &[ArgKind],
     target_os: TargetOperatingSystem,
+    fixed: Option<usize>,
 ) -> Vec<ArgPlace> {
-    // Linux gives every stack argument a whole eight-byte slot. Darwin packs named ones
-    // at their natural size and alignment.
-    let packed = os_uses_macho(target_os);
+    let darwin = os_uses_macho(target_os);
     let mut gprs = 0;
     let mut fprs = 0;
     let mut stack = 0;
     let mut places = Vec::with_capacity(kinds.len());
-    let on_stack = |stack: &mut usize, kind: &ArgKind| {
+    // Linux gives every stack argument a whole eight-byte slot. Darwin packs a named
+    // one at its natural size and alignment, and gives a variadic one a whole slot.
+    let on_stack = |stack: &mut usize, kind: &ArgKind, packed: bool| {
         let bytes = if packed {
             kind.bytes.max(1)
         } else {
@@ -170,13 +177,21 @@ fn classify_aarch64_arguments(
         *stack += bytes;
         ArgPlace::Stack { offset, bytes }
     };
-    for kind in kinds {
+    for (index, kind) in kinds.iter().enumerate() {
+        // Darwin hands a variadic callee its arguments on the stack, whichever
+        // registers are still free.
+        let variadic = darwin && fixed.is_some_and(|fixed| index >= fixed);
+        let packed = darwin && !variadic;
+        if variadic {
+            places.push(on_stack(&mut stack, kind, packed));
+            continue;
+        }
         if kind.float {
             if fprs < ARGUMENT_REGISTERS {
                 places.push(ArgPlace::Fpr { index: fprs });
                 fprs += 1;
             } else {
-                places.push(on_stack(&mut stack, kind));
+                places.push(on_stack(&mut stack, kind, packed));
             }
             continue;
         }
@@ -190,7 +205,7 @@ fn classify_aarch64_arguments(
             gprs += words;
         } else {
             gprs = ARGUMENT_REGISTERS;
-            places.push(on_stack(&mut stack, kind));
+            places.push(on_stack(&mut stack, kind, packed));
         }
     }
     places
@@ -248,6 +263,7 @@ struct AggregateSignatures {
     params: HashMap<String, Vec<ArgKind>>,
     returns: HashMap<String, Aggregate>,
     float_returns: HashMap<String, MirType>,
+    variadic: HashSet<String>,
 }
 
 impl AggregateSignatures {
@@ -280,15 +296,41 @@ impl AggregateSignatures {
                     (func.sig.ret_aggregate.is_none() && ty.is_float()).then(|| (name.clone(), ty))
                 })
                 .collect(),
+            variadic: module
+                .functions
+                .iter()
+                .filter(|(_, func)| func.sig.variadic)
+                .map(|(name, _)| name.clone())
+                .collect(),
         }
     }
 
-    /// An undeclared callee has no signature, so its arguments pass as integers.
-    fn arguments(&self, callee: &str, count: usize) -> Vec<ArgKind> {
-        match self.params.get(callee) {
-            Some(kinds) if kinds.len() == count => kinds.clone(),
-            _ => vec![ArgKind::of(MirType::i64(), None); count],
+    /// Index of the first argument the convention treats as variadic, if any.
+    fn fixed_arguments(&self, callee: &str) -> Option<usize> {
+        self.variadic
+            .contains(callee)
+            .then(|| self.params.get(callee).map_or(0, Vec::len))
+    }
+
+    /// Arguments of a call as the convention sees them. A matching prototype gives the
+    /// kinds; past a variadic callee's fixed parameters, and for a callee with no
+    /// prototype, the operand does.
+    fn arguments(&self, callee: &str, args: &[Operand]) -> Vec<ArgKind> {
+        let fixed = self.fixed_arguments(callee);
+        if fixed.is_none()
+            && let Some(kinds) = self.params.get(callee).filter(|k| k.len() == args.len())
+        {
+            return kinds.clone();
         }
+        let declared = self.params.get(callee);
+        let fixed = fixed.unwrap_or(0);
+        args.iter()
+            .enumerate()
+            .map(|(index, arg)| match declared {
+                Some(kinds) if index < fixed && index < kinds.len() => kinds[index],
+                _ => ArgKind::of(promoted_argument_type(arg), None),
+            })
+            .collect()
     }
 
     fn result(&self, callee: &str) -> Option<Aggregate> {
@@ -434,7 +476,7 @@ fn compile_single_function_aarch64_with(
         .iter()
         .map(|p| ArgKind::of(p.ty, p.aggregate))
         .collect();
-    let param_places = classify_aarch64_arguments(&param_kinds, target_os);
+    let param_places = classify_aarch64_arguments(&param_kinds, target_os, None);
     for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
         if let Some(off) = frame.slot_of(&p.reg) {
             let addr = ra_pro.alloc_scratch().unwrap_or("x19");
@@ -1285,7 +1327,7 @@ fn emit_block<W: Write>(
             } => {
                 let kinds: Vec<ArgKind> =
                     arg_types.iter().map(|ty| ArgKind::of(*ty, None)).collect();
-                let places = classify_aarch64_arguments(&kinds, abi.target_os());
+                let places = classify_aarch64_arguments(&kinds, abi.target_os(), None);
                 let stack_space = (aarch64_stack_bytes(&places) + 15) & !15;
                 if stack_space > 0 {
                     emit_sp_adjust(w, "sub", stack_space as u64)?;
@@ -1543,8 +1585,12 @@ fn emit_block<W: Write>(
                         }
                     }
                 } else {
-                    let kinds = signatures.arguments(name, args.len());
-                    let places = classify_aarch64_arguments(&kinds, abi.target_os());
+                    let kinds = signatures.arguments(name, args);
+                    let places = classify_aarch64_arguments(
+                        &kinds,
+                        abi.target_os(),
+                        signatures.fixed_arguments(name),
+                    );
                     for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
                         match *place {
                             ArgPlace::Fpr { index } => {
@@ -1709,8 +1755,12 @@ fn emit_block<W: Write>(
                 }
             }
             MirInst::TailCall { name, args } => {
-                let kinds = signatures.arguments(name, args.len());
-                let places = classify_aarch64_arguments(&kinds, abi.target_os());
+                let kinds = signatures.arguments(name, args);
+                let places = classify_aarch64_arguments(
+                    &kinds,
+                    abi.target_os(),
+                    signatures.fixed_arguments(name),
+                );
                 for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
                     match *place {
                         ArgPlace::Fpr { index } => {
