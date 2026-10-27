@@ -406,4 +406,79 @@ mod tests {
         let result = cse.apply(&mut func);
         assert!(result.is_ok());
     }
+
+    fn int_add(ty: ScalarType, dst: u32, lhs: u32, rhs: u32) -> Instruction {
+        Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::Scalar(ty),
+            dst: VirtualReg::gpr(dst).into(),
+            lhs: Operand::Register(VirtualReg::gpr(lhs).into()),
+            rhs: Operand::Register(VirtualReg::gpr(rhs).into()),
+        }
+    }
+
+    #[test]
+    fn cse_eliminates_identical_repeated_expression() {
+        let mut func = FunctionBuilder::new("repeat")
+            .param(VirtualReg::gpr(10).into(), MirType::Scalar(ScalarType::I64))
+            .param(VirtualReg::gpr(11).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(int_add(ScalarType::I64, 0, 10, 11))
+            .instr(int_add(ScalarType::I64, 1, 10, 11))
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        let changed = CommonSubexpressionElimination
+            .apply(&mut func)
+            .expect("should succeed");
+        assert!(changed);
+
+        let entry = get_block(&func, "entry");
+        let first: Register = VirtualReg::gpr(0).into();
+        let second: Register = VirtualReg::gpr(1).into();
+        match &entry.instructions[1] {
+            Instruction::Copy {
+                ty,
+                dst,
+                src: Operand::Register(src),
+            } => {
+                assert_eq!(*ty, MirType::Scalar(ScalarType::I64));
+                assert_eq!(*dst, second);
+                assert_eq!(*src, first);
+            }
+            other => panic!("expected Copy for repeated add, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn cse_does_not_merge_same_shape_ops_of_different_types() {
+        let mut func = FunctionBuilder::new("typed")
+            .param(VirtualReg::gpr(10).into(), MirType::Scalar(ScalarType::I64))
+            .param(VirtualReg::gpr(11).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(int_add(ScalarType::I8, 0, 10, 11))
+            .instr(int_add(ScalarType::I32, 1, 10, 11))
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(VirtualReg::gpr(1).into())),
+            })
+            .build();
+
+        let changed = CommonSubexpressionElimination
+            .apply(&mut func)
+            .expect("should succeed");
+        assert!(!changed);
+
+        let entry = get_block(&func, "entry");
+        assert!(matches!(
+            &entry.instructions[1],
+            Instruction::IntBinary {
+                ty: MirType::Scalar(ScalarType::I32),
+                ..
+            }
+        ));
+    }
 }
