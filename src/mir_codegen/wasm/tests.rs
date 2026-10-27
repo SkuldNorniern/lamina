@@ -311,3 +311,19 @@ fn wasm64_indexes_memory_with_i64() {
     assert!(!narrowed_address(&wide), "{wide}");
 }
 
+#[test]
+fn module_imports_only_helpers_it_calls() {
+    let quiet = emit_wat(
+        "fn @main() -> i64 {\nentry:\n  ret.i64 7\n}\n",
+        TargetArchitecture::Wasm32,
+    );
+    assert!(!quiet.contains("(import"), "{quiet}");
+
+    let printing = emit_wat(
+        "fn @main() -> i64 {\nentry:\n  print 7\n  ret.i64 0\n}\n",
+        TargetArchitecture::Wasm32,
+    );
+    assert!(printing.contains("(func $log "), "{printing}");
+    assert!(!printing.contains("$logu"), "{printing}");
+    assert!(!printing.contains("$malloc"), "{printing}");
+}

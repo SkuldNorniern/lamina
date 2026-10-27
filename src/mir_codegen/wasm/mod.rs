@@ -378,22 +378,9 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
     // WASM module header
     writeln!(writer, "(module")?;
-    writeln!(writer, "  {}", abi.get_print_import())?;
-    for decl in abi.get_runtime_imports() {
-        writeln!(writer, "  {decl}")?;
-    }
-
-    // Global variables for virtual registers
-    let mut global_count = 0;
-    for func in module.functions.values() {
-        for block in &func.blocks {
-            for inst in &block.instructions {
-                if let Some(dst) = inst.def_reg()
-                    && let Register::Virtual(_) = dst
-                {
-                    global_count += 1;
-                }
-            }
+    for (symbol, decl) in abi.get_runtime_imports() {
+        if results.iter().any(|result| calls(&result.assembly, symbol)) {
+            writeln!(writer, "  {decl}")?;
         }
     }
 
@@ -440,10 +427,6 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         writeln!(writer, "  (data ({index}.const {address}) \"{escaped}\")")?;
     }
 
-    for i in 0..global_count {
-        writeln!(writer, "{}", abi.generate_global_decl(i))?;
-    }
-
     for result in results {
         writer.write_all(&result.assembly)?;
     }
@@ -457,6 +440,21 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     writeln!(writer, ")")?;
 
     Ok(())
+}
+
+/// Whether the emitted body calls `symbol`. The name has to end where the match does,
+/// so `$log` does not answer for `$logu`.
+fn calls(assembly: &[u8], symbol: &str) -> bool {
+    let needle = format!("call {symbol}");
+    let Ok(text) = str::from_utf8(assembly) else {
+        return false;
+    };
+    text.match_indices(&needle).any(|(at, _)| {
+        text[at + needle.len()..]
+            .chars()
+            .next()
+            .is_none_or(|c| !c.is_alphanumeric() && c != '_')
+    })
 }
 
 const WASM_STACK_TOP: u32 = 65536;

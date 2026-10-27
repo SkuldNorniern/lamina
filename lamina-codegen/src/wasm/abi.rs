@@ -25,19 +25,43 @@ impl WasmABI {
         name.to_string()
     }
 
-    /// Get the WASM import for the print function.
-    pub fn get_print_import(&self) -> &'static str {
-        "(import \"console\" \"log\" (func $log (param i64)))\n  (import \"console\" \"logu\" (func $logu (param i64)))\n  (import \"console\" \"logf\" (func $logf (param f64)))"
-    }
-
-    /// Runtime helpers the backend calls but does not emit bodies for.
-    pub fn get_runtime_imports(&self) -> &'static [&'static str] {
+    /// Helpers the backend calls but emits no body for, each paired with the symbol a
+    /// call site names. A module that calls none of them imports none, so it needs no
+    /// host beyond what its own code asks for.
+    pub fn get_runtime_imports(&self) -> &'static [(&'static str, &'static str)] {
         &[
-            "(import \"env\" \"writebyte\" (func $writebyte (param i64) (result i64)))",
-            "(import \"env\" \"readbyte\" (func $readbyte (result i64)))",
-            "(import \"env\" \"writeptr\" (func $writeptr (param i64 i64) (result i64)))",
-            "(import \"env\" \"malloc\" (func $malloc (param i64) (result i64)))",
-            "(import \"env\" \"free\" (func $free (param i64)))",
+            (
+                "$log",
+                "(import \"console\" \"log\" (func $log (param i64)))",
+            ),
+            (
+                "$logu",
+                "(import \"console\" \"logu\" (func $logu (param i64)))",
+            ),
+            (
+                "$logf",
+                "(import \"console\" \"logf\" (func $logf (param f64)))",
+            ),
+            (
+                "$writebyte",
+                "(import \"env\" \"writebyte\" (func $writebyte (param i64) (result i64)))",
+            ),
+            (
+                "$readbyte",
+                "(import \"env\" \"readbyte\" (func $readbyte (result i64)))",
+            ),
+            (
+                "$writeptr",
+                "(import \"env\" \"writeptr\" (func $writeptr (param i64 i64) (result i64)))",
+            ),
+            (
+                "$malloc",
+                "(import \"env\" \"malloc\" (func $malloc (param i64) (result i64)))",
+            ),
+            (
+                "$free",
+                "(import \"env\" \"free\" (func $free (param i64)))",
+            ),
         ]
     }
 
@@ -45,11 +69,6 @@ impl WasmABI {
     pub fn get_wasm_type(&self, ty: &MirType) -> &'static str {
         let _ = ty;
         "i64"
-    }
-
-    /// Generate WASM global variable declaration for virtual registers.
-    pub fn generate_global_decl(&self, index: usize) -> String {
-        format!("  (global $vreg{index} (mut i64) (i64.const 0))")
     }
 
     /// Generate WASM local variable declaration.
