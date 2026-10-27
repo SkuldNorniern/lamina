@@ -1855,6 +1855,23 @@ entry:
     }
 
     #[test]
+    fn unwritten_tail_of_initialized_global_is_zeroed() {
+        let ir = parse_module(
+            "global @g: [10000000000 x i8] = [1, 2]\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        )
+        .expect("parse sparse array global");
+        let mir = from_ir(&ir, "globals").expect("lower sparse array global");
+        let mut output = Vec::new();
+        generate_mir_x86_64::<Vec<u8>>(&mir, &mut output, TargetOperatingSystem::Linux)
+            .expect("emit sparse array global");
+        let text = String::from_utf8(output).expect("utf8 assembly");
+        assert!(
+            text.contains("g:\n    .byte 0x01, 0x02\n    .zero 9999999998\n"),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn elf_targets_mark_stack_non_executable() {
         let ir = parse_module("fn @main() -> i64 {\nentry:\n ret.i64 0\n}\n").expect("parse");
         let mir = from_ir(&ir, "stack_note").expect("lower");

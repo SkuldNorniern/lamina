@@ -27,6 +27,19 @@ fn global_initializers_lower_to_little_endian_bytes() {
 }
 
 #[test]
+fn array_global_keeps_only_its_filled_prefix() {
+    let module = lowered_global_module(
+        "global @g: [10000000000 x i8] = [1, 2]\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+    )
+    .expect("lower sparse array global");
+    assert_eq!(
+        module.globals["g"].initializer.as_deref(),
+        Some([1u8, 2].as_slice())
+    );
+    assert_eq!(module.globals["g"].size, 10_000_000_000);
+}
+
+#[test]
 fn exported_global_is_marked_exported() {
     let module = lowered_global_module(
         "@export global @g: i64 = 1\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
