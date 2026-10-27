@@ -64,14 +64,14 @@ impl fmt::Display for OwnedType {
                 write!(f, " }}")
             }
             OwnedType::Tuple(types) => {
-                write!(f, "tuple(")?;
+                write!(f, "tuple ")?;
                 for (i, ty) in types.iter().enumerate() {
                     write!(f, "{ty}")?;
                     if i + 1 < types.len() {
                         write!(f, ", ")?;
                     }
                 }
-                write!(f, ")")
+                Ok(())
             }
         }
     }
@@ -734,6 +734,10 @@ impl OwnedIRBuilder {
             if i + 1 < func.params.len() {
                 out.push_str(", ");
             }
+        }
+        if func.is_extern {
+            out.push_str(&format!(") -> {}\n", func.return_type));
+            return;
         }
         out.push_str(&format!(") -> {} {{\n", func.return_type));
 
