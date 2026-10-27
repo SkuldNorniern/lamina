@@ -651,3 +651,172 @@ fn variadic_callee_receives_floats_in_both_banks() -> Result<(), Box<dyn Error>>
     assert!(!before("    bl sink").contains("ld 4, -8(1)"), "{assembly}");
     Ok(())
 }
+
+fn emit_aggregate_module(ir: &str, name: &str) -> Result<String, Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let module = parse_module(ir)?;
+    let mir = from_ir(&module, name).expect("lower aggregates");
+    let mut output = Vec::new();
+    emit_ppc64_module(
+        &mir,
+        &mut output,
+        TargetOperatingSystem::Linux,
+        1,
+        &MirCodegenSettings::default(),
+    )?;
+    Ok(String::from_utf8(output)?)
+}
+
+fn function_body<'a>(assembly: &'a str, name: &str) -> Result<&'a str, Box<dyn Error>> {
+    Ok(assembly
+        .split(&format!("\n{name}:\n"))
+        .nth(1)
+        .ok_or_else(|| format!("missing {name}"))?)
+}
+
+fn store_offset(text: &str, store: &str) -> Result<i64, Box<dyn Error>> {
+    let line = text
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with(store))
+        .ok_or_else(|| format!("missing `{store}`"))?;
+    let offset = line
+        .split(", ")
+        .nth(1)
+        .and_then(|rest| rest.strip_suffix("(1)"))
+        .ok_or("store is not r1-relative")?;
+    Ok(offset.parse()?)
+}
+
+#[test]
+fn aggregate_argument_of_two_words_takes_two_registers() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @pick(i64 %x, struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  %pb = getfieldptr %p, 1\n  %b = load.i64 %pb\n  ret.i64 %b\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64 }\n  %r = call @pick(1, %q)\n  ret.i64 %r\n}\n";
+    let assembly = emit_aggregate_module(ir, "pair")?;
+
+    let caller = function_body(&assembly, "main")?;
+    let call = caller.split("bl pick").next().ok_or("missing call")?;
+    assert!(call.contains("    ld 4, 0(11)\n"), "{assembly}");
+    assert!(call.contains("    ld 5, 8(11)\n"), "{assembly}");
+    assert!(!call.contains("    std 4, "), "{assembly}");
+
+    let callee = function_body(&assembly, "pick")?;
+    let prologue = callee
+        .split(".L_pick.entry:")
+        .next()
+        .ok_or("missing entry")?;
+    let first = store_offset(prologue, "std 4, ")?;
+    let second = store_offset(prologue, "std 5, ")?;
+    assert_eq!(second, first + 8, "{assembly}");
+    Ok(())
+}
+
+#[test]
+fn aggregate_argument_of_four_words_fills_r3_through_r6() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @sum(struct { a: i64, b: i64, c: i64, d: i64 } %p) -> i64 {\nentry:\n  %pd = getfieldptr %p, 3\n  %d = load.i64 %pd\n  ret.i64 %d\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64, c: i64, d: i64 }\n  %r = call @sum(%q)\n  ret.i64 %r\n}\n";
+    let assembly = emit_aggregate_module(ir, "quad")?;
+
+    let caller = function_body(&assembly, "main")?;
+    let call = caller.split("bl sum").next().ok_or("missing call")?;
+    for (reg, offset) in [("3", 0), ("4", 8), ("5", 16), ("6", 24)] {
+        assert!(
+            call.contains(&format!("    ld {reg}, {offset}(11)\n")),
+            "{assembly}"
+        );
+    }
+
+    let callee = function_body(&assembly, "sum")?;
+    let prologue = callee
+        .split(".L_sum.entry:")
+        .next()
+        .ok_or("missing entry")?;
+    let first = store_offset(prologue, "std 3, ")?;
+    for (reg, step) in [("4", 1), ("5", 2), ("6", 3)] {
+        assert_eq!(
+            store_offset(prologue, &format!("std {reg}, "))?,
+            first + 8 * step,
+            "{assembly}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn aggregate_split_between_last_register_and_save_area() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @wide(i64 %a0, i64 %a1, i64 %a2, i64 %a3, i64 %a4, i64 %a5, i64 %a6, struct { a: i64, b: i64 } %p, i64 %z) -> i64 {\nentry:\n  %pb = getfieldptr %p, 1\n  %b = load.i64 %pb\n  %s = add.i64 %b, %z\n  ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64 }\n  %r = call @wide(1, 2, 3, 4, 5, 6, 7, %q, 8)\n  ret.i64 %r\n}\n";
+    let assembly = emit_aggregate_module(ir, "split_pair")?;
+
+    let caller = function_body(&assembly, "main")?;
+    let call = caller.split("bl wide").next().ok_or("missing call")?;
+    assert!(call.contains("    ld 10, 0(11)\n"), "{assembly}");
+    assert!(
+        call.contains("    ld 12, 8(11)\n    std 12, 96(1)\n"),
+        "{assembly}"
+    );
+    assert!(call.contains("    std 11, 104(1)\n"), "{assembly}");
+    assert!(call.contains("    stdu 1, -112(1)\n"), "{assembly}");
+
+    let callee = function_body(&assembly, "wide")?;
+    let prologue = callee
+        .split(".L_wide.entry:")
+        .next()
+        .ok_or("missing entry")?;
+    let frame = ppc64_frame_arithmetic(prologue).0;
+    let low = store_offset(prologue, "std 10, ")?;
+    assert!(
+        prologue.contains(&format!(
+            "    ld 0, {}(1)\n    std 0, {}(1)\n",
+            frame + 96,
+            low + 8
+        )),
+        "{assembly}"
+    );
+    Ok(())
+}
+
+#[test]
+fn aggregate_result_past_two_words_uses_hidden_pointer() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @make() -> struct { a: i64, b: i64, c: i64, d: i64 } {\nentry:\n  %p = alloc.stack struct { a: i64, b: i64, c: i64, d: i64 }\n  %pa = getfieldptr %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
+    let assembly = emit_aggregate_module(ir, "hidden_result")?;
+
+    let callee = function_body(&assembly, "make")?;
+    let prologue = callee
+        .split(".L_make.entry:")
+        .next()
+        .ok_or("missing entry")?;
+    let frame = ppc64_frame_arithmetic(prologue).0;
+    assert!(
+        prologue.contains(&format!("    std 3, {}(1)\n", frame + 32)),
+        "{assembly}"
+    );
+    let body = callee
+        .split(".L_make.entry:")
+        .nth(1)
+        .ok_or("missing entry")?;
+    assert!(
+        body.contains(&format!("    ld 4, {}(1)\n", frame + 32)),
+        "{assembly}"
+    );
+    assert!(body.contains("    std 12, 24(4)\n"), "{assembly}");
+    assert!(body.contains("    mr 3, 4\n"), "{assembly}");
+
+    let caller = function_body(&assembly, "main")?;
+    let call = caller.split("bl make").next().ok_or("missing call")?;
+    assert!(call.contains("    addi 3, 1, "), "{assembly}");
+    Ok(())
+}
+
+#[test]
+fn aggregate_result_of_two_words_comes_back_in_r3_and_r4() -> Result<(), Box<dyn Error>> {
+    let ir = "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n  %p = alloc.stack struct { a: i64, b: i64 }\n  %pa = getfieldptr %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
+    let assembly = emit_aggregate_module(ir, "pair_result")?;
+
+    let callee = function_body(&assembly, "make")?;
+    assert!(callee.contains("    ld 3, 0(11)\n"), "{assembly}");
+    assert!(callee.contains("    ld 4, 8(11)\n"), "{assembly}");
+
+    let caller = function_body(&assembly, "main")?;
+    let after = caller.split("bl make").nth(1).ok_or("missing call")?;
+    let low = store_offset(after, "std 3, ")?;
+    assert_eq!(store_offset(after, "std 4, ")?, low + 8, "{assembly}");
+    Ok(())
+}
