@@ -54,7 +54,10 @@ impl TailCallOptimization {
 
         let mut changed = false;
         let func_sig = func.sig.clone();
-        let stack_addresses = Self::stack_addresses(func);
+        let (stack_addresses, escaped) = Self::stack_addresses(func);
+        if escaped {
+            return Ok(false);
+        }
 
         for block in &mut func.blocks {
             if self.optimize_block_tail_calls(&func_sig, block, &stack_addresses) {
@@ -65,7 +68,10 @@ impl TailCallOptimization {
         Ok(changed)
     }
 
-    fn stack_addresses(func: &Function) -> HashSet<Register> {
+    /// Registers holding an address in this frame, and whether any of them reached
+    /// memory or a callee. Once one has, the frame outlives the call that let it out,
+    /// and no call in the function can become a tail call.
+    fn stack_addresses(func: &Function) -> (HashSet<Register>, bool) {
         let instructions: Vec<_> = func.blocks.iter().flat_map(|b| &b.instructions).collect();
         let mut addresses = HashSet::new();
         let mut escaped = false;
@@ -78,7 +84,11 @@ impl TailCallOptimization {
                     .iter()
                     .any(|r| addresses.contains(*r));
                 if matches!(instruction, Instruction::Store { src: Operand::Register(r), .. } if addresses.contains(r))
-                    || matches!(instruction, Instruction::Call { .. } if uses_address)
+                    || matches!(
+                        instruction,
+                        Instruction::Call { .. } | Instruction::CallIndirect { .. }
+                        if uses_address
+                    )
                 {
                     escaped = true;
                 }
@@ -87,7 +97,9 @@ impl TailCallOptimization {
                     || (escaped
                         && matches!(
                             instruction,
-                            Instruction::Load { .. } | Instruction::Call { .. }
+                            Instruction::Load { .. }
+                                | Instruction::Call { .. }
+                                | Instruction::CallIndirect { .. }
                         )))
                     && let Some(dst) = instruction.def_reg()
                 {
@@ -95,7 +107,7 @@ impl TailCallOptimization {
                 }
             }
             if addresses.len() == old_len && escaped == old_escaped {
-                return addresses;
+                return (addresses, escaped);
             }
         }
     }
