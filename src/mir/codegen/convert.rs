@@ -1546,7 +1546,12 @@ fn convert_instruction<'a>(
             };
             Ok(vec![Instruction::Ret { value: op }])
         }
-        IRInst::Load { result, ty, ptr } => {
+        IRInst::Load {
+            result,
+            ty,
+            ptr,
+            volatile,
+        } => {
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
@@ -1568,11 +1573,16 @@ fn convert_instruction<'a>(
                 addr,
                 attrs: MemoryAttrs {
                     align: mir_ty.alignment() as u8,
-                    volatile: false,
+                    volatile: *volatile,
                 },
             }])
         }
-        IRInst::Store { ty, ptr, value } => {
+        IRInst::Store {
+            ty,
+            ptr,
+            value,
+            volatile,
+        } => {
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
                 IRVal::Variable(id) => var_to_reg
@@ -1595,7 +1605,7 @@ fn convert_instruction<'a>(
                 addr,
                 attrs: MemoryAttrs {
                     align: mir_ty.alignment() as u8,
-                    volatile: false,
+                    volatile: *volatile,
                 },
             }])
         }

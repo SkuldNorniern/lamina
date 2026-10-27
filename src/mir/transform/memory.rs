@@ -344,6 +344,70 @@ mod tests {
     }
 
     #[test]
+    fn store_not_forwarded_to_volatile_load() {
+        let base: Register = VirtualReg::gpr(0).into();
+        let dst: Register = VirtualReg::gpr(1).into();
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Store {
+                ty: i64(),
+                src: Operand::Immediate(Immediate::I64(99)),
+                addr: base_offset(base.clone(), 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: dst.clone(),
+                addr: base_offset(base, 0),
+                attrs: volatile(),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+
+        assert!(!apply_pass(&MemoryOptimization, &mut func));
+        assert!(matches!(
+            func.blocks[0].instructions[1],
+            Instruction::Load { .. }
+        ));
+    }
+
+    #[test]
+    fn volatile_store_not_forwarded_to_load() {
+        let base: Register = VirtualReg::gpr(0).into();
+        let dst: Register = VirtualReg::gpr(1).into();
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Store {
+                ty: i64(),
+                src: Operand::Immediate(Immediate::I64(99)),
+                addr: base_offset(base.clone(), 0),
+                attrs: volatile(),
+            })
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: dst.clone(),
+                addr: base_offset(base, 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+
+        assert!(!apply_pass(&MemoryOptimization, &mut func));
+        assert!(matches!(
+            func.blocks[0].instructions[1],
+            Instruction::Load { .. }
+        ));
+    }
+
+    #[test]
     fn call_invalidates_store_forwarding() {
         let base: Register = VirtualReg::gpr(0).into();
         let dst: Register = VirtualReg::gpr(1).into();

@@ -660,10 +660,14 @@ pub enum Instruction<'a> {
     /// - `ptr` must not be null — a null pointer causes a **trap**.
     /// - The memory at `ptr` must be initialized.
     /// - The memory must be accessible (allocated and not freed).
+    ///
+    /// When `volatile` is set, the access must happen exactly once, must not be
+    /// removed, and must not be reordered with other volatile accesses.
     Load {
         result: Identifier<'a>,
         ty: Type<'a>,
         ptr: Value<'a>,
+        volatile: bool,
     },
     /// Store a `value` of type `ty` to the address in `ptr`.
     ///
@@ -671,10 +675,14 @@ pub enum Instruction<'a> {
     /// - `ptr` must have type `ptr` and point to memory of type `ty`.
     /// - `ptr` must not be null — a null pointer causes a **trap**.
     /// - `value` must have type `ty`.
+    ///
+    /// When `volatile` is set, the access must happen exactly once, must not be
+    /// removed, and must not be reordered with other volatile accesses.
     Store {
         ty: Type<'a>,
         ptr: Value<'a>,
         value: Value<'a>,
+        volatile: bool,
     },
     /// Copy `size` bytes from `src` to `dst` (memory may not overlap).
     ///
@@ -957,6 +965,7 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "stackalloc",
         "heapalloc",
         "load",
+        "volatile",
         "getfieldptr",
         "getelem",
         // Pointer operations (from Instruction::PtrToInt, Instruction::IntToPtr)
@@ -1014,6 +1023,7 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "stackalloc",
         "heapalloc",
         "load",
+        "volatile",
         "getfieldptr",
         "getelem",
         "ptrtoint",
@@ -1048,6 +1058,7 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         "callptr",
         // Memory operations (from Instruction::Store, Instruction::Dealloc, etc.)
         "store",
+        "volatile",
         "heapfree",
         "memcpy",
         "memmove",
@@ -1347,8 +1358,24 @@ impl fmt::Display for Instruction<'_> {
                 AllocType::Stack => write!(f, "%{result} = stackalloc.{allocated_ty}"),
                 AllocType::Heap => write!(f, "%{result} = heapalloc.{allocated_ty}"),
             },
-            Instruction::Load { result, ty, ptr } => write!(f, "%{result} = load.{ty} {ptr}"),
-            Instruction::Store { ty, ptr, value } => write!(f, "store.{ty} {ptr}, {value}"),
+            Instruction::Load {
+                result,
+                ty,
+                ptr,
+                volatile,
+            } => {
+                let prefix = if *volatile { "volatile " } else { "" };
+                write!(f, "%{result} = {prefix}load.{ty} {ptr}")
+            }
+            Instruction::Store {
+                ty,
+                ptr,
+                value,
+                volatile,
+            } => {
+                let prefix = if *volatile { "volatile " } else { "" };
+                write!(f, "{prefix}store.{ty} {ptr}, {value}")
+            }
             Instruction::MemCpy { dst, src, size } => {
                 write!(f, "memcpy {dst}, {src}, {size}")
             }
@@ -1659,16 +1686,33 @@ mod tests {
             result: "loaded_val",
             ty: Type::Primitive(PrimitiveType::F32),
             ptr: Value::Variable("some_ptr"),
+            volatile: false,
         };
         assert_eq!(format!("{}", instr9), "%loaded_val = load.f32 %some_ptr");
 
-        // Store
         let instr10 = Instruction::Store {
             ty: Type::Primitive(PrimitiveType::Bool),
             ptr: Value::Variable("bool_ptr"),
             value: Value::Constant(Literal::Bool(true)),
+            volatile: false,
         };
         assert_eq!(format!("{}", instr10), "store.bool %bool_ptr, true");
+
+        let volatile_load = Instruction::Load {
+            result: "v",
+            ty: Type::Primitive(PrimitiveType::I64),
+            ptr: Value::Variable("p"),
+            volatile: true,
+        };
+        assert_eq!(format!("{}", volatile_load), "%v = volatile load.i64 %p");
+
+        let volatile_store = Instruction::Store {
+            ty: Type::Primitive(PrimitiveType::I64),
+            ptr: Value::Variable("p"),
+            value: Value::Constant(Literal::I64(5)),
+            volatile: true,
+        };
+        assert_eq!(format!("{}", volatile_store), "volatile store.i64 %p, 5");
 
         // GetFieldPtr
         let instr11 = Instruction::GetFieldPtr {

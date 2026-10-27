@@ -1671,4 +1671,66 @@ entry:
         );
         parse_module(&text).unwrap_or_else(|e| panic!("{e}\n---\n{text}"));
     }
+
+    #[test]
+    fn volatile_prefix_parses_and_displays_on_load_and_store() {
+        let source = "fn @f(ptr %p) -> i64 {\nentry:\n %x = volatile load.i64 %p\n volatile store.i64 %p, 5\n %y = load.i64 %p\n store.i64 %p, 6\n ret.i64 %x\n}";
+        let module = parse_module(source).expect("parse volatile access");
+        let instructions = &module.functions["f"].basic_blocks["entry"].instructions;
+        let rendered: Vec<String> = instructions.iter().map(|i| i.to_string()).collect();
+        assert_eq!(
+            rendered[..4],
+            [
+                "%x = volatile load.i64 %p",
+                "volatile store.i64 %p, 5",
+                "%y = load.i64 %p",
+                "store.i64 %p, 6",
+            ]
+        );
+        assert!(matches!(
+            instructions[0],
+            Instruction::Load { volatile: true, .. }
+        ));
+        assert!(matches!(
+            instructions[2],
+            Instruction::Load {
+                volatile: false,
+                ..
+            }
+        ));
+        let reparsed_source = format!(
+            "fn @f(ptr %p) -> i64 {{\nentry:\n {}\n ret.i64 %x\n}}",
+            rendered[..4].join("\n ")
+        );
+        let reparsed = parse_module(&reparsed_source).expect("reparse rendered volatile access");
+        let reparsed_text: Vec<String> = reparsed.functions["f"].basic_blocks["entry"]
+            .instructions
+            .iter()
+            .map(|i| i.to_string())
+            .collect();
+        assert_eq!(reparsed_text[..4], rendered[..4]);
+    }
+
+    #[test]
+    fn volatile_prefix_rejects_opcodes_other_than_load_and_store() {
+        for (source, expected) in [
+            (
+                "fn @f() -> i64 { entry: %x = volatile add.i64 1, 2 ret.i64 %x }",
+                "applies to load and store only",
+            ),
+            (
+                "fn @f(ptr %p) -> i64 { entry: volatile ret.i64 0 }",
+                "applies to load and store only",
+            ),
+            (
+                "fn @f(ptr %p) -> i64 { entry: %x = volatile store.i64 %p, 5 ret.i64 0 }",
+                "store produces no result",
+            ),
+        ] {
+            let Err(error) = parse_module(source) else {
+                panic!("volatile must be rejected: {source}")
+            };
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
 }

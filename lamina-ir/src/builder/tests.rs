@@ -152,21 +152,59 @@ mod tests {
             panic!("Expected Alloc instruction");
         }
 
-        if let Instruction::Store { ty, ptr, value } = &entry.instructions[1] {
+        if let Instruction::Store {
+            ty,
+            ptr,
+            value,
+            volatile,
+        } = &entry.instructions[1]
+        {
             assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
             assert_eq!(*ptr, var("ptr"));
             assert_eq!(*value, i32(42));
+            assert!(!volatile);
         } else {
             panic!("Expected Store instruction");
         }
 
-        if let Instruction::Load { result, ty, ptr } = &entry.instructions[2] {
+        if let Instruction::Load {
+            result,
+            ty,
+            ptr,
+            volatile,
+        } = &entry.instructions[2]
+        {
             assert_eq!(*result, "val");
             assert_eq!(*ty, Type::Primitive(PrimitiveType::I32));
             assert_eq!(*ptr, var("ptr"));
+            assert!(!volatile);
         } else {
             panic!("Expected Load instruction");
         }
+    }
+
+    #[test]
+    fn test_volatile_store_load_builders() {
+        let mut builder = IRBuilder::new();
+
+        builder
+            .function("f", Type::Primitive(PrimitiveType::I64))
+            .stackalloc("p", Type::Primitive(PrimitiveType::I64))
+            .volatile_store(Type::Primitive(PrimitiveType::I64), var("p"), i64(5))
+            .volatile_load("v", Type::Primitive(PrimitiveType::I64), var("p"))
+            .ret(Type::Primitive(PrimitiveType::I64), var("v"));
+
+        let module = builder.build();
+        let entry = &module.functions["f"].basic_blocks["entry"];
+
+        assert!(matches!(
+            entry.instructions[1],
+            Instruction::Store { volatile: true, .. }
+        ));
+        assert!(matches!(
+            entry.instructions[2],
+            Instruction::Load { volatile: true, .. }
+        ));
     }
 
     #[cfg(feature = "nightly")]

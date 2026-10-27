@@ -1029,6 +1029,7 @@ mod tests {
                     ty: Type::Primitive(PrimitiveType::I32),
                     ptr: Value::Variable("p"),
                     value: Value::Constant(Literal::I32(10)),
+                    volatile: false,
                 },
                 Instruction::Jmp {
                     target_label: "next_block",

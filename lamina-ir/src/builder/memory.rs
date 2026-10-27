@@ -34,12 +34,38 @@ impl<'a> IRBuilder<'a> {
             ty,
             ptr,
             value: val,
+            volatile: false,
+        })
+    }
+
+    /// Stores a value to memory as a volatile access
+    pub fn volatile_store(&mut self, ty: Type<'a>, ptr: Value<'a>, val: Value<'a>) -> &mut Self {
+        self.inst(Instruction::Store {
+            ty,
+            ptr,
+            value: val,
+            volatile: true,
         })
     }
 
     /// Loads a value from memory
     pub fn load(&mut self, result: &'a str, ty: Type<'a>, ptr: Value<'a>) -> &mut Self {
-        self.inst(Instruction::Load { result, ty, ptr })
+        self.inst(Instruction::Load {
+            result,
+            ty,
+            ptr,
+            volatile: false,
+        })
+    }
+
+    /// Loads a value from memory as a volatile access
+    pub fn volatile_load(&mut self, result: &'a str, ty: Type<'a>, ptr: Value<'a>) -> &mut Self {
+        self.inst(Instruction::Load {
+            result,
+            ty,
+            ptr,
+            volatile: true,
+        })
     }
 
     /// Deallocates heap memory

@@ -1,0 +1,17 @@
+fn @main() -> i64 {
+entry:
+ %slot = stackalloc.i64
+ store.i64 %slot, 7
+ %a = volatile load.i64 %slot
+ print %a
+ volatile store.i64 %slot, 11
+ %b = volatile load.i64 %slot
+ print %b
+ %c = load.i64 %slot
+ print %c
+ volatile store.i64 %slot, 13
+ volatile store.i64 %slot, 17
+ %d = volatile load.i64 %slot
+ print %d
+ ret.i64 0
+}

@@ -59,7 +59,8 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                 opcode_str,
                 "'stackalloc.<type>' or 'heapalloc.<type>'",
             )),
-            "load" => parse_load(state, result),
+            "load" => parse_load(state, result, false),
+            "volatile" => parse_volatile_assignment(state, result),
             "getfieldptr" => parse_getfield(state, result),
             "getfield" => Err(removed_opcode_error(
                 state,
@@ -118,7 +119,8 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
     } else {
         let opcode_str = state.parse_identifier_str()?;
         match opcode_str {
-            "store" => parse_store(state),
+            "store" => parse_store(state, false),
+            "volatile" => parse_volatile_store(state),
             "switch" => parse_switch(state),
             "br" => parse_br(state),
             "jmp" => parse_jmp(state),
@@ -315,21 +317,63 @@ fn parse_alloc<'a>(
     })
 }
 
-fn parse_load<'a>(
+fn parse_volatile_assignment<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let ty = parse_type_suffix(state)?;
-    let ptr = parse_value(state)?;
-    Ok(Instruction::Load { result, ty, ptr })
+    let opcode = state.parse_identifier_str()?;
+    match opcode {
+        "load" => parse_load(state, result, true),
+        "store" => Err(state.error(
+            "store produces no result\n  Hint: Write 'volatile store.<type> <ptr>, <value>'",
+        )),
+        _ => Err(volatile_opcode_error(state, opcode)),
+    }
 }
 
-fn parse_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
+fn parse_volatile_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
+    let opcode = state.parse_identifier_str()?;
+    match opcode {
+        "store" => parse_store(state, true),
+        _ => Err(volatile_opcode_error(state, opcode)),
+    }
+}
+
+fn volatile_opcode_error(state: &ParserState<'_>, opcode: &str) -> LaminaError {
+    state.error(format!(
+        "'volatile' applies to load and store only, found '{opcode}'\n  Hint: Write 'volatile load.<type> <ptr>' or 'volatile store.<type> <ptr>, <value>'"
+    ))
+}
+
+fn parse_load<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+    volatile: bool,
+) -> Result<Instruction<'a>, LaminaError> {
+    let ty = parse_type_suffix(state)?;
+    let ptr = parse_value(state)?;
+    Ok(Instruction::Load {
+        result,
+        ty,
+        ptr,
+        volatile,
+    })
+}
+
+fn parse_store<'a>(
+    state: &mut ParserState<'a>,
+    volatile: bool,
+) -> Result<Instruction<'a>, LaminaError> {
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
     let value = parse_value(state)?;
-    Ok(Instruction::Store { ty, ptr, value })
+    Ok(Instruction::Store {
+        ty,
+        ptr,
+        value,
+        volatile,
+    })
 }
 
 fn parse_getfield<'a>(

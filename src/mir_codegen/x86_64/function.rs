@@ -1014,6 +1014,7 @@ mod global_regalloc_tests {
                     "narrow_unsigned_canonical",
                     "array_operations_comprehensive",
                     "struct_operations_comprehensive",
+                    "volatile_access",
                 ] {
                     let executable = directory.join(format!("{case}-{allocator}-{level}"));
                     compile(

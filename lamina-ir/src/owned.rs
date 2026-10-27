@@ -424,6 +424,30 @@ impl OwnedIRBuilder {
         self
     }
 
+    /// Appends a volatile load instruction.
+    pub fn volatile_load(
+        &mut self,
+        result: impl AsRef<str>,
+        ty: &OwnedType,
+        ptr: &OwnedValue,
+    ) -> &mut Self {
+        let t = format!("%{} = volatile load.{} {}", result.as_ref(), ty, ptr);
+        self.push(t);
+        self
+    }
+
+    /// Appends a volatile store instruction.
+    pub fn volatile_store(
+        &mut self,
+        ty: &OwnedType,
+        ptr: &OwnedValue,
+        val: &OwnedValue,
+    ) -> &mut Self {
+        let t = format!("volatile store.{ty} {ptr}, {val}");
+        self.push(t);
+        self
+    }
+
     /// Appends a heap free.
     pub fn heapfree(&mut self, ptr: &OwnedValue) -> &mut Self {
         let t = format!("heapfree {ptr}");

@@ -737,3 +737,22 @@ fn switch_edge_moves_run_on_their_own_edge() {
         .count();
     assert_eq!(copies, 0, "{:?}", block.instructions);
 }
+
+#[test]
+fn volatile_ir_accesses_set_memory_attrs_bit() {
+    let module = lowered_global_module(
+        "fn @f(ptr %p) -> i64 {\nentry:\n %a = volatile load.i64 %p\n volatile store.i64 %p, 5\n %b = load.i64 %p\n ret.i64 %b\n}",
+    )
+    .expect("lower volatile accesses");
+    let volatile_bits: Vec<bool> = module.functions["f"].blocks[0]
+        .instructions
+        .iter()
+        .filter_map(|inst| match inst {
+            Instruction::Load { attrs, .. } | Instruction::Store { attrs, .. } => {
+                Some(attrs.volatile)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(volatile_bits, [true, true, false]);
+}
