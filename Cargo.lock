@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "lamina"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "lamina-codegen",
  "lamina-ir",
@@ -15,7 +15,7 @@ dependencies = [
 
 [[package]]
 name = "lamina-codegen"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "lamina-mir",
  "lamina-platform",
@@ -23,21 +23,19 @@ dependencies = [
 
 [[package]]
 name = "lamina-ir"
-version = "0.1.2"
+version = "0.2.0"
 
 [[package]]
 name = "lamina-mir"
-version = "0.1.2"
+version = "0.2.0"
 
 [[package]]
 name = "lamina-platform"
-version = "0.1.3"
+version = "0.2.0"
 
 [[package]]
 name = "lamina-ras"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1be8cbacab7d5273198b95e6559b74ac2bfc01c6203344bde99a211a89b9adec"
+version = "0.2.0"
 dependencies = [
  "lamina-codegen",
  "lamina-mir",
