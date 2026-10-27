@@ -958,7 +958,7 @@ pub(super) fn emit_instruction_x86_64(
             } else {
                 let abi = X86ABI::new(target_os);
                 let arg_regs = abi.arg_registers();
-                let descs = abi_extensions.argument_descs(name, args.len());
+                let descs = abi_extensions.argument_descs(name, args);
                 let types: Vec<MirType> = descs.iter().map(|desc| desc.ty).collect();
                 // A callee returning a large aggregate writes it through a hidden
                 // pointer, which takes the first general register.
@@ -1329,7 +1329,7 @@ pub(super) fn emit_instruction_x86_64(
             }
             let abi = X86ABI::new(target_os);
             let arg_regs = abi.arg_registers();
-            let types = abi_extensions.argument_types(func_name, args.len());
+            let types = abi_extensions.argument_types(func_name, args);
             let locations = classify_arguments(&types, target_os);
             load_register_arguments(
                 writer,
@@ -1345,7 +1345,7 @@ pub(super) fn emit_instruction_x86_64(
         MirInst::TailCall { name, args } => {
             let abi = X86ABI::new(target_os);
             let arg_regs = abi.arg_registers();
-            let types = abi_extensions.argument_types(name, args.len());
+            let types = abi_extensions.argument_types(name, args);
             let locations = classify_arguments(&types, target_os);
             let own_stack_args = stack_argument_count(&classify_arguments(
                 &abi_extensions.parameter_types(func_name),

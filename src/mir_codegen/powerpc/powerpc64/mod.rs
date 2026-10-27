@@ -1123,7 +1123,7 @@ fn emit_instruction_ppc64<W: Write>(
                     emit_flush(writer)?;
                 }
             } else {
-                let types = signatures.arguments(name, args.len());
+                let types = signatures.arguments(name, args);
                 let places = classify_ppc64_arguments(&types);
                 let shadow_floats = signatures.may_be_variadic(name, args.len());
                 for (index, ((arg, ty), place)) in args.iter().zip(&types).zip(&places).enumerate()

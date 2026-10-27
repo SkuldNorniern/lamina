@@ -1,6 +1,7 @@
 use super::*;
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir_codegen::common::FunctionEmissionPlan;
+use crate::mir_codegen::common::argument_types;
 use crate::mir_codegen::common::io_codegen_error;
 
 pub(super) fn callee_saved(reg: &str, target_os: TargetOperatingSystem) -> bool {
@@ -768,7 +769,7 @@ pub(super) struct AbiExtensions {
     parameter_aggregates: HashMap<String, Vec<Option<Aggregate>>>,
     return_aggregates: HashMap<String, Aggregate>,
     return_types: HashMap<String, MirType>,
-    external: HashSet<String>,
+    variadic: HashSet<String>,
 }
 
 impl AbiExtensions {
@@ -829,7 +830,12 @@ impl AbiExtensions {
             parameter_aggregates,
             return_types,
             return_aggregates,
-            external: module.external_functions.iter().cloned().collect(),
+            variadic: module
+                .functions
+                .iter()
+                .filter(|(_, func)| func.sig.variadic)
+                .map(|(name, _)| name.clone())
+                .collect(),
         }
     }
 
@@ -852,19 +858,19 @@ impl AbiExtensions {
             .unwrap_or_default()
     }
 
-    /// Types of a call's arguments. An undeclared callee has no signature, so its
-    /// arguments are passed as integers.
-    pub(super) fn argument_types(&self, callee: &str, count: usize) -> Vec<MirType> {
-        match self.parameter_types.get(callee) {
-            Some(types) if types.len() == count => types.clone(),
-            _ => vec![MirType::i64(); count],
-        }
+    /// Types of a call's arguments.
+    pub(super) fn argument_types(&self, callee: &str, args: &[Operand]) -> Vec<MirType> {
+        argument_types(
+            self.parameter_types.get(callee),
+            self.fixed_arguments(callee),
+            args,
+        )
     }
 
     /// Arguments of a call as the convention sees them, scalar types paired with the
     /// aggregate markers of the callee's parameters.
-    pub(super) fn argument_descs(&self, callee: &str, count: usize) -> Vec<ArgDesc> {
-        let types = self.argument_types(callee, count);
+    pub(super) fn argument_descs(&self, callee: &str, args: &[Operand]) -> Vec<ArgDesc> {
+        let types = self.argument_types(callee, args);
         let aggregates = self.parameter_aggregates.get(callee);
         types
             .into_iter()
@@ -872,17 +878,24 @@ impl AbiExtensions {
             .map(|(index, ty)| ArgDesc {
                 ty,
                 aggregate: aggregates
-                    .filter(|markers| markers.len() == count)
+                    .filter(|markers| markers.len() == args.len())
                     .and_then(|markers| markers[index]),
             })
             .collect()
     }
 
-    /// Whether the callee may read its arguments the way a variadic C function does. A
-    /// parameter list that does not match the call means the callee is undeclared, and a
-    /// declared external may be variadic behind a fixed prototype.
+    /// Index of the first argument the convention treats as variadic, if any.
+    pub(super) fn fixed_arguments(&self, callee: &str) -> Option<usize> {
+        self.variadic
+            .contains(callee)
+            .then(|| self.parameter_types.get(callee).map_or(0, Vec::len))
+    }
+
+    /// Whether the callee reads its arguments the way a variadic C function does. A
+    /// declaration ending in `...` says so, and a parameter list that does not match the
+    /// call means the callee is undeclared and may be one.
     pub(super) fn may_be_variadic(&self, callee: &str, count: usize) -> bool {
-        self.external.contains(callee)
+        self.variadic.contains(callee)
             || !self
                 .parameter_types
                 .get(callee)

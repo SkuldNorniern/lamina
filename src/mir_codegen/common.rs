@@ -13,7 +13,7 @@ use crate::{
     error::LaminaError,
     mir::{
         Function, Global, Immediate, Instruction, IntBinOp, MirType, Module as MirModule, Operand,
-        Register, Signature, VirtualReg,
+        Register, RegisterClass, Signature, VirtualReg,
     },
     mir_codegen::{CodegenError, CodegenOptions, MirCodegenSettings},
 };
@@ -581,7 +581,7 @@ pub fn emit_global_data<W: Write>(
 pub struct CallSignatures {
     params: HashMap<String, Vec<MirType>>,
     returns: HashMap<String, MirType>,
-    external: HashSet<String>,
+    variadic: HashSet<String>,
 }
 
 impl CallSignatures {
@@ -597,31 +597,77 @@ impl CallSignatures {
                 .iter()
                 .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_ty?)))
                 .collect(),
-            external: module.external_functions.iter().cloned().collect(),
+            variadic: module
+                .functions
+                .iter()
+                .filter(|(_, func)| func.sig.variadic)
+                .map(|(name, _)| name.clone())
+                .collect(),
         }
     }
 
-    /// Whether the callee may read its arguments the way a variadic C function does. A
-    /// parameter list that does not match the call means the callee is undeclared, and a
-    /// declared external may be variadic behind a fixed prototype.
+    /// Whether the callee reads its arguments the way a variadic C function does. A
+    /// declaration ending in `...` says so, and a parameter list that does not match the
+    /// call means the callee is undeclared and may be one.
     pub fn may_be_variadic(&self, callee: &str, count: usize) -> bool {
-        self.external.contains(callee)
+        self.variadic.contains(callee)
             || !self
                 .params
                 .get(callee)
                 .is_some_and(|types| types.len() == count)
     }
 
-    /// An undeclared callee has no signature, so its arguments pass as integers.
-    pub fn arguments(&self, callee: &str, count: usize) -> Vec<MirType> {
-        match self.params.get(callee) {
-            Some(types) if types.len() == count => types.clone(),
-            _ => vec![MirType::i64(); count],
-        }
+    /// Index of the first argument the convention treats as variadic, if any.
+    pub fn fixed_arguments(&self, callee: &str) -> Option<usize> {
+        self.variadic
+            .contains(callee)
+            .then(|| self.params.get(callee).map_or(0, Vec::len))
+    }
+
+    pub fn arguments(&self, callee: &str, args: &[Operand]) -> Vec<MirType> {
+        argument_types(self.params.get(callee), self.fixed_arguments(callee), args)
     }
 
     pub fn float_result(&self, callee: &str) -> Option<MirType> {
         self.returns.get(callee).copied().filter(MirType::is_float)
+    }
+}
+
+/// Types a call's arguments travel with. A matching prototype gives them. Past the
+/// fixed parameters of a variadic callee, and for a callee with no prototype, the
+/// operand's register class does, the way C promotes a variadic argument.
+pub fn argument_types(
+    declared: Option<&Vec<MirType>>,
+    fixed: Option<usize>,
+    args: &[Operand],
+) -> Vec<MirType> {
+    if fixed.is_none()
+        && let Some(types) = declared.filter(|types| types.len() == args.len())
+    {
+        return types.clone();
+    }
+    let fixed = fixed.unwrap_or(0);
+    args.iter()
+        .enumerate()
+        .map(|(index, arg)| match declared {
+            Some(types) if index < fixed && index < types.len() => types[index],
+            _ => promoted_argument_type(arg),
+        })
+        .collect()
+}
+
+/// Type a variadic argument reaches the callee as. A float travels as a double, the
+/// way C promotes one, and everything else as a word.
+pub fn promoted_argument_type(arg: &Operand) -> MirType {
+    let float = match arg {
+        Operand::Register(Register::Virtual(vreg)) => vreg.class == RegisterClass::Fpr,
+        Operand::Immediate(Immediate::F32(_) | Immediate::F64(_)) => true,
+        _ => false,
+    };
+    if float {
+        MirType::f64()
+    } else {
+        MirType::i64()
     }
 }
 

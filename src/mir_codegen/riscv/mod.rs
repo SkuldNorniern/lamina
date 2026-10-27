@@ -1128,7 +1128,7 @@ fn emit_instruction_riscv<W: Write>(
                 // General function call implementation
                 // RISC-V calling convention: first 8 args in a0-a7, remaining on stack
 
-                let types = ctx.signatures.arguments(name, args.len());
+                let types = ctx.signatures.arguments(name, args);
                 let stack_space =
                     pass_riscv_arguments(writer, reg_alloc, stack_slots, args, &types, ctx.target)?;
 
