@@ -302,6 +302,15 @@ fn emit_float_to_int<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str
 }
 
 #[allow(clippy::too_many_arguments)]
+/// Every caller frees the scratch it takes, so an empty pool means one lowering path
+/// holds more at once than the pool has. Falling back to a callee-saved register would
+/// hide that behind a register nothing saves.
+fn scratch_error() -> LaminaError {
+    LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+        "x86_64 scratch registers exhausted".to_string(),
+    ))
+}
+
 pub(super) fn emit_instruction_x86_64(
     inst: &MirInst,
     writer: &mut RaxTrackingWriter<impl Write>,
@@ -636,7 +645,7 @@ pub(super) fn emit_instruction_x86_64(
                             }
                         }
                         Operand::Register(_) => {
-                            let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+                            let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
                             load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
                             writeln!(writer, "    movq %{scratch}, %rcx")?;
                             if ty.size_bytes() < 8 {
@@ -698,7 +707,7 @@ pub(super) fn emit_instruction_x86_64(
                         }
                     }
                     _ => {
-                        let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+                        let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
                         load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
 
                         match op {
@@ -1255,7 +1264,7 @@ pub(super) fn emit_instruction_x86_64(
                 base, offset: 0, ..
             } = addr
             {
-                let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+                let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
                 match base {
                     Register::Virtual(vreg) => {
                         load_register_to_register(vreg, writer, reg_alloc, stack_slots, scratch)?;
@@ -1469,7 +1478,7 @@ pub(super) fn emit_instruction_x86_64(
                             writeln!(writer, "    leaq {offset}(%{phys}), %rax")?;
                         }
                     } else if let Some(slot_offset) = stack_slots.get(vreg) {
-                        let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+                        let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
                         writeln!(writer, "    movq {slot_offset}(%rbp), %{scratch}")?;
                         if *offset == 0 {
                             writeln!(writer, "    movq %{scratch}, %rax")?;
@@ -1708,7 +1717,7 @@ pub(super) fn emit_instruction_x86_64(
         } => {
             // Load false_val into a scratch register, true_val into rax.
             // Then test the condition and cmovnz true_val path.
-            let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+            let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
             load_operand_to_register(false_val, writer, reg_alloc, stack_slots, scratch)?;
             load_operand_to_rax(true_val, writer, reg_alloc, stack_slots)?;
             match cond {
@@ -1933,7 +1942,7 @@ pub(super) fn emit_int_compare(
         writeln!(writer, "    cmpq ${v}, %rax")?;
         return Ok("");
     }
-    let scratch = reg_alloc.alloc_scratch().unwrap_or("rbx");
+    let scratch = reg_alloc.alloc_scratch().ok_or_else(scratch_error)?;
     load_operand_to_register(rhs, writer, reg_alloc, stack_slots, scratch)?;
     if unsigned {
         extend_integer(writer, "rax", ty.size_bytes(), false)?;

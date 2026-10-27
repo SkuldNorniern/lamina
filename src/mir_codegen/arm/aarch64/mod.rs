@@ -137,7 +137,9 @@ fn copy_through_pointer<W: Write>(
     words: usize,
     ra: &mut A64RegAlloc,
 ) -> Result<(), IoError> {
-    let value = ra.alloc_scratch().unwrap_or("x21");
+    let value = ra
+        .alloc_scratch()
+        .ok_or_else(|| IoError::other("aarch64 scratch registers exhausted"))?;
     for word in 0..words {
         let at = word * 8;
         writeln!(w, "    ldr {value}, [{pointer}, #{at}]")?;
@@ -209,6 +211,13 @@ fn classify_aarch64_arguments(
         }
     }
     places
+}
+
+/// Every caller frees the scratch it takes, so an empty pool means one lowering path
+/// holds more at once than the pool has. Falling back to a callee-saved register would
+/// hide that behind a register nothing saves.
+fn scratch_error() -> CodegenError {
+    CodegenError::UnsupportedFeature("aarch64 scratch registers exhausted".to_string())
 }
 
 /// Bytes of outgoing stack the places need, before the sixteen-byte round up.
@@ -479,7 +488,7 @@ fn compile_single_function_aarch64_with(
     let param_places = classify_aarch64_arguments(&param_kinds, target_os, None);
     for ((p, kind), place) in func.sig.params.iter().zip(&param_kinds).zip(&param_places) {
         if let Some(off) = frame.slot_of(&p.reg) {
-            let addr = ra_pro.alloc_scratch().unwrap_or("x19");
+            let addr = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
             emit_frame_slot_address(&mut output, addr, off)
                 .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
@@ -487,7 +496,7 @@ fn compile_single_function_aarch64_with(
                 ArgPlace::Fpr { index } => {
                     // The slot holds the bits, so the float register is moved through a
                     // general one on its way in.
-                    let value = ra_pro.alloc_scratch().unwrap_or("x20");
+                    let value = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
                     if p.ty.size_bytes() == 4 {
                         writeln!(&mut output, "    fmov {}, s{index}", w_alias(value))
                             .and_then(|()| {
@@ -517,7 +526,7 @@ fn compile_single_function_aarch64_with(
                     .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
                 }
                 ArgPlace::Stack { offset, .. } if kind.by_reference => {
-                    let pointer = ra_pro.alloc_scratch().unwrap_or("x20");
+                    let pointer = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
                     writeln!(output, "    ldr {pointer}, [x29, #{}]", 16 + offset).map_err(
                         |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
                     )?;
@@ -545,7 +554,7 @@ fn compile_single_function_aarch64_with(
                     }
                 }
                 ArgPlace::Stack { offset, bytes } => {
-                    let val_reg = ra_pro.alloc_scratch().unwrap_or("x20");
+                    let val_reg = ra_pro.alloc_scratch().ok_or_else(scratch_error)?;
                     let words = bytes.div_ceil(8).max(1);
                     for word in 0..words {
                         let caller_offset = 16 + offset + word * 8;
@@ -847,7 +856,7 @@ fn emit_block<W: Write>(
         match inst {
             MirInst::SymbolAddress { dst, symbol } => {
                 let label = abi.mangle_function_name(symbol);
-                let scratch = ra.alloc_scratch().unwrap_or("x19");
+                let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 if os_uses_macho(abi.target_os()) {
                     writeln!(w, "    adrp {scratch}, {label}@PAGE")?;
                     writeln!(w, "    add {scratch}, {scratch}, {label}@PAGEOFF")?;
@@ -891,7 +900,7 @@ fn emit_block<W: Write>(
                         format!("AArch64 backend does not support vector Copy of type {ty}"),
                     )));
                 }
-                let scratch = ra.alloc_scratch().unwrap_or("x19");
+                let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 let value = x_alias(scratch);
                 match src {
                     Operand::Immediate(immediate) => {
@@ -912,9 +921,9 @@ fn emit_block<W: Write>(
                 dst,
                 ty,
             } => {
-                let s_l = ra.alloc_scratch().unwrap_or("x19");
-                let s_r = ra.alloc_scratch().unwrap_or("x20");
-                let s_d = ra.alloc_scratch().unwrap_or("x21");
+                let s_l = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let s_r = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 emit_materialize_operand(w, lhs, s_l, frame, ra)?;
                 emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                 if matches!(op, IntBinOp::UDiv | IntBinOp::URem | IntBinOp::LShr) {
@@ -1024,9 +1033,9 @@ fn emit_block<W: Write>(
                 dst,
                 ty,
             } => {
-                let s_l = ra.alloc_scratch().unwrap_or("x19");
-                let s_r = ra.alloc_scratch().unwrap_or("x20");
-                let s_d = ra.alloc_scratch().unwrap_or("x21");
+                let s_l = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let s_r = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 emit_materialize_operand(w, lhs, s_l, frame, ra)?;
                 emit_materialize_operand(w, rhs, s_r, frame, ra)?;
 
@@ -1060,8 +1069,8 @@ fn emit_block<W: Write>(
                 ra.free_scratch(s_d);
             }
             MirInst::FloatUnary { op, src, dst, ty } => {
-                let s_s = ra.alloc_scratch().unwrap_or("x19");
-                let s_d = ra.alloc_scratch().unwrap_or("x20");
+                let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 emit_materialize_operand(w, src, s_s, frame, ra)?;
 
                 let is32 = ty.size_bytes() == 4;
@@ -1095,9 +1104,9 @@ fn emit_block<W: Write>(
                 dst,
                 ty,
             } => {
-                let s_l = ra.alloc_scratch().unwrap_or("x19");
-                let s_r = ra.alloc_scratch().unwrap_or("x20");
-                let s_d = ra.alloc_scratch().unwrap_or("x21");
+                let s_l = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let s_r = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 emit_materialize_operand(w, lhs, s_l, frame, ra)?;
                 emit_materialize_operand(w, rhs, s_r, frame, ra)?;
                 if matches!(
@@ -1133,9 +1142,9 @@ fn emit_block<W: Write>(
                 dst,
                 ty,
             } => {
-                let s_l = ra.alloc_scratch().unwrap_or("x19");
-                let s_r = ra.alloc_scratch().unwrap_or("x20");
-                let s_d = ra.alloc_scratch().unwrap_or("x21");
+                let s_l = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let s_r = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 emit_materialize_operand(w, lhs, s_l, frame, ra)?;
                 emit_materialize_operand(w, rhs, s_r, frame, ra)?;
 
@@ -1167,8 +1176,8 @@ fn emit_block<W: Write>(
                 ra.free_scratch(s_d);
             }
             MirInst::Load { ty, dst, addr, .. } => {
-                let a = ra.alloc_scratch().unwrap_or("x19");
-                let t = ra.alloc_scratch().unwrap_or("x20");
+                let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 materialize_address(w, addr, a, frame, ra)?;
                 match ty.size_bytes() {
                     1 => writeln!(w, "    ldrsb {}, [{}]", x_alias(t), a)?,
@@ -1188,9 +1197,9 @@ fn emit_block<W: Write>(
                 true_val,
                 false_val,
             } => {
-                let r_cond = ra.alloc_scratch().unwrap_or("x19");
-                let r_t = ra.alloc_scratch().unwrap_or("x20");
-                let r_f = ra.alloc_scratch().unwrap_or("x21");
+                let r_cond = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let r_t = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let r_f = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 load_reg_to(w, cond, r_cond, frame, ra)?;
                 emit_materialize_operand(w, true_val, r_t, frame, ra)?;
                 emit_materialize_operand(w, false_val, r_f, frame, ra)?;
@@ -1220,8 +1229,8 @@ fn emit_block<W: Write>(
                 ra.free_scratch(r_f);
             }
             MirInst::Store { ty, src, addr, .. } => {
-                let a = ra.alloc_scratch().unwrap_or("x19");
-                let t = ra.alloc_scratch().unwrap_or("x20");
+                let a = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 materialize_address(w, addr, a, frame, ra)?;
                 emit_materialize_operand(w, src, t, frame, ra)?;
                 match ty.size_bytes() {
@@ -1238,14 +1247,14 @@ fn emit_block<W: Write>(
                 let offset = frame.slot_of(&Register::Virtual(*slot)).ok_or_else(|| {
                     LaminaError::ValidationError("stack address has no frame slot".into())
                 })?;
-                let t = ra.alloc_scratch().unwrap_or("x19");
+                let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 emit_mov_imm64(w, t, i64::from(offset) as u64)?;
                 writeln!(w, "    add {t}, x29, {t}")?;
                 store_result(w, dst, t, frame, ra)?;
                 ra.free_scratch(t);
             }
             MirInst::Lea { dst, base, offset } => {
-                let t = ra.alloc_scratch().unwrap_or("x19");
+                let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 match base {
                     // A placeholder's slot is the storage itself, so its
                     // address is the value; any other register holds a pointer
@@ -1272,7 +1281,7 @@ fn emit_block<W: Write>(
                                 } else if off < 0 && -off <= 4095 {
                                     writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
                                 } else {
-                                    let oreg = ra.alloc_scratch().unwrap_or("x20");
+                                    let oreg = ra.alloc_scratch().ok_or_else(scratch_error)?;
                                     emit_mov_imm64(w, oreg, off as u64)?;
                                     writeln!(w, "    add {t}, {t}, {oreg}")?;
                                     ra.free_scratch(oreg);
@@ -1290,7 +1299,7 @@ fn emit_block<W: Write>(
                             } else if off < 0 && -off <= 4095 {
                                 writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
                             } else {
-                                let oreg = ra.alloc_scratch().unwrap_or("x20");
+                                let oreg = ra.alloc_scratch().ok_or_else(scratch_error)?;
                                 emit_mov_imm64(w, oreg, off as u64)?;
                                 writeln!(w, "    add {t}, {t}, {oreg}")?;
                                 ra.free_scratch(oreg);
@@ -1335,7 +1344,7 @@ fn emit_block<W: Write>(
                         let ArgPlace::Stack { offset, bytes } = *place else {
                             continue;
                         };
-                        let scratch = ra.alloc_scratch().unwrap_or("x9");
+                        let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
                         emit_materialize_operand(w, argument, scratch, frame, ra)?;
                         store_argument_bytes(w, scratch, "sp", offset, bytes)?;
                         ra.free_scratch(scratch);
@@ -1344,7 +1353,7 @@ fn emit_block<W: Write>(
                 for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
                     match *place {
                         ArgPlace::Fpr { index } => {
-                            let bits = ra.alloc_scratch().unwrap_or("x9");
+                            let bits = ra.alloc_scratch().ok_or_else(scratch_error)?;
                             emit_materialize_operand(w, argument, bits, frame, ra)?;
                             if kind.ty_is_f32 {
                                 writeln!(w, "    fmov s{index}, {}", w_alias(bits))?;
@@ -1482,7 +1491,7 @@ fn emit_block<W: Write>(
                             writeln!(w, "    svc #0")?;
                             writeln!(w, "    ldrb {}, [sp]", w_alias("x9"))?;
                             if let Some(dst) = ret {
-                                let dst_reg = ra.alloc_scratch().unwrap_or("x10");
+                                let dst_reg = ra.alloc_scratch().ok_or_else(scratch_error)?;
                                 writeln!(w, "    cmp x0, #1")?;
                                 writeln!(w, "    uxtb {}, {}", x_alias("x9"), w_alias("x9"))?;
                                 writeln!(
@@ -1505,7 +1514,7 @@ fn emit_block<W: Write>(
                             writeln!(w, "    bl read")?;
                             writeln!(w, "    ldrb {}, [sp]", w_alias("x9"))?;
                             if let Some(dst) = ret {
-                                let dst_reg = ra.alloc_scratch().unwrap_or("x10");
+                                let dst_reg = ra.alloc_scratch().ok_or_else(scratch_error)?;
                                 writeln!(w, "    cmp x0, #1")?;
                                 writeln!(w, "    uxtb {}, {}", x_alias("x9"), w_alias("x9"))?;
                                 writeln!(
@@ -1596,7 +1605,7 @@ fn emit_block<W: Write>(
                             ArgPlace::Fpr { index } => {
                                 // Values are held as bits in general registers, so a
                                 // float argument moves across on the way out.
-                                let bits = ra.alloc_scratch().unwrap_or("x9");
+                                let bits = ra.alloc_scratch().ok_or_else(scratch_error)?;
                                 emit_materialize_operand(w, argument, bits, frame, ra)?;
                                 if kind.ty_is_f32 {
                                     writeln!(w, "    fmov s{index}, {}", w_alias(bits))?;
@@ -1617,7 +1626,7 @@ fn emit_block<W: Write>(
                                     )?;
                                     continue;
                                 }
-                                let address = ra.alloc_scratch().unwrap_or("x9");
+                                let address = ra.alloc_scratch().ok_or_else(scratch_error)?;
                                 emit_materialize_operand(w, argument, address, frame, ra)?;
                                 for word in 0..words {
                                     writeln!(
@@ -1657,12 +1666,12 @@ fn emit_block<W: Write>(
                             if kind.by_reference {
                                 continue;
                             }
-                            let scratch = ra.alloc_scratch().unwrap_or("x9");
+                            let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
                             if kind.aggregate.is_none() {
                                 emit_materialize_operand(w, argument, scratch, frame, ra)?;
                                 store_argument_bytes(w, scratch, "sp", offset, bytes)?;
                             } else {
-                                let address = ra.alloc_scratch().unwrap_or("x10");
+                                let address = ra.alloc_scratch().ok_or_else(scratch_error)?;
                                 emit_materialize_operand(w, argument, address, frame, ra)?;
                                 for word in 0..bytes.div_ceil(8) {
                                     writeln!(w, "    ldr {scratch}, [{address}, #{}]", word * 8)?;
@@ -1683,8 +1692,8 @@ fn emit_block<W: Write>(
                             continue;
                         };
                         let words = kind.aggregate.map_or(0, |a| a.words());
-                        let source = ra.alloc_scratch().unwrap_or("x9");
-                        let target = ra.alloc_scratch().unwrap_or("x10");
+                        let source = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        let target = ra.alloc_scratch().ok_or_else(scratch_error)?;
                         emit_materialize_operand(w, argument, source, frame, ra)?;
                         writeln!(w, "    add {target}, sp, #{copy_at}")?;
                         copy_through_pointer(w, source, target, words, ra)?;
@@ -1740,7 +1749,7 @@ fn emit_block<W: Write>(
                                         "aggregate result has no frame slot".to_string(),
                                     )
                                 })?;
-                                let addr = ra.alloc_scratch().unwrap_or("x9");
+                                let addr = ra.alloc_scratch().ok_or_else(scratch_error)?;
                                 emit_frame_slot_address(w, addr, off)?;
                                 writeln!(w, "    str x0, [{addr}]")?;
                                 if aggregate.words() > 1 {
@@ -1764,7 +1773,7 @@ fn emit_block<W: Write>(
                 for ((argument, kind), place) in args.iter().zip(&kinds).zip(&places) {
                     match *place {
                         ArgPlace::Fpr { index } => {
-                            let bits = ra.alloc_scratch().unwrap_or("x9");
+                            let bits = ra.alloc_scratch().ok_or_else(scratch_error)?;
                             emit_materialize_operand(w, argument, bits, frame, ra)?;
                             if kind.ty_is_f32 {
                                 writeln!(w, "    fmov s{index}, {}", w_alias(bits))?;
@@ -1777,7 +1786,7 @@ fn emit_block<W: Write>(
                             emit_materialize_operand(w, argument, &format!("x{first}"), frame, ra)?;
                         }
                         ArgPlace::Stack { offset, bytes } => {
-                            let scratch = ra.alloc_scratch().unwrap_or("x9");
+                            let scratch = ra.alloc_scratch().ok_or_else(scratch_error)?;
                             emit_materialize_operand(w, argument, scratch, frame, ra)?;
                             store_argument_bytes(w, scratch, "x29", 16 + offset, bytes)?;
                             ra.free_scratch(scratch);
@@ -1798,7 +1807,7 @@ fn emit_block<W: Write>(
                     && ret_aggregate.is_none()
                     && let Some(ty) = ret_float
                 {
-                    let bits = ra.alloc_scratch().unwrap_or("x9");
+                    let bits = ra.alloc_scratch().ok_or_else(scratch_error)?;
                     emit_materialize_operand(w, v, bits, frame, ra)?;
                     if ty.size_bytes() == 4 {
                         writeln!(w, "    fmov s0, {}", w_alias(bits))?;
@@ -1814,11 +1823,11 @@ fn emit_block<W: Write>(
                         // The returned operand addresses the aggregate; the words
                         // themselves go back in x0 and x1.
                         Some(aggregate) => {
-                            let addr = ra.alloc_scratch().unwrap_or("x9");
+                            let addr = ra.alloc_scratch().ok_or_else(scratch_error)?;
                             emit_materialize_operand(w, v, addr, frame, ra)?;
                             match sret_slot {
                                 Some(offset) => {
-                                    let buffer = ra.alloc_scratch().unwrap_or("x10");
+                                    let buffer = ra.alloc_scratch().ok_or_else(scratch_error)?;
                                     emit_frame_slot_load(w, buffer, offset)?;
                                     copy_through_pointer(w, addr, buffer, aggregate.words(), ra)?;
                                     writeln!(w, "    mov x0, {buffer}")?;
@@ -1846,7 +1855,7 @@ fn emit_block<W: Write>(
                 true_target,
                 false_target,
             } => {
-                let t = ra.alloc_scratch().unwrap_or("x19");
+                let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 load_reg_to(w, cond, t, frame, ra)?;
                 writeln!(w, "    cmp {}, #0", x_alias(t))?;
                 emit_branch_if(
@@ -1863,8 +1872,8 @@ fn emit_block<W: Write>(
                 cases,
                 default,
             } => {
-                let t = ra.alloc_scratch().unwrap_or("x19");
-                let constant = ra.alloc_scratch().unwrap_or("x20");
+                let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                let constant = ra.alloc_scratch().ok_or_else(scratch_error)?;
                 load_reg_to(w, value, t, frame, ra)?;
                 for (case_val, case_label) in cases {
                     emit_mov_imm64(w, constant, *case_val as u64)?;
@@ -1955,7 +1964,7 @@ fn load_reg_to<W: Write>(
                 if (-256..=255).contains(&off) {
                     writeln!(w, "    ldur {dest}, [x29, #{off}]")?;
                 } else {
-                    let mut addr = ra.alloc_scratch().unwrap_or("x12");
+                    let mut addr = ra.alloc_scratch().ok_or_else(scratch_error)?;
                     if addr == dest {
                         if let Some(other) = ra.alloc_scratch() {
                             addr = other;
@@ -2005,7 +2014,7 @@ fn store_result<W: Write>(
                 if (-256..=255).contains(&off) {
                     writeln!(w, "    stur {src_reg}, [x29, #{off}]")?;
                 } else {
-                    let mut addr = ra.alloc_scratch().unwrap_or("x12");
+                    let mut addr = ra.alloc_scratch().ok_or_else(scratch_error)?;
                     if addr == src_reg {
                         if let Some(other) = ra.alloc_scratch() {
                             addr = other;
@@ -2196,7 +2205,7 @@ fn materialize_address<W: Write>(
                     writeln!(w, "    sub {}, {}, #{}", dest, dest, -off_val)?;
                 } else {
                     // Offset too large, materialize in register
-                    let oreg = ra.alloc_scratch().unwrap_or("x20");
+                    let oreg = ra.alloc_scratch().ok_or_else(scratch_error)?;
                     if oreg == dest {
                         // Need a different register
                         if let Some(other) = ra.alloc_scratch() {
@@ -2227,7 +2236,7 @@ fn materialize_address<W: Write>(
         } => {
             // dest = base (base holds an address)
             load_reg_to(w, base, dest, frame, ra)?;
-            let mut idx = ra.alloc_scratch().unwrap_or("x19");
+            let mut idx = ra.alloc_scratch().ok_or_else(scratch_error)?;
             if idx == dest {
                 if let Some(other) = ra.alloc_scratch() {
                     idx = other;
@@ -2257,7 +2266,7 @@ fn materialize_address<W: Write>(
                     writeln!(w, "    sub {}, {}, #{}", dest, dest, -off_val)?;
                 } else {
                     // Offset too large (shouldn't happen with i8, but handle for safety)
-                    let oreg = ra.alloc_scratch().unwrap_or("x20");
+                    let oreg = ra.alloc_scratch().ok_or_else(scratch_error)?;
                     if oreg == dest {
                         let temp = if dest != "x20" { "x20" } else { "x19" };
                         emit_mov_imm64(w, temp, off_val as u64)?;
@@ -2399,8 +2408,8 @@ fn emit_int_to_float<W: Write>(
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
 ) -> Result<(), LaminaError> {
-    let s_s = ra.alloc_scratch().unwrap_or("x19");
-    let s_d = ra.alloc_scratch().unwrap_or("x20");
+    let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+    let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
     emit_materialize_operand(w, src, s_s, frame, ra)?;
     extend_integer(w, s_s, from, signed)?;
     let cvt = if signed { "scvtf" } else { "ucvtf" };
@@ -2425,7 +2434,7 @@ fn emit_float_convert<W: Write>(
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
 ) -> Result<(), LaminaError> {
-    let s_s = ra.alloc_scratch().unwrap_or("x19");
+    let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
     emit_materialize_operand(w, src, s_s, frame, ra)?;
     if to.size_bytes() == 4 {
         writeln!(w, "    fmov d0, {s_s}")?;
@@ -2452,9 +2461,9 @@ fn emit_float_to_int<W: Write>(
     frame: &FrameMap,
     ra: &mut A64RegAlloc,
 ) -> Result<(), LaminaError> {
-    let s_s = ra.alloc_scratch().unwrap_or("x19");
-    let s_d = ra.alloc_scratch().unwrap_or("x20");
-    let s_t = ra.alloc_scratch().unwrap_or("x21");
+    let s_s = ra.alloc_scratch().ok_or_else(scratch_error)?;
+    let s_d = ra.alloc_scratch().ok_or_else(scratch_error)?;
+    let s_t = ra.alloc_scratch().ok_or_else(scratch_error)?;
     emit_materialize_operand(w, src, s_s, frame, ra)?;
     if from.size_bytes() == 4 {
         writeln!(w, "    fmov s0, {}", w_alias(s_s))?;
