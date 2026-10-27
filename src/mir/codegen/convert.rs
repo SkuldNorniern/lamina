@@ -384,14 +384,55 @@ fn aggregate_global_bytes(
             "@{name} takes a string literal only in a byte array"
         )));
     }
-    if text.len() >= size {
+    let mut bytes = string_literal_bytes(name, text)?;
+    if bytes.len() >= size {
         return Err(FromIRError::UnsupportedGlobal(format!(
             "@{name} holds {size} bytes, too few for \"{text}\" and its terminator"
         )));
     }
-    let mut bytes = text.as_bytes().to_vec();
     bytes.resize(size, 0);
     Ok(Some(bytes))
+}
+
+/// Bytes a string literal stands for, escapes resolved. The parser keeps the literal
+/// as it was written so it can borrow it; the bytes are decided here.
+fn string_literal_bytes(name: &str, text: &str) -> Result<Vec<u8>, FromIRError> {
+    let mut bytes = Vec::with_capacity(text.len());
+    let mut rest = text.chars();
+    while let Some(c) = rest.next() {
+        if c != '\\' {
+            let mut buffer = [0u8; 4];
+            bytes.extend_from_slice(c.encode_utf8(&mut buffer).as_bytes());
+            continue;
+        }
+        let escape = rest.next().ok_or_else(|| {
+            FromIRError::UnsupportedGlobal(format!("@{name} ends in a lone backslash"))
+        })?;
+        let byte = match escape {
+            'n' => b'\n',
+            't' => b'\t',
+            'r' => b'\r',
+            '0' => 0,
+            '\\' => b'\\',
+            '"' => b'"',
+            '\'' => b'\'',
+            'x' => {
+                let digits: String = rest.by_ref().take(2).collect();
+                u8::from_str_radix(&digits, 16).map_err(|_| {
+                    FromIRError::UnsupportedGlobal(format!(
+                        "@{name} has \\x{digits}, which is not two hex digits"
+                    ))
+                })?
+            }
+            other => {
+                return Err(FromIRError::UnsupportedGlobal(format!(
+                    "@{name} has \\{other}, which is not an escape"
+                )));
+            }
+        };
+        bytes.push(byte);
+    }
+    Ok(bytes)
 }
 
 fn global_initializer(
