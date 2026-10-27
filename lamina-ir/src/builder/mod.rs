@@ -181,6 +181,7 @@ impl<'a> IRBuilder<'a> {
         let signature = FunctionSignature {
             params,
             return_type,
+            variadic: false,
         };
 
         self.function_signatures.insert(name, signature);

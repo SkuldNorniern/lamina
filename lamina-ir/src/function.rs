@@ -34,7 +34,8 @@
 //!         FunctionParameter { name: "a", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
 //!         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] }
 //!     ],
-//!     return_type: Type::Primitive(PrimitiveType::I32)
+//!     return_type: Type::Primitive(PrimitiveType::I32),
+//!     variadic: false,
 //! };
 //! ```
 //!
@@ -500,6 +501,7 @@ pub struct FunctionParameter<'a> {
 ///         FunctionParameter { name: "b", ty: Type::Primitive(PrimitiveType::I32), annotations: vec![] },
 ///     ],
 ///     return_type: Type::Primitive(PrimitiveType::I32),
+///     variadic: false,
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -508,6 +510,8 @@ pub struct FunctionSignature<'a> {
     pub params: Vec<FunctionParameter<'a>>,
     /// The return type of the function (`Type::Void` if it doesn't return)
     pub return_type: Type<'a>, // Type::Void if it doesn't return
+    /// Set by a trailing `...`, which only an `@extern` declaration may carry.
+    pub variadic: bool,
 }
 
 /// A basic block within a function.
@@ -941,6 +945,7 @@ mod tests {
             signature: FunctionSignature {
                 params: vec![],
                 return_type: Type::Void,
+                variadic: false,
             },
             annotations: vec![],
             basic_blocks: blocks,
@@ -975,6 +980,7 @@ mod tests {
         let sig1 = FunctionSignature {
             params: vec![],
             return_type: Type::Void,
+            variadic: false,
         };
         assert_eq!(format!("{}", sig1), "() -> void");
 
@@ -986,6 +992,7 @@ mod tests {
                 annotations: vec![],
             }],
             return_type: Type::Primitive(PrimitiveType::F32),
+            variadic: false,
         };
         assert_eq!(format!("{}", sig2), "(f32 %input) -> f32");
 
@@ -1004,6 +1011,7 @@ mod tests {
                 },
             ],
             return_type: Type::Named("ResultType"),
+            variadic: false,
         };
         assert_eq!(format!("{}", sig3), "(i32 %a, @MyType %b) -> @ResultType");
     }
@@ -1041,6 +1049,7 @@ mod tests {
                 annotations: vec![],
             }],
             return_type: Type::Primitive(PrimitiveType::I32),
+            variadic: false,
         };
 
         let mut blocks = HashMap::new();
@@ -1086,6 +1095,7 @@ mod tests {
                 annotations: vec![],
             }],
             return_type: Type::Primitive(PrimitiveType::I32),
+            variadic: false,
         };
 
         let mut blocks = HashMap::new();
@@ -1162,6 +1172,7 @@ mod tests {
             signature: FunctionSignature {
                 params,
                 return_type,
+                variadic: false,
             },
             annotations: vec![],
             basic_blocks: blocks,

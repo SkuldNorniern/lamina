@@ -101,7 +101,15 @@ pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a
     let signature = parse_fn_signature(state)?;
 
     state.skip_whitespace_and_comments();
-    if annotations.contains(&FunctionAnnotation::Extern) && state.current_char() != Some('{') {
+    let declaration_only =
+        annotations.contains(&FunctionAnnotation::Extern) && state.current_char() != Some('{');
+    if signature.variadic && !declaration_only {
+        return Err(state.error(format!(
+            "Variadic parameter list on @{name}, which has a body\n  Hint: Lamina cannot define a variadic function; only an @extern declaration may end in ..."
+        )));
+    }
+
+    if declaration_only {
         return Ok(Function {
             name,
             signature,
@@ -151,20 +159,21 @@ pub fn parse_fn_signature<'a>(
     state: &mut ParserState<'a>,
 ) -> Result<FunctionSignature<'a>, LaminaError> {
     state.expect_char('(')?;
-    let params = parse_param_list(state)?;
+    let (params, variadic) = parse_param_list(state)?;
     state.expect_char(')')?;
     state.consume_keyword("->")?;
     let return_type = parse_type(state)?;
     Ok(FunctionSignature {
         params,
         return_type,
+        variadic,
     })
 }
 
-/// Parses a parameter list.
+/// Parses a parameter list, and whether it ends in `...`.
 pub fn parse_param_list<'a>(
     state: &mut ParserState<'a>,
-) -> Result<Vec<FunctionParameter<'a>>, LaminaError> {
+) -> Result<(Vec<FunctionParameter<'a>>, bool), LaminaError> {
     let mut params = Vec::new();
     let mut param_names = HashSet::new();
 
@@ -172,6 +181,15 @@ pub fn parse_param_list<'a>(
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
             break;
+        }
+
+        if state.peek_slice(3) == Some("...") {
+            state.advance_by(3);
+            state.skip_whitespace_and_comments();
+            if state.current_char() != Some(')') {
+                return Err(state.error("... must be the last parameter"));
+            }
+            return Ok((params, true));
         }
 
         let param_ty = parse_type(state)?;
@@ -193,7 +211,7 @@ pub fn parse_param_list<'a>(
         }
         state.expect_char(',')?;
     }
-    Ok(params)
+    Ok((params, false))
 }
 
 /// Parses a basic block.

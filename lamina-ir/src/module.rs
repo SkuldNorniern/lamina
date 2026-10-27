@@ -614,6 +614,7 @@ mod tests {
                 annotations: vec![],
             }],
             return_type: Type::Primitive(PrimitiveType::I32),
+            variadic: false,
         };
         let mut func_blocks = HashMap::new();
         func_blocks.insert(

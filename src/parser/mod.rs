@@ -1253,4 +1253,31 @@ ret.i64 0
 
         Ok(())
     }
+
+    #[test]
+    fn trailing_dots_mark_extern_declaration_variadic() -> Result<(), LaminaError> {
+        let module = parse_module("@extern\nfn @printf(ptr %fmt, ...) -> i32\n")?;
+        let printf = &module.functions["printf"];
+        assert!(printf.signature.variadic);
+        assert_eq!(printf.signature.params.len(), 1);
+
+        let plain = parse_module("fn @main() -> i64 {\nentry:\n  ret.i64 0\n}\n")?;
+        assert!(!plain.functions["main"].signature.variadic);
+        Ok(())
+    }
+
+    #[test]
+    fn variadic_parameter_list_needs_declaration_without_body() {
+        let defined = parse_module("fn @f(i64 %a, ...) -> i64 {\nentry:\n  ret.i64 %a\n}\n");
+        assert!(
+            format!("{defined:?}").contains("which has a body"),
+            "{defined:?}"
+        );
+
+        let misplaced = parse_module("@extern\nfn @f(..., i64 %a) -> i64\n");
+        assert!(
+            format!("{misplaced:?}").contains("must be the last parameter"),
+            "{misplaced:?}"
+        );
+    }
 }
