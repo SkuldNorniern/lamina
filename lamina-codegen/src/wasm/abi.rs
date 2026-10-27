@@ -62,6 +62,26 @@ impl WasmABI {
                 "$free",
                 "(import \"env\" \"free\" (func $free (param i64)))",
             ),
+            (
+                "$write",
+                "(import \"env\" \"write\" (func $write (param i64 i64) (result i64)))",
+            ),
+            (
+                "$read",
+                "(import \"env\" \"read\" (func $read (param i64 i64) (result i64)))",
+            ),
+            (
+                "$memcpy",
+                "(import \"env\" \"memcpy\" (func $memcpy (param i64 i64 i64)))",
+            ),
+            (
+                "$memmove",
+                "(import \"env\" \"memmove\" (func $memmove (param i64 i64 i64)))",
+            ),
+            (
+                "$memset",
+                "(import \"env\" \"memset\" (func $memset (param i64 i64 i64)))",
+            ),
         ]
     }
 
