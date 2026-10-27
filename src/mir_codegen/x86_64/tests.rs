@@ -1389,3 +1389,31 @@ int main(void) {
         Ok(())
     }
 }
+
+#[test]
+fn external_declarations_come_out_in_one_order() {
+    let ir = parse_module(
+        "@extern fn @zeta(i64 %a) -> i64\n@extern fn @alpha(i64 %a) -> i64\n\
+         @extern fn @mu(i64 %a) -> i64\nfn @main() -> i64 {\nentry:\n\
+         %a = call @zeta(1)\n%b = call @alpha(2)\n%c = call @mu(3)\nret.i64 %a\n}\n",
+    )
+    .unwrap();
+    let mir = from_ir(&ir, "externs").unwrap();
+
+    let emit = || {
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).unwrap();
+        String::from_utf8(output)
+            .unwrap()
+            .lines()
+            .filter(|line| line.starts_with(".extern "))
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+
+    let first = emit();
+    assert_eq!(first, [".extern alpha", ".extern mu", ".extern zeta"]);
+    for _ in 0..8 {
+        assert_eq!(emit(), first);
+    }
+}
