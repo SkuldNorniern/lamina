@@ -219,7 +219,7 @@ fn compile_single_function_wasm(
     func: &Function,
     memory: Memory,
     target_os: TargetOperatingSystem,
-    globals: &BTreeMap<String, u32>,
+    addresses: &Addresses,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut output = Vec::new();
     let abi = WasmABI::new(target_os);
@@ -326,7 +326,7 @@ fn compile_single_function_wasm(
                 &vreg_to_local,
                 &block_labels,
                 &frame,
-                globals,
+                addresses,
             )
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
         }
@@ -365,12 +365,18 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         Memory::I64 => TargetArchitecture::Wasm64,
     };
     validate_module_call_parameters(module, arch)?;
-    let global_addresses = Arc::new(global_addresses(module)?);
+    let table = function_table(module);
+    let addresses = Arc::new(Addresses {
+        globals: global_addresses(module)?,
+        functions: table
+            .iter()
+            .enumerate()
+            .map(|(index, name)| ((*name).to_string(), index as u32))
+            .collect(),
+    });
     let results = compile_functions_parallel(module, target_os, codegen_units, {
-        let global_addresses = Arc::clone(&global_addresses);
-        move |name, func, os| {
-            compile_single_function_wasm(name, func, memory, os, &global_addresses)
-        }
+        let addresses = Arc::clone(&addresses);
+        move |name, func, os| compile_single_function_wasm(name, func, memory, os, &addresses)
     })
     .map_err(parallel_codegen_error)?;
 
@@ -407,6 +413,43 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         }
     }
 
+    // A call through a pointer indexes the table, so a module that makes one needs
+    // the table, the element segment naming every function, and a declared signature
+    // for each shape it calls.
+    let indirect: BTreeSet<(usize, bool)> = module
+        .functions
+        .values()
+        .flat_map(|func| &func.blocks)
+        .flat_map(|block| &block.instructions)
+        .filter_map(|inst| match inst {
+            MirInst::CallIndirect { args, ret_ty, .. } => Some((args.len(), ret_ty.is_some())),
+            _ => None,
+        })
+        .collect();
+    let addressed = module
+        .functions
+        .values()
+        .flat_map(|func| &func.blocks)
+        .flat_map(|block| &block.instructions)
+        .any(|inst| {
+            matches!(inst, MirInst::SymbolAddress { symbol, .. }
+                if addresses.functions.contains_key(symbol))
+        });
+    for (arity, returns) in &indirect {
+        let name = signature_name(*arity, *returns);
+        let params = " (param i64)".repeat(*arity);
+        let result = if *returns { " (result i64)" } else { "" };
+        writeln!(writer, "  (type ${name} (func{params}{result}))")?;
+    }
+    if !indirect.is_empty() || addressed {
+        writeln!(writer, "  (table {} funcref)", table.len())?;
+        write!(writer, "  (elem (i32.const 0)")?;
+        for name in &table {
+            write!(writer, " ${}", abi.mangle_function_name(name))?;
+        }
+        writeln!(writer, ")")?;
+    }
+
     // Memory must follow the imports; loads and stores need it declared.
     let index = memory.index_type();
     let wide = if memory == Memory::I64 { " i64" } else { "" };
@@ -422,7 +465,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         if bytes.iter().all(|&b| b == 0) {
             continue;
         }
-        let address = global_addresses[name];
+        let address = addresses.globals[name];
         let escaped: String = bytes.iter().map(|b| format!("\\{b:02x}")).collect();
         writeln!(writer, "  (data ({index}.const {address}) \"{escaped}\")")?;
     }
@@ -462,6 +505,39 @@ const WASM_STACK_TOP: u32 = 65536;
 /// Globals occupy linear memory from this address upward, below the stack.
 /// Zero-initialized globals need no data segment because memory starts zeroed.
 const WASM_GLOBAL_BASE: u32 = 16;
+
+/// Where a name resolves to. A global names a linear-memory address; a function names
+/// its slot in the module's table, which is what a call through a pointer indexes.
+pub struct Addresses {
+    globals: BTreeMap<String, u32>,
+    functions: BTreeMap<String, u32>,
+}
+
+/// Functions the module can take the address of, in table order. Imports and
+/// definitions share one index space, and the table lists both.
+fn function_table(module: &MirModule) -> Vec<&str> {
+    let mut names: Vec<&str> = module
+        .external_functions
+        .iter()
+        .map(String::as_str)
+        .collect();
+    names.extend(
+        module
+            .functions
+            .keys()
+            .map(String::as_str)
+            .filter(|name| !module.external_functions.contains(*name)),
+    );
+    names.sort_unstable();
+    names
+}
+
+/// Signature a `call_indirect` declares. Every wasm function the backend writes takes
+/// and returns i64, so an argument count and a result are all that tell two apart.
+fn signature_name(arity: usize, returns: bool) -> String {
+    let result = if returns { "r" } else { "v" };
+    format!("sig_{arity}_{result}")
+}
 
 fn global_addresses(module: &MirModule) -> Result<BTreeMap<String, u32>, LaminaError> {
     let mut names: Vec<&str> = module.globals.keys().map(String::as_str).collect();
@@ -557,7 +633,7 @@ fn emit_instruction_wasm(
     vreg_to_local: &HashMap<VirtualReg, usize>,
     block_labels: &HashMap<&str, usize>,
     frame: &StackFrame,
-    globals: &BTreeMap<String, u32>,
+    addresses: &Addresses,
 ) -> Result<(), LaminaError> {
     if let Some(operations) = integer_conversion(inst) {
         for operation in operations {
@@ -568,19 +644,45 @@ fn emit_instruction_wasm(
                 vreg_to_local,
                 block_labels,
                 frame,
-                globals,
+                addresses,
             )?;
         }
         return Ok(());
     }
     match inst {
         MirInst::SymbolAddress { dst, symbol } => {
-            let address = globals.get(symbol).ok_or_else(|| {
-                LaminaError::ValidationError(format!("symbol address @{symbol} has no global"))
-            })?;
+            let address = addresses
+                .globals
+                .get(symbol)
+                .or_else(|| addresses.functions.get(symbol))
+                .ok_or_else(|| {
+                    LaminaError::ValidationError(format!("symbol address @{symbol} has no global"))
+                })?;
             writeln!(writer, "        i64.const {address}")?;
             if let Register::Virtual(vreg) = dst {
                 store_to_register_wasm(&Register::Virtual(*vreg), writer, vreg_to_local)?;
+            }
+        }
+        MirInst::CallIndirect {
+            target,
+            args,
+            ret,
+            ret_ty,
+            ..
+        } => {
+            for arg in args {
+                load_operand_wasm(arg, writer, vreg_to_local)?;
+            }
+            load_operand_wasm(target, writer, vreg_to_local)?;
+            // A table index is an i32 whatever the memory indexes with.
+            writeln!(writer, "      i32.wrap_i64")?;
+            writeln!(
+                writer,
+                "      call_indirect (type ${})",
+                signature_name(args.len(), ret_ty.is_some())
+            )?;
+            if let Some(dst) = ret {
+                store_to_register_wasm(dst, writer, vreg_to_local)?;
             }
         }
         MirInst::VectorOp { .. } => simd::emit(inst, writer, vreg_to_local)?,

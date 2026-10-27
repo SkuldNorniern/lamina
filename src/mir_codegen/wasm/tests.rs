@@ -327,3 +327,31 @@ fn module_imports_only_helpers_it_calls() {
     assert!(!printing.contains("$logu"), "{printing}");
     assert!(!printing.contains("$malloc"), "{printing}");
 }
+
+#[test]
+fn call_through_pointer_indexes_function_table() {
+    let source = "fn @twice(i64 %x) -> i64 {\nentry:\n  %r = mul.i64 %x, 2\n  ret.i64 %r\n}\n\nfn @main() -> i64 {\nentry:\n  %f = funcaddr @twice\n  %r = callptr.i64 %f(21)\n  ret.i64 %r\n}\n";
+    let wat = emit_wat(source, TargetArchitecture::Wasm32);
+
+    assert!(
+        wat.contains("(type $sig_1_r (func (param i64) (result i64)))"),
+        "{wat}"
+    );
+    assert!(wat.contains("(table 2 funcref)"), "{wat}");
+    assert!(wat.contains("(elem (i32.const 0) $main $twice)"), "{wat}");
+    assert!(wat.contains("call_indirect (type $sig_1_r)"), "{wat}");
+
+    // @twice is the second element, so taking its address pushes 1.
+    let address = wat
+        .lines()
+        .map(str::trim)
+        .position(|line| line == "i64.const 1")
+        .is_some();
+    assert!(address, "{wat}");
+
+    let quiet = emit_wat(
+        "fn @main() -> i64 {\nentry:\n  ret.i64 0\n}\n",
+        TargetArchitecture::Wasm32,
+    );
+    assert!(!quiet.contains("(table"), "{quiet}");
+}
