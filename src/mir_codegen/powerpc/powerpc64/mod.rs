@@ -1125,7 +1125,16 @@ fn emit_instruction_ppc64<W: Write>(
             } else {
                 let types = signatures.arguments(name, args);
                 let places = classify_ppc64_arguments(&types);
-                let shadow_floats = signatures.may_be_variadic(name, args.len());
+                // A declaration says where its variadic arguments start. A callee with
+                // no prototype may be variadic anywhere, and a shadow copy costs a
+                // non-variadic one nothing.
+                let fixed = signatures.fixed_arguments(name).unwrap_or(
+                    if signatures.may_be_variadic(name, args.len()) {
+                        0
+                    } else {
+                        args.len()
+                    },
+                );
                 for (index, ((arg, ty), place)) in args.iter().zip(&types).zip(&places).enumerate()
                 {
                     match *place {
@@ -1149,7 +1158,7 @@ fn emit_instruction_ppc64<W: Write>(
                             )?;
                             // ELFv2 hands a variadic callee its floats in both banks, and
                             // the callee reads whichever one its va_arg takes.
-                            if shadow_floats && index < arg_regs.len() {
+                            if index >= fixed && index < arg_regs.len() {
                                 writeln!(writer, "    stfd {bank}, -8(1)")?;
                                 writeln!(writer, "    ld {}, -8(1)", arg_regs[index])?;
                             }
