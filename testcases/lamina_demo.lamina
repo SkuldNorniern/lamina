@@ -70,8 +70,11 @@ fn @main() -> i64 {
     %p7 = writebyte 58
     %p8 = writebyte 32
 
-    # Print the result value
-    %dummy = call @print_digit(%result)
+    # Print the result value, tens digit then units
+    %tens = div.i64 %result, 10
+    %units = rem.i64 %result, 10
+    %dummy_t = call @print_digit(%tens)
+    %dummy_u = call @print_digit(%units)
 
     %final1 = writebyte 10
     %final2 = writebyte 76
