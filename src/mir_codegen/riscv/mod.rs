@@ -1128,7 +1128,14 @@ fn emit_instruction_riscv<W: Write>(
                 // General function call implementation
                 // RISC-V calling convention: first 8 args in a0-a7, remaining on stack
 
-                let types = ctx.signatures.arguments(name, args);
+                let mut types = ctx.signatures.arguments(name, args);
+                // LP64D sends a variadic argument through the integer bank, a float
+                // included, so the callee's va_arg finds the bits where it looks.
+                if let Some(fixed) = ctx.signatures.fixed_arguments(name) {
+                    for ty in types.iter_mut().skip(fixed).filter(|ty| ty.is_float()) {
+                        *ty = MirType::i64();
+                    }
+                }
                 let stack_space =
                     pass_riscv_arguments(writer, reg_alloc, stack_slots, args, &types, ctx.target)?;
 
