@@ -1025,13 +1025,13 @@ fn emit_instruction_wasm(
                     // Emit load instruction based on type
                     match ty {
                         MirType::Scalar(ScalarType::I8) => {
-                            writeln!(writer, "      i64.load8_u")?;
+                            writeln!(writer, "      i64.load8_s")?;
                         }
                         MirType::Scalar(ScalarType::I16) => {
-                            writeln!(writer, "      i64.load16_u")?;
+                            writeln!(writer, "      i64.load16_s")?;
                         }
                         MirType::Scalar(ScalarType::I32) => {
-                            writeln!(writer, "      i64.load32_u")?;
+                            writeln!(writer, "      i64.load32_s")?;
                         }
                         MirType::Scalar(ScalarType::I64)
                         | MirType::Scalar(ScalarType::Ptr | ScalarType::PtrIn(_)) => {
@@ -1084,13 +1084,13 @@ fn emit_instruction_wasm(
                     // Emit load instruction based on type (same as BaseOffset)
                     match ty {
                         MirType::Scalar(ScalarType::I8) => {
-                            writeln!(writer, "      i64.load8_u")?;
+                            writeln!(writer, "      i64.load8_s")?;
                         }
                         MirType::Scalar(ScalarType::I16) => {
-                            writeln!(writer, "      i64.load16_u")?;
+                            writeln!(writer, "      i64.load16_s")?;
                         }
                         MirType::Scalar(ScalarType::I32) => {
-                            writeln!(writer, "      i64.load32_u")?;
+                            writeln!(writer, "      i64.load32_s")?;
                         }
                         MirType::Scalar(ScalarType::F32) => {
                             writeln!(writer, "      f32.load")?;
