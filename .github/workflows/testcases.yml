@@ -67,3 +67,24 @@ jobs:
         run: cargo build --release
       - name: Run testcases
         run: python3 run_tests.py
+
+  # Static codegen metrics (instruction, spill, call, branch and frame counts per
+  # testcase per opt level) compared against metrics/baseline-x86_64.txt. Any
+  # difference fails this job. A codegen change therefore needs the baseline
+  # regenerated and committed in the same PR, so the diff is reviewed. See
+  # metrics/README.md. Linux only: the metrics are x86_64 and the baseline is
+  # pinned to --target x86_64_linux.
+  codegen-metrics:
+    name: "codegen metrics (ubuntu-latest)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Build compiler
+        run: cargo build --release
+      - name: Check codegen metrics against baseline
+        run: python3 metrics/codegen_metrics.py --check
