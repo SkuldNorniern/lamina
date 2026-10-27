@@ -1,0 +1,11 @@
+# print in tail position of a void function
+fn @show(i64 %x) -> void {
+entry:
+  print %x
+  ret.void
+}
+fn @main() -> i64 {
+entry:
+  call @show(7)
+  ret.i64 0
+}

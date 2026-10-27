@@ -193,7 +193,9 @@ impl TailCallOptimization {
         call_args: &[Operand],
         call_ret: &Option<Register>,
     ) -> bool {
-        if GpuIntrinsic::from_name(call_name).is_some() {
+        // An intrinsic is not a symbol a jump can reach: each one lowers to its own
+        // sequence, and `print` loads a format string before calling printf.
+        if GpuIntrinsic::from_name(call_name).is_some() || call_name.starts_with("lamina.") {
             return false;
         }
         // 1. Check return type compatibility
