@@ -1416,9 +1416,14 @@ fn emit_instruction_riscv<W: Write>(
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
                 load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "a2")?;
                 writeln!(writer, "    li a0, {}", i32::from(name == "lamina.write"))?;
+                let libc = if name == "lamina.write" {
+                    "write"
+                } else {
+                    "read"
+                };
                 let callee = abi
-                    .call_stub(name)
-                    .unwrap_or_else(|| abi.mangle_function_name(name));
+                    .call_stub(libc)
+                    .unwrap_or_else(|| abi.mangle_function_name(libc));
                 writeln!(writer, "    call {callee}")?;
             } else if name == "lamina.writebyte" && args.len() == 1 {
                 // putchar reports the character written, or -1; writebyte reports the
