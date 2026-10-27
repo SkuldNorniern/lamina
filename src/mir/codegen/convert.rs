@@ -486,6 +486,7 @@ fn convert_function<'a>(
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
     mir_sig.no_inline = f.annotations.contains(&FunctionAnnotation::NoInline);
+    mir_sig.variadic = f.signature.variadic;
     if f.annotations.contains(&FunctionAnnotation::Kernel) {
         mir_sig.kernel = Some(Default::default());
     }

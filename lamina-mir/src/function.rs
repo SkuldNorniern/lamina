@@ -85,6 +85,10 @@ pub struct Signature {
 
     /// Set by `@noinline`; the inliner must leave calls to this function alone.
     pub no_inline: bool,
+
+    /// Set by a trailing `...` on an `@extern` declaration. A call to one follows the
+    /// variadic side of the platform convention.
+    pub variadic: bool,
 }
 
 impl Signature {
@@ -98,6 +102,7 @@ impl Signature {
             ret_aggregate: None,
             kernel: None,
             no_inline: false,
+            variadic: false,
         }
     }
 

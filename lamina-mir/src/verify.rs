@@ -652,9 +652,17 @@ fn verify_instruction_types(
                         } else {
                             "call"
                         };
-                        if args.len() != callee.sig.params.len() {
+                        // A variadic callee takes its named parameters and any number
+                        // of arguments after them.
+                        let arity = if callee.sig.variadic {
+                            args.len() < callee.sig.params.len()
+                        } else {
+                            args.len() != callee.sig.params.len()
+                        };
+                        if arity {
                             instruction_errors.push(format!(
-                                "expected {op} '{name}' to have {} arguments, found {}",
+                                "expected {op} '{name}' to have {}{} arguments, found {}",
+                                if callee.sig.variadic { "at least " } else { "" },
                                 callee.sig.params.len(),
                                 args.len()
                             ));
