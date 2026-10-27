@@ -262,28 +262,28 @@ fn @conditional(i32 %x) -> i32 {
 
 ```
 # Stack allocation
-%ptr = alloc.ptr.stack i32
+%ptr = stackalloc.i32
 
 # Heap allocation
-%hptr = alloc.ptr.heap i32
+%hptr = heapalloc.i32
 
 # Load and store
 store.i32 %ptr, %val
 %loaded = load.i32 %ptr
 
 # Optional heap deallocation
-dealloc.heap %hptr
+heapfree %hptr
 ```
 
 ### Composite Type Operations
 
 ```
 # Struct field access
-%field_ptr = getfield.ptr %struct, 0
+%field_ptr = getfieldptr %struct, 0
 %value = load.f32 %field_ptr
 
 # Array element access
-%elem_ptr = getelem.ptr %array, %index
+%elem_ptr = getelem.i32 %array, %index
 %value = load.i32 %elem_ptr
 ```
 
