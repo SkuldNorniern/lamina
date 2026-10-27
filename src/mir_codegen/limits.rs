@@ -18,6 +18,13 @@ use lamina_platform::TargetArchitecture;
 /// in practice; this is a Lamina policy limit (stack use, encoder immediates, test surface).
 pub const MAX_MIR_CALL_PARAMETERS: usize = 256;
 
+/// Maximum stack a single function may reserve.
+///
+/// A frame larger than this cannot be addressed by a signed 32-bit displacement on
+/// x86_64, and overflows the offset arithmetic on the other backends, so it is
+/// rejected rather than silently miscompiled.
+pub const MAX_MIR_FRAME_BYTES: usize = i32::MAX as usize;
+
 /// Architectures with an aggregate classification. The others reject a module that
 /// passes an aggregate by value rather than guess at an ABI for it.
 fn classifies_aggregates(target_arch: TargetArchitecture) -> bool {
@@ -88,6 +95,21 @@ pub fn validate_module_call_parameters(
         .map_err(LaminaError::CodegenError)?;
     let max = MAX_MIR_CALL_PARAMETERS;
     for func in module.functions.values() {
+        let reserved = func
+            .stack_reservations
+            .values()
+            .try_fold(0usize, |total, slots| {
+                slots
+                    .checked_mul(8)
+                    .and_then(|bytes| total.checked_add(bytes))
+            })
+            .unwrap_or(usize::MAX);
+        if reserved > MAX_MIR_FRAME_BYTES {
+            return Err(LaminaError::ValidationError(format!(
+                "Function '{}' reserves {} bytes of stack (maximum is {})",
+                func.sig.name, reserved, MAX_MIR_FRAME_BYTES
+            )));
+        }
         if func.sig.params.len() > max {
             return Err(LaminaError::ValidationError(format!(
                 "Function '{}' has {} parameters (maximum is {})",
@@ -219,6 +241,26 @@ mod tests {
         assert!(
             err.to_string().contains("maximum is 256"),
             "unexpected: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_frame_over_limit() {
+        let mut func = Function::new(Signature::new("big").with_return(MirType::i64()));
+        let mut entry = Block::new("entry");
+        entry.push(Instruction::Ret { value: None });
+        func.add_block(entry);
+        let slot = VirtualReg::gpr(0);
+        func.stack_reservations
+            .insert(slot, MAX_MIR_FRAME_BYTES / 8 + 1);
+        let mut module = Module::new("frame");
+        module.add_function(func);
+
+        let error = validate_module_call_parameters(&module, TargetArchitecture::X86_64)
+            .expect_err("frame over limit");
+        assert!(
+            error.to_string().contains("bytes of stack"),
+            "unexpected: {error}"
         );
     }
 
