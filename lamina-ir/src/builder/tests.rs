@@ -122,7 +122,7 @@ mod tests {
 
         builder
             .function("use_memory", Type::Primitive(PrimitiveType::I32))
-            .alloc_stack("ptr", Type::Primitive(PrimitiveType::I32))
+            .stackalloc("ptr", Type::Primitive(PrimitiveType::I32))
             .store(Type::Primitive(PrimitiveType::I32), var("ptr"), i32(42))
             .load("val", Type::Primitive(PrimitiveType::I32), var("ptr"))
             .ret(Type::Primitive(PrimitiveType::I32), var("val"));
@@ -497,14 +497,14 @@ mod tests {
 
         builder
             .function("pointer_ops", Type::Primitive(PrimitiveType::I32))
-            .alloc_stack(
+            .stackalloc(
                 "array",
                 Type::Array {
                     element_type: Box::new(Type::Primitive(PrimitiveType::I32)),
                     size: 10,
                 },
             )
-            .getelementptr("elem_ptr", var("array"), i32(5), PrimitiveType::I32)
+            .getelem("elem_ptr", var("array"), i32(5), PrimitiveType::I32)
             .store(
                 Type::Primitive(PrimitiveType::I32),
                 var("elem_ptr"),
@@ -529,7 +529,7 @@ mod tests {
 
         assert_eq!(entry.instructions.len(), 5);
 
-        // Verify getelementptr
+        // Verify getelem
         if let Instruction::GetElemPtr {
             result,
             index,
@@ -554,7 +554,7 @@ mod tests {
         let mut builder = IRBuilder::new();
         builder
             .function("row", Type::Primitive(PrimitiveType::Ptr))
-            .getelementptr("row_ptr", var("matrix"), i32(1), row.clone());
+            .getelem("row_ptr", var("matrix"), i32(1), row.clone());
         let module = builder.build();
         let inst = &module.functions["row"].basic_blocks["entry"].instructions[0];
         assert!(
@@ -569,7 +569,7 @@ mod tests {
 
         builder
             .function("struct_ops", Type::Primitive(PrimitiveType::I32))
-            .alloc_stack(
+            .stackalloc(
                 "point",
                 Type::Struct(vec![
                     StructField {
@@ -621,13 +621,13 @@ mod tests {
 
         builder
             .function("heap_ops", Type::Void)
-            .alloc_heap("heap_ptr", Type::Primitive(PrimitiveType::I32))
+            .heapalloc("heap_ptr", Type::Primitive(PrimitiveType::I32))
             .store(
                 Type::Primitive(PrimitiveType::I32),
                 var("heap_ptr"),
                 i32(100),
             )
-            .dealloc(var("heap_ptr"))
+            .heapfree(var("heap_ptr"))
             .ret_void();
 
         let module = builder.build();
@@ -926,7 +926,7 @@ mod tests {
 
         builder
             .function("io_test", Type::Void)
-            .alloc_stack(
+            .stackalloc(
                 "buffer",
                 Type::Array {
                     element_type: Box::new(Type::Primitive(PrimitiveType::I8)),
@@ -980,7 +980,7 @@ mod tests {
 
         builder
             .function("ptr_conv", Type::Primitive(PrimitiveType::I32))
-            .alloc_stack("data", Type::Primitive(PrimitiveType::I32))
+            .stackalloc("data", Type::Primitive(PrimitiveType::I32))
             .ptrtoint("ptr_as_int", var("data"), PrimitiveType::I64)
             .binary(
                 BinaryOp::Add,
@@ -1150,7 +1150,7 @@ mod tests {
 
         builder
             .function("atomic_test", Type::Primitive(PrimitiveType::I32))
-            .alloc_stack("atomic_var", Type::Primitive(PrimitiveType::I32))
+            .stackalloc("atomic_var", Type::Primitive(PrimitiveType::I32))
             .atomic_store(
                 Type::Primitive(PrimitiveType::I32),
                 var("atomic_var"),
@@ -1235,7 +1235,7 @@ mod tests {
 
         builder
             .function("typed_gep", Type::Void)
-            .alloc_stack("s", Type::Struct(fields.clone()))
+            .stackalloc("s", Type::Struct(fields.clone()))
             .struct_gep_typed("flag_ptr", var("s"), &fields, 0)
             .struct_gep_typed("val_ptr", var("s"), &fields, 1)
             .struct_gep_typed("ext_ptr", var("s"), &fields, 2)
@@ -1300,8 +1300,8 @@ mod tests {
 
         builder
             .function("copy_fn", Type::Void)
-            .alloc_stack("dst", Type::Primitive(PrimitiveType::I8))
-            .alloc_stack("src", Type::Primitive(PrimitiveType::I8))
+            .stackalloc("dst", Type::Primitive(PrimitiveType::I8))
+            .stackalloc("src", Type::Primitive(PrimitiveType::I8))
             .memcpy(var("dst"), var("src"), i32(64))
             .ret_void();
 
@@ -1325,7 +1325,7 @@ mod tests {
 
         builder
             .function("move_fn", Type::Void)
-            .alloc_stack("buf", Type::Primitive(PrimitiveType::I8))
+            .stackalloc("buf", Type::Primitive(PrimitiveType::I8))
             .memmove(var("buf"), var("buf"), i32(32))
             .ret_void();
 
@@ -1349,7 +1349,7 @@ mod tests {
 
         builder
             .function("set_fn", Type::Void)
-            .alloc_stack("buf", Type::Primitive(PrimitiveType::I8))
+            .stackalloc("buf", Type::Primitive(PrimitiveType::I8))
             .memset(var("buf"), i8(0), i32(128))
             .ret_void();
 
@@ -1379,8 +1379,8 @@ mod tests {
 
         builder
             .function("simd_test", Type::Void)
-            .alloc_stack("vec1", vector_type.clone())
-            .alloc_stack("vec2", vector_type.clone())
+            .stackalloc("vec1", vector_type.clone())
+            .stackalloc("vec2", vector_type.clone())
             .simd_binary(
                 SimdOp::Add,
                 "result",

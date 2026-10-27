@@ -11,7 +11,7 @@ use crate::{
 
 impl<'a> IRBuilder<'a> {
     /// Allocates stack memory (automatic lifetime management)
-    pub fn alloc_stack(&mut self, result: &'a str, ty: Type<'a>) -> &mut Self {
+    pub fn stackalloc(&mut self, result: &'a str, ty: Type<'a>) -> &mut Self {
         self.inst(Instruction::Alloc {
             result,
             alloc_type: AllocType::Stack,
@@ -20,7 +20,7 @@ impl<'a> IRBuilder<'a> {
     }
 
     /// Allocates heap memory
-    pub fn alloc_heap(&mut self, result: &'a str, ty: Type<'a>) -> &mut Self {
+    pub fn heapalloc(&mut self, result: &'a str, ty: Type<'a>) -> &mut Self {
         self.inst(Instruction::Alloc {
             result,
             alloc_type: AllocType::Heap,
@@ -43,7 +43,7 @@ impl<'a> IRBuilder<'a> {
     }
 
     /// Deallocates heap memory
-    pub fn dealloc(&mut self, ptr: Value<'a>) -> &mut Self {
+    pub fn heapfree(&mut self, ptr: Value<'a>) -> &mut Self {
         self.inst(Instruction::Dealloc { ptr })
     }
 

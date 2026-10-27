@@ -161,12 +161,12 @@
 //!     // Primitive types
 //!     .binary(BinaryOp::Add, "sum", PrimitiveType::I32, i32(10), i32(20))
 //!     // Array type
-//!     .alloc_stack("arr", Type::Array {
+//!     .stackalloc("arr", Type::Array {
 //!         element_type: Box::new(Type::Primitive(PrimitiveType::I32)),
 //!         size: 10
 //!     })
 //!     // Struct type
-//!     .alloc_stack("point", Type::Struct(vec![
+//!     .stackalloc("point", Type::Struct(vec![
 //!         StructField { name: "x", ty: Type::Primitive(PrimitiveType::I32) },
 //!         StructField { name: "y", ty: Type::Primitive(PrimitiveType::I32) }
 //!     ]))

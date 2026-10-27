@@ -99,7 +99,7 @@
 //! builder
 //!     .function("use_custom_type", Type::Void)
 //!     // Allocate a struct with two i32 fields
-//!     .alloc_stack("point", Type::Struct(vec![
+//!     .stackalloc("point", Type::Struct(vec![
 //!         StructField { name: "x", ty: Type::Primitive(PrimitiveType::I32) },
 //!         StructField { name: "y", ty: Type::Primitive(PrimitiveType::I32) }
 //!     ]))

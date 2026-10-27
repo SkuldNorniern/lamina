@@ -11,7 +11,7 @@ use crate::{
 
 impl<'a> IRBuilder<'a> {
     /// Gets a pointer to an array element (pointer arithmetic)
-    pub fn getelementptr(
+    pub fn getelem(
         &mut self,
         result: &'a str,
         array_ptr: Value<'a>,

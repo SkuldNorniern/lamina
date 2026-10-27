@@ -668,7 +668,7 @@ mod tests {
 
         builder
             .function("test", i32_ty.clone())
-            .alloc_stack("arr", i32_ty.clone())
+            .stackalloc("arr", i32_ty.clone())
             .jump("loop")
             .block("loop")
             .load("val", i32_ty.clone(), ir::builder::var("arr"))

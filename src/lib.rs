@@ -119,7 +119,7 @@
 //! let mut builder = IRBuilder::new();
 //! builder
 //!     .function("memory_demo", Type::Void)
-//!     .alloc_stack("local", Type::Primitive(PrimitiveType::I32))
+//!     .stackalloc("local", Type::Primitive(PrimitiveType::I32))
 //!     .store(Type::Primitive(PrimitiveType::I32), var("local"), i32(42))
 //!     .load("value", Type::Primitive(PrimitiveType::I32), var("local"))
 //!     .print(var("value"))
@@ -146,7 +146,7 @@
 //!     ], Type::Primitive(PrimitiveType::I32))
 //!
 //!     // Step 1: Allocate memory on stack
-//!     .alloc_stack("buffer", Type::Primitive(PrimitiveType::I32))
+//!     .stackalloc("buffer", Type::Primitive(PrimitiveType::I32))
 //!
 //!     // Step 2: Store the input value in our buffer
 //!     .store(Type::Primitive(PrimitiveType::I32), var("buffer"), var("input"))
@@ -189,7 +189,7 @@
 //!     ], Type::Void)
 //!
 //!     // Allocate memory for processing
-//!     .alloc_stack("temp", Type::Primitive(PrimitiveType::I32))
+//!     .stackalloc("temp", Type::Primitive(PrimitiveType::I32))
 //!     .store(Type::Primitive(PrimitiveType::I32), var("temp"), var("data"))
 //!
 //!     // Check if data is positive
