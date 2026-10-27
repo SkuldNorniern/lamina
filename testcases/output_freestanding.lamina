@@ -1,0 +1,29 @@
+# Freestanding output: no libc, one write syscall per byte.
+fn @put_digit(i64 %n) -> i64 {
+entry:
+  %ascii = add.i64 %n, 48
+  %w = writebyte %ascii
+  ret.i64 0
+}
+
+fn @put_u64(i64 %n) -> i64 {
+entry:
+  %small = lt.i64 %n, 10
+  br %small, last, more
+more:
+  %hi = div.i64 %n, 10
+  %lo = rem.i64 %n, 10
+  %r = call @put_u64(%hi)
+  %d = call @put_digit(%lo)
+  ret.i64 0
+last:
+  %e = call @put_digit(%n)
+  ret.i64 0
+}
+
+fn @main() -> i64 {
+entry:
+  %a = call @put_u64(31415)
+  %nl = writebyte 10
+  ret.i64 0
+}

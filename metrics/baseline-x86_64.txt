@@ -2783,6 +2783,78 @@ frame main 16
 frame multiply_by_two 0
 frame square 0
 
+[output_freestanding O0]
+insns 77
+spills 21
+calls 4
+branches 1
+frame main 16
+frame put_digit 32
+frame put_u64 64
+
+[output_freestanding O1]
+insns 77
+spills 21
+calls 4
+branches 1
+frame main 16
+frame put_digit 32
+frame put_u64 64
+
+[output_freestanding O2]
+insns 104
+spills 19
+calls 2
+branches 1
+frame main 16
+frame put_digit 16
+frame put_u64 32
+
+[output_freestanding O3]
+insns 104
+spills 19
+calls 2
+branches 1
+frame main 16
+frame put_digit 16
+frame put_u64 32
+
+[output_via_libc O0]
+insns 24
+spills 9
+calls 1
+branches 0
+frame fmt 0
+frame main 48
+frame who 0
+
+[output_via_libc O1]
+insns 24
+spills 9
+calls 1
+branches 0
+frame fmt 0
+frame main 48
+frame who 0
+
+[output_via_libc O2]
+insns 28
+spills 6
+calls 1
+branches 0
+frame fmt 0
+frame main 32
+frame who 0
+
+[output_via_libc O3]
+insns 28
+spills 6
+calls 1
+branches 0
+frame fmt 0
+frame main 32
+frame who 0
+
 [pointer_arithmetic_brainfuck O0]
 insns 133
 spills 43
