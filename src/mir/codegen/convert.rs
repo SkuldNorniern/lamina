@@ -1976,9 +1976,24 @@ fn convert_instruction<'a>(
             if matches!(value, IRVal::Constant(IRLit::String(_))) {
                 return Err(FromIRError::PrintStringLiteralUnsupported);
             }
-            let arg = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
+            let (arg, is_unsigned) = match value {
+                IRVal::Constant(lit) => match unsigned_constant_bits(lit) {
+                    Some(bits) => (Operand::Immediate(Immediate::I64(bits)), true),
+                    None => (
+                        resolve_operand(value, vreg_alloc, var_to_reg, globals)?,
+                        false,
+                    ),
+                },
+                IRVal::Variable(id) => (
+                    resolve_operand(value, vreg_alloc, var_to_reg, globals)?,
+                    unsigned.contains(id),
+                ),
+                IRVal::Global(_) => (
+                    resolve_operand(value, vreg_alloc, var_to_reg, globals)?,
+                    false,
+                ),
+            };
             let ty = operand_type(&arg, register_types);
-            let is_unsigned = matches!(value, IRVal::Variable(id) if unsigned.contains(id));
             let name = match ty {
                 MirType::Scalar(ScalarType::F32) => "lamina.printf32",
                 MirType::Scalar(ScalarType::F64) => "lamina.printf64",
@@ -2243,6 +2258,17 @@ fn convert_instruction<'a>(
             }])
         }
         _ => Err(FromIRError::UnsupportedInstruction),
+    }
+}
+
+/// The zero-extended bits of an unsigned literal, `None` for any other literal.
+fn unsigned_constant_bits(lit: &IRLit<'_>) -> Option<i64> {
+    match lit {
+        IRLit::U8(v) => Some(i64::from(*v)),
+        IRLit::U16(v) => Some(i64::from(*v)),
+        IRLit::U32(v) => Some(i64::from(*v)),
+        IRLit::U64(v) => Some(*v as i64),
+        _ => None,
     }
 }
 
