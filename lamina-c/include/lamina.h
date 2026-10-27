@@ -169,10 +169,6 @@ lia_status_t lia_builder_bitcast(lia_builder_t *b, const char *result,
 lia_status_t lia_builder_select(lia_builder_t *b, const char *result,
     const lia_type_t *ty, const lia_value_t *cond,
     const lia_value_t *tv, const lia_value_t *fv);
-lia_status_t lia_builder_tuple(lia_builder_t *b, const char *result,
-    const lia_value_t *const *elements, size_t element_count);
-lia_status_t lia_builder_extract_tuple(lia_builder_t *b, const char *result,
-    const lia_value_t *tuple_value, size_t index);
 lia_status_t lia_builder_write(lia_builder_t *b, const char *result,
     const lia_value_t *buf, const lia_value_t *size);
 lia_status_t lia_builder_read(lia_builder_t *b, const char *result,
