@@ -1457,3 +1457,36 @@ mod edge_move_tests {
         Ok(())
     }
 }
+
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+mod intrinsic_namespace_tests {
+    use crate::mir_codegen::test_support::compile;
+    use std::{env, error::Error, fs, process, process::Command};
+
+    #[test]
+    fn a_function_may_take_an_intrinsic_name() -> Result<(), Box<dyn Error>> {
+        let directory = env::temp_dir().join(format!("lamina-intrinsic-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        for name in [
+            "print",
+            "printu",
+            "write",
+            "read",
+            "writebyte",
+            "readbyte",
+            "writeptr",
+        ] {
+            let lamina = format!(
+                "fn @{name}(i64 %x) -> i64 {{\nentry:\n  %r = add.i64 %x, 100\n  ret.i64 %r\n}}\n\nfn @main() -> i64 {{\nentry:\n  %v = call @{name}(5)\n  print %v\n  ret.i64 0\n}}\n"
+            );
+            let source = directory.join(format!("{name}.lamina"));
+            fs::write(&source, lamina)?;
+            let executable = directory.join(name);
+            compile(&source, &executable, &[])?;
+            let output = Command::new(&executable).output()?;
+            assert_eq!(String::from_utf8_lossy(&output.stdout), "105\n", "@{name}");
+        }
+        fs::remove_dir_all(&directory)?;
+        Ok(())
+    }
+}
