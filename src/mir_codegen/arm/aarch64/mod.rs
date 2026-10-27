@@ -8,6 +8,7 @@ mod util;
 
 use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
+use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
     emit_global_directives, integer_conversion, self_tail_arguments, self_tail_schedule,
@@ -813,7 +814,7 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
 
     let abi = AArch64ABI::new(target_os);
 
-    for func_name in &module.external_functions {
+    for func_name in external_names(module) {
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, ".extern {label}")?;
     }

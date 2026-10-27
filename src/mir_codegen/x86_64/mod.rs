@@ -49,6 +49,7 @@ use lamina_codegen::{
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{collections::hash_map::Entry, sync::Arc};
 
+use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::{
     CodegenBase, CopyLocation, assign_stack_slots, assign_stack_slots_where, coalesce_dying_inputs,
     compile_functions_parallel, emit_global_data, emit_global_directives,
@@ -185,7 +186,7 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     emit_print_format_section(writer, target_os)?;
 
     // Emit external function declarations first
-    for func_name in &module.external_functions {
+    for func_name in external_names(module) {
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, ".extern {label}")?;
     }

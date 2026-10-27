@@ -17,6 +17,7 @@
 mod util;
 
 use crate::mir::register::PhysicalReg;
+use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::integer_conversion;
 use crate::mir_codegen::common::{
     CallSignatures, emit_debug_file, emit_gnu_stack_note, print_format_label, writeptr_width,
@@ -452,7 +453,7 @@ fn emit_ppc64_module<W: Write>(
     emit_debug_file(writer, settings)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
 
-    for func_name in &module.external_functions {
+    for func_name in external_names(module) {
         let label = abi.mangle_function_name(func_name);
         writeln!(writer, ".extern {label}")?;
     }

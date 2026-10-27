@@ -1,6 +1,7 @@
 mod simd;
 pub mod util;
 
+use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::{integer_conversion, io_codegen_error};
 use crate::mir_codegen::simd::vector_slots;
 
@@ -425,7 +426,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     }
 
     // Emit import declarations for external functions
-    for func_name in &module.external_functions {
+    for func_name in external_names(module) {
         if let Some(func) = module.functions.get(func_name) {
             let mangled_name = abi.mangle_function_name(func_name);
             write!(

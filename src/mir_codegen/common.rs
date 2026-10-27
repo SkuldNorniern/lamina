@@ -671,6 +671,18 @@ pub fn promoted_argument_type(arg: &Operand) -> MirType {
     }
 }
 
+/// External names in a fixed order. The module holds them in a hash set, which would
+/// otherwise put the declarations in a different order on every run.
+pub fn external_names(module: &MirModule) -> Vec<&str> {
+    let mut names: Vec<&str> = module
+        .external_functions
+        .iter()
+        .map(String::as_str)
+        .collect();
+    names.sort_unstable();
+    names
+}
+
 /// Wraps a failed write to the assembly buffer. Every backend writes through
 /// `std::io::Write`, where the only realistic failure is an allocation one.
 pub fn io_codegen_error(error: impl Display) -> CodegenError {
