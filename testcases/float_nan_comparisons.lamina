@@ -1,0 +1,35 @@
+# Every ordered comparison is false when an operand is NaN; only ne is true
+fn @cmp(f64 %z, f64 %x) -> i64 {
+  entry:
+    %nan = div.f64 %z, %z
+    %a = eq.f64 %nan, %x
+    %ra = zext.bool.i64 %a
+    print %ra
+    %b = ne.f64 %nan, %x
+    %rb = zext.bool.i64 %b
+    print %rb
+    %c = lt.f64 %nan, %x
+    %rc = zext.bool.i64 %c
+    print %rc
+    %d = le.f64 %nan, %x
+    %rd = zext.bool.i64 %d
+    print %rd
+    %e = gt.f64 %nan, %x
+    %re = zext.bool.i64 %e
+    print %re
+    %f = ge.f64 %nan, %x
+    %rf = zext.bool.i64 %f
+    print %rf
+    %g = le.f64 %x, %nan
+    %rg = zext.bool.i64 %g
+    print %rg
+    %h = ge.f64 %x, %nan
+    %rh = zext.bool.i64 %h
+    print %rh
+    ret.i64 0
+}
+fn @main() -> i64 {
+  entry:
+    %r = call @cmp(0.0, 1.5)
+    ret.i64 0
+}

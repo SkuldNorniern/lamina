@@ -1219,7 +1219,11 @@ fn emit_instruction_ppc64<W: Write>(
             let seq = *cmp_seq;
             *cmp_seq = cmp_seq.saturating_add(1);
             let prefix = emit.block_prefix;
+            if matches!(op, FloatCmpOp::Le | FloatCmpOp::Ge) {
+                writeln!(writer, "    bun {prefix}fcmp{seq}.false")?;
+            }
             writeln!(writer, "    {branch} {prefix}fcmp{seq}.true")?;
+            writeln!(writer, "{prefix}fcmp{seq}.false:")?;
             writeln!(writer, "    li 3, 0")?;
             writeln!(writer, "    b {prefix}fcmp{seq}.end")?;
             writeln!(writer, "{prefix}fcmp{seq}.true:")?;
