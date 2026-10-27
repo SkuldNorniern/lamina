@@ -254,20 +254,6 @@ pub enum TransformLevel {
 }
 
 impl TransformLevel {
-    /// Check if this level should be included at the given optimization level
-    ///
-    /// - `-O0`: No transforms
-    /// - `-O1`: `Stable` transforms
-    /// - `-O2`: `Stable` + `Experimental` transforms
-    /// - `-O3`: All transforms (including `Deprecated` for compatibility)
-    pub fn is_enabled_at_opt_level(self, opt_level: u8) -> bool {
-        matches!(
-            (self, opt_level),
-            (TransformLevel::Deprecated, 3..)
-                | (TransformLevel::Experimental, 2..)
-                | (TransformLevel::Stable, 1..)
-        )
-    }
 }
 
 /// Statistics about a transform run
