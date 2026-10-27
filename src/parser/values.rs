@@ -156,6 +156,9 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
                 "Expected 'false' boolean literal", hint
             )))
         }
+        Some('@') => Err(state.error(
+            "Expected a value, but found '@'\n  Hint: A global is $name; the address of a function is 'funcaddr @name'",
+        )),
         _ => {
             let found = state
                 .current_char()

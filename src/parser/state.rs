@@ -193,12 +193,24 @@ impl<'a> ParserState<'a> {
 
     /// Parses a global identifier (starts with '$').
     pub fn parse_global_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
+        self.skip_whitespace_and_comments();
+        if self.current_char() == Some('@') {
+            return Err(self.error(
+                "Expected character '$', but found '@'\n  Hint: A global is written $name; @name is a function",
+            ));
+        }
         self.expect_char('$')?;
         self.parse_identifier_str()
     }
 
     /// Parses a named type identifier (starts with '!').
     pub fn parse_named_type_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
+        self.skip_whitespace_and_comments();
+        if self.current_char() == Some('@') {
+            return Err(self.error(
+                "Expected character '!', but found '@'\n  Hint: A named type is written !Name; @name is a function",
+            ));
+        }
         self.expect_char('!')?;
         self.parse_identifier_str()
     }
