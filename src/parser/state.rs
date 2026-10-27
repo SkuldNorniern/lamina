@@ -428,7 +428,7 @@ impl<'a> ParserState<'a> {
     pub fn error(&self, message: impl AsRef<str>) -> LaminaError {
         let message = message.as_ref();
         let (line, column) = self.get_line_column();
-        let context = self.get_error_context();
+        let (context, caret) = self.get_error_context();
 
         let error_msg = if context.is_empty() {
             format!("{message} at line {line}, column {column}")
@@ -439,7 +439,7 @@ impl<'a> ParserState<'a> {
                 line,
                 column,
                 context,
-                " ".repeat(column.saturating_sub(1))
+                " ".repeat(caret.saturating_sub(1))
             )
         };
 
@@ -467,26 +467,37 @@ impl<'a> ParserState<'a> {
     }
 
     /// Gets a context string showing the line where the error occurred.
-    fn get_error_context(&self) -> String {
-        let (line_num, _) = self.get_line_column();
+    /// The source line to print under an error, and the column the caret belongs at
+    /// within it. A long line is windowed around the column, so the caret stays on
+    /// screen instead of being pushed out by the part that was cut.
+    fn get_error_context(&self) -> (String, usize) {
+        const WIDTH: usize = 80;
+        const ELLIPSIS: &str = "...";
 
-        if let Some(line) = line_num
+        let (line_num, column) = self.get_line_column();
+        let Some(line) = line_num
             .checked_sub(1)
             .and_then(|n| self.input.lines().nth(n))
-        {
-            // Truncate very long lines for readability
-            if line.len() > 80 {
-                let cut = (0..=77)
-                    .rev()
-                    .find(|&i| line.is_char_boundary(i))
-                    .unwrap_or(0);
-                format!("{}...", &line[..cut])
-            } else {
-                line.to_string()
-            }
-        } else {
-            String::new()
+        else {
+            return (String::new(), 0);
+        };
+        let chars: Vec<char> = line.chars().collect();
+        if chars.len() <= WIDTH {
+            return (line.to_string(), column);
         }
+        let start = column.saturating_sub(1).saturating_sub(WIDTH / 2);
+        let start = start.min(chars.len().saturating_sub(WIDTH));
+        let end = (start + WIDTH).min(chars.len());
+        let mut context = String::new();
+        if start > 0 {
+            context.push_str(ELLIPSIS);
+        }
+        context.extend(&chars[start..end]);
+        if end < chars.len() {
+            context.push_str(ELLIPSIS);
+        }
+        let lead = if start > 0 { ELLIPSIS.len() } else { 0 };
+        (context, column - start + lead)
     }
 
     /// Returns the current parser position.

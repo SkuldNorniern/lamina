@@ -530,6 +530,26 @@ mod tests {
     }
 
     #[test]
+    fn caret_stays_inside_windowed_error_line() {
+        let nested = format!("{}i64{}", "struct { x: ".repeat(1000), " }".repeat(1000));
+        let input = format!(
+            "fn @main() -> i64 {{\n  entry:\n    %a = stackalloc.{nested}\n    ret.i64 0\n}}\n"
+        );
+        let err = parse_module(&input).expect_err("deep type").to_string();
+        let caret = err
+            .lines()
+            .last()
+            .expect("caret line")
+            .trim_end_matches('^');
+        let context = err
+            .lines()
+            .nth_back(1)
+            .expect("context line")
+            .trim_start_matches(' ');
+        assert!(caret.len() <= context.len() + 2, "{err}");
+    }
+
+    #[test]
     fn test_deeply_nested_type_is_rejected_without_overflow() {
         let nested = format!("{}i64{}", "struct { x: ".repeat(1000), " }".repeat(1000));
         let input = format!(
