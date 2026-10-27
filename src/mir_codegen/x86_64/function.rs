@@ -1139,6 +1139,42 @@ entry:
     }
 
     #[test]
+    fn print_of_u64_constant_above_i64_max_is_unsigned() {
+        if !tools_available(&["as", "gcc", "timeout"]) {
+            return;
+        }
+        let directory = env::temp_dir().join(format!("lamina-print-u64-{}", process::id()));
+        fs::create_dir_all(&directory).expect("create executable directory");
+        let source = directory.join("print_u64.lamina");
+        fs::write(
+            &source,
+            r#"
+fn @main() -> i64 {
+entry:
+    print 18446744073709551615
+    print 9223372036854775808
+    print 9223372036854775807
+    ret.i64 0
+}
+"#,
+        )
+        .expect("write print source");
+        let executable = directory.join("print_u64");
+        compile(&source, &executable, &["--opt-level", "0"]).expect("compile program");
+        let output = Command::new("timeout")
+            .arg("10")
+            .arg(&executable)
+            .output()
+            .expect("run print executable");
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            output.stdout,
+            b"18446744073709551615\n9223372036854775808\n9223372036854775807\n"
+        );
+        fs::remove_dir_all(directory).expect("remove executable directory");
+    }
+
+    #[test]
     fn padded_struct_storage_preserves_adjacent_allocations_and_frames() {
         if !tools_available(&["as", "gcc", "timeout"]) {
             return;
