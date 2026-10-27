@@ -495,3 +495,115 @@ fn imported_function_counts_as_declared() {
     let imported = b"(module\n  (import \"env\" \"memset\" (func $memset (param i64 i64 i64)))\n  (func $main\n    call $memset\n  )\n)\n";
     undeclared_call(imported).expect("an import declares the name");
 }
+
+fn emit_wasi(source: &str) -> Result<String, LaminaError> {
+    let ir = parse_module(source).expect("source should parse");
+    let mir = from_ir(&ir, "module").expect("source should lower");
+    let mut wat = Vec::new();
+    generate_mir_wasm(
+        &mir,
+        &mut wat,
+        TargetArchitecture::Wasm32,
+        TargetOperatingSystem::Wasi,
+    )?;
+    Ok(String::from_utf8(wat).expect("WAT should be UTF-8"))
+}
+
+#[test]
+fn wasi_buffered_io_declares_each_helper_it_calls() {
+    let wat = emit_wasi(
+        "fn @main() -> i64 {\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, 72\n  %a = writeptr.i8 %p\n  %b = writebyte 105\n  %c = readbyte\n  %d = write %p, 1\n  %e = read %p, 1\n  %f = writebyte %c\n  ret.i64 0\n}\n",
+    )
+    .expect("WASI codegen should succeed");
+
+    assert!(!wat.contains("\"env\""), "{wat}");
+    assert!(
+        wat.contains("\"wasi_snapshot_preview1\" \"fd_write\""),
+        "{wat}"
+    );
+    assert!(
+        wat.contains("\"wasi_snapshot_preview1\" \"fd_read\""),
+        "{wat}"
+    );
+    let declared = declared_names(&wat);
+    for helper in ["writebyte", "readbyte", "writeptr", "write", "read"] {
+        assert!(wat.contains(&format!("call ${helper}")), "{helper}: {wat}");
+        assert!(
+            declared.contains(helper),
+            "{helper} is called but not declared: {wat}"
+        );
+    }
+}
+
+#[test]
+fn wasi_rejects_heap_allocation_instead_of_importing_malloc() {
+    let error = emit_wasi(
+        "fn @main() -> i64 {\nentry:\n  %h = heapalloc.i64\n  heapfree %h\n  ret.i64 0\n}\n",
+    )
+    .expect_err("heap allocation has no WASI form");
+    let message = error.to_string();
+    assert!(message.contains("heapalloc"), "{message}");
+    assert!(message.contains("wasm32-wasi"), "{message}");
+}
+
+#[test]
+fn wasm32_keeps_env_helpers() {
+    let wat = emit_wat(
+        "fn @main() -> i64 {\nentry:\n  %b = writebyte 105\n  ret.i64 0\n}\n",
+        TargetArchitecture::Wasm32,
+    );
+    assert!(wat.contains("(import \"env\" \"writebyte\""), "{wat}");
+}
+
+#[test]
+fn wasi_writebyte_and_writeptr_reach_stdout() {
+    if !tool_available("wasmtime") {
+        return;
+    }
+    let wat = emit_wasi(
+        "fn @main() -> i64 {\nentry:\n  %p = stackalloc.i8\n  store.i8 %p, 72\n  %a = writeptr.i8 %p\n  %b = writebyte 105\n  %c = writebyte 10\n  ret.i64 0\n}\n",
+    )
+    .expect("WASI codegen should succeed");
+    let dir = env::temp_dir().join(format!("lamina-wasi-io-{}", id()));
+    fs::create_dir_all(&dir).expect("create test dir");
+    let path = dir.join("module.wat");
+    fs::write(&path, &wat).expect("write wat");
+    let output = Command::new("wasmtime")
+        .arg("run")
+        .arg(&path)
+        .output()
+        .expect("run wasmtime");
+    fs::remove_dir_all(&dir).expect("cleanup");
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "Hi\n");
+}
+
+#[test]
+fn wasi_memcpy_and_memset_fill_the_module_memory() {
+    let wat = emit_wasi(
+        "fn @main() -> i64 {\nentry:\n  %src = stackalloc.i64\n  %dst = stackalloc.i64\n  store.i64 %src, 578437695752307201\n  memset %dst, 165, 8\n  memcpy %dst, %src, 4\n  %x = load.i64 %dst\n  print %x\n  ret.i64 0\n}\n",
+    )
+    .expect("WASI codegen should succeed");
+    assert!(!wat.contains("\"env\""), "{wat}");
+    assert!(wat.contains("memory.copy"), "{wat}");
+    assert!(wat.contains("memory.fill"), "{wat}");
+    assert!(declared_names(&wat).contains("memcpy"), "{wat}");
+    assert!(declared_names(&wat).contains("memset"), "{wat}");
+
+    if !tool_available("wasmtime") {
+        return;
+    }
+    let dir = env::temp_dir().join(format!("lamina-wasi-mem-{}", id()));
+    fs::create_dir_all(&dir).expect("create test dir");
+    let path = dir.join("module.wat");
+    fs::write(&path, &wat).expect("write wat");
+    let output = Command::new("wasmtime")
+        .arg("run")
+        .arg(&path)
+        .output()
+        .expect("run wasmtime");
+    fs::remove_dir_all(&dir).expect("cleanup");
+    assert!(output.status.success(), "{output:?}");
+    let expected = format!("{}\n", 0xA5A5_A5A5_0403_0201u64 as i64);
+    assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+}

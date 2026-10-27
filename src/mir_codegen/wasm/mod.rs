@@ -368,6 +368,7 @@ pub fn generate_mir_wasm_with_units<W: Write>(
     validate_module_call_parameters(module, arch)?;
     let table = function_table(module);
     let addresses = Arc::new(Addresses {
+        wasi: target_os == TargetOperatingSystem::Wasi,
         globals: global_addresses(module)?,
         functions: table
             .iter()
@@ -417,13 +418,29 @@ pub fn generate_mir_wasm_with_units<W: Write>(
             "WASI prints no floats; there is no formatter for one".to_string(),
         )));
     }
+    for (symbol, instruction, reason) in [
+        ("$malloc", "heapalloc", "WASI preview1 has no allocator"),
+        ("$free", "heapfree", "WASI preview1 has no allocator"),
+    ] {
+        if wasi && uses(symbol) {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!("{instruction} is not supported on wasm32-wasi: {reason}"),
+            )));
+        }
+    }
     let wasi_printing = wasi && (uses("$log") || uses("$logu"));
-    if wasi_printing {
+    let wasi_writing =
+        wasi && (wasi_printing || uses("$writebyte") || uses("$writeptr") || uses("$write"));
+    let wasi_reading = wasi && (uses("$readbyte") || uses("$read"));
+    if wasi_writing {
         writeln!(writer, "  {WASI_FD_WRITE_IMPORT}")?;
     }
+    if wasi_reading {
+        writeln!(writer, "  {WASI_FD_READ_IMPORT}")?;
+    }
     for (symbol, decl) in abi.get_runtime_imports() {
-        // WASI defines its own printing below instead of importing a console.
-        if wasi && matches!(*symbol, "$log" | "$logu" | "$logf") {
+        // WASI defines these itself on top of fd_write and fd_read instead of importing them.
+        if wasi && WASI_LOWERED.contains(symbol) {
             continue;
         }
         if uses(symbol) {
@@ -510,8 +527,23 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         writeln!(writer, "  (data ({index}.const {address}) \"{escaped}\")")?;
     }
 
+    if wasi_writing {
+        writeln!(writer, "{WASI_WRITE_HELPERS}")?;
+    }
     if wasi_printing {
         writeln!(writer, "{WASI_PRINT_HELPERS}")?;
+    }
+    if wasi_reading {
+        writeln!(writer, "{WASI_READ_HELPERS}")?;
+    }
+    if wasi && uses("$memcpy") {
+        writeln!(writer, "{WASI_MEMCPY_HELPER}")?;
+    }
+    if wasi && uses("$memmove") {
+        writeln!(writer, "{WASI_MEMMOVE_HELPER}")?;
+    }
+    if wasi && uses("$memset") {
+        writeln!(writer, "{WASI_MEMSET_HELPER}")?;
     }
 
     for result in &results {
@@ -600,6 +632,156 @@ const WASM_STACK_TOP: u32 = 65536;
 /// hands them to `fd_write`. The iovec sits at 0, the byte count it writes back at 8,
 /// and the digits end just below `WASM_GLOBAL_BASE`.
 const WASI_FD_WRITE_IMPORT: &str = "(import \"wasi_snapshot_preview1\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))";
+const WASI_FD_READ_IMPORT: &str = "(import \"wasi_snapshot_preview1\" \"fd_read\" (func $fd_read (param i32 i32 i32 i32) (result i32)))";
+
+/// Runtime helpers WASI defines in the module itself, so they are never imported from `env`.
+const WASI_LOWERED: &[&str] = &[
+    "$log",
+    "$logu",
+    "$logf",
+    "$writebyte",
+    "$readbyte",
+    "$writeptr",
+    "$write",
+    "$read",
+    "$memcpy",
+    "$memmove",
+    "$memset",
+];
+
+/// Bulk memory: each returns its destination, as the C function does.
+const WASI_MEMCPY_HELPER: &str = r#"  (func $memcpy (param $dst i64) (param $src i64) (param $n i64) (result i64)
+    local.get $dst
+    i32.wrap_i64
+    local.get $src
+    i32.wrap_i64
+    local.get $n
+    i32.wrap_i64
+    memory.copy
+    local.get $dst
+  )"#;
+
+const WASI_MEMMOVE_HELPER: &str = r#"  (func $memmove (param $dst i64) (param $src i64) (param $n i64) (result i64)
+    local.get $dst
+    i32.wrap_i64
+    local.get $src
+    i32.wrap_i64
+    local.get $n
+    i32.wrap_i64
+    memory.copy
+    local.get $dst
+  )"#;
+
+const WASI_MEMSET_HELPER: &str = r#"  (func $memset (param $dst i64) (param $byte i64) (param $n i64) (result i64)
+    local.get $dst
+    i32.wrap_i64
+    local.get $byte
+    i32.wrap_i64
+    local.get $n
+    i32.wrap_i64
+    memory.fill
+    local.get $dst
+  )"#;
+
+/// Each helper returns what its native counterpart returns: the byte count moved, or the
+/// negated errno. A single byte travels through address 16.
+const WASI_WRITE_HELPERS: &str = r#"  (func $lamina_writeout (param $ptr i32) (param $len i32) (result i64)
+    (local $err i32)
+    i32.const 0
+    local.get $ptr
+    i32.store
+    i32.const 4
+    local.get $len
+    i32.store
+    i32.const 1
+    i32.const 0
+    i32.const 1
+    i32.const 8
+    call $fd_write
+    local.set $err
+    (if (result i64) (local.get $err)
+      (then
+        i64.const 0
+        local.get $err
+        i64.extend_i32_u
+        i64.sub)
+      (else
+        i32.const 8
+        i32.load
+        i64.extend_i32_u))
+  )
+  (func $writebyte (param $v i64) (result i64)
+    i32.const 16
+    local.get $v
+    i32.wrap_i64
+    i32.store8
+    i32.const 16
+    i32.const 1
+    call $lamina_writeout
+  )
+  (func $writeptr (param $p i64) (param $n i64) (result i64)
+    local.get $p
+    i32.wrap_i64
+    local.get $n
+    i32.wrap_i64
+    call $lamina_writeout
+  )
+  (func $write (param $p i64) (param $n i64) (result i64)
+    local.get $p
+    i32.wrap_i64
+    local.get $n
+    i32.wrap_i64
+    call $lamina_writeout
+  )"#;
+
+const WASI_READ_HELPERS: &str = r#"  (func $lamina_readin (param $ptr i32) (param $len i32) (result i64)
+    (local $err i32)
+    i32.const 0
+    local.get $ptr
+    i32.store
+    i32.const 4
+    local.get $len
+    i32.store
+    i32.const 0
+    i32.const 0
+    i32.const 1
+    i32.const 8
+    call $fd_read
+    local.set $err
+    (if (result i64) (local.get $err)
+      (then
+        i64.const 0
+        local.get $err
+        i64.extend_i32_u
+        i64.sub)
+      (else
+        i32.const 8
+        i32.load
+        i64.extend_i32_u))
+  )
+  (func $readbyte (result i64)
+    (local $n i64)
+    i32.const 16
+    i32.const 1
+    call $lamina_readin
+    local.tee $n
+    i64.const 1
+    i64.eq
+    (if (result i64) (then
+      i32.const 16
+      i32.load8_u
+      i64.extend_i32_u
+    ) (else
+      local.get $n
+    ))
+  )
+  (func $read (param $p i64) (param $n i64) (result i64)
+    local.get $p
+    i32.wrap_i64
+    local.get $n
+    i32.wrap_i64
+    call $lamina_readin
+  )"#;
 
 const WASI_PRINT_HELPERS: &str = r#"  (func $lamina_digits (param $v i64) (param $neg i32) (result i32)
     (local $pos i32)
@@ -642,19 +824,11 @@ const WASI_PRINT_HELPERS: &str = r#"  (func $lamina_digits (param $v i64) (param
     local.get $pos
   )
   (func $lamina_write (param $pos i32)
-    i32.const 0
     local.get $pos
-    i32.store
-    i32.const 4
     i32.const 41
     local.get $pos
     i32.sub
-    i32.store
-    i32.const 1
-    i32.const 0
-    i32.const 1
-    i32.const 8
-    call $fd_write
+    call $lamina_writeout
     drop
   )
   (func $logu (param $v i64)
@@ -682,7 +856,7 @@ const WASI_PRINT_HELPERS: &str = r#"  (func $lamina_digits (param $v i64) (param
   )"#;
 
 /// Globals occupy linear memory from this address upward, below the stack. What sits
-/// below them is the scratch the WASI print helpers write into.
+/// below them is the scratch the WASI I/O helpers write into.
 /// Zero-initialized globals need no data segment because memory starts zeroed.
 const WASM_GLOBAL_BASE: u32 = 48;
 
@@ -695,6 +869,8 @@ pub struct Addresses {
     /// the host wrote, so the bits the backend holds in an i64 are reinterpreted on the
     /// way out and back.
     imports: BTreeMap<String, ImportShape>,
+    /// WASI defines the memory helpers itself, and each returns its destination.
+    wasi: bool,
 }
 
 /// Width of each parameter and of the result of an imported function, `None` where the
@@ -1045,6 +1221,12 @@ fn emit_instruction_wasm(
 
                 if let Some(ty) = shape.and_then(|shape| shape.result.as_ref()) {
                     reinterpret_in(writer, ty)?;
+                }
+                if addresses.wasi
+                    && ret.is_none()
+                    && matches!(symbol, "memcpy" | "memmove" | "memset")
+                {
+                    writeln!(writer, "      drop")?;
                 }
             }
 
