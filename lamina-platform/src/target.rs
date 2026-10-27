@@ -273,7 +273,6 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "wasm32_unknown",
     "wasm64_unknown",
     "wasm32_wasi",
-    "wasm64_wasi",
     "riscv32_unknown",
     "riscv64_unknown",
     "ppc64_linux",
@@ -328,7 +327,7 @@ mod tests {
 
     #[test]
     fn wasi_targets_round_trip() {
-        for name in ["wasm32_wasi", "wasm64_wasi"] {
+        for name in ["wasm32_wasi"] {
             let target: Target = name.parse().unwrap();
             assert_eq!(target.to_string(), name);
             assert!(HOST_ARCH_LIST.contains(&name));

@@ -355,3 +355,57 @@ fn call_through_pointer_indexes_function_table() {
     );
     assert!(!quiet.contains("(table"), "{quiet}");
 }
+
+#[test]
+fn wasi_prints_without_a_console_import() {
+    let source = "fn @main() -> i64 {\nentry:\n  print 42\n  print -7\n  ret.i64 0\n}\n";
+    let ir = parse_module(source).expect("source should parse");
+    let mir = from_ir(&ir, "module").expect("source should lower");
+    let mut wat = Vec::new();
+    generate_mir_wasm(
+        &mir,
+        &mut wat,
+        TargetArchitecture::Wasm32,
+        TargetOperatingSystem::Wasi,
+    )
+    .expect("WASM codegen should succeed");
+    let wat = String::from_utf8(wat).expect("WAT should be UTF-8");
+
+    assert!(
+        wat.contains("\"wasi_snapshot_preview1\" \"fd_write\""),
+        "{wat}"
+    );
+    assert!(!wat.contains("\"console\""), "{wat}");
+    assert!(wat.contains("(func (export \"_start\")"), "{wat}");
+
+    if !tool_available("wasmtime") {
+        return;
+    }
+    let dir = env::temp_dir().join(format!("lamina-wasi-{}", id()));
+    fs::create_dir_all(&dir).expect("create test dir");
+    let path = dir.join("module.wat");
+    fs::write(&path, &wat).expect("write wat");
+    let output = Command::new("wasmtime")
+        .arg("run")
+        .arg(&path)
+        .output()
+        .expect("run wasmtime");
+    fs::remove_dir_all(&dir).expect("cleanup");
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(String::from_utf8_lossy(&output.stdout), "42\n-7\n");
+}
+
+#[test]
+fn wasi_has_no_wasm64_form() {
+    let ir = parse_module("fn @main() -> i64 {\nentry:\n  ret.i64 0\n}\n").expect("parse");
+    let mir = from_ir(&ir, "module").expect("lower");
+    let mut wat = Vec::new();
+    let error = generate_mir_wasm(
+        &mir,
+        &mut wat,
+        TargetArchitecture::Wasm64,
+        TargetOperatingSystem::Wasi,
+    )
+    .expect_err("wasm64 WASI should be refused");
+    assert!(format!("{error:?}").contains("no wasm64 form"), "{error:?}");
+}

@@ -384,8 +384,28 @@ pub fn generate_mir_wasm_with_units<W: Write>(
 
     // WASM module header
     writeln!(writer, "(module")?;
+    let uses = |symbol: &str| results.iter().any(|result| calls(&result.assembly, symbol));
+    let wasi = target_os == TargetOperatingSystem::Wasi;
+    if wasi && memory == Memory::I64 {
+        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            "WASI passes pointers as i32, so it has no wasm64 form".to_string(),
+        )));
+    }
+    if wasi && uses("$logf") {
+        return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+            "WASI prints no floats; there is no formatter for one".to_string(),
+        )));
+    }
+    let wasi_printing = wasi && (uses("$log") || uses("$logu"));
+    if wasi_printing {
+        writeln!(writer, "  {WASI_FD_WRITE_IMPORT}")?;
+    }
     for (symbol, decl) in abi.get_runtime_imports() {
-        if results.iter().any(|result| calls(&result.assembly, symbol)) {
+        // WASI defines its own printing below instead of importing a console.
+        if wasi && matches!(*symbol, "$log" | "$logu" | "$logf") {
+            continue;
+        }
+        if uses(symbol) {
             writeln!(writer, "  {decl}")?;
         }
     }
@@ -470,13 +490,24 @@ pub fn generate_mir_wasm_with_units<W: Write>(
         writeln!(writer, "  (data ({index}.const {address}) \"{escaped}\")")?;
     }
 
-    for result in results {
+    if wasi_printing {
+        writeln!(writer, "{WASI_PRINT_HELPERS}")?;
+    }
+
+    for result in &results {
         writer.write_all(&result.assembly)?;
     }
 
-    for func_name in module.functions.keys() {
-        if func_name == "main" {
-            writeln!(writer, "  (export \"main\" (func $main))")?;
+    if let Some(main) = module.functions.get("main") {
+        writeln!(writer, "  (export \"main\" (func $main))")?;
+        // A WASI command starts at _start and returns nothing.
+        if wasi {
+            writeln!(writer, "  (func (export \"_start\")")?;
+            writeln!(writer, "    call $main")?;
+            if main.sig.ret_ty.is_some() {
+                writeln!(writer, "    drop")?;
+            }
+            writeln!(writer, "  )")?;
         }
     }
 
@@ -502,9 +533,95 @@ fn calls(assembly: &[u8], symbol: &str) -> bool {
 
 const WASM_STACK_TOP: u32 = 65536;
 
-/// Globals occupy linear memory from this address upward, below the stack.
+/// WASI has no console to import, so a module that prints writes its own digits and
+/// hands them to `fd_write`. The iovec sits at 0, the byte count it writes back at 8,
+/// and the digits end just below `WASM_GLOBAL_BASE`.
+const WASI_FD_WRITE_IMPORT: &str = "(import \"wasi_snapshot_preview1\" \"fd_write\" (func $fd_write (param i32 i32 i32 i32) (result i32)))";
+
+const WASI_PRINT_HELPERS: &str = r#"  (func $lamina_digits (param $v i64) (param $neg i32) (result i32)
+    (local $pos i32)
+    i32.const 40
+    local.set $pos
+    local.get $pos
+    i32.const 10
+    i32.store8
+    (loop $next
+      local.get $pos
+      i32.const 1
+      i32.sub
+      local.set $pos
+      local.get $pos
+      local.get $v
+      i64.const 10
+      i64.rem_u
+      i32.wrap_i64
+      i32.const 48
+      i32.add
+      i32.store8
+      local.get $v
+      i64.const 10
+      i64.div_u
+      local.set $v
+      local.get $v
+      i64.const 0
+      i64.ne
+      br_if $next
+    )
+    (if (local.get $neg) (then
+      local.get $pos
+      i32.const 1
+      i32.sub
+      local.set $pos
+      local.get $pos
+      i32.const 45
+      i32.store8
+    ))
+    local.get $pos
+  )
+  (func $lamina_write (param $pos i32)
+    i32.const 0
+    local.get $pos
+    i32.store
+    i32.const 4
+    i32.const 41
+    local.get $pos
+    i32.sub
+    i32.store
+    i32.const 1
+    i32.const 0
+    i32.const 1
+    i32.const 8
+    call $fd_write
+    drop
+  )
+  (func $logu (param $v i64)
+    local.get $v
+    i32.const 0
+    call $lamina_digits
+    call $lamina_write
+  )
+  (func $log (param $v i64)
+    (local $neg i32)
+    local.get $v
+    i64.const 0
+    i64.lt_s
+    local.set $neg
+    (if (local.get $neg) (then
+      i64.const 0
+      local.get $v
+      i64.sub
+      local.set $v
+    ))
+    local.get $v
+    local.get $neg
+    call $lamina_digits
+    call $lamina_write
+  )"#;
+
+/// Globals occupy linear memory from this address upward, below the stack. What sits
+/// below them is the scratch the WASI print helpers write into.
 /// Zero-initialized globals need no data segment because memory starts zeroed.
-const WASM_GLOBAL_BASE: u32 = 16;
+const WASM_GLOBAL_BASE: u32 = 48;
 
 /// Where a name resolves to. A global names a linear-memory address; a function names
 /// its slot in the module's table, which is what a call through a pointer indexes.

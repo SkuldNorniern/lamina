@@ -17,12 +17,19 @@ pub fn is_assembly_supported(arch: TargetArchitecture, os: TargetOperatingSystem
         TargetArchitecture::Aarch64 => os_supported_for_aarch64(os),
         TargetArchitecture::Arx64 => os_supported_for_arx64(os),
         TargetArchitecture::Riscv32 | TargetArchitecture::Riscv64 => os_supported_for_riscv(os),
-        TargetArchitecture::Wasm32 | TargetArchitecture::Wasm64 => {
+        // wasi_snapshot_preview1 passes pointers as i32, so it has no wasm64 form.
+        TargetArchitecture::Wasm32 => {
             matches!(
                 os,
                 TargetOperatingSystem::Unknown
                     | TargetOperatingSystem::Linux
                     | TargetOperatingSystem::Wasi
+            )
+        }
+        TargetArchitecture::Wasm64 => {
+            matches!(
+                os,
+                TargetOperatingSystem::Unknown | TargetOperatingSystem::Linux
             )
         }
         _ => false,
@@ -186,7 +193,7 @@ mod tests {
             TargetArchitecture::Wasm32,
             TargetOperatingSystem::Wasi
         ));
-        assert!(is_assembly_supported(
+        assert!(!is_assembly_supported(
             TargetArchitecture::Wasm64,
             TargetOperatingSystem::Wasi
         ));
