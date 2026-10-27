@@ -265,6 +265,14 @@ pub fn handle_jit_compilation(
                     }
                     process::exit(code);
                 }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::ExitStatusExt;
+                    if let Some(signal) = status.signal() {
+                        eprintln!("JIT fallback: program terminated: {status}");
+                        process::exit(128 + signal);
+                    }
+                }
                 return Err(LaminaError::RuntimeError(format!(
                     "JIT fallback: program terminated: {status}"
                 )));
