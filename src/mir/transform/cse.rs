@@ -207,18 +207,18 @@ impl CommonSubexpressionElimination {
 
     fn expr_key(&self, instr: &Instruction) -> Option<String> {
         match instr {
-            Instruction::IntBinary { op, lhs, rhs, .. } => {
-                Some(format!("IntBinary_{op:?}_{lhs:?}_{rhs:?}"))
-            }
-            Instruction::FloatBinary { op, lhs, rhs, .. } => {
-                Some(format!("FloatBinary_{op:?}_{lhs:?}_{rhs:?}"))
-            }
-            Instruction::IntCmp { op, lhs, rhs, .. } => {
-                Some(format!("IntCmp_{op:?}_{lhs:?}_{rhs:?}"))
-            }
-            Instruction::FloatCmp { op, lhs, rhs, .. } => {
-                Some(format!("FloatCmp_{op:?}_{lhs:?}_{rhs:?}"))
-            }
+            Instruction::IntBinary {
+                op, ty, lhs, rhs, ..
+            } => Some(format!("IntBinary_{op:?}_{ty:?}_{lhs:?}_{rhs:?}")),
+            Instruction::FloatBinary {
+                op, ty, lhs, rhs, ..
+            } => Some(format!("FloatBinary_{op:?}_{ty:?}_{lhs:?}_{rhs:?}")),
+            Instruction::IntCmp {
+                op, ty, lhs, rhs, ..
+            } => Some(format!("IntCmp_{op:?}_{ty:?}_{lhs:?}_{rhs:?}")),
+            Instruction::FloatCmp {
+                op, ty, lhs, rhs, ..
+            } => Some(format!("FloatCmp_{op:?}_{ty:?}_{lhs:?}_{rhs:?}")),
             _ => None,
         }
     }
