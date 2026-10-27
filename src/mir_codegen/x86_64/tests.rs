@@ -995,8 +995,10 @@ int main(void) {
 @export fn @p_i32(i32 %x) -> i32 { entry: ret.i32 %x }
 "#;
 
+    /// Every narrow parameter is normalised to the canonical in-register form, which is
+    /// sign-extended whatever the declared signedness; unsigned consumers re-extend.
     #[test]
-    fn narrow_parameter_prologue_extends_by_declared_signedness() -> Result<(), Box<dyn Error>> {
+    fn narrow_parameter_prologue_normalizes_to_the_canonical_form() -> Result<(), Box<dyn Error>> {
         let directory = env::temp_dir().join(format!("lamina-param-widths-{}", process::id()));
         fs::create_dir_all(&directory)?;
         let source = directory.join("widths.lamina");
@@ -1006,12 +1008,12 @@ int main(void) {
         let assembly = fs::read_to_string(directory.join("widths.s"))?;
 
         for (function, instruction) in [
-            ("p_u8", "movzbl"),
+            ("p_u8", "movsbq"),
             ("p_i8", "movsbq"),
             ("p_char", "movsbq"),
-            ("p_u16", "movzwl"),
+            ("p_u16", "movswq"),
             ("p_i16", "movswq"),
-            ("p_u32", "movl"),
+            ("p_u32", "movslq"),
             ("p_i32", "movslq"),
         ] {
             let body = assembly

@@ -128,6 +128,19 @@ fn load_aggregate_word<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static s
     Ok(())
 }
 
+/// Rewrite `register` to the canonical in-register form of `ty`, the form every narrow
+/// value is held in between instructions.
+fn canonicalize_integer(
+    writer: &mut impl Write,
+    register: &str,
+    ty: &MirType,
+) -> Result<(), LaminaError> {
+    if let Some((width, signed)) = narrow_canonical_extension(ty) {
+        extend_integer(writer, register, width, signed)?;
+    }
+    Ok(())
+}
+
 fn fixed_bits(value: f64, is_f32: bool) -> i64 {
     if is_f32 {
         i64::from((value as f32).to_bits())
@@ -292,7 +305,7 @@ fn emit_float_to_int<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str
         writeln!(writer, "    cmovbe %rcx, %rax")?;
     }
     if bits < 64 {
-        extend_integer(writer, "rax", to.size_bytes(), true)?;
+        canonicalize_integer(writer, "rax", to)?;
     }
     match dst {
         Register::Virtual(vreg) => store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?,
@@ -350,9 +363,7 @@ pub(super) fn emit_instruction_x86_64(
             from.size_bytes().min(to.size_bytes()),
             *signed,
         )?;
-        if to.size_bytes() < 8 {
-            extend_integer(writer, "rax", to.size_bytes(), true)?;
-        }
+        canonicalize_integer(writer, "rax", to)?;
         match dst {
             Register::Virtual(vreg) => store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?,
             Register::Physical(physical) => writeln!(writer, "    movq %rax, %{}", physical.name)?,
@@ -614,7 +625,7 @@ pub(super) fn emit_instruction_x86_64(
                         // No store needed — result already in dp!
                     }
                 }
-                extend_integer(writer, dp, ty.size_bytes(), true)?;
+                canonicalize_integer(writer, dp, ty)?;
             } else {
                 // No physical register for dst — fall back to rax accumulator path
                 load_operand_to_rax(lhs, writer, reg_alloc, stack_slots)?;
@@ -726,7 +737,7 @@ pub(super) fn emit_instruction_x86_64(
                     }
                 }
 
-                extend_integer(writer, "rax", ty.size_bytes(), true)?;
+                canonicalize_integer(writer, "rax", ty)?;
                 if let Register::Virtual(vreg) = dst {
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
@@ -2034,6 +2045,62 @@ mod narrow_integer_tests {
         for level in ["0", "1", "2", "3"] {
             for allocator in ["incremental", "linear", "graph"] {
                 let executable = directory.join(format!("narrow-{level}-{allocator}"));
+                compile(
+                    &source,
+                    &executable,
+                    &["--opt-level", level, "--regalloc", allocator],
+                )?;
+                let output = Command::new("timeout")
+                    .arg("10")
+                    .arg(&executable)
+                    .output()?;
+                assert!(output.status.success(), "O{level}/{allocator}: {output:?}");
+                assert_eq!(
+                    String::from_utf8_lossy(&output.stdout),
+                    expected,
+                    "O{level}/{allocator}"
+                );
+            }
+        }
+        fs::remove_dir_all(directory)?;
+        Ok(())
+    }
+
+    #[test]
+    fn unsigned_narrow_parameters_and_returns_hold_the_canonical_form() -> Result<(), Box<dyn Error>>
+    {
+        if !tools_available(&["as", "gcc", "timeout"]) {
+            return Ok(());
+        }
+        let directory = env::temp_dir().join(format!("lamina-narrow-unsigned-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let mut functions = String::new();
+        let mut body = String::new();
+        let mut expected = String::new();
+        for width in [8, 16, 32] {
+            let maximum = (1_i64 << width) - 1;
+            writeln!(
+                functions,
+                "fn @ident{width}(u{width} %p) -> u{width} {{\nentry:\nret.u{width} %p\n}}"
+            )?;
+            writeln!(
+                functions,
+                "fn @same{width}(u{width} %p) -> i64 {{\nentry:\n%x = xor.u{width} %p, 0\n%c = eq.u{width} %p, %x\n%z = zext.bool.i64 %c\nret.i64 %z\n}}"
+            )?;
+            writeln!(
+                body,
+                "%p{width} = trunc.i64.u{width} {maximum}\n%r{width} = call @ident{width}(%p{width})\n%w{width} = zext.u{width}.i64 %r{width}\nprint %w{width}\n%e{width} = call @same{width}(%p{width})\nprint %e{width}\n%x{width} = xor.u{width} %r{width}, 0\n%q{width} = eq.u{width} %r{width}, %x{width}\n%qz{width} = zext.bool.i64 %q{width}\nprint %qz{width}\n%d{width} = div.u{width} %r{width}, 7\n%dz{width} = zext.u{width}.i64 %d{width}\nprint %dz{width}\n%g{width} = gt.u{width} %r{width}, 1\n%gz{width} = zext.bool.i64 %g{width}\nprint %gz{width}"
+            )?;
+            writeln!(expected, "{maximum}\n1\n1\n{}\n1", maximum / 7)?;
+        }
+        let source = directory.join("unsigned.lamina");
+        fs::write(
+            &source,
+            format!("{functions}\n@export\nfn @main() -> i64 {{\nentry:\n{body}\nret.i64 0\n}}\n"),
+        )?;
+        for level in ["0", "1", "2", "3"] {
+            for allocator in ["incremental", "linear", "graph"] {
+                let executable = directory.join(format!("unsigned-{level}-{allocator}"));
                 compile(
                     &source,
                     &executable,

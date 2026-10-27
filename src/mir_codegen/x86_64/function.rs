@@ -364,7 +364,7 @@ pub(super) fn compile_single_function_x86_64(
         .sig
         .params
         .iter()
-        .map(|param| narrow_param_extension(&param.ty, param.signedness))
+        .map(|param| narrow_canonical_extension(&param.ty))
         .collect();
     emit_narrow_param_normalization(&mut output, &param_extensions, &self_param_homes)?;
 
@@ -758,9 +758,10 @@ pub(super) fn move_xmm_to_rax(ty: &MirType, xmm: usize) -> String {
     }
 }
 
-/// Width-extension and float-passing facts about the module's functions. Returns are
-/// widened by the caller after the call; arguments are widened by the caller only when
-/// the callee is external, since the C ABI leaves the upper bits unspecified.
+/// Width-extension and float-passing facts about the module's functions. A returned
+/// narrow value is normalised to its canonical form by the caller after the call;
+/// arguments are widened by the caller only when the callee is external, since the C
+/// ABI names the signedness and leaves the upper bits unspecified.
 #[derive(Default)]
 pub(super) struct AbiExtensions {
     returns: HashMap<String, NarrowExtension>,
@@ -779,7 +780,7 @@ impl AbiExtensions {
             .iter()
             .filter_map(|(name, func)| {
                 let ty = func.sig.ret_ty.as_ref()?;
-                Some((name.clone(), narrow_extension(ty, func.sig.ret_signedness)?))
+                Some((name.clone(), narrow_canonical_extension(ty)?))
             })
             .collect();
         let external_arguments = module
@@ -927,11 +928,19 @@ pub(super) fn narrow_extension(ty: &MirType, signedness: Signedness) -> Option<N
     }
 }
 
-pub(super) fn narrow_param_extension(
-    ty: &MirType,
-    signedness: Signedness,
-) -> Option<NarrowExtension> {
-    narrow_extension(ty, signedness)
+/// The canonical in-register form of a narrow value. Inside a function every narrow
+/// integer is held sign-extended to 64 bits whatever its declared signedness, and the
+/// unsigned consumers (unsigned compare, unsigned division, logical shift right)
+/// re-extend before use. `i1` is the exception: it carries only 0 or 1.
+///
+/// Every value entering that world — an incoming parameter, a value returned by a call,
+/// a load — is normalised to this form. Only an argument handed to an external function
+/// keeps the declared signedness, because the C ABI names it.
+pub(super) fn narrow_canonical_extension(ty: &MirType) -> Option<NarrowExtension> {
+    match ty {
+        MirType::Scalar(ScalarType::I1) => narrow_extension(ty, Signedness::Unsigned),
+        _ => narrow_extension(ty, Signedness::Signed),
+    }
 }
 
 /// Rewrite each narrow parameter home in place to its canonical 64-bit form.
@@ -1002,6 +1011,7 @@ mod global_regalloc_tests {
                     "function_call_isolation",
                     "recursion_with_calculation",
                     "type_conversions",
+                    "narrow_unsigned_canonical",
                     "array_operations_comprehensive",
                     "struct_operations_comprehensive",
                 ] {
