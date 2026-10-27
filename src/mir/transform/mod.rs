@@ -253,9 +253,6 @@ pub enum TransformLevel {
     Stable,
 }
 
-impl TransformLevel {
-}
-
 /// Statistics about a transform run
 #[derive(Debug, Default)]
 pub struct TransformStats {
