@@ -653,3 +653,22 @@ fn string_global_resolves_escapes() {
     );
     assert!(format!("{bad:?}").contains("not an escape"), "{bad:?}");
 }
+
+#[test]
+fn switch_edge_moves_run_on_their_own_edge() {
+    let source = "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %i = phi.i64 [0, entry], [%n, loop]\n  %n = add.i64 %i, 2\n  switch.i64 %i, loop, [4, done]\ndone:\n  ret.i64 %n\n}\n";
+    let ir = parse_module(source).expect("parse switch");
+    let module = from_ir(&ir, "switch").expect("lower switch");
+
+    let block = module.functions["main"]
+        .blocks
+        .iter()
+        .find(|block| matches!(block.instructions.last(), Some(Instruction::Switch { .. })))
+        .expect("switch block");
+    let copies = block
+        .instructions
+        .iter()
+        .filter(|inst| matches!(inst, Instruction::Copy { .. }))
+        .count();
+    assert_eq!(copies, 0, "{:?}", block.instructions);
+}

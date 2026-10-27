@@ -1417,3 +1417,43 @@ fn external_declarations_come_out_in_one_order() {
         assert_eq!(emit(), first);
     }
 }
+
+#[cfg(all(test, target_arch = "x86_64", target_os = "linux"))]
+mod edge_move_tests {
+    use crate::mir_codegen::test_support::compile;
+    use std::{env, error::Error, fs, process, process::Command};
+
+    fn run(name: &str, lamina: &str) -> Result<String, Box<dyn Error>> {
+        let directory = env::temp_dir().join(format!("lamina-edge-{name}-{}", process::id()));
+        fs::create_dir_all(&directory)?;
+        let source = directory.join(format!("{name}.lamina"));
+        fs::write(&source, lamina)?;
+        let executable = directory.join(name);
+        compile(&source, &executable, &[])?;
+        let output = Command::new(&executable).output()?;
+        fs::remove_dir_all(&directory)?;
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    #[test]
+    fn swapped_phis_exchange_their_values() -> Result<(), Box<dyn Error>> {
+        // a and b trade places three times, so the loop leaves a = 1 and b = 2.
+        let printed = run(
+            "swap",
+            "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %a = phi.i64 [1, entry], [%b, loop]\n  %b = phi.i64 [2, entry], [%a, loop]\n  %c = phi.i64 [0, entry], [%cn, loop]\n  %cn = add.i64 %c, 1\n  %go = lt.i64 %cn, 3\n  br %go, loop, done\ndone:\n  %t = mul.i64 %a, 10\n  %r = add.i64 %t, %b\n  print %r\n  ret.i64 0\n}\n",
+        )?;
+        assert_eq!(printed, "12\n");
+        Ok(())
+    }
+
+    #[test]
+    fn switch_runs_its_edge_moves_after_the_scrutinee() -> Result<(), Box<dyn Error>> {
+        // i is read by the switch, so i <- n must not happen before the comparison.
+        let printed = run(
+            "switch",
+            "fn @main() -> i64 {\nentry:\n  jmp loop\nloop:\n  %i = phi.i64 [0, entry], [%n, loop]\n  %n = add.i64 %i, 2\n  switch.i64 %i, loop, [4, done]\ndone:\n  print %n\n  ret.i64 0\n}\n",
+        )?;
+        assert_eq!(printed, "6\n");
+        Ok(())
+    }
+}
