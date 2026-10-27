@@ -47,6 +47,12 @@ pub fn reg(id: u32) -> Register {
 pub fn vector(id: u32) -> Register {
     Register::Virtual(VirtualReg::vec(id))
 }
+pub fn scalar_reg(lane: VectorLane, id: u32) -> Register {
+    match lane {
+        VectorLane::F32 | VectorLane::F64 => Register::Virtual(VirtualReg::fpr(id)),
+        _ => reg(id),
+    }
+}
 pub fn addr(id: u32) -> AddressMode {
     AddressMode::BaseOffset {
         address_space: AddressSpace::Generic,
@@ -68,13 +74,7 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
                 .collect(),
         ),
     );
-    let vector = |id| {
-        if name.ends_with("_gpr") {
-            reg(id)
-        } else {
-            vector(id)
-        }
-    };
+    let sreg = |id| scalar_reg(lane, id);
     let mut b = Block::new("entry");
     b.push(Instruction::Load {
         ty,
@@ -94,7 +94,7 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
     }
     b.push(Instruction::Load {
         ty: if single { st } else { ty },
-        dst: if single { reg(4) } else { vector(4) },
+        dst: if single { sreg(4) } else { vector(4) },
         addr: if single {
             AddressMode::BaseOffset {
                 address_space: AddressSpace::Generic,
@@ -107,17 +107,17 @@ pub fn function(name: &str, ty: MirType, op: VectorOp, index: i64) -> Function {
         attrs: MemoryAttrs::default(),
     });
     let operands = match op {
-        VectorOp::VSplat => vec![Operand::reg(reg(4))],
+        VectorOp::VSplat => vec![Operand::reg(sreg(4))],
         VectorOp::VExtractLane => vec![Operand::reg(vector(3)), Operand::imm_i64(index)],
         VectorOp::VInsertLane => vec![
             Operand::reg(vector(3)),
-            Operand::reg(reg(4)),
+            Operand::reg(sreg(4)),
             Operand::imm_i64(index),
         ],
         _ => vec![Operand::reg(vector(3)), Operand::reg(vector(4))],
     };
     let dst = if op == VectorOp::VExtractLane {
-        reg(5)
+        sreg(5)
     } else {
         vector(5)
     };
@@ -448,12 +448,9 @@ pub fn native(backend: Backend, mnemonic: impl Fn(VectorOp, VectorLane, usize) -
             for op in ops().filter(|&op| supported(backend, op, lane)) {
                 let count = 16 / scalar(lane).size_bytes();
                 for index in 0..count {
-                    for gpr in [false, true] {
+                    {
                         for imm in [false, true] {
-                            let name = format!(
-                                "simd_{lane:?}_{op:?}_{index}_{imm}{}",
-                                if gpr { "_gpr" } else { "" }
-                            );
+                            let name = format!("simd_{lane:?}_{op:?}_{index}_{imm}");
                             let mut f = function(
                                 &name,
                                 MirType::Vector(VectorType::V128(lane)),

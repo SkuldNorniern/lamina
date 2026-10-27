@@ -119,6 +119,8 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
         address_space: Default::default(),
     };
     let mut module = MirModule::new("rv32_scalar");
+    let freg = |id| Register::Virtual(VirtualReg::fpr(id));
+    let foperand = |id| Operand::Register(freg(id));
     for ty in [MirType::f32(), MirType::f64()] {
         let immediate = |v: f64| {
             Operand::Immediate(if ty == MirType::f32() {
@@ -135,13 +137,13 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
         let instructions = &mut function.blocks[0].instructions;
         instructions.push(MirInst::Copy {
             ty,
-            dst: reg(1),
+            dst: freg(1),
             src: immediate(-1.23456789),
         });
         instructions.push(MirInst::Copy {
             ty,
-            dst: reg(2),
-            src: operand(1),
+            dst: freg(2),
+            src: foperand(1),
         });
         for (id, op) in [
             FloatBinOp::FAdd,
@@ -155,8 +157,8 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
             instructions.push(MirInst::FloatBinary {
                 op,
                 ty,
-                dst: reg(id as u32 + 3),
-                lhs: operand(2),
+                dst: freg(id as u32 + 3),
+                lhs: foperand(2),
                 rhs: immediate(3.25),
             });
         }
@@ -164,19 +166,19 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
             instructions.push(MirInst::FloatUnary {
                 op,
                 ty,
-                dst: reg(id as u32 + 7),
-                src: operand(3),
+                dst: freg(id as u32 + 7),
+                src: foperand(3),
             });
         }
         instructions.push(MirInst::Store {
             ty,
-            src: operand(7),
+            src: foperand(7),
             addr: addr.clone(),
             attrs: Default::default(),
         });
         instructions.push(MirInst::Load {
             ty,
-            dst: reg(9),
+            dst: freg(9),
             addr: addr.clone(),
             attrs: Default::default(),
         });
@@ -195,7 +197,7 @@ fn rv32_scalar_output_assembles() -> Result<(), Box<dyn Error>> {
                 op,
                 ty,
                 dst: reg(id as u32 + 10),
-                lhs: operand(9),
+                lhs: foperand(9),
                 rhs: immediate(-2.5),
             });
         }

@@ -270,7 +270,7 @@ mod tests {
             let mut module = Module::new("simd");
             let mut data = Vec::new();
             for (i, c) in cases.iter().enumerate() {
-                let name = format!("simd_{i}{}", if i % 2 == 1 { "_gpr" } else { "" });
+                let name = format!("simd_{i}");
                 let mut f = function(
                     &name,
                     MirType::Vector(VectorType::V128(c.lane)),
@@ -327,7 +327,7 @@ for i in range(len(data)//50):
     memory.write(store, b'\x00'+row[:16]+b'\x00', 0)
     memory.write(store, b'\x00'+row[16:32]+b'\x00', 32)
     memory.write(store, bytes([165])*18, 64)
-    name = f'simd_{i}' + ('_gpr' if i%2 else '')
+    name = f'simd_{i}'
     exports[name](store, 0, 32, 64)
     got = bytes(memory.read(store,64,82))
     assert got == row[32:], (i, name, got.hex(), row[32:].hex())

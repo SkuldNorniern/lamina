@@ -9,7 +9,10 @@
 //! - Control flow graph construction
 //! - Type mapping and validation
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    ops::{Deref, DerefMut},
+};
 
 use crate::{
     ir::{
@@ -95,11 +98,54 @@ fn lower_int_binop(op: &IRBin, ty: IRPrim) -> IntBinOp {
     }
 }
 
-/// Resolve an IR value to a MIR operand, allocating a fresh GPR binding on first encounter.
+/// Bindings from IR value names to MIR registers, together with the register class each
+/// name needs. The class comes from the IR type of the defining instruction, so a value
+/// first seen as an operand still gets a register of the right class.
+#[derive(Default)]
+struct VarBindings<'a> {
+    regs: HashMap<&'a str, Register>,
+    classes: HashMap<&'a str, RegisterClass>,
+}
+
+impl<'a> Deref for VarBindings<'a> {
+    type Target = HashMap<&'a str, Register>;
+    fn deref(&self) -> &Self::Target {
+        &self.regs
+    }
+}
+
+impl<'a> DerefMut for VarBindings<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.regs
+    }
+}
+
+impl<'a> VarBindings<'a> {
+    fn class_of(&self, name: &str) -> RegisterClass {
+        self.classes
+            .get(name)
+            .copied()
+            .unwrap_or(RegisterClass::Gpr)
+    }
+
+    fn fresh(&self, name: &str, vreg_alloc: &mut VirtualRegAllocator) -> Register {
+        Register::Virtual(allocate_in_class(self.class_of(name), vreg_alloc))
+    }
+}
+
+fn allocate_in_class(class: RegisterClass, vreg_alloc: &mut VirtualRegAllocator) -> VirtualReg {
+    match class {
+        RegisterClass::Fpr => vreg_alloc.allocate_fpr(),
+        RegisterClass::Vec => vreg_alloc.allocate_vec(),
+        _ => vreg_alloc.allocate_gpr(),
+    }
+}
+
+/// Resolve an IR value to a MIR operand, allocating a fresh binding on first encounter.
 fn resolve_operand<'a>(
     v: &IRVal<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
-    var_to_reg: &mut HashMap<&'a str, Register>,
+    var_to_reg: &mut VarBindings<'a>,
     globals: &mut GlobalAddresses<'a>,
 ) -> Result<Operand, FromIRError> {
     match v {
@@ -107,7 +153,7 @@ fn resolve_operand<'a>(
             if let Some(r) = var_to_reg.get(id) {
                 Ok(Operand::Register(r.clone()))
             } else {
-                let r = Register::Virtual(vreg_alloc.allocate_gpr());
+                let r = var_to_reg.fresh(id, vreg_alloc);
                 var_to_reg.insert(*id, r.clone());
                 Ok(Operand::Register(r))
             }
@@ -117,16 +163,17 @@ fn resolve_operand<'a>(
     }
 }
 
-/// Look up `result` in the register map; if absent, allocate a fresh GPR and bind it.
-fn resolve_or_alloc_gpr<'a>(
+/// Look up `result` in the register map; if absent, allocate a fresh register of the
+/// class its IR type calls for and bind it.
+fn resolve_or_alloc<'a>(
     result: &'a str,
     vreg_alloc: &mut VirtualRegAllocator,
-    var_to_reg: &mut HashMap<&'a str, Register>,
+    var_to_reg: &mut VarBindings<'a>,
 ) -> Register {
     if let Some(existing) = var_to_reg.get(result) {
         existing.clone()
     } else {
-        let fresh = Register::Virtual(vreg_alloc.allocate_gpr());
+        let fresh = var_to_reg.fresh(result, vreg_alloc);
         var_to_reg.insert(result, fresh.clone());
         fresh
     }
@@ -586,7 +633,10 @@ fn convert_function<'a>(
         }
     }
 
-    let mut var_to_reg: HashMap<&'a str, Register> = HashMap::new();
+    let mut var_to_reg = VarBindings {
+        classes: value_register_classes(f, module),
+        ..Default::default()
+    };
     let mut register_types = HashMap::new();
     let unsigned = unsigned_results(f, module);
     let mut stack_allocs: HashSet<&'a str> = HashSet::new();
@@ -1116,7 +1166,7 @@ fn sequence_parallel_copies(
 fn convert_instruction<'a>(
     instr: &IRInst<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
-    var_to_reg: &mut HashMap<&'a str, Register>,
+    var_to_reg: &mut VarBindings<'a>,
     stack_allocs: &mut HashSet<&'a str>,
     reservations: &mut HashMap<VirtualReg, usize>,
     facts: &ValueFacts<'_, 'a>,
@@ -1128,7 +1178,7 @@ fn convert_instruction<'a>(
     fn ir_address_mode_to_mir<'b>(
         ptr: &IRVal<'b>,
         vreg_alloc: &mut VirtualRegAllocator,
-        var_to_reg: &mut HashMap<&'b str, Register>,
+        var_to_reg: &mut VarBindings<'b>,
     ) -> Result<AddressMode, FromIRError> {
         match ptr {
             IRVal::Variable(id) => {
@@ -1227,7 +1277,7 @@ fn convert_instruction<'a>(
                 var_to_reg.insert(result, dst.clone());
                 dst
             } else {
-                resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg)
+                resolve_or_alloc(result, vreg_alloc, var_to_reg)
             };
             let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut src, mir_ty);
@@ -1269,7 +1319,7 @@ fn convert_instruction<'a>(
             lhs,
             rhs,
         } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_prim(*ty)?;
             let lhs_op = resolve_operand(lhs, vreg_alloc, var_to_reg, globals)?;
             let rhs_op = resolve_operand(rhs, vreg_alloc, var_to_reg, globals)?;
@@ -1497,7 +1547,7 @@ fn convert_instruction<'a>(
             Ok(vec![Instruction::Ret { value: op }])
         }
         IRInst::Load { result, ty, ptr } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
             let base = match ptr {
                 IRVal::Variable(id) => var_to_reg
@@ -1582,7 +1632,7 @@ fn convert_instruction<'a>(
                 });
                 *arg = Operand::Register(dst);
             }
-            let ret = result.map(|res| resolve_or_alloc_gpr(res, vreg_alloc, var_to_reg));
+            let ret = result.map(|res| resolve_or_alloc(res, vreg_alloc, var_to_reg));
             instructions.push(Instruction::Call {
                 name: (*func_name).to_string(),
                 args: mir_args,
@@ -1591,7 +1641,7 @@ fn convert_instruction<'a>(
             Ok(instructions)
         }
         IRInst::FuncAddr { result, func_name } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::SymbolAddress {
                 dst,
                 symbol: (*func_name).to_string(),
@@ -1621,7 +1671,7 @@ fn convert_instruction<'a>(
                     var_to_reg.insert(name, dst.clone());
                     dst
                 }
-                _ => resolve_or_alloc_gpr(name, vreg_alloc, var_to_reg),
+                _ => resolve_or_alloc(name, vreg_alloc, var_to_reg),
             });
             Ok(vec![Instruction::CallIndirect {
                 target,
@@ -1682,7 +1732,7 @@ fn convert_instruction<'a>(
                     "trunc from {source_type} to {target_type} widens; use zext or sext"
                 )));
             }
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             if from == to {
                 return Ok(vec![Instruction::Copy { ty: to, dst, src }]);
@@ -1731,7 +1781,7 @@ fn convert_instruction<'a>(
         } => {
             let from = map_ir_prim(*source_type)?;
             let to = map_ir_prim(*target_type)?;
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mut src = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             normalize_lowered_literal(&mut src, from);
             Ok(vec![Instruction::FloatToInt {
@@ -1796,7 +1846,7 @@ fn convert_instruction<'a>(
             true_val,
             false_val,
         } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
 
             let mir_ty = map_ir_type(ty)?;
 
@@ -1827,7 +1877,7 @@ fn convert_instruction<'a>(
             ptr_value,
             target_type,
         } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(ptr_value, vreg_alloc, var_to_reg, globals)?;
             Ok(vec![Instruction::IntConvert {
                 from: MirType::ptr(),
@@ -1842,7 +1892,7 @@ fn convert_instruction<'a>(
             int_value,
             target_type: _,
         } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let val_op = resolve_operand(int_value, vreg_alloc, var_to_reg, globals)?;
             let from = operand_type(&val_op, register_types);
             Ok(vec![Instruction::IntConvert {
@@ -1896,7 +1946,7 @@ fn convert_instruction<'a>(
             field_byte_offset,
         } => {
             let base = pointer_base(struct_ptr, vreg_alloc, var_to_reg, globals)?;
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             // Without the struct type the text syntax leaves no layout to read, so
             // the fallback is one 8-byte slot per field.
             let offset = match field_byte_offset {
@@ -1931,7 +1981,7 @@ fn convert_instruction<'a>(
                 },
                 _ => None,
             };
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
 
             if let Some(iv) = idx_const {
                 let offset = iv
@@ -2043,7 +2093,7 @@ fn convert_instruction<'a>(
         } => {
             let buf = resolve_operand(buffer, vreg_alloc, var_to_reg, globals)?;
             let sz = resolve_operand(size, vreg_alloc, var_to_reg, globals)?;
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "lamina.write".to_string(),
                 args: vec![buf, sz],
@@ -2052,7 +2102,7 @@ fn convert_instruction<'a>(
         }
         IRInst::WriteByte { value, result } => {
             let v = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "lamina.writebyte".to_string(),
                 args: vec![v],
@@ -2060,7 +2110,7 @@ fn convert_instruction<'a>(
             }])
         }
         IRInst::ReadByte { result } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "lamina.readbyte".to_string(),
                 args: vec![],
@@ -2076,7 +2126,7 @@ fn convert_instruction<'a>(
                 .filter(|w| matches!(w, 1 | 2 | 4 | 8))
                 .ok_or(FromIRError::WritePtrPointeeUnknown)?;
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg, globals)?;
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "lamina.writeptr".to_string(),
                 args: vec![p, Operand::Immediate(Immediate::I64(width as i64))],
@@ -2090,7 +2140,7 @@ fn convert_instruction<'a>(
         } => {
             let buf = resolve_operand(buffer, vreg_alloc, var_to_reg, globals)?;
             let sz = resolve_operand(size, vreg_alloc, var_to_reg, globals)?;
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
                 name: "lamina.read".to_string(),
                 args: vec![buf, sz],
@@ -2102,7 +2152,7 @@ fn convert_instruction<'a>(
             alloc_type,
             allocated_ty,
         } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
 
             let size = sizeof_type(allocated_ty).ok_or(FromIRError::UnsupportedType)?;
             let size = i64::try_from(size).map_err(|_| FromIRError::UnsupportedType)?;
@@ -2216,7 +2266,7 @@ fn convert_instruction<'a>(
             ptr,
             ordering,
         } => {
-            let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
             let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
             let mir_ordering = match ordering {
@@ -2347,7 +2397,7 @@ fn displace_pointer(
 fn pointer_base<'a>(
     ptr: &IRVal<'a>,
     vreg_alloc: &mut VirtualRegAllocator,
-    var_to_reg: &HashMap<&'a str, Register>,
+    var_to_reg: &VarBindings<'a>,
     globals: &mut GlobalAddresses<'a>,
 ) -> Result<Register, FromIRError> {
     match ptr {
@@ -2390,9 +2440,77 @@ fn operand_type(operand: &Operand, types: &HashMap<Register, MirType>) -> MirTyp
     }
 }
 
+fn reg_class_for_prim(ty: IRPrim) -> RegisterClass {
+    match ty {
+        IRPrim::F32 | IRPrim::F64 => RegisterClass::Fpr,
+        _ => RegisterClass::Gpr,
+    }
+}
+
+/// Register class of every value a function defines, keyed by IR name. Lowering reads
+/// an operand before the instruction defining it in the single pass over a block, so the
+/// class cannot be deduced from the binding that already exists.
+fn value_register_classes<'a>(
+    f: &IRFunction<'a>,
+    module: &IRModule<'a>,
+) -> HashMap<&'a str, RegisterClass> {
+    let mut classes: HashMap<&'a str, RegisterClass> = HashMap::new();
+    let class_of_type = |ty: &IRType<'a>| {
+        let resolved = resolve_type_names(ty, &module.type_declarations);
+        reg_class_for_type(resolved.as_ref().unwrap_or(ty))
+    };
+    for param in &f.signature.params {
+        classes.insert(param.name, class_of_type(&param.ty));
+    }
+    for block in f.basic_blocks.values() {
+        for instruction in &block.instructions {
+            let (name, class) = match instruction {
+                IRInst::Binary { result, ty, .. } | IRInst::Unary { result, ty, .. } => {
+                    (*result, reg_class_for_prim(*ty))
+                }
+                IRInst::Select { result, ty, .. }
+                | IRInst::Load { result, ty, .. }
+                | IRInst::Phi { result, ty, .. } => (*result, class_of_type(ty)),
+                IRInst::Bitcast {
+                    result,
+                    target_type,
+                    ..
+                } => (*result, reg_class_for_prim(*target_type)),
+                IRInst::IntToFloat { result, .. } => (*result, RegisterClass::Fpr),
+                IRInst::FloatConvert { result, .. } => (*result, RegisterClass::Fpr),
+                IRInst::CallIndirect {
+                    result: Some(result),
+                    return_type,
+                    ..
+                } => (*result, class_of_type(return_type)),
+                IRInst::Call {
+                    result: Some(result),
+                    func_name,
+                    ..
+                } => (
+                    *result,
+                    module
+                        .functions
+                        .get(func_name)
+                        .map(|callee| class_of_type(&callee.signature.return_type))
+                        .unwrap_or(RegisterClass::Gpr),
+                ),
+                other => match other.defined_var() {
+                    Some(name) => (name, RegisterClass::Gpr),
+                    None => continue,
+                },
+            };
+            classes.insert(name, class);
+        }
+    }
+    classes
+}
+
 fn reg_class_for_type(ty: &IRType<'_>) -> RegisterClass {
     match ty {
         IRType::Primitive(IRPrim::F32) | IRType::Primitive(IRPrim::F64) => RegisterClass::Fpr,
+        #[cfg(feature = "nightly")]
+        IRType::Vector { .. } => RegisterClass::Vec,
         _ => RegisterClass::Gpr,
     }
 }

@@ -323,6 +323,12 @@ mod tests {
     fn vector(id: u32) -> Register {
         Register::Virtual(VirtualReg::vec(id))
     }
+    fn scalar_reg(lane: VectorLane, id: u32) -> Register {
+        match lane {
+            VectorLane::F32 | VectorLane::F64 => Register::Virtual(VirtualReg::fpr(id)),
+            _ => reg(id),
+        }
+    }
     fn addr(id: u32) -> AddressMode {
         AddressMode::BaseOffset {
             address_space: AddressSpace::Generic,
@@ -344,13 +350,7 @@ mod tests {
                     .collect(),
             ),
         );
-        let vector = |id| {
-            if name.ends_with("_gpr") {
-                reg(id)
-            } else {
-                vector(id)
-            }
-        };
+        let sreg = |id| scalar_reg(lane, id);
         let mut b = Block::new("entry");
         b.push(Instruction::Load {
             ty,
@@ -370,7 +370,7 @@ mod tests {
         }
         b.push(Instruction::Load {
             ty: if single { st } else { ty },
-            dst: if single { reg(4) } else { vector(4) },
+            dst: if single { sreg(4) } else { vector(4) },
             addr: if single {
                 AddressMode::BaseOffset {
                     address_space: AddressSpace::Generic,
@@ -383,17 +383,17 @@ mod tests {
             attrs: MemoryAttrs::default(),
         });
         let operands = match op {
-            VectorOp::VSplat => vec![Operand::reg(reg(4))],
+            VectorOp::VSplat => vec![Operand::reg(sreg(4))],
             VectorOp::VExtractLane => vec![Operand::reg(vector(3)), Operand::imm_i64(index)],
             VectorOp::VInsertLane => vec![
                 Operand::reg(vector(3)),
-                Operand::reg(reg(4)),
+                Operand::reg(sreg(4)),
                 Operand::imm_i64(index),
             ],
             _ => vec![Operand::reg(vector(3)), Operand::reg(vector(4))],
         };
         let dst = if op == VectorOp::VExtractLane {
-            reg(5)
+            sreg(5)
         } else {
             vector(5)
         };
@@ -568,32 +568,6 @@ mod tests {
             want.extend(guarded);
         }
         harness.push_str("return 0; }\n");
-        let gpr_functions: Vec<_> = module
-            .functions
-            .keys()
-            .filter(|name| {
-                name.strip_prefix("simd_")
-                    .and_then(|n| n.parse::<usize>().ok())
-                    .is_some_and(|i| i % 2 == 1)
-            })
-            .cloned()
-            .collect();
-        for name in gpr_functions {
-            let i = name
-                .strip_prefix("simd_")
-                .expect("prefix")
-                .parse::<usize>()
-                .expect("index");
-            let c = &cases[i];
-            let mut f = function(
-                &format!("{name}_gpr"),
-                MirType::Vector(VectorType::V128(c.lane)),
-                c.op,
-                c.index as i64,
-            );
-            f.sig.name = name.clone();
-            module.functions.insert(name, f);
-        }
         if immediate {
             for (i, c) in cases.iter().enumerate() {
                 let f = module
