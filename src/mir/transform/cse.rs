@@ -152,47 +152,32 @@ impl CommonSubexpressionElimination {
         let mut instructions = Vec::new();
 
         for instr in &block.instructions {
-            let expr_key = self.expr_key_with_versions(instr, &def_version);
-
-            if let Some(expr_key) = expr_key {
-                if let Some((existing_reg, existing_ver)) = expr_to_reg.get(&expr_key) {
-                    // Replace this instruction with a copy from the existing register
-                    if let Some(dst) = instr.def_reg() {
-                        let cur_ver = def_version.get(existing_reg).copied().unwrap_or(0);
-                        if cur_ver != *existing_ver {
-                            // Stale producer, cannot reuse
-                        } else {
-                            // In loop bodies, be extra conservative: only CSE simple operations
-                            if is_in_loop_body && !self.is_simple_cse_candidate(instr) {
-                                instructions.push(instr.clone());
-                            } else {
-                                let copy_instr = Instruction::Copy {
-                                    ty: self.extract_instruction_type(instr),
-                                    dst: dst.clone(),
-                                    src: Operand::Register(existing_reg.clone()),
-                                };
-                                instructions.push(copy_instr);
-                                changed = true;
-                                // Destination has now been defined; bump its version
-                                def_version
-                                    .entry(dst.clone())
-                                    .and_modify(|v| *v += 1)
-                                    .or_insert(1);
-                                continue;
-                            }
-                        }
-                    }
-                } else {
-                    // First time seeing this expression, record it
-                    if let Some(dst) = instr.def_reg() {
-                        let dst_ver = def_version.get(dst).copied().unwrap_or(0);
-                        expr_to_reg.insert(expr_key, (dst.clone(), dst_ver));
-                    }
+            if let (Some(dst), Some(expr_key)) = (
+                instr.def_reg(),
+                self.expr_key_with_versions(instr, &def_version),
+            ) {
+                let loop_skip = is_in_loop_body && !self.is_simple_cse_candidate(instr);
+                let producer = expr_to_reg.get(&expr_key).filter(|(reg, ver)| {
+                    !loop_skip && def_version.get(reg).copied().unwrap_or(0) == *ver
+                });
+                if let Some((existing_reg, _)) = producer {
+                    instructions.push(Instruction::Copy {
+                        ty: self.extract_instruction_type(instr),
+                        dst: dst.clone(),
+                        src: Operand::Register(existing_reg.clone()),
+                    });
+                    changed = true;
+                    def_version
+                        .entry(dst.clone())
+                        .and_modify(|v| *v += 1)
+                        .or_insert(1);
+                    continue;
                 }
+                let ver_after_def = def_version.get(dst).copied().unwrap_or(0) + 1;
+                expr_to_reg.insert(expr_key, (dst.clone(), ver_after_def));
             }
 
             instructions.push(instr.clone());
-            // Bump version for any destination defined by this instruction
             if let Some(dst) = instr.def_reg() {
                 def_version
                     .entry(dst.clone())
