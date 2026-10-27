@@ -564,6 +564,11 @@ pub fn emit_global_data<W: Write>(
                     let list: Vec<String> = chunk.iter().map(|b| format!("{b:#04x}")).collect();
                     writeln!(writer, "    .byte {}", list.join(", "))?;
                 }
+                if let Some(tail) = size.checked_sub(bytes.len())
+                    && tail > 0
+                {
+                    writeln!(writer, "    .zero {tail}")?;
+                }
             }
             _ => {
                 writeln!(writer, "{bss_section}")?;
