@@ -710,8 +710,8 @@ pub fn writeptr_width(operand: &Operand) -> Result<usize, LaminaError> {
 /// Label of the printf format string the `print` family reads, by call name.
 pub fn print_format_label(call: &str) -> &'static str {
     match call {
-        "printu" => ".L_mir_fmt_uint",
-        "printf32" | "printf64" => ".L_mir_fmt_float",
+        "lamina.printu" => ".L_mir_fmt_uint",
+        "lamina.printf32" | "lamina.printf64" => ".L_mir_fmt_float",
         _ => ".L_mir_fmt_int",
     }
 }

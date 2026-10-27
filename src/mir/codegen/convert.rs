@@ -1980,10 +1980,10 @@ fn convert_instruction<'a>(
             let ty = operand_type(&arg, register_types);
             let is_unsigned = matches!(value, IRVal::Variable(id) if unsigned.contains(id));
             let name = match ty {
-                MirType::Scalar(ScalarType::F32) => "printf32",
-                MirType::Scalar(ScalarType::F64) => "printf64",
-                _ if is_unsigned => "printu",
-                _ => "print",
+                MirType::Scalar(ScalarType::F32) => "lamina.printf32",
+                MirType::Scalar(ScalarType::F64) => "lamina.printf64",
+                _ if is_unsigned => "lamina.printu",
+                _ => "lamina.print",
             };
             // A narrow value sits sign-extended in its register, so an unsigned one
             // needs widening before printf reads all 64 bits.
@@ -2017,7 +2017,7 @@ fn convert_instruction<'a>(
             let sz = resolve_operand(size, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
-                name: "write".to_string(),
+                name: "lamina.write".to_string(),
                 args: vec![buf, sz],
                 ret: Some(dst),
             }])
@@ -2026,7 +2026,7 @@ fn convert_instruction<'a>(
             let v = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
-                name: "writebyte".to_string(),
+                name: "lamina.writebyte".to_string(),
                 args: vec![v],
                 ret: Some(dst),
             }])
@@ -2034,7 +2034,7 @@ fn convert_instruction<'a>(
         IRInst::ReadByte { result } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
-                name: "readbyte".to_string(),
+                name: "lamina.readbyte".to_string(),
                 args: vec![],
                 ret: Some(dst),
             }])
@@ -2050,7 +2050,7 @@ fn convert_instruction<'a>(
             let p = resolve_operand(ptr, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
-                name: "writeptr".to_string(),
+                name: "lamina.writeptr".to_string(),
                 args: vec![p, Operand::Immediate(Immediate::I64(width as i64))],
                 ret: Some(dst),
             }])
@@ -2064,7 +2064,7 @@ fn convert_instruction<'a>(
             let sz = resolve_operand(size, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
             Ok(vec![Instruction::Call {
-                name: "read".to_string(),
+                name: "lamina.read".to_string(),
                 args: vec![buf, sz],
                 ret: Some(dst),
             }])

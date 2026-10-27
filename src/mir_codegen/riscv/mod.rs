@@ -1402,7 +1402,7 @@ fn emit_instruction_riscv<W: Write>(
             spill_caller_saved(writer, &caller_saved_mappings, stack_slots, ctx.target)?;
 
             // Handle print intrinsic
-            if name == "writeptr" && args.len() == 2 {
+            if name == "lamina.writeptr" && args.len() == 2 {
                 // write(1, ptr, width): the pointee's bytes go out straight from memory.
                 let width = writeptr_width(&args[1])?;
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
@@ -1412,15 +1412,15 @@ fn emit_instruction_riscv<W: Write>(
                     .call_stub("write")
                     .unwrap_or_else(|| "write".to_string());
                 writeln!(writer, "    call {write}")?;
-            } else if (name == "write" || name == "read") && args.len() == 2 {
+            } else if (name == "lamina.write" || name == "lamina.read") && args.len() == 2 {
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a1")?;
                 load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "a2")?;
-                writeln!(writer, "    li a0, {}", i32::from(name == "write"))?;
+                writeln!(writer, "    li a0, {}", i32::from(name == "lamina.write"))?;
                 let callee = abi
                     .call_stub(name)
                     .unwrap_or_else(|| abi.mangle_function_name(name));
                 writeln!(writer, "    call {callee}")?;
-            } else if name == "writebyte" && args.len() == 1 {
+            } else if name == "lamina.writebyte" && args.len() == 1 {
                 // putchar reports the character written, or -1; writebyte reports the
                 // byte count, so turn the result into 1 or -1.
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "a0")?;
@@ -1435,7 +1435,7 @@ fn emit_instruction_riscv<W: Write>(
                 writeln!(writer, "    neg t2, t2")?;
                 writeln!(writer, "    li a0, 1")?;
                 writeln!(writer, "    or a0, a0, t2")?;
-            } else if name == "readbyte" && args.is_empty() {
+            } else if name == "lamina.readbyte" && args.is_empty() {
                 // getchar reports the byte or -1 at end of input, where readbyte
                 // reports zero.
                 let getchar = abi
@@ -1445,11 +1445,11 @@ fn emit_instruction_riscv<W: Write>(
                 writeln!(writer, "    slti t1, a0, 0")?;
                 writeln!(writer, "    addi t1, t1, -1")?;
                 writeln!(writer, "    and a0, a0, t1")?;
-            } else if name == "printf32" || name == "printf64" {
+            } else if name == "lamina.printf32" || name == "lamina.printf64" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    la a0, {}", fmt_label(name, target_os))?;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
-                    if name == "printf32" {
+                    if name == "lamina.printf32" {
                         writeln!(writer, "    fmv.w.x ft0, a1")?;
                         writeln!(writer, "    fcvt.d.s ft0, ft0")?;
                         writeln!(writer, "    fmv.x.d a1, ft0")?;
@@ -1457,7 +1457,7 @@ fn emit_instruction_riscv<W: Write>(
                     writeln!(writer, "    call {}", printf_symbol(&abi, target_os))?;
                     emit_flush(writer, &abi, target_os)?;
                 }
-            } else if name == "print" || name == "printu" {
+            } else if name == "lamina.print" || name == "lamina.printu" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    la a0, {}", fmt_label(name, target_os))?;
                     load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a1")?;
@@ -1607,12 +1607,12 @@ fn emit_instruction_riscv<W: Write>(
         }
         MirInst::TailCall { name, args } => {
             let abi = RiscVAbi::new(target_os);
-            if name == "print" {
+            if name == "lamina.print" {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "RISC-V: TailCall to print is not supported".to_string(),
                 )));
             }
-            if name == "writeptr" {
+            if name == "lamina.writeptr" {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "RISC-V: writeptr is not supported".to_string(),
                 )));

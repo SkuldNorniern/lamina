@@ -955,20 +955,20 @@ fn emit_instruction_wasm(
             }
         }
         MirInst::Call { name, args, ret } => {
-            if name == "print" || name == "printu" {
+            if name == "lamina.print" || name == "lamina.printu" {
                 // Handle print intrinsic
                 if let Some(arg) = args.first() {
                     load_operand_wasm(arg, writer, vreg_to_local)?;
-                    if name == "printu" {
+                    if name == "lamina.printu" {
                         writeln!(writer, "      call $logu")?;
                     } else {
                         writeln!(writer, "      call $log")?;
                     }
                 }
-            } else if name == "printf32" || name == "printf64" {
+            } else if name == "lamina.printf32" || name == "lamina.printf64" {
                 if let Some(arg) = args.first() {
                     load_operand_wasm(arg, writer, vreg_to_local)?;
-                    if name == "printf32" {
+                    if name == "lamina.printf32" {
                         writeln!(writer, "      i32.wrap_i64")?;
                         writeln!(writer, "      f32.reinterpret_i32")?;
                         writeln!(writer, "      f64.promote_f32")?;
@@ -989,7 +989,10 @@ fn emit_instruction_wasm(
                     }
                 }
 
-                writeln!(writer, "      call ${name}")?;
+                // An intrinsic is imported under its bare name, which is also the name
+                // the host knows it by.
+                let symbol = name.strip_prefix("lamina.").unwrap_or(name);
+                writeln!(writer, "      call ${symbol}")?;
 
                 if let Some(ty) = shape.and_then(|shape| shape.result.as_ref()) {
                     reinterpret_in(writer, ty)?;

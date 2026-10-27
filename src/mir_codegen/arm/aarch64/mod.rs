@@ -1391,7 +1391,7 @@ fn emit_block<W: Write>(
                 }
             }
             MirInst::Call { name, args, ret } => {
-                if (name == "print" || name == "printu") && args.len() == 1 {
+                if (name == "lamina.print" || name == "lamina.printu") && args.len() == 1 {
                     let fmt = print_format_label(name);
                     // Special-case intrinsic: print(integer) via printf("%lld\n", value)
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
@@ -1421,9 +1421,11 @@ fn emit_block<W: Write>(
                     if let Some(dst) = ret {
                         store_result(w, dst, "x0", frame, ra)?;
                     }
-                } else if (name == "printf32" || name == "printf64") && args.len() == 1 {
+                } else if (name == "lamina.printf32" || name == "lamina.printf64")
+                    && args.len() == 1
+                {
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
-                    if name == "printf32" {
+                    if name == "lamina.printf32" {
                         writeln!(w, "    fmov s0, w1")?;
                         writeln!(w, "    fcvt d0, s0")?;
                         writeln!(w, "    fmov x1, d0")?;
@@ -1448,7 +1450,7 @@ fn emit_block<W: Write>(
                             writeln!(w, "    bl fflush")?;
                         }
                     }
-                } else if name == "writebyte" && args.len() == 1 {
+                } else if name == "lamina.writebyte" && args.len() == 1 {
                     // Write a single byte to stdout using macOS ARM64 syscall
                     match abi.target_os() {
                         os if os_uses_macho(os) => {
@@ -1481,7 +1483,7 @@ fn emit_block<W: Write>(
                             writeln!(w, "    add sp, sp, #16")?;
                         }
                     }
-                } else if name == "readbyte" && args.is_empty() {
+                } else if name == "lamina.readbyte" && args.is_empty() {
                     match abi.target_os() {
                         os if os_uses_macho(os) => {
                             writeln!(w, "    sub sp, sp, #16")?;
@@ -1530,7 +1532,7 @@ fn emit_block<W: Write>(
                             writeln!(w, "    add sp, sp, #16")?;
                         }
                     }
-                } else if name == "writeptr" && args.len() == 2 {
+                } else if name == "lamina.writeptr" && args.len() == 2 {
                     // write(1, ptr, width): the bytes go out straight from memory.
                     let width = writeptr_width(&args[1])?;
                     emit_materialize_operand(w, &args[0], "x1", frame, ra)?;
@@ -1548,7 +1550,7 @@ fn emit_block<W: Write>(
                     if let Some(dst) = ret {
                         store_result(w, dst, "x0", frame, ra)?;
                     }
-                } else if name == "write" && args.len() == 2 {
+                } else if name == "lamina.write" && args.len() == 2 {
                     match abi.target_os() {
                         os if os_uses_macho(os) => {
                             // write(fd=1, buf=args[0], size=args[1])
@@ -1571,7 +1573,7 @@ fn emit_block<W: Write>(
                             }
                         }
                     }
-                } else if name == "read" && args.len() == 2 {
+                } else if name == "lamina.read" && args.len() == 2 {
                     match abi.target_os() {
                         os if os_uses_macho(os) => {
                             // read(fd=0, buf=args[0], size=args[1])

@@ -1279,7 +1279,7 @@ fn emit_instruction_ppc64<W: Write>(
                 _ => None,
             };
 
-            if name == "writeptr" && args.len() == 2 {
+            if name == "lamina.writeptr" && args.len() == 2 {
                 // write(1, ptr, width): the pointee's bytes go out straight from memory.
                 let width = writeptr_width(&args[1])?;
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "4")?;
@@ -1290,16 +1290,16 @@ fn emit_instruction_ppc64<W: Write>(
                     .unwrap_or_else(|| abi.mangle_function_name("write"));
                 writeln!(writer, "    bl {write}")?;
                 writeln!(writer, "    nop")?;
-            } else if (name == "write" || name == "read") && args.len() == 2 {
+            } else if (name == "lamina.write" || name == "lamina.read") && args.len() == 2 {
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "4")?;
                 load_operand_to_register(&args[1], writer, reg_alloc, stack_slots, "5")?;
-                writeln!(writer, "    li 3, {}", i32::from(name == "write"))?;
+                writeln!(writer, "    li 3, {}", i32::from(name == "lamina.write"))?;
                 let callee = abi
                     .call_stub(name)
                     .unwrap_or_else(|| abi.mangle_function_name(name));
                 writeln!(writer, "    bl {callee}")?;
                 writeln!(writer, "    nop")?;
-            } else if name == "writebyte" && args.len() == 1 {
+            } else if name == "lamina.writebyte" && args.len() == 1 {
                 // putchar reports the character written, or -1; writebyte reports the
                 // byte count, so turn the result into 1 or -1.
                 load_operand_to_register(&args[0], writer, reg_alloc, stack_slots, "3")?;
@@ -1313,7 +1313,7 @@ fn emit_instruction_ppc64<W: Write>(
                 writeln!(writer, "    cmpd 0, 3, 4")?;
                 writeln!(writer, "    li 3, 1")?;
                 writeln!(writer, "    isel 3, 4, 3, 2")?;
-            } else if name == "readbyte" && args.is_empty() {
+            } else if name == "lamina.readbyte" && args.is_empty() {
                 // getchar reports the byte or -1 at end of input, where readbyte
                 // reports zero.
                 let getchar = abi
@@ -1324,7 +1324,7 @@ fn emit_instruction_ppc64<W: Write>(
                 writeln!(writer, "    li 4, 0")?;
                 writeln!(writer, "    cmpdi 3, 0")?;
                 writeln!(writer, "    isel 3, 4, 3, 0")?;
-            } else if name == "printf32" || name == "printf64" {
+            } else if name == "lamina.printf32" || name == "lamina.printf64" {
                 if let Some(arg) = args.first() {
                     writeln!(writer, "    addis 3, 2, .L_mir_fmt_float@toc@ha")?;
                     writeln!(writer, "    addi 3, 3, .L_mir_fmt_float@toc@l")?;
@@ -1334,7 +1334,7 @@ fn emit_instruction_ppc64<W: Write>(
                         reg_alloc,
                         stack_slots,
                         "1",
-                        name == "printf32",
+                        name == "lamina.printf32",
                     )?;
                     writeln!(writer, "    stfd 1, -8(1)")?;
                     writeln!(writer, "    ld 4, -8(1)")?;
@@ -1342,7 +1342,7 @@ fn emit_instruction_ppc64<W: Write>(
                     writeln!(writer, "    nop")?;
                     emit_flush(writer)?;
                 }
-            } else if name == "print" || name == "printu" {
+            } else if name == "lamina.print" || name == "lamina.printu" {
                 if let Some(arg) = args.first() {
                     let fmt = print_format_label(name);
                     writeln!(writer, "    addis 3, 2, {fmt}@toc@ha")?;
@@ -1581,7 +1581,7 @@ fn emit_instruction_ppc64<W: Write>(
             }
         }
         MirInst::TailCall { name, args } => {
-            if name == "writeptr" {
+            if name == "lamina.writeptr" {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "PowerPC64: writeptr is not supported".to_string(),
                 )));

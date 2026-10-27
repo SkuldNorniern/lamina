@@ -753,23 +753,23 @@ pub(super) fn emit_instruction_x86_64(
             }
         }
         MirInst::Call { name, args, ret } => {
-            if name == "print" || name == "printu" {
+            if name == "lamina.print" || name == "lamina.printu" {
                 let fmt = print_format_label(name);
                 if let Some(arg) = args.first() {
                     load_operand_to_rax(arg, writer, reg_alloc, stack_slots)?;
                     emit_printf_and_flush(writer, target_os, fmt, PrintArg::Integer)?;
                 }
-            } else if (name == "printf32" || name == "printf64") && args.len() == 1 {
+            } else if (name == "lamina.printf32" || name == "lamina.printf64") && args.len() == 1 {
                 let arg = args.first().ok_or_else(|| {
                     LaminaError::ValidationError("print requires one argument".to_string())
                 })?;
-                let ty = if name == "printf32" {
+                let ty = if name == "lamina.printf32" {
                     MirType::f32()
                 } else {
                     MirType::f64()
                 };
                 load_float_operand_to_xmm(arg, writer, reg_alloc, stack_slots, "xmm0", &ty)?;
-                if name == "printf32" {
+                if name == "lamina.printf32" {
                     writeln!(writer, "    cvtss2sd %xmm0, %xmm0")?;
                 }
                 emit_printf_and_flush(
@@ -778,7 +778,7 @@ pub(super) fn emit_instruction_x86_64(
                     print_format_label(name),
                     PrintArg::Double,
                 )?;
-            } else if name == "writebyte" && args.len() == 1 {
+            } else if name == "lamina.writebyte" && args.len() == 1 {
                 let arg = args.first().ok_or_else(|| {
                     LaminaError::ValidationError("writebyte requires one argument".to_string())
                 })?;
@@ -827,7 +827,7 @@ pub(super) fn emit_instruction_x86_64(
                 }
 
                 writeln!(writer, "    addq ${}, %rsp", stack::ALIGNMENT)?;
-            } else if name == "readbyte" && args.is_empty() {
+            } else if name == "lamina.readbyte" && args.is_empty() {
                 writeln!(writer, "    subq ${}, %rsp", stack::ALIGNMENT)?;
 
                 match target_os {
@@ -872,8 +872,8 @@ pub(super) fn emit_instruction_x86_64(
                 {
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
-            } else if (name == "write" || name == "read") && args.len() == 2 {
-                let writing = name == "write";
+            } else if (name == "lamina.write" || name == "lamina.read") && args.len() == 2 {
+                let writing = name == "lamina.write";
                 load_operand_to_rax(&args[0], writer, reg_alloc, stack_slots)?;
                 writeln!(writer, "    movq %rax, %r10")?;
                 load_operand_to_rax(&args[1], writer, reg_alloc, stack_slots)?;
@@ -919,7 +919,7 @@ pub(super) fn emit_instruction_x86_64(
                 {
                     store_rax_to_register(vreg, writer, reg_alloc, stack_slots)?;
                 }
-            } else if name == "writeptr" && args.len() == 2 {
+            } else if name == "lamina.writeptr" && args.len() == 2 {
                 let width = writeptr_width(&args[1])?;
                 match target_os {
                     TargetOperatingSystem::Windows => {
@@ -2147,7 +2147,7 @@ mod narrow_integer_tests {
                         src: Operand::Register(dst),
                     })
                     .instr(Instruction::Call {
-                        name: "print".into(),
+                        name: "lamina.print".into(),
                         args: vec![Operand::Register(wide)],
                         ret: None,
                     });

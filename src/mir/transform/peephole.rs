@@ -533,7 +533,7 @@ impl Peephole {
 
     fn try_optimize_intrinsic_call(&self, name: &str, args: &mut [Operand]) -> bool {
         match name {
-            "print" => {
+            "lamina.print" => {
                 matches!(args.first(), Some(Operand::Immediate(Immediate::I64(0))))
             }
             _ => false,
