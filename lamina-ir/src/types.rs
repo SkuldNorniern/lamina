@@ -376,7 +376,7 @@ impl fmt::Display for Type<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Type::Primitive(pt) => write!(f, "{pt}"),
-            Type::Named(id) => write!(f, "@{id}"),
+            Type::Named(id) => write!(f, "!{id}"),
             Type::Array { element_type, size } => write!(f, "[{size} x {element_type}]"),
             #[cfg(feature = "nightly")]
             Type::Vector {
@@ -433,7 +433,7 @@ impl fmt::Display for Value<'_> {
         match self {
             Value::Variable(id) => write!(f, "%{id}"),
             Value::Constant(lit) => write!(f, "{lit}"),
-            Value::Global(id) => write!(f, "@{id}"),
+            Value::Global(id) => write!(f, "${id}"),
         }
     }
 }
@@ -594,7 +594,7 @@ mod tests {
     #[test]
     fn test_display_type() {
         assert_eq!(format!("{}", Type::Primitive(PrimitiveType::I64)), "i64");
-        assert_eq!(format!("{}", Type::Named("MyStruct")), "@MyStruct");
+        assert_eq!(format!("{}", Type::Named("MyStruct")), "!MyStruct");
         let arr_type = Type::Array {
             element_type: Box::new(Type::Primitive(PrimitiveType::I8)),
             size: 10,
@@ -615,7 +615,7 @@ mod tests {
             Type::Primitive(PrimitiveType::I32),
             Type::Named("MyBool"),
         ]);
-        assert_eq!(format!("{}", tuple_type), "tuple(i32, @MyBool)");
+        assert_eq!(format!("{}", tuple_type), "tuple(i32, !MyBool)");
         assert_eq!(format!("{}", Type::Void), "void");
         #[cfg(feature = "nightly")]
         {
@@ -660,7 +660,7 @@ mod tests {
         );
         assert_eq!(
             format!("{}", Value::Global("my_global_var")),
-            "@my_global_var"
+            "$my_global_var"
         );
     }
 }

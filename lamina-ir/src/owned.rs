@@ -49,7 +49,7 @@ impl fmt::Display for OwnedType {
         match self {
             OwnedType::Primitive(p) => write!(f, "{}", p.as_str()),
             OwnedType::Void => write!(f, "void"),
-            OwnedType::Named(n) => write!(f, "@{n}"),
+            OwnedType::Named(n) => write!(f, "!{n}"),
             OwnedType::Array { element_type, size } => {
                 write!(f, "[{size} x {element_type}]")
             }
@@ -100,7 +100,7 @@ impl fmt::Display for OwnedValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             OwnedValue::Variable(n) => write!(f, "%{n}"),
-            OwnedValue::Global(n) => write!(f, "@{n}"),
+            OwnedValue::Global(n) => write!(f, "${n}"),
             OwnedValue::I8(v) => write!(f, "{v}"),
             OwnedValue::I16(v) => write!(f, "{v}"),
             OwnedValue::I32(v) => write!(f, "{v}"),
@@ -868,13 +868,13 @@ mod tests {
         assert_eq!(OwnedType::Void.to_string(), "void");
         assert_eq!(OwnedType::Primitive(PrimitiveType::I32).to_string(), "i32");
         assert_eq!(OwnedType::Primitive(PrimitiveType::F64).to_string(), "f64");
-        assert_eq!(OwnedType::Named("Foo".to_string()).to_string(), "@Foo");
+        assert_eq!(OwnedType::Named("Foo".to_string()).to_string(), "!Foo");
     }
 
     #[test]
     fn test_value_display() {
         assert_eq!(OwnedValue::Variable("x".to_string()).to_string(), "%x");
-        assert_eq!(OwnedValue::Global("g".to_string()).to_string(), "@g");
+        assert_eq!(OwnedValue::Global("g".to_string()).to_string(), "$g");
         assert_eq!(OwnedValue::I32(42).to_string(), "42");
         assert_eq!(OwnedValue::Bool(true).to_string(), "true");
     }

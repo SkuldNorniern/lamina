@@ -185,9 +185,21 @@ impl<'a> ParserState<'a> {
         Ok(&self.input[start..self.position])
     }
 
-    /// Parses a type identifier (starts with '@').
-    pub fn parse_type_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
+    /// Parses a function identifier (starts with '@').
+    pub fn parse_function_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
         self.expect_char('@')?;
+        self.parse_identifier_str()
+    }
+
+    /// Parses a global identifier (starts with '$').
+    pub fn parse_global_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
+        self.expect_char('$')?;
+        self.parse_identifier_str()
+    }
+
+    /// Parses a named type identifier (starts with '!').
+    pub fn parse_named_type_identifier(&mut self) -> Result<Identifier<'a>, LaminaError> {
+        self.expect_char('!')?;
         self.parse_identifier_str()
     }
 

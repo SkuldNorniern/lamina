@@ -1013,7 +1013,7 @@ mod tests {
             return_type: Type::Named("ResultType"),
             variadic: false,
         };
-        assert_eq!(format!("{}", sig3), "(i32 %a, @MyType %b) -> @ResultType");
+        assert_eq!(format!("{}", sig3), "(i32 %a, !MyType %b) -> !ResultType");
     }
 
     #[test]

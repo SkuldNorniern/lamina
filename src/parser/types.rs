@@ -13,7 +13,7 @@ pub fn parse_type_declaration<'a>(
     state: &mut ParserState<'a>,
 ) -> Result<TypeDeclaration<'a>, LaminaError> {
     state.consume_keyword("type")?;
-    let name = state.parse_type_identifier()?;
+    let name = state.parse_named_type_identifier()?;
     state.expect_char('=')?;
     let ty = parse_composite_type(state)?;
     Ok(TypeDeclaration { name, ty })
@@ -97,7 +97,7 @@ pub fn parse_type<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaErr
 fn parse_type_inner<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.skip_whitespace_and_comments();
     match state.current_char() {
-        Some('@') => Ok(Type::Named(state.parse_type_identifier()?)),
+        Some('!') => Ok(Type::Named(state.parse_named_type_identifier()?)),
         Some('[') => parse_composite_type(state),
         Some('s') if state.peek_slice(6) == Some("struct") => parse_composite_type(state),
         Some('t') if state.peek_slice(5) == Some("tuple") => {

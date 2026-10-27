@@ -695,7 +695,7 @@ fn base_isa_rejects_multiply_instead_of_emitting_it() {
 #[test]
 fn module_globals_are_addressed_through_symbol_loads() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "global @counter: i64 = 41\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 @counter\n  ret.i64 %a\n}\n";
+    let ir = "global $counter: i64 = 41\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 $counter\n  ret.i64 %a\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "globals").expect("lower global module");
     let mut output = Vec::new();
@@ -947,7 +947,7 @@ fn float_copy_emits_bit_move_not_add() {
 #[test]
 fn variadic_float_argument_travels_in_integer_bank() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(ptr %fmt, f64 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 @fmt, 0\n  %c = call @printf(%p, 2.5)\n  %d = call @sink(%p, 2.5)\n  ret.i64 0\n}\n";
+    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal $fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(ptr %fmt, f64 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 $fmt, 0\n  %c = call @printf(%p, 2.5)\n  %d = call @sink(%p, 2.5)\n  ret.i64 0\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "riscv_variadic").expect("lower variadic call");
     let mut output = Vec::new();

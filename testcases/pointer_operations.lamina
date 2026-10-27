@@ -28,8 +28,8 @@ fn @test_array_access() -> i64 {
 }
 
 # Define a struct type for testing
-type @Point = struct { x: i64, y: i64, z: i64 }
-type @Person = struct { name: [10 x i8], age: i32, height: i64 }
+type !Point = struct { x: i64, y: i64, z: i64 }
+type !Person = struct { name: [10 x i8], age: i32, height: i64 }
 
 # Test struct field access with struct_gep
 # fn @test_struct_access() -> i64 {

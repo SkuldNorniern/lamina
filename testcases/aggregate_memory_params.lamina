@@ -1,6 +1,6 @@
-type @Quad = struct { a: i64, b: i64, c: i64, d: i64 }
+type !Quad = struct { a: i64, b: i64, c: i64, d: i64 }
 
-fn @sum(@Quad %q) -> i64 {
+fn @sum(!Quad %q) -> i64 {
 entry:
   %pa = getfieldptr %q, 0
   %a = load.i64 %pa
@@ -16,7 +16,7 @@ entry:
   ret.i64 %s3
 }
 
-fn @mix(i64 %lead, @Quad %q, i64 %tail) -> i64 {
+fn @mix(i64 %lead, !Quad %q, i64 %tail) -> i64 {
 entry:
   %pa = getfieldptr %q, 0
   %a = load.i64 %pa
@@ -30,7 +30,7 @@ entry:
 
 fn @main() -> i64 {
 entry:
-  %q = stackalloc.@Quad
+  %q = stackalloc.!Quad
   %f0 = getfieldptr %q, 0
   store.i64 %f0, 1
   %f1 = getfieldptr %q, 1

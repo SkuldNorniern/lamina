@@ -1,22 +1,22 @@
-global @squares: [6 x i64] = [0, 1, 4, 9, 16, 25]
-global @bytes: [4 x i8] = [65, 66, 67]
-global @ratios: [3 x f64] = [0.5, 1.5e1, 2.25]
+global $squares: [6 x i64] = [0, 1, 4, 9, 16, 25]
+global $bytes: [4 x i8] = [65, 66, 67]
+global $ratios: [3 x f64] = [0.5, 1.5e1, 2.25]
 
 fn @main() -> i64 {
 entry:
   %i = add.i64 4, 0
-  %p = getelem.i64 @squares, %i
+  %p = getelem.i64 $squares, %i
   %v = load.i64 %p
   print %v
-  %b = getelem.i8 @bytes, 2
+  %b = getelem.i8 $bytes, 2
   %c = load.i8 %b
   %cw = sext.i8.i64 %c
   print %cw
-  %b3 = getelem.i8 @bytes, 3
+  %b3 = getelem.i8 $bytes, 3
   %c3 = load.i8 %b3
   %c3w = sext.i8.i64 %c3
   print %c3w
-  %r = getelem.f64 @ratios, 1
+  %r = getelem.f64 $ratios, 1
   %rv = load.f64 %r
   print %rv
   ret.i64 0

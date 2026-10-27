@@ -1,4 +1,4 @@
-global @slot: i64 = 0
+global $slot: i64 = 0
 
 fn @bits32(f32 %p) -> i64 {
 entry:
@@ -33,7 +33,7 @@ fn @report(f32 %a) -> void {
 entry:
   %b = bitcast.f32.i32 %a
   %w = sext.i32.i64 %b
-  store.i64 @slot, %w
+  store.i64 $slot, %w
   ret.void
 }
 
@@ -58,7 +58,7 @@ entry:
   print %g
   %p4 = funcaddr @report
   callptr.void %p4(f32 11.5)
-  %sv = load.i64 @slot
+  %sv = load.i64 $slot
   print %sv
   ret.i64 0
 }

@@ -97,7 +97,7 @@ pub fn parse_annotations(
 pub fn parse_function_def<'a>(state: &mut ParserState<'a>) -> Result<Function<'a>, LaminaError> {
     let annotations = parse_annotations(state)?;
     state.consume_keyword("fn")?;
-    let name = state.parse_type_identifier()?;
+    let name = state.parse_function_identifier()?;
     let signature = parse_fn_signature(state)?;
 
     state.skip_whitespace_and_comments();

@@ -1,4 +1,4 @@
-global @big: u64 = 9223372036854775807
+global $big: u64 = 9223372036854775807
 
 fn @scale(u64 %x) -> u64 {
 entry:
@@ -8,7 +8,7 @@ entry:
 
 fn @main() -> i64 {
 entry:
- %a = load.u64 @big
+ %a = load.u64 $big
  %b = add.u64 %a, 1
  print %b
  %c = call @scale(%b)

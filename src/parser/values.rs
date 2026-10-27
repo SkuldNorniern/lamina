@@ -44,7 +44,7 @@ pub fn integer_literal(value: i128, ty: PrimitiveType) -> Result<Option<Literal<
     }))
 }
 
-/// Parses a value: literal, variable (%name), or global (@name).
+/// Parses a value: literal, variable (%name), or global ($name).
 pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaError> {
     let start_pos = state.position();
 
@@ -55,7 +55,7 @@ pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaE
             let name = state.parse_identifier_str()?;
             Ok(Value::Variable(name))
         }
-        Some('@') => {
+        Some('$') => {
             state.advance();
             let name = state.parse_identifier_str()?;
             Ok(Value::Global(name))

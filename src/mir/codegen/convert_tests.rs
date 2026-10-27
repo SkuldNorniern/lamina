@@ -10,7 +10,7 @@ fn lowered_global_module(source: &str) -> Result<Module, FromIRError> {
 #[test]
 fn global_initializers_lower_to_little_endian_bytes() {
     let module = lowered_global_module(
-        "global @a: i64 = 41\nglobal @b: f64 = 2.5\nglobal @c: i32\n\
+        "global $a: i64 = 41\nglobal $b: f64 = 2.5\nglobal $c: i32\n\
          fn @main() -> i64 {\nentry:\n ret.i64 0\n}",
     )
     .expect("lower globals");
@@ -29,7 +29,7 @@ fn global_initializers_lower_to_little_endian_bytes() {
 #[test]
 fn array_global_keeps_only_its_filled_prefix() {
     let module = lowered_global_module(
-        "global @g: [10000000000 x i8] = [1, 2]\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        "global $g: [10000000000 x i8] = [1, 2]\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
     )
     .expect("lower sparse array global");
     assert_eq!(
@@ -42,7 +42,7 @@ fn array_global_keeps_only_its_filled_prefix() {
 #[test]
 fn exported_global_is_marked_exported() {
     let module = lowered_global_module(
-        "@export global @g: i64 = 1\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        "@export global $g: i64 = 1\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
     )
     .expect("lower exported global");
     assert!(module.globals["g"].exported);
@@ -51,7 +51,7 @@ fn exported_global_is_marked_exported() {
 #[test]
 fn global_address_is_materialized_once_at_entry() {
     let module = lowered_global_module(
-        "global @g: i64 = 7\nfn @main() -> i64 {\nentry:\n %x = load.i64 @g\n store.i64 @g, %x\n %y = load.i64 @g\n ret.i64 %y\n}",
+        "global $g: i64 = 7\nfn @main() -> i64 {\nentry:\n %x = load.i64 $g\n store.i64 $g, %x\n %y = load.i64 $g\n ret.i64 %y\n}",
     )
     .expect("lower global loads and stores");
     let entry = &module.functions["main"].blocks[0].instructions;
@@ -66,7 +66,7 @@ fn global_address_is_materialized_once_at_entry() {
 #[test]
 fn unknown_global_reference_is_rejected() {
     let error = lowered_global_module(
-        "fn @main() -> i64 {\nentry:\n %x = load.i64 @missing\n ret.i64 %x\n}",
+        "fn @main() -> i64 {\nentry:\n %x = load.i64 $missing\n ret.i64 %x\n}",
     )
     .expect_err("undeclared global");
     assert!(matches!(error, FromIRError::UnknownVariable));
@@ -75,7 +75,7 @@ fn unknown_global_reference_is_rejected() {
 #[test]
 fn string_global_keeps_its_bytes_and_layout() {
     let module = lowered_global_module(
-        "global @s: [4 x i8] = \"abc\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        "global $s: [4 x i8] = \"abc\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
     )
     .expect("string global");
     let global = &module.globals["s"];
@@ -84,7 +84,7 @@ fn string_global_keeps_its_bytes_and_layout() {
     assert_eq!(global.align, 1);
 
     let error = lowered_global_module(
-        "global @s: [3 x i8] = \"abc\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        "global $s: [3 x i8] = \"abc\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
     )
     .expect_err("string without room for its terminator");
     assert!(matches!(error, FromIRError::UnsupportedGlobal(_)));
@@ -661,7 +661,7 @@ fn unsupported_instruction_names_its_block_and_function() {
 
 #[test]
 fn variadic_f32_argument_widens_to_f64() {
-    let source = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(f32 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 @fmt, 0\n  %x = add.f32 1.5, 2.25\n  %c = call @printf(%p, %x)\n  %d = call @sink(%x)\n  ret.i64 0\n}\n";
+    let source = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal $fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(f32 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 $fmt, 0\n  %x = add.f32 1.5, 2.25\n  %c = call @printf(%p, %x)\n  %d = call @sink(%x)\n  ret.i64 0\n}\n";
     let ir = parse_module(source).expect("parse variadic call");
     let module = from_ir(&ir, "variadic_f32").expect("lower variadic call");
     let widened: Vec<_> = module.functions["main"].blocks[0]
@@ -683,7 +683,7 @@ fn variadic_f32_argument_widens_to_f64() {
 #[test]
 fn string_global_resolves_escapes() {
     let module = lowered_global_module(
-        "global @s: [8 x i8] = \"a\\nb\\t\\x41\\\\\"\n\
+        "global $s: [8 x i8] = \"a\\nb\\t\\x41\\\\\"\n\
          fn @main() -> i64 {\nentry:\n ret.i64 0\n}",
     )
     .expect("lower string global");
@@ -693,7 +693,7 @@ fn string_global_resolves_escapes() {
     );
 
     let bad = lowered_global_module(
-        "global @s: [4 x i8] = \"a\\q\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+        "global $s: [4 x i8] = \"a\\q\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
     );
     assert!(format!("{bad:?}").contains("not an escape"), "{bad:?}");
 }

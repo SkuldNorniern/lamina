@@ -1,9 +1,9 @@
-type @Quad = struct { a: i64, b: i64, c: i64, d: i64 }
-type @Pair = struct { x: i64, y: i64 }
+type !Quad = struct { a: i64, b: i64, c: i64, d: i64 }
+type !Pair = struct { x: i64, y: i64 }
 
-fn @big(i64 %p0, i64 %p1, f64 %f0, @Pair %pr, i64 %p2, i64 %p3, f64 %f1, @Quad %q, i64 %p4, i64 %p5, i64 %p6) -> @Quad {
+fn @big(i64 %p0, i64 %p1, f64 %f0, !Pair %pr, i64 %p2, i64 %p3, f64 %f1, !Quad %q, i64 %p4, i64 %p5, i64 %p6) -> !Quad {
 entry:
-  %out = stackalloc.@Quad
+  %out = stackalloc.!Quad
   %px = getfieldptr %pr, 0
   %x = load.i64 %px
   %py = getfieldptr %pr, 1
@@ -38,12 +38,12 @@ entry:
 
 fn @main() -> i64 {
 entry:
-  %pr = stackalloc.@Pair
+  %pr = stackalloc.!Pair
   %px = getfieldptr %pr, 0
   store.i64 %px, 100
   %py = getfieldptr %pr, 1
   store.i64 %py, 200
-  %q = stackalloc.@Quad
+  %q = stackalloc.!Quad
   %qa = getfieldptr %q, 0
   store.i64 %qa, 1
   %qb = getfieldptr %q, 1

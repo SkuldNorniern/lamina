@@ -22,7 +22,7 @@ pub fn parse_global_declaration<'a>(
     types: &HashMap<Identifier<'a>, TypeDeclaration<'a>>,
 ) -> Result<GlobalDeclaration<'a>, LaminaError> {
     state.consume_keyword("global")?;
-    let name = state.parse_type_identifier()?;
+    let name = state.parse_global_identifier()?;
     state.expect_char(':')?;
     let ty = parse_type(state)?;
 
@@ -121,7 +121,7 @@ pub fn parse_value_with_type_hint<'a>(
             let name = state.parse_identifier_str()?;
             Ok(Value::Variable(name))
         }
-        Some('@') => {
+        Some('$') => {
             state.advance();
             let name = state.parse_identifier_str()?;
             Ok(Value::Global(name))

@@ -1,4 +1,4 @@
-global @text: [6 x i8] = "abcde"
+global $text: [6 x i8] = "abcde"
 
 @extern
 fn @strlen(ptr %s) -> i64
@@ -11,7 +11,7 @@ fn @ldexp(f64 %a, i32 %b) -> f64
 
 fn @main() -> i64 {
 entry:
-  %p = getelem.i8 @text, 0
+  %p = getelem.i8 $text, 0
   %n = call @strlen(%p)
   print %n
   %c = call @putchar(10)

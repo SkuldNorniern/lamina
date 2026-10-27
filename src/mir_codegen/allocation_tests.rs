@@ -20,23 +20,23 @@ mod native {
         let dir = temp_dir().join(format!("lamina-aggregate-storage-{}", process::id()));
         fs::create_dir_all(&dir)?;
         let cases = [
-            ("@Pair", "%last = getfieldptr %p, 1"),
+            ("!Pair", "%last = getfieldptr %p, 1"),
             (
                 "struct { a: i8, b: i64, c: i64 }",
                 "%last = getfieldptr %p, 2",
             ),
             ("tuple i8, i64, i64", "%last = getfieldptr %p, 2"),
             (
-                "struct { a: i8, inner: @Pair }",
+                "struct { a: i8, inner: !Pair }",
                 "%inner = getfieldptr %p, 1\n%last = getfieldptr %inner, 1",
             ),
             (
-                "struct { inner: @Pair, tail: i64 }",
+                "struct { inner: !Pair, tail: i64 }",
                 "%last = getfieldptr %p, 1",
             ),
             (
-                "[3 x @Pair]",
-                "%element = getelem.@Pair %p, 2\n%last = getfieldptr %element, 1",
+                "[3 x !Pair]",
+                "%element = getelem.!Pair %p, 2\n%last = getfieldptr %element, 1",
             ),
             (
                 "[3 x struct { a: i64, b: i64 }]",
@@ -45,7 +45,7 @@ mod native {
         ];
         for (case, (ty, address)) in cases.iter().enumerate() {
             let source = format!(
-                "type @Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\n%guard = stackalloc.i64\nstore.i64 %guard, 55\nstore.i64 %last, 99\nprint %sentinel\n%live = load.i64 %guard\nprint %live\n%stored = load.i64 %last\nprint %stored\nret.i64 0\n}}\n"
+                "type !Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\n%guard = stackalloc.i64\nstore.i64 %guard, 55\nstore.i64 %last, 99\nprint %sentinel\n%live = load.i64 %guard\nprint %live\n%stored = load.i64 %last\nprint %stored\nret.i64 0\n}}\n"
             );
             let ir = parse_module(&source)?;
             let mir = from_ir(&ir, "aggregate").map_err(|error| error.to_string())?;
@@ -82,7 +82,7 @@ mod native {
                 );
             }
             let minimal = format!(
-                "type @Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\nstore.i64 %last, 99\nprint %sentinel\nret.i64 0\n}}\n"
+                "type !Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\nstore.i64 %last, 99\nprint %sentinel\nret.i64 0\n}}\n"
             );
             fs::write(&input, minimal)?;
             for level in ["0", "1", "2", "3"] {
@@ -106,12 +106,12 @@ mod native {
 fn unsized_allocations_are_rejected() -> Result<(), Box<dyn Error>> {
     for declarations in [
         "",
-        "type @Bad = struct { next: @Bad }",
-        "type @Bad = struct { next: @Other }\ntype @Other = [2 x @Bad]",
+        "type !Bad = struct { next: !Bad }",
+        "type !Bad = struct { next: !Other }\ntype !Other = [2 x !Bad]",
     ] {
         for allocation in ["stack", "heap"] {
             let source = format!(
-                "{declarations}\nfn @main() -> i64 {{\nentry:\n%p = alloc.{allocation} @Bad\nret.i64 0\n}}\n"
+                "{declarations}\nfn @main() -> i64 {{\nentry:\n%p = alloc.{allocation} !Bad\nret.i64 0\n}}\n"
             );
             let rejected = match parse_module(&source) {
                 Err(_) => true,

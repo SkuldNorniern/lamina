@@ -1799,7 +1799,7 @@ entry:
     #[test]
     fn backends_without_global_support_reject_modules_with_globals() {
         let ir = parse_module(
-            "global @g: i64 = 1\nfn @main() -> i64 {\nentry:\n %x = load.i64 @g\n ret.i64 %x\n}\n",
+            "global $g: i64 = 1\nfn @main() -> i64 {\nentry:\n %x = load.i64 $g\n ret.i64 %x\n}\n",
         )
         .expect("parse global module");
         let mir = from_ir(&ir, "globals").expect("lower global module");
@@ -1825,12 +1825,12 @@ entry:
     fn exported_globals_are_global_and_zero_storage_is_bss() {
         let ir = parse_module(
             r#"
-@export global @shared: i64 = 3
-global @hidden: i64
+@export global $shared: i64 = 3
+global $hidden: i64
 fn @main() -> i64 {
 entry:
- %a = load.i64 @shared
- %b = load.i64 @hidden
+ %a = load.i64 $shared
+ %b = load.i64 $hidden
  %c = add.i64 %a, %b
  ret.i64 %c
 }
@@ -1857,7 +1857,7 @@ entry:
     #[test]
     fn unwritten_tail_of_initialized_global_is_zeroed() {
         let ir = parse_module(
-            "global @g: [10000000000 x i8] = [1, 2]\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+            "global $g: [10000000000 x i8] = [1, 2]\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
         )
         .expect("parse sparse array global");
         let mir = from_ir(&ir, "globals").expect("lower sparse array global");

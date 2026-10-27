@@ -231,10 +231,10 @@ Lamina IR files consist of type declarations, global definitions, and function d
 
 ```
 # Type declaration
-type @Vec2 = struct { x: f32, y: f32 }
+type !Vec2 = struct { x: f32, y: f32 }
 
 # Global value
-global @message: [5 x i8] = "hello"
+global $message: [5 x i8] = "hello"
 
 # Function with annotations
 @export
@@ -314,10 +314,10 @@ heapfree %hptr
 ### Globals
 
 ```
-global @counter: i64 = 41
-global @squares: [6 x i64] = [0, 1, 4, 9, 16, 25]
-global @greeting: [6 x i8] = "hello"
-@export global @shared: u32 = 7
+global $counter: i64 = 41
+global $squares: [6 x i64] = [0, 1, 4, 9, 16, 25]
+global $greeting: [6 x i8] = "hello"
+@export global $shared: u32 = 7
 ```
 
 ### External Functions

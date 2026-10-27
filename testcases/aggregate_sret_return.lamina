@@ -1,8 +1,8 @@
-type @Quad = struct { a: i64, b: i64, c: i64, d: i64 }
+type !Quad = struct { a: i64, b: i64, c: i64, d: i64 }
 
-fn @make(i64 %k) -> @Quad {
+fn @make(i64 %k) -> !Quad {
 entry:
-  %q = stackalloc.@Quad
+  %q = stackalloc.!Quad
   %f0 = getfieldptr %q, 0
   store.i64 %f0, %k
   %k1 = add.i64 %k, 1
@@ -17,7 +17,7 @@ entry:
   ret.ptr %q
 }
 
-fn @sum(@Quad %q) -> i64 {
+fn @sum(!Quad %q) -> i64 {
 entry:
   %pa = getfieldptr %q, 0
   %a = load.i64 %pa

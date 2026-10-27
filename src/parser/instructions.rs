@@ -444,7 +444,7 @@ fn parse_call<'a>(
     state: &mut ParserState<'a>,
     result: Option<Identifier<'a>>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let func_name = state.parse_type_identifier()?;
+    let func_name = state.parse_function_identifier()?;
     state.expect_char('(')?;
     let mut args = Vec::new();
     loop {
@@ -472,7 +472,7 @@ fn parse_func_addr<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let func_name = state.parse_type_identifier()?;
+    let func_name = state.parse_function_identifier()?;
     Ok(Instruction::FuncAddr { result, func_name })
 }
 

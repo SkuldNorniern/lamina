@@ -341,8 +341,8 @@ mod tests {
     #[test]
     fn test_parse_type_declarations() {
         let input = r#"
-            type @Vec2 = struct { x: f32, y: f32 }
-            type @Matrix = [4 x i32]
+            type !Vec2 = struct { x: f32, y: f32 }
+            type !Matrix = [4 x i32]
         "#;
         let module = parse_module(input).expect("Parsing failed");
 
@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_parse_exported_global_declaration() {
-        let module = parse_module("@export global @g: f64 = 1.5\nglobal @h: i32 = 2")
+        let module = parse_module("@export global $g: f64 = 1.5\nglobal $h: i32 = 2")
             .expect("Parsing failed");
         assert!(module.global_declarations["g"].exported);
         assert!(!module.global_declarations["h"].exported);
@@ -398,7 +398,7 @@ mod tests {
     #[test]
     fn large_u64_literal_is_accepted_in_global_and_instruction() {
         let module =
-            parse_module("global @big: u64 = 18446744073709551615").expect("u64 global parses");
+            parse_module("global $big: u64 = 18446744073709551615").expect("u64 global parses");
         assert_eq!(
             module.global_declarations["big"].initializer,
             Some(GlobalInit::Value(Value::Constant(Literal::U64(u64::MAX))))
@@ -419,9 +419,9 @@ mod tests {
     #[test]
     fn global_initializer_takes_width_of_declared_type() {
         let input = r#"
-            global @a: u64 = 9
-            global @b: i16 = -3
-            global @c: u8 = 200
+            global $a: u64 = 9
+            global $b: i16 = -3
+            global $c: u8 = 200
         "#;
         let module = parse_module(input).expect("Parsing failed");
         let literal = |name: &str| {
@@ -443,16 +443,16 @@ mod tests {
             GlobalInit::Value(Value::Constant(Literal::U8(200)))
         );
 
-        assert!(parse_module("global @d: u8 = 300").is_err());
-        assert!(parse_module("global @e: u32 = -1").is_err());
+        assert!(parse_module("global $d: u8 = 300").is_err());
+        assert!(parse_module("global $e: u32 = -1").is_err());
     }
 
     #[test]
     fn test_parse_global_declarations() {
         let input = r#"
-            global @count: i64 = 10
-            global @message: [12 x bool] = "hello world"
-            global @uninit_ptr: ptr
+            global $count: i64 = 10
+            global $message: [12 x bool] = "hello world"
+            global $uninit_ptr: ptr
         "#;
         let module = parse_module(input).expect("Parsing failed");
 

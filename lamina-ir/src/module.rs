@@ -143,7 +143,7 @@ use crate::{
     types::{Identifier, Literal, Type, Value},
 };
 
-/// A named type declaration (e.g., `type @Vec2 = struct { ... }`).
+/// A named type declaration (e.g., `type !Vec2 = struct { ... }`).
 ///
 /// Type declarations allow you to define custom types that can be referenced
 /// throughout the module. This is useful for creating reusable type definitions
@@ -164,8 +164,8 @@ use crate::{
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)] // Eq might be too restrictive if Type contains f32 indirectly, but should be okay here.
 pub struct TypeDeclaration<'a> {
-    /// The type name (without the `@` prefix)
-    pub name: Identifier<'a>, // e.g., "@Vec2"
+    /// The type name (without the `!` prefix)
+    pub name: Identifier<'a>, // e.g., "!Vec2"
     /// The type definition
     pub ty: Type<'a>,
 }
@@ -191,7 +191,7 @@ impl fmt::Display for GlobalInit<'_> {
     }
 }
 
-/// A global variable declaration (e.g., `global @message: [5 x i8] = "hello"`).
+/// A global variable declaration (e.g., `global $message: [5 x i8] = "hello"`).
 ///
 /// Global variables are module-level data that persists for the lifetime of the program.
 /// They can be initialized with constant values or left uninitialized (for external symbols).
@@ -213,8 +213,8 @@ impl fmt::Display for GlobalInit<'_> {
 /// ```
 #[derive(Debug, Clone, PartialEq)] // PartialEq due to Value potentially holding f32
 pub struct GlobalDeclaration<'a> {
-    /// The global variable name (without the `@` prefix)
-    pub name: Identifier<'a>, // e.g., "@message"
+    /// The global variable name (without the `$` prefix)
+    pub name: Identifier<'a>, // e.g., "$message"
     /// The type of the global variable
     pub ty: Type<'a>,
     /// Optional initializer (None for external symbols)
@@ -324,8 +324,8 @@ impl fmt::Display for ModuleAnnotation {
     }
 }
 
-/// A parsed IR file: its type declarations, its globals and its functions. Names are
-/// unique across all three, so `@x` names one thing.
+/// A parsed IR file: its type declarations, its globals and its functions. Each has
+/// its own sigil and its own namespace: `!Point`, `$point` and `@point` are three names.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Module<'a> {
     /// Named type declarations in this module
@@ -389,10 +389,10 @@ impl<'a> Module<'a> {
     fn validate_named_types(&self, errors: &mut Vec<String>) {
         let mut uses: Vec<(String, &Type<'_>)> = Vec::new();
         for decl in self.type_declarations.values() {
-            uses.push((format!("type '@{}'", decl.name), &decl.ty));
+            uses.push((format!("type '!{}'", decl.name), &decl.ty));
         }
         for global in self.global_declarations.values() {
-            uses.push((format!("global '@{}'", global.name), &global.ty));
+            uses.push((format!("global '${}'", global.name), &global.ty));
         }
         for func in self.functions.values() {
             for param in &func.signature.params {
@@ -419,7 +419,7 @@ impl<'a> Module<'a> {
             named_type_refs(ty, &mut refs);
             for name in refs {
                 if !self.type_declarations.contains_key(name) {
-                    errors.push(format!("unknown type '@{name}' used in {owner}"));
+                    errors.push(format!("unknown type '!{name}' used in {owner}"));
                 }
             }
         }
@@ -429,7 +429,7 @@ impl<'a> Module<'a> {
         for name in names {
             if self.type_contains_itself(name) {
                 errors.push(format!(
-                    "type '@{name}' contains itself, so its size is infinite"
+                    "type '!{name}' contains itself, so its size is infinite"
                 ));
             }
         }
@@ -485,7 +485,7 @@ impl Default for Module<'_> {
 
 impl fmt::Display for TypeDeclaration<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "type @{} = {}", self.name, self.ty)
+        write!(f, "type !{} = {}", self.name, self.ty)
     }
 }
 
@@ -494,7 +494,7 @@ impl fmt::Display for GlobalDeclaration<'_> {
         if self.exported {
             write!(f, "@export ")?;
         }
-        write!(f, "global @{}: {}", self.name, self.ty)?;
+        write!(f, "global ${}: {}", self.name, self.ty)?;
         if let Some(init) = &self.initializer {
             write!(f, " = {init}")?;
         }
@@ -555,7 +555,7 @@ mod tests {
             name: "MyType",
             ty: Type::Struct(vec![]), // Empty struct
         };
-        assert_eq!(format!("{}", decl), "type @MyType = struct {  }");
+        assert_eq!(format!("{}", decl), "type !MyType = struct {  }");
     }
 
     #[test]
@@ -566,7 +566,7 @@ mod tests {
             initializer: Some(GlobalInit::Value(Value::Constant(Literal::I32(0)))),
             exported: false,
         };
-        assert_eq!(format!("{}", decl1), "global @count: i32 = 0");
+        assert_eq!(format!("{}", decl1), "global $count: i32 = 0");
 
         let decl2 = GlobalDeclaration {
             name: "external_data",
@@ -577,7 +577,7 @@ mod tests {
             initializer: None,
             exported: false,
         };
-        assert_eq!(format!("{}", decl2), "global @external_data: [256 x i8]");
+        assert_eq!(format!("{}", decl2), "global $external_data: [256 x i8]");
     }
 
     #[test]
@@ -618,8 +618,8 @@ mod tests {
         let first = format!("{}", build(&forward));
         let second = format!("{}", build(&reversed));
         assert_eq!(first, second);
-        assert!(first.find("type @alpha").unwrap() < first.find("type @zeta").unwrap());
-        assert!(first.find("global @alpha").unwrap() < first.find("global @zeta").unwrap());
+        assert!(first.find("type !alpha").unwrap() < first.find("type !zeta").unwrap());
+        assert!(first.find("global $alpha").unwrap() < first.find("global $zeta").unwrap());
     }
 
     #[test]
@@ -691,7 +691,7 @@ mod tests {
         module.functions.insert("add_one", func);
 
         let expected_output = format!(
-            "type @Vec2 = struct {{ x: f32, y: f32 }}\n\nglobal @PI: f32 = {}\n\nfn @add_one(i32 %a) -> i32 {{\nentry:\n  %res = add.i32 %a, 1\n  ret.i32 %res\n}}\n",
+            "type !Vec2 = struct {{ x: f32, y: f32 }}\n\nglobal $PI: f32 = {}\n\nfn @add_one(i32 %a) -> i32 {{\nentry:\n  %res = add.i32 %a, 1\n  ret.i32 %res\n}}\n",
             PI
         );
 
@@ -719,7 +719,7 @@ mod tests {
             },
         );
         let errs = module.validate().unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("unknown type '@missing'")));
+        assert!(errs.iter().any(|e| e.contains("unknown type '!missing'")));
     }
 
     #[test]
@@ -736,6 +736,6 @@ mod tests {
             },
         );
         let errs = module.validate().unwrap_err();
-        assert!(errs.iter().any(|e| e.contains("'@node' contains itself")));
+        assert!(errs.iter().any(|e| e.contains("'!node' contains itself")));
     }
 }

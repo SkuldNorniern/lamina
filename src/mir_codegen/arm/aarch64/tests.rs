@@ -303,7 +303,7 @@ fn integer_float_conversions_select_width_and_saturation_forms() -> Result<(), B
 #[test]
 fn module_globals_are_addressed_through_page_relocations() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "global @counter: i64 = 41\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 @counter\n  ret.i64 %a\n}\n";
+    let ir = "global $counter: i64 = 41\n\nfn @main() -> i64 {\nentry:\n  %a = load.i64 $counter\n  ret.i64 %a\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "globals").expect("lower global module");
     let mut linux = Vec::new();
@@ -545,7 +545,7 @@ fn darwin_packs_narrow_stack_arguments_at_natural_size() -> Result<(), Box<dyn E
 #[test]
 fn darwin_sends_variadic_arguments_to_stack() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @main() -> i64 {\nentry:\n  %f = getelem.i8 @fmt, 0\n  %r = call @printf(%f, 7, 2.5)\n  ret.i64 0\n}\n";
+    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal $fmt: [5 x i8] = \"%g\\n\"\n\nfn @main() -> i64 {\nentry:\n  %f = getelem.i8 $fmt, 0\n  %r = call @printf(%f, 7, 2.5)\n  ret.i64 0\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "darwin_variadic").expect("lower variadic call");
 
