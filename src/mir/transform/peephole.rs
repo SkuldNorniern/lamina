@@ -571,11 +571,14 @@ fn is_all_ones(i: Option<i64>) -> bool {
     i == Some(-1)
 }
 
-/// Decompose multiplication by constant into shift and add operations
+/// Decompose multiplication by constant into shift and add operations.
+///
+/// Only a positive multiplier qualifies. A shift cannot carry the sign of a
+/// negative one, and the caller replaces the multiply in place, so it has nowhere
+/// to put the negation.
 fn decompose_multiplication(const_val: i64) -> Option<(u32, i64)> {
-    let abs_val = const_val.abs();
-    if abs_val > 0 && (abs_val & (abs_val - 1)) == 0 {
-        return Some((abs_val.trailing_zeros(), 0));
+    if const_val > 0 && (const_val & (const_val - 1)) == 0 {
+        return Some((const_val.trailing_zeros(), 0));
     }
     // We can support simple shifts + add/sub.
     // This is primarily useful if we can replace the MUL instruction with a sequence,
@@ -593,6 +596,16 @@ mod tests {
         register::{Register, VirtualReg},
         types::{MirType, ScalarType},
     };
+
+    #[test]
+    fn negative_multiplier_keeps_its_sign() {
+        for c in [-1i64, -2, -4, -1024] {
+            assert_eq!(decompose_multiplication(c), None, "{c}");
+        }
+        for (c, shift) in [(1i64, 0u32), (2, 1), (4, 2), (1024, 10)] {
+            assert_eq!(decompose_multiplication(c), Some((shift, 0)), "{c}");
+        }
+    }
 
     #[test]
     fn folded_sqrt_leaves_no_second_root() {

@@ -1,0 +1,14 @@
+# Multiplication by a negative power of two
+fn @main() -> i64 {
+  entry:
+    %x = add.i64 7, 35
+    %a = mul.i64 %x, -1
+    print %a
+    %b = mul.i64 %x, -2
+    print %b
+    %c = mul.i64 %x, -4
+    print %c
+    %d = mul.i64 %x, 4
+    print %d
+    ret.i64 0
+}
