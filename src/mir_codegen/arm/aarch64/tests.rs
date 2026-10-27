@@ -541,3 +541,45 @@ fn darwin_packs_narrow_stack_arguments_at_natural_size() -> Result<(), Box<dyn E
     assert!(linux.contains("str x10, [sp, #8]"), "{linux}");
     Ok(())
 }
+
+#[test]
+fn darwin_sends_variadic_arguments_to_stack() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @main() -> i64 {\nentry:\n  %f = getelem.ptr @fmt, 0, i8\n  %r = call @printf(%f, 7, 2.5)\n  ret.i64 0\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir(&module, "darwin_variadic").expect("lower variadic call");
+
+    let emit = |os| -> Result<String, Box<dyn Error>> {
+        let mut output = Vec::new();
+        generate_mir_aarch64(&mir, &mut output, os)?;
+        Ok(String::from_utf8(output)?)
+    };
+
+    // The format string stays in x0; 7 and 2.5 take whole stack slots.
+    let darwin = emit(TargetOperatingSystem::MacOS)?;
+    let stored: Vec<&str> = darwin
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("str ") && line.contains("[sp, #"))
+        .collect();
+    assert!(
+        stored.iter().any(|line| line.ends_with("[sp, #0]")),
+        "{darwin}"
+    );
+    assert!(
+        stored.iter().any(|line| line.ends_with("[sp, #8]")),
+        "{darwin}"
+    );
+    assert!(!darwin.contains("fmov d0,"), "{darwin}");
+
+    let linux = emit(TargetOperatingSystem::Linux)?;
+    assert!(linux.contains("fmov d0,"), "{linux}");
+    assert!(
+        !linux
+            .lines()
+            .map(str::trim)
+            .any(|line| line.starts_with("str ") && line.contains("[sp, #")),
+        "{linux}"
+    );
+    Ok(())
+}
