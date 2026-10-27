@@ -635,3 +635,21 @@ fn variadic_f32_argument_widens_to_f64() {
         "{widened:?}"
     );
 }
+
+#[test]
+fn string_global_resolves_escapes() {
+    let module = lowered_global_module(
+        "global @s: [8 x i8] = \"a\\nb\\t\\x41\\\\\"\n\
+         fn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+    )
+    .expect("lower string global");
+    assert_eq!(
+        module.globals["s"].initializer.as_deref(),
+        Some(b"a\nb\tA\\\0\0".as_slice())
+    );
+
+    let bad = lowered_global_module(
+        "global @s: [4 x i8] = \"a\\q\"\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
+    );
+    assert!(format!("{bad:?}").contains("not an escape"), "{bad:?}");
+}
