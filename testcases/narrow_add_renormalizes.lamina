@@ -1,0 +1,19 @@
+# A sub-64-bit add keeps its own width when its result reaches a comparison
+fn @main() -> i64 {
+  entry:
+    %a = add.i16 32767, 0
+    %b = add.i16 %a, %a
+    %c = lt.i16 %b, 1
+    %d = zext.bool.i64 %c
+    print %d
+    %e = add.i32 2000000000, 0
+    %f = add.i32 %e, %e
+    %g = lt.i32 %f, 0
+    %h = zext.bool.i64 %g
+    print %h
+    %i = add.i8 100, 0
+    %j = add.i8 %i, %i
+    %k = sext.i8.i64 %j
+    print %k
+    ret.i64 0
+}

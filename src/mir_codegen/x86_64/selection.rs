@@ -37,7 +37,7 @@ pub(super) fn select_lea(
         let Some(dst) = mapped_register(dst, alloc) else {
             continue;
         };
-        if (0..length).any(&flags_live) || (length > 1 && ty.size_bytes() != 8) {
+        if (0..length).any(&flags_live) || ty.size_bytes() != 8 {
             continue;
         }
         let mut terms = Vec::new();
