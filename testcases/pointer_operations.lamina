@@ -1,4 +1,4 @@
-# Test pointer operations: getelem and struct_gep
+# Test pointer operations: getelem and getfieldptr
 
 # Test array element access with getelem
 fn @test_array_access() -> i64 {
@@ -31,7 +31,7 @@ fn @test_array_access() -> i64 {
 type !Point = struct { x: i64, y: i64, z: i64 }
 type !Person = struct { name: [10 x i8], age: i32, height: i64 }
 
-# Test struct field access with struct_gep
+# Test struct field access with getfieldptr
 # fn @test_struct_access() -> i64 {
 #   entry:
 #     # Allocate a Point struct
