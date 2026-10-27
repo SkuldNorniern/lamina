@@ -351,8 +351,11 @@ impl TransformPipeline {
         pipeline
     }
 
-    /// Runs the pipeline over one function to a fixed point. A function far larger than
-    /// anything a frontend emits is refused rather than ground through every pass.
+    /// Runs each pass over one function once, in the order they were added. Repeating
+    /// the list until nothing changes costs about half again as much and changed no
+    /// output across the testcases, so the order the pipeline is built in is what
+    /// decides what a pass sees. A function far larger than anything a frontend emits
+    /// is refused rather than ground through every pass.
     pub fn apply_to_function(&self, func: &mut Function) -> Result<TransformStats, TransformError> {
         let total_instructions: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
         const MAX_INSTRUCTIONS: usize = 100_000;
