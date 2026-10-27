@@ -26,7 +26,7 @@ pub(super) fn instruction_clobbers(
             let arg_regs = abi.arg_registers();
             arg_regs[..args.len().min(arg_regs.len())].to_vec()
         }
-        MirInst::Call { .. } | MirInst::TailCall { .. } => {
+        MirInst::Call { .. } | MirInst::CallIndirect { .. } | MirInst::TailCall { .. } => {
             let mut regs = vec!["rcx", "rdx", "r8", "r9", "r10", "r11"];
             if target_os != TargetOperatingSystem::Windows {
                 regs.extend(["rsi", "rdi"]);
@@ -1152,22 +1152,22 @@ entry:
 @noinline
 fn @padded() -> i64 {
 entry:
-    %stack = alloc.stack struct { a: i8, b: i64, c: i8 }
-    %other = alloc.stack [8 x i64]
+    %stack = stackalloc.struct { a: i8, b: i64, c: i8 }
+    %other = stackalloc.[8 x i64]
     store.i64 %other, 4321
     %middle = getfieldptr %stack, 1
     %last = getfieldptr %stack, 2
     store.i64 %middle, 1234
     store.i8 %last, 99
-    %heap = alloc.heap [2 x struct { a: i8, b: i64, c: i8 }]
-    %second = getelementptr %heap, 1, struct { a: i8, b: i64, c: i8 }
+    %heap = heapalloc.[2 x struct { a: i8, b: i64, c: i8 }]
+    %second = getelem.struct { a: i8, b: i64, c: i8 } %heap, 1
     %heap_last = getfieldptr %second, 2
     store.i8 %heap_last, 77
     %x = load.i64 %middle
     %y = load.i8 %last
     %z = load.i8 %heap_last
     %guard = load.i64 %other
-    dealloc.heap %heap
+    heapfree %heap
     %wide_y = zext.i8.i64 %y
     %wide_z = zext.i8.i64 %z
     %sum = add.i64 %x, %wide_y
@@ -1218,10 +1218,10 @@ entry:
             r#"
 fn @main() -> i32 {
 entry:
-    %b8 = alloc.stack i8
-    %b16 = alloc.stack i16
-    %b32 = alloc.stack i32
-    %b64 = alloc.stack i64
+    %b8 = stackalloc.i8
+    %b16 = stackalloc.i16
+    %b32 = stackalloc.i32
+    %b64 = stackalloc.i64
     store.i8 %b8, 127
     store.i16 %b16, 4660
     store.i32 %b32, 168496141
