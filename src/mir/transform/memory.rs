@@ -54,6 +54,16 @@ impl MemoryOptimization {
                 HashMap::new();
 
             for inst in &mut block.instructions {
+                // What the maps hold is only good while the registers it names still
+                // hold the same values, so a definition drops every entry naming it.
+                if let Some(defined) = inst.def_reg() {
+                    last_store.retain(|(base, ..), stored| {
+                        base != defined
+                            && !matches!(stored, Operand::Register(reg) if reg == defined)
+                    });
+                    last_load.retain(|(base, ..), loaded| base != defined && loaded != defined);
+                }
+
                 let mut replacement: Option<Instruction> = None;
                 match &*inst {
                     Instruction::Store {
