@@ -136,7 +136,11 @@ impl InstructionScheduling {
             // Calls are memory barriers and have side effects. Dependencies chain through them.
             if matches!(
                 instr,
-                Instruction::Call { .. } | Instruction::Ret { .. } | Instruction::Switch { .. }
+                Instruction::Call { .. }
+                    | Instruction::CallIndirect { .. }
+                    | Instruction::TailCall { .. }
+                    | Instruction::Ret { .. }
+                    | Instruction::Switch { .. }
             ) {
                 // Make this instruction depend on EVERYTHING before it?
                 // Or effectively act as a barrier.

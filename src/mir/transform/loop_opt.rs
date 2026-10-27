@@ -497,6 +497,8 @@ impl LoopInvariantCodeMotion {
                 Instruction::Load { .. }
                     | Instruction::Store { .. }
                     | Instruction::Call { .. }
+                    | Instruction::CallIndirect { .. }
+                    | Instruction::TailCall { .. }
                     | Instruction::Ret { .. }
             )
     }

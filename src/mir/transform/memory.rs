@@ -122,7 +122,9 @@ impl MemoryOptimization {
                             last_load.clear();
                         }
                     }
-                    Instruction::Call { .. } | Instruction::TailCall { .. } => {
+                    Instruction::Call { .. }
+                    | Instruction::CallIndirect { .. }
+                    | Instruction::TailCall { .. } => {
                         // Calls may read/write memory; conservatively invalidate
                         last_store.clear();
                         last_load.clear();
