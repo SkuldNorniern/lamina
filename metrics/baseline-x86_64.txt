@@ -290,18 +290,18 @@ branches 9
 frame main 464
 
 [atomics O2]
-insns 412
+insns 396
 spills 47
 calls 52
 branches 9
-frame main 320
+frame main 304
 
 [atomics O3]
-insns 412
+insns 396
 spills 47
 calls 52
 branches 9
-frame main 320
+frame main 304
 
 [binary_op_rhs_in_destination O0]
 insns 84
@@ -654,7 +654,7 @@ frame test_heap_dealloc 16
 frame test_stack_dealloc 32
 
 [dealloc_stack_vs_heap_bug_test O2]
-insns 226
+insns 211
 spills 40
 calls 9
 branches 7
@@ -662,10 +662,10 @@ frame main 32
 frame print_digits 32
 frame print_number 32
 frame test_heap_dealloc 16
-frame test_stack_dealloc 16
+frame test_stack_dealloc 0
 
 [dealloc_stack_vs_heap_bug_test O3]
-insns 225
+insns 210
 spills 38
 calls 9
 branches 7
@@ -673,7 +673,7 @@ frame main 32
 frame print_digits 32
 frame print_number 32
 frame test_heap_dealloc 16
-frame test_stack_dealloc 16
+frame test_stack_dealloc 0
 
 [debug_printing O0]
 insns 26
@@ -864,27 +864,27 @@ frame test_nested_flow 128
 frame test_wrapping 64
 
 [edge_cases_extra O2]
-insns 474
-spills 66
+insns 420
+spills 62
 calls 9
 branches 23
-frame main 80
+frame main 48
 frame print_digits 32
 frame print_number 32
 frame test_many_args 48
-frame test_nested_flow 32
+frame test_nested_flow 0
 frame test_wrapping 0
 
 [edge_cases_extra O3]
-insns 472
-spills 64
+insns 418
+spills 60
 calls 9
 branches 23
-frame main 64
+frame main 48
 frame print_digits 32
 frame print_number 32
 frame test_many_args 48
-frame test_nested_flow 32
+frame test_nested_flow 0
 frame test_wrapping 0
 
 [extern_declarations O0]
@@ -2210,18 +2210,18 @@ branches 0
 frame main 112
 
 [io_comprehensive O2]
-insns 122
+insns 117
 spills 13
 calls 4
 branches 0
-frame main 32
+frame main 16
 
 [io_comprehensive O3]
-insns 122
+insns 117
 spills 13
 calls 4
 branches 0
-frame main 32
+frame main 16
 
 [io_error_handling O0]
 insns 58
@@ -2266,14 +2266,14 @@ branches 0
 frame main 32
 
 [io_pointer O2]
-insns 22
+insns 17
 spills 2
 calls 2
 branches 0
 frame main 16
 
 [io_pointer O3]
-insns 22
+insns 17
 spills 2
 calls 2
 branches 0
@@ -2294,18 +2294,18 @@ branches 0
 frame main 128
 
 [io_types O2]
-insns 121
+insns 115
 spills 15
 calls 0
 branches 0
-frame main 64
+frame main 48
 
 [io_types O3]
-insns 121
+insns 115
 spills 15
 calls 0
 branches 0
-frame main 64
+frame main 48
 
 [io_write O0]
 insns 42
@@ -2432,28 +2432,28 @@ frame test_multiple_operations 160
 frame test_sequential_access 112
 
 [load_store_operations O2]
-insns 202
-spills 4
+insns 96
+spills 2
 calls 2
 branches 0
 frame main 16
 frame test_basic_load_store 0
-frame test_different_types 32
-frame test_memory_aliasing 16
-frame test_multiple_operations 32
-frame test_sequential_access 16
+frame test_different_types 16
+frame test_memory_aliasing 0
+frame test_multiple_operations 0
+frame test_sequential_access 0
 
 [load_store_operations O3]
-insns 202
-spills 4
+insns 96
+spills 2
 calls 2
 branches 0
 frame main 16
 frame test_basic_load_store 0
-frame test_different_types 32
-frame test_memory_aliasing 16
-frame test_multiple_operations 32
-frame test_sequential_access 16
+frame test_different_types 16
+frame test_memory_aliasing 0
+frame test_multiple_operations 0
+frame test_sequential_access 0
 
 [load_store_optimization_bug_test O0]
 insns 303
@@ -2484,32 +2484,32 @@ frame test_store_forwarding 64
 frame test_volatile_access 80
 
 [load_store_optimization_bug_test O2]
-insns 358
+insns 235
 spills 36
 calls 5
 branches 7
-frame main 80
+frame main 32
 frame print_digits 32
 frame print_number 32
-frame test_load_store_elimination 16
-frame test_partial_overwrites 16
-frame test_redundant_loads 16
-frame test_store_forwarding 16
-frame test_volatile_access 16
+frame test_load_store_elimination 0
+frame test_partial_overwrites 0
+frame test_redundant_loads 0
+frame test_store_forwarding 0
+frame test_volatile_access 0
 
 [load_store_optimization_bug_test O3]
-insns 362
-spills 38
+insns 238
+spills 36
 calls 5
 branches 7
-frame main 80
+frame main 32
 frame print_digits 32
 frame print_number 32
-frame test_load_store_elimination 16
-frame test_partial_overwrites 16
-frame test_redundant_loads 16
-frame test_store_forwarding 16
-frame test_volatile_access 16
+frame test_load_store_elimination 0
+frame test_partial_overwrites 0
+frame test_redundant_loads 0
+frame test_store_forwarding 0
+frame test_volatile_access 0
 
 [loops O0]
 insns 132
@@ -2544,6 +2544,42 @@ spills 36
 calls 5
 branches 7
 frame main 32
+frame print_digits 32
+frame print_number 32
+
+[mem2reg O0]
+insns 210
+spills 72
+calls 6
+branches 7
+frame main 208
+frame print_digits 80
+frame print_number 64
+
+[mem2reg O1]
+insns 210
+spills 72
+calls 6
+branches 7
+frame main 208
+frame print_digits 80
+frame print_number 64
+
+[mem2reg O2]
+insns 290
+spills 55
+calls 9
+branches 19
+frame main 80
+frame print_digits 32
+frame print_number 32
+
+[mem2reg O3]
+insns 290
+spills 55
+calls 9
+branches 19
+frame main 80
 frame print_digits 32
 frame print_number 32
 
@@ -2918,7 +2954,7 @@ frame test_pointer_movement 128
 frame test_variable_index_gep 144
 
 [pointer_operations O2]
-insns 381
+insns 376
 spills 41
 calls 8
 branches 11
@@ -2931,7 +2967,7 @@ frame test_pointer_movement 48
 frame test_variable_index_gep 48
 
 [pointer_operations O3]
-insns 383
+insns 378
 spills 41
 calls 8
 branches 11
@@ -2984,44 +3020,44 @@ frame test_u64_pointer_operations 48
 frame test_u8_pointer_operations 48
 
 [pointer_operations_comprehensive O2]
-insns 635
-spills 34
+insns 335
+spills 26
 calls 26
 branches 0
-frame main 256
+frame main 112
 frame test_bool_pointer_operations 16
-frame test_char_pointer_operations 16
-frame test_f32_pointer_operations 32
-frame test_f64_pointer_operations 32
-frame test_i16_pointer_operations 16
-frame test_i32_pointer_operations 16
-frame test_i64_pointer_operations 16
-frame test_i8_pointer_operations 16
-frame test_pointer_pointer_operations 16
-frame test_u16_pointer_operations 16
-frame test_u32_pointer_operations 16
-frame test_u64_pointer_operations 16
-frame test_u8_pointer_operations 16
+frame test_char_pointer_operations 0
+frame test_f32_pointer_operations 0
+frame test_f64_pointer_operations 0
+frame test_i16_pointer_operations 0
+frame test_i32_pointer_operations 0
+frame test_i64_pointer_operations 0
+frame test_i8_pointer_operations 0
+frame test_pointer_pointer_operations 0
+frame test_u16_pointer_operations 0
+frame test_u32_pointer_operations 0
+frame test_u64_pointer_operations 0
+frame test_u8_pointer_operations 0
 
 [pointer_operations_comprehensive O3]
-insns 620
-spills 35
+insns 307
+spills 6
 calls 26
 branches 0
-frame main 224
+frame main 32
 frame test_bool_pointer_operations 16
-frame test_char_pointer_operations 16
-frame test_f32_pointer_operations 32
-frame test_f64_pointer_operations 32
-frame test_i16_pointer_operations 16
-frame test_i32_pointer_operations 16
-frame test_i64_pointer_operations 16
-frame test_i8_pointer_operations 16
-frame test_pointer_pointer_operations 16
-frame test_u16_pointer_operations 16
-frame test_u32_pointer_operations 16
-frame test_u64_pointer_operations 16
-frame test_u8_pointer_operations 16
+frame test_char_pointer_operations 0
+frame test_f32_pointer_operations 0
+frame test_f64_pointer_operations 0
+frame test_i16_pointer_operations 0
+frame test_i32_pointer_operations 0
+frame test_i64_pointer_operations 0
+frame test_i8_pointer_operations 0
+frame test_pointer_pointer_operations 0
+frame test_u16_pointer_operations 0
+frame test_u32_pointer_operations 0
+frame test_u64_pointer_operations 0
+frame test_u8_pointer_operations 0
 
 [pointer_operations_fixed O0]
 insns 171
@@ -3592,24 +3628,24 @@ frame test_stack_allocation 48
 frame test_stack_vs_heap_comparison 32
 
 [stack_allocation O2]
-insns 130
+insns 65
 spills 6
 calls 6
 branches 0
-frame main 64
-frame test_nested_stack_operations 32
-frame test_stack_allocation 16
-frame test_stack_vs_heap_comparison 16
+frame main 32
+frame test_nested_stack_operations 0
+frame test_stack_allocation 0
+frame test_stack_vs_heap_comparison 0
 
 [stack_allocation O3]
-insns 129
-spills 4
+insns 60
+spills 2
 calls 6
 branches 0
-frame main 64
-frame test_nested_stack_operations 32
-frame test_stack_allocation 16
-frame test_stack_vs_heap_comparison 16
+frame main 16
+frame test_nested_stack_operations 0
+frame test_stack_allocation 0
+frame test_stack_vs_heap_comparison 0
 
 [stack_frame_overflow_bug_test O0]
 insns 338
@@ -3958,7 +3994,7 @@ frame caller 48
 frame main 16
 
 [tail_stack_address O2]
-insns 105
+insns 99
 spills 17
 calls 4
 branches 2
@@ -3967,7 +4003,7 @@ frame caller 32
 frame main 32
 
 [tail_stack_address O3]
-insns 105
+insns 99
 spills 17
 calls 4
 branches 2
@@ -4050,18 +4086,18 @@ branches 0
 frame main 704
 
 [tiny O2]
-insns 116
-spills 4
+insns 76
+spills 2
 calls 2
 branches 0
-frame main 432
+frame main 416
 
 [tiny O3]
-insns 117
-spills 4
+insns 81
+spills 2
 calls 2
 branches 0
-frame main 432
+frame main 416
 
 [type_conversions O0]
 insns 286

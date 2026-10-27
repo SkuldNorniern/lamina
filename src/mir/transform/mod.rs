@@ -14,6 +14,7 @@ mod deadcode;
 mod induction_strength_reduction;
 mod inline;
 mod loop_opt;
+mod mem2reg;
 mod memory;
 mod peephole;
 mod reduction_exit;
@@ -36,6 +37,7 @@ pub use deadcode::{DeadCodeElimination, remove_dead_pure_calls, truncate_after_n
 pub use induction_strength_reduction::InductionStrengthReduction;
 pub use inline::{FunctionInlining, ModuleInlining};
 pub use loop_opt::LoopInvariantCodeMotion;
+pub use mem2reg::Mem2Reg;
 pub use memory::MemoryOptimization;
 pub use peephole::Peephole;
 pub use reduction_exit::ReductionExit;
@@ -300,7 +302,7 @@ impl TransformPipeline {
     /// |-------|-----------------|
     /// | O0    | (none) |
     /// | O1    | CFG simplify, jump threading, branch opt, DCE |
-    /// | O2    | + constant folding, copy propagation, memory opt, tail-call opt, peephole, module inlining, bounded unrolling |
+    /// | O2    | + promotion of stack slots to registers (mem2reg), constant folding, copy propagation, memory opt, tail-call opt, peephole, module inlining, bounded unrolling |
     /// | O3    | + LICM, strength reduction, CSE, instruction scheduling |
     pub fn default_for_opt_level(opt_level: u8) -> Self {
         let mut pipeline = Self::new();
@@ -318,6 +320,7 @@ impl TransformPipeline {
         }
 
         if opt_level >= 2 {
+            pipeline = pipeline.add_transform(Mem2Reg);
             pipeline = pipeline.add_transform(ConstantFolding);
             pipeline = pipeline.add_transform(CopyPropagation);
             pipeline = pipeline.add_transform(MemoryOptimization);

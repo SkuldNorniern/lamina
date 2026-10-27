@@ -1,0 +1,103 @@
+# Stack slots that mem2reg promotes: an i64 and an f64 slot written on both sides
+# of a branch and read after the join, and a loop-carried counter and accumulator.
+fn @main() -> i64 {
+  entry:
+    %sel = stackalloc.i64
+    %fs = stackalloc.f64
+    %acc = stackalloc.i64
+    %idx = stackalloc.i64
+    %k = add.i64 3, 0
+    %c = lt.i64 %k, 5
+    br %c, then_b, else_b
+
+  then_b:
+    store.i64 %sel, 100
+    store.f64 %fs, 2.5
+    jmp after_branch
+
+  else_b:
+    store.i64 %sel, 200
+    store.f64 %fs, 7.5
+    jmp after_branch
+
+  after_branch:
+    %sv = load.i64 %sel
+    %dummy = call @print_number(%sv)
+    %nl = writebyte 10
+    %fv = load.f64 %fs
+    %fbits = bitcast.f64.i64 %fv
+    %dummy2 = call @print_number(%fbits)
+    %nl2 = writebyte 10
+    store.i64 %acc, 0
+    store.i64 %idx, 0
+    jmp head
+
+  head:
+    %i = load.i64 %idx
+    %more = lt.i64 %i, 10
+    br %more, body, done
+
+  body:
+    %a = load.i64 %acc
+    %a2 = add.i64 %a, %i
+    store.i64 %acc, %a2
+    %i2 = add.i64 %i, 1
+    store.i64 %idx, %i2
+    jmp head
+
+  done:
+    %total = load.i64 %acc
+    %dummy3 = call @print_number(%total)
+    %nl3 = writebyte 10
+    ret.i64 0
+}
+
+# Helper function to print multi-digit numbers
+fn @print_number(i64 %num) -> i64 {
+  entry:
+    # Handle zero case
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, print_zero, check_negative
+
+  check_negative:
+    %is_negative = lt.i64 %num, 0
+    br %is_negative, handle_negative, print_digits
+
+  print_zero:
+    %zero = writebyte 48  # '0'
+    ret.i64 0
+
+  handle_negative:
+    %minus = writebyte 45  # '-'
+    %abs_num = sub.i64 0, %num
+    %dummy = call @print_digits(%abs_num)
+    ret.i64 0
+
+  print_digits:
+    %dummy = call @print_digits(%num)
+    ret.i64 0
+}
+
+# Helper function to print digits recursively
+fn @print_digits(i64 %num) -> i64 {
+  entry:
+    %is_zero = eq.i64 %num, 0
+    br %is_zero, done, continue_print
+
+  continue_print:
+    %divisor = add.i64 0, 10
+    %quotient = div.i64 %num, %divisor
+    %temp = mul.i64 %quotient, %divisor
+    %remainder = sub.i64 %num, %temp
+
+    # Print higher digits first
+    %dummy = call @print_digits(%quotient)
+
+    # Print current digit
+    %digit = add.i64 %remainder, 48  # ASCII '0'
+    %dummy2 = writebyte %digit
+    ret.i64 0
+
+  done:
+    ret.i64 0
+}
