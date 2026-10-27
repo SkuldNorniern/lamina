@@ -693,7 +693,7 @@ pub enum Instruction<'a> {
     },
     Dealloc {
         // Optional Heap Deallocation
-        ptr: Value<'a>, // Must be a ptr from alloc.heap
+        ptr: Value<'a>, // Must be a ptr from heapalloc
     },
     // --- Atomic Operations ---
     #[cfg(feature = "nightly")]
@@ -959,12 +959,11 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "callptr",
         "select",
         // Memory operations (from Instruction::Alloc, Instruction::Load, etc.)
-        "alloc",
+        "stackalloc",
+        "heapalloc",
         "load",
-        "getfield",
         "getfieldptr",
         "getelem",
-        "getelementptr",
         // Pointer operations (from Instruction::PtrToInt, Instruction::IntToPtr)
         "ptrtoint",
         "inttoptr",
@@ -1023,12 +1022,11 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "funcaddr",
         "callptr",
         "select",
-        "alloc",
+        "stackalloc",
+        "heapalloc",
         "load",
-        "getfield",
         "getfieldptr",
         "getelem",
-        "getelementptr",
         "ptrtoint",
         "inttoptr",
         "tuple",
@@ -1063,7 +1061,7 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         "callptr",
         // Memory operations (from Instruction::Store, Instruction::Dealloc, etc.)
         "store",
-        "dealloc",
+        "heapfree",
         "memcpy",
         "memmove",
         "memset",
@@ -1363,7 +1361,10 @@ impl fmt::Display for Instruction<'_> {
                 result,
                 alloc_type,
                 allocated_ty,
-            } => write!(f, "%{result} = alloc.ptr.{alloc_type} {allocated_ty}"),
+            } => match alloc_type {
+                AllocType::Stack => write!(f, "%{result} = stackalloc.{allocated_ty}"),
+                AllocType::Heap => write!(f, "%{result} = heapalloc.{allocated_ty}"),
+            },
             Instruction::Load { result, ty, ptr } => write!(f, "%{result} = load.{ty} {ptr}"),
             Instruction::Store { ty, ptr, value } => write!(f, "store.{ty} {ptr}, {value}"),
             Instruction::MemCpy { dst, src, size } => {
@@ -1375,7 +1376,7 @@ impl fmt::Display for Instruction<'_> {
             Instruction::MemSet { dst, value, size } => {
                 write!(f, "memset {dst}, {value}, {size}")
             }
-            Instruction::Dealloc { ptr } => write!(f, "dealloc.heap {ptr}"),
+            Instruction::Dealloc { ptr } => write!(f, "heapfree {ptr}"),
             #[cfg(feature = "nightly")]
             Instruction::AtomicLoad {
                 result,
@@ -1487,26 +1488,23 @@ impl fmt::Display for Instruction<'_> {
                 struct_ptr,
                 field_index,
                 ..
-            } => write!(f, "%{result} = getfield.ptr {struct_ptr}, {field_index}"),
+            } => write!(f, "%{result} = getfieldptr {struct_ptr}, {field_index}"),
             Instruction::GetElemPtr {
                 result,
                 array_ptr,
                 index,
                 element_type,
-            } => write!(
-                f,
-                "%{result} = getelem.ptr {array_ptr}, {index}, {element_type}"
-            ),
+            } => write!(f, "%{result} = getelem.{element_type} {array_ptr}, {index}"),
             Instruction::PtrToInt {
                 result,
                 ptr_value,
                 target_type,
-            } => write!(f, "%{result} = ptrtoint {ptr_value}, {target_type}"),
+            } => write!(f, "%{result} = ptrtoint.{target_type} {ptr_value}"),
             Instruction::IntToPtr {
                 result,
                 int_value,
                 target_type,
-            } => write!(f, "%{result} = inttoptr {int_value}, {target_type}"),
+            } => write!(f, "%{result} = inttoptr.{target_type} {int_value}"),
             Instruction::Tuple { result, elements } => {
                 write!(f, "%{result} = tuple")?;
                 for elem in elements {
@@ -1669,7 +1667,7 @@ mod tests {
             alloc_type: AllocType::Stack,
             allocated_ty: Type::Primitive(PrimitiveType::I32),
         };
-        assert_eq!(format!("{}", instr7), "%ptr1 = alloc.ptr.stack i32");
+        assert_eq!(format!("{}", instr7), "%ptr1 = stackalloc.i32");
 
         // Alloc (Heap)
         let struct_type = Type::Struct(vec![StructField {
@@ -1683,7 +1681,7 @@ mod tests {
         };
         assert_eq!(
             format!("{}", instr8),
-            "%heap_ptr = alloc.ptr.heap struct { a: i32 }"
+            "%heap_ptr = heapalloc.struct { a: i32 }"
         );
 
         // Load
@@ -1711,7 +1709,7 @@ mod tests {
         };
         assert_eq!(
             format!("{}", instr11),
-            "%field_ptr = getfield.ptr %struct_instance_ptr, 1"
+            "%field_ptr = getfieldptr %struct_instance_ptr, 1"
         );
 
         // GetElemPtr
@@ -1723,7 +1721,7 @@ mod tests {
         };
         assert_eq!(
             format!("{}", instr12),
-            "%elem_ptr = getelem.ptr %array_data_ptr, 3, i64"
+            "%elem_ptr = getelem.i64 %array_data_ptr, 3"
         );
 
         // Call (void)
@@ -1857,7 +1855,7 @@ mod tests {
         let instr20 = Instruction::Dealloc {
             ptr: Value::Variable("heap_ptr"),
         };
-        assert_eq!(format!("{}", instr20), "dealloc.heap %heap_ptr");
+        assert_eq!(format!("{}", instr20), "heapfree %heap_ptr");
 
         // Memcpy
         let instr_memcpy = Instruction::MemCpy {

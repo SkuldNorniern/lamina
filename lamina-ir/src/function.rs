@@ -1036,7 +1036,7 @@ mod tests {
             ],
         };
         // Expect leading spaces on ALL instruction lines due to writeln!
-        let expected_output = "  %p = alloc.ptr.stack i32\n  store.i32 %p, 10\n  jmp next_block\n";
+        let expected_output = "  %p = stackalloc.i32\n  store.i32 %p, 10\n  jmp next_block\n";
         assert_eq!(format!("{}", block), expected_output);
     }
 

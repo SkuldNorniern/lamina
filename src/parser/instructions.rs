@@ -37,12 +37,26 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "fpext" => parse_float_convert(state, result, true),
             "fptrunc" => parse_float_convert(state, result, false),
             "select" => parse_select(state, result),
-            "alloc" => parse_alloc(state, result),
+            "stackalloc" => parse_alloc(state, result, AllocType::Stack),
+            "heapalloc" => parse_alloc(state, result, AllocType::Heap),
+            "alloc" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'stackalloc.<type>' or 'heapalloc.<type>'",
+            )),
             "load" => parse_load(state, result),
-            "getfield" => parse_getfield(state, result),
             "getfieldptr" => parse_getfield(state, result),
+            "getfield" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'getfieldptr <ptr>, <index>'",
+            )),
             "getelem" => parse_getelem(state, result),
-            "getelementptr" => parse_getelem(state, result),
+            "getelementptr" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'getelem.<type> <ptr>, <index>'",
+            )),
             "ptrtoint" => parse_ptrtoint(state, result),
             "inttoptr" => parse_inttoptr(state, result),
             "tuple" => parse_tuple(state, result),
@@ -91,7 +105,8 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "br" => parse_br(state),
             "jmp" => parse_jmp(state),
             "ret" => parse_ret(state),
-            "dealloc" => parse_dealloc(state),
+            "heapfree" => parse_heapfree(state),
+            "dealloc" => Err(removed_opcode_error(state, opcode_str, "'heapfree <ptr>'")),
             "call" => parse_call(state, None),
             "callptr" => parse_call_indirect(state, None),
             "print" => parse_print(state),
@@ -164,6 +179,20 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
 fn parse_type_suffix<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaError> {
     state.expect_char('.')?;
     parse_type(state) // Can be any type after the dot
+}
+
+fn require_type_suffix(state: &ParserState<'_>, message: &str) -> Result<(), LaminaError> {
+    if state.current_char() == Some('.') {
+        Ok(())
+    } else {
+        Err(state.error(message))
+    }
+}
+
+fn removed_opcode_error(state: &ParserState<'_>, opcode: &str, replacement: &str) -> LaminaError {
+    state.error(format!(
+        "Unknown instruction opcode '{opcode}'\n  Hint: Did you mean {replacement}?"
+    ))
 }
 
 fn parse_unary_op<'a>(
@@ -254,67 +283,13 @@ fn parse_cmp_op<'a>(
     })
 }
 
-/// Parses allocation instruction.
-/// Supports both `alloc.stack T` and `alloc.ptr.stack T` syntax for compatibility.
+/// Parses `stackalloc.T` or `heapalloc.T`.
 fn parse_alloc<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
+    alloc_type: AllocType,
 ) -> Result<Instruction<'a>, LaminaError> {
-    state.expect_char('.')?;
-
-    let peek_str = state.peek_slice(5).unwrap_or("");
-    if peek_str.starts_with("stack") {
-        state.consume_keyword("stack")?;
-        let allocated_ty = parse_type(state)?;
-        return Ok(Instruction::Alloc {
-            result,
-            alloc_type: AllocType::Stack,
-            allocated_ty,
-        });
-    } else if peek_str.starts_with("heap") {
-        state.consume_keyword("heap")?;
-        let allocated_ty = parse_type(state)?;
-        return Ok(Instruction::Alloc {
-            result,
-            alloc_type: AllocType::Heap,
-            allocated_ty,
-        });
-    }
-
-    state.consume_keyword("ptr")?;
-    state.expect_char('.')?;
-    let alloc_type_str = state.parse_identifier_str()?;
-    let alloc_type = match alloc_type_str {
-        "stack" => AllocType::Stack,
-        "heap" => AllocType::Heap,
-        _ => {
-            let valid_types = super::get_alloc_type_names();
-            let suggestions = super::suggest_alternatives(alloc_type_str, valid_types);
-
-            let hint = if !suggestions.is_empty() {
-                if suggestions.len() == 1 {
-                    format!("Did you mean '{}'?", suggestions[0])
-                } else {
-                    format!(
-                        "Did you mean one of: {}?",
-                        suggestions
-                            .iter()
-                            .map(|s| format!("'{s}'"))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )
-                }
-            } else {
-                format!("Valid allocation types are: {}", valid_types.join(", "))
-            };
-
-            return Err(state.error(format!(
-                "Invalid allocation type: '{alloc_type_str}'\n  Hint: {hint}"
-            )));
-        }
-    };
-    let allocated_ty = parse_type(state)?;
-    state.skip_whitespace_and_comments();
+    let allocated_ty = parse_type_suffix(state)?;
     Ok(Instruction::Alloc {
         result,
         alloc_type,
@@ -343,12 +318,10 @@ fn parse_getfield<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let _pos = state.position();
-    let has_dot = state.current_char() == Some('.');
-
-    if has_dot {
-        state.expect_char('.')?;
-        state.consume_keyword("ptr")?;
+    if state.current_char() == Some('.') {
+        return Err(state.error(
+            "getfieldptr takes no type suffix\n  Hint: Write 'getfieldptr <ptr>, <index>'",
+        ));
     }
 
     let struct_ptr = parse_value(state)?;
@@ -372,23 +345,20 @@ fn parse_getelem<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let _pos = state.position();
-    let has_dot = state.current_char() == Some('.');
-
-    if has_dot {
-        state.expect_char('.')?;
-        state.consume_keyword("ptr")?;
-    }
-
+    require_type_suffix(
+        state,
+        "getelem takes its element type as a suffix\n  Hint: Write 'getelem.<type> <ptr>, <index>', e.g. 'getelem.i8 %buf, 0'",
+    )?;
+    let element_type = parse_type_suffix(state)?;
     let array_ptr = parse_value(state)?;
     state.expect_char(',')?;
     let index = parse_value(state)?;
-    state.expect_char(',')?;
-    let element_type = if state.current_char() == Some('.') {
-        Type::Primitive(parse_primitive_type_suffix(state)?)
-    } else {
-        parse_type(state)?
-    };
+    state.skip_whitespace_and_comments();
+    if state.current_char() == Some(',') {
+        return Err(state.error(
+            "getelem no longer takes an element type operand\n  Hint: Put the element type in the suffix: 'getelem.<type> <ptr>, <index>'",
+        ));
+    }
 
     Ok(Instruction::GetElemPtr {
         result,
@@ -402,9 +372,12 @@ fn parse_ptrtoint<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let ptr_value = parse_value(state)?;
-    state.expect_char(',')?;
+    require_type_suffix(
+        state,
+        "ptrtoint takes its target type as a suffix\n  Hint: Write 'ptrtoint.i64 %ptr' instead of 'ptrtoint %ptr, .i64'",
+    )?;
     let target_type = parse_type_suffix(state)?;
+    let ptr_value = parse_value(state)?;
 
     let target_primitive_type = match target_type {
         Type::Primitive(pt) => pt,
@@ -426,9 +399,12 @@ fn parse_inttoptr<'a>(
     state: &mut ParserState<'a>,
     result: Identifier<'a>,
 ) -> Result<Instruction<'a>, LaminaError> {
-    let int_value = parse_value(state)?;
-    state.expect_char(',')?;
+    require_type_suffix(
+        state,
+        "inttoptr takes its target type as a suffix\n  Hint: Write 'inttoptr.i64 %addr' instead of 'inttoptr %addr, .i64'",
+    )?;
     let target_type = parse_type_suffix(state)?;
+    let int_value = parse_value(state)?;
 
     let target_primitive_type = match target_type {
         Type::Primitive(pt) => pt,
@@ -648,9 +624,7 @@ fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaE
     }
 }
 
-fn parse_dealloc<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    state.expect_char('.')?;
-    state.consume_keyword("heap")?;
+fn parse_heapfree<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let ptr = parse_value(state)?;
     Ok(Instruction::Dealloc { ptr })
 }

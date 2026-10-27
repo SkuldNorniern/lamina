@@ -91,7 +91,7 @@
 //!
 //! **Example:**
 //! ```lamina
-//! %buffer = alloc.stack i32      # Allocate memory
+//! %buffer = stackalloc.i32      # Allocate memory
 //! store.i32 %buffer, 72          # Store 72 ('H' in ASCII)
 //! %result = writeptr %buffer     # Outputs: 'H' (binary 72)
 //! ```
@@ -115,7 +115,7 @@
 //!
 //! ```lamina
 //! # Step 1: Allocate memory
-//! %data = alloc.stack i32
+//! %data = stackalloc.i32
 //!
 //! # Step 2: Store a value
 //! store.i32 %data, 65  # ASCII 'A'

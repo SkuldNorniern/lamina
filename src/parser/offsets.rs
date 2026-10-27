@@ -169,10 +169,10 @@ mod tests {
             r#"
 fn @main() -> i32 {
 entry:
-    %b8 = alloc.stack i8
-    %b16 = alloc.stack i16
-    %b32 = alloc.stack i32
-    %b64 = alloc.stack i64
+    %b8 = stackalloc.i8
+    %b16 = stackalloc.i16
+    %b32 = stackalloc.i32
+    %b64 = stackalloc.i64
     %w8 = writeptr %b8
     %w16 = writeptr %b16
     %w32 = writeptr %b32

@@ -495,7 +495,7 @@ mod tests {
     fn test_deeply_nested_type_is_rejected_without_overflow() {
         let nested = format!("{}i64{}", "struct { x: ".repeat(1000), " }".repeat(1000));
         let input = format!(
-            "fn @main() -> i64 {{\n  entry:\n    %a = alloc.stack {nested}\n    ret.i64 0\n}}\n"
+            "fn @main() -> i64 {{\n  entry:\n    %a = stackalloc.{nested}\n    ret.i64 0\n}}\n"
         );
         let err = parse_module(&input).expect_err("deep type");
         assert!(err.to_string().contains("Type nesting exceeds"));
@@ -596,11 +596,11 @@ mod tests {
         let input = r#"
             fn @test_composite() -> ptr {
               entry:
-                %arr_ptr = alloc.stack [4 x i32]
-                %elem_ptr = getelementptr %arr_ptr, 2, i32
+                %arr_ptr = stackalloc.[4 x i32]
+                %elem_ptr = getelem.i32 %arr_ptr, 2
                 %elem = load.i32 %elem_ptr
                 
-                %struct_ptr = alloc.stack struct { x: i32, y: i32 }
+                %struct_ptr = stackalloc.struct { x: i32, y: i32 }
                 %y_ptr = getfieldptr %struct_ptr, 1
                 %y_val = load.i32 %y_ptr
                 
@@ -618,7 +618,7 @@ mod tests {
             .basic_blocks
             .get("entry")
             .expect("Entry block not found");
-        assert_eq!(entry.instructions.len(), 7); // alloc, getelementptr, load, alloc, getfieldptr, load, ret
+        assert_eq!(entry.instructions.len(), 7); // stackalloc, getelem, load, stackalloc, getfieldptr, load, ret
 
         match &entry.instructions[0] {
             Instruction::Alloc {
@@ -649,7 +649,7 @@ mod tests {
                 assert_eq!(*array_ptr, Value::Variable("arr_ptr"));
                 assert_eq!(*index, Value::Constant(Literal::I32(2)));
             }
-            _ => panic!("Expected getelementptr instruction"),
+            _ => panic!("Expected getelem instruction"),
         }
     }
 
@@ -1047,15 +1047,15 @@ fn @test_phi_complex(i64 %cond1, i64 %cond2) -> i64 {
         let source = r#"
 fn @test_memory_ops() -> i64 {
   entry:
-    %ptr1 = alloc.heap i64
-    %ptr2 = alloc.heap i64
+    %ptr1 = heapalloc.i64
+    %ptr2 = heapalloc.i64
     store.i64 %ptr1, 42
     store.i64 %ptr2, 24
     %val1 = load.i64 %ptr1
     %val2 = load.i64 %ptr2
     %sum = add.i64 %val1, %val2
-    dealloc.heap %ptr1
-    dealloc.heap %ptr2
+    heapfree %ptr1
+    heapfree %ptr2
     ret.i64 %sum
 }
 "#;
@@ -1279,5 +1279,189 @@ ret.i64 0
             format!("{misplaced:?}").contains("must be the last parameter"),
             "{misplaced:?}"
         );
+    }
+
+    fn entry_body(line: &str) -> String {
+        format!(
+            "fn @main(ptr %ptr, ptr %buf, ptr %p, i64 %addr) -> i64 {{\n  entry:\n    {line}\n    ret.i64 0\n}}\n"
+        )
+    }
+
+    fn entry_instructions(input: &str) -> Vec<Instruction<'_>> {
+        let module = parse_module(input).expect("Parsing failed");
+        let func = module.functions.get("main").expect("Function not found");
+        func.basic_blocks
+            .get("entry")
+            .expect("Entry block not found")
+            .instructions
+            .clone()
+    }
+
+    fn parse_error(line: &str) -> String {
+        parse_module(&entry_body(line))
+            .expect_err("old spelling should be rejected")
+            .to_string()
+    }
+
+    #[test]
+    fn test_ptrtoint_and_inttoptr_take_suffix_type() {
+        let input = entry_body("%a = ptrtoint.i64 %ptr");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::PtrToInt {
+                target_type: PrimitiveType::I64,
+                ..
+            }
+        ));
+
+        let input = entry_body("%p = inttoptr.i64 %addr");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::IntToPtr {
+                target_type: PrimitiveType::I64,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_old_ptrtoint_and_inttoptr_spelling_is_rejected() {
+        let err = parse_error("%a = ptrtoint %ptr, .i64");
+        assert!(err.contains("ptrtoint.i64 %ptr"), "{err}");
+
+        let err = parse_error("%p = inttoptr %addr, .i64");
+        assert!(err.contains("inttoptr.i64 %addr"), "{err}");
+    }
+
+    #[test]
+    fn test_getelem_takes_element_type_in_suffix() {
+        let input = entry_body("%e = getelem.i8 %buf, 0");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::GetElemPtr {
+                element_type: Type::Primitive(PrimitiveType::I8),
+                ..
+            }
+        ));
+
+        let input = entry_body("%e = getelem.[3 x i32] %buf, 1");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::GetElemPtr {
+                element_type: Type::Array { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_old_getelem_spellings_are_rejected() {
+        let err = parse_error("%e = getelem.ptr %buf, 0, i8");
+        assert!(err.contains("getelem.<type> <ptr>, <index>"), "{err}");
+
+        let err = parse_error("%e = getelementptr %buf, 0, char");
+        assert!(err.contains("getelem.<type> <ptr>, <index>"), "{err}");
+    }
+
+    #[test]
+    fn test_getfield_alias_and_ptr_suffix_are_rejected() {
+        let input = entry_body("%f = getfieldptr %p, 2");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::GetFieldPtr { field_index: 2, .. }
+        ));
+
+        let err = parse_error("%f = getfield %p, 2");
+        assert!(err.contains("getfieldptr"), "{err}");
+
+        let err = parse_error("%f = getfieldptr.ptr %p, 2");
+        assert!(err.contains("getfieldptr <ptr>, <index>"), "{err}");
+    }
+
+    #[test]
+    fn test_stackalloc_heapalloc_and_heapfree_parse() {
+        let input = entry_body("%p = stackalloc.i64");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::Alloc {
+                alloc_type: AllocType::Stack,
+                allocated_ty: Type::Primitive(PrimitiveType::I64),
+                ..
+            }
+        ));
+
+        let input = entry_body("%h = heapalloc.[16 x i8]");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::Alloc {
+                alloc_type: AllocType::Heap,
+                allocated_ty: Type::Array { .. },
+                ..
+            }
+        ));
+
+        let input = entry_body("%s = stackalloc.struct { a: i64 }");
+        assert!(matches!(
+            entry_instructions(&input)[0],
+            Instruction::Alloc {
+                alloc_type: AllocType::Stack,
+                allocated_ty: Type::Struct(_),
+                ..
+            }
+        ));
+
+        let input = entry_body("%h = heapalloc.i64\n    heapfree %h");
+        assert!(matches!(
+            entry_instructions(&input)[1],
+            Instruction::Dealloc { .. }
+        ));
+    }
+
+    #[test]
+    fn test_old_alloc_and_dealloc_spellings_are_rejected() {
+        let err = parse_error("%p = alloc.stack i64");
+        assert!(err.contains("stackalloc.<type>"), "{err}");
+
+        let err = parse_error("%h = alloc.heap [16 x i8]");
+        assert!(err.contains("heapalloc.<type>"), "{err}");
+
+        let err = parse_error("dealloc.heap %h");
+        assert!(err.contains("heapfree <ptr>"), "{err}");
+    }
+
+    #[test]
+    fn test_opcode_name_lists_follow_new_spellings() {
+        let assignment = get_assignment_opcode_names();
+        assert!(assignment.contains(&"stackalloc"));
+        assert!(assignment.contains(&"heapalloc"));
+        assert!(!assignment.contains(&"alloc"));
+        assert!(!assignment.contains(&"getfield"));
+        assert!(!assignment.contains(&"getelementptr"));
+
+        let non_assignment = get_non_assignment_opcode_names();
+        assert!(non_assignment.contains(&"heapfree"));
+        assert!(!non_assignment.contains(&"dealloc"));
+    }
+
+    #[test]
+    fn test_display_of_changed_instructions_round_trips() {
+        let source = "fn @main() -> i64 {
+entry:
+  %p = stackalloc.i64
+  %h = heapalloc.[16 x i8]
+  %s = stackalloc.struct { a: i64, b: i64 }
+  %f = getfieldptr %s, 1
+  %e = getelem.i8 %h, 0
+  %a = ptrtoint.i64 %p
+  %q = inttoptr.i64 %a
+  store.i64 %q, 7
+  heapfree %h
+  ret.i64 0
+}
+";
+        let module = parse_module(source).expect("parse changed instructions");
+        let printed = module.to_string();
+        let reparsed = parse_module(&printed).expect("parse printed module");
+        assert_eq!(reparsed.to_string(), printed);
     }
 }

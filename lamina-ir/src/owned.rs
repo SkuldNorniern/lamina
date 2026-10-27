@@ -398,14 +398,14 @@ impl OwnedIRBuilder {
 
     /// Appends a stack allocation.
     pub fn alloc_stack(&mut self, result: impl AsRef<str>, ty: &OwnedType) -> &mut Self {
-        let t = format!("%{} = alloc.ptr.stack {}", result.as_ref(), ty);
+        let t = format!("%{} = stackalloc.{}", result.as_ref(), ty);
         self.push(t);
         self
     }
 
     /// Appends a heap allocation.
     pub fn alloc_heap(&mut self, result: impl AsRef<str>, ty: &OwnedType) -> &mut Self {
-        let t = format!("%{} = alloc.ptr.heap {}", result.as_ref(), ty);
+        let t = format!("%{} = heapalloc.{}", result.as_ref(), ty);
         self.push(t);
         self
     }
@@ -426,7 +426,7 @@ impl OwnedIRBuilder {
 
     /// Appends a heap deallocation.
     pub fn dealloc(&mut self, ptr: &OwnedValue) -> &mut Self {
-        let t = format!("dealloc.heap {ptr}");
+        let t = format!("heapfree {ptr}");
         self.push(t);
         self
     }
@@ -462,11 +462,11 @@ impl OwnedIRBuilder {
         element_type: impl Into<OwnedType>,
     ) -> &mut Self {
         let t = format!(
-            "%{} = getelem.ptr {}, {}, {}",
+            "%{} = getelem.{} {}, {}",
             result.as_ref(),
+            element_type.into(),
             array_ptr,
-            index,
-            element_type.into()
+            index
         );
         self.push(t);
         self
@@ -480,7 +480,7 @@ impl OwnedIRBuilder {
         field_index: usize,
     ) -> &mut Self {
         let t = format!(
-            "%{} = getfield.ptr {}, {}",
+            "%{} = getfieldptr {}, {}",
             result.as_ref(),
             struct_ptr,
             field_index
@@ -497,10 +497,10 @@ impl OwnedIRBuilder {
         target_type: PrimitiveType,
     ) -> &mut Self {
         let t = format!(
-            "%{} = ptrtoint {}, {}",
+            "%{} = ptrtoint.{} {}",
             result.as_ref(),
-            ptr_value,
-            target_type.as_str()
+            target_type.as_str(),
+            ptr_value
         );
         self.push(t);
         self
@@ -514,10 +514,10 @@ impl OwnedIRBuilder {
         target_type: PrimitiveType,
     ) -> &mut Self {
         let t = format!(
-            "%{} = inttoptr {}, {}",
+            "%{} = inttoptr.{} {}",
             result.as_ref(),
-            int_value,
-            target_type.as_str()
+            target_type.as_str(),
+            int_value
         );
         self.push(t);
         self
@@ -850,8 +850,8 @@ mod tests {
             )
             .getelementptr("element", &array, &index, PrimitiveType::I32);
         let text = builder.build_ir_text();
-        assert!(text.contains("%row_ptr = getelem.ptr %matrix, 1, [3 x i32]"));
-        assert!(text.contains("%element = getelem.ptr %matrix, 1, i32"));
+        assert!(text.contains("%row_ptr = getelem.[3 x i32] %matrix, 1"));
+        assert!(text.contains("%element = getelem.i32 %matrix, 1"));
     }
 
     #[test]

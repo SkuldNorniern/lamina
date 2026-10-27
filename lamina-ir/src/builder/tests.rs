@@ -560,10 +560,7 @@ mod tests {
         assert!(
             matches!(inst, Instruction::GetElemPtr { element_type, .. } if *element_type == row)
         );
-        assert_eq!(
-            inst.to_string(),
-            "%row_ptr = getelem.ptr %matrix, 1, [3 x i32]"
-        );
+        assert_eq!(inst.to_string(), "%row_ptr = getelem.[3 x i32] %matrix, 1");
     }
 
     #[test]
