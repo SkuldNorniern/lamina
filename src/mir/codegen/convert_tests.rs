@@ -211,6 +211,39 @@ fn constant_gep_preserves_pointer_width_offsets() {
 }
 
 #[test]
+fn offsets_past_i32_reach_their_address() {
+    let source =
+        "fn @field(ptr %p) -> ptr {\nentry:\n%q = getfieldptr %p, 300000000\nret.ptr %q\n}";
+    let ir = parse_module(source).expect("parse wide field index");
+    let mir = from_ir(&ir, "field").expect("lower wide field index");
+    mir.validate().expect("address arithmetic verifies");
+    let offset = mir.get_function("field").expect("field function").blocks[0]
+        .instructions
+        .iter()
+        .find_map(|inst| match inst {
+            Instruction::Lea { offset, .. } => Some(i64::from(*offset)),
+            Instruction::IntBinary {
+                op: IntBinOp::Add,
+                ty,
+                rhs: Operand::Immediate(Immediate::I64(offset)),
+                ..
+            } if *ty == MirType::i64() => Some(*offset),
+            _ => None,
+        });
+    assert_eq!(offset, Some(2_400_000_000));
+}
+
+#[test]
+fn element_offset_that_overflows_is_rejected() {
+    let source = format!(
+        "fn @gep(ptr %p) -> ptr {{\nentry:\n%q = getelem.i64 %p, {}\nret.ptr %q\n}}",
+        i64::MIN
+    );
+    let ir = parse_module(&source).expect("parse overflowing index");
+    from_ir(&ir, "gep").expect_err("offset does not fit a pointer");
+}
+
+#[test]
 fn arithmetic_optimizations_preserve_immediate_widths() {
     let source = "fn @optimized(i32 %x) -> i32 {\nentry:\n%c = add.i32 1, 2\n%m = mul.i32 %x, 4\n%r = rem.u32 %x, 8\n%a = add.i32 %m, %r\n%b = add.i32 %a, %c\nret.i32 %b\n}";
     let ir = parse_module(source).expect("parse arithmetic");
