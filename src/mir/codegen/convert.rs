@@ -1897,13 +1897,18 @@ fn convert_instruction<'a>(
         } => {
             let base = pointer_base(struct_ptr, vreg_alloc, var_to_reg, globals)?;
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
-            // Use the pre-computed ABI-correct offset when available; otherwise
-            // fall back to a fixed 8-byte-per-field stride (preserves behaviour
-            // for IR parsed from text without type information).
-            let offset = field_byte_offset
-                .map(|b| b as i32)
-                .unwrap_or((*field_index as i32) * 8);
-            Ok(vec![Instruction::Lea { dst, base, offset }])
+            // Without the struct type the text syntax leaves no layout to read, so
+            // the fallback is one 8-byte slot per field.
+            let offset = match field_byte_offset {
+                Some(bytes) => {
+                    i64::try_from(*bytes).map_err(|_| FromIRError::UnsupportedInstruction)?
+                }
+                None => i64::try_from(*field_index)
+                    .ok()
+                    .and_then(|index: i64| index.checked_mul(8))
+                    .ok_or(FromIRError::UnsupportedInstruction)?,
+            };
+            Ok(displace_pointer(dst, base, offset, vreg_alloc))
         }
         IRInst::GetElemPtr {
             result,
@@ -1929,35 +1934,10 @@ fn convert_instruction<'a>(
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
 
             if let Some(iv) = idx_const {
-                let offset = iv.wrapping_mul(elem_size);
-                if let Ok(offset) = i32::try_from(offset) {
-                    return Ok(vec![Instruction::Lea { dst, base, offset }]);
-                }
-                let address = Register::Virtual(vreg_alloc.allocate_gpr());
-                let sum = Register::Virtual(vreg_alloc.allocate_gpr());
-                Ok(vec![
-                    Instruction::IntConvert {
-                        from: MirType::ptr(),
-                        to: MirType::i64(),
-                        signed: false,
-                        dst: address.clone(),
-                        src: Operand::Register(base),
-                    },
-                    Instruction::IntBinary {
-                        op: IntBinOp::Add,
-                        ty: MirType::i64(),
-                        dst: sum.clone(),
-                        lhs: Operand::Register(address),
-                        rhs: Operand::Immediate(Immediate::I64(offset)),
-                    },
-                    Instruction::IntConvert {
-                        from: MirType::i64(),
-                        to: MirType::ptr(),
-                        signed: false,
-                        dst,
-                        src: Operand::Register(sum),
-                    },
-                ])
+                let offset = iv
+                    .checked_mul(elem_size)
+                    .ok_or(FromIRError::UnsupportedInstruction)?;
+                Ok(displace_pointer(dst, base, offset, vreg_alloc))
             } else {
                 let index_op = resolve_operand(index, vreg_alloc, var_to_reg, globals)?;
                 let from = operand_type(&index_op, register_types);
@@ -2322,6 +2302,44 @@ fn literal_to_immediate(l: &IRLit<'_>) -> Result<Immediate, FromIRError> {
         IRLit::String(_) => return Err(FromIRError::UnsupportedInstruction),
     };
     Ok(imm)
+}
+
+/// Adds a constant byte offset to a pointer. `Lea` carries a signed 32-bit
+/// displacement, so a wider offset goes through an integer add instead.
+fn displace_pointer(
+    dst: Register,
+    base: Register,
+    offset: i64,
+    vreg_alloc: &mut VirtualRegAllocator,
+) -> Vec<Instruction> {
+    if let Ok(offset) = i32::try_from(offset) {
+        return vec![Instruction::Lea { dst, base, offset }];
+    }
+    let address = Register::Virtual(vreg_alloc.allocate_gpr());
+    let sum = Register::Virtual(vreg_alloc.allocate_gpr());
+    vec![
+        Instruction::IntConvert {
+            from: MirType::ptr(),
+            to: MirType::i64(),
+            signed: false,
+            dst: address.clone(),
+            src: Operand::Register(base),
+        },
+        Instruction::IntBinary {
+            op: IntBinOp::Add,
+            ty: MirType::i64(),
+            dst: sum.clone(),
+            lhs: Operand::Register(address),
+            rhs: Operand::Immediate(Immediate::I64(offset)),
+        },
+        Instruction::IntConvert {
+            from: MirType::i64(),
+            to: MirType::ptr(),
+            signed: false,
+            dst,
+            src: Operand::Register(sum),
+        },
+    ]
 }
 
 /// Register holding the address a field or element offset applies to. A global name

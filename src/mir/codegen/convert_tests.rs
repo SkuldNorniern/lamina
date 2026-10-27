@@ -185,7 +185,6 @@ fn constant_gep_preserves_pointer_width_offsets() {
         (4294967297_i64, 34359738376_i64),
         (536870912, 4294967296),
         (-536870913, -4294967304),
-        (i64::MIN, 0),
     ] {
         let source = format!(
             "fn @gep(ptr %p) -> ptr {{\nentry:\n%q = getelem.i64 %p, {index}\nret.ptr %q\n}}"
