@@ -265,7 +265,7 @@ mod tests {
     use super::*;
     use crate::ir::{
         BinaryOp, CmpOp, GlobalInit, IRBuilder, Instruction, Literal, Type, Value,
-        builder::i32 as ir_i32,
+        builder::{i32 as ir_i32, i64 as ir_i64},
     };
     use std::fs;
 
@@ -376,6 +376,44 @@ mod tests {
             .expect("Parsing failed");
         assert!(module.global_declarations["g"].exported);
         assert!(!module.global_declarations["h"].exported);
+    }
+
+    #[test]
+    fn instruction_operand_literal_must_fit_its_stated_type() {
+        let error = |source: &str| match parse_module(source) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected a range error in {source}"),
+        };
+        let ret_i8 = error("fn @f() -> i8 {\nentry:\n    ret.i8 300\n}");
+        assert!(ret_i8.contains("300") && ret_i8.contains("i8"), "{ret_i8}");
+        let add_i16 =
+            error("fn @f(i16 %a) -> i16 {\nentry:\n    %r = add.i16 %a, 40000\n    ret.i16 %r\n}");
+        assert!(
+            add_i16.contains("40000") && add_i16.contains("i16"),
+            "{add_i16}"
+        );
+        assert!(error("fn @f() -> u8 {\nentry:\n    ret.u8 -1\n}").contains("u8"));
+    }
+
+    #[test]
+    fn large_u64_literal_is_accepted_in_global_and_instruction() {
+        let module =
+            parse_module("global @big: u64 = 18446744073709551615").expect("u64 global parses");
+        assert_eq!(
+            module.global_declarations["big"].initializer,
+            Some(GlobalInit::Value(Value::Constant(Literal::U64(u64::MAX))))
+        );
+
+        let module = parse_module("fn @f() -> u64 {\nentry:\n    ret.u64 18446744073709551615\n}")
+            .expect("u64 operand parses");
+        let instructions = &module.functions["f"].basic_blocks["entry"].instructions;
+        assert!(matches!(
+            instructions.last(),
+            Some(Instruction::Ret {
+                value: Some(Value::Constant(Literal::U64(u64::MAX))),
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -1171,7 +1209,7 @@ fn @minimal() -> i64 {
         let mut builder1 = IRBuilder::new();
         builder1
             .function("minimal", Type::Primitive(PrimitiveType::I64))
-            .ret(Type::Primitive(PrimitiveType::I64), ir_i32(0));
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
         let expected1 = builder1.build();
         let parsed1 = parse_module(source1)?;
         assert_eq!(parsed1, expected1);
@@ -1188,7 +1226,7 @@ fn @print_only() -> i64 {
         builder2
             .function("print_only", Type::Primitive(PrimitiveType::I64))
             .print(ir_i32(42))
-            .ret(Type::Primitive(PrimitiveType::I64), ir_i32(0));
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
         let expected2 = builder2.build();
         let parsed2 = parse_module(source2)?;
         assert_eq!(parsed2, expected2);
@@ -1203,7 +1241,7 @@ fn @empty() -> i64 {
         let mut builder3 = IRBuilder::new();
         builder3
             .function("empty", Type::Primitive(PrimitiveType::I64))
-            .ret(Type::Primitive(PrimitiveType::I64), ir_i32(42));
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(42));
         let expected3 = builder3.build();
         let parsed3 = parse_module(source3)?;
         assert_eq!(parsed3, expected3);
@@ -1217,7 +1255,7 @@ fn @empty() -> i64 {
         let mut builder = IRBuilder::new();
         builder
             .function("test", Type::Primitive(PrimitiveType::I64))
-            .ret(Type::Primitive(PrimitiveType::I64), ir_i32(0));
+            .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
 
         let expected_module = builder.build();
 

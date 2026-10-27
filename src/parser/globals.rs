@@ -8,7 +8,11 @@ use crate::{
         GlobalDeclaration, GlobalInit, Identifier, Literal, PrimitiveType, Type, TypeDeclaration,
         Value, types::resolve_type_names,
     },
-    parser::{state::ParserState, types::parse_type},
+    parser::{
+        state::ParserState,
+        types::parse_type,
+        values::{integer_bounds, integer_literal},
+    },
 };
 
 /// Parses a global declaration.
@@ -236,17 +240,9 @@ fn parse_integer_literal<'a>(
     state: &mut ParserState<'a>,
     hint: PrimitiveType,
 ) -> Result<Option<Literal<'a>>, LaminaError> {
-    let (name, min, max) = match hint {
-        PrimitiveType::I8 => ("i8", i8::MIN as i128, i8::MAX as i128),
-        PrimitiveType::I16 => ("i16", i16::MIN as i128, i16::MAX as i128),
-        PrimitiveType::I32 => ("i32", i32::MIN as i128, i32::MAX as i128),
-        PrimitiveType::I64 => ("i64", i64::MIN as i128, i64::MAX as i128),
-        PrimitiveType::U8 => ("u8", 0, u8::MAX as i128),
-        PrimitiveType::U16 => ("u16", 0, u16::MAX as i128),
-        PrimitiveType::U32 => ("u32", 0, u32::MAX as i128),
-        PrimitiveType::U64 => ("u64", 0, u64::MAX as i128),
-        _ => return Ok(None),
-    };
+    if integer_bounds(hint).is_none() {
+        return Ok(None);
+    }
 
     // Only this literal's own characters decide whether it is a float; a later
     // element in a list carries its own point.
@@ -257,25 +253,10 @@ fn parse_integer_literal<'a>(
         .trim_start_matches(|c: char| c.is_ascii_digit());
     if digits.starts_with('.') {
         return Err(state.error(format!(
-            "Float literal cannot be used with {name} type hint"
+            "Float literal cannot be used with {hint} type hint"
         )));
     }
 
-    let value = i128::from(state.parse_integer()?);
-    if value < min || value > max {
-        return Err(state.error(format!(
-            "Integer literal {value} out of range for {name} (must be between {min} and {max})"
-        )));
-    }
-
-    Ok(Some(match hint {
-        PrimitiveType::I8 => Literal::I8(value as i8),
-        PrimitiveType::I16 => Literal::I16(value as i16),
-        PrimitiveType::I32 => Literal::I32(value as i32),
-        PrimitiveType::I64 => Literal::I64(value as i64),
-        PrimitiveType::U8 => Literal::U8(value as u8),
-        PrimitiveType::U16 => Literal::U16(value as u16),
-        PrimitiveType::U32 => Literal::U32(value as u32),
-        _ => Literal::U64(value as u64),
-    }))
+    let value = state.parse_wide_integer()?;
+    integer_literal(value, hint).map_err(|message| state.error(message))
 }

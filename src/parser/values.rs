@@ -2,9 +2,47 @@
 
 use crate::{
     LaminaError,
-    ir::{Literal, Value},
+    ir::{Literal, PrimitiveType, Value},
     parser::state::ParserState,
 };
+
+/// Inclusive bounds of an integer type, or `None` for a type that is not an integer.
+pub fn integer_bounds(ty: PrimitiveType) -> Option<(i128, i128)> {
+    Some(match ty {
+        PrimitiveType::I8 => (i8::MIN.into(), i8::MAX.into()),
+        PrimitiveType::I16 => (i16::MIN.into(), i16::MAX.into()),
+        PrimitiveType::I32 => (i32::MIN.into(), i32::MAX.into()),
+        PrimitiveType::I64 => (i64::MIN.into(), i64::MAX.into()),
+        PrimitiveType::U8 => (0, u8::MAX.into()),
+        PrimitiveType::U16 => (0, u16::MAX.into()),
+        PrimitiveType::U32 => (0, u32::MAX.into()),
+        PrimitiveType::U64 => (0, u64::MAX.into()),
+        _ => return None,
+    })
+}
+
+/// The literal of integer type `ty` holding `value`. `Ok(None)` when `ty` is not an
+/// integer type; `Err` with the range message when `value` does not fit.
+pub fn integer_literal(value: i128, ty: PrimitiveType) -> Result<Option<Literal<'static>>, String> {
+    let Some((min, max)) = integer_bounds(ty) else {
+        return Ok(None);
+    };
+    if value < min || value > max {
+        return Err(format!(
+            "Integer literal {value} out of range for {ty} (must be between {min} and {max})"
+        ));
+    }
+    Ok(Some(match ty {
+        PrimitiveType::I8 => Literal::I8(value as i8),
+        PrimitiveType::I16 => Literal::I16(value as i16),
+        PrimitiveType::I32 => Literal::I32(value as i32),
+        PrimitiveType::I64 => Literal::I64(value as i64),
+        PrimitiveType::U8 => Literal::U8(value as u8),
+        PrimitiveType::U16 => Literal::U16(value as u16),
+        PrimitiveType::U32 => Literal::U32(value as u32),
+        _ => Literal::U64(value as u64),
+    }))
+}
 
 /// Parses a value: literal, variable (%name), or global (@name).
 pub fn parse_value<'a>(state: &mut ParserState<'a>) -> Result<Value<'a>, LaminaError> {

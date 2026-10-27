@@ -18,7 +18,7 @@ fn @test_i8_operations() -> i64 {
 
     # Boundary values
     %max_i8 = add.i8 127, 0     # Maximum i8 value
-    %min_i8 = sub.i8 0, 128     # Minimum i8 value
+    %min_i8 = sub.i8 -127, 1     # Minimum i8 value
 
     # Comparisons
     %cmp1 = eq.i8 %a, 30         # true
@@ -68,7 +68,7 @@ fn @test_i16_operations() -> i64 {
 
     # Boundary values
     %max_i16 = add.i16 32767, 0  # Maximum i16 value
-    %min_i16 = sub.i16 0, 32768  # Minimum i16 value
+    %min_i16 = sub.i16 -32767, 1  # Minimum i16 value
 
     # Comparisons
     %cmp1 = eq.i16 %a, 3000       # true
@@ -118,7 +118,7 @@ fn @test_i32_operations() -> i64 {
 
     # Boundary values
     %max_i32 = add.i32 2147483647, 0 # Maximum i32 value
-    %min_i32 = sub.i32 0, 2147483648 # Minimum i32 value
+    %min_i32 = sub.i32 -2147483647, 1 # Minimum i32 value
 
     # Comparisons
     %cmp1 = eq.i32 %a, 300000         # true

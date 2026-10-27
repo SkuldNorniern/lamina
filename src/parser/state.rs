@@ -316,6 +316,26 @@ impl<'a> ParserState<'a> {
             })
     }
 
+    /// Parses an integer literal of any width: an optional minus, then digits. The
+    /// caller checks the range of the type it is used at.
+    pub fn parse_wide_integer(&mut self) -> Result<i128, LaminaError> {
+        self.skip_whitespace_and_comments();
+        let start = self.position;
+        if !self.is_eof() && self.bytes[self.position] == b'-' {
+            self.advance();
+        }
+        let digits_start = self.position;
+        while !self.is_eof() && self.bytes[self.position].is_ascii_digit() {
+            self.advance();
+        }
+        if digits_start == self.position {
+            return Err(self.error("Expected an integer literal\n  Hint: Integer literals can be positive (e.g., 42) or negative (e.g., -42)"));
+        }
+        self.input[start..self.position]
+            .parse::<i128>()
+            .map_err(|e| self.error(format!("Integer literal is too large: {e}")))
+    }
+
     /// Parses a float literal.
     pub fn parse_float(&mut self) -> Result<f64, LaminaError> {
         self.skip_whitespace_and_comments();

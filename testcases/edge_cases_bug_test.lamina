@@ -6,7 +6,7 @@ fn @test_i8_overflow() -> i64 {
   entry:
     # Test i8 boundary values
     %max_i8 = add.i8 127, 0      # Maximum i8 value
-    %min_i8 = sub.i8 0, 128      # Minimum i8 value (two's complement)
+    %min_i8 = sub.i8 -127, 1      # Minimum i8 value (two's complement)
 
     # Test operations that might overflow
     %overflow_add = add.i8 %max_i8, 1    # Should wrap around to -128
@@ -34,7 +34,7 @@ fn @test_i16_overflow() -> i64 {
   entry:
     # Test i16 boundary values
     %max_i16 = add.i16 32767, 0      # Maximum i16 value
-    %min_i16 = sub.i16 0, 32768      # Minimum i16 value
+    %min_i16 = sub.i16 -32767, 1      # Minimum i16 value
 
     # Test operations that might overflow
     %overflow_add = add.i16 %max_i16, 1    # Should wrap around

@@ -3,10 +3,13 @@
 use crate::{
     LaminaError,
     ir::{
-        AllocType, BinaryOp, CmpOp, Identifier, Instruction, Literal, PrimitiveType, Type, UnaryOp,
-        Value, types::sizeof_type,
+        AllocType, BinaryOp, CmpOp, Identifier, Instruction, PrimitiveType, Type, UnaryOp, Value,
+        types::sizeof_type,
     },
-    parser::{state::ParserState, types::parse_type, values::parse_value},
+    parser::{
+        globals::parse_value_with_type_hint, state::ParserState, types::parse_type,
+        values::parse_value,
+    },
 };
 
 /// Parses a single instruction from the input.
@@ -216,7 +219,7 @@ fn parse_unary_op<'a>(
         }
         _ => {}
     }
-    let value = narrow_float_literal(parse_value(state)?, ty);
+    let value = parse_typed_operand(state, &Type::Primitive(ty))?;
     Ok(Instruction::Unary {
         op,
         result,
@@ -244,9 +247,9 @@ fn parse_binary_op<'a>(
         _ => unreachable!(),
     };
     let ty = parse_primitive_type_suffix(state)?;
-    let lhs = narrow_float_literal(parse_value(state)?, ty);
+    let lhs = parse_typed_operand(state, &Type::Primitive(ty))?;
     state.expect_char(',')?;
-    let rhs = narrow_float_literal(parse_value(state)?, ty);
+    let rhs = parse_typed_operand(state, &Type::Primitive(ty))?;
     Ok(Instruction::Binary {
         op,
         result,
@@ -271,9 +274,9 @@ fn parse_cmp_op<'a>(
         _ => unreachable!(),
     };
     let ty = parse_primitive_type_suffix(state)?;
-    let lhs = narrow_float_literal(parse_value(state)?, ty);
+    let lhs = parse_typed_operand(state, &Type::Primitive(ty))?;
     state.expect_char(',')?;
-    let rhs = narrow_float_literal(parse_value(state)?, ty);
+    let rhs = parse_typed_operand(state, &Type::Primitive(ty))?;
     Ok(Instruction::Cmp {
         op,
         result,
@@ -557,10 +560,7 @@ fn parse_phi<'a>(
             break; // End of incoming values
         }
         state.expect_char('[')?;
-        let value = match ty {
-            Type::Primitive(prim) => narrow_float_literal(parse_value(state)?, prim),
-            _ => parse_value(state)?,
-        };
+        let value = parse_typed_operand(state, &ty)?;
         state.expect_char(',')?;
         let label = state.parse_label_identifier()?;
         state.expect_char(']')?;
@@ -616,7 +616,7 @@ fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaE
         })
     } else {
         let ty = parse_type(state)?;
-        let value = parse_value(state)?;
+        let value = parse_typed_operand(state, &ty)?;
         Ok(Instruction::Ret {
             ty,
             value: Some(value),
@@ -1037,7 +1037,7 @@ fn parse_bitcast<'a>(
 
 fn parse_switch<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let ty = parse_primitive_type_suffix(state)?;
-    let value = parse_value(state)?;
+    let value = parse_typed_operand(state, &Type::Primitive(ty))?;
     state.expect_char(',')?;
     let default = state.parse_label_identifier()?;
 
@@ -1053,7 +1053,7 @@ fn parse_switch<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lami
             break;
         }
         state.expect_char('[')?;
-        let lit_value = parse_value(state)?;
+        let lit_value = parse_typed_operand(state, &Type::Primitive(ty))?;
         let lit = match lit_value {
             Value::Constant(l) => l,
             _ => {
@@ -1117,13 +1117,14 @@ fn parse_primitive_from_ident(
     }
 }
 
-/// A decimal literal parses as f64, because that keeps the source text exact. Narrow it
-/// when the instruction is f32 so the operand width matches the instruction width.
-fn narrow_float_literal(value: Value<'_>, ty: PrimitiveType) -> Value<'_> {
-    match (ty, value) {
-        (PrimitiveType::F32, Value::Constant(Literal::F64(v))) => {
-            Value::Constant(Literal::F32(v as f32))
-        }
-        (_, other) => other,
+/// Parses an operand whose type the instruction states. A primitive type makes an
+/// integer literal range-checked against it, the same check a global initializer gets.
+fn parse_typed_operand<'a>(
+    state: &mut ParserState<'a>,
+    ty: &Type<'a>,
+) -> Result<Value<'a>, LaminaError> {
+    match ty {
+        Type::Primitive(_) => parse_value_with_type_hint(state, ty),
+        _ => parse_value(state),
     }
 }
