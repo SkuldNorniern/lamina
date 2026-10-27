@@ -898,9 +898,12 @@ fn convert_function<'a>(
         )
         .map_err(FromIRError::InvalidMir)?;
 
-        // Apply edge moves with edge-splitting when necessary.
+        // Apply edge moves with edge-splitting when necessary. The edges are visited in
+        // a fixed order so the trampoline labels do not depend on hash iteration.
+        let mut edges: Vec<((String, String), Vec<Instruction>)> = edge_moves.into_iter().collect();
+        edges.sort_by(|left, right| left.0.cmp(&right.0));
         let mut trampoline_counter: u64 = 0;
-        for ((pred, succ), moves) in edge_moves {
+        for ((pred, succ), moves) in edges {
             // Snapshot the current terminator without holding a mutable borrow
             let term = mir_func
                 .get_block(&pred)
