@@ -409,3 +409,27 @@ fn wasi_has_no_wasm64_form() {
     .expect_err("wasm64 WASI should be refused");
     assert!(format!("{error:?}").contains("no wasm64 form"), "{error:?}");
 }
+
+#[test]
+fn imports_declare_the_types_the_host_wrote() {
+    let source = "@extern\nfn @host_scale(f64 %x, i64 %n) -> f64\n\nfn @main() -> i64 {\nentry:\n  %r = call @host_scale(2.5, 3)\n  %b = fptosi.f64.i64 %r\n  ret.i64 %b\n}\n";
+    let wat = emit_wat(source, TargetArchitecture::Wasm32);
+
+    let import = wat
+        .lines()
+        .find(|line| line.contains("host_scale"))
+        .expect("import should be emitted");
+    assert!(
+        import.contains("(param f64) (param i64) (result f64)"),
+        "{wat}"
+    );
+    assert_eq!(
+        import.matches('(').count(),
+        import.matches(')').count(),
+        "unbalanced import: {import}"
+    );
+
+    // The backend holds every value as i64 bits, so the boundary reinterprets both ways.
+    assert!(wat.contains("f64.reinterpret_i64"), "{wat}");
+    assert!(wat.contains("i64.reinterpret_f64"), "{wat}");
+}

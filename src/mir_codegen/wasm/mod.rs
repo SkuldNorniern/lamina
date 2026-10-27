@@ -373,6 +373,20 @@ pub fn generate_mir_wasm_with_units<W: Write>(
             .enumerate()
             .map(|(index, name)| ((*name).to_string(), index as u32))
             .collect(),
+        imports: module
+            .external_functions
+            .iter()
+            .filter_map(|name| {
+                let sig = &module.functions.get(name)?.sig;
+                Some((
+                    name.clone(),
+                    ImportShape {
+                        params: sig.params.iter().map(|p| float_shape(&p.ty)).collect(),
+                        result: sig.ret_ty.as_ref().and_then(float_shape),
+                    },
+                ))
+            })
+            .collect(),
     });
     let results = compile_functions_parallel(module, target_os, codegen_units, {
         let addresses = Arc::clone(&addresses);
@@ -419,17 +433,16 @@ pub fn generate_mir_wasm_with_units<W: Write>(
                 "  (import \"env\" \"{func_name}\" (func ${mangled_name}"
             )?;
 
-            // Parameters
-            for _param in &func.sig.params {
-                write!(writer, " (param i64)")?;
+            let shape = &addresses.imports[func_name];
+            for param in &shape.params {
+                write!(writer, " (param {})", wasm_type(param.as_ref()))?;
             }
 
-            // Return type
             if func.sig.ret_ty.is_some() {
-                write!(writer, " (result i64)")?;
+                write!(writer, " (result {})", wasm_type(shape.result.as_ref()))?;
             }
 
-            writeln!(writer, ")")?;
+            writeln!(writer, "))")?;
         }
     }
 
@@ -628,6 +641,53 @@ const WASM_GLOBAL_BASE: u32 = 48;
 pub struct Addresses {
     globals: BTreeMap<String, u32>,
     functions: BTreeMap<String, u32>,
+    /// Scalar shape of each imported function. A wasm import has to declare the types
+    /// the host wrote, so the bits the backend holds in an i64 are reinterpreted on the
+    /// way out and back.
+    imports: BTreeMap<String, ImportShape>,
+}
+
+/// Width of each parameter and of the result of an imported function, `None` where the
+/// value is an integer and travels as an i64.
+#[derive(Clone)]
+pub struct ImportShape {
+    params: Vec<Option<MirType>>,
+    result: Option<MirType>,
+}
+
+fn float_shape(ty: &MirType) -> Option<MirType> {
+    ty.is_float().then_some(*ty)
+}
+
+/// Declares `ty` the way a wasm signature spells it.
+fn wasm_type(ty: Option<&MirType>) -> &'static str {
+    match ty {
+        Some(ty) if ty.size_bytes() == 4 => "f32",
+        Some(_) => "f64",
+        None => "i64",
+    }
+}
+
+/// Turns the i64 bits on the stack into the float an import declares.
+fn reinterpret_out(writer: &mut impl Write, ty: &MirType) -> Result<(), LaminaError> {
+    if ty.size_bytes() == 4 {
+        writeln!(writer, "      i32.wrap_i64")?;
+        writeln!(writer, "      f32.reinterpret_i32")?;
+    } else {
+        writeln!(writer, "      f64.reinterpret_i64")?;
+    }
+    Ok(())
+}
+
+/// Turns a float an import returned back into the i64 bits the backend holds.
+fn reinterpret_in(writer: &mut impl Write, ty: &MirType) -> Result<(), LaminaError> {
+    if ty.size_bytes() == 4 {
+        writeln!(writer, "      i32.reinterpret_f32")?;
+        writeln!(writer, "      i64.extend_i32_u")?;
+    } else {
+        writeln!(writer, "      i64.reinterpret_f64")?;
+    }
+    Ok(())
 }
 
 /// Functions the module can take the address of, in table order. Imports and
@@ -917,17 +977,22 @@ fn emit_instruction_wasm(
                     writeln!(writer, "      call $logf")?;
                 }
             } else {
-                // General function call implementation
-                // WebAssembly passes all arguments on the stack in order
-                for arg in args.iter() {
+                let shape = addresses.imports.get(name);
+                for (index, arg) in args.iter().enumerate() {
                     load_operand_wasm(arg, writer, vreg_to_local)?;
+                    if let Some(ty) = shape
+                        .and_then(|shape| shape.params.get(index))
+                        .and_then(Option::as_ref)
+                    {
+                        reinterpret_out(writer, ty)?;
+                    }
                 }
 
-                // Call the function
                 writeln!(writer, "      call ${name}")?;
 
-                // Note: WebAssembly functions return values on the stack
-                // If there's a return value, it's already on the stack
+                if let Some(ty) = shape.and_then(|shape| shape.result.as_ref()) {
+                    reinterpret_in(writer, ty)?;
+                }
             }
 
             // Handle return value (already on stack if function returns)
