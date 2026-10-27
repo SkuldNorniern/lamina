@@ -213,6 +213,9 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
 struct ValueFacts<'t, 'a> {
     types: &'t HashMap<Register, MirType>,
     unsigned: &'t HashSet<&'a str>,
+    /// Named parameter count of each variadic callee, which says where its default
+    /// argument promotions begin.
+    variadic_fixed: &'t HashMap<&'a str, usize>,
 }
 
 /// Names of values whose IR type is an unsigned integer. `print` needs this because
@@ -559,6 +562,13 @@ fn convert_function<'a>(
         return Ok(Function::new(mir_sig));
     }
 
+    let variadic_fixed: HashMap<&'a str, usize> = module
+        .functions
+        .iter()
+        .filter(|(_, callee)| callee.signature.variadic)
+        .map(|(name, callee)| (*name, callee.signature.params.len()))
+        .collect();
+
     let mut mir_func = Function::new(mir_sig).with_entry(f.entry_block);
 
     let mut names: HashSet<&str> = f.signature.params.iter().map(|p| p.name).collect();
@@ -615,6 +625,7 @@ fn convert_function<'a>(
                 &ValueFacts {
                     types: &register_types,
                     unsigned: &unsigned,
+                    variadic_fixed: &variadic_fixed,
                 },
                 &mut globals,
             )
@@ -1379,12 +1390,37 @@ fn convert_instruction<'a>(
             for a in args {
                 mir_args.push(resolve_operand(a, vreg_alloc, var_to_reg, globals)?);
             }
+            // C widens a variadic f32 to double before the call, and every ABI's
+            // variadic rules are written for the widened value.
+            let fixed = facts
+                .variadic_fixed
+                .get(func_name)
+                .copied()
+                .unwrap_or(mir_args.len());
+            let mut instructions = Vec::new();
+            for arg in mir_args.iter_mut().skip(fixed) {
+                let Operand::Register(reg) = arg else {
+                    continue;
+                };
+                if facts.types.get(reg) != Some(&MirType::f32()) {
+                    continue;
+                }
+                let dst = Register::Virtual(vreg_alloc.allocate_fpr());
+                instructions.push(Instruction::FloatConvert {
+                    from: MirType::f32(),
+                    to: MirType::f64(),
+                    dst: dst.clone(),
+                    src: arg.clone(),
+                });
+                *arg = Operand::Register(dst);
+            }
             let ret = result.map(|res| resolve_or_alloc_gpr(res, vreg_alloc, var_to_reg));
-            Ok(vec![Instruction::Call {
+            instructions.push(Instruction::Call {
                 name: (*func_name).to_string(),
                 args: mir_args,
                 ret,
-            }])
+            });
+            Ok(instructions)
         }
         IRInst::FuncAddr { result, func_name } => {
             let dst = resolve_or_alloc_gpr(result, vreg_alloc, var_to_reg);
