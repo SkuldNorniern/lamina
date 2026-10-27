@@ -941,3 +941,23 @@ fn float_copy_emits_bit_move_not_add() {
         "unexpected float add: {assembly}"
     );
 }
+
+#[test]
+fn variadic_float_argument_travels_in_integer_bank() -> Result<(), Box<dyn Error>> {
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(ptr %fmt, f64 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.ptr @fmt, 0, i8\n  %c = call @printf(%p, 2.5)\n  %d = call @sink(%p, 2.5)\n  ret.i64 0\n}\n";
+    let module = parse_module(ir)?;
+    let mir = from_ir(&module, "riscv_variadic").expect("lower variadic call");
+    let mut output = Vec::new();
+    generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
+    let assembly = String::from_utf8(output)?;
+
+    let before = |call: &str| -> String {
+        let head = assembly.split(call).next().unwrap();
+        head.lines().rev().take(6).collect::<Vec<_>>().join("\n")
+    };
+    assert!(!before("    call printf").contains("fa"), "{assembly}");
+    assert!(before("    call printf").contains("a1,"), "{assembly}");
+    assert!(before("    call sink").contains("fa0"), "{assembly}");
+    Ok(())
+}
