@@ -969,6 +969,40 @@ fn convert_function<'a>(
                     }
                 }
             }
+            // A switch reaches several blocks from one terminator, and the scrutinee is
+            // read by the terminator itself, so the moves cannot sit in front of it.
+            if !handled
+                && let Some(Instruction::Switch { cases, default, .. }) = term.as_ref()
+                && (default == &succ || cases.iter().any(|(_, target)| target == &succ))
+            {
+                trampoline_counter = trampoline_counter.saturating_add(1);
+                let tramp_label = format!(
+                    "{}_to_{}_phi{}",
+                    pred.replace('%', "_"),
+                    succ.replace('%', "_"),
+                    trampoline_counter
+                );
+                let mut tramp = Block::new(tramp_label.clone());
+                for m in &moves {
+                    tramp.push(m.clone());
+                }
+                tramp.push(Instruction::Jmp {
+                    target: succ.clone(),
+                });
+                mir_func.add_block(tramp);
+                if let Some(pred_mut) = mir_func.get_block_mut(&pred)
+                    && let Some(Instruction::Switch { cases, default, .. }) =
+                        pred_mut.instructions.last_mut()
+                {
+                    if default == &succ {
+                        *default = tramp_label.clone();
+                    }
+                    for (_, target) in cases.iter_mut().filter(|(_, t)| t == &succ) {
+                        *target = tramp_label.clone();
+                    }
+                    handled = true;
+                }
+            }
             if !handled && let Some(pred_bb) = mir_func.get_block_mut(&pred) {
                 if !pred_bb.instructions.is_empty() {
                     let insert_pos = pred_bb.instructions.len().saturating_sub(1);
