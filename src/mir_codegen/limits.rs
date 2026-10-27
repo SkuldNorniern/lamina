@@ -23,7 +23,10 @@ pub const MAX_MIR_CALL_PARAMETERS: usize = 256;
 fn classifies_aggregates(target_arch: TargetArchitecture) -> bool {
     matches!(
         target_arch,
-        TargetArchitecture::X86_64 | TargetArchitecture::Aarch64 | TargetArchitecture::Riscv64
+        TargetArchitecture::X86_64
+            | TargetArchitecture::Aarch64
+            | TargetArchitecture::Riscv64
+            | TargetArchitecture::PowerPC64
     )
 }
 
@@ -172,19 +175,19 @@ mod tests {
                 TargetArchitecture::X86_64,
                 TargetArchitecture::Aarch64,
                 TargetArchitecture::Riscv64,
+                TargetArchitecture::PowerPC64,
             ] {
                 validate_module_call_parameters(&module, arch).expect("classifying backend");
             }
-            for arch in [TargetArchitecture::PowerPC64, TargetArchitecture::Wasm64] {
-                let error = validate_module_call_parameters(&module, arch)
-                    .expect_err("backend without classification");
-                assert!(
-                    error
-                        .to_string()
-                        .contains("does not yet pass aggregates by value"),
-                    "{arch:?}: {error}"
-                );
-            }
+            let arch = TargetArchitecture::Wasm64;
+            let error = validate_module_call_parameters(&module, arch)
+                .expect_err("backend without classification");
+            assert!(
+                error
+                    .to_string()
+                    .contains("does not yet pass aggregates by value"),
+                "{arch:?}: {error}"
+            );
         }
     }
 

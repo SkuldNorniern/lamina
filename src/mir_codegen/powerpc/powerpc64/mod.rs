@@ -28,7 +28,7 @@ use crate::mir_codegen::common::{
 
 use std::{
     collections::{BTreeSet, HashMap},
-    io::Write,
+    io::{self, Write},
     sync::Arc,
 };
 use util::{
@@ -38,8 +38,8 @@ use util::{
 use crate::{
     error::LaminaError,
     mir::{
-        FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp,
-        IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
+        Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
+        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
         VirtualReg,
         instruction::{AddressMode, Immediate},
         register::RegisterClass,
@@ -233,6 +233,7 @@ fn compile_single_function_ppc64(
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
     signatures: &CallSignatures,
+    aggregates: &AggregateSignatures,
 ) -> Result<Vec<u8>, CodegenError> {
     let mut output = Vec::new();
     let abi = Ppc64Abi::new(target_os);
@@ -330,39 +331,20 @@ fn compile_single_function_ppc64(
     Ppc64Frame::generate_prologue(&mut output, local_bytes)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
-    let param_types: Vec<MirType> = func.sig.params.iter().map(|p| p.ty).collect();
-    let param_places = classify_ppc64_arguments(&param_types);
-    for (index, param) in func.sig.params.iter().enumerate() {
-        if let Register::Virtual(vreg) = &param.reg
-            && let Some(offset) = stack_slots.get(vreg)
-        {
-            if let PpcArgPlace::Fpr(bank) = param_places[index] {
-                emit_store_fp_result(
-                    &bank.to_string(),
-                    vreg,
-                    &mut output,
-                    &reg_alloc,
-                    &stack_slots,
-                    param.ty.size_bytes() == 4,
-                )
-                .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-            } else if let Some(src) = Ppc64Abi::ARG_REGISTERS.get(index) {
-                extend_param(&mut output, src, &param.ty)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                r1_mem(&mut output, "std", src, *offset)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-            } else {
-                let disp = Ppc64Frame::aligned_frame_size(local_bytes) as i32
-                    + parameter_save_offset(index);
-                r1_mem(&mut output, "ld", "0", disp)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                extend_param(&mut output, "0", &param.ty)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-                r1_mem(&mut output, "std", "0", *offset)
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
-            }
-        }
-    }
+    let hidden_result_slot = func
+        .sig
+        .ret_aggregate
+        .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE)
+        .map(|_| Ppc64Frame::aligned_frame_size(local_bytes) as i32 + parameter_save_offset(0));
+    store_incoming_parameters(
+        &mut output,
+        func,
+        local_bytes,
+        hidden_result_slot,
+        &reg_alloc,
+        &stack_slots,
+    )
+    .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     for param in &func.sig.params {
         if let Register::Virtual(vreg) = &param.reg
             && let Some(reg) = reg_alloc.get_mapping_for(vreg)
@@ -380,6 +362,11 @@ fn compile_single_function_ppc64(
         local_bytes,
         signatures,
         ret_float: func.sig.ret_ty.filter(MirType::is_float),
+        aggregates,
+        aggregate_flow: func.sig.ret_aggregate.is_some()
+            || func.sig.params.iter().any(|p| p.aggregate.is_some()),
+        ret_aggregate: func.sig.ret_aggregate,
+        hidden_result_slot,
     };
     let mut debug_line: u32 = 0;
     let mut cmp_seq: u32 = 0;
@@ -446,6 +433,16 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
     validate_module_call_parameters(module, TargetArchitecture::PowerPC64)?;
+    emit_ppc64_module(module, writer, target_os, codegen_units, settings)
+}
+
+fn emit_ppc64_module<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+    settings: &MirCodegenSettings,
+) -> Result<(), LaminaError> {
     let abi = Ppc64Abi::new(target_os);
 
     writeln!(writer, ".abiversion 2")?;
@@ -462,6 +459,7 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
 
     let settings_arc = Arc::new(settings.clone());
     let signatures = Arc::new(CallSignatures::from_module(module));
+    let aggregates = Arc::new(AggregateSignatures::from_module(module));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
             compile_single_function_ppc64(
@@ -470,6 +468,7 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
                 os,
                 settings_arc.as_ref(),
                 signatures.as_ref(),
+                aggregates.as_ref(),
             )
         })
         .map_err(parallel_codegen_error)?;
@@ -486,14 +485,18 @@ pub fn generate_mir_ppc64_with_units_and_settings<W: Write>(
 }
 
 #[allow(clippy::too_many_lines)]
-/// Where an argument sits under elfv2: a general register, a float register, or the
-/// parameter save area. A float takes the next f register while still consuming its
-/// parameter slot, which leaves the matching general register unused.
+/// Where an argument sits under ELFv2. Every argument takes doublewords of the parameter
+/// save area in order, and one passed in registers takes the general register that
+/// matches its first doubleword. An aggregate that runs past r10 is split: the doublewords
+/// that fit go in registers and the rest in the save area.
 #[derive(Clone, Copy)]
 enum PpcArgPlace {
     Gpr(usize),
-    Fpr(usize),
-    Stack,
+    Fpr { bank: usize, gpr: usize },
+    Stack(usize),
+    Words { first: usize, words: usize },
+    Split { first: usize, words: usize },
+    StackWords { slot: usize, words: usize },
 }
 
 /// f1 to f13 carry floats.
@@ -511,22 +514,233 @@ fn emit_flush<W: Write>(writer: &mut W) -> Result<(), LaminaError> {
     Ok(())
 }
 
-fn classify_ppc64_arguments(types: &[MirType]) -> Vec<PpcArgPlace> {
+fn classify_ppc64_arguments(kinds: &[ArgKind], shift: usize) -> Vec<PpcArgPlace> {
+    let banks = Ppc64Abi::ARG_REGISTERS.len();
     let mut floats = 0;
-    types
+    let mut dwords = shift;
+    kinds
         .iter()
-        .enumerate()
-        .map(|(index, ty)| {
-            if ty.is_float() && floats < FLOAT_ARGUMENT_REGISTERS {
-                floats += 1;
-                PpcArgPlace::Fpr(floats)
-            } else if index < Ppc64Abi::ARG_REGISTERS.len() {
-                PpcArgPlace::Gpr(index)
-            } else {
-                PpcArgPlace::Stack
-            }
+        .map(|kind| {
+            let place = match kind.aggregate {
+                Some(aggregate) => {
+                    let words = aggregate.words();
+                    if dwords + words <= banks {
+                        PpcArgPlace::Words {
+                            first: dwords,
+                            words,
+                        }
+                    } else if dwords < banks {
+                        PpcArgPlace::Split {
+                            first: dwords,
+                            words,
+                        }
+                    } else {
+                        PpcArgPlace::StackWords {
+                            slot: dwords,
+                            words,
+                        }
+                    }
+                }
+                None if kind.ty.is_float() && floats < FLOAT_ARGUMENT_REGISTERS => {
+                    floats += 1;
+                    PpcArgPlace::Fpr {
+                        bank: floats,
+                        gpr: dwords,
+                    }
+                }
+                None if dwords < banks => PpcArgPlace::Gpr(dwords),
+                None => PpcArgPlace::Stack(dwords),
+            };
+            dwords += kind.aggregate.map_or(1, |aggregate| aggregate.words());
+            place
         })
         .collect()
+}
+
+/// A parameter or argument: its scalar type, and the aggregate it stands for when it is one.
+#[derive(Clone, Copy)]
+struct ArgKind {
+    ty: MirType,
+    aggregate: Option<Aggregate>,
+}
+
+impl ArgKind {
+    fn scalar(ty: MirType) -> Self {
+        Self {
+            ty,
+            aggregate: None,
+        }
+    }
+}
+
+const MAX_REGISTER_AGGREGATE: u64 = 16;
+
+struct AggregateSignatures {
+    params: HashMap<String, Vec<Option<Aggregate>>>,
+    returns: HashMap<String, Aggregate>,
+}
+
+impl AggregateSignatures {
+    fn from_module(module: &MirModule) -> Self {
+        Self {
+            params: module
+                .functions
+                .iter()
+                .map(|(name, func)| {
+                    (
+                        name.clone(),
+                        func.sig.params.iter().map(|p| p.aggregate).collect(),
+                    )
+                })
+                .collect(),
+            returns: module
+                .functions
+                .iter()
+                .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_aggregate?)))
+                .collect(),
+        }
+    }
+
+    fn arguments(&self, callee: &str, types: &[MirType], fixed: Option<usize>) -> Vec<ArgKind> {
+        let declared = self.params.get(callee);
+        types
+            .iter()
+            .enumerate()
+            .map(|(index, &ty)| {
+                let aggregate = match declared {
+                    Some(aggregates) if fixed.is_none() && aggregates.len() == types.len() => {
+                        aggregates[index]
+                    }
+                    Some(aggregates) if index < fixed.unwrap_or(0) => {
+                        aggregates.get(index).copied().flatten()
+                    }
+                    _ => None,
+                };
+                ArgKind { ty, aggregate }
+            })
+            .collect()
+    }
+
+    fn result(&self, callee: &str) -> Option<Aggregate> {
+        self.returns.get(callee).copied()
+    }
+
+    fn takes_aggregate(&self, callee: &str) -> bool {
+        self.params
+            .get(callee)
+            .is_some_and(|aggregates| aggregates.iter().any(Option::is_some))
+            || self.returns.contains_key(callee)
+    }
+}
+
+/// Copies doublewords `from_word` onward of an aggregate argument into the parameter save
+/// area, starting at save slot `slot`.
+fn copy_to_save_area<W: Write>(
+    writer: &mut W,
+    reg_alloc: &Ppc64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+    arg: &Operand,
+    slot: usize,
+    from_word: usize,
+    words: usize,
+) -> Result<(), LaminaError> {
+    load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
+    for word in from_word..words {
+        writeln!(writer, "    ld 12, {}(11)", word * 8)?;
+        r1_mem(writer, "std", "12", parameter_save_offset(slot + word))?;
+    }
+    Ok(())
+}
+
+fn copy_from_save_area<W: Write>(
+    writer: &mut W,
+    frame: i32,
+    slot: usize,
+    dest: i32,
+) -> io::Result<()> {
+    r1_mem(writer, "ld", "0", frame + parameter_save_offset(slot))?;
+    r1_mem(writer, "std", "0", dest)
+}
+
+/// Stores each incoming parameter into its frame slot, and keeps the hidden result pointer
+/// in the save slot it arrived with so the return can hand it back in r3.
+fn store_incoming_parameters<W: Write>(
+    writer: &mut W,
+    func: &Function,
+    local_bytes: usize,
+    hidden_result_slot: Option<i32>,
+    reg_alloc: &Ppc64RegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+) -> Result<(), LaminaError> {
+    let kinds: Vec<ArgKind> = func
+        .sig
+        .params
+        .iter()
+        .map(|p| ArgKind {
+            ty: p.ty,
+            aggregate: p.aggregate,
+        })
+        .collect();
+    let places = classify_ppc64_arguments(&kinds, usize::from(hidden_result_slot.is_some()));
+    let frame = Ppc64Frame::aligned_frame_size(local_bytes) as i32;
+    let banks = Ppc64Abi::ARG_REGISTERS.len();
+    if let Some(slot) = hidden_result_slot {
+        r1_mem(writer, "std", "3", slot)?;
+    }
+    for (param, place) in func.sig.params.iter().zip(&places) {
+        let Register::Virtual(vreg) = &param.reg else {
+            continue;
+        };
+        let Some(&offset) = stack_slots.get(vreg) else {
+            continue;
+        };
+        match *place {
+            PpcArgPlace::Fpr { bank, .. } => emit_store_fp_result(
+                &bank.to_string(),
+                vreg,
+                writer,
+                reg_alloc,
+                stack_slots,
+                param.ty.size_bytes() == 4,
+            )?,
+            PpcArgPlace::Gpr(bank) => {
+                let src = Ppc64Abi::ARG_REGISTERS[bank];
+                extend_param(writer, src, &param.ty)?;
+                r1_mem(writer, "std", src, offset)?;
+            }
+            PpcArgPlace::Stack(slot) => {
+                r1_mem(writer, "ld", "0", frame + parameter_save_offset(slot))?;
+                extend_param(writer, "0", &param.ty)?;
+                r1_mem(writer, "std", "0", offset)?;
+            }
+            PpcArgPlace::Words { first, words } => {
+                for word in 0..words {
+                    r1_mem(
+                        writer,
+                        "std",
+                        Ppc64Abi::ARG_REGISTERS[first + word],
+                        offset + 8 * word as i32,
+                    )?;
+                }
+            }
+            PpcArgPlace::Split { first, words } => {
+                for word in 0..words {
+                    let at = offset + 8 * word as i32;
+                    if first + word < banks {
+                        r1_mem(writer, "std", Ppc64Abi::ARG_REGISTERS[first + word], at)?;
+                    } else {
+                        copy_from_save_area(writer, frame, first + word, at)?;
+                    }
+                }
+            }
+            PpcArgPlace::StackWords { slot, words } => {
+                for word in 0..words {
+                    copy_from_save_area(writer, frame, slot + word, offset + 8 * word as i32)?;
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Everything the instruction emitter needs beyond the instruction itself.
@@ -538,6 +752,12 @@ struct Ppc64Emit<'a> {
     signatures: &'a CallSignatures,
     /// Set when this function returns a float, which leaves in f1.
     ret_float: Option<MirType>,
+    aggregates: &'a AggregateSignatures,
+    aggregate_flow: bool,
+    ret_aggregate: Option<Aggregate>,
+    /// Save slot holding the caller's hidden result pointer, when this function returns
+    /// an aggregate through one.
+    hidden_result_slot: Option<i32>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -562,7 +782,7 @@ fn emit_planned_block_ppc64<W: Write>(
     let mut position = 0;
     while position < block.instructions.len() {
         let inst = &block.instructions[position];
-        if let Some(pairs) = self_tail_arguments(func, inst) {
+        if let Some(pairs) = self_tail_arguments(func, inst).filter(|_| !emit.aggregate_flow) {
             let schedule = self_tail_schedule(&pairs, |reg| match reg {
                 Register::Virtual(v) => reg_alloc
                     .get_mapping_for(v)
@@ -667,6 +887,10 @@ fn emit_instruction_ppc64<W: Write>(
         local_bytes,
         signatures,
         ret_float,
+        aggregates,
+        aggregate_flow,
+        ret_aggregate,
+        hidden_result_slot,
     } = *emit;
     if settings.emit_asm_debug_lines {
         *debug_line = debug_line.saturating_add(1);
@@ -1048,6 +1272,11 @@ fn emit_instruction_ppc64<W: Write>(
         MirInst::Call { name, args, ret } => {
             let abi = Ppc64Abi::new(target_os);
             let arg_regs = Ppc64Abi::ARG_REGISTERS;
+            let result = aggregates.result(name);
+            let result_slot = match ret {
+                Some(Register::Virtual(vreg)) => stack_slots.get(vreg).copied(),
+                _ => None,
+            };
 
             if name == "writeptr" && args.len() == 2 {
                 // write(1, ptr, width): the pointee's bytes go out straight from memory.
@@ -1124,10 +1353,7 @@ fn emit_instruction_ppc64<W: Write>(
                 }
             } else {
                 let types = signatures.arguments(name, args);
-                let places = classify_ppc64_arguments(&types);
-                // A declaration says where its variadic arguments start. A callee with
-                // no prototype may be variadic anywhere, and a shadow copy costs a
-                // non-variadic one nothing.
+                let kinds = aggregates.arguments(name, &types, signatures.fixed_arguments(name));
                 let fixed = signatures.fixed_arguments(name).unwrap_or(
                     if signatures.may_be_variadic(name, args.len()) {
                         0
@@ -1135,7 +1361,25 @@ fn emit_instruction_ppc64<W: Write>(
                         args.len()
                     },
                 );
-                for (index, ((arg, ty), place)) in args.iter().zip(&types).zip(&places).enumerate()
+                let hidden = match result {
+                    Some(aggregate) if aggregate.size as u64 > MAX_REGISTER_AGGREGATE => {
+                        Some(result_slot.ok_or_else(|| {
+                            LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                                "PowerPC64 aggregate result has no frame slot".to_string(),
+                            ))
+                        })?)
+                    }
+                    _ => None,
+                };
+                let shift = usize::from(hidden.is_some());
+                let places = classify_ppc64_arguments(&kinds, shift);
+                let dwords = shift
+                    + kinds
+                        .iter()
+                        .map(|kind| kind.aggregate.map_or(1, |aggregate| aggregate.words()))
+                        .sum::<usize>();
+                for (index, ((arg, kind), place)) in
+                    args.iter().zip(&kinds).zip(&places).enumerate()
                 {
                     match *place {
                         PpcArgPlace::Gpr(bank) => {
@@ -1147,40 +1391,81 @@ fn emit_instruction_ppc64<W: Write>(
                                 arg_regs[bank],
                             )?;
                         }
-                        PpcArgPlace::Fpr(bank) => {
+                        PpcArgPlace::Fpr { bank, gpr } => {
                             emit_load_fp_operand(
                                 arg,
                                 writer,
                                 reg_alloc,
                                 stack_slots,
                                 &bank.to_string(),
-                                ty.size_bytes() == 4,
+                                kind.ty.size_bytes() == 4,
                             )?;
                             // ELFv2 hands a variadic callee its floats in both banks, and
                             // the callee reads whichever one its va_arg takes.
-                            if index >= fixed && index < arg_regs.len() {
+                            if index >= fixed && gpr < arg_regs.len() {
                                 writeln!(writer, "    stfd {bank}, -8(1)")?;
-                                writeln!(writer, "    ld {}, -8(1)", arg_regs[index])?;
+                                writeln!(writer, "    ld {}, -8(1)", arg_regs[gpr])?;
                             }
                         }
-                        PpcArgPlace::Stack => {}
+                        PpcArgPlace::Words { first, words } => {
+                            load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
+                            for word in 0..words {
+                                writeln!(
+                                    writer,
+                                    "    ld {}, {}(11)",
+                                    arg_regs[first + word],
+                                    word * 8
+                                )?;
+                            }
+                        }
+                        PpcArgPlace::Split { first, .. } => {
+                            load_operand_to_register(arg, writer, reg_alloc, stack_slots, "11")?;
+                            for word in 0..arg_regs.len() - first {
+                                writeln!(
+                                    writer,
+                                    "    ld {}, {}(11)",
+                                    arg_regs[first + word],
+                                    word * 8
+                                )?;
+                            }
+                        }
+                        PpcArgPlace::Stack(_) | PpcArgPlace::StackWords { .. } => {}
                     }
                 }
 
-                let outgoing = outgoing_frame_size(args.len())?;
+                let outgoing = outgoing_frame_size(dwords)?;
+                let moved = outgoing.map(|frame| biased_slots(stack_slots, frame as i32));
+                let slots = moved.as_ref().unwrap_or(stack_slots);
                 if let Some(frame) = outgoing {
                     // The parameter save area starts above the linkage area and holds a
                     // slot for every parameter, register ones included. `stdu` moves r1
                     // and writes the back chain in one step, which the slot offsets then
                     // have to account for.
                     writeln!(writer, "    stdu 1, -{frame}(1)")?;
-                    let moved = biased_slots(stack_slots, frame as i32);
-                    for ((index, arg), place) in args.iter().enumerate().zip(&places) {
-                        if !matches!(place, PpcArgPlace::Stack) {
-                            continue;
+                }
+                if let Some(slot) = hidden {
+                    writeln!(
+                        writer,
+                        "    addi 3, 1, {}",
+                        slot + outgoing.unwrap_or(0) as i32
+                    )?;
+                }
+                for (arg, place) in args.iter().zip(&places) {
+                    match *place {
+                        PpcArgPlace::Stack(slot) => {
+                            load_operand_to_register(arg, writer, reg_alloc, slots, "11")?;
+                            r1_mem(writer, "std", "11", parameter_save_offset(slot))?;
                         }
-                        load_operand_to_register(arg, writer, reg_alloc, &moved, "11")?;
-                        r1_mem(writer, "std", "11", parameter_save_offset(index))?;
+                        PpcArgPlace::StackWords { slot, words } => {
+                            copy_to_save_area(writer, reg_alloc, slots, arg, slot, 0, words)?;
+                        }
+                        PpcArgPlace::Split { first, words } => {
+                            let from_word = arg_regs.len() - first;
+                            copy_to_save_area(
+                                writer, reg_alloc, slots, arg, first, from_word, words,
+                            )?;
+                        }
+                        _ => {}
                     }
                 }
 
@@ -1198,16 +1483,30 @@ fn emit_instruction_ppc64<W: Write>(
             if let Some(ret_reg) = ret
                 && let Register::Virtual(vreg) = ret_reg
             {
-                match signatures.float_result(name) {
-                    Some(ty) => emit_store_fp_result(
-                        "1",
-                        vreg,
-                        writer,
-                        reg_alloc,
-                        stack_slots,
-                        ty.size_bytes() == 4,
-                    )?,
-                    None => store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?,
+                match result {
+                    Some(aggregate) if aggregate.size as u64 > MAX_REGISTER_AGGREGATE => {}
+                    Some(aggregate) => {
+                        let slot = result_slot.ok_or_else(|| {
+                            LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                                "PowerPC64 aggregate result has no frame slot".to_string(),
+                            ))
+                        })?;
+                        r1_mem(writer, "std", "3", slot)?;
+                        if aggregate.words() > 1 {
+                            r1_mem(writer, "std", "4", slot + 8)?;
+                        }
+                    }
+                    None => match signatures.float_result(name) {
+                        Some(ty) => emit_store_fp_result(
+                            "1",
+                            vreg,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            ty.size_bytes() == 4,
+                        )?,
+                        None => store_r3_to_register(vreg, writer, reg_alloc, stack_slots)?,
+                    },
                 }
             }
         }
@@ -1219,7 +1518,8 @@ fn emit_instruction_ppc64<W: Write>(
             ret_ty,
         } => {
             let arg_regs = Ppc64Abi::ARG_REGISTERS;
-            let places = classify_ppc64_arguments(arg_types);
+            let kinds: Vec<ArgKind> = arg_types.iter().map(|&ty| ArgKind::scalar(ty)).collect();
+            let places = classify_ppc64_arguments(&kinds, 0);
             for ((arg, ty), place) in args.iter().zip(arg_types).zip(&places) {
                 match *place {
                     PpcArgPlace::Gpr(bank) => {
@@ -1231,7 +1531,7 @@ fn emit_instruction_ppc64<W: Write>(
                             arg_regs[bank],
                         )?;
                     }
-                    PpcArgPlace::Fpr(bank) => {
+                    PpcArgPlace::Fpr { bank, .. } => {
                         emit_load_fp_operand(
                             arg,
                             writer,
@@ -1241,7 +1541,7 @@ fn emit_instruction_ppc64<W: Write>(
                             ty.size_bytes() == 4,
                         )?;
                     }
-                    PpcArgPlace::Stack => {}
+                    _ => {}
                 }
             }
             // ELFv2 wants the entry point in r12, and the global entry sequence
@@ -1251,12 +1551,11 @@ fn emit_instruction_ppc64<W: Write>(
             if let Some(frame) = outgoing {
                 writeln!(writer, "    stdu 1, -{frame}(1)")?;
                 let moved = biased_slots(stack_slots, frame as i32);
-                for ((index, arg), place) in args.iter().enumerate().zip(&places) {
-                    if !matches!(place, PpcArgPlace::Stack) {
-                        continue;
+                for (arg, place) in args.iter().zip(&places) {
+                    if let PpcArgPlace::Stack(slot) = *place {
+                        load_operand_to_register(arg, writer, reg_alloc, &moved, "11")?;
+                        r1_mem(writer, "std", "11", parameter_save_offset(slot))?;
                     }
-                    load_operand_to_register(arg, writer, reg_alloc, &moved, "11")?;
-                    r1_mem(writer, "std", "11", parameter_save_offset(index))?;
                 }
             }
             writeln!(writer, "    std 2, 24(1)")?;
@@ -1284,6 +1583,11 @@ fn emit_instruction_ppc64<W: Write>(
             if name == "writeptr" {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "PowerPC64: writeptr is not supported".to_string(),
+                )));
+            }
+            if aggregate_flow || aggregates.takes_aggregate(name) {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "PowerPC64: TailCall with an aggregate is not supported".to_string(),
                 )));
             }
             let abi = Ppc64Abi::new(target_os);
@@ -1491,16 +1795,38 @@ fn emit_instruction_ppc64<W: Write>(
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
-                match ret_float {
-                    Some(ty) => emit_load_fp_operand(
-                        val,
-                        writer,
-                        reg_alloc,
-                        stack_slots,
-                        "1",
-                        ty.size_bytes() == 4,
-                    )?,
-                    None => load_operand_to_register(val, writer, reg_alloc, stack_slots, "3")?,
+                match (ret_aggregate, hidden_result_slot) {
+                    (Some(aggregate), Some(slot)) => {
+                        load_operand_to_register(val, writer, reg_alloc, stack_slots, "11")?;
+                        r1_mem(writer, "ld", "4", slot)?;
+                        for word in 0..aggregate.words() {
+                            writeln!(writer, "    ld 12, {}(11)", word * 8)?;
+                            writeln!(writer, "    std 12, {}(4)", word * 8)?;
+                        }
+                        writeln!(writer, "    mr 3, 4")?;
+                    }
+                    (Some(aggregate), None) => {
+                        load_operand_to_register(val, writer, reg_alloc, stack_slots, "11")?;
+                        for word in 0..aggregate.words() {
+                            writeln!(
+                                writer,
+                                "    ld {}, {}(11)",
+                                Ppc64Abi::ARG_REGISTERS[word],
+                                word * 8
+                            )?;
+                        }
+                    }
+                    (None, _) => match ret_float {
+                        Some(ty) => emit_load_fp_operand(
+                            val,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            "1",
+                            ty.size_bytes() == 4,
+                        )?,
+                        None => load_operand_to_register(val, writer, reg_alloc, stack_slots, "3")?,
+                    },
                 }
             }
             Ppc64Frame::generate_epilogue(writer, local_bytes).map_err(|e| {
@@ -1589,11 +1915,11 @@ fn parameter_save_offset(index: usize) -> i32 {
 
 /// Frame a call needs for its stack arguments, or `None` when every argument fits in
 /// a register.
-fn outgoing_frame_size(args: usize) -> Result<Option<usize>, LaminaError> {
-    if args <= Ppc64Abi::ARG_REGISTERS.len() {
+fn outgoing_frame_size(dwords: usize) -> Result<Option<usize>, LaminaError> {
+    if dwords <= Ppc64Abi::ARG_REGISTERS.len() {
         return Ok(None);
     }
-    let frame = (LINKAGE_SIZE + args * 8 + 15) & !15;
+    let frame = (LINKAGE_SIZE + dwords * 8 + 15) & !15;
     if frame > 32767 {
         return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
             format!(
