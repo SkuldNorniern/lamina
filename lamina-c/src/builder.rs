@@ -663,7 +663,7 @@ pub unsafe extern "C" fn lia_builder_return_void(builder: *mut LaminaBuilder) ->
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_builder_alloc_stack(
+pub unsafe extern "C" fn lia_builder_stackalloc(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ty: *const LaminaType,
@@ -672,14 +672,14 @@ pub unsafe extern "C" fn lia_builder_alloc_stack(
         let b = require_mut!(builder, "builder");
         let r = require_str!(result, "result");
         let t = require_ref!(ty, "ty");
-        b.0.alloc_stack(r, &t.0);
+        b.0.stackalloc(r, &t.0);
         clear_error();
         LaminaStatus::Ok
     }))
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_builder_alloc_heap(
+pub unsafe extern "C" fn lia_builder_heapalloc(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     ty: *const LaminaType,
@@ -688,7 +688,7 @@ pub unsafe extern "C" fn lia_builder_alloc_heap(
         let b = require_mut!(builder, "builder");
         let r = require_str!(result, "result");
         let t = require_ref!(ty, "ty");
-        b.0.alloc_heap(r, &t.0);
+        b.0.heapalloc(r, &t.0);
         clear_error();
         LaminaStatus::Ok
     }))
@@ -731,14 +731,14 @@ pub unsafe extern "C" fn lia_builder_store(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_builder_dealloc(
+pub unsafe extern "C" fn lia_builder_heapfree(
     builder: *mut LaminaBuilder,
     ptr: *const LaminaValue,
 ) -> LaminaStatus {
     catch(AssertUnwindSafe(|| unsafe {
         let b = require_mut!(builder, "builder");
         let p = require_ref!(ptr, "ptr");
-        b.0.dealloc(&p.0);
+        b.0.heapfree(&p.0);
         clear_error();
         LaminaStatus::Ok
     }))
@@ -799,7 +799,7 @@ pub unsafe extern "C" fn lia_builder_memset(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_builder_getelementptr(
+pub unsafe extern "C" fn lia_builder_getelem(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     array_ptr: *const LaminaValue,
@@ -813,18 +813,18 @@ pub unsafe extern "C" fn lia_builder_getelementptr(
         let idx = require_ref!(index, "index");
         let et = require_ref!(element_type, "element_type");
         if let OwnedType::Primitive(prim) = et.0 {
-            b.0.getelementptr(r, &ap.0, &idx.0, prim);
+            b.0.getelem(r, &ap.0, &idx.0, prim);
             clear_error();
             LaminaStatus::Ok
         } else {
-            set_error("getelementptr element_type must be primitive");
+            set_error("getelem element_type must be primitive");
             LaminaStatus::ErrorInvalidArgument
         }
     }))
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lia_builder_struct_gep(
+pub unsafe extern "C" fn lia_builder_getfieldptr(
     builder: *mut LaminaBuilder,
     result: *const c_char,
     struct_ptr: *const LaminaValue,
@@ -834,7 +834,7 @@ pub unsafe extern "C" fn lia_builder_struct_gep(
         let b = require_mut!(builder, "builder");
         let r = require_str!(result, "result");
         let sp = require_ref!(struct_ptr, "struct_ptr");
-        b.0.struct_gep(r, &sp.0, field_index);
+        b.0.getfieldptr(r, &sp.0, field_index);
         clear_error();
         LaminaStatus::Ok
     }))

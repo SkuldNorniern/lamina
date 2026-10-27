@@ -397,14 +397,14 @@ impl OwnedIRBuilder {
     // -----------------------------------------------------------------------
 
     /// Appends a stack allocation.
-    pub fn alloc_stack(&mut self, result: impl AsRef<str>, ty: &OwnedType) -> &mut Self {
+    pub fn stackalloc(&mut self, result: impl AsRef<str>, ty: &OwnedType) -> &mut Self {
         let t = format!("%{} = stackalloc.{}", result.as_ref(), ty);
         self.push(t);
         self
     }
 
     /// Appends a heap allocation.
-    pub fn alloc_heap(&mut self, result: impl AsRef<str>, ty: &OwnedType) -> &mut Self {
+    pub fn heapalloc(&mut self, result: impl AsRef<str>, ty: &OwnedType) -> &mut Self {
         let t = format!("%{} = heapalloc.{}", result.as_ref(), ty);
         self.push(t);
         self
@@ -424,8 +424,8 @@ impl OwnedIRBuilder {
         self
     }
 
-    /// Appends a heap deallocation.
-    pub fn dealloc(&mut self, ptr: &OwnedValue) -> &mut Self {
+    /// Appends a heap free.
+    pub fn heapfree(&mut self, ptr: &OwnedValue) -> &mut Self {
         let t = format!("heapfree {ptr}");
         self.push(t);
         self
@@ -453,8 +453,8 @@ impl OwnedIRBuilder {
     // Pointer operations
     // -----------------------------------------------------------------------
 
-    /// Appends a getelementptr (array element pointer).
-    pub fn getelementptr(
+    /// Appends a getelem (array element pointer).
+    pub fn getelem(
         &mut self,
         result: impl AsRef<str>,
         array_ptr: &OwnedValue,
@@ -473,7 +473,7 @@ impl OwnedIRBuilder {
     }
 
     /// Appends a struct field pointer instruction.
-    pub fn struct_gep(
+    pub fn getfieldptr(
         &mut self,
         result: impl AsRef<str>,
         struct_ptr: &OwnedValue,
@@ -839,7 +839,7 @@ mod tests {
         let index = OwnedValue::I32(1);
         builder
             .function("row", OwnedType::Primitive(PrimitiveType::Ptr))
-            .getelementptr(
+            .getelem(
                 "row_ptr",
                 &array,
                 &index,
@@ -848,7 +848,7 @@ mod tests {
                     size: 3,
                 },
             )
-            .getelementptr("element", &array, &index, PrimitiveType::I32);
+            .getelem("element", &array, &index, PrimitiveType::I32);
         let text = builder.build_ir_text();
         assert!(text.contains("%row_ptr = getelem.[3 x i32] %matrix, 1"));
         assert!(text.contains("%element = getelem.i32 %matrix, 1"));

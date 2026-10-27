@@ -141,18 +141,18 @@ lia_status_t lia_builder_phi(lia_builder_t *b, const char *result,
 lia_status_t lia_builder_return(lia_builder_t *b,
     const lia_type_t *ty, const lia_value_t *val);
 lia_status_t lia_builder_return_void(lia_builder_t *b);
-lia_status_t lia_builder_alloc_stack(lia_builder_t *b,
+lia_status_t lia_builder_stackalloc(lia_builder_t *b,
     const char *result, const lia_type_t *ty);
-lia_status_t lia_builder_alloc_heap(lia_builder_t *b,
+lia_status_t lia_builder_heapalloc(lia_builder_t *b,
     const char *result, const lia_type_t *ty);
 lia_status_t lia_builder_load(lia_builder_t *b, const char *result,
     const lia_type_t *ty, const lia_value_t *ptr);
 lia_status_t lia_builder_store(lia_builder_t *b,
     const lia_type_t *ty, const lia_value_t *ptr, const lia_value_t *val);
-lia_status_t lia_builder_dealloc(lia_builder_t *b, const lia_value_t *ptr);
-lia_status_t lia_builder_getelementptr(lia_builder_t *b, const char *result,
+lia_status_t lia_builder_heapfree(lia_builder_t *b, const lia_value_t *ptr);
+lia_status_t lia_builder_getelem(lia_builder_t *b, const char *result,
     const lia_value_t *arr, const lia_value_t *idx, const lia_type_t *elem);
-lia_status_t lia_builder_struct_gep(lia_builder_t *b, const char *result,
+lia_status_t lia_builder_getfieldptr(lia_builder_t *b, const char *result,
     const lia_value_t *ptr, size_t field);
 lia_status_t lia_builder_ptrtoint(lia_builder_t *b, const char *result,
     const lia_value_t *ptr, const lia_type_t *tgt);
