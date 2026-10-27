@@ -2100,7 +2100,7 @@ fn convert_instruction<'a>(
             }
         }
         IRInst::Dealloc { ptr } => {
-            // dealloc.heap on a stack allocation is a no-op; passing a stack
+            // heapfree on a stack allocation is a no-op; passing a stack
             // address to free() aborts.
             if let IRVal::Variable(name) = ptr
                 && stack_allocs.contains(name)

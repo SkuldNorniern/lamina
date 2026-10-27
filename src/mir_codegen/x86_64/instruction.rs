@@ -2022,7 +2022,7 @@ mod narrow_integer_tests {
             // Adjacent elements catch stores that overwrite beyond their type width.
             writeln!(
                 body,
-                "%array{width} = alloc.stack [2 x i{width}]\n%low{width} = getelem.ptr %array{width}, 0, i{width}\n%high{width} = getelem.ptr %array{width}, 1, i{width}\nstore.i{width} %high{width}, 99\nstore.i{width} %low{width}, -20\n%load{width} = load.i{width} %low{width}\n%div{width} = div.i{width} %load{width}, 3\n%loaded{width} = sext.i{width}.i64 %div{width}\nprint %loaded{width}\n%neighbor{width} = load.i{width} %high{width}\n%neighborwide{width} = sext.i{width}.i64 %neighbor{width}\nprint %neighborwide{width}"
+                "%array{width} = stackalloc.[2 x i{width}]\n%low{width} = getelem.i{width} %array{width}, 0\n%high{width} = getelem.i{width} %array{width}, 1\nstore.i{width} %high{width}, 99\nstore.i{width} %low{width}, -20\n%load{width} = load.i{width} %low{width}\n%div{width} = div.i{width} %load{width}, 3\n%loaded{width} = sext.i{width}.i64 %div{width}\nprint %loaded{width}\n%neighbor{width} = load.i{width} %high{width}\n%neighborwide{width} = sext.i{width}.i64 %neighbor{width}\nprint %neighborwide{width}"
             )?;
             writeln!(expected, "-6\n99")?;
         }

@@ -8,7 +8,7 @@ use std::{error::Error as StdError, slice};
 #[test]
 fn calls_that_may_be_variadic_report_vector_count_in_al() {
     let ir = parse_module(
-        "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @known(i64 %a) -> i64 {\nentry:\n    ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n    %k = call @known(1)\n    %u = call @unknown(1)\n    %f = getelem.ptr @fmt, 0, i8\n    %p = call @printf(%f, 2.5)\n    ret.i64 %k\n}\n",
+        "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @known(i64 %a) -> i64 {\nentry:\n    ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n    %k = call @known(1)\n    %u = call @unknown(1)\n    %f = getelem.i8 @fmt, 0\n    %p = call @printf(%f, 2.5)\n    ret.i64 %k\n}\n",
     )
     .unwrap();
     let mir = from_ir(&ir, "al").unwrap();
@@ -242,7 +242,7 @@ fn global_leaf_omits_empty_frame_but_keeps_stack_argument_base() {
                 true,
             ),
             (
-                "fn @f() -> ptr {\nentry:\n%p = alloc.stack [24 x i8]\nret.ptr %p\n}",
+                "fn @f() -> ptr {\nentry:\n%p = stackalloc.[24 x i8]\nret.ptr %p\n}",
                 true,
             ),
         ] {
@@ -1260,7 +1260,7 @@ entry:
 }
 @export fn @send_pair() -> i64 {
 entry:
- %q = alloc.stack struct { a: i64, b: i64 }
+ %q = stackalloc.struct { a: i64, b: i64 }
  %qa = getfieldptr %q, 0
  %qb = getfieldptr %q, 1
  store.i64 %qa, 100
@@ -1270,7 +1270,7 @@ entry:
 }
 @export fn @send_spilled() -> i64 {
 entry:
- %q = alloc.stack struct { a: i64, b: i64 }
+ %q = stackalloc.struct { a: i64, b: i64 }
  %qa = getfieldptr %q, 0
  %qb = getfieldptr %q, 1
  store.i64 %qa, 100
@@ -1300,7 +1300,7 @@ int main(void) {
     const RETURNS: &str = r#"
 @export fn @make_pair(i64 %x) -> struct { a: i64, b: i64 } {
 entry:
- %p = alloc.stack struct { a: i64, b: i64 }
+ %p = stackalloc.struct { a: i64, b: i64 }
  %pa = getfieldptr %p, 0
  %pb = getfieldptr %p, 1
  store.i64 %pa, %x
@@ -1310,7 +1310,7 @@ entry:
 }
 @export fn @make_small(i32 %x) -> struct { a: i32, b: i32 } {
 entry:
- %p = alloc.stack struct { a: i32, b: i32 }
+ %p = stackalloc.struct { a: i32, b: i32 }
  %pa = getfieldptr %p, 0
  %pb = getfieldptr %p, 1
  store.i32 %pa, %x
@@ -1319,7 +1319,7 @@ entry:
 }
 @extern fn @c_make(i64 %x) -> struct { a: i64, b: i64 } {
 entry:
- %p = alloc.stack struct { a: i64, b: i64 }
+ %p = stackalloc.struct { a: i64, b: i64 }
  ret.ptr %p
 }
 @export fn @take_c() -> i64 {

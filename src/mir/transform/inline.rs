@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn inlining_keeps_values_out_of_stack_storage() {
         let ir = parse_module(
-            "fn @main() -> void {\nentry:\n%p = alloc.stack i64\ncall @leaf(%p)\nret.void\n}\nfn @leaf(ptr %p) -> i64 {\nentry:\n%x = add.i64 1, 2\nstore.i64 %p, %x\nret.i64 %x\n}",
+            "fn @main() -> void {\nentry:\n%p = stackalloc.i64\ncall @leaf(%p)\nret.void\n}\nfn @leaf(ptr %p) -> i64 {\nentry:\n%x = add.i64 1, 2\nstore.i64 %p, %x\nret.i64 %x\n}",
         ).expect("parse stack caller");
         let mut module = from_ir(&ir, "stack caller").expect("lower stack caller");
         let count = ModuleInlining::new()
@@ -499,14 +499,14 @@ mod tests {
         let ir = parse_module(
             "fn @leaf(i64 %x) -> i64 {
 entry:
-%p = alloc.stack [8 x i64]
+%p = stackalloc.[8 x i64]
 store.i64 %p, %x
 %r = load.i64 %p
 ret.i64 %r
 }
 fn @main() -> i64 {
 entry:
-%p = alloc.stack [8 x i64]
+%p = stackalloc.[8 x i64]
 %a = call @leaf(11)
 %b = call @leaf(22)
 %c = add.i64 %a, %b

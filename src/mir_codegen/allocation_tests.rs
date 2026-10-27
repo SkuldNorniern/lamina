@@ -36,16 +36,16 @@ mod native {
             ),
             (
                 "[3 x @Pair]",
-                "%element = getelem.ptr %p, 2, @Pair\n%last = getfieldptr %element, 1",
+                "%element = getelem.@Pair %p, 2\n%last = getfieldptr %element, 1",
             ),
             (
                 "[3 x struct { a: i64, b: i64 }]",
-                "%element = getelem.ptr %p, 2, struct { a: i64, b: i64 }\n%last = getfieldptr %element, 1",
+                "%element = getelem.struct { a: i64, b: i64 } %p, 2\n%last = getfieldptr %element, 1",
             ),
         ];
         for (case, (ty, address)) in cases.iter().enumerate() {
             let source = format!(
-                "type @Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = alloc.stack {ty}\n{address}\n%sentinel = add.i64 55, 0\n%guard = alloc.stack i64\nstore.i64 %guard, 55\nstore.i64 %last, 99\nprint %sentinel\n%live = load.i64 %guard\nprint %live\n%stored = load.i64 %last\nprint %stored\nret.i64 0\n}}\n"
+                "type @Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\n%guard = stackalloc.i64\nstore.i64 %guard, 55\nstore.i64 %last, 99\nprint %sentinel\n%live = load.i64 %guard\nprint %live\n%stored = load.i64 %last\nprint %stored\nret.i64 0\n}}\n"
             );
             let ir = parse_module(&source)?;
             let mir = from_ir(&ir, "aggregate").map_err(|error| error.to_string())?;
@@ -58,7 +58,7 @@ mod native {
                 function.stack_reservations.get(slot).copied().unwrap_or(0) + 1,
                 size / 8
             );
-            let heap_source = source.replace("%p = alloc.stack", "%p = alloc.heap");
+            let heap_source = source.replace("%p = stackalloc", "%p = heapalloc");
             let heap_ir = parse_module(&heap_source)?;
             let heap_mir = from_ir(&heap_ir, "heap").map_err(|error| error.to_string())?;
             let Instruction::Call { name, args, .. } =
@@ -82,7 +82,7 @@ mod native {
                 );
             }
             let minimal = format!(
-                "type @Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = alloc.stack {ty}\n{address}\n%sentinel = add.i64 55, 0\nstore.i64 %last, 99\nprint %sentinel\nret.i64 0\n}}\n"
+                "type @Pair = struct {{ a: i64, b: i64 }}\nfn @main() -> i64 {{\nentry:\n%p = stackalloc.{ty}\n{address}\n%sentinel = add.i64 55, 0\nstore.i64 %last, 99\nprint %sentinel\nret.i64 0\n}}\n"
             );
             fs::write(&input, minimal)?;
             for level in ["0", "1", "2", "3"] {

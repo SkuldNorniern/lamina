@@ -364,7 +364,7 @@ fn byte_io_goes_through_putchar_and_getchar() -> Result<(), Box<dyn Error>> {
 #[test]
 fn writeptr_sends_the_pointee_bytes_through_write() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @main() -> i32 {\nentry:\n  %p = alloc.stack i32\n  store.i32 %p, 72\n  %n = writeptr %p\n  ret.i32 0\n}\n";
+    let ir = "fn @main() -> i32 {\nentry:\n  %p = stackalloc.i32\n  store.i32 %p, 72\n  %n = writeptr %p\n  ret.i32 0\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "writeptr").expect("lower writeptr");
     let mut output = Vec::new();
@@ -626,7 +626,7 @@ fn global_allocation_spills_values_that_outlive_a_call() -> Result<(), Box<dyn E
 #[test]
 fn variadic_callee_receives_floats_in_both_banks() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(ptr %fmt, f64 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.ptr @fmt, 0, i8\n  %c = call @printf(%p, 2.5)\n  %d = call @sink(%p, 2.5)\n  ret.i64 0\n}\n";
+    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(ptr %fmt, f64 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 @fmt, 0\n  %c = call @printf(%p, 2.5)\n  %d = call @sink(%p, 2.5)\n  ret.i64 0\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "variadic").expect("lower extern call");
     let mut output = Vec::new();
@@ -690,7 +690,7 @@ fn store_offset(text: &str, store: &str) -> Result<i64, Box<dyn Error>> {
 
 #[test]
 fn aggregate_argument_of_two_words_takes_two_registers() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @pick(i64 %x, struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  %pb = getfieldptr %p, 1\n  %b = load.i64 %pb\n  ret.i64 %b\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64 }\n  %r = call @pick(1, %q)\n  ret.i64 %r\n}\n";
+    let ir = "fn @pick(i64 %x, struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  %pb = getfieldptr %p, 1\n  %b = load.i64 %pb\n  ret.i64 %b\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64 }\n  %r = call @pick(1, %q)\n  ret.i64 %r\n}\n";
     let assembly = emit_aggregate_module(ir, "pair")?;
 
     let caller = function_body(&assembly, "main")?;
@@ -712,7 +712,7 @@ fn aggregate_argument_of_two_words_takes_two_registers() -> Result<(), Box<dyn E
 
 #[test]
 fn aggregate_argument_of_four_words_fills_r3_through_r6() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @sum(struct { a: i64, b: i64, c: i64, d: i64 } %p) -> i64 {\nentry:\n  %pd = getfieldptr %p, 3\n  %d = load.i64 %pd\n  ret.i64 %d\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64, c: i64, d: i64 }\n  %r = call @sum(%q)\n  ret.i64 %r\n}\n";
+    let ir = "fn @sum(struct { a: i64, b: i64, c: i64, d: i64 } %p) -> i64 {\nentry:\n  %pd = getfieldptr %p, 3\n  %d = load.i64 %pd\n  ret.i64 %d\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64, c: i64, d: i64 }\n  %r = call @sum(%q)\n  ret.i64 %r\n}\n";
     let assembly = emit_aggregate_module(ir, "quad")?;
 
     let caller = function_body(&assembly, "main")?;
@@ -742,7 +742,7 @@ fn aggregate_argument_of_four_words_fills_r3_through_r6() -> Result<(), Box<dyn 
 
 #[test]
 fn aggregate_split_between_last_register_and_save_area() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @wide(i64 %a0, i64 %a1, i64 %a2, i64 %a3, i64 %a4, i64 %a5, i64 %a6, struct { a: i64, b: i64 } %p, i64 %z) -> i64 {\nentry:\n  %pb = getfieldptr %p, 1\n  %b = load.i64 %pb\n  %s = add.i64 %b, %z\n  ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64 }\n  %r = call @wide(1, 2, 3, 4, 5, 6, 7, %q, 8)\n  ret.i64 %r\n}\n";
+    let ir = "fn @wide(i64 %a0, i64 %a1, i64 %a2, i64 %a3, i64 %a4, i64 %a5, i64 %a6, struct { a: i64, b: i64 } %p, i64 %z) -> i64 {\nentry:\n  %pb = getfieldptr %p, 1\n  %b = load.i64 %pb\n  %s = add.i64 %b, %z\n  ret.i64 %s\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64 }\n  %r = call @wide(1, 2, 3, 4, 5, 6, 7, %q, 8)\n  ret.i64 %r\n}\n";
     let assembly = emit_aggregate_module(ir, "split_pair")?;
 
     let caller = function_body(&assembly, "main")?;
@@ -775,7 +775,7 @@ fn aggregate_split_between_last_register_and_save_area() -> Result<(), Box<dyn E
 
 #[test]
 fn aggregate_result_past_two_words_uses_hidden_pointer() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @make() -> struct { a: i64, b: i64, c: i64, d: i64 } {\nentry:\n  %p = alloc.stack struct { a: i64, b: i64, c: i64, d: i64 }\n  %pa = getfieldptr %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
+    let ir = "fn @make() -> struct { a: i64, b: i64, c: i64, d: i64 } {\nentry:\n  %p = stackalloc.struct { a: i64, b: i64, c: i64, d: i64 }\n  %pa = getfieldptr %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
     let assembly = emit_aggregate_module(ir, "hidden_result")?;
 
     let callee = function_body(&assembly, "make")?;
@@ -807,7 +807,7 @@ fn aggregate_result_past_two_words_uses_hidden_pointer() -> Result<(), Box<dyn E
 
 #[test]
 fn aggregate_result_of_two_words_comes_back_in_r3_and_r4() -> Result<(), Box<dyn Error>> {
-    let ir = "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n  %p = alloc.stack struct { a: i64, b: i64 }\n  %pa = getfieldptr %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
+    let ir = "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n  %p = stackalloc.struct { a: i64, b: i64 }\n  %pa = getfieldptr %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
     let assembly = emit_aggregate_module(ir, "pair_result")?;
 
     let callee = function_body(&assembly, "make")?;

@@ -878,7 +878,7 @@ mod emission_tests {
             "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = div.i32 %a, 2\nret.void\n}",
             "@kernel fn @bad(i32 %a) -> void {\nentry:\n%x = shl.i32 %a, %a\nret.void\n}",
             "@kernel fn @bad(f32 %a) -> void {\nentry:\nret.void\n}",
-            "@kernel fn @bad() -> void {\nentry:\n%p = alloc.stack i64\nret.void\n}",
+            "@kernel fn @bad() -> void {\nentry:\n%p = stackalloc.i64\nret.void\n}",
             "@kernel fn @bad() -> void {\nentry:\n%x = call @__lamina_gpu_lane_id()\nret.void\n}",
         ] {
             let ir = parse_module(source)?;

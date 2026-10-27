@@ -137,8 +137,8 @@ fn composite_gep_scales_constant_and_variable_indices() {
         let source = format!(
             "fn @gep(ptr %p, i64 %index) -> ptr {{
 entry:
-%constant = getelem.ptr %p, 2, {element_type}
-%variable = getelem.ptr %constant, %index, {element_type}
+%constant = getelem.{element_type} %p, 2
+%variable = getelem.{element_type} %constant, %index
 ret.ptr %variable
 }}"
         );
@@ -146,7 +146,7 @@ ret.ptr %variable
         let entry = &ir.functions["gep"].basic_blocks["entry"];
         assert_eq!(
             entry.instructions[0].to_string(),
-            format!("%constant = getelem.ptr %p, 2, {element_type}")
+            format!("%constant = getelem.{element_type} %p, 2")
         );
         let mir = from_ir(&ir, "gep").expect("lower composite elements");
         mir.validate().expect("composite addresses verify");
@@ -175,7 +175,7 @@ fn constant_gep_preserves_pointer_width_offsets() {
         (i64::MIN, 0),
     ] {
         let source = format!(
-            "fn @gep(ptr %p) -> ptr {{\nentry:\n%q = getelem.ptr %p, {index}, i64\nret.ptr %q\n}}"
+            "fn @gep(ptr %p) -> ptr {{\nentry:\n%q = getelem.i64 %p, {index}\nret.ptr %q\n}}"
         );
         let ir = parse_module(&source).expect("parse wide index");
         let mir = from_ir(&ir, "gep").expect("lower wide index");
@@ -214,7 +214,7 @@ fn arithmetic_optimizations_preserve_immediate_widths() {
 #[test]
 fn conversions_and_variable_addresses_verify() {
     let ir = parse_module(
-        "fn @convert(ptr %p, i32 %index, i8 %byte) -> ptr {\nentry:\n%wide = zext.i8.i64 %byte\n%signed = sext.i8.i64 %byte\n%narrow = trunc.i64.i32 %wide\n%address = ptrtoint %p, .i64\n%back = inttoptr %address, .i64\n%element = getelem.ptr %back, %index, i32\nret.ptr %element\n}",
+        "fn @convert(ptr %p, i32 %index, i8 %byte) -> ptr {\nentry:\n%wide = zext.i8.i64 %byte\n%signed = sext.i8.i64 %byte\n%narrow = trunc.i64.i32 %wide\n%address = ptrtoint.i64 %p\n%back = inttoptr.i64 %address\n%element = getelem.i32 %back, %index\nret.ptr %element\n}",
     ).expect("parse conversions");
     let mir = from_ir(&ir, "conversions").expect("lower conversions");
     mir.validate().expect("conversion types match definitions");
@@ -273,7 +273,7 @@ fn integer_aggregate_parameter_arrives_as_pointer_to_its_own_slot() {
 #[test]
 fn aggregate_of_any_size_carries_its_layout() {
     let wide = parse_module(
-        "fn @make() -> struct { a: i64, b: i64, c: i64 } {\nentry:\n%p = alloc.stack struct { a: i64, b: i64, c: i64 }\nret.ptr %p\n}",
+        "fn @make() -> struct { a: i64, b: i64, c: i64 } {\nentry:\n%p = stackalloc.struct { a: i64, b: i64, c: i64 }\nret.ptr %p\n}",
     )
     .expect("parse wide aggregate return");
     let module = from_ir(&wide, "make").expect("wide aggregate return");
@@ -307,7 +307,7 @@ fn float_and_oversized_aggregates_are_rejected_by_name() {
     );
 
     let returned = parse_module(
-        "fn @make() -> struct { a: f64, b: f64 } {\nentry:\n%p = alloc.stack struct { a: f64, b: f64 }\nret.ptr %p\n}",
+        "fn @make() -> struct { a: f64, b: f64 } {\nentry:\n%p = stackalloc.struct { a: f64, b: f64 }\nret.ptr %p\n}",
     )
     .expect("parse float aggregate return");
     let error = from_ir(&returned, "make").expect_err("float aggregate return rejected");
@@ -322,7 +322,7 @@ fn float_and_oversized_aggregates_are_rejected_by_name() {
 #[test]
 fn integer_aggregate_return_lands_in_slot_the_caller_addresses() {
     let ir = parse_module(
-        "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n%p = alloc.stack struct { a: i64, b: i64 }\nret.ptr %p\n}\nfn @use() -> i64 {\nentry:\n%r = call @make()\n%ap = getfieldptr %r, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
+        "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n%p = stackalloc.struct { a: i64, b: i64 }\nret.ptr %p\n}\nfn @use() -> i64 {\nentry:\n%r = call @make()\n%ap = getfieldptr %r, 0\n%a = load.i64 %ap\nret.i64 %a\n}",
     )
     .expect("parse aggregate return");
     let mir = from_ir(&ir, "returns").expect("lower aggregate return");
@@ -401,7 +401,7 @@ fn width_conversions_reject_equal_widths_and_wrong_directions() {
 #[test]
 fn padded_struct_allocations_use_abi_size() {
     let ir = parse_module(
-        "fn @sizes() -> ptr {\nentry:\n%stack = alloc.stack struct { a: i8, b: i64, c: i8 }\n%heap = alloc.heap [2 x struct { a: i8, b: i64, c: i8 }]\nret.ptr %heap\n}",
+        "fn @sizes() -> ptr {\nentry:\n%stack = stackalloc.struct { a: i8, b: i64, c: i8 }\n%heap = heapalloc.[2 x struct { a: i8, b: i64, c: i8 }]\nret.ptr %heap\n}",
     ).expect("parse padded allocations");
     let mir = from_ir(&ir, "sizes").expect("lower padded allocations");
     let function = mir.get_function("sizes").expect("sizes function");
@@ -417,9 +417,8 @@ fn padded_struct_allocations_use_abi_size() {
 
 #[test]
 fn stack_storage_is_not_a_register_use() {
-    let ir =
-        parse_module("fn @stack() -> ptr {\nentry:\n%p = alloc.stack [24 x i8]\nret.ptr %p\n}")
-            .expect("parse stack allocation");
+    let ir = parse_module("fn @stack() -> ptr {\nentry:\n%p = stackalloc.[24 x i8]\nret.ptr %p\n}")
+        .expect("parse stack allocation");
     let mir = from_ir(&ir, "stack").expect("lower stack allocation");
     mir.validate().expect("stack allocation verifies");
     let function = mir.get_function("stack").expect("stack function");
@@ -617,7 +616,7 @@ fn unsupported_instruction_names_its_block_and_function() {
 
 #[test]
 fn variadic_f32_argument_widens_to_f64() {
-    let source = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(f32 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.ptr @fmt, 0, i8\n  %x = add.f32 1.5, 2.25\n  %c = call @printf(%p, %x)\n  %d = call @sink(%x)\n  ret.i64 0\n}\n";
+    let source = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @sink(f32 %x) -> i32 {\nentry:\n  ret.i32 0\n}\n\nfn @main() -> i64 {\nentry:\n  %p = getelem.i8 @fmt, 0\n  %x = add.f32 1.5, 2.25\n  %c = call @printf(%p, %x)\n  %d = call @sink(%x)\n  ret.i64 0\n}\n";
     let ir = parse_module(source).expect("parse variadic call");
     let module = from_ir(&ir, "variadic_f32").expect("lower variadic call");
     let widened: Vec<_> = module.functions["main"].blocks[0]

@@ -327,7 +327,7 @@ fn module_globals_are_addressed_through_page_relocations() -> Result<(), Box<dyn
 fn frames_beyond_twelve_bit_immediates_are_addressed_through_a_register()
 -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @main() -> i64 {\nentry:\n  %arr = alloc.stack [5000 x i8]\n  %p = getelem.ptr %arr, 4999, i8\n  store.i8 %p, 42\n  %v = load.i8 %p\n  %w = zext.i8.i64 %v\n  ret.i64 %w\n}\n";
+    let ir = "fn @main() -> i64 {\nentry:\n  %arr = stackalloc.[5000 x i8]\n  %p = getelem.i8 %arr, 4999\n  store.i8 %p, 42\n  %v = load.i8 %p\n  %w = zext.i8.i64 %v\n  ret.i64 %w\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "big_frame").expect("lower big frame module");
     let mut output = Vec::new();
@@ -352,7 +352,7 @@ fn frames_beyond_twelve_bit_immediates_are_addressed_through_a_register()
 #[test]
 fn integer_aggregates_use_consecutive_x_registers() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @sum(struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  %ap = getfieldptr %p, 0\n  %a = load.i64 %ap\n  ret.i64 %a\n}\nfn @wide(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64 }\n  %r = call @sum(%q)\n  %s = call @wide(1, 2, 3, 4, 5, 6, 7, %q)\n  ret.i64 %r\n}\n";
+    let ir = "fn @sum(struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  %ap = getfieldptr %p, 0\n  %a = load.i64 %ap\n  ret.i64 %a\n}\nfn @wide(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g, struct { a: i64, b: i64 } %p) -> i64 {\nentry:\n  ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64 }\n  %r = call @sum(%q)\n  %s = call @wide(1, 2, 3, 4, 5, 6, 7, %q)\n  ret.i64 %r\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "aggregates").expect("lower aggregates");
     let mut output = Vec::new();
@@ -449,7 +449,7 @@ fn floats_cross_the_boundary_in_v_registers() -> Result<(), Box<dyn Error>> {
 #[test]
 fn integer_aggregate_returns_come_back_in_x0_and_x1() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n  %p = alloc.stack struct { a: i64, b: i64 }\n  %pa = getfieldptr %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
+    let ir = "fn @make() -> struct { a: i64, b: i64 } {\nentry:\n  %p = stackalloc.struct { a: i64, b: i64 }\n  %pa = getfieldptr %p, 0\n  store.i64 %pa, 7\n  ret.ptr %p\n}\nfn @main() -> i64 {\nentry:\n  %r = call @make()\n  %ra = getfieldptr %r, 0\n  %a = load.i64 %ra\n  ret.i64 %a\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "returns").expect("lower aggregate return");
     let mut output = Vec::new();
@@ -490,7 +490,7 @@ fn integer_aggregate_returns_come_back_in_x0_and_x1() -> Result<(), Box<dyn Erro
 #[test]
 fn stack_aggregate_prologue_keeps_off_callee_saved_registers() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "fn @big(i64 %p0, i64 %p1, i64 %p2, i64 %p3, i64 %p4, i64 %p5, i64 %p6, i64 %p7, struct { a: i64, b: i64, c: i64, d: i64 } %q) -> i64 {\nentry:\n  %qa = getfieldptr %q, 0\n  %a = load.i64 %qa\n  ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n  %q = alloc.stack struct { a: i64, b: i64, c: i64, d: i64 }\n  %r = call @big(1, 2, 3, 4, 5, 6, 7, 8, %q)\n  ret.i64 %r\n}\n";
+    let ir = "fn @big(i64 %p0, i64 %p1, i64 %p2, i64 %p3, i64 %p4, i64 %p5, i64 %p6, i64 %p7, struct { a: i64, b: i64, c: i64, d: i64 } %q) -> i64 {\nentry:\n  %qa = getfieldptr %q, 0\n  %a = load.i64 %qa\n  ret.i64 %a\n}\nfn @main() -> i64 {\nentry:\n  %q = stackalloc.struct { a: i64, b: i64, c: i64, d: i64 }\n  %r = call @big(1, 2, 3, 4, 5, 6, 7, 8, %q)\n  ret.i64 %r\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "stack_aggregate").expect("lower aggregate");
     let mut output = Vec::new();
@@ -545,7 +545,7 @@ fn darwin_packs_narrow_stack_arguments_at_natural_size() -> Result<(), Box<dyn E
 #[test]
 fn darwin_sends_variadic_arguments_to_stack() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
-    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @main() -> i64 {\nentry:\n  %f = getelem.ptr @fmt, 0, i8\n  %r = call @printf(%f, 7, 2.5)\n  ret.i64 0\n}\n";
+    let ir = "@extern\nfn @printf(ptr %fmt, ...) -> i32\n\nglobal @fmt: [5 x i8] = \"%g\\n\"\n\nfn @main() -> i64 {\nentry:\n  %f = getelem.i8 @fmt, 0\n  %r = call @printf(%f, 7, 2.5)\n  ret.i64 0\n}\n";
     let module = parse_module(ir)?;
     let mir = from_ir(&module, "darwin_variadic").expect("lower variadic call");
 
