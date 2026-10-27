@@ -272,6 +272,7 @@ pub const HOST_ARCH_LIST: &[&str] = &[
     "riscv32_unknown",
     "riscv64_unknown",
     "ppc64_linux",
+    "ppc64le_linux",
     "ppc64_unknown",
     #[cfg(feature = "nightly")]
     "riscv128_unknown",
@@ -317,6 +318,7 @@ mod tests {
             Target::from_str("ppc64le_linux").unwrap(),
             Target::new(TargetArchitecture::PowerPC64, TargetOperatingSystem::Linux)
         );
+        assert!(HOST_ARCH_LIST.contains(&"ppc64le_linux"));
     }
 
     #[test]
