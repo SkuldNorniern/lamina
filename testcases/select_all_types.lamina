@@ -1,0 +1,24 @@
+# select across integer, unsigned, narrow and float types
+fn @main() -> i64 {
+entry:
+  %t = lt.i64 1, 2
+  %f = lt.i64 2, 1
+  %a = select.i64 %t, 10, 20
+  print %a
+  %b = select.i64 %f, 10, 20
+  print %b
+  %c = select.i32 %t, -5, 7
+  %cw = sext.i32.i64 %c
+  print %cw
+  %d = select.u8 %f, 200, 100
+  %dw = zext.u8.i64 %d
+  print %dw
+  %e = select.f64 %t, 1.5, 2.5
+  %eb = bitcast.f64.i64 %e
+  print %eb
+  %g = select.f32 %f, 1.5, 2.5
+  %gb = bitcast.f32.i32 %g
+  %gw = sext.i32.i64 %gb
+  print %gw
+  ret.i64 0
+}
