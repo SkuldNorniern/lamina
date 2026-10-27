@@ -74,8 +74,11 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             )),
             "ptrtoint" => parse_ptrtoint(state, result),
             "inttoptr" => parse_inttoptr(state, result),
-            "tuple" => parse_tuple(state, result),
-            "extract" => parse_extract_tuple(state, result),
+            "tuple" | "extract" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "a struct in memory: 'stackalloc.<type>' then 'getfieldptr <ptr>, <index>'",
+            )),
             "call" => parse_call(state, Some(result)),
             "funcaddr" => parse_func_addr(state, result),
             "callptr" => parse_call_indirect(state, Some(result)),
@@ -434,63 +437,6 @@ fn parse_inttoptr<'a>(
         result,
         int_value,
         target_type: target_primitive_type,
-    })
-}
-
-fn parse_tuple<'a>(
-    state: &mut ParserState<'a>,
-    result: Identifier<'a>,
-) -> Result<Instruction<'a>, LaminaError> {
-    let mut elements = Vec::new();
-    loop {
-        state.skip_whitespace_and_comments();
-        if state.is_eof() || state.current_char() == Some('}') {
-            break;
-        }
-        let pos = state.position();
-        if parse_value(state).is_ok() {
-            let _after_pos = state.position();
-            state.skip_whitespace_and_comments();
-            if state.current_char() == Some('=') {
-                state.set_position(pos);
-                break;
-            }
-            state.set_position(pos);
-            let elem = parse_value(state)?;
-            elements.push(elem);
-            state.skip_whitespace_and_comments();
-            if state.current_char() != Some(',') {
-                break;
-            }
-            state.expect_char(',')?;
-        } else {
-            state.set_position(pos);
-            break;
-        }
-    }
-    state.skip_whitespace_and_comments();
-    Ok(Instruction::Tuple { result, elements })
-}
-
-fn parse_extract_tuple<'a>(
-    state: &mut ParserState<'a>,
-    result: Identifier<'a>,
-) -> Result<Instruction<'a>, LaminaError> {
-    state.expect_char('.')?;
-    state.consume_keyword("tuple")?;
-    let tuple_val = parse_value(state)?;
-    state.expect_char(',')?;
-    let index_val = state.parse_integer()?;
-
-    if index_val < 0 {
-        return Err(state.error(format!("Invalid tuple index: {index_val}")));
-    }
-
-    let index = index_val as usize;
-    Ok(Instruction::ExtractTuple {
-        result,
-        tuple_val,
-        index,
     })
 }
 

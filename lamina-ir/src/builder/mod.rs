@@ -15,7 +15,6 @@ mod memory;
 mod pointers;
 #[cfg(feature = "nightly")]
 mod simd;
-mod tuples;
 mod values;
 
 #[cfg(test)]

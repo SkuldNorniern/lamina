@@ -2317,7 +2317,6 @@ fn convert_instruction<'a>(
                 ordering: mir_ordering,
             }])
         }
-        _ => Err(FromIRError::UnsupportedInstruction),
     }
 }
 

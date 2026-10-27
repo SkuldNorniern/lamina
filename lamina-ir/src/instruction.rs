@@ -843,17 +843,6 @@ pub enum Instruction<'a> {
         int_value: Value<'a>,
         target_type: PrimitiveType, // The pointer type (usually ptr)
     },
-    Tuple {
-        // Create a tuple
-        result: Identifier<'a>,
-        elements: Vec<Value<'a>>,
-    },
-    ExtractTuple {
-        // Extract element from tuple
-        result: Identifier<'a>,
-        tuple_val: Value<'a>, // Must be a tuple type
-        index: usize,
-    },
     // --- Function Calls ---
     Call {
         result: Option<Identifier<'a>>, // None if function returns void
@@ -967,9 +956,6 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         // Pointer operations (from Instruction::PtrToInt, Instruction::IntToPtr)
         "ptrtoint",
         "inttoptr",
-        // Tuple operations (from Instruction::Tuple, Instruction::ExtractTuple)
-        "tuple",
-        "extract",
         // Function calls (from Instruction::Call - can have result)
         "call",
         // SSA operations (from Instruction::Phi)
@@ -1026,8 +1012,6 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "getelem",
         "ptrtoint",
         "inttoptr",
-        "tuple",
-        "extract",
         "call",
         "phi",
         "write",
@@ -1114,8 +1098,6 @@ impl<'a> Instruction<'a> {
             | Instruction::Write { result, .. }
             | Instruction::Read { result, .. }
             | Instruction::Phi { result, .. }
-            | Instruction::Tuple { result, .. }
-            | Instruction::ExtractTuple { result, .. }
             | Instruction::PtrToInt { result, .. }
             | Instruction::IntToPtr { result, .. }
             | Instruction::Call {
@@ -1207,7 +1189,6 @@ impl<'a> Instruction<'a> {
                     push_value(v, &mut vars);
                 }
             }
-            Instruction::ExtractTuple { tuple_val, .. } => push_value(tuple_val, &mut vars),
             _ => {}
         }
 
@@ -1495,18 +1476,6 @@ impl fmt::Display for Instruction<'_> {
                 int_value,
                 target_type,
             } => write!(f, "%{result} = inttoptr.{target_type} {int_value}"),
-            Instruction::Tuple { result, elements } => {
-                write!(f, "%{result} = tuple")?;
-                for elem in elements {
-                    write!(f, ", {elem}")?;
-                }
-                Ok(())
-            }
-            Instruction::ExtractTuple {
-                result,
-                tuple_val,
-                index,
-            } => write!(f, "%{result} = extract.tuple {tuple_val}, {index}"),
             Instruction::Call {
                 result,
                 func_name,
@@ -1821,24 +1790,6 @@ mod tests {
         assert_eq!(
             format!("{}", instr_switch),
             "switch.i32 %x, default, [0, zero], [1, one]"
-        );
-
-        // Tuple
-        let instr18 = Instruction::Tuple {
-            result: "my_tuple",
-            elements: vec![Value::Constant(Literal::I32(1)), Value::Variable("v2")],
-        };
-        assert_eq!(format!("{}", instr18), "%my_tuple = tuple, 1, %v2");
-
-        // ExtractTuple
-        let instr19 = Instruction::ExtractTuple {
-            result: "elem0",
-            tuple_val: Value::Variable("my_tuple"),
-            index: 0,
-        };
-        assert_eq!(
-            format!("{}", instr19),
-            "%elem0 = extract.tuple %my_tuple, 0"
         );
 
         // Dealloc

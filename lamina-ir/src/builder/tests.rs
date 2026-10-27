@@ -875,52 +875,6 @@ mod tests {
     }
 
     #[test]
-    fn test_tuple_operations() {
-        let mut builder = IRBuilder::new();
-
-        builder
-            .function("tuple_test", Type::Primitive(PrimitiveType::I32))
-            .tuple("my_tuple", vec![i32(10), i64(20), bool(true)])
-            .extract_tuple("first", var("my_tuple"), 0)
-            .extract_tuple("second", var("my_tuple"), 1)
-            .ret(Type::Primitive(PrimitiveType::I32), var("first"));
-
-        let module = builder.build();
-
-        assert!(module.functions.contains_key("tuple_test"));
-
-        let func = &module.functions["tuple_test"];
-
-        assert!(func.basic_blocks.contains_key("entry"));
-
-        let entry = &func.basic_blocks["entry"];
-
-        assert_eq!(entry.instructions.len(), 4);
-
-        // Verify tuple creation
-        if let Instruction::Tuple { result, elements } = &entry.instructions[0] {
-            assert_eq!(*result, "my_tuple");
-            assert_eq!(elements.len(), 3);
-        } else {
-            panic!("Expected Tuple instruction");
-        }
-
-        // Verify tuple extraction
-        if let Instruction::ExtractTuple {
-            result,
-            tuple_val,
-            index,
-        } = &entry.instructions[1]
-        {
-            assert_eq!(*result, "first");
-            assert_eq!(*tuple_val, var("my_tuple"));
-            assert_eq!(*index, 0);
-        } else {
-            panic!("Expected ExtractTuple instruction");
-        }
-    }
-
-    #[test]
     fn test_io_operations() {
         let mut builder = IRBuilder::new();
 
