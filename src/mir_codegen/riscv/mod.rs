@@ -1,3 +1,4 @@
+use crate::mir::codegen::MAX_REGISTER_AGGREGATE;
 use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
@@ -9,7 +10,8 @@ use crate::mir_codegen::simd::reserve_vector_slots;
 mod util;
 
 use crate::mir_codegen::common::{
-    CallSignatures, align_up, integer_conversion_with_width, print_format_label, writeptr_width,
+    align_up, integer_conversion_with_width, io_codegen_error, print_format_label,
+    promoted_argument_type, writeptr_width,
 };
 
 use util::{
@@ -21,8 +23,8 @@ use util::{
 use crate::{
     error::LaminaError,
     mir::{
-        FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst, IntBinOp,
-        IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
+        Aggregate, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Instruction as MirInst,
+        IntBinOp, IntCmpOp, MirType, Module as MirModule, Operand, Register, ScalarType, Signature,
         VirtualReg,
         instruction::{AddressMode, Immediate},
         register::RegisterClass,
@@ -42,7 +44,7 @@ use lamina_codegen::{
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 use std::{
     collections::{HashMap, HashSet},
-    io::Write,
+    io::{self, Write},
     sync::Arc,
 };
 
@@ -160,7 +162,7 @@ fn compile_single_function_riscv(
     target: RiscVTarget,
     target_os: TargetOperatingSystem,
     settings: &MirCodegenSettings,
-    signatures: &CallSignatures,
+    signatures: &AggregateSignatures,
 ) -> Result<Vec<u8>, CodegenError> {
     let reserved = reserve_vector_slots(func);
     let func = reserved.as_ref().unwrap_or(func);
@@ -258,8 +260,23 @@ fn compile_single_function_riscv(
         }
     }
 
+    let word_bytes = target.word_bytes();
+    let sret_offset = func
+        .sig
+        .ret_aggregate
+        .filter(|aggregate| aggregate.size as u64 > MAX_REGISTER_AGGREGATE)
+        .map(|_| {
+            stack_slots
+                .values()
+                .copied()
+                .min()
+                .unwrap_or(-2 * word_bytes)
+                - word_bytes
+        });
     let stack_size = stack_slots
         .values()
+        .copied()
+        .chain(sret_offset)
         .map(|offset| (-offset - 16) as usize)
         .max()
         .unwrap_or(0);
@@ -267,63 +284,22 @@ fn compile_single_function_riscv(
     RiscVFrame::generate_prologue(&mut output, stack_size, &callee_saved_registers, target)
         .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
 
-    if !func.sig.params.is_empty() {
-        let arg_regs = RiscVAbi::ARG_REGISTERS;
-        let param_types: Vec<MirType> = func.sig.params.iter().map(|p| p.ty).collect();
-        let places = classify_riscv_arguments(&param_types);
-        for (param, place) in func.sig.params.iter().zip(&places) {
-            let Register::Virtual(vreg) = &param.reg else {
-                continue;
-            };
-            let Some(slot_off) = stack_slots.get(vreg) else {
-                continue;
-            };
-            if let RiscVArgPlace::Fpr(bank) = *place {
-                store_fp_register_to_register(
-                    &format!("fa{bank}"),
-                    vreg,
-                    &mut output,
-                    &reg_alloc,
-                    &stack_slots,
-                    param.ty.size_bytes() == 4,
-                )
-                .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                continue;
-            }
-            if let RiscVArgPlace::Gpr(bank) = *place {
-                if let Some(physical) = reg_alloc.get_mapping(vreg) {
-                    writeln!(output, "    mv {physical}, {}", arg_regs[bank]).map_err(|e| {
-                        CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                    })?;
-                } else {
-                    RiscVFrame::fp_store(
-                        &mut output,
-                        target.store_word(),
-                        arg_regs[bank],
-                        *slot_off,
-                        "t0",
-                    )
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                }
-            } else {
-                // fp is the caller's sp, so stack args start there and go up.
-                let RiscVArgPlace::Stack(slot) = *place else {
-                    continue;
-                };
-                let caller_off = slot as i32 * target.word_bytes();
-                RiscVFrame::fp_load(&mut output, target.load_word(), "t0", caller_off, "t0")
-                    .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-                if let Some(physical) = reg_alloc.get_mapping(vreg) {
-                    writeln!(output, "    mv {physical}, t0").map_err(|e| {
-                        CodegenError::InvalidCodegenOptions(format!("IO error: {e}"))
-                    })?;
-                } else {
-                    RiscVFrame::fp_store(&mut output, target.store_word(), "t0", *slot_off, "t0").map_err(
-                        |e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")),
-                    )?;
-                }
-            }
-        }
+    if let Some(offset) = sret_offset {
+        RiscVFrame::fp_store(&mut output, target.store_word(), "a0", offset, "t0")
+            .map_err(io_codegen_error)?;
+    }
+    let first_gpr = usize::from(sret_offset.is_some());
+    for through_stack_pointers in [false, true] {
+        store_incoming_arguments(
+            &mut output,
+            func,
+            first_gpr,
+            &reg_alloc,
+            &stack_slots,
+            target,
+            through_stack_pointers,
+        )
+        .map_err(io_codegen_error)?;
     }
 
     let mut ctx = EmitCtx {
@@ -338,6 +314,8 @@ fn compile_single_function_riscv(
         callee_saved_registers,
         signatures,
         ret_float: func.sig.ret_ty.filter(MirType::is_float),
+        ret_aggregate: func.sig.ret_aggregate,
+        sret_offset,
     };
     let plan = FunctionEmissionPlan::new(func);
     if plan
@@ -494,9 +472,20 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
         Xlen::Rv64 => TargetArchitecture::Riscv64,
     };
     validate_module_call_parameters(module, arch)?;
+    emit_riscv_module(module, writer, target, target_os, codegen_units, settings)
+}
+
+fn emit_riscv_module<W: Write>(
+    module: &MirModule,
+    writer: &mut W,
+    target: RiscVTarget,
+    target_os: TargetOperatingSystem,
+    codegen_units: usize,
+    settings: &MirCodegenSettings,
+) -> Result<(), LaminaError> {
     validate_rv32_i64(module, target)?;
     let settings_arc = Arc::new(settings.clone());
-    let signatures = Arc::new(CallSignatures::from_module(module));
+    let signatures = Arc::new(AggregateSignatures::from_module(module));
     let results =
         compile_functions_parallel(module, target_os, codegen_units, move |name, func, os| {
             compile_single_function_riscv(
@@ -534,68 +523,281 @@ pub fn generate_mir_riscv_with_units_and_settings<W: Write>(
     Ok(())
 }
 
-/// Per-function state shared by the block and instruction emitters.
 /// Where an argument sits under lp64d: an integer register, a float register from a
-/// bank of its own, or an eight-byte stack slot.
+/// bank of its own, an eight-byte stack slot, or the consecutive integer registers and
+/// stack slots an aggregate of two words or fewer occupies.
 #[derive(Clone, Copy)]
 enum RiscVArgPlace {
     Gpr(usize),
     Fpr(usize),
     Stack(usize),
+    Words { first: usize, words: usize },
+    StackWords { slot: usize, words: usize },
+    Split { reg: usize, slot: usize },
 }
 
-/// Floats take the next fa register and integers the next a register, from banks that
-/// run out separately. A float left without an fa register falls back to the integer
-/// bank before the stack, carrying its bits.
 /// Puts each argument where the call expects it and reserves the outgoing stack area,
-/// returning how many bytes of it to release after the call.
+/// returning how many bytes of it to release after the call. An aggregate larger than
+/// two words travels as the address of a copy made in that area, and a hidden result
+/// pointer, when there is one, takes a0 ahead of the arguments.
 fn pass_riscv_arguments<W: Write>(
     writer: &mut W,
     reg_alloc: &mut RiscVRegAlloc,
     stack_slots: &HashMap<VirtualReg, i32>,
     args: &[Operand],
-    types: &[MirType],
+    kinds: &[ArgKind],
+    hidden: Option<i32>,
     target: RiscVTarget,
 ) -> Result<usize, LaminaError> {
     let arg_regs = RiscVAbi::ARG_REGISTERS;
-    let places = classify_riscv_arguments(types);
-    for ((arg, ty), place) in args.iter().zip(types).zip(&places) {
-        match *place {
-            RiscVArgPlace::Gpr(bank) => {
-                load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[bank])?;
-            }
-            RiscVArgPlace::Fpr(bank) => {
-                load_fp_operand_to_register(
-                    arg,
-                    writer,
-                    reg_alloc,
-                    stack_slots,
-                    &format!("fa{bank}"),
-                    ty.size_bytes() == 4,
-                )?;
-            }
-            RiscVArgPlace::Stack(_) => {}
+    let word = target.word_bytes() as usize;
+    let places = classify_riscv_arguments(kinds, usize::from(hidden.is_some()));
+    let stack_words: usize = places
+        .iter()
+        .map(|place| match *place {
+            RiscVArgPlace::Stack(_) => 1,
+            RiscVArgPlace::StackWords { words, .. } => words,
+            RiscVArgPlace::Split { .. } => 1,
+            RiscVArgPlace::Gpr(_) | RiscVArgPlace::Fpr(_) | RiscVArgPlace::Words { .. } => 0,
+        })
+        .sum();
+    let mut copies = vec![None; kinds.len()];
+    let mut copy_bytes = stack_words * word;
+    for (kind, copy) in kinds.iter().zip(copies.iter_mut()) {
+        if kind.by_reference() {
+            *copy = Some(copy_bytes);
+            copy_bytes += kind.aggregate.map_or(0, |a| a.words()) * word;
+        }
+    }
+    let stack_space = align_up(copy_bytes, 16);
+    if stack_space > 0 {
+        RiscVFrame::adjust_sp(writer, -(stack_space as i64))?;
+    }
+
+    for ((arg, kind), copy) in args.iter().zip(kinds).zip(&copies) {
+        let Some(at) = *copy else { continue };
+        load_operand_to_register(arg, writer, reg_alloc, stack_slots, "a7")?;
+        for index in 0..kind.aggregate.map_or(0, |a| a.words()) {
+            let offset = index * word;
+            writeln!(writer, "    {} t0, {offset}(a7)", target.load_word())?;
+            writeln!(
+                writer,
+                "    {} t0, {}(sp)",
+                target.store_word(),
+                at + offset
+            )?;
+        }
+    }
+    for (arg, place) in args.iter().zip(&places) {
+        let (slot, first_word, words) = match *place {
+            RiscVArgPlace::StackWords { slot, words } => (slot, 0, words),
+            RiscVArgPlace::Split { slot, .. } => (slot, 1, 2),
+            _ => continue,
+        };
+        load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
+        for index in first_word..words {
+            let offset = index * word;
+            writeln!(writer, "    {} a7, {offset}(t0)", target.load_word())?;
+            writeln!(
+                writer,
+                "    {} a7, {}(sp)",
+                target.store_word(),
+                slot * word + (index - first_word) * word
+            )?;
         }
     }
 
-    let stack_args = places
-        .iter()
-        .filter(|place| matches!(place, RiscVArgPlace::Stack(_)))
-        .count();
-    if stack_args == 0 {
-        return Ok(0);
+    if let Some(offset) = hidden {
+        RiscVFrame::fp_address(writer, arg_regs[0], offset)?;
     }
-    let stack_space = align_up(stack_args * target.word_bytes() as usize, 16);
-    RiscVFrame::adjust_sp(writer, -(stack_space as i64))?;
-    for (arg, place) in args.iter().zip(&places) {
+    for (index, ((arg, kind), place)) in args.iter().zip(kinds).zip(&places).enumerate() {
+        match *place {
+            RiscVArgPlace::Gpr(bank) => match copies[index] {
+                Some(at) => sp_address(writer, arg_regs[bank], at)?,
+                None => {
+                    load_operand_to_register(arg, writer, reg_alloc, stack_slots, arg_regs[bank])?
+                }
+            },
+            RiscVArgPlace::Fpr(bank) => load_fp_operand_to_register(
+                arg,
+                writer,
+                reg_alloc,
+                stack_slots,
+                &format!("fa{bank}"),
+                kind.ty.size_bytes() == 4,
+            )?,
+            RiscVArgPlace::Words { first, words } => {
+                load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
+                for index in 0..words {
+                    let offset = index * word;
+                    writeln!(
+                        writer,
+                        "    {} {}, {offset}(t0)",
+                        target.load_word(),
+                        arg_regs[first + index]
+                    )?;
+                }
+            }
+            RiscVArgPlace::Split { reg, .. } => {
+                load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
+                writeln!(
+                    writer,
+                    "    {} {}, 0(t0)",
+                    target.load_word(),
+                    arg_regs[reg]
+                )?;
+            }
+            RiscVArgPlace::Stack(_) | RiscVArgPlace::StackWords { .. } => {}
+        }
+    }
+
+    for (index, (arg, place)) in args.iter().zip(&places).enumerate() {
         let RiscVArgPlace::Stack(slot) = *place else {
             continue;
         };
-        let offset = slot * target.word_bytes() as usize;
-        load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?;
-        writeln!(writer, "    {} t0, {offset}(sp)", target.store_word())?;
+        match copies[index] {
+            Some(at) => sp_address(writer, "t0", at)?,
+            None => load_operand_to_register(arg, writer, reg_alloc, stack_slots, "t0")?,
+        }
+        writeln!(
+            writer,
+            "    {} t0, {}(sp)",
+            target.store_word(),
+            slot * word
+        )?;
     }
     Ok(stack_space)
+}
+
+fn sp_address<W: Write>(writer: &mut W, dst: &str, offset: usize) -> io::Result<()> {
+    if offset <= 2047 {
+        writeln!(writer, "    addi {dst}, sp, {offset}")
+    } else {
+        RiscVFrame::load_imm(writer, dst, offset as i64)?;
+        writeln!(writer, "    add {dst}, sp, {dst}")
+    }
+}
+
+fn copy_from_pointer_to_frame<W: Write>(
+    writer: &mut W,
+    pointer: &str,
+    words: usize,
+    destination: i32,
+    target: RiscVTarget,
+) -> io::Result<()> {
+    let word = target.word_bytes();
+    for index in 0..words {
+        let offset = index as i32 * word;
+        writeln!(writer, "    {} t0, {offset}({pointer})", target.load_word())?;
+        RiscVFrame::fp_store(
+            writer,
+            target.store_word(),
+            "t0",
+            destination + offset,
+            "t0",
+        )?;
+    }
+    Ok(())
+}
+
+/// Stores each incoming argument into its frame slot. Stack-passed aggregates held
+/// behind a pointer load it through a7, so they run after every register argument has
+/// left the argument registers.
+fn store_incoming_arguments<W: Write>(
+    writer: &mut W,
+    func: &Function,
+    first_gpr: usize,
+    reg_alloc: &RiscVRegAlloc,
+    stack_slots: &HashMap<VirtualReg, i32>,
+    target: RiscVTarget,
+    through_stack_pointers: bool,
+) -> io::Result<()> {
+    let arg_regs = RiscVAbi::ARG_REGISTERS;
+    let word = target.word_bytes();
+    let kinds: Vec<ArgKind> = func
+        .sig
+        .params
+        .iter()
+        .map(|p| ArgKind {
+            ty: p.ty,
+            aggregate: p.aggregate,
+        })
+        .collect();
+    let places = classify_riscv_arguments(&kinds, first_gpr);
+    for ((param, kind), place) in func.sig.params.iter().zip(&kinds).zip(&places) {
+        let via_stack_pointer = kind.by_reference() && matches!(place, RiscVArgPlace::Stack(_));
+        if via_stack_pointer != through_stack_pointers {
+            continue;
+        }
+        let Register::Virtual(vreg) = &param.reg else {
+            continue;
+        };
+        let Some(&slot) = stack_slots.get(vreg) else {
+            continue;
+        };
+        let words = kind.aggregate.map_or(0, |a| a.words());
+        match *place {
+            RiscVArgPlace::Fpr(bank) => store_fp_register_to_register(
+                &format!("fa{bank}"),
+                vreg,
+                writer,
+                reg_alloc,
+                stack_slots,
+                param.ty.size_bytes() == 4,
+            )?,
+            RiscVArgPlace::Gpr(bank) if kind.by_reference() => {
+                copy_from_pointer_to_frame(writer, arg_regs[bank], words, slot, target)?
+            }
+            RiscVArgPlace::Gpr(bank) => match reg_alloc.get_mapping(vreg) {
+                Some(physical) => writeln!(writer, "    mv {physical}, {}", arg_regs[bank])?,
+                None => {
+                    RiscVFrame::fp_store(writer, target.store_word(), arg_regs[bank], slot, "t0")?
+                }
+            },
+            RiscVArgPlace::Stack(caller) if kind.by_reference() => {
+                RiscVFrame::fp_load(writer, target.load_word(), "a7", caller as i32 * word, "a7")?;
+                copy_from_pointer_to_frame(writer, "a7", words, slot, target)?;
+            }
+            RiscVArgPlace::Stack(caller) => {
+                RiscVFrame::fp_load(writer, target.load_word(), "t0", caller as i32 * word, "t0")?;
+                match reg_alloc.get_mapping(vreg) {
+                    Some(physical) => writeln!(writer, "    mv {physical}, t0")?,
+                    None => RiscVFrame::fp_store(writer, target.store_word(), "t0", slot, "t0")?,
+                }
+            }
+            RiscVArgPlace::Words { first, words } => {
+                for index in 0..words {
+                    let at = slot + index as i32 * word;
+                    RiscVFrame::fp_store(
+                        writer,
+                        target.store_word(),
+                        arg_regs[first + index],
+                        at,
+                        "t0",
+                    )?;
+                }
+            }
+            RiscVArgPlace::StackWords {
+                slot: caller,
+                words,
+            } => {
+                for index in 0..words {
+                    let from = (caller + index) as i32 * word;
+                    let at = slot + index as i32 * word;
+                    RiscVFrame::fp_load(writer, target.load_word(), "t0", from, "t0")?;
+                    RiscVFrame::fp_store(writer, target.store_word(), "t0", at, "t0")?;
+                }
+            }
+            RiscVArgPlace::Split { reg, slot: caller } => {
+                RiscVFrame::fp_store(writer, target.store_word(), arg_regs[reg], slot, "t0")?;
+                let from = caller as i32 * word;
+                let at = slot + word;
+                RiscVFrame::fp_load(writer, target.load_word(), "t0", from, "t0")?;
+                RiscVFrame::fp_store(writer, target.store_word(), "t0", at, "t0")?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Format label for a print intrinsic. Mach-O has no local label prefix, so the same
@@ -635,25 +837,158 @@ fn printf_symbol(abi: &RiscVAbi, target_os: TargetOperatingSystem) -> String {
     })
 }
 
-fn classify_riscv_arguments(types: &[MirType]) -> Vec<RiscVArgPlace> {
+#[derive(Clone, Copy)]
+struct ArgKind {
+    ty: MirType,
+    aggregate: Option<Aggregate>,
+}
+
+impl ArgKind {
+    fn scalar(ty: MirType) -> Self {
+        Self {
+            ty,
+            aggregate: None,
+        }
+    }
+
+    fn float(&self) -> bool {
+        self.aggregate.is_none() && self.ty.is_float()
+    }
+
+    fn by_reference(&self) -> bool {
+        self.aggregate
+            .is_some_and(|a| a.size as u64 > MAX_REGISTER_AGGREGATE)
+    }
+}
+
+/// An aggregate of two words or fewer takes consecutive integer registers when they all
+/// remain. With one register left, its first word goes there and the second on the stack.
+/// With none left it goes to the stack whole. A larger one passes the address of a copy.
+fn classify_riscv_arguments(kinds: &[ArgKind], first_gpr: usize) -> Vec<RiscVArgPlace> {
     let banks = RiscVAbi::ARG_REGISTERS.len();
-    let mut gprs = 0;
+    let mut gprs = first_gpr;
     let mut fprs = 0;
     let mut stack = 0;
-    let mut places = Vec::with_capacity(types.len());
-    for ty in types {
-        if ty.is_float() && fprs < banks {
-            places.push(RiscVArgPlace::Fpr(fprs));
-            fprs += 1;
-        } else if gprs < banks {
-            places.push(RiscVArgPlace::Gpr(gprs));
-            gprs += 1;
-        } else {
-            places.push(RiscVArgPlace::Stack(stack));
-            stack += 1;
+    let mut places = Vec::with_capacity(kinds.len());
+    for kind in kinds {
+        match kind.aggregate {
+            Some(aggregate) if !kind.by_reference() => {
+                let words = aggregate.words();
+                if gprs + words <= banks {
+                    places.push(RiscVArgPlace::Words { first: gprs, words });
+                    gprs += words;
+                } else if words == 2 && gprs < banks {
+                    places.push(RiscVArgPlace::Split {
+                        reg: gprs,
+                        slot: stack,
+                    });
+                    gprs += 1;
+                    stack += 1;
+                } else {
+                    places.push(RiscVArgPlace::StackWords { slot: stack, words });
+                    stack += words;
+                }
+            }
+            _ if kind.float() && fprs < banks => {
+                places.push(RiscVArgPlace::Fpr(fprs));
+                fprs += 1;
+            }
+            _ if gprs < banks => {
+                places.push(RiscVArgPlace::Gpr(gprs));
+                gprs += 1;
+            }
+            _ => {
+                places.push(RiscVArgPlace::Stack(stack));
+                stack += 1;
+            }
         }
     }
     places
+}
+
+struct AggregateSignatures {
+    params: HashMap<String, Vec<ArgKind>>,
+    returns: HashMap<String, Aggregate>,
+    float_returns: HashMap<String, MirType>,
+    variadic: HashSet<String>,
+}
+
+impl AggregateSignatures {
+    fn from_module(module: &MirModule) -> Self {
+        Self {
+            params: module
+                .functions
+                .iter()
+                .map(|(name, func)| {
+                    (
+                        name.clone(),
+                        func.sig
+                            .params
+                            .iter()
+                            .map(|p| ArgKind {
+                                ty: p.ty,
+                                aggregate: p.aggregate,
+                            })
+                            .collect(),
+                    )
+                })
+                .collect(),
+            returns: module
+                .functions
+                .iter()
+                .filter_map(|(name, func)| Some((name.clone(), func.sig.ret_aggregate?)))
+                .collect(),
+            float_returns: module
+                .functions
+                .iter()
+                .filter_map(|(name, func)| {
+                    let ty = func.sig.ret_ty?;
+                    (func.sig.ret_aggregate.is_none() && ty.is_float()).then(|| (name.clone(), ty))
+                })
+                .collect(),
+            variadic: module
+                .functions
+                .iter()
+                .filter(|(_, func)| func.sig.variadic)
+                .map(|(name, _)| name.clone())
+                .collect(),
+        }
+    }
+
+    fn fixed_arguments(&self, callee: &str) -> Option<usize> {
+        self.variadic
+            .contains(callee)
+            .then(|| self.params.get(callee).map_or(0, Vec::len))
+    }
+
+    /// Arguments of a call as the convention sees them. A matching prototype gives the
+    /// kinds; past a variadic callee's fixed parameters, and for a callee with no
+    /// prototype, the operand does.
+    fn arguments(&self, callee: &str, args: &[Operand]) -> Vec<ArgKind> {
+        let fixed = self.fixed_arguments(callee);
+        if fixed.is_none()
+            && let Some(kinds) = self.params.get(callee).filter(|k| k.len() == args.len())
+        {
+            return kinds.clone();
+        }
+        let declared = self.params.get(callee);
+        let fixed = fixed.unwrap_or(0);
+        args.iter()
+            .enumerate()
+            .map(|(index, arg)| match declared {
+                Some(kinds) if index < fixed && index < kinds.len() => kinds[index],
+                _ => ArgKind::scalar(promoted_argument_type(arg)),
+            })
+            .collect()
+    }
+
+    fn result(&self, callee: &str) -> Option<Aggregate> {
+        self.returns.get(callee).copied()
+    }
+
+    fn float_result(&self, callee: &str) -> Option<MirType> {
+        self.float_returns.get(callee).copied()
+    }
 }
 
 /// Everything the instruction emitter needs beyond the instruction itself.
@@ -668,9 +1003,11 @@ struct EmitCtx<'a> {
     live_across_calls: HashMap<usize, Vec<VirtualReg>>,
     stack_size: usize,
     callee_saved_registers: Vec<&'static str>,
-    signatures: &'a CallSignatures,
+    signatures: &'a AggregateSignatures,
     /// Set when this function returns a float, which leaves in fa0.
     ret_float: Option<MirType>,
+    ret_aggregate: Option<Aggregate>,
+    sret_offset: Option<i32>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -687,6 +1024,8 @@ fn emit_planned_block_riscv<W: Write>(
 ) -> Result<(), LaminaError> {
     let block = &func.blocks[index];
     let func_name = ctx.func_name;
+    let aggregate_flow =
+        ctx.ret_aggregate.is_some() || func.sig.params.iter().any(|p| p.aggregate.is_some());
     if plan.aligned_headers.contains(&index) {
         writeln!(writer, "    .p2align 4")?;
     }
@@ -694,7 +1033,7 @@ fn emit_planned_block_riscv<W: Write>(
     let mut position = 0;
     while position < block.instructions.len() {
         let inst = &block.instructions[position];
-        if let Some(pairs) = self_tail_arguments(func, inst) {
+        if let Some(pairs) = self_tail_arguments(func, inst).filter(|_| !aggregate_flow) {
             let schedule = self_tail_schedule(&pairs, |reg| match reg {
                 Register::Virtual(v) => reg_alloc
                     .get_mapping(v)
@@ -1128,16 +1467,37 @@ fn emit_instruction_riscv<W: Write>(
                 // General function call implementation
                 // RISC-V calling convention: first 8 args in a0-a7, remaining on stack
 
-                let mut types = ctx.signatures.arguments(name, args);
+                let mut kinds = ctx.signatures.arguments(name, args);
                 // LP64D sends a variadic argument through the integer bank, a float
                 // included, so the callee's va_arg finds the bits where it looks.
                 if let Some(fixed) = ctx.signatures.fixed_arguments(name) {
-                    for ty in types.iter_mut().skip(fixed).filter(|ty| ty.is_float()) {
-                        *ty = MirType::i64();
+                    for kind in kinds.iter_mut().skip(fixed).filter(|kind| kind.float()) {
+                        kind.ty = MirType::i64();
                     }
                 }
-                let stack_space =
-                    pass_riscv_arguments(writer, reg_alloc, stack_slots, args, &types, ctx.target)?;
+                let result_slot = match ret {
+                    Some(Register::Virtual(vreg)) => stack_slots.get(vreg).copied(),
+                    _ => None,
+                };
+                let hidden = match ctx.signatures.result(name) {
+                    Some(aggregate) if aggregate.size as u64 > MAX_REGISTER_AGGREGATE => {
+                        Some(result_slot.ok_or_else(|| {
+                            LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                                "RISC-V aggregate result has no frame slot".to_string(),
+                            ))
+                        })?)
+                    }
+                    _ => None,
+                };
+                let stack_space = pass_riscv_arguments(
+                    writer,
+                    reg_alloc,
+                    stack_slots,
+                    args,
+                    &kinds,
+                    hidden,
+                    ctx.target,
+                )?;
 
                 // Resolve function name (check for intrinsic stubs first)
                 let target_sym = if let Some(stub) = abi.call_stub(name) {
@@ -1161,16 +1521,33 @@ fn emit_instruction_riscv<W: Write>(
             if let Some(ret_reg) = ret
                 && let Register::Virtual(vreg) = ret_reg
             {
-                match ctx.signatures.float_result(name) {
-                    Some(ty) => store_fp_register_to_register(
-                        "fa0",
-                        vreg,
-                        writer,
-                        reg_alloc,
-                        stack_slots,
-                        ty.size_bytes() == 4,
-                    )?,
-                    None => store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?,
+                match ctx.signatures.result(name) {
+                    Some(aggregate) if aggregate.size as u64 > MAX_REGISTER_AGGREGATE => {}
+                    Some(aggregate) => {
+                        let slot = stack_slots.get(vreg).copied().ok_or_else(|| {
+                            LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                                "RISC-V aggregate result has no frame slot".to_string(),
+                            ))
+                        })?;
+                        RiscVFrame::fp_store(writer, ctx.target.store_word(), "a0", slot, "t0")?;
+                        if aggregate.words() > 1 {
+                            let at = slot + ctx.target.word_bytes();
+                            RiscVFrame::fp_store(writer, ctx.target.store_word(), "a1", at, "t0")?;
+                        }
+                    }
+                    None => match ctx.signatures.float_result(name) {
+                        Some(ty) => store_fp_register_to_register(
+                            "fa0",
+                            vreg,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            ty.size_bytes() == 4,
+                        )?,
+                        None => {
+                            store_register_to_register("a0", vreg, writer, reg_alloc, stack_slots)?
+                        }
+                    },
                 }
             }
         }
@@ -1192,8 +1569,22 @@ fn emit_instruction_riscv<W: Write>(
             // t1 is a temporary the argument registers never overlap, so the target
             // survives the argument setup.
             load_operand_to_register(target, writer, reg_alloc, stack_slots, "t1")?;
-            let stack_space =
-                pass_riscv_arguments(writer, reg_alloc, stack_slots, args, arg_types, ctx.target)?;
+            let kinds: Vec<ArgKind> = arg_types
+                .iter()
+                .map(|ty| ArgKind {
+                    ty: *ty,
+                    aggregate: None,
+                })
+                .collect();
+            let stack_space = pass_riscv_arguments(
+                writer,
+                reg_alloc,
+                stack_slots,
+                args,
+                &kinds,
+                None,
+                ctx.target,
+            )?;
             writeln!(writer, "    jalr t1")?;
             if stack_space > 0 {
                 RiscVFrame::adjust_sp(writer, stack_space as i64)?;
@@ -1223,6 +1614,18 @@ fn emit_instruction_riscv<W: Write>(
             if name == "writeptr" {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
                     "RISC-V: writeptr is not supported".to_string(),
+                )));
+            }
+            if ctx.ret_aggregate.is_some()
+                || ctx.signatures.result(name).is_some()
+                || ctx
+                    .signatures
+                    .arguments(name, args)
+                    .iter()
+                    .any(|kind| kind.aggregate.is_some())
+            {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    "RISC-V: TailCall with an aggregate is not supported".to_string(),
                 )));
             }
             let arg_regs = RiscVAbi::ARG_REGISTERS;
@@ -1393,16 +1796,38 @@ fn emit_instruction_riscv<W: Write>(
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {
-                match ctx.ret_float {
-                    Some(ty) => load_fp_operand_to_register(
-                        val,
-                        writer,
-                        reg_alloc,
-                        stack_slots,
-                        "fa0",
-                        ty.size_bytes() == 4,
-                    )?,
-                    None => load_operand_to_register(val, writer, reg_alloc, stack_slots, "a0")?,
+                match (ctx.ret_aggregate, ctx.sret_offset) {
+                    (Some(aggregate), Some(offset)) => {
+                        load_operand_to_register(val, writer, reg_alloc, stack_slots, "t0")?;
+                        RiscVFrame::fp_load(writer, ctx.target.load_word(), "a1", offset, "a1")?;
+                        for index in 0..aggregate.words() {
+                            let at = index as i32 * ctx.target.word_bytes();
+                            writeln!(writer, "    {} a7, {at}(t0)", ctx.target.load_word())?;
+                            writeln!(writer, "    {} a7, {at}(a1)", ctx.target.store_word())?;
+                        }
+                        writeln!(writer, "    mv a0, a1")?;
+                    }
+                    (Some(aggregate), None) => {
+                        load_operand_to_register(val, writer, reg_alloc, stack_slots, "t0")?;
+                        writeln!(writer, "    {} a0, 0(t0)", ctx.target.load_word())?;
+                        if aggregate.words() > 1 {
+                            let at = ctx.target.word_bytes();
+                            writeln!(writer, "    {} a1, {at}(t0)", ctx.target.load_word())?;
+                        }
+                    }
+                    (None, _) => match ctx.ret_float {
+                        Some(ty) => load_fp_operand_to_register(
+                            val,
+                            writer,
+                            reg_alloc,
+                            stack_slots,
+                            "fa0",
+                            ty.size_bytes() == 4,
+                        )?,
+                        None => {
+                            load_operand_to_register(val, writer, reg_alloc, stack_slots, "a0")?
+                        }
+                    },
                 }
             }
             // Epilogue
