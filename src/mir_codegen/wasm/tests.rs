@@ -330,7 +330,7 @@ fn module_imports_only_helpers_it_calls() {
 
 #[test]
 fn call_through_pointer_indexes_function_table() {
-    let source = "fn @twice(i64 %x) -> i64 {\nentry:\n  %r = mul.i64 %x, 2\n  ret.i64 %r\n}\n\nfn @main() -> i64 {\nentry:\n  %f = funcaddr @twice\n  %r = callptr.i64 %f(21)\n  ret.i64 %r\n}\n";
+    let source = "fn @twice(i64 %x) -> i64 {\nentry:\n  %r = mul.i64 %x, 2\n  ret.i64 %r\n}\n\nfn @main() -> i64 {\nentry:\n  %f = funcaddr @twice\n  %r = callptr.i64 %f(i64 21)\n  ret.i64 %r\n}\n";
     let wat = emit_wat(source, TargetArchitecture::Wasm32);
 
     assert!(

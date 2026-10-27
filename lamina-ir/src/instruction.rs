@@ -410,8 +410,8 @@ impl fmt::Display for CmpOp {
 /// let mut builder = IRBuilder::new();
 /// builder
 ///     .function("memory", Type::Void)
-///     .alloc_stack("local", Type::Primitive(PrimitiveType::I32))  // Stack allocation
-///     .alloc_heap("persistent", Type::Primitive(PrimitiveType::I32)); // Heap allocation
+///     .stackalloc("local", Type::Primitive(PrimitiveType::I32))  // Stack allocation
+///     .heapalloc("persistent", Type::Primitive(PrimitiveType::I32)); // Heap allocation
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AllocType {
@@ -580,13 +580,17 @@ pub enum Instruction<'a> {
     },
     /// Call through a function pointer.
     ///
+    /// Each argument carries the type the call site declares for it, written like a
+    /// function signature: `callptr.i64 %f(f32 1.5, i64 %n)`. That type is what a
+    /// literal operand is materialised as and what the ABI classifies the argument by.
+    ///
     /// # Preconditions
     /// - `target` must hold the address of a function whose signature matches the
-    ///   arguments given and `return_type`.
+    ///   argument types given and `return_type`.
     CallIndirect {
         result: Option<Identifier<'a>>,
         target: Value<'a>,
-        args: Vec<Value<'a>>,
+        args: Vec<(Type<'a>, Value<'a>)>,
         return_type: Type<'a>,
     },
     // --- Control Flow ---
@@ -635,7 +639,7 @@ pub enum Instruction<'a> {
     /// # Preconditions
     /// - For `AllocType::Stack`: the allocation is automatically freed when the
     ///   function returns. Memory must be initialized before reading.
-    /// - For `AllocType::Heap`: the caller must explicitly `dealloc` the
+    /// - For `AllocType::Heap`: the caller must explicitly `heapfree` the
     ///   returned pointer. Failing to do so is a memory leak (not UB in the IR,
     ///   but wrong behavior).
     /// - The result is always of type `ptr` and is guaranteed non-null.
@@ -1174,7 +1178,7 @@ impl<'a> Instruction<'a> {
             | Instruction::Unary { value, .. } => push_value(value, &mut vars),
             Instruction::CallIndirect { target, args, .. } => {
                 push_value(target, &mut vars);
-                for arg in args {
+                for (_, arg) in args {
                     push_value(arg, &mut vars);
                 }
             }
@@ -1325,7 +1329,7 @@ impl fmt::Display for Instruction<'_> {
                 args,
                 return_type,
             } => {
-                let args: Vec<String> = args.iter().map(ToString::to_string).collect();
+                let args: Vec<String> = args.iter().map(|(ty, v)| format!("{ty} {v}")).collect();
                 match result {
                     Some(result) => write!(
                         f,

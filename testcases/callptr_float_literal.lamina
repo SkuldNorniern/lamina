@@ -1,0 +1,64 @@
+global @slot: i64 = 0
+
+fn @bits32(f32 %p) -> i64 {
+entry:
+  %b = bitcast.f32.i32 %p
+  %w = sext.i32.i64 %b
+  ret.i64 %w
+}
+
+fn @bits64(f64 %p) -> i64 {
+entry:
+  %b = bitcast.f64.i64 %p
+  ret.i64 %b
+}
+
+fn @mixed(f32 %a, i64 %n, f64 %d) -> i64 {
+entry:
+  %ab = bitcast.f32.i32 %a
+  %aw = sext.i32.i64 %ab
+  %db = bitcast.f64.i64 %d
+  print %aw
+  print %n
+  print %db
+  ret.i64 0
+}
+
+fn @nullary() -> i64 {
+entry:
+  ret.i64 7
+}
+
+fn @report(f32 %a) -> void {
+entry:
+  %b = bitcast.f32.i32 %a
+  %w = sext.i32.i64 %b
+  store.i64 @slot, %w
+  ret.void
+}
+
+fn @main() -> i64 {
+entry:
+  %p1 = funcaddr @bits32
+  %a = callptr.i64 %p1(f32 11.5)
+  print %a
+  %v = add.f32 11.5, 0.0
+  %b = callptr.i64 %p1(f32 %v)
+  print %b
+  %p2 = funcaddr @bits64
+  %c = callptr.i64 %p2(f64 11.5)
+  print %c
+  %w = add.f64 11.5, 0.0
+  %d = callptr.i64 %p2(f64 %w)
+  print %d
+  %p3 = funcaddr @mixed
+  %e = callptr.i64 %p3(f32 11.5, i64 42, f64 2.5)
+  %p0 = funcaddr @nullary
+  %g = callptr.i64 %p0()
+  print %g
+  %p4 = funcaddr @report
+  callptr.void %p4(f32 11.5)
+  %sv = load.i64 @slot
+  print %sv
+  ret.i64 0
+}

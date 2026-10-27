@@ -19,7 +19,7 @@ entry:
 
 fn @apply(ptr %f, i64 %v) -> i64 {
 entry:
-  %r = callptr.i64 %f(%v)
+  %r = callptr.i64 %f(i64 %v)
   ret.i64 %r
 }
 
@@ -32,7 +32,7 @@ entry:
   %r2 = call @apply(%b, 21)
   print %r2
   %s = funcaddr @scale
-  %r3 = callptr.f64 %s(1.5, 4)
+  %r3 = callptr.f64 %s(f64 1.5, i64 4)
   print %r3
   ret.i64 0
 }

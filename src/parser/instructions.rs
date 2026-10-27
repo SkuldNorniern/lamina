@@ -532,7 +532,13 @@ fn parse_call_indirect<'a>(
             state.advance();
             break;
         }
-        args.push(parse_value(state)?);
+        let ty = parse_type(state).map_err(|_| untyped_call_indirect_error(state))?;
+        state.skip_whitespace_and_comments();
+        if matches!(state.current_char(), None | Some(')') | Some(',')) {
+            return Err(untyped_call_indirect_error(state));
+        }
+        let value = parse_value(state)?;
+        args.push((ty, value));
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
             state.advance();
@@ -546,6 +552,13 @@ fn parse_call_indirect<'a>(
         args,
         return_type,
     })
+}
+
+fn untyped_call_indirect_error(state: &ParserState<'_>) -> LaminaError {
+    state.error(
+        "callptr arguments must each carry a type
+  Hint: Did you mean 'callptr.<ret-ty> <ptr>(<ty> <arg>, <ty> <arg>)', as in 'callptr.i64 %f(f32 1.5, i64 %n)'?",
+    )
 }
 
 fn parse_phi<'a>(

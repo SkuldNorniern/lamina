@@ -1656,9 +1656,11 @@ fn convert_instruction<'a>(
             let target = resolve_operand(target, vreg_alloc, var_to_reg, globals)?;
             let mut mir_args = Vec::new();
             let mut arg_types = Vec::new();
-            for argument in args {
-                let operand = resolve_operand(argument, vreg_alloc, var_to_reg, globals)?;
-                arg_types.push(operand_type(&operand, register_types));
+            for (arg_ty, argument) in args {
+                let mir_ty = map_ir_type(arg_ty)?;
+                let mut operand = resolve_operand(argument, vreg_alloc, var_to_reg, globals)?;
+                normalize_lowered_literal(&mut operand, mir_ty);
+                arg_types.push(mir_ty);
                 mir_args.push(operand);
             }
             let ret_ty = match return_type {

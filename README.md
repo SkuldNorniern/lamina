@@ -333,8 +333,13 @@ fn @strlen(ptr %s) -> i64
 
 ```
 %f = funcaddr @twice
-%r = callptr.i64 %f(%v)
+%r = callptr.i64 %f(i64 %v)
 ```
+
+A `callptr` names the type of every argument, as a function signature does:
+`callptr[.<ret-ty>] <ptr>(<ty> <arg>, <ty> <arg>, ...)`. The declared type is what a
+literal operand is materialised as and what the ABI classifies the argument by, so
+`callptr.i64 %f(f32 1.5)` passes a single-precision `1.5`.
 
 ## Future Directions
 

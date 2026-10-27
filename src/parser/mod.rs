@@ -1503,7 +1503,17 @@ ret.i64 0
 
     #[test]
     fn test_display_of_changed_instructions_round_trips() {
-        let source = "fn @main() -> i64 {
+        let source = "fn @cb(f32 %x, i64 %n) -> i64 {
+entry:
+  ret.i64 %n
+}
+
+fn @sink(f32 %x) -> void {
+entry:
+  ret.void
+}
+
+fn @main() -> i64 {
 entry:
   %p = stackalloc.i64
   %h = heapalloc.[16 x i8]
@@ -1514,6 +1524,10 @@ entry:
   %q = inttoptr.i64 %a
   store.i64 %q, 7
   heapfree %h
+  %fp = funcaddr @cb
+  %cr = callptr.i64 %fp(f32 1.5, i64 %a)
+  %vp = funcaddr @sink
+  callptr.void %vp(f32 2.5)
   ret.i64 0
 }
 ";
@@ -1521,5 +1535,32 @@ entry:
         let printed = module.to_string();
         let reparsed = parse_module(&printed).expect("parse printed module");
         assert_eq!(reparsed.to_string(), printed);
+        assert!(printed.contains("callptr.i64 %fp(f32 1.5, i64 %a)"));
+    }
+
+    #[test]
+    fn test_untyped_callptr_arguments_are_rejected() {
+        let source = "fn @cb(i64 %n) -> i64 {
+entry:
+  ret.i64 %n
+}
+
+fn @main() -> i64 {
+entry:
+  %fp = funcaddr @cb
+  %r = callptr.i64 %fp(7)
+  ret.i64 0
+}
+";
+        let err = parse_module(source).expect_err("untyped callptr argument must be rejected");
+        let text = err.to_string();
+        assert!(
+            text.contains("callptr arguments must each carry a type"),
+            "{text}"
+        );
+        assert!(
+            text.contains("Hint: Did you mean 'callptr.<ret-ty> <ptr>(<ty> <arg>, <ty> <arg>)'"),
+            "{text}"
+        );
     }
 }
