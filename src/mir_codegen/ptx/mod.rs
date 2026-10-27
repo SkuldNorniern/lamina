@@ -113,6 +113,7 @@ impl Kernel {
     fn instruction(&mut self, instruction: &Instruction) -> Result<(), LaminaError> {
         match instruction {
             Instruction::Ret { value: None } => writeln!(self.body, "    ret;")?,
+            Instruction::Unreachable => writeln!(self.body, "    trap;")?,
             Instruction::Bitcast { from, to, dst, src } => {
                 let source = self.operand(src, *from)?;
                 let destination = self.allocate(dst, *to)?;
@@ -268,6 +269,15 @@ impl Kernel {
                     };
                     writeln!(self.body, "    mov.u32 {dst}, %{special}{suffix};")?;
                 }
+            }
+            Instruction::AtomicLoad { .. }
+            | Instruction::AtomicStore { .. }
+            | Instruction::AtomicBinary { .. }
+            | Instruction::AtomicCompareExchange { .. }
+            | Instruction::Fence { .. } => {
+                return Err(error(&format!(
+                    "atomic instruction `{instruction}` is not yet supported by the PTX backend"
+                )));
             }
             _ => return Err(error("unsupported PTX instruction")),
         }

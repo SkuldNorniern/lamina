@@ -28,13 +28,17 @@ pub mod verify;
 
 // Re-exports for convenience
 pub use block::Block;
-pub use function::{Function, FunctionBuilder, KernelMetadata, Parameter, Signature};
+pub use function::{
+    CodePlacement, Function, FunctionBuilder, KernelMetadata, Parameter, Signature,
+    SymbolVisibility,
+};
+#[cfg(feature = "nightly")]
+pub use instruction::SimdOp;
 pub use instruction::{
     AddressMode, FloatBinOp, FloatCmpOp, FloatUnOp, Immediate, Instruction, IntBinOp, IntCmpOp,
     MemoryAttrs, Operand, VectorOp,
 };
-#[cfg(feature = "nightly")]
-pub use instruction::{AtomicBinOp, MemoryOrdering, SimdOp};
+pub use instruction::{AtomicBinOp, MemoryOrdering};
 pub use module::{Global, Module, ModuleBuilder};
 pub use register::{PhysicalReg, Register, RegisterClass, VirtualReg, VirtualRegAllocator};
 #[cfg(feature = "nightly")]

@@ -4,7 +4,6 @@
 
 mod annotations;
 mod arithmetic;
-#[cfg(feature = "nightly")]
 mod atomics;
 mod blocks;
 mod control_flow;

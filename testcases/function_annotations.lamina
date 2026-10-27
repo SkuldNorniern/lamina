@@ -1,0 +1,74 @@
+@hidden
+fn @hidden_fn() -> i64 {
+entry:
+  ret.i64 1
+}
+
+@protected
+fn @protected_fn() -> i64 {
+entry:
+  ret.i64 2
+}
+
+@internal
+fn @internal_fn() -> i64 {
+entry:
+  ret.i64 3
+}
+
+@private
+fn @private_fn() -> i64 {
+entry:
+  ret.i64 4
+}
+
+@cold
+fn @cold_fn() -> i64 {
+entry:
+  ret.i64 5
+}
+
+@hot
+fn @hot_fn() -> i64 {
+entry:
+  ret.i64 6
+}
+
+@inline
+fn @inline_fn() -> i64 {
+entry:
+  ret.i64 7
+}
+
+@pure
+fn @pure_fn(i64 %x) -> i64 {
+entry:
+  %y = add.i64 %x, 1
+  ret.i64 %y
+}
+
+@extern
+@noreturn
+fn @exit(i32 %code) -> void
+
+fn @main() -> i64 {
+entry:
+  %a = call @hidden_fn()
+  print %a
+  %b = call @protected_fn()
+  print %b
+  %c = call @internal_fn()
+  print %c
+  %d = call @private_fn()
+  print %d
+  %e = call @cold_fn()
+  print %e
+  %f = call @hot_fn()
+  print %f
+  %g = call @inline_fn()
+  print %g
+  %unused = call @pure_fn(9)
+  call @exit(0)
+  print 99
+  ret.i64 0
+}

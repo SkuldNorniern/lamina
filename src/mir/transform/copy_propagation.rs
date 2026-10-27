@@ -180,6 +180,28 @@ impl CopyPropagation {
                     changed = true;
                 }
             }
+            Instruction::AtomicLoad { addr, .. } => {
+                if let AddressMode::BaseOffset { base, .. } = addr
+                    && let Some(new_base) = value_map.get(base)
+                    && let Operand::Register(new_reg) = new_base
+                {
+                    *base = new_reg.clone();
+                    changed = true;
+                }
+            }
+            Instruction::AtomicStore { src, addr, .. }
+            | Instruction::AtomicBinary {
+                value: src, addr, ..
+            } => {
+                changed |= self.replace_operand(src, value_map);
+                if let AddressMode::BaseOffset { base, .. } = addr
+                    && let Some(new_base) = value_map.get(base)
+                    && let Operand::Register(new_reg) = new_base
+                {
+                    *base = new_reg.clone();
+                    changed = true;
+                }
+            }
             Instruction::Call { args, .. } => {
                 for arg in args {
                     changed |= self.replace_operand(arg, value_map);

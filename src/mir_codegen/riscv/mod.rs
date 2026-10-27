@@ -3,7 +3,7 @@ use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
-    emit_global_directives, self_tail_arguments, self_tail_schedule,
+    emit_global_directives, emit_symbol_visibility, self_tail_arguments, self_tail_schedule,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 mod simd;
@@ -507,6 +507,9 @@ fn emit_riscv_module<W: Write>(
     writeln!(writer, "{}", abi.get_text_section())?;
     emit_debug_file(writer, settings)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
+    emit_symbol_visibility(writer, module, target_os, |name| {
+        abi.mangle_function_name(name)
+    })?;
 
     for func_name in external_names(module) {
         let label = abi.mangle_function_name(func_name);

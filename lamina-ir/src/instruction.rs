@@ -64,7 +64,6 @@ use crate::types::{Identifier, Label, Literal, PrimitiveType, Type, Value};
 /// - **Release**: Previous stores cannot move after this operation
 /// - **AcqRel**: Both acquire and release semantics
 /// - **SeqCst**: Sequentially consistent (strongest ordering)
-#[cfg(feature = "nightly")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryOrdering {
     /// Relaxed ordering - no synchronization or ordering constraints
@@ -79,7 +78,6 @@ pub enum MemoryOrdering {
     SeqCst,
 }
 
-#[cfg(feature = "nightly")]
 impl fmt::Display for MemoryOrdering {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -156,7 +154,6 @@ impl fmt::Display for SimdOp {
 ///
 /// These operations perform read-modify-write sequences atomically,
 /// for thread-safe updates to shared memory locations.
-#[cfg(feature = "nightly")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AtomicBinOp {
     /// Atomic addition: `*ptr += value`
@@ -175,7 +172,6 @@ pub enum AtomicBinOp {
     CompareExchange,
 }
 
-#[cfg(feature = "nightly")]
 impl fmt::Display for AtomicBinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -713,7 +709,6 @@ pub enum Instruction<'a> {
         ptr: Value<'a>, // Must be a ptr from heapalloc
     },
     // --- Atomic Operations ---
-    #[cfg(feature = "nightly")]
     AtomicLoad {
         // Atomic load with memory ordering
         result: Identifier<'a>,
@@ -721,7 +716,6 @@ pub enum Instruction<'a> {
         ptr: Value<'a>,
         ordering: MemoryOrdering,
     },
-    #[cfg(feature = "nightly")]
     AtomicStore {
         // Atomic store with memory ordering
         ty: Type<'a>,
@@ -729,7 +723,6 @@ pub enum Instruction<'a> {
         value: Value<'a>,
         ordering: MemoryOrdering,
     },
-    #[cfg(feature = "nightly")]
     AtomicBinary {
         // Atomic read-modify-write operation
         op: AtomicBinOp,
@@ -739,7 +732,6 @@ pub enum Instruction<'a> {
         value: Value<'a>,
         ordering: MemoryOrdering,
     },
-    #[cfg(feature = "nightly")]
     AtomicCompareExchange {
         // Atomic compare-exchange operation
         result: Identifier<'a>,
@@ -751,7 +743,6 @@ pub enum Instruction<'a> {
         success_ordering: MemoryOrdering,
         failure_ordering: MemoryOrdering,
     },
-    #[cfg(feature = "nightly")]
     Fence {
         // Memory fence/barrier
         ordering: MemoryOrdering,
@@ -981,6 +972,14 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "writebyte",
         "readbyte",
         "writeptr",
+        // Atomic read-modify-write and load (from Instruction::AtomicBinary, Instruction::AtomicLoad)
+        "atomic_load",
+        "atomic_add",
+        "atomic_sub",
+        "atomic_and",
+        "atomic_or",
+        "atomic_xor",
+        "atomic_exchange",
     ];
 
     // Combine BinaryOp and CmpOp (generated from enums) with instruction-specific ops
@@ -1071,6 +1070,9 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         "writeptr",
         // Debugging (from Instruction::Print)
         "print",
+        // Atomic store and fence (from Instruction::AtomicStore, Instruction::Fence)
+        "atomic_store",
+        "fence",
     ]
 }
 
@@ -1117,6 +1119,9 @@ impl<'a> Instruction<'a> {
             | Instruction::Phi { result, .. }
             | Instruction::PtrToInt { result, .. }
             | Instruction::IntToPtr { result, .. }
+            | Instruction::AtomicLoad { result, .. }
+            | Instruction::AtomicBinary { result, .. }
+            | Instruction::AtomicCompareExchange { result, .. }
             | Instruction::Call {
                 result: Some(result),
                 ..
@@ -1200,6 +1205,22 @@ impl<'a> Instruction<'a> {
             }
             Instruction::Write { buffer, .. } | Instruction::Read { buffer, .. } => {
                 push_value(buffer, &mut vars);
+            }
+            Instruction::AtomicLoad { ptr, .. } => push_value(ptr, &mut vars),
+            Instruction::AtomicStore { ptr, value, .. }
+            | Instruction::AtomicBinary { ptr, value, .. } => {
+                push_value(ptr, &mut vars);
+                push_value(value, &mut vars);
+            }
+            Instruction::AtomicCompareExchange {
+                ptr,
+                expected,
+                desired,
+                ..
+            } => {
+                push_value(ptr, &mut vars);
+                push_value(expected, &mut vars);
+                push_value(desired, &mut vars);
             }
             Instruction::Phi { incoming, .. } => {
                 for (v, _) in incoming {
@@ -1386,21 +1407,18 @@ impl fmt::Display for Instruction<'_> {
                 write!(f, "memset {dst}, {value}, {size}")
             }
             Instruction::Dealloc { ptr } => write!(f, "heapfree {ptr}"),
-            #[cfg(feature = "nightly")]
             Instruction::AtomicLoad {
                 result,
                 ty,
                 ptr,
                 ordering,
             } => write!(f, "%{result} = atomic_load.{ty} {ptr}, {ordering}"),
-            #[cfg(feature = "nightly")]
             Instruction::AtomicStore {
                 ty,
                 ptr,
                 value,
                 ordering,
             } => write!(f, "atomic_store.{ty} {ptr}, {value}, {ordering}"),
-            #[cfg(feature = "nightly")]
             Instruction::AtomicBinary {
                 op,
                 result,
@@ -1409,7 +1427,6 @@ impl fmt::Display for Instruction<'_> {
                 value,
                 ordering,
             } => write!(f, "%{result} = {op}.{ty} {ptr}, {value}, {ordering}"),
-            #[cfg(feature = "nightly")]
             Instruction::AtomicCompareExchange {
                 result,
                 success,
@@ -1423,7 +1440,6 @@ impl fmt::Display for Instruction<'_> {
                 f,
                 "%{result}, %{success} = atomic_cmpxchg.{ty} {ptr}, {expected}, {desired}, {success_ordering}, {failure_ordering}"
             ),
-            #[cfg(feature = "nightly")]
             Instruction::Fence { ordering } => write!(f, "fence {ordering}"),
             #[cfg(feature = "nightly")]
             Instruction::SimdBinary {

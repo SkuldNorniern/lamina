@@ -35,6 +35,9 @@ impl Transform for FunctionInlining {
     }
 }
 
+const CALLEE_SIZE_LIMIT: usize = 30;
+const ANNOTATED_CALLEE_SIZE_LIMIT: usize = 200;
+
 /// Module-level function inlining that analyzes the entire program.
 #[derive(Default)]
 pub struct ModuleInlining {
@@ -69,7 +72,7 @@ impl ModuleInlining {
                             && let Some(function) = module.functions.get(callee)
                             && function.sig.kernel.is_none()
                             && !function.sig.no_inline
-                            && function.instruction_count() <= 30
+                            && function.instruction_count() <= Self::callee_size_limit(function)
                             && function.sig.params.len() == args.len()
                             && function.sig.ret_aggregate.is_none()
                             && function
@@ -112,6 +115,14 @@ impl ModuleInlining {
             .validate_in_pipeline()
             .map_err(|errors| TransformError::VerificationFailed { errors })?;
         Ok(count)
+    }
+
+    fn callee_size_limit(function: &Function) -> usize {
+        if function.sig.inline_hint {
+            ANNOTATED_CALLEE_SIZE_LIMIT
+        } else {
+            CALLEE_SIZE_LIMIT
+        }
     }
 
     fn is_recursive(
@@ -401,6 +412,34 @@ impl ModuleInlining {
                     operand(value, map);
                 }
             }
+            Instruction::AtomicLoad { dst, addr, .. } => {
+                *dst = map(dst);
+                address(addr, map);
+            }
+            Instruction::AtomicStore { src, addr, .. } => {
+                operand(src, map);
+                address(addr, map);
+            }
+            Instruction::AtomicBinary {
+                dst, addr, value, ..
+            } => {
+                *dst = map(dst);
+                operand(value, map);
+                address(addr, map);
+            }
+            Instruction::AtomicCompareExchange {
+                dst,
+                addr,
+                expected,
+                desired,
+                ..
+            } => {
+                *dst = map(dst);
+                operand(expected, map);
+                operand(desired, map);
+                address(addr, map);
+            }
+            Instruction::Fence { .. } => {}
             Instruction::Jmp { .. }
             | Instruction::Unreachable
             | Instruction::SafePoint
@@ -728,5 +767,76 @@ mod execution_tests {
         }
         fs::remove_dir_all(directory)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod inline_hint_tests {
+    use super::*;
+    use crate::{mir::codegen::from_ir, parser::parse_module};
+
+    fn chain_callee(annotation: &str, body_len: usize) -> String {
+        let mut body = String::from("entry:\n %t0 = add.i64 1, 1\n");
+        for i in 1..body_len {
+            body.push_str(&format!(" %t{i} = add.i64 %t{}, 1\n", i - 1));
+        }
+        body.push_str(&format!(" ret.i64 %t{}\n", body_len - 1));
+        format!("{annotation}fn @big() -> i64 {{\n{body}}}\n")
+    }
+
+    fn inline_count(source: &str) -> (usize, Module) {
+        let ir = parse_module(source).expect("parse");
+        let mut module = from_ir(&ir, "inline hint").expect("lower");
+        let count = ModuleInlining::new()
+            .inline_functions(&mut module)
+            .expect("inline");
+        (count, module)
+    }
+
+    fn main_source(callee: &str) -> String {
+        format!("{callee}fn @main() -> i64 {{\nentry:\n %v = call @big()\n ret.i64 %v\n}}\n")
+    }
+
+    fn main_has_call(module: &Module) -> bool {
+        module
+            .get_function("main")
+            .expect("main")
+            .blocks
+            .iter()
+            .flat_map(|b| &b.instructions)
+            .any(|i| matches!(i, Instruction::Call { .. }))
+    }
+
+    #[test]
+    fn inline_hint_accepts_callee_above_default_size_limit() {
+        let source = main_source(&chain_callee("@inline ", 40));
+        let (count, module) = inline_count(&source);
+        assert_eq!(count, 1);
+        assert!(!main_has_call(&module));
+    }
+
+    #[test]
+    fn callee_above_default_size_limit_is_not_inlined_without_hint() {
+        let source = main_source(&chain_callee("", 40));
+        let (count, module) = inline_count(&source);
+        assert_eq!(count, 0);
+        assert!(main_has_call(&module));
+    }
+
+    #[test]
+    fn inline_hint_keeps_an_upper_size_bound() {
+        let source = main_source(&chain_callee("@inline ", 260));
+        let (count, module) = inline_count(&source);
+        assert_eq!(count, 0);
+        assert!(main_has_call(&module));
+    }
+
+    #[test]
+    fn inline_hint_does_not_override_recursion_refusal() {
+        let source = "@inline fn @rec(i64 %n) -> i64 {\nentry:\n %r = call @rec(%n)\n ret.i64 %r\n}\nfn @main() -> i64 {\nentry:\n %v = call @rec(3)\n ret.i64 %v\n}\n";
+        let (count, module) = inline_count(source);
+        assert_eq!(count, 0);
+        assert!(main_has_call(&module));
     }
 }

@@ -3,8 +3,8 @@
 use crate::{
     LaminaError,
     ir::{
-        AllocType, BinaryOp, CmpOp, Identifier, Instruction, PrimitiveType, Type, UnaryOp, Value,
-        types::sizeof_type,
+        AllocType, AtomicBinOp, BinaryOp, CmpOp, Identifier, Instruction, MemoryOrdering,
+        PrimitiveType, Type, UnaryOp, Value, types::sizeof_type,
     },
     parser::{
         globals::parse_value_with_type_hint, state::ParserState, types::parse_type,
@@ -19,6 +19,11 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
 
     if state.current_char() == Some('%') {
         let result = state.parse_value_identifier()?;
+        if state.current_char() == Some(',') {
+            return Err(state.error(
+                "Instructions with two results are not supported yet\n  Hint: atomic_cmpxchg yields a value and a success flag, which the text syntax cannot express yet",
+            ));
+        }
         state.expect_char('=')?;
         state.skip_whitespace_and_comments();
         let opcode_str = state.parse_identifier_str()?;
@@ -89,6 +94,19 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "writebyte" => parse_writebyte_assignment(state, result),
             "readbyte" => parse_readbyte_assignment(state, result),
             "writeptr" => parse_writeptr_assignment(state, result),
+            "atomic_load" => parse_atomic_load(state, result),
+            "atomic_add" => parse_atomic_rmw(state, result, AtomicBinOp::Add),
+            "atomic_sub" => parse_atomic_rmw(state, result, AtomicBinOp::Sub),
+            "atomic_and" => parse_atomic_rmw(state, result, AtomicBinOp::And),
+            "atomic_or" => parse_atomic_rmw(state, result, AtomicBinOp::Or),
+            "atomic_xor" => parse_atomic_rmw(state, result, AtomicBinOp::Xor),
+            "atomic_exchange" => parse_atomic_rmw(state, result, AtomicBinOp::Exchange),
+            "atomic_cmpxchg" => Err(state.error(
+                "atomic_cmpxchg is not supported yet: it yields two results\n  Hint: Use atomic_exchange or an atomic_add-style operation for now",
+            )),
+            "atomic_store" | "fence" => Err(state.error(format!(
+                "{opcode_str} produces no result\n  Hint: Drop the '%name =' prefix"
+            ))),
             _ => {
                 let valid_ops = super::get_assignment_opcode_names();
                 let suggestions = super::suggest_alternatives(opcode_str, valid_ops);
@@ -138,6 +156,12 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "memcpy" => parse_memcpy(state),
             "memmove" => parse_memmove(state),
             "memset" => parse_memset(state),
+            "atomic_store" => parse_atomic_store(state),
+            "fence" => parse_fence(state),
+            "atomic_load" | "atomic_add" | "atomic_sub" | "atomic_and" | "atomic_or"
+            | "atomic_xor" | "atomic_exchange" | "atomic_cmpxchg" => Err(state.error(format!(
+                "{opcode_str} produces a value\n  Hint: Write '%name = {opcode_str}.<type> ...'"
+            ))),
             _ => {
                 let valid_ops = super::get_non_assignment_opcode_names();
                 let suggestions = super::suggest_alternatives(opcode_str, valid_ops);
@@ -166,6 +190,101 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             }
         }
     }
+}
+
+fn parse_memory_ordering_name(state: &mut ParserState<'_>) -> Result<MemoryOrdering, LaminaError> {
+    let name = state.parse_identifier_str()?;
+    match name {
+        "relaxed" => Ok(MemoryOrdering::Relaxed),
+        "acquire" => Ok(MemoryOrdering::Acquire),
+        "release" => Ok(MemoryOrdering::Release),
+        "acqrel" => Ok(MemoryOrdering::AcqRel),
+        "seqcst" => Ok(MemoryOrdering::SeqCst),
+        _ => Err(state.error(format!(
+            "Unknown memory ordering '{name}'\n  Hint: Valid orderings are: relaxed, acquire, release, acqrel, seqcst"
+        ))),
+    }
+}
+
+fn parse_memory_ordering_operand(
+    state: &mut ParserState<'_>,
+) -> Result<MemoryOrdering, LaminaError> {
+    state.expect_char(',')?;
+    parse_memory_ordering_name(state)
+}
+
+fn parse_atomic_type(state: &mut ParserState<'_>) -> Result<PrimitiveType, LaminaError> {
+    let ty = parse_primitive_type_suffix(state)?;
+    if matches!(ty, PrimitiveType::F32 | PrimitiveType::F64) {
+        return Err(state.error(format!(
+            "Atomic operations take an integer or pointer type, found {ty}"
+        )));
+    }
+    Ok(ty)
+}
+
+fn parse_atomic_load<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+) -> Result<Instruction<'a>, LaminaError> {
+    let ty = parse_atomic_type(state)?;
+    let ptr = parse_value(state)?;
+    let ordering = parse_memory_ordering_operand(state)?;
+    if matches!(ordering, MemoryOrdering::Release | MemoryOrdering::AcqRel) {
+        return Err(state.error(format!(
+            "atomic_load cannot use {ordering} ordering\n  Hint: Use relaxed, acquire or seqcst"
+        )));
+    }
+    Ok(Instruction::AtomicLoad {
+        result,
+        ty: Type::Primitive(ty),
+        ptr,
+        ordering,
+    })
+}
+
+fn parse_atomic_store<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
+    let ty = parse_atomic_type(state)?;
+    let ptr = parse_value(state)?;
+    state.expect_char(',')?;
+    let value = parse_typed_operand(state, &Type::Primitive(ty))?;
+    let ordering = parse_memory_ordering_operand(state)?;
+    if matches!(ordering, MemoryOrdering::Acquire | MemoryOrdering::AcqRel) {
+        return Err(state.error(format!(
+            "atomic_store cannot use {ordering} ordering\n  Hint: Use relaxed, release or seqcst"
+        )));
+    }
+    Ok(Instruction::AtomicStore {
+        ty: Type::Primitive(ty),
+        ptr,
+        value,
+        ordering,
+    })
+}
+
+fn parse_atomic_rmw<'a>(
+    state: &mut ParserState<'a>,
+    result: Identifier<'a>,
+    op: AtomicBinOp,
+) -> Result<Instruction<'a>, LaminaError> {
+    let ty = parse_atomic_type(state)?;
+    let ptr = parse_value(state)?;
+    state.expect_char(',')?;
+    let value = parse_typed_operand(state, &Type::Primitive(ty))?;
+    let ordering = parse_memory_ordering_operand(state)?;
+    Ok(Instruction::AtomicBinary {
+        op,
+        result,
+        ty: Type::Primitive(ty),
+        ptr,
+        value,
+        ordering,
+    })
+}
+
+fn parse_fence<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
+    let ordering = parse_memory_ordering_name(state)?;
+    Ok(Instruction::Fence { ordering })
 }
 
 /// Parses a primitive type suffix after a dot (e.g., `.i32` in `add.i32`).

@@ -12,8 +12,9 @@ use std::{
 use crate::{
     error::LaminaError,
     mir::{
-        Function, Global, Immediate, Instruction, IntBinOp, MirType, Module as MirModule, Operand,
-        Register, RegisterClass, Signature, VirtualReg,
+        CodePlacement, Function, Global, Immediate, Instruction, IntBinOp, MirType,
+        Module as MirModule, Operand, Register, RegisterClass, Signature, SymbolVisibility,
+        VirtualReg,
     },
     mir_codegen::{CodegenError, CodegenOptions, MirCodegenSettings},
 };
@@ -354,6 +355,12 @@ where
                 }
                 match compile_func_arc(&task.func_name, &task.func, target_os) {
                     Ok(assembly) => {
+                        let assembly = place_function_assembly(
+                            &task.func_name,
+                            &task.func,
+                            target_os,
+                            assembly,
+                        );
                         if result_sender
                             .send(CompilationResult {
                                 func_name: task.func_name,
@@ -457,7 +464,12 @@ where
 
     let mut results = Vec::new();
     for (idx, (func_name, func)) in functions.into_iter().enumerate() {
-        let assembly = compile_func(func_name, func, target_os)?;
+        let assembly = place_function_assembly(
+            func_name,
+            func,
+            target_os,
+            compile_func(func_name, func, target_os)?,
+        );
         results.push(CompilationResult {
             func_name: func_name.to_string(),
             func_index: idx,
@@ -480,7 +492,90 @@ pub fn emit_debug_file<W: Write>(
     Ok(())
 }
 
-/// Emit `.globl` for `main` and every exported function, leaving other functions local.
+/// Puts `@cold` and `@hot` functions in their own ELF text section, so the linker can
+/// group them apart from the rest of the code. Other targets keep one text section.
+fn place_function_assembly(
+    func_name: &str,
+    func: &Function,
+    target_os: TargetOperatingSystem,
+    assembly: Vec<u8>,
+) -> Vec<u8> {
+    let Some(placement) = func.sig.placement else {
+        return assembly;
+    };
+    if !os_uses_elf_visibility(target_os) {
+        return assembly;
+    }
+    let section = match placement {
+        CodePlacement::Cold => ".text.unlikely",
+        CodePlacement::Hot => ".text.hot",
+    };
+    let mut placed = format!("    .section {section}.{func_name},\"ax\",@progbits\n").into_bytes();
+    placed.extend_from_slice(&assembly);
+    placed.extend_from_slice(b"    .text\n");
+    placed
+}
+
+/// ELF targets take `.internal`, `.hidden` and `.protected`. Mach-O has only
+/// `.private_extern`, and COFF, wasm and GPU targets have no such symbol visibility.
+fn os_uses_elf_visibility(target_os: TargetOperatingSystem) -> bool {
+    matches!(
+        target_os,
+        TargetOperatingSystem::Linux
+            | TargetOperatingSystem::Android
+            | TargetOperatingSystem::FreeBSD
+            | TargetOperatingSystem::OpenBSD
+            | TargetOperatingSystem::NetBSD
+            | TargetOperatingSystem::DragonFly
+    )
+}
+
+fn visibility_directive(
+    visibility: SymbolVisibility,
+    target_os: TargetOperatingSystem,
+) -> Option<&'static str> {
+    if os_uses_macho(target_os) {
+        return match visibility {
+            SymbolVisibility::Protected => None,
+            _ => Some(".private_extern"),
+        };
+    }
+    if !os_uses_elf_visibility(target_os) {
+        return None;
+    }
+    Some(match visibility {
+        SymbolVisibility::Internal => ".internal",
+        SymbolVisibility::Private => ".local",
+        SymbolVisibility::Hidden => ".hidden",
+        SymbolVisibility::Protected => ".protected",
+    })
+}
+
+/// Emits the symbol-visibility directive for every function annotated with one.
+pub fn emit_symbol_visibility<W: Write>(
+    writer: &mut W,
+    module: &MirModule,
+    target_os: TargetOperatingSystem,
+    mangle: impl Fn(&str) -> String,
+) -> Result<(), LaminaError> {
+    let mut names: Vec<(&str, SymbolVisibility)> = module
+        .functions
+        .iter()
+        .filter(|(name, _)| !module.is_external(name))
+        .filter_map(|(name, func)| func.sig.visibility.map(|v| (name.as_str(), v)))
+        .collect();
+    names.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    for (name, visibility) in names {
+        if let Some(directive) = visibility_directive(visibility, target_os) {
+            writeln!(writer, "{directive} {}", mangle(name))?;
+        }
+    }
+    Ok(())
+}
+
+/// Emit `.globl` for `main`, every exported function, and every function whose visibility
+/// is `hidden` or `protected`, which stay linkable from other objects. Other functions stay
+/// local.
 pub fn emit_global_directives<W: Write>(
     writer: &mut W,
     module: &MirModule,
@@ -491,6 +586,19 @@ pub fn emit_global_directives<W: Write>(
         .iter()
         .map(String::as_str)
         .chain(module.functions.contains_key("main").then_some("main"))
+        .chain(
+            module
+                .functions
+                .iter()
+                .filter(|(name, func)| {
+                    !module.is_external(name)
+                        && matches!(
+                            func.sig.visibility,
+                            Some(SymbolVisibility::Hidden | SymbolVisibility::Protected)
+                        )
+                })
+                .map(|(name, _)| name.as_str()),
+        )
         .chain(
             module
                 .globals
@@ -1794,6 +1902,114 @@ entry:
             assert!(text.contains(".globl main\n"), "{name}: {text}");
             assert!(!text.contains(".globl helper\n"), "{name}: {text}");
         }
+    }
+
+    const VISIBILITY_SOURCE: &str = r#"
+@hidden fn @hidden_fn() -> i64 {
+entry:
+ ret.i64 1
+}
+@protected fn @protected_fn() -> i64 {
+entry:
+ ret.i64 2
+}
+@internal fn @internal_fn() -> i64 {
+entry:
+ ret.i64 3
+}
+@private fn @private_fn() -> i64 {
+entry:
+ ret.i64 4
+}
+@cold fn @cold_fn() -> i64 {
+entry:
+ ret.i64 5
+}
+@hot fn @hot_fn() -> i64 {
+entry:
+ ret.i64 6
+}
+fn @main() -> i64 {
+entry:
+ %a = call @hidden_fn()
+ %b = call @protected_fn()
+ %c = call @internal_fn()
+ %d = call @private_fn()
+ %e = call @cold_fn()
+ %f = call @hot_fn()
+ ret.i64 %a
+}
+"#;
+
+    fn emit_visibility_module(os: TargetOperatingSystem) -> String {
+        let ir = parse_module(VISIBILITY_SOURCE).expect("parse visibility module");
+        let mir = from_ir(&ir, "visibility").expect("lower visibility module");
+        let mut output = Vec::new();
+        generate_mir_x86_64(&mir, &mut output, os).expect("emit visibility module");
+        String::from_utf8(output).expect("utf8 assembly")
+    }
+
+    #[test]
+    fn elf_visibility_annotations_emit_matching_directives() {
+        let text = emit_visibility_module(TargetOperatingSystem::Linux);
+        assert!(text.contains(".hidden hidden_fn\n"), "{text}");
+        assert!(text.contains(".globl hidden_fn\n"), "{text}");
+        assert!(text.contains(".protected protected_fn\n"), "{text}");
+        assert!(text.contains(".globl protected_fn\n"), "{text}");
+        assert!(text.contains(".internal internal_fn\n"), "{text}");
+        assert!(!text.contains(".globl internal_fn\n"), "{text}");
+        assert!(text.contains(".local private_fn\n"), "{text}");
+        assert!(!text.contains(".globl private_fn\n"), "{text}");
+        assert!(!text.contains(".hidden main"), "{text}");
+    }
+
+    #[test]
+    fn macho_visibility_uses_private_extern_and_skips_protected() {
+        let text = emit_visibility_module(TargetOperatingSystem::MacOS);
+        assert!(text.contains(".private_extern _hidden_fn\n"), "{text}");
+        assert!(text.contains(".private_extern _internal_fn\n"), "{text}");
+        assert!(text.contains(".private_extern _private_fn\n"), "{text}");
+        assert!(!text.contains(".protected"), "{text}");
+        assert!(!text.contains(".hidden"), "{text}");
+        assert!(!text.contains(".internal"), "{text}");
+    }
+
+    #[test]
+    fn coff_targets_emit_no_elf_visibility_directives() {
+        let text = emit_visibility_module(TargetOperatingSystem::Windows);
+        for directive in [
+            ".hidden",
+            ".protected",
+            ".internal",
+            ".local",
+            ".private_extern",
+        ] {
+            assert!(!text.contains(directive), "{directive}: {text}");
+        }
+    }
+
+    #[test]
+    fn cold_and_hot_functions_get_their_own_text_section() {
+        let text = emit_visibility_module(TargetOperatingSystem::Linux);
+        let cold_section = ".section .text.unlikely.cold_fn,\"ax\",@progbits\n";
+        let cold_label = "cold_fn:\n";
+        let start = text.find(cold_section).expect(&text);
+        let label = text.find(cold_label).expect(&text);
+        assert!(start < label, "{text}");
+        let resumed = text[label..].find("    .text\n").expect(&text) + label;
+        assert!(resumed > label, "{text}");
+        assert!(
+            text.contains(".section .text.hot.hot_fn,\"ax\",@progbits\n"),
+            "{text}"
+        );
+        assert!(!text.contains(".section .text.unlikely.main"), "{text}");
+    }
+
+    #[test]
+    fn cold_and_hot_sections_are_not_emitted_for_macho() {
+        let text = emit_visibility_module(TargetOperatingSystem::MacOS);
+        assert!(!text.contains(".text.unlikely"), "{text}");
+        assert!(!text.contains(".text.hot"), "{text}");
     }
 
     #[test]

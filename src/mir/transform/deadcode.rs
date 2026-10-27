@@ -1,7 +1,7 @@
 //! Dead code elimination transform for MIR.
 
 use crate::mir::{
-    Block, Function, Instruction, Register,
+    Block, Function, Instruction, Module, Register,
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use std::collections::{HashMap, HashSet};
@@ -271,17 +271,96 @@ impl DeadCodeElimination {
             | Instruction::PatchPoint { .. }
             | Instruction::Comment { .. } => false,
 
-            // SIMD memory and atomic operations have side effects (nightly only)
-            #[cfg(feature = "nightly")]
-            Instruction::SimdLoad { .. }
-            | Instruction::SimdStore { .. }
-            | Instruction::AtomicLoad { .. }
+            // Atomic operations and fences have side effects
+            Instruction::AtomicLoad { .. }
             | Instruction::AtomicStore { .. }
             | Instruction::AtomicBinary { .. }
             | Instruction::AtomicCompareExchange { .. }
             | Instruction::Fence { .. } => false,
+
+            // SIMD memory operations have side effects (nightly only)
+            #[cfg(feature = "nightly")]
+            Instruction::SimdLoad { .. } | Instruction::SimdStore { .. } => false,
         }
     }
+}
+
+/// Ends each block at the first call to a `@noreturn` function, so the code after it is
+/// unreachable. Returns the number of blocks changed.
+pub fn truncate_after_noreturn_calls(module: &mut Module) -> usize {
+    let noreturn: HashSet<String> = module
+        .functions
+        .iter()
+        .filter(|(_, func)| func.sig.noreturn)
+        .map(|(name, _)| name.clone())
+        .collect();
+    if noreturn.is_empty() {
+        return 0;
+    }
+
+    let mut changed = 0;
+    for func in module.functions.values_mut() {
+        for block in &mut func.blocks {
+            let Some(index) = block.instructions.iter().position(
+                |inst| matches!(inst, Instruction::Call { name, .. } if noreturn.contains(name)),
+            ) else {
+                continue;
+            };
+            let already_ends = block.instructions.len() == index + 2
+                && matches!(block.instructions.last(), Some(Instruction::Unreachable));
+            if already_ends {
+                continue;
+            }
+            block.instructions.truncate(index + 1);
+            block.instructions.push(Instruction::Unreachable);
+            changed += 1;
+        }
+    }
+    changed
+}
+
+/// Deletes calls to `@pure` or `@const` functions whose result is never read. Repeats
+/// until a round removes nothing, since removing a call can leave its argument unread.
+/// Returns the number of calls removed.
+pub fn remove_dead_pure_calls(module: &mut Module) -> usize {
+    let pure: HashSet<String> = module
+        .functions
+        .iter()
+        .filter(|(_, func)| func.sig.pure)
+        .map(|(name, _)| name.clone())
+        .collect();
+    if pure.is_empty() {
+        return 0;
+    }
+
+    let mut total = 0;
+    loop {
+        let mut round = 0;
+        for func in module.functions.values_mut() {
+            let mut uses: HashMap<Register, usize> = HashMap::new();
+            for inst in func.blocks.iter().flat_map(|b| &b.instructions) {
+                for reg in inst.use_regs() {
+                    *uses.entry(reg.clone()).or_insert(0) += 1;
+                }
+            }
+            for block in &mut func.blocks {
+                let before = block.instructions.len();
+                block.instructions.retain(|inst| match inst {
+                    Instruction::Call { name, ret, .. } if pure.contains(name) => match ret {
+                        Some(reg) => uses.get(reg).is_some_and(|&n| n > 0),
+                        None => false,
+                    },
+                    _ => true,
+                });
+                round += before - block.instructions.len();
+            }
+        }
+        if round == 0 {
+            break;
+        }
+        total += round;
+    }
+    total
 }
 
 #[cfg(test)]
@@ -583,5 +662,162 @@ mod tests {
         assert!(result.is_ok());
         // All dead instructions should be removed, only ret remains
         assert_eq!(func.blocks[0].instructions.len(), 1);
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod annotation_tests {
+    use super::*;
+    use crate::{
+        mir::{codegen::from_ir, transform::TransformPipeline},
+        mir_codegen::x86_64::generate_mir_x86_64,
+        parser::parse_module,
+    };
+    use lamina_platform::TargetOperatingSystem;
+
+    fn lower(source: &str) -> Module {
+        let ir = parse_module(source).expect("parse");
+        from_ir(&ir, "annotated").expect("lower")
+    }
+
+    fn calls_in(func: &Function) -> usize {
+        func.blocks
+            .iter()
+            .flat_map(|b| &b.instructions)
+            .filter(|i| matches!(i, Instruction::Call { .. }))
+            .count()
+    }
+
+    const NORETURN_CALLER: &str = "fn @stop() -> void {\nentry:\n ret.void\n}\nfn @main() -> i64 {\nentry:\n call @stop()\n %x = add.i64 1, 2\n ret.i64 %x\n}";
+
+    #[test]
+    fn code_after_noreturn_call_becomes_unreachable() {
+        let source = NORETURN_CALLER.replacen("fn @stop", "@noreturn fn @stop", 1);
+        let mut module = lower(&source);
+        assert_eq!(truncate_after_noreturn_calls(&mut module), 1);
+        let block = &module.get_function("main").expect("main").blocks[0];
+        assert_eq!(block.instructions.len(), 2, "{:?}", block.instructions);
+        assert!(matches!(block.instructions[0], Instruction::Call { .. }));
+        assert!(matches!(block.instructions[1], Instruction::Unreachable));
+    }
+
+    #[test]
+    fn calls_to_returning_functions_keep_following_code() {
+        let mut module = lower(NORETURN_CALLER);
+        assert_eq!(truncate_after_noreturn_calls(&mut module), 0);
+        let block = &module.get_function("main").expect("main").blocks[0];
+        assert!(
+            !block
+                .instructions
+                .iter()
+                .any(|i| matches!(i, Instruction::Unreachable))
+        );
+        assert!(matches!(
+            block.instructions.last(),
+            Some(Instruction::Ret { .. })
+        ));
+    }
+
+    #[test]
+    fn noreturn_truncation_survives_the_standard_pipeline() {
+        let source = NORETURN_CALLER.replacen("fn @stop", "@noreturn fn @stop", 1);
+        let mut module = lower(&source);
+        TransformPipeline::default_for_opt_level(1)
+            .apply_to_module(&mut module)
+            .expect("optimize");
+        let main = module.get_function("main").expect("main");
+        let instructions: Vec<&Instruction> =
+            main.blocks.iter().flat_map(|b| &b.instructions).collect();
+        assert!(
+            instructions
+                .iter()
+                .any(|i| matches!(i, Instruction::Call { .. }))
+        );
+        assert!(matches!(
+            instructions.last(),
+            Some(Instruction::Unreachable)
+        ));
+        assert!(
+            !instructions
+                .iter()
+                .any(|i| matches!(i, Instruction::IntBinary { .. }))
+        );
+    }
+
+    #[test]
+    fn noreturn_call_emits_trap_after_the_call_on_x86_64() {
+        let source = NORETURN_CALLER.replacen("fn @stop", "@noreturn fn @stop", 1);
+        let mut module = lower(&source);
+        TransformPipeline::default_for_opt_level(1)
+            .apply_to_module(&mut module)
+            .expect("optimize");
+        let mut output = Vec::new();
+        generate_mir_x86_64(&module, &mut output, TargetOperatingSystem::Linux)
+            .expect("emit x86_64");
+        let text = String::from_utf8(output).expect("utf8 assembly");
+        let call = text.find("call stop").expect(&text);
+        assert!(text[call..].contains("ud2"), "{text}");
+    }
+
+    #[test]
+    fn noreturn_call_compiles_on_every_native_backend() {
+        use crate::error::LaminaError;
+        use crate::mir::Module;
+        use crate::mir_codegen::{
+            arm::aarch64::generate_mir_aarch64, powerpc::powerpc64::generate_mir_ppc64,
+            riscv::generate_mir_riscv,
+        };
+        let source = NORETURN_CALLER.replacen("fn @stop", "@noreturn fn @stop", 1);
+        let mut module = lower(&source);
+        TransformPipeline::default_for_opt_level(1)
+            .apply_to_module(&mut module)
+            .expect("optimize");
+        type Emitter = fn(&Module, &mut Vec<u8>, TargetOperatingSystem) -> Result<(), LaminaError>;
+        let emitters: [(&str, Emitter); 4] = [
+            ("x86_64", generate_mir_x86_64::<Vec<u8>>),
+            ("aarch64", generate_mir_aarch64::<Vec<u8>>),
+            ("riscv", generate_mir_riscv::<Vec<u8>>),
+            ("ppc64", generate_mir_ppc64::<Vec<u8>>),
+        ];
+        for (name, emit) in emitters {
+            let mut output = Vec::new();
+            emit(&module, &mut output, TargetOperatingSystem::Linux)
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+        }
+    }
+
+    fn pure_source(annotation: &str, used: bool) -> String {
+        let tail = if used {
+            "%v = call @k()\n ret.i64 %v"
+        } else {
+            "call @k()\n ret.i64 1"
+        };
+        format!(
+            "{annotation}fn @k() -> i64 {{\nentry:\n ret.i64 4\n}}\nfn @main() -> i64 {{\nentry:\n {tail}\n}}"
+        )
+    }
+
+    #[test]
+    fn unused_pure_call_is_removed() {
+        for annotation in ["@pure ", "@const "] {
+            let mut module = lower(&pure_source(annotation, false));
+            assert_eq!(remove_dead_pure_calls(&mut module), 1, "{annotation}");
+            assert_eq!(calls_in(module.get_function("main").expect("main")), 0);
+        }
+    }
+
+    #[test]
+    fn unused_call_to_unannotated_function_is_kept() {
+        let mut module = lower(&pure_source("", false));
+        assert_eq!(remove_dead_pure_calls(&mut module), 0);
+        assert_eq!(calls_in(module.get_function("main").expect("main")), 1);
+    }
+
+    #[test]
+    fn used_pure_call_is_kept() {
+        let mut module = lower(&pure_source("@pure ", true));
+        assert_eq!(remove_dead_pure_calls(&mut module), 0);
+        assert_eq!(calls_in(module.get_function("main").expect("main")), 1);
     }
 }

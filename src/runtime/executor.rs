@@ -287,6 +287,15 @@ pub(crate) fn interpret_mir_function(
                         "Interpreter: unsupported instruction".to_owned(),
                     ));
                 }
+                Instruction::AtomicLoad { .. }
+                | Instruction::AtomicStore { .. }
+                | Instruction::AtomicBinary { .. }
+                | Instruction::AtomicCompareExchange { .. }
+                | Instruction::Fence { .. } => {
+                    return Err(LaminaError::RuntimeError(
+                        "Interpreter: Atomic instructions not supported".to_owned(),
+                    ));
+                }
                 #[cfg(feature = "nightly")]
                 Instruction::SimdBinary { .. }
                 | Instruction::SimdUnary { .. }
@@ -295,14 +304,9 @@ pub(crate) fn interpret_mir_function(
                 | Instruction::SimdExtract { .. }
                 | Instruction::SimdInsert { .. }
                 | Instruction::SimdLoad { .. }
-                | Instruction::SimdStore { .. }
-                | Instruction::AtomicLoad { .. }
-                | Instruction::AtomicStore { .. }
-                | Instruction::AtomicBinary { .. }
-                | Instruction::AtomicCompareExchange { .. }
-                | Instruction::Fence { .. } => {
+                | Instruction::SimdStore { .. } => {
                     return Err(LaminaError::RuntimeError(
-                        "Interpreter: SIMD/Atomic instructions not supported".to_owned(),
+                        "Interpreter: SIMD instructions not supported".to_owned(),
                     ));
                 }
             }

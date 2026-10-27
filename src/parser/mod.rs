@@ -149,7 +149,20 @@ pub fn get_alloc_type_names() -> &'static [&'static str] {
 /// Update this list when adding new annotations to the parser match arm.
 pub fn get_annotation_names() -> &'static [&'static str] {
     &[
-        "kernel", "inline", "export", "extern", "noreturn", "noinline", "cold",
+        "kernel",
+        "inline",
+        "export",
+        "extern",
+        "noreturn",
+        "noinline",
+        "cold",
+        "hot",
+        "pure",
+        "const",
+        "internal",
+        "private",
+        "hidden",
+        "protected",
     ]
 }
 
@@ -247,7 +260,8 @@ mod tests {
 
     use super::*;
     use crate::ir::{
-        BinaryOp, CmpOp, GlobalInit, IRBuilder, Instruction, Literal, Type, Value,
+        AtomicBinOp, BinaryOp, CmpOp, GlobalInit, IRBuilder, Instruction, Literal, MemoryOrdering,
+        Type, Value,
         builder::{i32 as ir_i32, i64 as ir_i64},
     };
     use std::fs;
@@ -1670,6 +1684,155 @@ entry:
             b.build_ir_text()
         );
         parse_module(&text).unwrap_or_else(|e| panic!("{e}\n---\n{text}"));
+    }
+
+    fn atomic_entry(lines: &[String]) -> String {
+        format!(
+            "fn @f(ptr %p) -> i64 {{\nentry:\n{}\n ret.i64 0\n}}",
+            lines
+                .iter()
+                .map(|line| format!(" {line}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    }
+
+    fn atomic_parse_error(line: &str) -> String {
+        parse_module(&atomic_entry(&[line.to_string()]))
+            .expect_err("atomic source should be rejected")
+            .to_string()
+    }
+
+    #[test]
+    fn atomic_operations_parse_and_display_round_trip() {
+        let orderings = ["relaxed", "acquire", "release", "acqrel", "seqcst"];
+        let mut lines = Vec::new();
+        let mut expected = Vec::new();
+        for (index, ordering) in orderings.iter().enumerate() {
+            for op in [
+                "atomic_add",
+                "atomic_sub",
+                "atomic_and",
+                "atomic_or",
+                "atomic_xor",
+                "atomic_exchange",
+            ] {
+                let line = format!("%r{index}_{op} = {op}.i64 %p, 5, {ordering}");
+                expected.push(line.clone());
+                lines.push(line);
+            }
+            if !matches!(*ordering, "release" | "acqrel") {
+                let line = format!("%load{index} = atomic_load.i64 %p, {ordering}");
+                expected.push(line.clone());
+                lines.push(line);
+            }
+            if !matches!(*ordering, "acquire" | "acqrel") {
+                let line = format!("atomic_store.i64 %p, 5, {ordering}");
+                expected.push(line.clone());
+                lines.push(line);
+            }
+            let line = format!("fence {ordering}");
+            expected.push(line.clone());
+            lines.push(line);
+        }
+        lines.push("%narrow = atomic_add.u8 %p, 1, seqcst".to_string());
+        expected.push("%narrow = atomic_add.u8 %p, 1, seqcst".to_string());
+
+        let source = atomic_entry(&lines);
+        let module = parse_module(&source).expect("parse atomic operations");
+        let rendered: Vec<String> = module.functions["f"].basic_blocks["entry"]
+            .instructions
+            .iter()
+            .take(expected.len())
+            .map(|i| i.to_string())
+            .collect();
+        assert_eq!(rendered, expected);
+
+        let rerendered_source = atomic_entry(&rendered);
+        let reparsed = parse_module(&rerendered_source).expect("reparse rendered atomics");
+        let reparsed_text: Vec<String> = reparsed.functions["f"].basic_blocks["entry"]
+            .instructions
+            .iter()
+            .take(expected.len())
+            .map(|i| i.to_string())
+            .collect();
+        assert_eq!(reparsed_text, expected);
+    }
+
+    #[test]
+    fn atomic_operations_build_their_instruction_variants() {
+        let source = atomic_entry(&[
+            "%old = atomic_exchange.u32 %p, 9, acqrel".to_string(),
+            "atomic_store.i8 %p, 1, release".to_string(),
+        ]);
+        let module = parse_module(&source).expect("parse atomics");
+        let instructions = &module.functions["f"].basic_blocks["entry"].instructions;
+        assert!(matches!(
+            &instructions[0],
+            Instruction::AtomicBinary {
+                op: AtomicBinOp::Exchange,
+                ordering: MemoryOrdering::AcqRel,
+                ..
+            }
+        ));
+        assert!(matches!(
+            &instructions[1],
+            Instruction::AtomicStore {
+                ordering: MemoryOrdering::Release,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn atomic_operations_reject_invalid_orderings_and_shapes() {
+        for (line, expected) in [
+            (
+                "%r = atomic_load.i64 %p, release",
+                "atomic_load cannot use release ordering",
+            ),
+            (
+                "%r = atomic_load.i64 %p, acqrel",
+                "atomic_load cannot use acqrel ordering",
+            ),
+            (
+                "atomic_store.i64 %p, 5, acquire",
+                "atomic_store cannot use acquire ordering",
+            ),
+            (
+                "atomic_store.i64 %p, 5, acqrel",
+                "atomic_store cannot use acqrel ordering",
+            ),
+            (
+                "%r = atomic_add.i64 %p, 5, sequential",
+                "Unknown memory ordering 'sequential'",
+            ),
+            ("%r = atomic_add.i64 %p, 5", "Expected character ','"),
+            (
+                "%r = atomic_add.f64 %p, 5.0, seqcst",
+                "integer or pointer type",
+            ),
+            (
+                "%r, %s = atomic_cmpxchg.i64 %p, 1, 2, seqcst, seqcst",
+                "two results are not supported yet",
+            ),
+            (
+                "%r = atomic_cmpxchg.i64 %p, 1, 2, seqcst, seqcst",
+                "atomic_cmpxchg is not supported yet",
+            ),
+            (
+                "atomic_add.i64 %p, 5, seqcst",
+                "atomic_add produces a value",
+            ),
+            (
+                "%r = atomic_store.i64 %p, 5, seqcst",
+                "atomic_store produces no result",
+            ),
+            ("%r = fence seqcst", "fence produces no result"),
+        ] {
+            let message = atomic_parse_error(line);
+            assert!(message.contains(expected), "{line}: {message}");
+        }
     }
 
     #[test]

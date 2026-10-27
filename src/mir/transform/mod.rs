@@ -32,7 +32,7 @@ pub(crate) use cfg::{calculate_dominators, compute_back_edge_headers};
 pub use constant_folding::ConstantFolding;
 pub use copy_propagation::CopyPropagation;
 pub use cse::CommonSubexpressionElimination;
-pub use deadcode::DeadCodeElimination;
+pub use deadcode::{DeadCodeElimination, remove_dead_pure_calls, truncate_after_noreturn_calls};
 pub use induction_strength_reduction::InductionStrengthReduction;
 pub use inline::{FunctionInlining, ModuleInlining};
 pub use loop_opt::LoopInvariantCodeMotion;
@@ -404,6 +404,10 @@ impl TransformPipeline {
     /// Runs the pipeline over every function, then inlines across them when the
     /// pipeline was built with inlining on.
     pub fn apply_to_module(&self, module: &mut Module) -> Result<TransformStats, TransformError> {
+        if !self.transforms.is_empty() {
+            truncate_after_noreturn_calls(module);
+            remove_dead_pure_calls(module);
+        }
         let mut total_stats = self.apply_function_stages(module)?;
         if self.inline {
             total_stats.functions_inlined = ModuleInlining::new().inline_functions(module)?;

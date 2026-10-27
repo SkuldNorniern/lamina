@@ -28,12 +28,13 @@ pub use builder::IRBuilder;
 pub use function::{
     BasicBlock, Function, FunctionAnnotation, FunctionParameter, FunctionSignature,
 };
+#[cfg(feature = "nightly")]
+pub use instruction::SimdOp;
 pub use instruction::{
     AllocType, BinaryOp, CmpOp, Instruction, UnaryOp, assignment_opcode_names,
     non_assignment_opcode_names,
 };
-#[cfg(feature = "nightly")]
-pub use instruction::{AtomicBinOp, MemoryOrdering, SimdOp};
+pub use instruction::{AtomicBinOp, MemoryOrdering};
 #[cfg(feature = "nightly")]
 pub use module::ModuleAnnotation;
 pub use module::{GlobalDeclaration, GlobalInit, Module, TypeDeclaration};

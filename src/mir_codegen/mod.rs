@@ -530,3 +530,50 @@ mod allocation_tests;
 
 #[cfg(test)]
 mod unary_tests;
+
+#[cfg(test)]
+mod atomic_target_tests {
+    #![allow(clippy::expect_used)]
+
+    use super::generate_mir_to_target;
+    use crate::{mir::codegen, parser::parse_module};
+    use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
+
+    #[test]
+    fn non_x86_backends_report_atomics_as_clean_errors() {
+        let ir = parse_module(
+            "fn @f(ptr %p) -> i64 {\nentry:\n %old = atomic_add.i64 %p, 1, seqcst\n ret.i64 %old\n}",
+        )
+        .expect("parse atomic add");
+        let mir = codegen::from_ir(&ir, "atomics").expect("lower atomic add");
+        for (arch, os, backend) in [
+            (
+                TargetArchitecture::Aarch64,
+                TargetOperatingSystem::Linux,
+                "AArch64",
+            ),
+            (
+                TargetArchitecture::Riscv64,
+                TargetOperatingSystem::Linux,
+                "RISC-V",
+            ),
+            (
+                TargetArchitecture::PowerPC64,
+                TargetOperatingSystem::Linux,
+                "PowerPC64",
+            ),
+            (
+                TargetArchitecture::Wasm32,
+                TargetOperatingSystem::Wasi,
+                "WASM",
+            ),
+        ] {
+            let mut output = Vec::new();
+            let err = generate_mir_to_target(&mir, &mut output, arch, os, 1)
+                .expect_err("atomics must not reach a non-x86 encoder");
+            let message = err.to_string();
+            assert!(message.contains("atomic_add"), "{backend}: {message}");
+            assert!(message.contains(backend), "{backend}: {message}");
+        }
+    }
+}

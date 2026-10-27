@@ -27,6 +27,13 @@ pub fn parse_annotations(
                 "noreturn" => FunctionAnnotation::NoReturn,
                 "noinline" => FunctionAnnotation::NoInline,
                 "cold" => FunctionAnnotation::Cold,
+                "hot" => FunctionAnnotation::Hot,
+                "pure" => FunctionAnnotation::Pure,
+                "const" => FunctionAnnotation::Const,
+                "internal" => FunctionAnnotation::Internal,
+                "private" => FunctionAnnotation::Private,
+                "hidden" => FunctionAnnotation::Hidden,
+                "protected" => FunctionAnnotation::Protected,
                 _ => {
                     let valid = super::get_annotation_names();
                     let suggestions = super::suggest_alternatives(name, valid);
@@ -51,6 +58,12 @@ pub fn parse_annotations(
                     )));
                 }
             };
+
+            if let Some(other) = seen.iter().find(|other| conflicts(&annotation, other)) {
+                return Err(state.error(format!(
+                    "Conflicting annotations: {annotation} and {other} cannot be used together"
+                )));
+            }
 
             if !seen.insert(annotation.clone()) {
                 return Err(state.error(format!("Duplicate annotation: @{name}")));
@@ -91,6 +104,17 @@ pub fn parse_annotations(
         }
     }
     Ok(annotations)
+}
+
+fn conflicts(a: &FunctionAnnotation, b: &FunctionAnnotation) -> bool {
+    use FunctionAnnotation::{Cold, Export, Hidden, Hot, Internal, Private, Protected};
+    let visibility = |x: &FunctionAnnotation| matches!(x, Internal | Private | Hidden | Protected);
+    let local = |x: &FunctionAnnotation| matches!(x, Internal | Private);
+    a != b
+        && ((visibility(a) && visibility(b))
+            || (matches!((a, b), (Cold, Hot) | (Hot, Cold)))
+            || (local(a) && *b == Export)
+            || (*a == Export && local(b)))
 }
 
 /// Parses a function definition.
@@ -257,4 +281,60 @@ pub fn parse_basic_block<'a>(
     }
 
     Ok((label, BasicBlock { instructions }))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use crate::{ir::FunctionAnnotation, parser::parse_module};
+
+    fn annotations_of(source: &str) -> Vec<FunctionAnnotation> {
+        let module = parse_module(source).expect("parse annotated function");
+        module
+            .functions
+            .values()
+            .next()
+            .expect("one function")
+            .annotations
+            .clone()
+    }
+
+    #[test]
+    fn visibility_and_placement_annotations_parse() {
+        let cases = [
+            ("hot", FunctionAnnotation::Hot),
+            ("pure", FunctionAnnotation::Pure),
+            ("const", FunctionAnnotation::Const),
+            ("internal", FunctionAnnotation::Internal),
+            ("private", FunctionAnnotation::Private),
+            ("hidden", FunctionAnnotation::Hidden),
+            ("protected", FunctionAnnotation::Protected),
+        ];
+        for (name, expected) in cases {
+            let source = format!("@{name}\nfn @f() -> i64 {{\nentry:\n ret.i64 1\n}}\n");
+            assert_eq!(annotations_of(&source), vec![expected], "@{name}");
+        }
+    }
+
+    #[test]
+    fn conflicting_annotations_are_rejected() {
+        let cases = [
+            "@internal\n@hidden\nfn @f() -> i64 {\nentry:\n ret.i64 1\n}\n",
+            "@cold\n@hot\nfn @f() -> i64 {\nentry:\n ret.i64 1\n}\n",
+            "@private\n@export\nfn @f() -> i64 {\nentry:\n ret.i64 1\n}\n",
+        ];
+        for source in cases {
+            let error = parse_module(source).expect_err("conflicting annotations");
+            assert!(
+                error.to_string().contains("Conflicting annotations"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn hidden_and_protected_may_combine_with_export() {
+        let source = "@export\n@hidden\nfn @f() -> i64 {\nentry:\n ret.i64 1\n}\n";
+        assert_eq!(annotations_of(source).len(), 2);
+    }
 }

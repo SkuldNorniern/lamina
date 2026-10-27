@@ -1,0 +1,108 @@
+# Atomic loads, stores, read-modify-write operations and fences on i64 and i8 cells.
+
+fn @main() -> i64 {
+entry:
+    %cell = stackalloc.i64
+    store.i64 %cell, 10
+    %old_add = atomic_add.i64 %cell, 5, seqcst
+    %now_add = atomic_load.i64 %cell, seqcst
+    print %old_add
+    print %now_add
+    %old_sub = atomic_sub.i64 %cell, 3, relaxed
+    print %old_sub
+    %old_xchg = atomic_exchange.i64 %cell, 100, acqrel
+    print %old_xchg
+    atomic_store.i64 %cell, 6, seqcst
+    %after_store = atomic_load.i64 %cell, acquire
+    print %after_store
+    atomic_store.i64 %cell, 7, release
+    fence seqcst
+    %old_and = atomic_and.i64 %cell, 5, seqcst
+    print %old_and
+    %old_or = atomic_or.i64 %cell, 8, seqcst
+    print %old_or
+    %old_xor = atomic_xor.i64 %cell, 3, seqcst
+    print %old_xor
+    %final = atomic_load.i64 %cell, seqcst
+    print %final
+    %ignored = atomic_add.i64 %cell, 1000, seqcst
+    %after_ignored = atomic_load.i64 %cell, seqcst
+    print %after_ignored
+
+    %forward = stackalloc.i64
+    store.i64 %forward, 1
+    %swapped = atomic_exchange.i64 %forward, 7, seqcst
+    %reread = load.i64 %forward
+    print %swapped
+    print %reread
+    store.i64 %forward, 2
+    atomic_store.i64 %forward, 9, seqcst
+    %stored = load.i64 %forward
+    print %stored
+
+    %byte = stackalloc.i8
+    store.i8 %byte, 127
+    %old_byte = atomic_add.i8 %byte, 1, seqcst
+    print %old_byte
+    %now_byte = atomic_load.i8 %byte, seqcst
+    print %now_byte
+
+    %flag = stackalloc.i64
+    store.i64 %flag, 0
+    %sum = stackalloc.i64
+    store.i64 %sum, 0
+    %i_cell = stackalloc.i64
+    store.i64 %i_cell, 0
+    jmp loop
+
+loop:
+    %i = load.i64 %i_cell
+    %done = ge.i64 %i, 4
+    br %done, exit, body
+
+body:
+    %seen = atomic_load.i64 %flag, seqcst
+    %sum_now = load.i64 %sum
+    %sum_next = add.i64 %sum_now, %seen
+    store.i64 %sum, %sum_next
+    %next = add.i64 %i, 1
+    atomic_store.i64 %flag, %next, seqcst
+    store.i64 %i_cell, %next
+    jmp loop
+
+exit:
+    %total = load.i64 %sum
+    print %total
+
+    %c8 = stackalloc.i8
+    store.i8 %c8, 12
+    %o8 = atomic_and.i8 %c8, 10, seqcst
+    %n8 = atomic_load.i8 %c8, seqcst
+    print %o8
+    print %n8
+    %c16 = stackalloc.i16
+    store.i16 %c16, 1000
+    %o16 = atomic_or.i16 %c16, 3000, acqrel
+    %n16 = atomic_load.i16 %c16, seqcst
+    print %o16
+    print %n16
+    %c32 = stackalloc.i32
+    store.i32 %c32, -5
+    %o32 = atomic_xor.i32 %c32, 255, seqcst
+    %n32 = atomic_load.i32 %c32, seqcst
+    print %o32
+    print %n32
+    %u8 = stackalloc.u8
+    store.u8 %u8, 200
+    %ou8 = atomic_sub.u8 %u8, 100, seqcst
+    %nu8 = atomic_load.u8 %u8, seqcst
+    print %ou8
+    print %nu8
+    %big = stackalloc.i64
+    store.i64 %big, 1
+    %ob = atomic_or.i64 %big, 4294967296, seqcst
+    %nb = atomic_load.i64 %big, seqcst
+    print %ob
+    print %nb
+    ret.i64 0
+}

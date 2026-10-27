@@ -1133,7 +1133,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "nightly")]
     #[test]
     fn test_atomic_operations() {
         let mut builder = IRBuilder::new();

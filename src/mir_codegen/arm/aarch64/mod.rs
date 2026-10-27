@@ -11,7 +11,8 @@ use crate::mir::register::PhysicalReg;
 use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
-    emit_global_directives, integer_conversion, self_tail_arguments, self_tail_schedule,
+    emit_global_directives, emit_symbol_visibility, integer_conversion, self_tail_arguments,
+    self_tail_schedule,
 };
 use crate::mir_codegen::common::{
     emit_debug_file, emit_gnu_stack_note, print_format_label, promoted_argument_type,
@@ -819,6 +820,9 @@ pub fn generate_mir_aarch64_with_units_and_settings<W: Write>(
         writeln!(writer, ".extern {label}")?;
     }
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
+    emit_symbol_visibility(writer, module, target_os, |name| {
+        abi.mangle_function_name(name)
+    })?;
 
     for result in results {
         writer.write_all(&result.assembly)?;
@@ -1904,6 +1908,17 @@ fn emit_block<W: Write>(
                 // No-op in AOT path — only meaningful for JIT/GC runtimes.
             }
             MirInst::VectorOp { .. } => simd::emit(inst, w, frame, ra)?,
+            MirInst::AtomicLoad { .. }
+            | MirInst::AtomicStore { .. }
+            | MirInst::AtomicBinary { .. }
+            | MirInst::AtomicCompareExchange { .. }
+            | MirInst::Fence { .. } => {
+                return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                    format!(
+                        "atomic instruction `{inst}` is not yet supported by the AArch64 backend"
+                    ),
+                )));
+            }
             #[cfg(feature = "nightly")]
             MirInst::SimdBinary { .. }
             | MirInst::SimdUnary { .. }
@@ -1912,14 +1927,9 @@ fn emit_block<W: Write>(
             | MirInst::SimdExtract { .. }
             | MirInst::SimdInsert { .. }
             | MirInst::SimdLoad { .. }
-            | MirInst::SimdStore { .. }
-            | MirInst::AtomicLoad { .. }
-            | MirInst::AtomicStore { .. }
-            | MirInst::AtomicBinary { .. }
-            | MirInst::AtomicCompareExchange { .. }
-            | MirInst::Fence { .. } => {
+            | MirInst::SimdStore { .. } => {
                 return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
-                    "SIMD/Atomic instructions not yet supported by AArch64 backend".to_string(),
+                    "SIMD instructions not yet supported by AArch64 backend".to_string(),
                 )));
             }
         }

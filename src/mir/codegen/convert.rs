@@ -28,9 +28,10 @@ use crate::{
         },
     },
     mir::{
-        AddressMode, Block, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global, Immediate,
-        Instruction, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand, Parameter,
-        Register, RegisterClass, ScalarType, Signature, VirtualReg, VirtualRegAllocator,
+        AddressMode, Block, CodePlacement, FloatBinOp, FloatCmpOp, FloatUnOp, Function, Global,
+        Immediate, Instruction, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Module, Operand,
+        Parameter, Register, RegisterClass, ScalarType, Signature, SymbolVisibility, VirtualReg,
+        VirtualRegAllocator,
         codegen::{
             error::FromIRError,
             mapping::{classify_aggregate, is_aggregate, map_ir_prim, map_ir_type, signedness_of},
@@ -40,9 +41,21 @@ use crate::{
 };
 
 #[cfg(feature = "nightly")]
-use crate::ir::instruction::{MemoryOrdering as IRMemOrd, SimdOp as IRSimdOp};
+use crate::ir::instruction::SimdOp as IRSimdOp;
+use crate::ir::instruction::{AtomicBinOp as IRAtomicBinOp, MemoryOrdering as IRMemOrd};
 #[cfg(feature = "nightly")]
-use crate::mir::{MemoryOrdering, SimdOp};
+use crate::mir::SimdOp;
+use crate::mir::{AtomicBinOp, MemoryOrdering};
+
+fn ir_ordering_to_mir(ordering: &IRMemOrd) -> MemoryOrdering {
+    match ordering {
+        IRMemOrd::Relaxed => MemoryOrdering::Relaxed,
+        IRMemOrd::Acquire => MemoryOrdering::Acquire,
+        IRMemOrd::Release => MemoryOrdering::Release,
+        IRMemOrd::AcqRel => MemoryOrdering::AcqRel,
+        IRMemOrd::SeqCst => MemoryOrdering::SeqCst,
+    }
+}
 
 fn float_binary(
     op: FloatBinOp,
@@ -288,6 +301,8 @@ fn unsigned_results<'a>(f: &IRFunction<'a>, module: &IRModule<'a>) -> HashSet<&'
                     unsigned_prim(*ty).then_some(*result)
                 }
                 IRInst::Load { result, ty, .. }
+                | IRInst::AtomicLoad { result, ty, .. }
+                | IRInst::AtomicBinary { result, ty, .. }
                 | IRInst::Phi { result, ty, .. }
                 | IRInst::Select { result, ty, .. } => unsigned_type(ty).then_some(*result),
                 IRInst::ZeroExtend {
@@ -610,6 +625,24 @@ fn convert_function<'a>(
     let mut vreg_alloc = VirtualRegAllocator::new();
     let mut mir_sig = Signature::new(name);
     mir_sig.no_inline = f.annotations.contains(&FunctionAnnotation::NoInline);
+    mir_sig.inline_hint = f.annotations.contains(&FunctionAnnotation::Inline);
+    mir_sig.noreturn = f.annotations.contains(&FunctionAnnotation::NoReturn);
+    mir_sig.pure = f
+        .annotations
+        .iter()
+        .any(|a| matches!(a, FunctionAnnotation::Pure | FunctionAnnotation::Const));
+    mir_sig.visibility = f.annotations.iter().find_map(|a| match a {
+        FunctionAnnotation::Internal => Some(SymbolVisibility::Internal),
+        FunctionAnnotation::Private => Some(SymbolVisibility::Private),
+        FunctionAnnotation::Hidden => Some(SymbolVisibility::Hidden),
+        FunctionAnnotation::Protected => Some(SymbolVisibility::Protected),
+        _ => None,
+    });
+    mir_sig.placement = f.annotations.iter().find_map(|a| match a {
+        FunctionAnnotation::Cold => Some(CodePlacement::Cold),
+        FunctionAnnotation::Hot => Some(CodePlacement::Hot),
+        _ => None,
+    });
     mir_sig.variadic = f.signature.variadic;
     if f.annotations.contains(&FunctionAnnotation::Kernel) {
         mir_sig.kernel = Some(Default::default());
@@ -834,7 +867,9 @@ fn convert_function<'a>(
                         | Instruction::FloatBinary { ty, .. }
                         | Instruction::FloatUnary { ty, .. }
                         | Instruction::Select { ty, .. }
-                        | Instruction::Load { ty, .. } => Some(*ty),
+                        | Instruction::Load { ty, .. }
+                        | Instruction::AtomicLoad { ty, .. }
+                        | Instruction::AtomicBinary { ty, .. } => Some(*ty),
                         Instruction::IntCmp { .. } | Instruction::FloatCmp { .. } => {
                             Some(MirType::i1())
                         }
@@ -1174,29 +1209,30 @@ fn convert_instruction<'a>(
 ) -> Result<Vec<Instruction>, FromIRError> {
     let register_types = facts.types;
     let unsigned = facts.unsigned;
-    #[cfg(feature = "nightly")]
     fn ir_address_mode_to_mir<'b>(
         ptr: &IRVal<'b>,
         vreg_alloc: &mut VirtualRegAllocator,
         var_to_reg: &mut VarBindings<'b>,
+        globals: &mut GlobalAddresses<'b>,
     ) -> Result<AddressMode, FromIRError> {
-        match ptr {
+        let base = match ptr {
             IRVal::Variable(id) => {
-                let base = if let Some(r) = var_to_reg.get(id) {
+                if let Some(r) = var_to_reg.get(id) {
                     r.clone()
                 } else {
                     let r = Register::Virtual(vreg_alloc.allocate_gpr());
                     var_to_reg.insert(*id, r.clone());
                     r
-                };
-                Ok(AddressMode::BaseOffset {
-                    base,
-                    offset: 0,
-                    address_space: Default::default(),
-                })
+                }
             }
-            IRVal::Constant(_) | IRVal::Global(_) => Err(FromIRError::UnsupportedInstruction),
-        }
+            IRVal::Global(name) => globals.register(name, vreg_alloc)?,
+            IRVal::Constant(_) => return Err(FromIRError::UnsupportedInstruction),
+        };
+        Ok(AddressMode::BaseOffset {
+            base,
+            offset: 0,
+            address_space: Default::default(),
+        })
     }
 
     match instr {
@@ -2282,7 +2318,6 @@ fn convert_instruction<'a>(
                 src: src_op,
             }])
         }
-        #[cfg(feature = "nightly")]
         IRInst::AtomicLoad {
             result,
             ty,
@@ -2291,22 +2326,14 @@ fn convert_instruction<'a>(
         } => {
             let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
             let mir_ty = map_ir_type(ty)?;
-            let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
-            let mir_ordering = match ordering {
-                IRMemOrd::Relaxed => MemoryOrdering::Relaxed,
-                IRMemOrd::Acquire => MemoryOrdering::Acquire,
-                IRMemOrd::Release => MemoryOrdering::Release,
-                IRMemOrd::AcqRel => MemoryOrdering::AcqRel,
-                IRMemOrd::SeqCst => MemoryOrdering::SeqCst,
-            };
+            let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg, globals)?;
             Ok(vec![Instruction::AtomicLoad {
                 ty: mir_ty,
                 dst,
                 addr,
-                ordering: mir_ordering,
+                ordering: ir_ordering_to_mir(ordering),
             }])
         }
-        #[cfg(feature = "nightly")]
         IRInst::AtomicStore {
             ty,
             ptr,
@@ -2314,41 +2341,51 @@ fn convert_instruction<'a>(
             ordering,
         } => {
             let mir_ty = map_ir_type(ty)?;
-            let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg)?;
+            let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg, globals)?;
             let val_op = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
-            let mir_ordering = match ordering {
-                IRMemOrd::Relaxed => MemoryOrdering::Relaxed,
-                IRMemOrd::Acquire => MemoryOrdering::Acquire,
-                IRMemOrd::Release => MemoryOrdering::Release,
-                IRMemOrd::AcqRel => MemoryOrdering::AcqRel,
-                IRMemOrd::SeqCst => MemoryOrdering::SeqCst,
-            };
             Ok(vec![Instruction::AtomicStore {
                 ty: mir_ty,
                 src: val_op,
                 addr,
-                ordering: mir_ordering,
+                ordering: ir_ordering_to_mir(ordering),
             }])
         }
-        #[cfg(feature = "nightly")]
-        IRInst::Fence { ordering } => {
-            let mir_ordering = match ordering {
-                IRMemOrd::Relaxed => MemoryOrdering::Relaxed,
-                IRMemOrd::Acquire => MemoryOrdering::Acquire,
-                IRMemOrd::Release => MemoryOrdering::Release,
-                IRMemOrd::AcqRel => MemoryOrdering::AcqRel,
-                IRMemOrd::SeqCst => MemoryOrdering::SeqCst,
+        IRInst::AtomicBinary {
+            op,
+            result,
+            ty,
+            ptr,
+            value,
+            ordering,
+        } => {
+            let mir_op = match op {
+                IRAtomicBinOp::Add => AtomicBinOp::Add,
+                IRAtomicBinOp::Sub => AtomicBinOp::Sub,
+                IRAtomicBinOp::And => AtomicBinOp::And,
+                IRAtomicBinOp::Or => AtomicBinOp::Or,
+                IRAtomicBinOp::Xor => AtomicBinOp::Xor,
+                IRAtomicBinOp::Exchange => AtomicBinOp::Exchange,
+                IRAtomicBinOp::CompareExchange => return Err(FromIRError::UnsupportedInstruction),
             };
-            Ok(vec![Instruction::Fence {
-                ordering: mir_ordering,
+            let dst = resolve_or_alloc(result, vreg_alloc, var_to_reg);
+            let mir_ty = map_ir_type(ty)?;
+            let addr = ir_address_mode_to_mir(ptr, vreg_alloc, var_to_reg, globals)?;
+            let val_op = resolve_operand(value, vreg_alloc, var_to_reg, globals)?;
+            Ok(vec![Instruction::AtomicBinary {
+                op: mir_op,
+                ty: mir_ty,
+                dst,
+                addr,
+                value: val_op,
+                ordering: ir_ordering_to_mir(ordering),
             }])
         }
-        // Lowering for these is not written yet. They are named one by one so a new
-        // nightly variant fails to compile here instead of being swallowed.
+        IRInst::Fence { ordering } => Ok(vec![Instruction::Fence {
+            ordering: ir_ordering_to_mir(ordering),
+        }]),
+        IRInst::AtomicCompareExchange { .. } => Err(FromIRError::UnsupportedInstruction),
         #[cfg(feature = "nightly")]
-        IRInst::AtomicBinary { .. }
-        | IRInst::AtomicCompareExchange { .. }
-        | IRInst::SimdTernary { .. }
+        IRInst::SimdTernary { .. }
         | IRInst::SimdShuffle { .. }
         | IRInst::SimdExtract { .. }
         | IRInst::SimdInsert { .. }
@@ -2503,6 +2540,8 @@ fn value_register_classes<'a>(
                 }
                 IRInst::Select { result, ty, .. }
                 | IRInst::Load { result, ty, .. }
+                | IRInst::AtomicLoad { result, ty, .. }
+                | IRInst::AtomicBinary { result, ty, .. }
                 | IRInst::Phi { result, ty, .. } => (*result, class_of_type(ty)),
                 IRInst::Bitcast {
                     result,

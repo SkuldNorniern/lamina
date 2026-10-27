@@ -24,7 +24,7 @@ use crate::mir_codegen::common::{
 };
 use crate::mir_codegen::common::{
     CopyLocation, FunctionEmissionPlan, coalesce_dying_inputs, emit_global_data,
-    emit_global_directives, self_tail_arguments, self_tail_schedule,
+    emit_global_directives, emit_symbol_visibility, self_tail_arguments, self_tail_schedule,
 };
 
 use std::{
@@ -452,6 +452,9 @@ fn emit_ppc64_module<W: Write>(
     writeln!(writer, "{}", abi.get_text_section())?;
     emit_debug_file(writer, settings)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
+    emit_symbol_visibility(writer, module, target_os, |name| {
+        abi.mangle_function_name(name)
+    })?;
 
     for func_name in external_names(module) {
         let label = abi.mangle_function_name(func_name);
@@ -1851,6 +1854,20 @@ fn emit_instruction_ppc64<W: Write>(
         }
         MirInst::Comment { text } => {
             writeln!(writer, "    # {text}")?;
+        }
+        MirInst::Unreachable => {
+            writeln!(writer, "    trap")?;
+        }
+        MirInst::AtomicLoad { .. }
+        | MirInst::AtomicStore { .. }
+        | MirInst::AtomicBinary { .. }
+        | MirInst::AtomicCompareExchange { .. }
+        | MirInst::Fence { .. } => {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "atomic instruction `{inst}` is not yet supported by the PowerPC64 backend"
+                ),
+            )));
         }
         other => {
             return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(

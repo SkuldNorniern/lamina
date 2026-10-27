@@ -496,6 +496,11 @@ impl LoopInvariantCodeMotion {
                 instr,
                 Instruction::Load { .. }
                     | Instruction::Store { .. }
+                    | Instruction::AtomicLoad { .. }
+                    | Instruction::AtomicStore { .. }
+                    | Instruction::AtomicBinary { .. }
+                    | Instruction::AtomicCompareExchange { .. }
+                    | Instruction::Fence { .. }
                     | Instruction::Call { .. }
                     | Instruction::CallIndirect { .. }
                     | Instruction::TailCall { .. }
@@ -647,8 +652,8 @@ mod tests {
     use super::*;
     use crate::mir::transform::LoopUnrolling;
     use crate::mir::{
-        AddressMode, FunctionBuilder, Immediate, IntBinOp, IntCmpOp, MemoryAttrs, MirType, Operand,
-        ScalarType, VirtualReg,
+        AddressMode, AtomicBinOp, FunctionBuilder, Immediate, IntBinOp, IntCmpOp, MemoryAttrs,
+        MemoryOrdering, MirType, Operand, ScalarType, VirtualReg,
     };
 
     #[test]
@@ -940,6 +945,78 @@ mod tests {
         let licm = LoopInvariantCodeMotion;
         let changed = licm.apply(&mut func).expect("should succeed");
         // Store has side effects - should not be moved
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_licm_atomic_load_not_moved() {
+        let mut func = FunctionBuilder::new("atomic_load_in_loop")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "loop".to_string(),
+            })
+            .block("loop")
+            .instr(Instruction::AtomicLoad {
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                addr: AddressMode::BaseOffset {
+                    base: VirtualReg::gpr(0).into(),
+                    offset: 0,
+                    address_space: Default::default(),
+                },
+                ordering: MemoryOrdering::SeqCst,
+            })
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(1).into(),
+                true_target: "exit".to_string(),
+                false_target: "loop".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let changed = LoopInvariantCodeMotion
+            .apply(&mut func)
+            .expect("should succeed");
+        assert!(!changed);
+    }
+
+    #[test]
+    fn test_licm_atomic_rmw_not_moved() {
+        let mut func = FunctionBuilder::new("atomic_rmw_in_loop")
+            .param(VirtualReg::gpr(0).into(), MirType::Scalar(ScalarType::I64))
+            .returns(MirType::Scalar(ScalarType::I64))
+            .block("entry")
+            .instr(Instruction::Jmp {
+                target: "loop".to_string(),
+            })
+            .block("loop")
+            .instr(Instruction::AtomicBinary {
+                op: AtomicBinOp::Add,
+                ty: MirType::Scalar(ScalarType::I64),
+                dst: VirtualReg::gpr(1).into(),
+                addr: AddressMode::BaseOffset {
+                    base: VirtualReg::gpr(0).into(),
+                    offset: 0,
+                    address_space: Default::default(),
+                },
+                value: Operand::Immediate(Immediate::I64(1)),
+                ordering: MemoryOrdering::SeqCst,
+            })
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(1).into(),
+                true_target: "exit".to_string(),
+                false_target: "loop".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let changed = LoopInvariantCodeMotion
+            .apply(&mut func)
+            .expect("should succeed");
         assert!(!changed);
     }
 

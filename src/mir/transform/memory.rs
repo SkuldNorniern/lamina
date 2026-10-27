@@ -139,6 +139,14 @@ impl MemoryOptimization {
                         last_store.clear();
                         last_load.clear();
                     }
+                    Instruction::AtomicLoad { .. }
+                    | Instruction::AtomicStore { .. }
+                    | Instruction::AtomicBinary { .. }
+                    | Instruction::AtomicCompareExchange { .. }
+                    | Instruction::Fence { .. } => {
+                        last_store.clear();
+                        last_load.clear();
+                    }
                     _ => {}
                 }
 
@@ -157,8 +165,8 @@ impl MemoryOptimization {
 mod tests {
     use super::*;
     use crate::mir::{
-        AddressMode, FunctionBuilder, Immediate, MemoryAttrs, MirType, Operand, ScalarType,
-        VirtualReg, transform::test_utils::apply_pass,
+        AddressMode, AtomicBinOp, FunctionBuilder, Immediate, MemoryAttrs, MemoryOrdering, MirType,
+        Operand, ScalarType, VirtualReg, transform::test_utils::apply_pass,
     };
 
     fn i64() -> MirType {
@@ -442,5 +450,81 @@ mod tests {
         assert!(!changed, "call should have invalidated forwarding state");
         let entry = func.get_block("entry").unwrap();
         assert!(matches!(&entry.instructions[2], Instruction::Load { .. }));
+    }
+
+    #[test]
+    fn load_is_not_forwarded_across_atomic_exchange() {
+        let base: Register = VirtualReg::gpr(0).into();
+        let dst: Register = VirtualReg::gpr(1).into();
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Store {
+                ty: i64(),
+                src: Operand::Immediate(Immediate::I64(1)),
+                addr: base_offset(base.clone(), 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::AtomicBinary {
+                op: AtomicBinOp::Exchange,
+                ty: i64(),
+                dst: VirtualReg::gpr(2).into(),
+                addr: base_offset(base.clone(), 0),
+                value: Operand::Immediate(Immediate::I64(7)),
+                ordering: MemoryOrdering::SeqCst,
+            })
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: dst.clone(),
+                addr: base_offset(base, 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(dst)),
+            })
+            .build();
+
+        assert!(!apply_pass(&MemoryOptimization, &mut func));
+        assert!(matches!(
+            func.blocks[0].instructions[2],
+            Instruction::Load { .. }
+        ));
+    }
+
+    #[test]
+    fn load_is_not_merged_across_a_fence() {
+        let base: Register = VirtualReg::gpr(0).into();
+        let first: Register = VirtualReg::gpr(1).into();
+        let second: Register = VirtualReg::gpr(2).into();
+        let mut func = FunctionBuilder::new("f")
+            .param(VirtualReg::gpr(0).into(), i64())
+            .returns(i64())
+            .block("entry")
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: first,
+                addr: base_offset(base.clone(), 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Fence {
+                ordering: MemoryOrdering::SeqCst,
+            })
+            .instr(Instruction::Load {
+                ty: i64(),
+                dst: second.clone(),
+                addr: base_offset(base, 0),
+                attrs: non_volatile(),
+            })
+            .instr(Instruction::Ret {
+                value: Some(Operand::Register(second)),
+            })
+            .build();
+
+        assert!(!apply_pass(&MemoryOptimization, &mut func));
+        assert!(matches!(
+            func.blocks[0].instructions[2],
+            Instruction::Load { .. }
+        ));
     }
 }

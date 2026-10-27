@@ -1492,3 +1492,61 @@ mod intrinsic_namespace_tests {
         Ok(())
     }
 }
+
+fn x86_assembly_for(source: &str) -> String {
+    let ir = parse_module(source).expect("parse atomics");
+    let mir = from_ir(&ir, "atomics").expect("lower atomics");
+    let mut output = Vec::new();
+    generate_mir_x86_64(&mir, &mut output, TargetOperatingSystem::Linux).expect("emit atomics");
+    String::from_utf8(output).expect("utf8 assembly")
+}
+
+#[test]
+fn atomics_emit_locked_read_modify_write_xchg_and_mfence() {
+    let asm = x86_assembly_for(
+        "fn @f(ptr %p) -> i64 {\nentry:\n %a = atomic_load.i64 %p, seqcst\n atomic_store.i64 %p, 5, seqcst\n %b = atomic_add.i64 %p, 1, seqcst\n %c = atomic_sub.i64 %p, 1, acqrel\n %d = atomic_exchange.i64 %p, 2, seqcst\n %e = atomic_and.i64 %p, 3, relaxed\n %g = atomic_or.i64 %p, 4, seqcst\n %h = atomic_xor.i64 %p, 5, seqcst\n fence seqcst\n fence acquire\n ret.i64 %b\n}",
+    );
+    assert_eq!(asm.matches("lock xaddq").count(), 2, "{asm}");
+    assert_eq!(
+        asm.matches("xchgq %rax, (%").count(),
+        2,
+        "seqcst store and exchange\n{asm}"
+    );
+    assert_eq!(
+        asm.matches("lock cmpxchgq").count(),
+        3,
+        "and, or, xor loops\n{asm}"
+    );
+    assert_eq!(asm.matches("jne 1b").count(), 3, "{asm}");
+    assert_eq!(
+        asm.matches("mfence").count(),
+        1,
+        "only the seqcst fence\n{asm}"
+    );
+    assert!(asm.contains("negq %rax"), "{asm}");
+    assert!(
+        !asm.contains("lock xchg"),
+        "xchg is implicitly locked\n{asm}"
+    );
+}
+
+#[test]
+fn atomic_loads_and_relaxed_stores_are_plain_moves() {
+    let asm = x86_assembly_for(
+        "fn @f(ptr %p) -> i64 {\nentry:\n %a = atomic_load.i64 %p, seqcst\n atomic_store.i64 %p, 7, release\n ret.i64 %a\n}",
+    );
+    assert!(!asm.contains("xchg"), "{asm}");
+    assert!(!asm.contains("mfence"), "{asm}");
+    assert!(!asm.contains("lock"), "{asm}");
+    assert!(asm.contains("movq (%rax), %rax"), "{asm}");
+    assert!(asm.contains("movq %rax, (%"), "{asm}");
+}
+
+#[test]
+fn narrow_atomic_add_uses_sized_locked_xadd_and_sign_extends() {
+    let asm = x86_assembly_for(
+        "fn @f(ptr %p) -> i64 {\nentry:\n %a = atomic_add.i8 %p, 1, seqcst\n ret.i64 0\n}",
+    );
+    assert!(asm.contains("lock xaddb %al, (%"), "{asm}");
+    assert!(asm.contains("movsbq %al, %rax"), "{asm}");
+}

@@ -284,7 +284,6 @@ impl fmt::Display for SimdOp {
 }
 
 /// Memory ordering constraints for atomic operations.
-#[cfg(feature = "nightly")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MemoryOrdering {
     /// Relaxed ordering - no synchronization
@@ -299,7 +298,6 @@ pub enum MemoryOrdering {
     SeqCst,
 }
 
-#[cfg(feature = "nightly")]
 impl fmt::Display for MemoryOrdering {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
@@ -314,7 +312,6 @@ impl fmt::Display for MemoryOrdering {
 }
 
 /// Atomic binary operations for concurrent programming.
-#[cfg(feature = "nightly")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AtomicBinOp {
     /// Atomic addition: `*ptr += value`
@@ -333,7 +330,6 @@ pub enum AtomicBinOp {
     CompareExchange,
 }
 
-#[cfg(feature = "nightly")]
 impl fmt::Display for AtomicBinOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
@@ -837,7 +833,6 @@ pub enum Instruction {
     },
 
     // --- Atomic Operations (Nightly) ---
-    #[cfg(feature = "nightly")]
     AtomicLoad {
         ty: MirType,
         dst: Register,
@@ -845,7 +840,6 @@ pub enum Instruction {
         ordering: MemoryOrdering,
     },
 
-    #[cfg(feature = "nightly")]
     AtomicStore {
         ty: MirType,
         src: Operand,
@@ -853,7 +847,6 @@ pub enum Instruction {
         ordering: MemoryOrdering,
     },
 
-    #[cfg(feature = "nightly")]
     AtomicBinary {
         op: AtomicBinOp,
         ty: MirType,
@@ -863,7 +856,6 @@ pub enum Instruction {
         ordering: MemoryOrdering,
     },
 
-    #[cfg(feature = "nightly")]
     AtomicCompareExchange {
         ty: MirType,
         dst: Register,
@@ -874,7 +866,6 @@ pub enum Instruction {
         failure_ordering: MemoryOrdering,
     },
 
-    #[cfg(feature = "nightly")]
     Fence {
         ordering: MemoryOrdering,
     },
@@ -953,6 +944,9 @@ impl Instruction {
             | Instruction::StackAddr { dst, .. }
             | Instruction::Lea { dst, .. }
             | Instruction::VectorOp { dst, .. } => Some(dst),
+            Instruction::AtomicLoad { dst, .. }
+            | Instruction::AtomicBinary { dst, .. }
+            | Instruction::AtomicCompareExchange { dst, .. } => Some(dst),
             #[cfg(feature = "nightly")]
             Instruction::SimdBinary { dst, .. }
             | Instruction::SimdUnary { dst, .. }
@@ -960,10 +954,7 @@ impl Instruction {
             | Instruction::SimdShuffle { dst, .. }
             | Instruction::SimdExtract { dst, .. }
             | Instruction::SimdInsert { dst, .. }
-            | Instruction::SimdLoad { dst, .. }
-            | Instruction::AtomicLoad { dst, .. }
-            | Instruction::AtomicBinary { dst, .. }
-            | Instruction::AtomicCompareExchange { dst, .. } => Some(dst),
+            | Instruction::SimdLoad { dst, .. } => Some(dst),
             Instruction::Call { ret: Some(dst), .. }
             | Instruction::CallIndirect { ret: Some(dst), .. } => Some(dst),
             _ => None,
@@ -1120,7 +1111,6 @@ impl Instruction {
                     }
                 }
             }
-            #[cfg(feature = "nightly")]
             Instruction::AtomicLoad { addr, .. } => match addr {
                 AddressMode::BaseOffset { base, .. } => regs.push(base),
                 AddressMode::BaseIndexScale { base, index, .. } => {
@@ -1128,7 +1118,6 @@ impl Instruction {
                     regs.push(index);
                 }
             },
-            #[cfg(feature = "nightly")]
             Instruction::AtomicStore { src, addr, .. } => {
                 if let Operand::Register(r) = src {
                     regs.push(r);
@@ -1141,7 +1130,6 @@ impl Instruction {
                     }
                 }
             }
-            #[cfg(feature = "nightly")]
             Instruction::AtomicBinary { value, addr, .. } => {
                 if let Operand::Register(r) = value {
                     regs.push(r);
@@ -1154,7 +1142,6 @@ impl Instruction {
                     }
                 }
             }
-            #[cfg(feature = "nightly")]
             Instruction::AtomicCompareExchange {
                 expected,
                 desired,
@@ -1483,21 +1470,18 @@ impl fmt::Display for Instruction {
                 addr,
                 attrs: _,
             } => write!(f, "store_simd.{ty} {src}, {addr}"),
-            #[cfg(feature = "nightly")]
             Instruction::AtomicLoad {
                 ty,
                 dst,
                 addr,
                 ordering,
             } => write!(f, "{dst} = atomic_load.{ty} [{addr}] {ordering}"),
-            #[cfg(feature = "nightly")]
             Instruction::AtomicStore {
                 ty,
                 src,
                 addr,
                 ordering,
             } => write!(f, "atomic_store.{ty} {src}, [{addr}] {ordering}"),
-            #[cfg(feature = "nightly")]
             Instruction::AtomicBinary {
                 op,
                 ty,
@@ -1506,7 +1490,6 @@ impl fmt::Display for Instruction {
                 value,
                 ordering,
             } => write!(f, "{dst} = {op}.{ty} [{addr}] {value}, {ordering}"),
-            #[cfg(feature = "nightly")]
             Instruction::AtomicCompareExchange {
                 ty,
                 dst,
@@ -1519,7 +1502,6 @@ impl fmt::Display for Instruction {
                 f,
                 "{dst} = atomic_cmpxchg.{ty} [{addr}] {expected}, {desired}, {success_ordering}, {failure_ordering}"
             ),
-            #[cfg(feature = "nightly")]
             Instruction::Fence { ordering } => write!(f, "fence {ordering}"),
             Instruction::Comment { text } => write!(f, "; {text}"),
         }

@@ -86,6 +86,12 @@ impl TailCallOptimization {
                 if matches!(instruction, Instruction::Store { src: Operand::Register(r), .. } if addresses.contains(r))
                     || matches!(
                         instruction,
+                        Instruction::AtomicStore { src: Operand::Register(r), .. }
+                            | Instruction::AtomicBinary { value: Operand::Register(r), .. }
+                        if addresses.contains(r)
+                    )
+                    || matches!(
+                        instruction,
                         Instruction::Call { .. } | Instruction::CallIndirect { .. }
                         if uses_address
                     )
@@ -98,6 +104,8 @@ impl TailCallOptimization {
                         && matches!(
                             instruction,
                             Instruction::Load { .. }
+                                | Instruction::AtomicLoad { .. }
+                                | Instruction::AtomicBinary { .. }
                                 | Instruction::Call { .. }
                                 | Instruction::CallIndirect { .. }
                         )))

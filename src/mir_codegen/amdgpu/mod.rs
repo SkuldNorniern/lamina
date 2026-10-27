@@ -511,7 +511,9 @@ impl Kernel {
                     self.binary(*op, dst, lhs, rhs)?;
                 }
             }
-            Instruction::Ret { value: None } => writeln!(self.body, "    s_endpgm")?,
+            Instruction::Ret { value: None } | Instruction::Unreachable => {
+                writeln!(self.body, "    s_endpgm")?
+            }
             Instruction::Call { name, args, ret }
                 if args.is_empty()
                     && ret.is_none()
@@ -623,6 +625,15 @@ impl Kernel {
                         return Err(error("unsupported AMDGPU intrinsic"));
                     }
                 }
+            }
+            Instruction::AtomicLoad { .. }
+            | Instruction::AtomicStore { .. }
+            | Instruction::AtomicBinary { .. }
+            | Instruction::AtomicCompareExchange { .. }
+            | Instruction::Fence { .. } => {
+                return Err(error(&format!(
+                    "atomic instruction `{instruction}` is not yet supported by the AMDGPU backend"
+                )));
             }
             _ => return Err(error("unsupported AMDGPU instruction")),
         }

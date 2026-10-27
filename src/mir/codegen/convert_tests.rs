@@ -756,3 +756,90 @@ fn volatile_ir_accesses_set_memory_attrs_bit() {
         .collect();
     assert_eq!(volatile_bits, [true, true, false]);
 }
+
+#[test]
+fn atomic_ir_lowers_to_mir_atomics_with_their_ordering() {
+    let module = lowered_global_module(
+        "fn @f(ptr %p) -> i64 {\nentry:\n %a = atomic_load.i64 %p, acquire\n atomic_store.i64 %p, 5, release\n %b = atomic_add.i64 %p, 1, acqrel\n %c = atomic_exchange.i64 %p, 2, seqcst\n fence seqcst\n ret.i64 %b\n}",
+    )
+    .expect("lower atomics");
+    let instructions = &module.functions["f"].blocks[0].instructions;
+    assert!(matches!(
+        &instructions[0],
+        Instruction::AtomicLoad {
+            ordering: MemoryOrdering::Acquire,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &instructions[1],
+        Instruction::AtomicStore {
+            ordering: MemoryOrdering::Release,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &instructions[2],
+        Instruction::AtomicBinary {
+            op: AtomicBinOp::Add,
+            ordering: MemoryOrdering::AcqRel,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &instructions[3],
+        Instruction::AtomicBinary {
+            op: AtomicBinOp::Exchange,
+            ordering: MemoryOrdering::SeqCst,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &instructions[4],
+        Instruction::Fence {
+            ordering: MemoryOrdering::SeqCst
+        }
+    ));
+}
+
+#[test]
+fn atomic_binary_result_is_the_old_value_register() {
+    let module = lowered_global_module(
+        "fn @f(ptr %p) -> i64 {\nentry:\n %b = atomic_add.i64 %p, 1, seqcst\n ret.i64 %b\n}",
+    )
+    .expect("lower atomic add");
+    let instructions = &module.functions["f"].blocks[0].instructions;
+    let Instruction::AtomicBinary { dst, .. } = &instructions[0] else {
+        panic!("expected AtomicBinary, found {:?}", instructions[0]);
+    };
+    assert!(matches!(
+        &instructions[1],
+        Instruction::Ret { value: Some(Operand::Register(reg)) } if reg == dst
+    ));
+}
+
+#[test]
+fn atomic_compare_exchange_is_not_lowered_yet() {
+    let ir = parse_module("fn @f(ptr %p) -> i64 {\nentry:\n ret.i64 0\n}").expect("parse");
+    let mut module = ir;
+    let block = module
+        .functions
+        .get_mut("f")
+        .and_then(|func| func.basic_blocks.get_mut("entry"))
+        .expect("entry block");
+    block.instructions.insert(
+        0,
+        IRInst::AtomicCompareExchange {
+            result: "old",
+            success: "ok",
+            ty: IRType::Primitive(IRPrim::I64),
+            ptr: IRVal::Variable("p"),
+            expected: IRVal::Variable("p"),
+            desired: IRVal::Variable("p"),
+            success_ordering: IRMemOrd::SeqCst,
+            failure_ordering: IRMemOrd::SeqCst,
+        },
+    );
+    let err = from_ir(&module, "cas").expect_err("cmpxchg must not lower yet");
+    assert!(err.to_string().contains("atomic_cmpxchg"), "{err}");
+}

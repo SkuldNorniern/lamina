@@ -318,7 +318,7 @@ fn emit_float_to_int<W: Write, RA: LocalRegisterAllocator<PhysReg = &'static str
 /// Every caller frees the scratch it takes, so an empty pool means one lowering path
 /// holds more at once than the pool has. Falling back to a callee-saved register would
 /// hide that behind a register nothing saves.
-fn scratch_error() -> LaminaError {
+pub(super) fn scratch_error() -> LaminaError {
     LaminaError::CodegenError(CodegenError::UnsupportedFeature(
         "x86_64 scratch registers exhausted".to_string(),
     ))
@@ -1299,6 +1299,13 @@ pub(super) fn emit_instruction_x86_64(
                 )));
             }
         }
+        MirInst::AtomicLoad { .. }
+        | MirInst::AtomicStore { .. }
+        | MirInst::AtomicBinary { .. }
+        | MirInst::AtomicCompareExchange { .. }
+        | MirInst::Fence { .. } => {
+            super::atomic::emit(inst, writer, reg_alloc, stack_slots)?;
+        }
         MirInst::TailCall { name, args } if name == func_name => {
             // Self tail call: move the arguments straight into the parameter homes as a
             // parallel copy and jump to the entry block, skipping the ABI registers, the
@@ -1775,6 +1782,9 @@ pub(super) fn emit_instruction_x86_64(
         }
         MirInst::Comment { text } => {
             writeln!(writer, "    # {text}")?;
+        }
+        MirInst::Unreachable => {
+            writeln!(writer, "    ud2")?;
         }
         MirInst::Ret { value } => {
             if let Some(val) = value {

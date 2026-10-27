@@ -1,17 +1,12 @@
-//! Atomic operations for IR builder (nightly feature).
+//! Atomic operations for IR builder.
 //!
 //! This module provides methods for atomic memory operations including
 //! atomic loads, stores, binary operations, and compare-and-swap.
-//! These operations are only available when the `nightly` feature is enabled.
 
-#[cfg(feature = "nightly")]
 use crate::builder::IRBuilder;
-#[cfg(feature = "nightly")]
 use crate::instruction::{AtomicBinOp, Instruction, MemoryOrdering};
-#[cfg(feature = "nightly")]
 use crate::types::{Type, Value};
 
-#[cfg(feature = "nightly")]
 impl<'a> IRBuilder<'a> {
     /// Performs an atomic load operation with specified memory ordering.
     pub fn atomic_load(

@@ -309,22 +309,18 @@ impl InstructionScheduling {
     }
 
     fn is_memory_op(&self, instr: &Instruction) -> bool {
-        #[cfg(feature = "nightly")]
-        {
-            // Atomics and fences carry ordering, so they belong on the memory
-            // chain; without them they can drift across ordinary accesses.
-            if matches!(
-                instr,
-                Instruction::AtomicLoad { .. }
-                    | Instruction::AtomicStore { .. }
-                    | Instruction::AtomicBinary { .. }
-                    | Instruction::AtomicCompareExchange { .. }
-                    | Instruction::Fence { .. }
-            ) {
-                return true;
-            }
-        }
-        matches!(instr, Instruction::Load { .. } | Instruction::Store { .. })
+        // Atomics and fences carry ordering, so they belong on the memory
+        // chain; without them they can drift across ordinary accesses.
+        matches!(
+            instr,
+            Instruction::Load { .. }
+                | Instruction::Store { .. }
+                | Instruction::AtomicLoad { .. }
+                | Instruction::AtomicStore { .. }
+                | Instruction::AtomicBinary { .. }
+                | Instruction::AtomicCompareExchange { .. }
+                | Instruction::Fence { .. }
+        )
     }
 }
 

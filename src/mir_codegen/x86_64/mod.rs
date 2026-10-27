@@ -3,6 +3,7 @@
 //! Code generation from MIR to x86_64 assembly,
 //! supporting System V AMD64 and Microsoft x64 calling conventions.
 
+mod atomic;
 pub mod constants;
 mod function;
 mod instruction;
@@ -53,8 +54,8 @@ use crate::mir_codegen::common::external_names;
 use crate::mir_codegen::common::{
     CodegenBase, CopyLocation, assign_stack_slots, assign_stack_slots_where, coalesce_dying_inputs,
     compile_functions_parallel, emit_global_data, emit_global_directives,
-    emit_print_format_section, parallel_codegen_error, parallel_copy_schedule,
-    self_tail_entry_label, use_counts,
+    emit_print_format_section, emit_symbol_visibility, parallel_codegen_error,
+    parallel_copy_schedule, self_tail_entry_label, use_counts,
 };
 use crate::mir_codegen::common::{emit_debug_file, emit_gnu_stack_note};
 
@@ -194,6 +195,9 @@ pub fn generate_mir_x86_64_with_units_and_settings<W: Write>(
     writeln!(writer, ".text")?;
     emit_debug_file(writer, settings)?;
     emit_global_directives(writer, module, |name| abi.mangle_function_name(name))?;
+    emit_symbol_visibility(writer, module, target_os, |name| {
+        abi.mangle_function_name(name)
+    })?;
 
     let settings_arc = Arc::new(settings.clone());
     let abi_extensions = Arc::new(AbiExtensions::from_module(module));

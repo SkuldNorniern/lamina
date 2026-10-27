@@ -62,6 +62,22 @@ pub struct KernelMetadata {
     pub max_threads: Option<u32>,
 }
 
+/// ELF-style symbol visibility requested by a function annotation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymbolVisibility {
+    Internal,
+    Private,
+    Hidden,
+    Protected,
+}
+
+/// Section a function is placed in, so the linker groups it with other cold or hot code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodePlacement {
+    Cold,
+    Hot,
+}
+
 /// Function signature
 #[derive(Debug, Clone, PartialEq)]
 pub struct Signature {
@@ -86,6 +102,21 @@ pub struct Signature {
     /// Set by `@noinline`; the inliner must leave calls to this function alone.
     pub no_inline: bool,
 
+    /// Set by `@inline`; the inliner accepts a larger body than its default size limit.
+    pub inline_hint: bool,
+
+    /// Set by `@noreturn`; no code after a call to this function is reachable.
+    pub noreturn: bool,
+
+    /// Set by `@pure` or `@const`; a call whose result is unused can be deleted.
+    pub pure: bool,
+
+    /// Set by `@internal`, `@private`, `@hidden` or `@protected`.
+    pub visibility: Option<SymbolVisibility>,
+
+    /// Set by `@cold` or `@hot`.
+    pub placement: Option<CodePlacement>,
+
     /// Set by a trailing `...` on an `@extern` declaration. A call to one follows the
     /// variadic side of the platform convention.
     pub variadic: bool,
@@ -102,6 +133,11 @@ impl Signature {
             ret_aggregate: None,
             kernel: None,
             no_inline: false,
+            inline_hint: false,
+            noreturn: false,
+            pure: false,
+            visibility: None,
+            placement: None,
             variadic: false,
         }
     }
