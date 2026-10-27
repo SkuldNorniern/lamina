@@ -1561,7 +1561,7 @@ fn emit_instruction_riscv<W: Write>(
             target,
             arg_types,
             args,
-            variadic_fixed: _,
+            variadic_fixed,
             ret,
             ret_ty,
         } => {
@@ -1576,13 +1576,18 @@ fn emit_instruction_riscv<W: Write>(
             // t1 is a temporary the argument registers never overlap, so the target
             // survives the argument setup.
             load_operand_to_register(target, writer, reg_alloc, stack_slots, "t1")?;
-            let kinds: Vec<ArgKind> = arg_types
+            let mut kinds: Vec<ArgKind> = arg_types
                 .iter()
                 .map(|ty| ArgKind {
                     ty: *ty,
                     aggregate: None,
                 })
                 .collect();
+            if let Some(fixed) = variadic_fixed {
+                for kind in kinds.iter_mut().skip(*fixed).filter(|kind| kind.float()) {
+                    kind.ty = MirType::i64();
+                }
+            }
             let stack_space = pass_riscv_arguments(
                 writer,
                 reg_alloc,

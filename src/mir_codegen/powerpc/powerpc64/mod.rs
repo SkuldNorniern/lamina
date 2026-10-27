@@ -1524,14 +1524,15 @@ fn emit_instruction_ppc64<W: Write>(
             target,
             arg_types,
             args,
-            variadic_fixed: _,
+            variadic_fixed,
             ret,
             ret_ty,
         } => {
             let arg_regs = Ppc64Abi::ARG_REGISTERS;
             let kinds: Vec<ArgKind> = arg_types.iter().map(|&ty| ArgKind::scalar(ty)).collect();
             let places = classify_ppc64_arguments(&kinds, 0);
-            for ((arg, ty), place) in args.iter().zip(arg_types).zip(&places) {
+            let fixed = variadic_fixed.unwrap_or(args.len());
+            for (index, ((arg, ty), place)) in args.iter().zip(arg_types).zip(&places).enumerate() {
                 match *place {
                     PpcArgPlace::Gpr(bank) => {
                         load_operand_to_register(
@@ -1542,7 +1543,7 @@ fn emit_instruction_ppc64<W: Write>(
                             arg_regs[bank],
                         )?;
                     }
-                    PpcArgPlace::Fpr { bank, .. } => {
+                    PpcArgPlace::Fpr { bank, gpr } => {
                         emit_load_fp_operand(
                             arg,
                             writer,
@@ -1551,6 +1552,10 @@ fn emit_instruction_ppc64<W: Write>(
                             &bank.to_string(),
                             ty.size_bytes() == 4,
                         )?;
+                        if index >= fixed && gpr < arg_regs.len() {
+                            writeln!(writer, "    stfd {bank}, -8(1)")?;
+                            writeln!(writer, "    ld {}, -8(1)", arg_regs[gpr])?;
+                        }
                     }
                     _ => {}
                 }
