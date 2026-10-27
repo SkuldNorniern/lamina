@@ -1546,4 +1546,129 @@ entry:
             "{text}"
         );
     }
+
+    #[test]
+    fn owned_ir_builder_output_round_trips_through_parser() {
+        use crate::ir::{OwnedIRBuilder, OwnedParam, OwnedStructField, OwnedType, OwnedValue};
+
+        let i32t = OwnedType::Primitive(PrimitiveType::I32);
+        let i64t = OwnedType::Primitive(PrimitiveType::I64);
+        let f64t = OwnedType::Primitive(PrimitiveType::F64);
+        let pair = OwnedType::Named("Pair".to_string());
+        let var = |n: &str| OwnedValue::Variable(n.to_string());
+        let param = |n: &str, ty: &OwnedType| OwnedParam {
+            name: n.to_string(),
+            ty: ty.clone(),
+        };
+
+        let mut b = OwnedIRBuilder::new();
+        b.function_with_params("helper", vec![param("x", &i64t)], i64t.clone())
+            .ret(&i64t, &var("x"));
+        b.function("vfn", OwnedType::Void).ret_void();
+        b.external_function("ext", vec![param("c", &i32t)], i32t.clone());
+        b.function_with_params(
+            "main",
+            vec![param("a", &i64t), param("f", &f64t), param("p", &pair)],
+            i64t.clone(),
+        )
+        .binary(
+            BinaryOp::Add,
+            "sum",
+            PrimitiveType::I64,
+            &var("a"),
+            &OwnedValue::I64(1),
+        )
+        .binary(
+            BinaryOp::Mul,
+            "fm",
+            PrimitiveType::F64,
+            &var("f"),
+            &OwnedValue::F64(1.0),
+        )
+        .cmp(
+            CmpOp::Lt,
+            "lt",
+            PrimitiveType::I64,
+            &var("sum"),
+            &OwnedValue::I64(10),
+        )
+        .branch(&var("lt"), "then", "other")
+        .block("then")
+        .jump("merge")
+        .block("other")
+        .jump("merge")
+        .block("merge")
+        .phi(
+            "m",
+            &i64t,
+            &[
+                (var("sum"), "then".to_string()),
+                (OwnedValue::I64(0), "other".to_string()),
+            ],
+        )
+        .stackalloc("s", &i64t)
+        .stackalloc("ps", &pair)
+        .stackalloc(
+            "ss",
+            &OwnedType::Struct(vec![OwnedStructField {
+                name: "a".to_string(),
+                ty: i64t.clone(),
+            }]),
+        )
+        .stackalloc("st", &OwnedType::Tuple(vec![i64t.clone(), f64t.clone()]))
+        .heapalloc("h", &i64t)
+        .store(&i64t, &var("s"), &var("sum"))
+        .load("l", &i64t, &var("s"))
+        .load("gl", &i64t, &OwnedValue::Global("g".to_string()))
+        .getfieldptr("fp", &var("ps"), 1)
+        .store(&i64t, &var("fp"), &OwnedValue::I64(3))
+        .getelem("ge", &var("s"), &OwnedValue::I32(1), i32t.clone())
+        .getelem(
+            "ga",
+            &var("s"),
+            &OwnedValue::I32(1),
+            OwnedType::Array {
+                element_type: Box::new(i32t.clone()),
+                size: 3,
+            },
+        )
+        .ptrtoint("pi", &var("s"), PrimitiveType::I64)
+        .inttoptr("ip", &var("pi"), PrimitiveType::Ptr)
+        .zext("z", PrimitiveType::I8, PrimitiveType::I32, &var("l"))
+        .sext("sx", PrimitiveType::I8, PrimitiveType::I64, &var("l"))
+        .trunc("tr", PrimitiveType::I64, PrimitiveType::I32, &var("sum"))
+        .bitcast("bc", PrimitiveType::I64, PrimitiveType::F64, &var("sum"))
+        .select("sel", &i64t, &var("lt"), &var("sum"), &OwnedValue::I64(0))
+        .memcpy(&var("s"), &var("s"), &OwnedValue::I64(8))
+        .memmove(&var("s"), &var("s"), &OwnedValue::I64(8))
+        .memset(&var("s"), &OwnedValue::U8(0), &OwnedValue::I64(8))
+        .write("w", &var("s"), &OwnedValue::I64(8))
+        .read("rd", &var("s"), &OwnedValue::I64(8))
+        .write_byte("wb", &OwnedValue::I32(65))
+        .read_byte("rb")
+        .write_ptr("wp", &var("s"), 8)
+        .write_ptr("wq", &var("s"), 3)
+        .call(Some("c"), "helper", &[var("sum")])
+        .call(None, "helper", &[OwnedValue::I64(1)])
+        .print(&var("c"))
+        .heapfree(&var("h"))
+        .switch(
+            PrimitiveType::I64,
+            &var("sum"),
+            "end",
+            &[(1, "a"), (2, "b")],
+        )
+        .block("a")
+        .jump("end")
+        .block("b")
+        .jump("end")
+        .block("end")
+        .ret(&i64t, &var("sum"));
+
+        let text = format!(
+            "type !Pair = struct {{ x: i64, y: i64 }}\nglobal $g: i64 = 5\n\n{}",
+            b.build_ir_text()
+        );
+        parse_module(&text).unwrap_or_else(|e| panic!("{e}\n---\n{text}"));
+    }
 }
