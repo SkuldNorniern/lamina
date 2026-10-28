@@ -45,11 +45,11 @@ use crate::{
 };
 
 use lamina_codegen::abi::{Abi, RuntimeSymbol};
-use lamina_codegen::os_uses_macho;
 use lamina_codegen::{
     Allocation as MirAllocation, GraphColorAllocator, LinearScanAllocator,
     aarch64::{A64RegAlloc, AArch64ABI, FrameMap},
 };
+use lamina_codegen::{os_uses_elf, os_uses_macho};
 use lamina_platform::{TargetArchitecture, TargetOperatingSystem};
 
 /// Convert an x-register name to its w-register alias (lower 32 bits).
@@ -396,11 +396,22 @@ fn compile_single_function_aarch64_with(
     writeln!(output, "{label}:")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
 
+    let unwind = os_uses_elf(target_os);
+    let io_error = |e: IoError| CodegenError::InvalidCodegenOptions(format!("IO error: {e}"));
+    if unwind {
+        writeln!(output, "    .cfi_startproc").map_err(io_error)?;
+    }
     let mut ra_pro = A64RegAlloc::new();
-    writeln!(output, "    stp x29, x30, [sp, #-16]!")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    writeln!(output, "    mov x29, sp")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, "    stp x29, x30, [sp, #-16]!").map_err(io_error)?;
+    if unwind {
+        writeln!(output, "    .cfi_def_cfa_offset 16").map_err(io_error)?;
+        writeln!(output, "    .cfi_offset 29, -16").map_err(io_error)?;
+        writeln!(output, "    .cfi_offset 30, -8").map_err(io_error)?;
+    }
+    writeln!(output, "    mov x29, sp").map_err(io_error)?;
+    if unwind {
+        writeln!(output, "    .cfi_def_cfa_register 29").map_err(io_error)?;
+    }
 
     let mut frame = FrameMap::from_function(func);
 
@@ -751,14 +762,24 @@ fn compile_single_function_aarch64_with(
 
     writeln!(output, "{epilogue_label}:")
         .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    if unwind {
+        writeln!(output, "    .cfi_remember_state").map_err(io_error)?;
+    }
     if adjusted_frame_size > 0 {
         emit_sp_adjust(&mut output, "add", adjusted_frame_size as u64)
             .map_err(|e| CodegenError::InvalidCodegenOptions(e.to_string()))?;
     }
-    writeln!(output, "    ldp x29, x30, [sp], #16")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
-    writeln!(output, "    ret")
-        .map_err(|e| CodegenError::InvalidCodegenOptions(format!("IO error: {e}")))?;
+    writeln!(output, "    ldp x29, x30, [sp], #16").map_err(io_error)?;
+    if unwind {
+        writeln!(output, "    .cfi_def_cfa sp, 0").map_err(io_error)?;
+        writeln!(output, "    .cfi_restore 29").map_err(io_error)?;
+        writeln!(output, "    .cfi_restore 30").map_err(io_error)?;
+    }
+    writeln!(output, "    ret").map_err(io_error)?;
+    if unwind {
+        writeln!(output, "    .cfi_restore_state").map_err(io_error)?;
+        writeln!(output, "    .cfi_endproc").map_err(io_error)?;
+    }
 
     Ok(output)
 }
@@ -1800,11 +1821,23 @@ fn emit_block<W: Write>(
                 let target_sym: String = abi
                     .call_stub(name)
                     .unwrap_or_else(|| abi.mangle_function_name(name));
+                let unwind = os_uses_elf(abi.target_os());
+                if unwind {
+                    writeln!(w, "    .cfi_remember_state")?;
+                }
                 if frame.frame_size > 0 {
                     emit_sp_adjust(w, "add", frame.frame_size as u64)?;
                 }
                 writeln!(w, "    ldp x29, x30, [sp], #16")?;
+                if unwind {
+                    writeln!(w, "    .cfi_def_cfa sp, 0")?;
+                    writeln!(w, "    .cfi_restore 29")?;
+                    writeln!(w, "    .cfi_restore 30")?;
+                }
                 writeln!(w, "    b {target_sym}")?;
+                if unwind {
+                    writeln!(w, "    .cfi_restore_state")?;
+                }
             }
             MirInst::Ret { value } => {
                 if let Some(v) = value

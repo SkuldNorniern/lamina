@@ -245,10 +245,42 @@ fn tail_call_releases_the_frame_the_prologue_reserved() -> Result<(), Box<dyn Er
         .ok_or("missing frame reservation")?;
     assert!(
         asm.contains(&format!(
-            "    add sp, sp, #{reserved}\n    ldp x29, x30, [sp], #16\n    b g\n"
+            "    .cfi_remember_state\n    add sp, sp, #{reserved}\n    ldp x29, x30, [sp], #16\n    .cfi_def_cfa sp, 0\n    .cfi_restore 29\n    .cfi_restore 30\n    b g\n    .cfi_restore_state\n"
         )),
         "{asm}"
     );
+    Ok(())
+}
+
+#[test]
+fn elf_frames_carry_cfi_and_mach_o_frames_do_not() -> Result<(), Box<dyn Error>> {
+    let mut func = Function::new(Signature::new("f").with_return(MirType::i64()));
+    use crate::mir::Block;
+    let mut block = Block::new("entry");
+    block.push(MirInst::Ret {
+        value: Some(Operand::Immediate(Immediate::I64(0))),
+    });
+    func.add_block(block);
+    let settings = MirCodegenSettings::default();
+    let signatures = AggregateSignatures::default();
+    let emit = |os| -> Result<String, Box<dyn Error>> {
+        let bytes = compile_single_function_aarch64("f", &func, os, &settings, &signatures)
+            .map_err(|error| error.to_string())?;
+        Ok(String::from_utf8(bytes)?)
+    };
+    let elf = emit(TargetOperatingSystem::Linux)?;
+    assert!(
+        elf.starts_with(
+            "f:\n    .cfi_startproc\n    stp x29, x30, [sp, #-16]!\n    .cfi_def_cfa_offset 16\n    .cfi_offset 29, -16\n    .cfi_offset 30, -8\n    mov x29, sp\n    .cfi_def_cfa_register 29\n"
+        ),
+        "{elf}"
+    );
+    assert!(
+        elf.ends_with("    ret\n    .cfi_restore_state\n    .cfi_endproc\n"),
+        "{elf}"
+    );
+    let macho = emit(TargetOperatingSystem::MacOS)?;
+    assert!(!macho.contains(".cfi_"), "{macho}");
     Ok(())
 }
 
