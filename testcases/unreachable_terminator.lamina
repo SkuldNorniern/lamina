@@ -1,0 +1,38 @@
+fn @classify(i64 %x) -> i64 {
+entry:
+  %neg = lt.i64 %x, 0
+  br %neg, negative, check
+check:
+  %zero = eq.i64 %x, 0
+  br %zero, zero, positive
+negative:
+  ret.i64 -1
+zero:
+  ret.i64 0
+positive:
+  ret.i64 1
+}
+
+@noinline
+fn @abort_path() -> i64 {
+entry:
+  unreachable
+}
+
+fn @main() -> i64 {
+entry:
+  %a = call @classify(-5)
+  print %a
+  %b = call @classify(0)
+  print %b
+  %c = call @classify(9)
+  print %c
+  %d = lt.i64 %c, 0
+  br %d, bad, good
+bad:
+  %e = call @abort_path()
+  print %e
+  ret.i64 1
+good:
+  ret.i64 0
+}
