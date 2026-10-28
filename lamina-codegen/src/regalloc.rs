@@ -1,7 +1,7 @@
 use lamina_mir::{Function, Instruction, Register, VirtualReg, verify::calculate_dominators};
 use std::{
     cmp::Reverse,
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     hash::Hash,
 };
 
@@ -408,44 +408,50 @@ impl GraphColorAllocator {
             return HashMap::new();
         }
 
+        debug_assert!(
+            intervals
+                .iter()
+                .all(|interval| interval.start <= interval.end)
+        );
+        let mut starts: Vec<usize> = intervals.iter().map(|interval| interval.start).collect();
+        let mut ends: Vec<usize> = intervals.iter().map(|interval| interval.end).collect();
+        starts.sort_unstable();
+        ends.sort_unstable();
+        let degrees: Vec<usize> = intervals
+            .iter()
+            .map(|interval| {
+                let overlapping_starts = starts.partition_point(|&s| s <= interval.end);
+                let ended_before = ends.partition_point(|&e| e < interval.start);
+                overlapping_starts - ended_before - 1
+            })
+            .collect();
         let mut order: Vec<usize> = (0..intervals.len()).collect();
         order.sort_by(|&i, &j| {
-            let deg_i = intervals
-                .iter()
-                .enumerate()
-                .filter(|(k, other)| *k != i && intervals_interfere(&intervals[i], other))
-                .count();
-            let deg_j = intervals
-                .iter()
-                .enumerate()
-                .filter(|(k, other)| *k != j && intervals_interfere(&intervals[j], other))
-                .count();
             intervals[j]
                 .weight
                 .cmp(&intervals[i].weight)
-                .then_with(|| deg_j.cmp(&deg_i))
+                .then_with(|| degrees[j].cmp(&degrees[i]))
                 .then_with(|| intervals[i].end.cmp(&intervals[j].end))
                 .then_with(|| intervals[i].vreg.cmp(&intervals[j].vreg))
         });
 
         let mut result: HashMap<VirtualReg, Allocation<R>> = HashMap::new();
         let mut next_spill: i32 = -8;
+        let mut occupied: HashMap<R, BTreeMap<usize, usize>> = HashMap::new();
 
         for idx in order {
             let interval = &intervals[idx];
-            let mut blocked: HashSet<R> = HashSet::new();
-            for (j, other) in intervals.iter().enumerate() {
-                if j == idx || !intervals_interfere(interval, other) {
-                    continue;
-                }
-                if let Some(Allocation::Register(r)) = result.get(&other.vreg) {
-                    blocked.insert(*r);
-                }
-            }
+            let overlaps = |spans: &BTreeMap<usize, usize>| {
+                spans
+                    .range(..=interval.end)
+                    .next_back()
+                    .is_some_and(|(_, &end)| end >= interval.start)
+            };
 
             let mut picked: Option<R> = None;
             for reg in available_regs {
-                if !blocked.contains(reg) && allowed(interval, *reg) {
+                let blocked = occupied.get(reg).is_some_and(overlaps);
+                if !blocked && allowed(interval, *reg) {
                     picked = Some(*reg);
                     break;
                 }
@@ -454,6 +460,10 @@ impl GraphColorAllocator {
             match picked {
                 Some(r) => {
                     result.insert(interval.vreg, Allocation::Register(r));
+                    occupied
+                        .entry(r)
+                        .or_default()
+                        .insert(interval.start, interval.end);
                 }
                 None => {
                     result.insert(interval.vreg, Allocation::Spill(next_spill));
