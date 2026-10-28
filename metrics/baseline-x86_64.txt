@@ -4,159 +4,207 @@
 # calls: call instructions. branches: j* instructions. frame: subq $N,%rsp per function.
 
 [aggregate_memory_params O0]
-insns 161
-spills 75
-calls 6
-branches 0
+insns 257
+spills 108
+calls 7
+branches 3
 frame main 96
 frame mix 112
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame sum 128
 
 [aggregate_memory_params O1]
-insns 116
-spills 20
-calls 6
-branches 0
+insns 219
+spills 38
+calls 7
+branches 3
 frame main 48
 frame mix 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sum 32
 
 [aggregate_memory_params O2]
-insns 116
-spills 20
-calls 6
-branches 0
-frame main 48
+insns 295
+spills 46
+calls 7
+branches 7
+frame main 64
 frame mix 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sum 32
 
 [aggregate_memory_params O3]
-insns 116
-spills 20
-calls 6
-branches 0
-frame main 48
+insns 295
+spills 46
+calls 7
+branches 7
+frame main 64
 frame mix 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sum 32
 
 [aggregate_mixed_args O0]
-insns 271
-spills 121
+insns 363
+spills 155
 calls 7
-branches 0
+branches 3
 frame big 384
 frame main 208
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [aggregate_mixed_args O1]
-insns 199
-spills 41
+insns 298
+spills 59
 calls 7
-branches 0
+branches 3
 frame big 176
 frame main 112
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [aggregate_mixed_args O2]
-insns 199
-spills 41
+insns 411
+spills 70
 calls 7
-branches 0
+branches 9
 frame big 176
-frame main 112
+frame main 128
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [aggregate_mixed_args O3]
-insns 191
-spills 36
+insns 403
+spills 65
 calls 7
-branches 0
+branches 9
 frame big 144
-frame main 112
+frame main 128
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [aggregate_params O0]
-insns 359
-spills 155
-calls 20
-branches 0
+insns 439
+spills 192
+calls 17
+branches 3
 frame main 208
 frame make_pair 64
 frame make_small 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame spilled 160
 frame sum_pair 64
 frame sum_small 64
 frame sum_three 96
 
 [aggregate_params O1]
-insns 253
-spills 22
-calls 20
-branches 0
+insns 340
+spills 40
+calls 17
+branches 3
 frame main 96
 frame make_pair 16
 frame make_small 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame spilled 32
 frame sum_pair 16
 frame sum_small 16
 frame sum_three 16
 
 [aggregate_params O2]
-insns 253
-spills 22
-calls 20
-branches 0
-frame main 96
+insns 560
+spills 60
+calls 17
+branches 15
+frame main 144
 frame make_pair 16
 frame make_small 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame spilled 32
 frame sum_pair 16
 frame sum_small 16
 frame sum_three 16
 
 [aggregate_params O3]
-insns 255
-spills 24
-calls 20
-branches 0
-frame main 96
+insns 562
+spills 62
+calls 17
+branches 15
+frame main 144
 frame make_pair 16
 frame make_small 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame spilled 48
 frame sum_pair 16
 frame sum_small 16
 frame sum_three 16
 
 [aggregate_sret_return O0]
-insns 147
-spills 64
-calls 6
-branches 0
+insns 243
+spills 97
+calls 7
+branches 3
 frame main 64
 frame make 112
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame sum 128
 
 [aggregate_sret_return O1]
-insns 102
-spills 14
-calls 6
-branches 0
+insns 205
+spills 32
+calls 7
+branches 3
 frame main 48
 frame make 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sum 32
 
 [aggregate_sret_return O2]
-insns 102
-spills 14
-calls 6
-branches 0
-frame main 48
+insns 281
+spills 40
+calls 7
+branches 7
+frame main 64
 frame make 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sum 32
 
 [aggregate_sret_return O3]
-insns 102
-spills 14
-calls 6
-branches 0
-frame main 48
+insns 281
+spills 40
+calls 7
+branches 7
+frame main 64
 frame make 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sum 32
 
 [arithmetic O0]
@@ -196,11 +244,14 @@ frame print_digits 32
 frame print_number 32
 
 [array_operations_comprehensive O0]
-insns 713
-spills 304
-calls 39
-branches 2
+insns 765
+spills 335
+calls 29
+branches 5
 frame main 112
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_bool_array_operations 96
 frame test_char_array_operations 80
 frame test_f32_array_operations 80
@@ -216,11 +267,14 @@ frame test_u64_array_operations 96
 frame test_u8_array_operations 80
 
 [array_operations_comprehensive O1]
-insns 471
-spills 35
-calls 39
-branches 2
+insns 530
+spills 53
+calls 29
+branches 5
 frame main 112
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_array_operations 16
 frame test_char_array_operations 16
 frame test_f32_array_operations 48
@@ -236,11 +290,14 @@ frame test_u64_array_operations 32
 frame test_u8_array_operations 16
 
 [array_operations_comprehensive O2]
-insns 388
-spills 26
-calls 26
-branches 4
-frame main 112
+insns 930
+spills 87
+calls 16
+branches 33
+frame main 240
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_array_operations 16
 frame test_char_array_operations 0
 frame test_f32_array_operations 0
@@ -256,11 +313,14 @@ frame test_u64_array_operations 0
 frame test_u8_array_operations 0
 
 [array_operations_comprehensive O3]
-insns 380
-spills 8
-calls 26
-branches 4
-frame main 48
+insns 955
+spills 119
+calls 16
+branches 33
+frame main 368
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_array_operations 16
 frame test_char_array_operations 0
 frame test_f32_array_operations 0
@@ -276,88 +336,124 @@ frame test_u64_array_operations 0
 frame test_u8_array_operations 0
 
 [atomics O0]
-insns 393
-spills 110
-calls 52
-branches 9
-frame main 464
+insns 415
+spills 169
+calls 29
+branches 12
+frame main 528
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [atomics O1]
-insns 353
-spills 47
-calls 52
-branches 9
-frame main 320
+insns 376
+spills 68
+calls 29
+branches 12
+frame main 288
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [atomics O2]
-insns 348
-spills 47
-calls 52
-branches 9
-frame main 304
+insns 1320
+spills 266
+calls 29
+branches 60
+frame main 896
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [atomics O3]
-insns 350
-spills 47
-calls 52
-branches 9
-frame main 304
+insns 1322
+spills 266
+calls 29
+branches 60
+frame main 896
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [binary_op_rhs_in_destination O0]
-insns 83
-spills 24
-calls 8
-branches 0
+insns 171
+spills 58
+calls 7
+branches 3
 frame main 64
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [binary_op_rhs_in_destination O1]
-insns 68
-spills 7
-calls 8
-branches 0
+insns 163
+spills 25
+calls 7
+branches 3
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [binary_op_rhs_in_destination O2]
-insns 66
-spills 7
-calls 8
-branches 0
-frame main 32
+insns 310
+spills 39
+calls 7
+branches 11
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [binary_op_rhs_in_destination O3]
-insns 66
-spills 7
-calls 8
-branches 0
-frame main 32
+insns 310
+spills 39
+calls 7
+branches 11
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [bit_intrinsics O0]
-insns 222
-spills 69
-calls 14
-branches 2
+insns 298
+spills 107
+calls 10
+branches 5
 frame main 304
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [bit_intrinsics O1]
-insns 203
-spills 18
-calls 14
-branches 2
+insns 286
+spills 38
+calls 10
+branches 5
 frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [bit_intrinsics O2]
-insns 198
-spills 15
-calls 14
-branches 2
-frame main 64
+insns 537
+spills 64
+calls 10
+branches 19
+frame main 144
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [bit_intrinsics O3]
-insns 199
-spills 14
-calls 14
-branches 3
-frame main 80
+insns 542
+spills 65
+calls 10
+branches 20
+frame main 160
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [call_typed_arguments O0]
 insns 49
@@ -444,54 +540,66 @@ frame print_number 32
 frame simple_func 0
 
 [callptr_float_literal O0]
-insns 195
-spills 44
-calls 25
-branches 0
+insns 263
+spills 81
+calls 19
+branches 3
 frame bits32 32
 frame bits64 16
 frame main 128
 frame mixed 48
 frame nullary 0
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame report 32
 frame slot 0
 
 [callptr_float_literal O1]
-insns 196
-spills 26
-calls 25
-branches 0
+insns 271
+spills 44
+calls 19
+branches 3
 frame bits32 16
 frame bits64 16
 frame main 48
 frame mixed 48
 frame nullary 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame report 16
 frame slot 0
 
 [callptr_float_literal O2]
-insns 186
-spills 26
-calls 25
-branches 0
+insns 598
+spills 89
+calls 19
+branches 21
 frame bits32 16
 frame bits64 16
-frame main 48
-frame mixed 48
+frame main 144
+frame mixed 80
 frame nullary 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame report 16
 frame slot 0
 
 [callptr_float_literal O3]
-insns 182
-spills 22
-calls 25
-branches 0
+insns 595
+spills 83
+calls 19
+branches 21
 frame bits32 16
 frame bits64 16
-frame main 32
-frame mixed 32
+frame main 128
+frame mixed 64
 frame nullary 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame report 16
 frame slot 0
 
@@ -744,43 +852,58 @@ frame test_heap_dealloc 16
 frame test_stack_dealloc 0
 
 [debug_printing O0]
-insns 26
-spills 3
-calls 3
-branches 0
+insns 126
+spills 35
+calls 5
+branches 3
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_integer_printing 16
 
 [debug_printing O1]
-insns 28
-spills 4
-calls 3
-branches 0
+insns 135
+spills 22
+calls 5
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_integer_printing 16
 
 [debug_printing O2]
-insns 32
-spills 4
-calls 4
-branches 0
-frame main 16
-frame test_integer_printing 16
+insns 218
+spills 36
+calls 5
+branches 7
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+frame test_integer_printing 32
 
 [debug_printing O3]
-insns 32
-spills 4
-calls 4
-branches 0
-frame main 16
-frame test_integer_printing 16
+insns 218
+spills 36
+calls 5
+branches 7
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+frame test_integer_printing 32
 
 [division_constant_divisors O0]
-insns 11243
-spills 1358
-calls 3462
-branches 0
+insns 6731
+spills 2543
+calls 2311
+branches 3
 frame main 9232
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame sd0 16
 frame sd1 16
 frame sd10 16
@@ -851,11 +974,14 @@ frame ud66 16
 frame ud67 16
 
 [division_constant_divisors O1]
-insns 10973
-spills 2
-calls 3462
-branches 0
+insns 6468
+spills 20
+calls 2311
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sd0 0
 frame sd1 0
 frame sd10 0
@@ -926,11 +1052,14 @@ frame ud66 0
 frame ud67 0
 
 [division_constant_divisors O2]
-insns 14302
-spills 4
-calls 2462
-branches 0
-frame main 16
+insns 26697
+spills 2489
+calls 1811
+branches 1003
+frame main 7840
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sd0 0
 frame sd1 0
 frame sd10 0
@@ -1001,11 +1130,14 @@ frame ud66 0
 frame ud67 0
 
 [division_constant_divisors O3]
-insns 14126
-spills 4
-calls 2462
-branches 0
-frame main 16
+insns 26688
+spills 2489
+calls 1811
+branches 1003
+frame main 7840
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sd0 0
 frame sd1 0
 frame sd10 0
@@ -1076,55 +1208,70 @@ frame ud66 0
 frame ud67 0
 
 [division_runtime_narrowing O0]
-insns 8468
-spills 856
-calls 2508
-branches 12
+insns 5228
+spills 1723
+calls 1675
+branches 15
 frame main 6688
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame sdiv 32
 frame srem 32
 frame udiv 32
 frame urem 32
 
 [division_runtime_narrowing O1]
-insns 8454
-spills 2
-calls 2508
-branches 12
+insns 5221
+spills 20
+calls 1675
+branches 15
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sdiv 0
 frame srem 0
 frame udiv 0
 frame urem 0
 
 [division_runtime_narrowing O2]
-insns 21207
-spills 6
-calls 1672
-branches 2520
-frame main 32
+insns 24598
+spills 1995
+calls 1175
+branches 2015
+frame main 5888
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sdiv 0
 frame srem 0
 frame udiv 0
 frame urem 0
 
 [division_runtime_narrowing O3]
-insns 21207
-spills 6
-calls 1672
-branches 2520
-frame main 32
+insns 24598
+spills 1995
+calls 1175
+branches 2015
+frame main 5888
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sdiv 0
 frame srem 0
 frame udiv 0
 frame urem 0
 
 [division_small_types_bug_test O0]
-insns 223
-spills 44
-calls 15
-branches 10
+insns 307
+spills 75
+calls 13
+branches 13
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_i16_division 32
 frame test_i8_division 32
 frame test_mixed_division 48
@@ -1132,11 +1279,14 @@ frame test_u16_division 32
 frame test_u8_division 32
 
 [division_small_types_bug_test O1]
-insns 193
-spills 10
-calls 15
-branches 10
+insns 284
+spills 28
+calls 13
+branches 13
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_i16_division 0
 frame test_i8_division 0
 frame test_mixed_division 0
@@ -1144,11 +1294,14 @@ frame test_u16_division 0
 frame test_u8_division 0
 
 [division_small_types_bug_test O2]
-insns 269
-spills 10
-calls 10
-branches 20
-frame main 48
+insns 545
+spills 47
+calls 8
+branches 33
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_i16_division 0
 frame test_i8_division 0
 frame test_mixed_division 0
@@ -1156,11 +1309,14 @@ frame test_u16_division 0
 frame test_u8_division 0
 
 [division_small_types_bug_test O3]
-insns 269
-spills 10
-calls 10
-branches 20
-frame main 48
+insns 543
+spills 45
+calls 8
+branches 33
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_i16_division 0
 frame test_i8_division 0
 frame test_mixed_division 0
@@ -1204,11 +1360,14 @@ frame print_digits 32
 frame print_number 32
 
 [edge_cases_bug_test O0]
-insns 291
-spills 91
-calls 15
-branches 10
+insns 375
+spills 122
+calls 13
+branches 13
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_i16_overflow 112
 frame test_i8_overflow 112
 frame test_large_numbers 32
@@ -1216,11 +1375,14 @@ frame test_negative_division 64
 frame test_zero_division 32
 
 [edge_cases_bug_test O1]
-insns 214
-spills 10
-calls 15
-branches 10
+insns 305
+spills 28
+calls 13
+branches 13
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_i16_overflow 0
 frame test_i8_overflow 0
 frame test_large_numbers 0
@@ -1228,11 +1390,14 @@ frame test_negative_division 0
 frame test_zero_division 0
 
 [edge_cases_bug_test O2]
-insns 311
-spills 10
-calls 10
-branches 20
-frame main 48
+insns 587
+spills 47
+calls 8
+branches 33
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_i16_overflow 0
 frame test_i8_overflow 0
 frame test_large_numbers 0
@@ -1240,11 +1405,14 @@ frame test_negative_division 0
 frame test_zero_division 0
 
 [edge_cases_bug_test O3]
-insns 311
-spills 18
-calls 10
-branches 20
-frame main 80
+insns 595
+spills 59
+calls 8
+branches 33
+frame main 144
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_i16_overflow 0
 frame test_i8_overflow 0
 frame test_large_numbers 0
@@ -1300,44 +1468,67 @@ frame test_nested_flow 0
 frame test_wrapping 0
 
 [extern_declarations O0]
-insns 39
-spills 7
-calls 7
-branches 0
+insns 163
+spills 49
+calls 10
+branches 3
+frame fmt_g 0
 frame main 48
+frame print_f64 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame text 0
 
 [extern_declarations O1]
-insns 40
-spills 5
-calls 7
-branches 0
+insns 171
+spills 29
+calls 10
+branches 3
+frame fmt_g 0
 frame main 32
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame text 0
 
 [extern_declarations O2]
-insns 40
-spills 5
-calls 7
-branches 0
+insns 222
+spills 34
+calls 11
+branches 5
+frame fmt_g 0
 frame main 32
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame text 0
 
 [extern_declarations O3]
-insns 40
-spills 5
-calls 7
-branches 0
+insns 222
+spills 34
+calls 11
+branches 5
+frame fmt_g 0
 frame main 32
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame text 0
 
 [external_functions O0]
-insns 97
-spills 16
-calls 16
-branches 0
+insns 181
+spills 47
+calls 14
+branches 3
 frame internal_helper 16
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_different_signatures 16
 frame test_external_calls 0
 frame test_external_void 16
@@ -1345,12 +1536,15 @@ frame test_mixed_calls 16
 frame test_multiple_externals 0
 
 [external_functions O1]
-insns 85
-spills 12
-calls 16
-branches 0
+insns 176
+spills 30
+calls 14
+branches 3
 frame internal_helper 0
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_different_signatures 0
 frame test_external_calls 0
 frame test_external_void 0
@@ -1358,12 +1552,15 @@ frame test_mixed_calls 16
 frame test_multiple_externals 0
 
 [external_functions O2]
-insns 74
-spills 10
-calls 10
-branches 0
+insns 350
+spills 48
+calls 8
+branches 13
 frame internal_helper 0
-frame main 48
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_different_signatures 0
 frame test_external_calls 0
 frame test_external_void 0
@@ -1371,12 +1568,15 @@ frame test_mixed_calls 0
 frame test_multiple_externals 0
 
 [external_functions O3]
-insns 68
-spills 4
-calls 10
-branches 0
+insns 350
+spills 48
+calls 8
+branches 13
 frame internal_helper 0
-frame main 16
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_different_signatures 0
 frame test_external_calls 0
 frame test_external_void 0
@@ -1420,68 +1620,100 @@ frame print_digits 32
 frame print_number 32
 
 [float_exponent_literals O0]
-insns 76
-spills 8
+insns 194
+spills 51
 calls 10
-branches 0
-frame main 64
+branches 3
+frame fmt_g 0
+frame main 80
+frame print_f64 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame tiny 0
 
 [float_exponent_literals O1]
-insns 77
-spills 8
+insns 202
+spills 34
 calls 10
-branches 0
-frame main 64
+branches 3
+frame fmt_g 0
+frame main 80
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame tiny 0
 
 [float_exponent_literals O2]
-insns 57
-spills 8
-calls 10
-branches 0
-frame main 64
+insns 251
+spills 43
+calls 15
+branches 3
+frame fmt_g 0
+frame main 96
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame tiny 0
 
 [float_exponent_literals O3]
-insns 55
-spills 6
-calls 10
-branches 0
-frame main 48
+insns 251
+spills 43
+calls 15
+branches 3
+frame fmt_g 0
+frame main 80
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame tiny 0
 
 [float_nan_comparisons O0]
-insns 174
-spills 37
-calls 17
-branches 0
+insns 246
+spills 76
+calls 12
+branches 3
 frame cmp 160
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [float_nan_comparisons O1]
-insns 180
-spills 26
-calls 17
-branches 0
+insns 259
+spills 44
+calls 12
+branches 3
 frame cmp 48
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [float_nan_comparisons O2]
-insns 330
-spills 48
-calls 32
-branches 0
-frame cmp 48
-frame main 48
+insns 554
+spills 66
+calls 12
+branches 19
+frame cmp 64
+frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [float_nan_comparisons O3]
-insns 330
-spills 48
-calls 32
-branches 0
-frame cmp 48
-frame main 48
+insns 554
+spills 66
+calls 12
+branches 19
+frame cmp 64
+frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [float_phi_copy O0]
 insns 144
@@ -1520,72 +1752,104 @@ frame print_digits 32
 frame print_number 32
 
 [float_width_conversions O0]
-insns 71
-spills 8
-calls 8
-branches 0
-frame main 64
+insns 193
+spills 51
+calls 9
+branches 3
+frame fmt_g 0
+frame main 80
+frame print_f64 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [float_width_conversions O1]
-insns 71
-spills 8
-calls 8
-branches 0
-frame main 64
+insns 200
+spills 34
+calls 9
+branches 3
+frame fmt_g 0
+frame main 80
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [float_width_conversions O2]
-insns 56
-spills 8
-calls 8
-branches 0
-frame main 64
+insns 241
+spills 42
+calls 13
+branches 3
+frame fmt_g 0
+frame main 96
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [float_width_conversions O3]
-insns 56
-spills 8
-calls 8
-branches 0
-frame main 64
+insns 244
+spills 45
+calls 13
+branches 3
+frame fmt_g 0
+frame main 96
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [floating_point_bug_test O0]
-insns 212
-spills 53
-calls 12
-branches 6
+insns 300
+spills 84
+calls 11
+branches 9
 frame main 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_f32_operations 64
 frame test_f64_operations 64
 frame test_float_int_conversion 32
 frame test_floating_point_constants 80
 
 [floating_point_bug_test O1]
-insns 106
-spills 8
-calls 12
-branches 6
+insns 201
+spills 26
+calls 11
+branches 9
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_f32_operations 0
 frame test_f64_operations 0
 frame test_float_int_conversion 0
 frame test_floating_point_constants 0
 
 [floating_point_bug_test O2]
-insns 129
-spills 8
-calls 8
-branches 12
-frame main 32
+insns 373
+spills 42
+calls 7
+branches 23
+frame main 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_f32_operations 0
 frame test_f64_operations 0
 frame test_float_int_conversion 0
 frame test_floating_point_constants 0
 
 [floating_point_bug_test O3]
-insns 123
-spills 2
-calls 8
-branches 12
-frame main 16
+insns 373
+spills 42
+calls 7
+branches 23
+frame main 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_f32_operations 0
 frame test_f64_operations 0
 frame test_float_int_conversion 0
@@ -1644,307 +1908,411 @@ frame test_float_operations 0
 frame test_float_to_int_conversion 0
 
 [fptoint_signed O0]
-insns 8481
-spills 514
-calls 560
-branches 0
+insns 7465
+spills 825
+calls 283
+branches 3
 frame main 4112
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [fptoint_signed O1]
-insns 8485
-spills 28
-calls 560
-branches 0
+insns 7476
+spills 46
+calls 283
+branches 3
 frame main 208
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [fptoint_signed O2]
-insns 8485
-spills 28
-calls 560
-branches 0
-frame main 208
+insns 17784
+spills 1459
+calls 283
+branches 563
+frame main 4768
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [fptoint_signed O3]
-insns 8485
-spills 28
-calls 560
-branches 0
-frame main 208
+insns 17784
+spills 1459
+calls 283
+branches 563
+frame main 4768
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [fptoint_unsigned O0]
-insns 7151
-spills 514
-calls 560
-branches 0
+insns 6135
+spills 825
+calls 283
+branches 3
 frame main 4112
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [fptoint_unsigned O1]
-insns 7155
-spills 28
-calls 560
-branches 0
+insns 6146
+spills 46
+calls 283
+branches 3
 frame main 208
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [fptoint_unsigned O2]
-insns 7155
-spills 28
-calls 560
-branches 0
-frame main 208
+insns 14542
+spills 1000
+calls 283
+branches 423
+frame main 2832
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [fptoint_unsigned O3]
-insns 7155
-spills 28
-calls 560
-branches 0
-frame main 208
+insns 14542
+spills 1000
+calls 283
+branches 423
+frame main 2832
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [function_annotations O0]
-insns 121
-spills 11
-calls 25
-branches 0
+insns 193
+spills 49
+calls 20
+branches 3
 frame cold_fn 0
 frame hidden_fn 0
 frame hot_fn 0
 frame inline_fn 0
 frame internal_fn 0
 frame main 64
+frame print_i64 64
+frame print_u64 16
 frame private_fn 0
 frame protected_fn 0
 frame pure_fn 16
+frame put_u64 48
 
 [function_annotations O1]
-insns 82
-spills 1
-calls 22
-branches 0
+insns 165
+spills 19
+calls 18
+branches 3
 frame cold_fn 0
 frame hidden_fn 0
 frame hot_fn 0
 frame inline_fn 0
 frame internal_fn 0
 frame main 16
+frame print_i64 32
+frame print_u64 16
 frame private_fn 0
 frame protected_fn 0
 frame pure_fn 0
+frame put_u64 32
 
 [function_annotations O2]
-insns 75
-spills 1
-calls 15
-branches 0
+insns 416
+spills 40
+calls 11
+branches 17
 frame cold_fn 0
 frame hidden_fn 0
 frame hot_fn 0
 frame inline_fn 0
 frame internal_fn 0
-frame main 16
+frame main 64
+frame print_i64 32
+frame print_u64 16
 frame private_fn 0
 frame protected_fn 0
 frame pure_fn 0
+frame put_u64 32
 
 [function_annotations O3]
-insns 75
-spills 1
-calls 15
-branches 0
+insns 416
+spills 40
+calls 11
+branches 17
 frame cold_fn 0
 frame hidden_fn 0
 frame hot_fn 0
 frame inline_fn 0
 frame internal_fn 0
-frame main 16
+frame main 64
+frame print_i64 32
+frame print_u64 16
 frame private_fn 0
 frame protected_fn 0
 frame pure_fn 0
+frame put_u64 32
 
 [function_call_isolation O0]
-insns 77
-spills 17
-calls 16
-branches 0
+insns 161
+spills 49
+calls 14
+branches 3
 frame add_ten 16
 frame main 48
 frame multiply_by_two 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [function_call_isolation O1]
-insns 72
-spills 8
-calls 16
-branches 0
+insns 163
+spills 26
+calls 14
+branches 3
 frame add_ten 0
 frame main 32
 frame multiply_by_two 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [function_call_isolation O2]
-insns 68
-spills 8
-calls 10
-branches 0
+insns 347
+spills 48
+calls 8
+branches 13
 frame add_ten 0
-frame main 32
+frame main 96
 frame multiply_by_two 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [function_call_isolation O3]
-insns 64
-spills 4
-calls 10
-branches 0
+insns 346
+spills 46
+calls 8
+branches 13
 frame add_ten 0
-frame main 16
+frame main 96
 frame multiply_by_two 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [function_placement_annotations O0]
-insns 62
-spills 11
+insns 154
+spills 45
 calls 9
-branches 0
+branches 3
 frame hot_fn 0
 frame main 32
 frame placed 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame weak_add 32
 
 [function_placement_annotations O1]
-insns 48
-spills 2
+insns 147
+spills 20
 calls 9
-branches 0
+branches 3
 frame hot_fn 0
 frame main 16
 frame placed 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame weak_add 0
 
 [function_placement_annotations O2]
-insns 49
-spills 4
+insns 263
+spills 34
 calls 7
-branches 0
+branches 9
 frame hot_fn 0
-frame main 16
+frame main 48
 frame placed 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame weak_add 0
 
 [function_placement_annotations O3]
-insns 49
-spills 4
+insns 263
+spills 34
 calls 7
-branches 0
+branches 9
 frame hot_fn 0
-frame main 16
+frame main 48
 frame placed 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame weak_add 0
 
 [function_pointers O0]
-insns 104
-spills 26
-calls 10
-branches 0
+insns 224
+spills 69
+calls 12
+branches 3
 frame apply 32
+frame fmt_g 0
 frame main 48
+frame print_f64 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame scale 32
 frame thrice 16
 frame twice 16
 
 [function_pointers O1]
-insns 102
-spills 18
-calls 10
-branches 0
+insns 229
+spills 42
+calls 12
+branches 3
 frame apply 32
+frame fmt_g 0
 frame main 32
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame scale 32
 frame thrice 0
 frame twice 0
 
 [function_pointers O2]
-insns 112
-spills 20
-calls 10
-branches 0
+insns 326
+spills 51
+calls 13
+branches 7
 frame apply 32
+frame fmt_g 0
 frame main 48
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame scale 32
 frame thrice 0
 frame twice 0
 
 [function_pointers O3]
-insns 110
-spills 18
-calls 10
-branches 0
+insns 324
+spills 49
+calls 13
+branches 7
 frame apply 32
-frame main 32
+frame fmt_g 0
+frame main 48
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame scale 32
 frame thrice 0
 frame twice 0
 
 [functions O0]
-insns 43
-spills 11
-calls 4
-branches 0
+insns 143
+spills 43
+calls 6
+branches 3
 frame add_numbers 32
 frame main 16
 frame multiply_by_two 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [functions O1]
-insns 34
-spills 4
-calls 4
-branches 0
+insns 141
+spills 22
+calls 6
+branches 3
 frame add_numbers 0
 frame main 16
 frame multiply_by_two 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [functions O2]
-insns 30
-spills 2
-calls 2
-branches 0
+insns 177
+spills 26
+calls 4
+branches 5
 frame add_numbers 0
-frame main 16
+frame main 32
 frame multiply_by_two 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [functions O3]
-insns 30
-spills 2
-calls 2
-branches 0
+insns 177
+spills 26
+calls 4
+branches 5
 frame add_numbers 0
-frame main 16
+frame main 32
 frame multiply_by_two 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [gep_element_size_bug_test O0]
-insns 60
-spills 19
-calls 3
-branches 0
+insns 160
+spills 51
+calls 5
+branches 3
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_i32_array_gep 80
 
 [gep_element_size_bug_test O1]
-insns 41
-spills 2
-calls 3
-branches 0
+insns 148
+spills 20
+calls 5
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_i32_array_gep 0
 
 [gep_element_size_bug_test O2]
-insns 49
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 197
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_i32_array_gep 0
 
 [gep_element_size_bug_test O3]
-insns 49
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 196
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_i32_array_gep 0
 
 [gep_element_size_comprehensive_bug_test O0]
@@ -2092,296 +2460,408 @@ frame test_mixed_field_sizes 0
 frame test_packed_struct 0
 
 [global_element_list O0]
-insns 72
-spills 23
-calls 8
-branches 0
+insns 188
+spills 67
+calls 9
+branches 3
 frame bytes 0
+frame fmt_g 0
 frame main 144
+frame print_f64 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame ratios 0
 frame squares 0
 
 [global_element_list O1]
-insns 59
-spills 7
-calls 8
-branches 0
+insns 182
+spills 31
+calls 9
+branches 3
 frame bytes 0
+frame fmt_g 0
 frame main 32
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame ratios 0
 frame squares 0
 
 [global_element_list O2]
-insns 58
-spills 7
-calls 8
-branches 0
+insns 311
+spills 46
+calls 10
+branches 9
 frame bytes 0
-frame main 32
+frame fmt_g 0
+frame main 80
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame ratios 0
 frame squares 0
 
 [global_element_list O3]
-insns 56
-spills 5
-calls 8
-branches 0
+insns 309
+spills 43
+calls 10
+branches 9
 frame bytes 0
-frame main 32
+frame fmt_g 0
+frame main 64
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame ratios 0
 frame squares 0
 
 [global_string O0]
-insns 89
-spills 23
-calls 10
-branches 0
+insns 173
+spills 58
+calls 8
+branches 3
 frame blank 0
 frame greeting 0
 frame main 128
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [global_string O1]
-insns 84
-spills 11
-calls 10
-branches 0
+insns 175
+spills 29
+calls 8
+branches 3
 frame blank 0
 frame greeting 0
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [global_string O2]
-insns 84
-spills 11
-calls 10
-branches 0
+insns 365
+spills 55
+calls 8
+branches 13
 frame blank 0
 frame greeting 0
-frame main 48
+frame main 128
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [global_string O3]
-insns 82
-spills 9
-calls 10
-branches 0
+insns 367
+spills 56
+calls 8
+branches 13
 frame blank 0
 frame greeting 0
-frame main 32
+frame main 128
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [global_struct_init O0]
-insns 59
-spills 16
-calls 8
-branches 0
+insns 175
+spills 60
+calls 9
+branches 3
+frame fmt_g 0
 frame main 96
 frame mixed 0
 frame pair 0
+frame print_f64 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [global_struct_init O1]
-insns 53
-spills 7
-calls 8
-branches 0
+insns 176
+spills 31
+calls 9
+branches 3
+frame fmt_g 0
 frame main 32
 frame mixed 0
 frame pair 0
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [global_struct_init O2]
-insns 53
-spills 7
-calls 8
-branches 0
-frame main 32
+insns 305
+spills 52
+calls 10
+branches 9
+frame fmt_g 0
+frame main 112
 frame mixed 0
 frame pair 0
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [global_struct_init O3]
-insns 51
-spills 5
-calls 8
-branches 0
-frame main 32
+insns 305
+spills 51
+calls 10
+branches 9
+frame fmt_g 0
+frame main 96
 frame mixed 0
 frame pair 0
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [globals_address O0]
-insns 40
-spills 9
-calls 5
-branches 0
+insns 136
+spills 42
+calls 6
+branches 3
 frame main 32
 frame poke 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame slot 0
 
 [globals_address O1]
-insns 33
-spills 4
-calls 5
-branches 0
+insns 136
+spills 22
+calls 6
+branches 3
 frame main 16
 frame poke 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame slot 0
 
 [globals_address O2]
-insns 31
-spills 4
-calls 4
-branches 0
-frame main 16
+insns 213
+spills 32
+calls 5
+branches 7
+frame main 48
 frame poke 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame slot 0
 
 [globals_address O3]
-insns 31
-spills 4
-calls 4
-branches 0
-frame main 16
+insns 213
+spills 32
+calls 5
+branches 7
+frame main 48
 frame poke 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame slot 0
 
 [globals_export O0]
-insns 17
-spills 2
-calls 2
-branches 0
+insns 117
+spills 34
+calls 4
+branches 3
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame shared 0
 
 [globals_export O1]
-insns 17
-spills 2
-calls 2
-branches 0
+insns 124
+spills 20
+calls 4
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame shared 0
 
 [globals_export O2]
-insns 17
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 164
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame shared 0
 
 [globals_export O3]
-insns 17
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 164
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame shared 0
 
 [globals_float O0]
-insns 60
-spills 11
-calls 4
-branches 0
+insns 156
+spills 44
+calls 5
+branches 3
 frame half 0
 frame main 80
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame scale 0
 
 [globals_float O1]
-insns 62
-spills 9
-calls 4
-branches 0
+insns 165
+spills 27
+calls 5
+branches 3
 frame half 0
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame scale 0
 
 [globals_float O2]
-insns 62
-spills 9
-calls 4
-branches 0
+insns 244
+spills 37
+calls 5
+branches 7
 frame half 0
-frame main 48
+frame main 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame scale 0
 
 [globals_float O3]
-insns 62
-spills 9
-calls 4
-branches 0
+insns 242
+spills 35
+calls 5
+branches 7
 frame half 0
-frame main 48
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame scale 0
 
 [globals_int O0]
-insns 55
-spills 13
+insns 147
+spills 47
 calls 7
-branches 0
+branches 3
 frame bump 32
 frame counter 0
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame step 0
 
 [globals_int O1]
-insns 43
-spills 4
+insns 142
+spills 22
 calls 7
-branches 0
+branches 3
 frame bump 0
 frame counter 0
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame step 0
 
 [globals_int O2]
-insns 47
-spills 6
+insns 259
+spills 35
 calls 6
-branches 0
+branches 9
 frame bump 0
 frame counter 0
-frame main 32
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame step 0
 
 [globals_int O3]
-insns 45
-spills 4
+insns 259
+spills 34
 calls 6
-branches 0
+branches 9
 frame bump 0
 frame counter 0
-frame main 16
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame step 0
 
 [globals_zero_init O0]
-insns 54
-spills 16
+insns 146
+spills 50
 calls 6
-branches 0
+branches 3
 frame acc 0
 frame flag 0
 frame main 80
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [globals_zero_init O1]
-insns 46
-spills 8
+insns 145
+spills 26
 calls 6
-branches 0
+branches 3
 frame acc 0
 frame flag 0
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [globals_zero_init O2]
-insns 46
-spills 8
+insns 257
+spills 39
 calls 6
-branches 0
+branches 9
 frame acc 0
 frame flag 0
-frame main 32
+frame main 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [globals_zero_init O3]
-insns 44
-spills 6
+insns 257
+spills 38
 calls 6
-branches 0
+branches 9
 frame acc 0
 frame flag 0
-frame main 32
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [heap_allocation_bug_test O0]
 insns 334
@@ -2436,96 +2916,132 @@ frame test_heap_struct 16
 frame test_multiple_allocations 32
 
 [heap_memory O0]
-insns 105
-spills 34
-calls 14
-branches 0
+insns 201
+spills 65
+calls 15
+branches 3
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_heap_allocation 48
 frame test_multiple_heap_allocations 64
 
 [heap_memory O1]
-insns 97
-spills 16
-calls 14
-branches 0
+insns 200
+spills 34
+calls 15
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_heap_allocation 16
 frame test_multiple_heap_allocations 32
 
 [heap_memory O2]
-insns 139
-spills 22
-calls 20
-branches 0
+insns 318
+spills 46
+calls 21
+branches 7
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_heap_allocation 16
 frame test_multiple_heap_allocations 32
 
 [heap_memory O3]
-insns 145
-spills 26
-calls 20
-branches 0
-frame main 48
+insns 324
+spills 52
+calls 21
+branches 7
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_heap_allocation 16
 frame test_multiple_heap_allocations 48
 
 [heapfree_reassigned_heap O0]
-insns 28
-spills 7
-calls 4
-branches 0
+insns 128
+spills 38
+calls 6
+branches 3
 frame main 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [heapfree_reassigned_heap O1]
-insns 26
-spills 4
-calls 4
-branches 0
+insns 133
+spills 22
+calls 6
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [heapfree_reassigned_heap O2]
-insns 26
-spills 4
-calls 4
-branches 0
-frame main 16
+insns 171
+spills 26
+calls 6
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [heapfree_reassigned_heap O3]
-insns 24
-spills 2
-calls 4
-branches 0
-frame main 16
+insns 171
+spills 26
+calls 6
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [heapfree_reassigned_stack O0]
-insns 25
-spills 5
-calls 3
-branches 0
+insns 125
+spills 37
+calls 5
+branches 3
 frame main 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [heapfree_reassigned_stack O1]
-insns 24
-spills 4
-calls 3
-branches 0
+insns 131
+spills 22
+calls 5
+branches 3
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [heapfree_reassigned_stack O2]
-insns 22
-spills 2
-calls 3
-branches 0
-frame main 16
+insns 169
+spills 26
+calls 5
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [heapfree_reassigned_stack O3]
-insns 22
-spills 2
-calls 3
-branches 0
-frame main 16
+insns 169
+spills 26
+calls 5
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [hello_world O0]
 insns 127
@@ -2556,58 +3072,70 @@ branches 0
 frame main 16
 
 [i128_abi O0]
-insns 2315
-spills 1420
-calls 25
-branches 0
+insns 2379
+spills 1461
+calls 18
+branches 3
 frame main 1776
 frame many 496
 frame mixed 592
 frame pad 608
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame split 1792
 frame tail 592
 
 [i128_abi O1]
-insns 1407
-spills 209
-calls 25
-branches 0
+insns 1478
+spills 227
+calls 18
+branches 3
 frame main 432
 frame many 128
 frame mixed 160
 frame pad 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame split 336
 frame tail 96
 
 [i128_abi O2]
-insns 1223
-spills 171
-calls 25
-branches 0
-frame main 432
+insns 1623
+spills 225
+calls 18
+branches 23
+frame main 512
 frame many 128
 frame mixed 160
 frame pad 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame split 192
 frame tail 96
 
 [i128_abi O3]
-insns 1336
-spills 339
-calls 25
-branches 0
-frame main 464
+insns 1773
+spills 385
+calls 18
+branches 23
+frame main 512
 frame many 128
 frame mixed 160
 frame pad 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame split 816
 frame tail 96
 
 [i128_arith O0]
-insns 72353
-spills 32263
-calls 5156
-branches 0
+insns 64785
+spills 34212
+calls 3241
+branches 3
 frame case0 144
 frame case1 144
 frame case10 16
@@ -3787,12 +4315,15 @@ frame case997 144
 frame case998 144
 frame case999 144
 frame main 9424
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [i128_arith O1]
-insns 49409
-spills 5602
-calls 5156
-branches 0
+insns 41848
+spills 5620
+calls 3241
+branches 3
 frame case0 32
 frame case1 32
 frame case10 16
@@ -4972,600 +5503,603 @@ frame case997 32
 frame case998 32
 frame case999 32
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_arith O2]
-insns 55440
-spills 5890
-calls 7422
-branches 0
-frame case0 32
-frame case1 32
-frame case10 16
-frame case100 32
-frame case1000 32
+insns 69615
+spills 9972
+calls 3241
+branches 2003
+frame case0 48
+frame case1 48
+frame case10 32
+frame case100 48
+frame case1000 48
 frame case1001 32
-frame case1002 32
-frame case1003 32
-frame case1004 32
-frame case1005 32
-frame case1006 32
-frame case1007 32
-frame case1008 32
-frame case1009 32
-frame case101 32
-frame case1010 32
-frame case1011 32
-frame case1012 32
-frame case1013 32
-frame case1014 32
-frame case1015 32
-frame case1016 32
-frame case1017 32
-frame case1018 32
-frame case1019 32
-frame case102 16
-frame case1020 32
-frame case1021 32
-frame case1022 32
-frame case1023 32
-frame case1024 32
-frame case1025 32
-frame case1026 32
-frame case1027 32
-frame case1028 32
-frame case1029 32
-frame case103 16
-frame case1030 32
-frame case1031 32
-frame case1032 32
-frame case1033 32
-frame case1034 32
-frame case1035 32
-frame case1036 32
-frame case1037 32
-frame case1038 32
-frame case1039 32
-frame case104 16
-frame case1040 32
-frame case1041 32
-frame case1042 32
-frame case1043 32
-frame case1044 32
-frame case1045 32
-frame case1046 32
-frame case1047 32
-frame case1048 32
-frame case1049 32
-frame case105 16
-frame case1050 32
-frame case1051 32
-frame case1052 32
-frame case1053 32
-frame case1054 32
-frame case1055 32
-frame case1056 32
-frame case1057 32
-frame case1058 32
-frame case1059 32
-frame case106 16
-frame case1060 32
-frame case1061 32
-frame case1062 32
-frame case1063 32
-frame case1064 32
-frame case1065 32
-frame case1066 32
-frame case1067 32
-frame case1068 32
-frame case1069 32
-frame case107 16
-frame case1070 32
-frame case1071 32
-frame case1072 32
-frame case1073 32
-frame case1074 32
-frame case1075 32
-frame case1076 32
-frame case1077 32
-frame case1078 32
-frame case1079 32
-frame case108 32
-frame case1080 32
-frame case1081 32
-frame case1082 32
-frame case1083 32
-frame case1084 32
-frame case1085 32
-frame case1086 32
-frame case1087 32
-frame case1088 32
-frame case1089 32
-frame case109 32
-frame case1090 32
-frame case1091 32
-frame case1092 32
-frame case1093 32
-frame case1094 32
-frame case1095 32
-frame case1096 32
-frame case1097 32
-frame case1098 32
-frame case1099 32
-frame case11 16
-frame case110 32
-frame case1100 32
-frame case1101 32
-frame case1102 32
-frame case1103 32
-frame case1104 32
-frame case1105 32
-frame case1106 32
-frame case1107 32
-frame case1108 32
-frame case1109 32
-frame case111 32
-frame case1110 32
-frame case1111 32
-frame case1112 32
-frame case1113 32
-frame case1114 32
-frame case1115 32
-frame case1116 32
-frame case1117 32
-frame case1118 32
-frame case1119 32
-frame case112 32
-frame case1120 32
-frame case1121 32
-frame case1122 32
-frame case1123 32
-frame case1124 32
-frame case1125 32
-frame case1126 32
-frame case1127 32
-frame case1128 32
-frame case1129 32
-frame case113 32
-frame case1130 32
-frame case1131 32
-frame case1132 32
-frame case1133 32
-frame case1134 32
-frame case1135 32
-frame case1136 32
-frame case1137 32
-frame case1138 32
-frame case1139 32
-frame case114 16
-frame case1140 32
-frame case1141 32
-frame case1142 32
-frame case1143 32
-frame case1144 32
-frame case1145 32
-frame case1146 32
-frame case1147 32
-frame case1148 32
-frame case1149 32
-frame case115 16
-frame case1150 32
-frame case1151 32
-frame case1152 32
-frame case1153 32
-frame case1154 32
-frame case1155 32
-frame case1156 32
-frame case1157 32
-frame case1158 32
-frame case1159 32
-frame case116 16
-frame case1160 32
-frame case1161 32
-frame case1162 32
-frame case1163 32
-frame case1164 32
-frame case1165 32
-frame case1166 32
-frame case1167 32
-frame case1168 32
-frame case1169 32
-frame case117 16
-frame case1170 32
-frame case1171 32
-frame case1172 32
-frame case1173 32
-frame case1174 32
-frame case1175 32
-frame case1176 32
-frame case1177 32
-frame case118 16
-frame case119 16
-frame case12 32
-frame case120 80
-frame case121 80
-frame case122 32
-frame case123 32
-frame case124 32
-frame case125 32
-frame case126 32
-frame case127 32
-frame case128 16
-frame case129 16
-frame case13 32
-frame case130 16
-frame case131 16
-frame case132 16
-frame case133 16
-frame case134 80
-frame case135 80
-frame case136 32
-frame case137 32
-frame case138 32
-frame case139 32
-frame case14 32
-frame case140 32
-frame case141 32
-frame case142 16
-frame case143 16
-frame case144 16
-frame case145 16
-frame case146 16
-frame case147 16
-frame case148 80
-frame case149 80
-frame case15 32
-frame case150 32
-frame case151 32
-frame case152 32
-frame case153 32
-frame case154 32
-frame case155 32
-frame case156 16
-frame case157 16
-frame case158 16
-frame case159 16
-frame case16 32
-frame case160 16
-frame case161 16
-frame case162 80
-frame case163 80
-frame case164 32
-frame case165 32
-frame case166 32
-frame case167 32
-frame case168 32
-frame case169 32
-frame case17 32
-frame case170 16
-frame case171 16
-frame case172 16
-frame case173 16
-frame case174 16
-frame case175 16
-frame case176 80
-frame case177 80
-frame case178 32
-frame case179 32
-frame case18 16
-frame case180 32
-frame case181 32
-frame case182 32
-frame case183 32
-frame case184 16
-frame case185 16
-frame case186 16
-frame case187 16
-frame case188 16
-frame case189 16
-frame case19 16
-frame case190 80
-frame case191 80
-frame case192 32
-frame case193 32
-frame case194 32
-frame case195 32
-frame case196 32
-frame case197 32
-frame case198 16
-frame case199 16
-frame case2 32
-frame case20 16
-frame case200 16
-frame case201 16
-frame case202 16
-frame case203 16
-frame case204 32
-frame case205 32
-frame case206 32
-frame case207 32
-frame case208 32
-frame case209 32
-frame case21 16
-frame case210 16
-frame case211 16
-frame case212 16
-frame case213 16
-frame case214 16
-frame case215 16
-frame case216 80
-frame case217 80
-frame case218 32
-frame case219 32
-frame case22 16
-frame case220 32
-frame case221 32
-frame case222 32
-frame case223 32
-frame case224 16
-frame case225 16
-frame case226 16
-frame case227 16
-frame case228 16
-frame case229 16
-frame case23 16
-frame case230 80
-frame case231 80
-frame case232 32
-frame case233 32
-frame case234 32
-frame case235 32
-frame case236 32
-frame case237 32
-frame case238 16
-frame case239 16
-frame case24 80
-frame case240 16
-frame case241 16
-frame case242 16
-frame case243 16
-frame case244 80
-frame case245 80
-frame case246 32
-frame case247 32
-frame case248 32
-frame case249 32
-frame case25 80
-frame case250 32
-frame case251 32
-frame case252 16
-frame case253 16
-frame case254 16
-frame case255 16
-frame case256 16
-frame case257 16
-frame case258 80
-frame case259 80
-frame case26 32
-frame case260 32
-frame case261 32
-frame case262 32
-frame case263 32
-frame case264 32
-frame case265 32
-frame case266 16
-frame case267 16
-frame case268 16
-frame case269 16
-frame case27 32
-frame case270 16
-frame case271 16
-frame case272 80
-frame case273 80
-frame case274 32
-frame case275 32
-frame case276 32
-frame case277 32
-frame case278 32
-frame case279 32
-frame case28 32
-frame case280 16
-frame case281 16
-frame case282 16
-frame case283 16
-frame case284 16
-frame case285 16
-frame case286 80
-frame case287 80
-frame case288 32
-frame case289 32
-frame case29 32
-frame case290 32
-frame case291 32
-frame case292 32
-frame case293 32
-frame case294 16
-frame case295 16
-frame case296 16
-frame case297 16
-frame case298 16
-frame case299 16
-frame case3 32
-frame case30 32
-frame case300 32
-frame case301 32
-frame case302 32
-frame case303 32
-frame case304 32
-frame case305 32
-frame case306 16
-frame case307 16
-frame case308 16
-frame case309 16
-frame case31 32
-frame case310 16
-frame case311 16
-frame case312 80
-frame case313 80
-frame case314 32
-frame case315 32
-frame case316 32
-frame case317 32
-frame case318 32
-frame case319 32
-frame case32 16
-frame case320 16
-frame case321 16
-frame case322 16
-frame case323 16
-frame case324 16
-frame case325 16
-frame case326 80
-frame case327 80
-frame case328 32
-frame case329 32
-frame case33 16
-frame case330 32
-frame case331 32
-frame case332 32
-frame case333 32
-frame case334 16
-frame case335 16
-frame case336 16
-frame case337 16
-frame case338 16
-frame case339 16
-frame case34 16
-frame case340 80
-frame case341 80
-frame case342 32
-frame case343 32
-frame case344 32
-frame case345 32
-frame case346 32
-frame case347 32
-frame case348 16
-frame case349 16
-frame case35 16
-frame case350 16
-frame case351 16
-frame case352 16
-frame case353 16
-frame case354 80
-frame case355 80
-frame case356 32
-frame case357 32
-frame case358 32
-frame case359 32
-frame case36 16
-frame case360 32
-frame case361 32
-frame case362 16
-frame case363 16
-frame case364 16
-frame case365 16
-frame case366 16
-frame case367 16
-frame case368 80
-frame case369 80
-frame case37 16
-frame case370 32
-frame case371 32
-frame case372 32
-frame case373 32
-frame case374 32
-frame case375 32
-frame case376 16
-frame case377 16
-frame case378 16
-frame case379 16
-frame case38 80
-frame case380 16
-frame case381 16
-frame case382 80
-frame case383 80
-frame case384 32
-frame case385 32
-frame case386 32
-frame case387 32
-frame case388 32
-frame case389 32
-frame case39 80
-frame case390 16
-frame case391 16
-frame case392 16
-frame case393 16
-frame case394 16
-frame case395 16
-frame case396 32
-frame case397 32
-frame case398 32
-frame case399 32
-frame case4 32
-frame case40 32
-frame case400 32
-frame case401 32
-frame case402 16
-frame case403 16
-frame case404 16
-frame case405 16
-frame case406 16
-frame case407 16
-frame case408 80
-frame case409 80
-frame case41 32
-frame case410 32
-frame case411 32
-frame case412 32
-frame case413 32
-frame case414 32
-frame case415 32
-frame case416 16
-frame case417 16
-frame case418 16
-frame case419 16
-frame case42 32
-frame case420 16
-frame case421 16
-frame case422 80
-frame case423 80
-frame case424 32
-frame case425 32
-frame case426 32
-frame case427 32
-frame case428 32
-frame case429 32
-frame case43 32
-frame case430 16
-frame case431 16
-frame case432 16
-frame case433 16
-frame case434 16
-frame case435 16
-frame case436 80
-frame case437 80
-frame case438 32
-frame case439 32
-frame case44 32
-frame case440 32
-frame case441 32
-frame case442 32
-frame case443 32
-frame case444 16
-frame case445 16
-frame case446 16
-frame case447 16
-frame case448 16
-frame case449 16
-frame case45 32
-frame case450 80
-frame case451 80
-frame case452 32
-frame case453 32
-frame case454 32
-frame case455 32
-frame case456 32
-frame case457 32
-frame case458 16
-frame case459 16
-frame case46 16
-frame case460 16
-frame case461 16
-frame case462 16
-frame case463 16
-frame case464 80
-frame case465 80
-frame case466 32
-frame case467 32
+frame case1002 48
+frame case1003 48
+frame case1004 48
+frame case1005 48
+frame case1006 48
+frame case1007 48
+frame case1008 48
+frame case1009 48
+frame case101 48
+frame case1010 48
+frame case1011 48
+frame case1012 48
+frame case1013 48
+frame case1014 48
+frame case1015 48
+frame case1016 48
+frame case1017 48
+frame case1018 48
+frame case1019 48
+frame case102 32
+frame case1020 48
+frame case1021 48
+frame case1022 48
+frame case1023 48
+frame case1024 48
+frame case1025 48
+frame case1026 48
+frame case1027 48
+frame case1028 48
+frame case1029 48
+frame case103 32
+frame case1030 48
+frame case1031 48
+frame case1032 48
+frame case1033 48
+frame case1034 48
+frame case1035 48
+frame case1036 48
+frame case1037 48
+frame case1038 48
+frame case1039 48
+frame case104 32
+frame case1040 48
+frame case1041 48
+frame case1042 48
+frame case1043 48
+frame case1044 48
+frame case1045 48
+frame case1046 48
+frame case1047 48
+frame case1048 48
+frame case1049 48
+frame case105 32
+frame case1050 48
+frame case1051 48
+frame case1052 48
+frame case1053 48
+frame case1054 48
+frame case1055 48
+frame case1056 48
+frame case1057 48
+frame case1058 48
+frame case1059 48
+frame case106 32
+frame case1060 48
+frame case1061 48
+frame case1062 48
+frame case1063 48
+frame case1064 48
+frame case1065 48
+frame case1066 48
+frame case1067 48
+frame case1068 48
+frame case1069 48
+frame case107 32
+frame case1070 48
+frame case1071 48
+frame case1072 48
+frame case1073 48
+frame case1074 48
+frame case1075 48
+frame case1076 48
+frame case1077 48
+frame case1078 48
+frame case1079 48
+frame case108 48
+frame case1080 48
+frame case1081 48
+frame case1082 48
+frame case1083 48
+frame case1084 48
+frame case1085 48
+frame case1086 48
+frame case1087 48
+frame case1088 48
+frame case1089 48
+frame case109 48
+frame case1090 48
+frame case1091 48
+frame case1092 48
+frame case1093 48
+frame case1094 48
+frame case1095 48
+frame case1096 48
+frame case1097 48
+frame case1098 48
+frame case1099 48
+frame case11 32
+frame case110 48
+frame case1100 48
+frame case1101 48
+frame case1102 48
+frame case1103 48
+frame case1104 48
+frame case1105 48
+frame case1106 48
+frame case1107 48
+frame case1108 48
+frame case1109 48
+frame case111 48
+frame case1110 48
+frame case1111 48
+frame case1112 48
+frame case1113 48
+frame case1114 48
+frame case1115 48
+frame case1116 48
+frame case1117 48
+frame case1118 48
+frame case1119 48
+frame case112 48
+frame case1120 48
+frame case1121 48
+frame case1122 48
+frame case1123 48
+frame case1124 48
+frame case1125 48
+frame case1126 48
+frame case1127 48
+frame case1128 48
+frame case1129 48
+frame case113 48
+frame case1130 48
+frame case1131 48
+frame case1132 48
+frame case1133 48
+frame case1134 48
+frame case1135 48
+frame case1136 48
+frame case1137 48
+frame case1138 48
+frame case1139 48
+frame case114 32
+frame case1140 48
+frame case1141 48
+frame case1142 48
+frame case1143 48
+frame case1144 48
+frame case1145 48
+frame case1146 48
+frame case1147 48
+frame case1148 48
+frame case1149 48
+frame case115 32
+frame case1150 48
+frame case1151 48
+frame case1152 48
+frame case1153 48
+frame case1154 48
+frame case1155 48
+frame case1156 48
+frame case1157 48
+frame case1158 48
+frame case1159 48
+frame case116 32
+frame case1160 48
+frame case1161 48
+frame case1162 48
+frame case1163 48
+frame case1164 48
+frame case1165 48
+frame case1166 48
+frame case1167 48
+frame case1168 48
+frame case1169 48
+frame case117 32
+frame case1170 48
+frame case1171 48
+frame case1172 48
+frame case1173 48
+frame case1174 48
+frame case1175 48
+frame case1176 48
+frame case1177 48
+frame case118 32
+frame case119 32
+frame case12 48
+frame case120 96
+frame case121 96
+frame case122 48
+frame case123 48
+frame case124 48
+frame case125 48
+frame case126 48
+frame case127 48
+frame case128 32
+frame case129 32
+frame case13 48
+frame case130 32
+frame case131 32
+frame case132 32
+frame case133 32
+frame case134 96
+frame case135 96
+frame case136 48
+frame case137 48
+frame case138 48
+frame case139 48
+frame case14 48
+frame case140 48
+frame case141 48
+frame case142 32
+frame case143 32
+frame case144 32
+frame case145 32
+frame case146 32
+frame case147 32
+frame case148 96
+frame case149 96
+frame case15 48
+frame case150 48
+frame case151 48
+frame case152 48
+frame case153 48
+frame case154 48
+frame case155 48
+frame case156 32
+frame case157 32
+frame case158 32
+frame case159 32
+frame case16 48
+frame case160 32
+frame case161 32
+frame case162 96
+frame case163 96
+frame case164 48
+frame case165 48
+frame case166 48
+frame case167 48
+frame case168 48
+frame case169 48
+frame case17 48
+frame case170 32
+frame case171 32
+frame case172 32
+frame case173 32
+frame case174 32
+frame case175 32
+frame case176 96
+frame case177 96
+frame case178 48
+frame case179 48
+frame case18 32
+frame case180 48
+frame case181 48
+frame case182 48
+frame case183 48
+frame case184 32
+frame case185 32
+frame case186 32
+frame case187 32
+frame case188 32
+frame case189 32
+frame case19 32
+frame case190 96
+frame case191 96
+frame case192 48
+frame case193 48
+frame case194 48
+frame case195 48
+frame case196 48
+frame case197 48
+frame case198 32
+frame case199 32
+frame case2 48
+frame case20 32
+frame case200 32
+frame case201 32
+frame case202 32
+frame case203 32
+frame case204 48
+frame case205 48
+frame case206 48
+frame case207 48
+frame case208 48
+frame case209 48
+frame case21 32
+frame case210 32
+frame case211 32
+frame case212 32
+frame case213 32
+frame case214 32
+frame case215 32
+frame case216 96
+frame case217 96
+frame case218 48
+frame case219 48
+frame case22 32
+frame case220 48
+frame case221 48
+frame case222 48
+frame case223 48
+frame case224 32
+frame case225 32
+frame case226 32
+frame case227 32
+frame case228 32
+frame case229 32
+frame case23 32
+frame case230 96
+frame case231 96
+frame case232 48
+frame case233 48
+frame case234 48
+frame case235 48
+frame case236 48
+frame case237 48
+frame case238 32
+frame case239 32
+frame case24 96
+frame case240 32
+frame case241 32
+frame case242 32
+frame case243 32
+frame case244 96
+frame case245 96
+frame case246 48
+frame case247 48
+frame case248 48
+frame case249 48
+frame case25 96
+frame case250 48
+frame case251 48
+frame case252 32
+frame case253 32
+frame case254 32
+frame case255 32
+frame case256 32
+frame case257 32
+frame case258 96
+frame case259 96
+frame case26 48
+frame case260 48
+frame case261 48
+frame case262 48
+frame case263 48
+frame case264 48
+frame case265 48
+frame case266 32
+frame case267 32
+frame case268 32
+frame case269 32
+frame case27 48
+frame case270 32
+frame case271 32
+frame case272 96
+frame case273 96
+frame case274 48
+frame case275 48
+frame case276 48
+frame case277 48
+frame case278 48
+frame case279 48
+frame case28 48
+frame case280 32
+frame case281 32
+frame case282 32
+frame case283 32
+frame case284 32
+frame case285 32
+frame case286 96
+frame case287 96
+frame case288 48
+frame case289 48
+frame case29 48
+frame case290 48
+frame case291 48
+frame case292 48
+frame case293 48
+frame case294 32
+frame case295 32
+frame case296 32
+frame case297 32
+frame case298 32
+frame case299 32
+frame case3 48
+frame case30 48
+frame case300 48
+frame case301 48
+frame case302 48
+frame case303 48
+frame case304 48
+frame case305 48
+frame case306 32
+frame case307 32
+frame case308 32
+frame case309 32
+frame case31 48
+frame case310 32
+frame case311 32
+frame case312 96
+frame case313 96
+frame case314 48
+frame case315 48
+frame case316 48
+frame case317 48
+frame case318 48
+frame case319 48
+frame case32 32
+frame case320 32
+frame case321 32
+frame case322 32
+frame case323 32
+frame case324 32
+frame case325 32
+frame case326 96
+frame case327 96
+frame case328 48
+frame case329 48
+frame case33 32
+frame case330 48
+frame case331 48
+frame case332 48
+frame case333 48
+frame case334 32
+frame case335 32
+frame case336 32
+frame case337 32
+frame case338 32
+frame case339 32
+frame case34 32
+frame case340 96
+frame case341 96
+frame case342 48
+frame case343 48
+frame case344 48
+frame case345 48
+frame case346 48
+frame case347 48
+frame case348 32
+frame case349 32
+frame case35 32
+frame case350 32
+frame case351 32
+frame case352 32
+frame case353 32
+frame case354 96
+frame case355 96
+frame case356 48
+frame case357 48
+frame case358 48
+frame case359 48
+frame case36 32
+frame case360 48
+frame case361 48
+frame case362 32
+frame case363 32
+frame case364 32
+frame case365 32
+frame case366 32
+frame case367 32
+frame case368 96
+frame case369 96
+frame case37 32
+frame case370 48
+frame case371 48
+frame case372 48
+frame case373 48
+frame case374 48
+frame case375 48
+frame case376 32
+frame case377 32
+frame case378 32
+frame case379 32
+frame case38 96
+frame case380 32
+frame case381 32
+frame case382 96
+frame case383 96
+frame case384 48
+frame case385 48
+frame case386 48
+frame case387 48
+frame case388 48
+frame case389 48
+frame case39 96
+frame case390 32
+frame case391 32
+frame case392 32
+frame case393 32
+frame case394 32
+frame case395 32
+frame case396 48
+frame case397 48
+frame case398 48
+frame case399 48
+frame case4 48
+frame case40 48
+frame case400 48
+frame case401 48
+frame case402 32
+frame case403 32
+frame case404 32
+frame case405 32
+frame case406 32
+frame case407 32
+frame case408 96
+frame case409 96
+frame case41 48
+frame case410 48
+frame case411 48
+frame case412 48
+frame case413 48
+frame case414 48
+frame case415 48
+frame case416 32
+frame case417 32
+frame case418 32
+frame case419 32
+frame case42 48
+frame case420 32
+frame case421 32
+frame case422 96
+frame case423 96
+frame case424 48
+frame case425 48
+frame case426 48
+frame case427 48
+frame case428 48
+frame case429 48
+frame case43 48
+frame case430 32
+frame case431 32
+frame case432 32
+frame case433 32
+frame case434 32
+frame case435 32
+frame case436 96
+frame case437 96
+frame case438 48
+frame case439 48
+frame case44 48
+frame case440 48
+frame case441 48
+frame case442 48
+frame case443 48
+frame case444 32
+frame case445 32
+frame case446 32
+frame case447 32
+frame case448 32
+frame case449 32
+frame case45 48
+frame case450 96
+frame case451 96
+frame case452 48
+frame case453 48
+frame case454 48
+frame case455 48
+frame case456 48
+frame case457 48
+frame case458 32
+frame case459 32
+frame case46 32
+frame case460 32
+frame case461 32
+frame case462 32
+frame case463 32
+frame case464 96
+frame case465 96
+frame case466 48
+frame case467 48
 frame case468 32
 frame case469 32
 frame case47 16
@@ -6156,602 +6690,605 @@ frame case996 32
 frame case997 32
 frame case998 32
 frame case999 32
-frame main 6848
+frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_arith O3]
-insns 54252
-spills 4702
-calls 7422
-branches 0
-frame case0 16
-frame case1 16
-frame case10 16
-frame case100 16
-frame case1000 16
-frame case1001 16
-frame case1002 16
-frame case1003 16
-frame case1004 16
-frame case1005 16
-frame case1006 16
-frame case1007 16
-frame case1008 16
-frame case1009 16
-frame case101 16
-frame case1010 16
-frame case1011 16
-frame case1012 16
-frame case1013 16
-frame case1014 16
-frame case1015 16
-frame case1016 16
-frame case1017 16
-frame case1018 16
-frame case1019 16
-frame case102 16
-frame case1020 16
-frame case1021 16
-frame case1022 16
-frame case1023 16
-frame case1024 16
-frame case1025 16
-frame case1026 16
-frame case1027 16
-frame case1028 16
-frame case1029 16
-frame case103 16
-frame case1030 16
-frame case1031 16
-frame case1032 16
-frame case1033 16
-frame case1034 16
-frame case1035 16
-frame case1036 16
-frame case1037 16
-frame case1038 16
-frame case1039 16
-frame case104 16
-frame case1040 16
-frame case1041 16
-frame case1042 16
-frame case1043 16
-frame case1044 16
-frame case1045 16
-frame case1046 16
-frame case1047 16
-frame case1048 16
-frame case1049 16
-frame case105 16
-frame case1050 16
-frame case1051 16
-frame case1052 16
-frame case1053 16
-frame case1054 16
-frame case1055 16
-frame case1056 16
-frame case1057 16
-frame case1058 16
-frame case1059 16
-frame case106 16
-frame case1060 16
-frame case1061 16
-frame case1062 16
-frame case1063 16
-frame case1064 16
-frame case1065 16
-frame case1066 16
-frame case1067 16
-frame case1068 16
-frame case1069 16
-frame case107 16
-frame case1070 16
-frame case1071 16
-frame case1072 16
-frame case1073 16
-frame case1074 16
-frame case1075 16
-frame case1076 16
-frame case1077 16
-frame case1078 16
-frame case1079 16
-frame case108 16
-frame case1080 16
-frame case1081 16
-frame case1082 16
-frame case1083 16
-frame case1084 16
-frame case1085 16
-frame case1086 16
-frame case1087 16
-frame case1088 16
-frame case1089 16
-frame case109 16
-frame case1090 16
-frame case1091 16
-frame case1092 16
-frame case1093 16
-frame case1094 16
-frame case1095 16
-frame case1096 16
-frame case1097 16
-frame case1098 16
-frame case1099 16
-frame case11 16
-frame case110 16
-frame case1100 16
-frame case1101 16
-frame case1102 16
-frame case1103 16
-frame case1104 16
-frame case1105 16
-frame case1106 16
-frame case1107 16
-frame case1108 16
-frame case1109 16
-frame case111 16
-frame case1110 16
-frame case1111 16
-frame case1112 16
-frame case1113 16
-frame case1114 16
-frame case1115 16
-frame case1116 16
-frame case1117 16
-frame case1118 16
-frame case1119 16
-frame case112 16
-frame case1120 16
-frame case1121 16
-frame case1122 16
-frame case1123 16
-frame case1124 16
-frame case1125 16
-frame case1126 16
-frame case1127 16
-frame case1128 16
-frame case1129 16
-frame case113 16
-frame case1130 16
-frame case1131 16
-frame case1132 16
-frame case1133 16
-frame case1134 16
-frame case1135 16
-frame case1136 16
-frame case1137 16
-frame case1138 16
-frame case1139 16
-frame case114 16
-frame case1140 16
-frame case1141 16
-frame case1142 16
-frame case1143 16
-frame case1144 16
-frame case1145 16
-frame case1146 16
-frame case1147 16
-frame case1148 16
-frame case1149 16
-frame case115 16
-frame case1150 16
-frame case1151 16
-frame case1152 16
-frame case1153 16
-frame case1154 16
-frame case1155 16
-frame case1156 16
-frame case1157 16
-frame case1158 16
-frame case1159 16
-frame case116 16
-frame case1160 16
-frame case1161 16
-frame case1162 16
-frame case1163 16
-frame case1164 16
-frame case1165 16
-frame case1166 16
-frame case1167 16
-frame case1168 16
-frame case1169 16
-frame case117 16
-frame case1170 16
-frame case1171 32
-frame case1172 32
-frame case1173 32
-frame case1174 16
-frame case1175 16
-frame case1176 16
-frame case1177 32
-frame case118 16
-frame case119 16
-frame case12 16
-frame case120 80
-frame case121 80
-frame case122 16
-frame case123 16
-frame case124 16
-frame case125 16
-frame case126 16
-frame case127 16
-frame case128 16
-frame case129 16
-frame case13 16
-frame case130 16
-frame case131 16
-frame case132 16
-frame case133 16
-frame case134 80
-frame case135 80
-frame case136 16
-frame case137 16
-frame case138 16
-frame case139 16
-frame case14 16
-frame case140 16
-frame case141 16
-frame case142 16
-frame case143 16
-frame case144 16
-frame case145 16
-frame case146 16
-frame case147 16
-frame case148 80
-frame case149 80
-frame case15 16
-frame case150 16
-frame case151 16
-frame case152 16
-frame case153 16
-frame case154 16
-frame case155 16
-frame case156 16
-frame case157 16
-frame case158 16
-frame case159 16
-frame case16 16
-frame case160 16
-frame case161 16
-frame case162 80
-frame case163 80
-frame case164 16
-frame case165 16
-frame case166 16
-frame case167 16
-frame case168 16
-frame case169 16
-frame case17 16
-frame case170 16
-frame case171 16
-frame case172 16
-frame case173 16
-frame case174 16
-frame case175 16
-frame case176 80
-frame case177 80
-frame case178 16
-frame case179 16
-frame case18 16
-frame case180 16
-frame case181 16
-frame case182 16
-frame case183 16
-frame case184 16
-frame case185 16
-frame case186 16
-frame case187 16
-frame case188 16
-frame case189 16
-frame case19 16
-frame case190 80
-frame case191 80
-frame case192 16
-frame case193 16
-frame case194 16
-frame case195 16
-frame case196 16
-frame case197 16
-frame case198 16
-frame case199 16
-frame case2 16
-frame case20 16
-frame case200 16
-frame case201 16
-frame case202 16
-frame case203 16
-frame case204 16
-frame case205 16
-frame case206 16
-frame case207 16
-frame case208 16
-frame case209 16
-frame case21 16
-frame case210 16
-frame case211 16
-frame case212 16
-frame case213 16
-frame case214 16
-frame case215 16
-frame case216 80
-frame case217 80
-frame case218 16
-frame case219 16
-frame case22 16
-frame case220 16
-frame case221 16
-frame case222 16
-frame case223 16
-frame case224 16
-frame case225 16
-frame case226 16
-frame case227 16
-frame case228 16
-frame case229 16
-frame case23 16
-frame case230 80
-frame case231 80
-frame case232 16
-frame case233 16
-frame case234 16
-frame case235 16
-frame case236 16
-frame case237 16
-frame case238 16
-frame case239 16
-frame case24 80
-frame case240 16
-frame case241 16
-frame case242 16
-frame case243 16
-frame case244 80
-frame case245 80
-frame case246 16
-frame case247 16
-frame case248 16
-frame case249 16
-frame case25 80
-frame case250 16
-frame case251 16
-frame case252 16
-frame case253 16
-frame case254 16
-frame case255 16
-frame case256 16
-frame case257 16
-frame case258 80
-frame case259 80
-frame case26 16
-frame case260 16
-frame case261 16
-frame case262 16
-frame case263 16
-frame case264 16
-frame case265 16
-frame case266 16
-frame case267 16
-frame case268 16
-frame case269 16
-frame case27 16
-frame case270 16
-frame case271 16
-frame case272 80
-frame case273 80
-frame case274 16
-frame case275 16
-frame case276 16
-frame case277 16
-frame case278 16
-frame case279 16
-frame case28 16
-frame case280 16
-frame case281 16
-frame case282 16
-frame case283 16
-frame case284 16
-frame case285 16
-frame case286 80
-frame case287 80
-frame case288 16
-frame case289 16
-frame case29 16
-frame case290 16
-frame case291 16
-frame case292 16
-frame case293 16
-frame case294 16
-frame case295 16
-frame case296 16
-frame case297 16
-frame case298 16
-frame case299 16
-frame case3 16
-frame case30 16
-frame case300 16
-frame case301 16
-frame case302 16
-frame case303 16
-frame case304 16
-frame case305 16
-frame case306 16
-frame case307 16
-frame case308 16
-frame case309 16
-frame case31 16
-frame case310 16
-frame case311 16
-frame case312 80
-frame case313 80
-frame case314 16
-frame case315 16
-frame case316 16
-frame case317 16
-frame case318 16
-frame case319 16
-frame case32 16
-frame case320 16
-frame case321 16
-frame case322 16
-frame case323 16
-frame case324 16
-frame case325 16
-frame case326 80
-frame case327 80
-frame case328 16
-frame case329 16
-frame case33 16
-frame case330 16
-frame case331 16
-frame case332 16
-frame case333 16
-frame case334 16
-frame case335 16
-frame case336 16
-frame case337 16
-frame case338 16
-frame case339 16
-frame case34 16
-frame case340 80
-frame case341 80
-frame case342 16
-frame case343 16
-frame case344 16
-frame case345 16
-frame case346 16
-frame case347 16
-frame case348 16
-frame case349 16
-frame case35 16
-frame case350 16
-frame case351 16
-frame case352 16
-frame case353 16
-frame case354 80
-frame case355 80
-frame case356 16
-frame case357 16
-frame case358 16
-frame case359 16
-frame case36 16
-frame case360 16
-frame case361 16
-frame case362 16
-frame case363 16
-frame case364 16
-frame case365 16
-frame case366 16
-frame case367 16
-frame case368 80
-frame case369 80
-frame case37 16
-frame case370 16
-frame case371 16
-frame case372 16
-frame case373 16
-frame case374 16
-frame case375 16
-frame case376 16
-frame case377 16
-frame case378 16
-frame case379 16
-frame case38 80
-frame case380 16
-frame case381 16
-frame case382 80
-frame case383 80
-frame case384 16
-frame case385 16
-frame case386 16
-frame case387 16
-frame case388 16
-frame case389 16
-frame case39 80
-frame case390 16
-frame case391 16
-frame case392 16
-frame case393 16
-frame case394 16
-frame case395 16
-frame case396 16
-frame case397 16
-frame case398 16
-frame case399 16
-frame case4 16
-frame case40 16
-frame case400 16
-frame case401 16
-frame case402 16
-frame case403 16
-frame case404 16
-frame case405 16
-frame case406 16
-frame case407 16
-frame case408 80
-frame case409 80
-frame case41 16
-frame case410 16
-frame case411 16
-frame case412 16
-frame case413 16
-frame case414 16
-frame case415 16
-frame case416 16
-frame case417 16
-frame case418 16
-frame case419 16
-frame case42 16
-frame case420 16
-frame case421 16
-frame case422 80
-frame case423 80
-frame case424 16
-frame case425 16
-frame case426 16
-frame case427 16
-frame case428 16
-frame case429 16
-frame case43 16
-frame case430 16
-frame case431 16
-frame case432 16
-frame case433 16
-frame case434 16
-frame case435 16
-frame case436 80
-frame case437 80
-frame case438 16
-frame case439 16
-frame case44 16
-frame case440 16
-frame case441 16
-frame case442 16
-frame case443 16
-frame case444 16
-frame case445 16
-frame case446 16
-frame case447 16
-frame case448 16
-frame case449 16
-frame case45 16
-frame case450 80
-frame case451 80
-frame case452 16
-frame case453 16
-frame case454 16
-frame case455 16
-frame case456 16
-frame case457 16
-frame case458 16
-frame case459 16
-frame case46 16
-frame case460 16
-frame case461 16
-frame case462 16
-frame case463 16
-frame case464 80
-frame case465 80
-frame case466 16
-frame case467 16
-frame case468 16
+insns 68423
+spills 8784
+calls 3241
+branches 2003
+frame case0 32
+frame case1 32
+frame case10 32
+frame case100 32
+frame case1000 32
+frame case1001 32
+frame case1002 32
+frame case1003 32
+frame case1004 32
+frame case1005 32
+frame case1006 32
+frame case1007 32
+frame case1008 32
+frame case1009 32
+frame case101 32
+frame case1010 32
+frame case1011 32
+frame case1012 32
+frame case1013 32
+frame case1014 32
+frame case1015 32
+frame case1016 32
+frame case1017 32
+frame case1018 32
+frame case1019 32
+frame case102 32
+frame case1020 32
+frame case1021 32
+frame case1022 32
+frame case1023 32
+frame case1024 32
+frame case1025 32
+frame case1026 32
+frame case1027 32
+frame case1028 32
+frame case1029 32
+frame case103 32
+frame case1030 32
+frame case1031 32
+frame case1032 32
+frame case1033 32
+frame case1034 32
+frame case1035 32
+frame case1036 32
+frame case1037 32
+frame case1038 32
+frame case1039 32
+frame case104 32
+frame case1040 32
+frame case1041 32
+frame case1042 32
+frame case1043 32
+frame case1044 32
+frame case1045 32
+frame case1046 32
+frame case1047 32
+frame case1048 32
+frame case1049 32
+frame case105 32
+frame case1050 32
+frame case1051 32
+frame case1052 32
+frame case1053 32
+frame case1054 32
+frame case1055 32
+frame case1056 32
+frame case1057 32
+frame case1058 32
+frame case1059 32
+frame case106 32
+frame case1060 32
+frame case1061 32
+frame case1062 32
+frame case1063 32
+frame case1064 32
+frame case1065 32
+frame case1066 32
+frame case1067 32
+frame case1068 32
+frame case1069 32
+frame case107 32
+frame case1070 32
+frame case1071 32
+frame case1072 32
+frame case1073 32
+frame case1074 32
+frame case1075 32
+frame case1076 32
+frame case1077 32
+frame case1078 32
+frame case1079 32
+frame case108 32
+frame case1080 32
+frame case1081 32
+frame case1082 32
+frame case1083 32
+frame case1084 32
+frame case1085 32
+frame case1086 32
+frame case1087 32
+frame case1088 32
+frame case1089 32
+frame case109 32
+frame case1090 32
+frame case1091 32
+frame case1092 32
+frame case1093 32
+frame case1094 32
+frame case1095 32
+frame case1096 32
+frame case1097 32
+frame case1098 32
+frame case1099 32
+frame case11 32
+frame case110 32
+frame case1100 32
+frame case1101 32
+frame case1102 32
+frame case1103 32
+frame case1104 32
+frame case1105 32
+frame case1106 32
+frame case1107 32
+frame case1108 32
+frame case1109 32
+frame case111 32
+frame case1110 32
+frame case1111 32
+frame case1112 32
+frame case1113 32
+frame case1114 32
+frame case1115 32
+frame case1116 32
+frame case1117 32
+frame case1118 32
+frame case1119 32
+frame case112 32
+frame case1120 32
+frame case1121 32
+frame case1122 32
+frame case1123 32
+frame case1124 32
+frame case1125 32
+frame case1126 32
+frame case1127 32
+frame case1128 32
+frame case1129 32
+frame case113 32
+frame case1130 32
+frame case1131 32
+frame case1132 32
+frame case1133 32
+frame case1134 32
+frame case1135 32
+frame case1136 32
+frame case1137 32
+frame case1138 32
+frame case1139 32
+frame case114 32
+frame case1140 32
+frame case1141 32
+frame case1142 32
+frame case1143 32
+frame case1144 32
+frame case1145 32
+frame case1146 32
+frame case1147 32
+frame case1148 32
+frame case1149 32
+frame case115 32
+frame case1150 32
+frame case1151 32
+frame case1152 32
+frame case1153 32
+frame case1154 32
+frame case1155 32
+frame case1156 32
+frame case1157 32
+frame case1158 32
+frame case1159 32
+frame case116 32
+frame case1160 32
+frame case1161 32
+frame case1162 32
+frame case1163 32
+frame case1164 32
+frame case1165 32
+frame case1166 32
+frame case1167 32
+frame case1168 32
+frame case1169 32
+frame case117 32
+frame case1170 32
+frame case1171 48
+frame case1172 48
+frame case1173 48
+frame case1174 32
+frame case1175 32
+frame case1176 32
+frame case1177 48
+frame case118 32
+frame case119 32
+frame case12 32
+frame case120 96
+frame case121 96
+frame case122 32
+frame case123 32
+frame case124 32
+frame case125 32
+frame case126 32
+frame case127 32
+frame case128 32
+frame case129 32
+frame case13 32
+frame case130 32
+frame case131 32
+frame case132 32
+frame case133 32
+frame case134 96
+frame case135 96
+frame case136 32
+frame case137 32
+frame case138 32
+frame case139 32
+frame case14 32
+frame case140 32
+frame case141 32
+frame case142 32
+frame case143 32
+frame case144 32
+frame case145 32
+frame case146 32
+frame case147 32
+frame case148 96
+frame case149 96
+frame case15 32
+frame case150 32
+frame case151 32
+frame case152 32
+frame case153 32
+frame case154 32
+frame case155 32
+frame case156 32
+frame case157 32
+frame case158 32
+frame case159 32
+frame case16 32
+frame case160 32
+frame case161 32
+frame case162 96
+frame case163 96
+frame case164 32
+frame case165 32
+frame case166 32
+frame case167 32
+frame case168 32
+frame case169 32
+frame case17 32
+frame case170 32
+frame case171 32
+frame case172 32
+frame case173 32
+frame case174 32
+frame case175 32
+frame case176 96
+frame case177 96
+frame case178 32
+frame case179 32
+frame case18 32
+frame case180 32
+frame case181 32
+frame case182 32
+frame case183 32
+frame case184 32
+frame case185 32
+frame case186 32
+frame case187 32
+frame case188 32
+frame case189 32
+frame case19 32
+frame case190 96
+frame case191 96
+frame case192 32
+frame case193 32
+frame case194 32
+frame case195 32
+frame case196 32
+frame case197 32
+frame case198 32
+frame case199 32
+frame case2 32
+frame case20 32
+frame case200 32
+frame case201 32
+frame case202 32
+frame case203 32
+frame case204 32
+frame case205 32
+frame case206 32
+frame case207 32
+frame case208 32
+frame case209 32
+frame case21 32
+frame case210 32
+frame case211 32
+frame case212 32
+frame case213 32
+frame case214 32
+frame case215 32
+frame case216 96
+frame case217 96
+frame case218 32
+frame case219 32
+frame case22 32
+frame case220 32
+frame case221 32
+frame case222 32
+frame case223 32
+frame case224 32
+frame case225 32
+frame case226 32
+frame case227 32
+frame case228 32
+frame case229 32
+frame case23 32
+frame case230 96
+frame case231 96
+frame case232 32
+frame case233 32
+frame case234 32
+frame case235 32
+frame case236 32
+frame case237 32
+frame case238 32
+frame case239 32
+frame case24 96
+frame case240 32
+frame case241 32
+frame case242 32
+frame case243 32
+frame case244 96
+frame case245 96
+frame case246 32
+frame case247 32
+frame case248 32
+frame case249 32
+frame case25 96
+frame case250 32
+frame case251 32
+frame case252 32
+frame case253 32
+frame case254 32
+frame case255 32
+frame case256 32
+frame case257 32
+frame case258 96
+frame case259 96
+frame case26 32
+frame case260 32
+frame case261 32
+frame case262 32
+frame case263 32
+frame case264 32
+frame case265 32
+frame case266 32
+frame case267 32
+frame case268 32
+frame case269 32
+frame case27 32
+frame case270 32
+frame case271 32
+frame case272 96
+frame case273 96
+frame case274 32
+frame case275 32
+frame case276 32
+frame case277 32
+frame case278 32
+frame case279 32
+frame case28 32
+frame case280 32
+frame case281 32
+frame case282 32
+frame case283 32
+frame case284 32
+frame case285 32
+frame case286 96
+frame case287 96
+frame case288 32
+frame case289 32
+frame case29 32
+frame case290 32
+frame case291 32
+frame case292 32
+frame case293 32
+frame case294 32
+frame case295 32
+frame case296 32
+frame case297 32
+frame case298 32
+frame case299 32
+frame case3 32
+frame case30 32
+frame case300 32
+frame case301 32
+frame case302 32
+frame case303 32
+frame case304 32
+frame case305 32
+frame case306 32
+frame case307 32
+frame case308 32
+frame case309 32
+frame case31 32
+frame case310 32
+frame case311 32
+frame case312 96
+frame case313 96
+frame case314 32
+frame case315 32
+frame case316 32
+frame case317 32
+frame case318 32
+frame case319 32
+frame case32 32
+frame case320 32
+frame case321 32
+frame case322 32
+frame case323 32
+frame case324 32
+frame case325 32
+frame case326 96
+frame case327 96
+frame case328 32
+frame case329 32
+frame case33 32
+frame case330 32
+frame case331 32
+frame case332 32
+frame case333 32
+frame case334 32
+frame case335 32
+frame case336 32
+frame case337 32
+frame case338 32
+frame case339 32
+frame case34 32
+frame case340 96
+frame case341 96
+frame case342 32
+frame case343 32
+frame case344 32
+frame case345 32
+frame case346 32
+frame case347 32
+frame case348 32
+frame case349 32
+frame case35 32
+frame case350 32
+frame case351 32
+frame case352 32
+frame case353 32
+frame case354 96
+frame case355 96
+frame case356 32
+frame case357 32
+frame case358 32
+frame case359 32
+frame case36 32
+frame case360 32
+frame case361 32
+frame case362 32
+frame case363 32
+frame case364 32
+frame case365 32
+frame case366 32
+frame case367 32
+frame case368 96
+frame case369 96
+frame case37 32
+frame case370 32
+frame case371 32
+frame case372 32
+frame case373 32
+frame case374 32
+frame case375 32
+frame case376 32
+frame case377 32
+frame case378 32
+frame case379 32
+frame case38 96
+frame case380 32
+frame case381 32
+frame case382 96
+frame case383 96
+frame case384 32
+frame case385 32
+frame case386 32
+frame case387 32
+frame case388 32
+frame case389 32
+frame case39 96
+frame case390 32
+frame case391 32
+frame case392 32
+frame case393 32
+frame case394 32
+frame case395 32
+frame case396 32
+frame case397 32
+frame case398 32
+frame case399 32
+frame case4 32
+frame case40 32
+frame case400 32
+frame case401 32
+frame case402 32
+frame case403 32
+frame case404 32
+frame case405 32
+frame case406 32
+frame case407 32
+frame case408 96
+frame case409 96
+frame case41 32
+frame case410 32
+frame case411 32
+frame case412 32
+frame case413 32
+frame case414 32
+frame case415 32
+frame case416 32
+frame case417 32
+frame case418 32
+frame case419 32
+frame case42 32
+frame case420 32
+frame case421 32
+frame case422 96
+frame case423 96
+frame case424 32
+frame case425 32
+frame case426 32
+frame case427 32
+frame case428 32
+frame case429 32
+frame case43 32
+frame case430 32
+frame case431 32
+frame case432 32
+frame case433 32
+frame case434 32
+frame case435 32
+frame case436 96
+frame case437 96
+frame case438 32
+frame case439 32
+frame case44 32
+frame case440 32
+frame case441 32
+frame case442 32
+frame case443 32
+frame case444 32
+frame case445 32
+frame case446 32
+frame case447 32
+frame case448 32
+frame case449 32
+frame case45 32
+frame case450 96
+frame case451 96
+frame case452 32
+frame case453 32
+frame case454 32
+frame case455 32
+frame case456 32
+frame case457 32
+frame case458 32
+frame case459 32
+frame case46 32
+frame case460 32
+frame case461 32
+frame case462 32
+frame case463 32
+frame case464 96
+frame case465 96
+frame case466 32
+frame case467 32
+frame case468 32
 frame case469 16
 frame case47 16
 frame case470 16
@@ -7341,85 +7878,112 @@ frame case996 16
 frame case997 16
 frame case998 16
 frame case999 16
-frame main 6848
+frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_array_heap O0]
-insns 226
-spills 130
-calls 10
-branches 0
+insns 314
+spills 165
+calls 9
+branches 3
 frame main 544
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [i128_array_heap O1]
-insns 103
-spills 8
-calls 10
-branches 0
+insns 198
+spills 26
+calls 9
+branches 3
 frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_array_heap O2]
-insns 70
-spills 6
-calls 10
-branches 0
-frame main 32
+insns 309
+spills 41
+calls 9
+branches 11
+frame main 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_array_heap O3]
-insns 60
-spills 4
-calls 10
-branches 0
-frame main 16
+insns 307
+spills 37
+calls 9
+branches 11
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_bit_intrinsics O0]
-insns 24458
-spills 14511
-calls 299
-branches 0
+insns 24546
+spills 14546
+calls 298
+branches 3
 frame main 52624
 frame mk_i128 208
 frame mk_u128 208
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame show_i 176
 frame show_u 160
 
 [i128_bit_intrinsics O1]
-insns 14239
-spills 602
-calls 299
-branches 0
+insns 14334
+spills 620
+calls 298
+branches 3
 frame main 5968
 frame mk_i128 16
 frame mk_u128 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame show_i 48
 frame show_u 48
 
 [i128_bit_intrinsics O2]
-insns 13846
-spills 598
-calls 299
-branches 0
+insns 13892
+spills 630
+calls 298
+branches 7
 frame main 5968
 frame mk_i128 16
 frame mk_u128 16
-frame show_i 32
-frame show_u 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+frame show_i 64
+frame show_u 48
 
 [i128_bit_intrinsics O3]
-insns 15749
-spills 3377
-calls 299
-branches 0
-frame main 15824
+insns 14685
+spills 2686
+calls 298
+branches 7
+frame main 13344
 frame mk_i128 16
 frame mk_u128 16
-frame show_i 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+frame show_i 64
 frame show_u 48
 
 [i128_conv O0]
-insns 11325
-spills 5768
-calls 690
-branches 0
+insns 10325
+spills 6075
+calls 417
+branches 3
 frame case0 176
 frame case1 160
 frame case10 176
@@ -7559,12 +8123,15 @@ frame case97 176
 frame case98 192
 frame case99 176
 frame main 1104
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [i128_conv O1]
-insns 7090
-spills 830
-calls 690
-branches 0
+insns 6097
+spills 848
+calls 417
+branches 3
 frame case0 32
 frame case1 32
 frame case10 32
@@ -7704,121 +8271,272 @@ frame case97 32
 frame case98 32
 frame case99 32
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_conv O2]
-insns 7827
-spills 834
-calls 1104
-branches 0
-frame case0 32
+insns 14722
+spills 1952
+calls 417
+branches 555
+frame case0 48
+frame case1 48
+frame case10 48
+frame case100 48
+frame case101 48
+frame case102 48
+frame case103 48
+frame case104 48
+frame case105 48
+frame case106 48
+frame case107 48
+frame case108 48
+frame case109 48
+frame case11 48
+frame case110 48
+frame case111 48
+frame case112 48
+frame case113 48
+frame case114 48
+frame case115 48
+frame case116 48
+frame case117 48
+frame case118 48
+frame case119 48
+frame case12 48
+frame case120 48
+frame case121 48
+frame case122 48
+frame case123 48
+frame case124 48
+frame case125 48
+frame case126 48
+frame case127 48
+frame case128 48
+frame case129 48
+frame case13 48
+frame case130 48
+frame case131 48
+frame case132 48
+frame case133 48
+frame case134 48
+frame case135 48
+frame case136 48
+frame case137 48
+frame case14 48
+frame case15 48
+frame case16 48
+frame case17 48
+frame case18 48
+frame case19 48
+frame case2 48
+frame case20 48
+frame case21 48
+frame case22 48
+frame case23 48
+frame case24 48
+frame case25 48
+frame case26 48
+frame case27 48
+frame case28 48
+frame case29 48
+frame case3 48
+frame case30 48
+frame case31 48
+frame case32 48
+frame case33 48
+frame case34 48
+frame case35 48
+frame case36 48
+frame case37 48
+frame case38 48
+frame case39 48
+frame case4 48
+frame case40 48
+frame case41 48
+frame case42 48
+frame case43 48
+frame case44 48
+frame case45 48
+frame case46 48
+frame case47 48
+frame case48 48
+frame case49 48
+frame case5 48
+frame case50 48
+frame case51 48
+frame case52 48
+frame case53 48
+frame case54 48
+frame case55 48
+frame case56 48
+frame case57 48
+frame case58 48
+frame case59 48
+frame case6 48
+frame case60 48
+frame case61 48
+frame case62 48
+frame case63 48
+frame case64 48
+frame case65 48
+frame case66 48
+frame case67 48
+frame case68 48
+frame case69 48
+frame case7 48
+frame case70 48
+frame case71 48
+frame case72 48
+frame case73 48
+frame case74 48
+frame case75 48
+frame case76 48
+frame case77 48
+frame case78 48
+frame case79 48
+frame case8 48
+frame case80 48
+frame case81 48
+frame case82 48
+frame case83 48
+frame case84 48
+frame case85 48
+frame case86 48
+frame case87 48
+frame case88 48
+frame case89 48
+frame case9 48
+frame case90 48
+frame case91 48
+frame case92 48
+frame case93 48
+frame case94 48
+frame case95 48
+frame case96 48
+frame case97 48
+frame case98 48
+frame case99 48
+frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+
+[i128_conv O3]
+insns 17588
+spills 1944
+calls 453
+branches 699
+frame case0 48
 frame case1 32
-frame case10 32
-frame case100 32
+frame case10 48
+frame case100 48
 frame case101 32
-frame case102 32
+frame case102 48
 frame case103 32
-frame case104 32
+frame case104 48
 frame case105 32
-frame case106 32
+frame case106 48
 frame case107 32
-frame case108 32
+frame case108 48
 frame case109 32
 frame case11 32
-frame case110 32
+frame case110 48
 frame case111 32
-frame case112 32
+frame case112 48
 frame case113 32
-frame case114 32
+frame case114 48
 frame case115 32
-frame case116 32
+frame case116 48
 frame case117 32
-frame case118 32
+frame case118 48
 frame case119 32
-frame case12 32
-frame case120 32
+frame case12 48
+frame case120 48
 frame case121 32
-frame case122 32
+frame case122 48
 frame case123 32
-frame case124 32
+frame case124 48
 frame case125 32
-frame case126 32
+frame case126 48
 frame case127 32
-frame case128 32
+frame case128 48
 frame case129 32
 frame case13 32
-frame case130 32
+frame case130 48
 frame case131 32
-frame case132 32
+frame case132 48
 frame case133 32
-frame case134 32
+frame case134 48
 frame case135 32
-frame case136 32
+frame case136 48
 frame case137 32
-frame case14 32
+frame case14 48
 frame case15 32
 frame case16 32
 frame case17 32
 frame case18 32
 frame case19 32
-frame case2 32
+frame case2 48
 frame case20 32
 frame case21 32
-frame case22 32
+frame case22 48
 frame case23 32
-frame case24 32
+frame case24 48
 frame case25 32
-frame case26 32
+frame case26 48
 frame case27 32
-frame case28 32
+frame case28 48
 frame case29 32
 frame case3 32
-frame case30 32
+frame case30 48
 frame case31 32
-frame case32 32
+frame case32 48
 frame case33 32
 frame case34 32
 frame case35 32
 frame case36 32
 frame case37 32
-frame case38 32
+frame case38 48
 frame case39 32
-frame case4 32
-frame case40 32
+frame case4 48
+frame case40 48
 frame case41 32
-frame case42 32
+frame case42 48
 frame case43 32
-frame case44 32
+frame case44 48
 frame case45 32
-frame case46 32
+frame case46 48
 frame case47 32
-frame case48 32
+frame case48 48
 frame case49 32
 frame case5 32
-frame case50 32
+frame case50 48
 frame case51 32
-frame case52 32
+frame case52 48
 frame case53 32
 frame case54 32
 frame case55 32
 frame case56 32
 frame case57 32
-frame case58 32
+frame case58 48
 frame case59 32
-frame case6 32
-frame case60 32
+frame case6 48
+frame case60 48
 frame case61 32
-frame case62 32
+frame case62 48
 frame case63 32
-frame case64 32
+frame case64 48
 frame case65 32
-frame case66 32
+frame case66 48
 frame case67 32
-frame case68 32
+frame case68 48
 frame case69 32
 frame case7 32
-frame case70 32
+frame case70 48
 frame case71 32
-frame case72 32
+frame case72 48
 frame case73 32
 frame case74 32
 frame case75 32
@@ -7826,180 +8544,38 @@ frame case76 32
 frame case77 32
 frame case78 32
 frame case79 32
-frame case8 32
+frame case8 48
 frame case80 32
 frame case81 32
-frame case82 32
+frame case82 48
 frame case83 32
-frame case84 32
+frame case84 48
 frame case85 32
-frame case86 32
+frame case86 48
 frame case87 32
-frame case88 32
+frame case88 48
 frame case89 32
 frame case9 32
-frame case90 32
+frame case90 48
 frame case91 32
-frame case92 32
+frame case92 48
 frame case93 32
-frame case94 32
+frame case94 48
 frame case95 32
-frame case96 32
+frame case96 48
 frame case97 32
-frame case98 32
+frame case98 48
 frame case99 32
-frame main 32
-
-[i128_conv O3]
-insns 7551
-spills 558
-calls 1104
-branches 0
-frame case0 16
-frame case1 16
-frame case10 16
-frame case100 16
-frame case101 16
-frame case102 16
-frame case103 16
-frame case104 16
-frame case105 16
-frame case106 16
-frame case107 16
-frame case108 16
-frame case109 16
-frame case11 16
-frame case110 16
-frame case111 16
-frame case112 16
-frame case113 16
-frame case114 16
-frame case115 16
-frame case116 16
-frame case117 16
-frame case118 16
-frame case119 16
-frame case12 16
-frame case120 16
-frame case121 16
-frame case122 16
-frame case123 16
-frame case124 16
-frame case125 16
-frame case126 16
-frame case127 16
-frame case128 16
-frame case129 16
-frame case13 16
-frame case130 16
-frame case131 16
-frame case132 16
-frame case133 16
-frame case134 16
-frame case135 16
-frame case136 16
-frame case137 16
-frame case14 16
-frame case15 16
-frame case16 16
-frame case17 16
-frame case18 16
-frame case19 16
-frame case2 16
-frame case20 16
-frame case21 16
-frame case22 16
-frame case23 16
-frame case24 16
-frame case25 16
-frame case26 16
-frame case27 16
-frame case28 16
-frame case29 16
-frame case3 16
-frame case30 16
-frame case31 16
-frame case32 16
-frame case33 16
-frame case34 16
-frame case35 16
-frame case36 16
-frame case37 16
-frame case38 16
-frame case39 16
-frame case4 16
-frame case40 16
-frame case41 16
-frame case42 16
-frame case43 16
-frame case44 16
-frame case45 16
-frame case46 16
-frame case47 16
-frame case48 16
-frame case49 16
-frame case5 16
-frame case50 16
-frame case51 16
-frame case52 16
-frame case53 16
-frame case54 16
-frame case55 16
-frame case56 16
-frame case57 16
-frame case58 16
-frame case59 16
-frame case6 16
-frame case60 16
-frame case61 16
-frame case62 16
-frame case63 16
-frame case64 16
-frame case65 16
-frame case66 16
-frame case67 16
-frame case68 16
-frame case69 16
-frame case7 16
-frame case70 16
-frame case71 16
-frame case72 16
-frame case73 16
-frame case74 16
-frame case75 16
-frame case76 16
-frame case77 16
-frame case78 16
-frame case79 16
-frame case8 16
-frame case80 16
-frame case81 16
-frame case82 16
-frame case83 16
-frame case84 16
-frame case85 16
-frame case86 16
-frame case87 16
-frame case88 16
-frame case89 16
-frame case9 16
-frame case90 16
-frame case91 16
-frame case92 16
-frame case93 16
-frame case94 16
-frame case95 16
-frame case96 16
-frame case97 16
-frame case98 16
-frame case99 16
-frame main 32
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_float O0]
-insns 3615
-spills 1848
-calls 225
-branches 0
+insns 3455
+spills 1945
+calls 162
+branches 3
 frame case0 256
 frame case1 256
 frame case10 256
@@ -8034,12 +8610,15 @@ frame case7 256
 frame case8 256
 frame case9 256
 frame main 272
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [i128_float O1]
-insns 2292
-spills 299
-calls 225
-branches 0
+insns 2139
+spills 317
+calls 162
+branches 3
 frame case0 64
 frame case1 64
 frame case10 64
@@ -8074,250 +8653,319 @@ frame case7 64
 frame case8 64
 frame case9 64
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_float O2]
-insns 3034
-spills 402
-calls 384
-branches 0
-frame case0 64
-frame case1 64
-frame case10 64
-frame case11 64
-frame case12 64
-frame case13 64
-frame case14 64
-frame case15 64
-frame case16 64
-frame case17 64
-frame case18 64
-frame case19 64
-frame case2 64
-frame case20 64
-frame case21 64
-frame case22 64
-frame case23 64
-frame case24 64
-frame case25 64
-frame case26 64
-frame case27 48
-frame case28 48
-frame case29 48
-frame case3 64
-frame case30 48
-frame case31 48
-frame case32 48
-frame case4 64
-frame case5 64
-frame case6 64
-frame case7 64
-frame case8 64
-frame case9 64
-frame main 1248
+insns 4188
+spills 581
+calls 162
+branches 135
+frame case0 80
+frame case1 80
+frame case10 80
+frame case11 80
+frame case12 80
+frame case13 80
+frame case14 80
+frame case15 80
+frame case16 80
+frame case17 80
+frame case18 80
+frame case19 80
+frame case2 80
+frame case20 80
+frame case21 80
+frame case22 80
+frame case23 80
+frame case24 80
+frame case25 80
+frame case26 80
+frame case27 64
+frame case28 64
+frame case29 64
+frame case3 80
+frame case30 64
+frame case31 64
+frame case32 64
+frame case4 80
+frame case5 80
+frame case6 80
+frame case7 80
+frame case8 80
+frame case9 80
+frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_float O3]
-insns 3034
-spills 402
-calls 384
-branches 0
-frame case0 64
-frame case1 64
-frame case10 64
-frame case11 64
-frame case12 64
-frame case13 64
-frame case14 64
-frame case15 64
-frame case16 64
-frame case17 64
-frame case18 64
-frame case19 64
-frame case2 64
-frame case20 64
-frame case21 64
-frame case22 64
-frame case23 64
-frame case24 64
-frame case25 64
-frame case26 64
-frame case27 48
-frame case28 48
-frame case29 48
-frame case3 64
-frame case30 48
-frame case31 48
-frame case32 48
-frame case4 64
-frame case5 64
-frame case6 64
-frame case7 64
-frame case8 64
-frame case9 64
-frame main 1248
+insns 4215
+spills 581
+calls 162
+branches 135
+frame case0 80
+frame case1 80
+frame case10 80
+frame case11 80
+frame case12 80
+frame case13 80
+frame case14 80
+frame case15 80
+frame case16 80
+frame case17 80
+frame case18 80
+frame case19 80
+frame case2 80
+frame case20 80
+frame case21 80
+frame case22 80
+frame case23 80
+frame case24 80
+frame case25 80
+frame case26 80
+frame case27 64
+frame case28 64
+frame case29 64
+frame case3 80
+frame case30 64
+frame case31 64
+frame case32 64
+frame case4 80
+frame case5 80
+frame case6 80
+frame case7 80
+frame case8 80
+frame case9 80
+frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_literal_call_arg_bug_test O0]
-insns 53
-spills 17
-calls 3
-branches 0
+insns 153
+spills 49
+calls 5
+branches 3
 frame low64 64
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [i128_literal_call_arg_bug_test O1]
-insns 46
-spills 6
-calls 3
-branches 0
+insns 153
+spills 24
+calls 5
+branches 3
 frame low64 16
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_literal_call_arg_bug_test O2]
-insns 46
-spills 6
-calls 3
-branches 0
+insns 191
+spills 28
+calls 5
+branches 5
 frame low64 16
-frame main 32
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_literal_call_arg_bug_test O3]
-insns 46
-spills 6
-calls 3
-branches 0
+insns 191
+spills 28
+calls 5
+branches 5
 frame low64 16
-frame main 32
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i128_mem O0]
-insns 801
-spills 455
-calls 24
-branches 2
+insns 865
+spills 496
+calls 17
+branches 5
 frame loop_sum 352
 frame main 1184
 frame pick 304
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame store_through 64
 
 [i128_mem O1]
-insns 467
-spills 45
-calls 24
-branches 2
+insns 538
+spills 63
+calls 17
+branches 5
 frame loop_sum 48
 frame main 224
 frame pick 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame store_through 16
 
 [i128_mem O2]
-insns 420
-spills 41
-calls 24
-branches 2
+insns 838
+spills 107
+calls 17
+branches 25
 frame loop_sum 48
-frame main 192
+frame main 320
 frame pick 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame store_through 16
 
 [i128_mem O3]
-insns 393
-spills 52
-calls 24
-branches 3
+insns 843
+spills 111
+calls 17
+branches 26
 frame loop_sum 96
-frame main 208
+frame main 304
 frame pick 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame store_through 16
 
 [i8_signedness O0]
-insns 80
-spills 20
-calls 10
-branches 0
+insns 168
+spills 51
+calls 9
+branches 3
 frame main 64
 frame mk_i8 16
 frame mk_u8 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [i8_signedness O1]
-insns 73
-spills 8
-calls 10
-branches 0
+insns 168
+spills 26
+calls 9
+branches 3
 frame main 32
 frame mk_i8 0
 frame mk_u8 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i8_signedness O2]
-insns 75
-spills 8
-calls 8
-branches 0
-frame main 32
+insns 318
+spills 42
+calls 7
+branches 11
+frame main 80
 frame mk_i8 0
 frame mk_u8 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [i8_signedness O3]
-insns 73
-spills 6
-calls 8
-branches 0
-frame main 32
+insns 318
+spills 41
+calls 7
+branches 11
+frame main 80
 frame mk_i8 0
 frame mk_u8 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [inttofp_signed O0]
-insns 1021
-spills 259
-calls 148
-branches 0
+insns 829
+spills 364
+calls 77
+branches 3
 frame main 1488
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [inttofp_signed O1]
-insns 951
-spills 152
-calls 148
-branches 0
+insns 766
+spills 170
+calls 77
+branches 3
 frame main 608
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [inttofp_signed O2]
-insns 951
-spills 152
-calls 148
-branches 0
-frame main 608
+insns 3531
+spills 591
+calls 77
+branches 151
+frame main 2000
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [inttofp_signed O3]
-insns 951
-spills 152
-calls 148
-branches 0
-frame main 608
+insns 3531
+spills 591
+calls 77
+branches 151
+frame main 2000
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [inttofp_unsigned O0]
-insns 1109
-spills 217
-calls 124
-branches 0
+insns 965
+spills 310
+calls 65
+branches 3
 frame main 1248
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [inttofp_unsigned O1]
-insns 1051
-spills 128
-calls 124
-branches 0
+insns 914
+spills 146
+calls 65
+branches 3
 frame main 512
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [inttofp_unsigned O2]
-insns 1051
-spills 128
-calls 124
-branches 0
-frame main 512
+insns 3234
+spills 502
+calls 65
+branches 127
+frame main 1696
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [inttofp_unsigned O3]
-insns 1051
-spills 128
-calls 124
-branches 0
-frame main 512
+insns 3234
+spills 502
+calls 65
+branches 127
+frame main 1696
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_basic O0]
 insns 67
@@ -8348,116 +8996,164 @@ branches 0
 frame main 16
 
 [io_buffer O0]
-insns 128
-spills 23
+insns 220
+spills 54
 calls 6
-branches 0
+branches 3
 frame main 80
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [io_buffer O1]
-insns 134
-spills 16
+insns 233
+spills 34
 calls 6
-branches 0
+branches 3
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_buffer O2]
-insns 134
-spills 16
+insns 346
+spills 48
 calls 6
-branches 0
-frame main 32
+branches 9
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_buffer O3]
-insns 134
-spills 16
+insns 346
+spills 48
 calls 6
-branches 0
-frame main 32
+branches 9
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_comprehensive O0]
-insns 121
-spills 24
-calls 4
-branches 0
+insns 217
+spills 57
+calls 5
+branches 3
 frame main 112
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [io_comprehensive O1]
-insns 117
-spills 13
-calls 4
-branches 0
+insns 220
+spills 31
+calls 5
+branches 3
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_comprehensive O2]
-insns 115
-spills 13
-calls 4
-branches 0
-frame main 16
+insns 295
+spills 39
+calls 5
+branches 7
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_comprehensive O3]
-insns 115
-spills 13
-calls 4
-branches 0
-frame main 16
+insns 295
+spills 39
+calls 5
+branches 7
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_error_handling O0]
-insns 56
-spills 8
+insns 148
+spills 40
 calls 6
-branches 0
+branches 3
 frame main 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [io_error_handling O1]
-insns 58
-spills 5
+insns 157
+spills 23
 calls 6
-branches 0
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_error_handling O2]
-insns 58
-spills 5
+insns 273
+spills 37
 calls 6
-branches 0
-frame main 16
+branches 9
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_error_handling O3]
-insns 58
-spills 5
+insns 273
+spills 37
 calls 6
-branches 0
-frame main 16
+branches 9
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_pointer O0]
-insns 21
-spills 4
-calls 2
-branches 0
+insns 123
+spills 37
+calls 4
+branches 3
 frame main 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [io_pointer O1]
-insns 18
-spills 2
-calls 2
-branches 0
+insns 127
+spills 20
+calls 4
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_pointer O2]
-insns 16
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 166
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_pointer O3]
-insns 16
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 166
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_types O0]
 insns 113
@@ -8488,32 +9184,44 @@ branches 0
 frame main 48
 
 [io_write O0]
-insns 42
-spills 12
-calls 2
-branches 0
+insns 142
+spills 44
+calls 4
+branches 3
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [io_write O1]
-insns 33
-spills 4
-calls 2
-branches 0
+insns 140
+spills 22
+calls 4
+branches 3
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_write O2]
-insns 33
-spills 4
-calls 2
-branches 0
+insns 178
+spills 26
+calls 4
+branches 5
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [io_write O3]
-insns 33
-spills 4
-calls 2
-branches 0
+insns 178
+spills 26
+calls 4
+branches 5
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [lamina_demo O0]
 insns 740
@@ -8552,32 +9260,44 @@ frame print_digit 16
 frame simple_func 0
 
 [large_basic_block O0]
-insns 3314
-spills 1100
-calls 2
-branches 0
+insns 3414
+spills 1132
+calls 4
+branches 3
 frame main 8800
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [large_basic_block O1]
-insns 384
-spills 2
-calls 2
-branches 0
+insns 491
+spills 20
+calls 4
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [large_basic_block O2]
-insns 383
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 530
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [large_basic_block O3]
-insns 383
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 530
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [large_constants O0]
 insns 134
@@ -8616,11 +9336,14 @@ frame print_digits 32
 frame print_number 32
 
 [load_store_operations O0]
-insns 273
-spills 124
-calls 3
-branches 0
+insns 373
+spills 156
+calls 5
+branches 3
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_basic_load_store 16
 frame test_different_types 112
 frame test_memory_aliasing 64
@@ -8628,11 +9351,14 @@ frame test_multiple_operations 160
 frame test_sequential_access 112
 
 [load_store_operations O1]
-insns 138
-spills 4
-calls 3
-branches 0
+insns 245
+spills 22
+calls 5
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_basic_load_store 0
 frame test_different_types 32
 frame test_memory_aliasing 16
@@ -8640,11 +9366,14 @@ frame test_multiple_operations 32
 frame test_sequential_access 16
 
 [load_store_operations O2]
-insns 75
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 222
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_basic_load_store 0
 frame test_different_types 16
 frame test_memory_aliasing 0
@@ -8652,11 +9381,14 @@ frame test_multiple_operations 0
 frame test_sequential_access 0
 
 [load_store_operations O3]
-insns 75
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 222
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_basic_load_store 0
 frame test_different_types 16
 frame test_memory_aliasing 0
@@ -8720,180 +9452,252 @@ frame test_store_forwarding 0
 frame test_volatile_access 0
 
 [loop_rotation_bound_change O0]
-insns 52
-spills 15
-calls 4
-branches 4
+insns 148
+spills 46
+calls 5
+branches 7
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [loop_rotation_bound_change O1]
-insns 40
-spills 6
-calls 4
-branches 4
+insns 143
+spills 24
+calls 5
+branches 7
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_bound_change O2]
-insns 37
-spills 6
-calls 4
-branches 4
+insns 214
+spills 30
+calls 5
+branches 11
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_bound_change O3]
-insns 39
-spills 6
-calls 4
-branches 5
+insns 216
+spills 30
+calls 5
+branches 12
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_counted O0]
-insns 63
-spills 21
-calls 4
-branches 4
+insns 159
+spills 52
+calls 5
+branches 7
 frame main 64
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [loop_rotation_counted O1]
-insns 47
-spills 8
-calls 4
-branches 4
+insns 150
+spills 26
+calls 5
+branches 7
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_counted O2]
-insns 110
-spills 8
-calls 4
-branches 14
-frame main 32
+insns 288
+spills 33
+calls 5
+branches 21
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_counted O3]
-insns 62
-spills 16
-calls 4
-branches 6
-frame main 64
+insns 231
+spills 33
+calls 5
+branches 13
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_header_call O0]
-insns 61
-spills 16
+insns 153
+spills 47
 calls 7
-branches 2
+branches 5
 frame main 32
 frame next_value 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [loop_rotation_header_call O1]
-insns 56
-spills 8
+insns 155
+spills 26
 calls 7
-branches 2
+branches 5
 frame main 32
 frame next_value 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_header_call O2]
-insns 61
-spills 8
-calls 8
-branches 2
-frame main 32
-frame next_value 16
+insns 313
+spills 48
+calls 7
+branches 13
+frame main 64
+frame next_value 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_header_call O3]
-insns 61
-spills 8
-calls 8
-branches 2
-frame main 32
-frame next_value 16
+insns 313
+spills 48
+calls 7
+branches 13
+frame main 64
+frame next_value 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_memory_test O0]
-insns 73
-spills 25
-calls 3
-branches 3
+insns 173
+spills 56
+calls 5
+branches 6
 frame main 64
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame shrink_every_other 64
 
 [loop_rotation_memory_test O1]
-insns 52
-spills 6
-calls 3
-branches 3
+insns 159
+spills 24
+calls 5
+branches 6
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame shrink_every_other 0
 
 [loop_rotation_memory_test O2]
-insns 61
-spills 4
-calls 2
-branches 5
-frame main 32
+insns 210
+spills 34
+calls 4
+branches 10
+frame main 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame shrink_every_other 0
 
 [loop_rotation_memory_test O3]
-insns 61
-spills 4
-calls 2
-branches 5
-frame main 32
+insns 210
+spills 34
+calls 4
+branches 10
+frame main 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame shrink_every_other 0
 
 [loop_rotation_multi_latch O0]
-insns 49
-spills 15
-calls 2
-branches 4
+insns 149
+spills 46
+calls 4
+branches 7
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [loop_rotation_multi_latch O1]
-insns 37
-spills 4
-calls 2
-branches 4
+insns 144
+spills 22
+calls 4
+branches 7
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_multi_latch O2]
-insns 35
-spills 4
-calls 2
-branches 4
-frame main 16
+insns 180
+spills 26
+calls 4
+branches 9
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_multi_latch O3]
-insns 39
-spills 4
-calls 2
-branches 6
-frame main 16
+insns 184
+spills 26
+calls 4
+branches 11
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_nested O0]
-insns 53
-spills 18
-calls 2
-branches 5
+insns 153
+spills 49
+calls 4
+branches 8
 frame main 64
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [loop_rotation_nested O1]
-insns 36
-spills 4
-calls 2
-branches 5
+insns 143
+spills 22
+calls 4
+branches 8
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_nested O2]
-insns 57
-spills 4
-calls 2
-branches 11
-frame main 16
+insns 202
+spills 26
+calls 4
+branches 16
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loop_rotation_nested O3]
-insns 61
-spills 4
-calls 2
-branches 14
-frame main 16
+insns 206
+spills 26
+calls 4
+branches 19
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [loops O0]
 insns 146
@@ -8968,88 +9772,124 @@ frame print_digits 32
 frame print_number 32
 
 [memory_intrinsics O0]
-insns 114
-spills 35
-calls 13
-branches 0
+insns 198
+spills 70
+calls 11
+branches 3
 frame main 160
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [memory_intrinsics O1]
-insns 100
-spills 9
-calls 13
-branches 0
+insns 191
+spills 27
+calls 11
+branches 3
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [memory_intrinsics O2]
-insns 100
-spills 9
-calls 13
-branches 0
-frame main 48
+insns 376
+spills 53
+calls 11
+branches 13
+frame main 128
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [memory_intrinsics O3]
-insns 100
-spills 9
-calls 13
-branches 0
-frame main 48
+insns 376
+spills 53
+calls 11
+branches 13
+frame main 128
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [memory_test O0]
-insns 57
-spills 10
-calls 10
-branches 0
+insns 141
+spills 41
+calls 8
+branches 3
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [memory_test O1]
-insns 57
-spills 10
-calls 10
-branches 0
+insns 148
+spills 28
+calls 8
+branches 3
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [memory_test O2]
-insns 52
-spills 10
-calls 10
-branches 0
-frame main 48
+insns 324
+spills 47
+calls 8
+branches 13
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [memory_test O3]
-insns 44
-spills 2
-calls 10
-branches 0
-frame main 16
+insns 324
+spills 38
+calls 8
+branches 13
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [narrow_add_renormalizes O0]
-insns 66
-spills 14
+insns 158
+spills 48
 calls 6
-branches 0
+branches 3
 frame main 96
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [narrow_add_renormalizes O1]
-insns 61
-spills 4
+insns 160
+spills 22
 calls 6
-branches 0
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [narrow_add_renormalizes O2]
-insns 55
-spills 4
+insns 269
+spills 34
 calls 6
-branches 0
-frame main 16
+branches 9
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [narrow_add_renormalizes O3]
-insns 55
-spills 4
+insns 269
+spills 34
 calls 6
-branches 0
-frame main 16
+branches 9
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [narrow_store_width O0]
 insns 153
@@ -9088,119 +9928,155 @@ frame print_digits 32
 frame print_number 32
 
 [narrow_unsigned_canonical O0]
-insns 179
-spills 46
-calls 21
-branches 0
+insns 251
+spills 85
+calls 16
+branches 3
 frame add_eq_u16 32
 frame main 112
 frame mk_u8 16
 frame or_eq_u32 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame xor_eq_u8 32
 
 [narrow_unsigned_canonical O1]
-insns 149
-spills 6
-calls 21
-branches 0
+insns 228
+spills 24
+calls 16
+branches 3
 frame add_eq_u16 0
 frame main 32
 frame mk_u8 0
 frame or_eq_u32 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame xor_eq_u8 0
 
 [narrow_unsigned_canonical O2]
-insns 178
-spills 6
-calls 16
-branches 0
+insns 553
+spills 61
+calls 11
+branches 19
 frame add_eq_u16 0
-frame main 32
+frame main 128
 frame mk_u8 0
 frame or_eq_u32 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame xor_eq_u8 0
 
 [narrow_unsigned_canonical O3]
-insns 178
-spills 6
-calls 16
-branches 0
+insns 553
+spills 59
+calls 11
+branches 19
 frame add_eq_u16 0
-frame main 32
+frame main 128
 frame mk_u8 0
 frame or_eq_u32 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame xor_eq_u8 0
 
 [negative_multiplier O0]
-insns 50
-spills 8
-calls 8
-branches 0
+insns 138
+spills 43
+calls 7
+branches 3
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [negative_multiplier O1]
-insns 45
-spills 4
-calls 8
-branches 0
+insns 140
+spills 22
+calls 7
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [negative_multiplier O2]
-insns 44
-spills 4
-calls 8
-branches 0
-frame main 16
+insns 290
+spills 38
+calls 7
+branches 11
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [negative_multiplier O3]
-insns 44
-spills 4
-calls 8
-branches 0
-frame main 16
+insns 290
+spills 38
+calls 7
+branches 11
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [nested_calls O0]
-insns 65
-spills 18
-calls 6
-branches 0
+insns 165
+spills 50
+calls 8
+branches 3
 frame add_three 16
 frame complex_calculation 32
 frame main 16
 frame multiply_by_two 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame square 16
 
 [nested_calls O1]
-insns 52
-spills 6
-calls 6
-branches 0
+insns 159
+spills 24
+calls 8
+branches 3
 frame add_three 0
 frame complex_calculation 16
 frame main 16
 frame multiply_by_two 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame square 0
 
 [nested_calls O2]
-insns 46
-spills 4
-calls 3
-branches 1
+insns 193
+spills 28
+calls 5
+branches 6
 frame add_three 0
 frame complex_calculation 16
-frame main 16
+frame main 32
 frame multiply_by_two 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame square 0
 
 [nested_calls O3]
-insns 46
-spills 4
-calls 3
-branches 1
+insns 193
+spills 28
+calls 5
+branches 6
 frame add_three 0
 frame complex_calculation 16
-frame main 16
+frame main 32
 frame multiply_by_two 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame square 0
 
 [output_freestanding O0]
@@ -9364,11 +10240,14 @@ frame test_pointer_movement 48
 frame test_variable_index_gep 48
 
 [pointer_operations_comprehensive O0]
-insns 577
-spills 197
-calls 39
-branches 0
+insns 629
+spills 228
+calls 29
+branches 3
 frame main 112
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_bool_pointer_operations 64
 frame test_char_pointer_operations 64
 frame test_f32_pointer_operations 48
@@ -9384,11 +10263,14 @@ frame test_u64_pointer_operations 64
 frame test_u8_pointer_operations 64
 
 [pointer_operations_comprehensive O1]
-insns 374
-spills 32
-calls 39
-branches 0
+insns 433
+spills 50
+calls 29
+branches 3
 frame main 112
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_pointer_operations 16
 frame test_char_pointer_operations 16
 frame test_f32_pointer_operations 32
@@ -9404,11 +10286,14 @@ frame test_u64_pointer_operations 16
 frame test_u8_pointer_operations 16
 
 [pointer_operations_comprehensive O2]
-insns 288
-spills 26
-calls 26
-branches 0
-frame main 112
+insns 830
+spills 87
+calls 16
+branches 29
+frame main 240
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_pointer_operations 16
 frame test_char_pointer_operations 0
 frame test_f32_pointer_operations 0
@@ -9424,11 +10309,14 @@ frame test_u64_pointer_operations 0
 frame test_u8_pointer_operations 0
 
 [pointer_operations_comprehensive O3]
-insns 262
-spills 6
-calls 26
-branches 0
-frame main 32
+insns 822
+spills 97
+calls 16
+branches 29
+frame main 272
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_pointer_operations 16
 frame test_char_pointer_operations 0
 frame test_f32_pointer_operations 0
@@ -9480,16 +10368,19 @@ frame print_digits 32
 frame print_number 32
 
 [pointer_param_store O0]
-insns 304
-spills 106
-calls 34
-branches 0
+insns 360
+spills 145
+calls 25
+branches 3
 frame chain 32
 frame fieldset 32
 frame forward 16
 frame idxset 64
 frame main 240
 frame pass 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame read_elem 32
 frame read_global_elem 32
 frame setit 16
@@ -9497,16 +10388,19 @@ frame tbl 0
 frame viaret 32
 
 [pointer_param_store O1]
-insns 219
-spills 29
-calls 34
-branches 0
+insns 282
+spills 48
+calls 25
+branches 3
 frame chain 0
 frame fieldset 0
 frame forward 16
 frame idxset 0
 frame main 128
 frame pass 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame read_elem 0
 frame read_global_elem 0
 frame setit 0
@@ -9514,16 +10408,19 @@ frame tbl 0
 frame viaret 16
 
 [pointer_param_store O2]
-insns 208
-spills 22
-calls 25
-branches 1
+insns 727
+spills 111
+calls 16
+branches 28
 frame chain 0
 frame fieldset 0
 frame forward 16
 frame idxset 0
-frame main 112
+frame main 336
 frame pass 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame read_elem 0
 frame read_global_elem 0
 frame setit 0
@@ -9531,16 +10428,19 @@ frame tbl 0
 frame viaret 0
 
 [pointer_param_store O3]
-insns 204
-spills 17
-calls 25
-branches 1
+insns 727
+spills 107
+calls 16
+branches 28
 frame chain 0
 frame fieldset 0
 frame forward 16
 frame idxset 0
-frame main 96
+frame main 304
 frame pass 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame read_elem 0
 frame read_global_elem 0
 frame setit 0
@@ -9548,11 +10448,14 @@ frame tbl 0
 frame viaret 0
 
 [primitive_types_comprehensive O0]
-insns 928
-spills 242
-calls 36
-branches 0
+insns 984
+spills 273
+calls 27
+branches 3
 frame main 96
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_bool_operations 128
 frame test_char_operations 80
 frame test_f32_operations 96
@@ -9567,11 +10470,14 @@ frame test_u64_operations 80
 frame test_u8_operations 80
 
 [primitive_types_comprehensive O1]
-insns 161
-spills 24
-calls 36
-branches 0
+insns 224
+spills 42
+calls 27
+branches 3
 frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_operations 0
 frame test_char_operations 0
 frame test_f32_operations 0
@@ -9586,11 +10492,14 @@ frame test_u64_operations 0
 frame test_u8_operations 0
 
 [primitive_types_comprehensive O2]
-insns 137
-spills 24
-calls 24
-branches 0
-frame main 96
+insns 651
+spills 82
+calls 15
+branches 27
+frame main 208
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_operations 0
 frame test_char_operations 0
 frame test_f32_operations 0
@@ -9605,11 +10514,14 @@ frame test_u64_operations 0
 frame test_u8_operations 0
 
 [primitive_types_comprehensive O3]
-insns 129
-spills 2
-calls 24
-branches 0
-frame main 16
+insns 649
+spills 80
+calls 15
+branches 27
+frame main 208
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_operations 0
 frame test_char_operations 0
 frame test_f32_operations 0
@@ -9624,11 +10536,14 @@ frame test_u64_operations 0
 frame test_u8_operations 0
 
 [primitive_types_fixed O0]
-insns 261
-spills 52
-calls 30
-branches 0
+insns 325
+spills 83
+calls 23
+branches 3
 frame main 80
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_bool_operations 32
 frame test_char_operations 32
 frame test_i16_operations 16
@@ -9641,11 +10556,14 @@ frame test_u64_operations 16
 frame test_u8_operations 32
 
 [primitive_types_fixed O1]
-insns 157
-spills 20
-calls 30
-branches 0
+insns 228
+spills 38
+calls 23
+branches 3
 frame main 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_operations 0
 frame test_char_operations 0
 frame test_i16_operations 0
@@ -9658,11 +10576,14 @@ frame test_u64_operations 0
 frame test_u8_operations 0
 
 [primitive_types_fixed O2]
-insns 156
-spills 20
-calls 20
-branches 0
-frame main 80
+insns 599
+spills 72
+calls 13
+branches 23
+frame main 176
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_operations 0
 frame test_char_operations 0
 frame test_i16_operations 0
@@ -9675,11 +10596,14 @@ frame test_u64_operations 0
 frame test_u8_operations 0
 
 [primitive_types_fixed O3]
-insns 147
-spills 4
-calls 20
-branches 0
-frame main 16
+insns 602
+spills 74
+calls 13
+branches 23
+frame main 192
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_operations 0
 frame test_char_operations 0
 frame test_i16_operations 0
@@ -9692,284 +10616,400 @@ frame test_u64_operations 0
 frame test_u8_operations 0
 
 [print_float O0]
-insns 94
-spills 9
-calls 13
-branches 0
+insns 205
+spills 51
+calls 12
+branches 3
+frame fmt_g 0
 frame half 16
 frame main 48
+frame print_f64 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [print_float O1]
-insns 94
-spills 9
-calls 13
-branches 0
+insns 212
+spills 34
+calls 12
+branches 3
+frame fmt_g 0
 frame half 16
 frame main 48
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [print_float O2]
-insns 76
-spills 9
-calls 12
-branches 0
+insns 277
+spills 45
+calls 17
+branches 3
+frame fmt_g 0
 frame half 16
-frame main 48
+frame main 80
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [print_float O3]
-insns 76
-spills 9
-calls 12
-branches 0
+insns 278
+spills 46
+calls 17
+branches 3
+frame fmt_g 0
 frame half 16
-frame main 48
+frame main 80
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [print_unsigned O0]
-insns 83
-spills 15
-calls 13
-branches 0
+insns 163
+spills 52
+calls 10
+branches 3
 frame big 0
 frame main 80
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame scale 16
 
 [print_unsigned O1]
-insns 72
-spills 4
-calls 13
-branches 0
+insns 159
+spills 22
+calls 10
+branches 3
 frame big 0
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame scale 0
 
 [print_unsigned O2]
-insns 69
-spills 4
-calls 12
-branches 0
+insns 244
+spills 31
+calls 9
+branches 5
 frame big 0
-frame main 16
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame scale 0
 
 [print_unsigned O3]
-insns 69
-spills 4
-calls 12
-branches 0
+insns 244
+spills 31
+calls 9
+branches 5
 frame big 0
-frame main 16
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame scale 0
 
 [reassign_cast_loop O0]
-insns 45
-spills 17
-calls 2
-branches 1
+insns 145
+spills 48
+calls 4
+branches 4
 frame main 64
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [reassign_cast_loop O1]
-insns 29
-spills 5
-calls 2
-branches 1
+insns 136
+spills 23
+calls 4
+branches 4
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [reassign_cast_loop O2]
-insns 26
-spills 5
-calls 2
-branches 1
-frame main 16
+insns 173
+spills 29
+calls 4
+branches 6
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [reassign_cast_loop O3]
-insns 26
-spills 5
-calls 2
-branches 1
-frame main 16
+insns 173
+spills 29
+calls 4
+branches 6
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [reassign_float_unary_self O0]
-insns 27
-spills 6
-calls 2
-branches 0
+insns 127
+spills 38
+calls 4
+branches 3
 frame main 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [reassign_float_unary_self O1]
-insns 26
-spills 6
-calls 2
-branches 0
+insns 133
+spills 24
+calls 4
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [reassign_float_unary_self O2]
-insns 25
-spills 6
-calls 2
-branches 0
-frame main 16
+insns 172
+spills 30
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [reassign_float_unary_self O3]
-insns 25
-spills 6
-calls 2
-branches 0
-frame main 16
+insns 172
+spills 30
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursion_with_calculation O0]
-insns 41
-spills 10
-calls 4
-branches 1
+insns 141
+spills 42
+calls 6
+branches 4
 frame factorial_simple 48
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [recursion_with_calculation O1]
-insns 48
-spills 11
-calls 4
-branches 1
+insns 155
+spills 29
+calls 6
+branches 4
 frame factorial_simple 32
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursion_with_calculation O2]
-insns 48
-spills 11
-calls 4
-branches 1
+insns 195
+spills 35
+calls 6
+branches 6
 frame factorial_simple 32
-frame main 16
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursion_with_calculation O3]
-insns 48
-spills 11
-calls 4
-branches 1
+insns 195
+spills 35
+calls 6
+branches 6
 frame factorial_simple 32
-frame main 16
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursive_factorial O0]
-insns 77
-spills 19
-calls 16
-branches 1
+insns 161
+spills 50
+calls 14
+branches 4
 frame factorial 48
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [recursive_factorial O1]
-insns 92
-spills 19
-calls 16
-branches 1
+insns 183
+spills 37
+calls 14
+branches 4
 frame factorial 32
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursive_factorial O2]
-insns 92
-spills 19
-calls 16
-branches 1
+insns 364
+spills 56
+calls 14
+branches 14
 frame factorial 32
-frame main 48
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursive_factorial O3]
-insns 92
-spills 19
-calls 16
-branches 1
+insns 364
+spills 56
+calls 14
+branches 14
 frame factorial 32
-frame main 48
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursive_fibonacci O0]
-insns 100
-spills 26
-calls 20
-branches 2
+insns 180
+spills 57
+calls 17
+branches 5
 frame fibonacci 64
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [recursive_fibonacci O1]
-insns 114
-spills 24
-calls 20
-branches 2
+insns 201
+spills 42
+calls 17
+branches 5
 frame fibonacci 32
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursive_fibonacci O2]
-insns 114
-spills 24
-calls 20
-branches 2
+insns 419
+spills 64
+calls 17
+branches 17
 frame fibonacci 32
-frame main 48
+frame main 112
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursive_fibonacci O3]
-insns 114
-spills 24
-calls 20
-branches 2
+insns 419
+spills 64
+calls 17
+branches 17
 frame fibonacci 32
-frame main 48
+frame main 112
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [recursive_sum O0]
-insns 86
-spills 21
-calls 19
-branches 1
+insns 166
+spills 52
+calls 16
+branches 4
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame sum_to_n 48
 
 [recursive_sum O1]
-insns 100
-spills 21
-calls 19
-branches 1
+insns 187
+spills 39
+calls 16
+branches 4
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sum_to_n 32
 
 [recursive_sum O2]
-insns 100
-spills 21
-calls 19
-branches 1
-frame main 48
+insns 405
+spills 61
+calls 16
+branches 16
+frame main 112
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sum_to_n 32
 
 [recursive_sum O3]
-insns 100
-spills 21
-calls 19
-branches 1
-frame main 48
+insns 405
+spills 61
+calls 16
+branches 16
+frame main 112
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame sum_to_n 32
 
 [register_pressure O0]
-insns 131
-spills 55
-calls 2
-branches 0
+insns 231
+spills 87
+calls 4
+branches 3
 frame main 256
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [register_pressure O1]
-insns 90
-spills 22
-calls 2
-branches 0
+insns 197
+spills 40
+calls 4
+branches 3
 frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [register_pressure O2]
-insns 64
-spills 22
-calls 2
-branches 0
+insns 207
+spills 44
+calls 4
+branches 5
 frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [register_pressure O3]
-insns 46
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 194
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [register_size_mismatch_bug_test O0]
 insns 371
@@ -10024,32 +11064,44 @@ frame test_i8_register_operations 0
 frame test_mixed_size_operations 0
 
 [select_all_types O0]
-insns 93
-spills 15
-calls 12
-branches 0
+insns 173
+spills 52
+calls 9
+branches 3
 frame main 112
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [select_all_types O1]
-insns 99
-spills 12
-calls 12
-branches 0
+insns 186
+spills 30
+calls 9
+branches 3
 frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [select_all_types O2]
-insns 91
-spills 12
-calls 12
-branches 0
-frame main 48
+insns 402
+spills 60
+calls 9
+branches 15
+frame main 144
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [select_all_types O3]
-insns 91
-spills 12
-calls 12
-branches 0
-frame main 48
+insns 402
+spills 59
+calls 9
+branches 15
+frame main 144
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [simple_const O0]
 insns 134
@@ -10088,129 +11140,165 @@ frame print_digits 32
 frame print_number 32
 
 [simple_heap_test O0]
-insns 23
-spills 4
-calls 3
-branches 0
+insns 123
+spills 36
+calls 5
+branches 3
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [simple_heap_test O1]
-insns 23
-spills 4
-calls 3
-branches 0
+insns 130
+spills 22
+calls 5
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [simple_heap_test O2]
-insns 21
-spills 2
-calls 3
-branches 0
-frame main 16
+insns 168
+spills 26
+calls 5
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [simple_heap_test O3]
-insns 21
-spills 2
-calls 3
-branches 0
-frame main 16
+insns 168
+spills 26
+calls 5
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [sroa_refusals O0]
-insns 393
-spills 153
-calls 30
-branches 6
+insns 459
+spills 191
+calls 22
+branches 9
 frame bool_field 80
 frame dynamic_index 192
 frame escape_call 80
 frame escape_store 80
 frame main 64
-frame overlap 64
+frame overlap 80
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame set_word 16
 frame split_fields 112
 frame volatile_field 64
 
 [sroa_refusals O1]
-insns 284
-spills 40
-calls 30
-branches 6
+insns 355
+spills 58
+calls 22
+branches 9
 frame bool_field 32
 frame dynamic_index 64
 frame escape_call 48
 frame escape_store 48
 frame main 16
 frame overlap 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame set_word 0
 frame split_fields 64
 frame volatile_field 32
 
 [sroa_refusals O2]
-insns 376
-spills 38
-calls 44
-branches 8
-frame bool_field 32
+insns 1097
+spills 126
+calls 24
+branches 45
+frame bool_field 48
 frame dynamic_index 64
-frame escape_call 32
-frame escape_store 16
+frame escape_call 48
+frame escape_store 32
 frame main 128
-frame overlap 32
+frame overlap 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame set_word 0
-frame split_fields 16
-frame volatile_field 32
+frame split_fields 32
+frame volatile_field 48
 
 [sroa_refusals O3]
-insns 345
-spills 34
-calls 43
-branches 6
-frame bool_field 32
-frame dynamic_index 80
-frame escape_call 32
-frame escape_store 16
-frame main 80
-frame overlap 32
+insns 1104
+spills 127
+calls 24
+branches 47
+frame bool_field 48
+frame dynamic_index 96
+frame escape_call 48
+frame escape_store 32
+frame main 112
+frame overlap 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame set_word 0
-frame split_fields 16
-frame volatile_field 32
+frame split_fields 32
+frame volatile_field 48
 
 [stack_allocation O0]
-insns 102
-spills 33
+insns 194
+spills 64
 calls 9
-branches 0
+branches 3
 frame main 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_nested_stack_operations 96
 frame test_stack_allocation 48
 frame test_stack_vs_heap_comparison 32
 
 [stack_allocation O1]
-insns 80
-spills 6
+insns 179
+spills 24
 calls 9
-branches 0
+branches 3
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_nested_stack_operations 32
 frame test_stack_allocation 16
 frame test_stack_vs_heap_comparison 16
 
 [stack_allocation O2]
-insns 55
-spills 6
+insns 269
+spills 38
 calls 6
-branches 0
-frame main 32
+branches 9
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_nested_stack_operations 0
 frame test_stack_allocation 0
 frame test_stack_vs_heap_comparison 0
 
 [stack_allocation O3]
-insns 51
-spills 2
+insns 268
+spills 36
 calls 6
-branches 0
-frame main 16
+branches 9
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_nested_stack_operations 0
 frame test_stack_allocation 0
 frame test_stack_vs_heap_comparison 0
@@ -10276,35 +11364,47 @@ frame test_many_small_allocations 0
 frame test_nested_function_calls 0
 
 [stack_operations O0]
-insns 74
-spills 26
+insns 166
+spills 57
 calls 9
-branches 0
+branches 3
 frame main 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_stack 80
 
 [stack_operations O1]
-insns 52
-spills 6
+insns 151
+spills 24
 calls 9
-branches 0
+branches 3
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_stack 0
 
 [stack_operations O2]
-insns 73
-spills 6
+insns 288
+spills 38
 calls 6
-branches 0
-frame main 32
+branches 9
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_stack 0
 
 [stack_operations O3]
-insns 75
-spills 8
+insns 296
+spills 44
 calls 6
-branches 0
-frame main 32
+branches 9
+frame main 96
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_stack 0
 
 [stack_overflow_test O0]
@@ -10348,32 +11448,44 @@ frame print_number 32
 frame shallow_recursion 0
 
 [stdin O0]
-insns 58
-spills 7
+insns 150
+spills 41
 calls 6
-branches 0
+branches 3
 frame main 32
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [stdin O1]
-insns 62
-spills 7
+insns 161
+spills 25
 calls 6
-branches 0
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [stdin O2]
-insns 62
-spills 7
+insns 276
+spills 38
 calls 6
-branches 0
-frame main 16
+branches 9
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [stdin O3]
-insns 62
-spills 7
+insns 276
+spills 38
 calls 6
-branches 0
-frame main 16
+branches 9
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [stress_test O0]
 insns 206
@@ -10416,47 +11528,62 @@ frame print_digits 32
 frame print_number 32
 
 [struct_field_offset_bug_test O0]
-insns 100
-spills 33
-calls 6
-branches 0
+insns 196
+spills 64
+calls 7
+branches 3
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_compact_struct 64
 frame test_struct_field_offsets 80
 
 [struct_field_offset_bug_test O1]
-insns 61
-spills 4
-calls 6
-branches 0
+insns 164
+spills 22
+calls 7
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_compact_struct 0
 frame test_struct_field_offsets 0
 
 [struct_field_offset_bug_test O2]
-insns 73
-spills 4
-calls 4
-branches 0
-frame main 16
+insns 255
+spills 32
+calls 5
+branches 7
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_compact_struct 0
 frame test_struct_field_offsets 0
 
 [struct_field_offset_bug_test O3]
-insns 73
-spills 4
-calls 4
-branches 0
-frame main 16
+insns 256
+spills 32
+calls 5
+branches 7
+frame main 48
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_compact_struct 0
 frame test_struct_field_offsets 0
 
 [struct_operations_comprehensive O0]
-insns 591
-spills 291
-calls 24
-branches 0
+insns 663
+spills 322
+calls 19
+branches 3
 frame main 64
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_complex_data_operations 96
 frame test_mixed_types_operations 208
 frame test_nested_struct_operations 144
@@ -10467,11 +11594,14 @@ frame test_struct_array_operations 208
 frame test_struct_copy_operations 144
 
 [struct_operations_comprehensive O1]
-insns 345
-spills 22
-calls 24
-branches 0
+insns 424
+spills 40
+calls 19
+branches 3
 frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_complex_data_operations 32
 frame test_mixed_types_operations 48
 frame test_nested_struct_operations 16
@@ -10482,11 +11612,14 @@ frame test_struct_array_operations 32
 frame test_struct_copy_operations 16
 
 [struct_operations_comprehensive O2]
-insns 386
-spills 22
-calls 16
-branches 0
-frame main 112
+insns 761
+spills 70
+calls 11
+branches 19
+frame main 208
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_complex_data_operations 32
 frame test_mixed_types_operations 48
 frame test_nested_struct_operations 0
@@ -10497,11 +11630,14 @@ frame test_struct_array_operations 16
 frame test_struct_copy_operations 0
 
 [struct_operations_comprehensive O3]
-insns 382
-spills 18
-calls 16
-branches 0
-frame main 112
+insns 804
+spills 112
+calls 11
+branches 19
+frame main 384
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_complex_data_operations 32
 frame test_mixed_types_operations 32
 frame test_nested_struct_operations 0
@@ -10512,168 +11648,231 @@ frame test_struct_array_operations 16
 frame test_struct_copy_operations 0
 
 [switch_dispatch O0]
-insns 98
-spills 37
-calls 5
-branches 9
+insns 194
+spills 69
+calls 6
+branches 12
 frame main 80
 frame pick 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [switch_dispatch O1]
-insns 71
-spills 8
-calls 5
-branches 9
+insns 174
+spills 26
+calls 6
+branches 12
 frame main 32
 frame pick 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [switch_dispatch O2]
-insns 81
-spills 6
-calls 4
-branches 16
-frame main 32
-frame pick 0
-
-[switch_dispatch O3]
-insns 81
-spills 14
-calls 4
-branches 16
+insns 263
+spills 38
+calls 5
+branches 23
 frame main 64
 frame pick 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+
+[switch_dispatch O3]
+insns 263
+spills 46
+calls 5
+branches 23
+frame main 96
+frame pick 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [tail_stack_address O0]
-insns 81
-spills 20
-calls 5
-branches 1
+insns 181
+spills 52
+calls 7
+branches 4
 frame callee 64
 frame caller 48
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [tail_stack_address O1]
-insns 86
-spills 17
-calls 5
-branches 1
+insns 193
+spills 35
+calls 7
+branches 4
 frame callee 32
 frame caller 32
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [tail_stack_address O2]
-insns 91
-spills 17
-calls 4
-branches 2
+insns 236
+spills 39
+calls 6
+branches 7
 frame callee 32
 frame caller 32
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [tail_stack_address O3]
-insns 91
-spills 17
-calls 4
-branches 2
+insns 236
+spills 39
+calls 6
+branches 7
 frame callee 32
 frame caller 32
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [test_minimal O0]
-insns 20
-spills 2
-calls 2
-branches 0
+insns 120
+spills 34
+calls 4
+branches 3
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [test_minimal O1]
-insns 20
-spills 2
-calls 2
-branches 0
+insns 127
+spills 20
+calls 4
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [test_minimal O2]
-insns 18
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 165
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [test_minimal O3]
-insns 18
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 165
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [test_u8 O0]
-insns 27
-spills 3
-calls 3
-branches 0
+insns 127
+spills 35
+calls 5
+branches 3
 frame main 16
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_u8 32
 
 [test_u8 O1]
-insns 21
-spills 2
-calls 3
-branches 0
+insns 128
+spills 20
+calls 5
+branches 3
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_u8 0
 
 [test_u8 O2]
-insns 19
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 166
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_u8 0
 
 [test_u8 O3]
-insns 19
-spills 2
-calls 2
-branches 0
-frame main 16
+insns 166
+spills 26
+calls 4
+branches 5
+frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_u8 0
 
 [tiny O0]
-insns 119
-spills 56
-calls 2
-branches 0
+insns 221
+spills 89
+calls 4
+branches 3
 frame main 704
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [tiny O1]
-insns 74
-spills 4
-calls 2
-branches 0
+insns 184
+spills 22
+calls 4
+branches 3
 frame main 432
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [tiny O2]
-insns 54
-spills 2
-calls 2
-branches 0
-frame main 416
+insns 204
+spills 26
+calls 4
+branches 5
+frame main 432
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [tiny O3]
-insns 55
-spills 2
-calls 2
-branches 0
-frame main 416
+insns 206
+spills 26
+calls 4
+branches 5
+frame main 432
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [type_conversions O0]
-insns 279
-spills 82
-calls 22
-branches 0
+insns 355
+spills 113
+calls 18
+branches 3
 frame double_value 32
 frame main 64
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_basic_zext 48
 frame test_boolean_zext 64
 frame test_chained_zext 48
@@ -10683,12 +11882,15 @@ frame test_zext_functions 32
 frame test_zext_overflow 48
 
 [type_conversions O1]
-insns 207
-spills 18
-calls 22
-branches 0
+insns 290
+spills 36
+calls 18
+branches 3
 frame double_value 0
 frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_basic_zext 0
 frame test_boolean_zext 0
 frame test_chained_zext 0
@@ -10698,12 +11900,15 @@ frame test_zext_functions 16
 frame test_zext_overflow 0
 
 [type_conversions O2]
-insns 249
-spills 14
-calls 14
-branches 0
+insns 594
+spills 59
+calls 10
+branches 17
 frame double_value 0
-frame main 64
+frame main 144
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_basic_zext 0
 frame test_boolean_zext 0
 frame test_chained_zext 0
@@ -10713,12 +11918,15 @@ frame test_zext_functions 0
 frame test_zext_overflow 0
 
 [type_conversions O3]
-insns 244
-spills 6
-calls 14
-branches 0
+insns 598
+spills 63
+calls 10
+branches 17
 frame double_value 0
-frame main 32
+frame main 160
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_basic_zext 0
 frame test_boolean_zext 0
 frame test_chained_zext 0
@@ -10728,11 +11936,14 @@ frame test_zext_functions 0
 frame test_zext_overflow 0
 
 [type_conversions_comprehensive O0]
-insns 1094
-spills 570
-calls 30
-branches 0
+insns 1158
+spills 601
+calls 23
+branches 3
 frame main 80
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame test_bool_conversions 416
 frame test_i16_conversions 208
 frame test_i32_conversions 208
@@ -10745,11 +11956,14 @@ frame test_u64_conversions 208
 frame test_u8_conversions 208
 
 [type_conversions_comprehensive O1]
-insns 829
-spills 122
-calls 30
-branches 0
+insns 900
+spills 140
+calls 23
+branches 3
 frame main 80
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_conversions 128
 frame test_i16_conversions 32
 frame test_i32_conversions 32
@@ -10762,11 +11976,14 @@ frame test_u64_conversions 32
 frame test_u8_conversions 32
 
 [type_conversions_comprehensive O2]
-insns 1244
-spills 128
-calls 21
-branches 0
-frame main 112
+insns 1675
+spills 179
+calls 14
+branches 23
+frame main 192
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_conversions 128
 frame test_i16_conversions 32
 frame test_i32_conversions 32
@@ -10779,11 +11996,14 @@ frame test_u64_conversions 32
 frame test_u8_conversions 32
 
 [type_conversions_comprehensive O3]
-insns 1119
-spills 52
-calls 21
-branches 0
-frame main 160
+insns 1812
+spills 429
+calls 14
+branches 23
+frame main 1424
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame test_bool_conversions 48
 frame test_i16_conversions 0
 frame test_i32_conversions 0
@@ -10840,68 +12060,100 @@ frame test_i32_to_i64 0
 frame test_i8_to_i64 0
 
 [unary_ops O0]
-insns 114
-spills 17
-calls 14
-branches 0
-frame main 112
-
-[unary_ops O1]
-insns 105
-spills 9
-calls 14
-branches 0
-frame main 64
-
-[unary_ops O2]
-insns 87
-spills 9
-calls 14
-branches 0
-frame main 64
-
-[unary_ops O3]
-insns 87
-spills 9
-calls 14
-branches 0
-frame main 64
-
-[unreachable_terminator O0]
-insns 74
-spills 8
+insns 221
+spills 63
 calls 12
 branches 3
+frame fmt_g 0
+frame main 128
+frame print_f64 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
+
+[unary_ops O1]
+insns 219
+spills 34
+calls 12
+branches 3
+frame fmt_g 0
+frame main 64
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+
+[unary_ops O2]
+insns 366
+spills 51
+calls 15
+branches 9
+frame fmt_g 0
+frame main 96
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+
+[unary_ops O3]
+insns 368
+spills 53
+calls 15
+branches 9
+frame fmt_g 0
+frame main 96
+frame print_f64 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
+
+[unreachable_terminator O0]
+insns 162
+spills 43
+calls 11
+branches 6
 frame abort_path 0
 frame classify 32
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [unreachable_terminator O1]
-insns 63
-spills 3
-calls 12
-branches 3
+insns 158
+spills 21
+calls 11
+branches 6
 frame abort_path 0
 frame classify 0
 frame main 16
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [unreachable_terminator O2]
-insns 93
-spills 12
-calls 9
-branches 15
+insns 336
+spills 44
+calls 8
+branches 26
 frame abort_path 0
 frame classify 0
-frame main 32
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [unreachable_terminator O3]
-insns 93
-spills 12
-calls 9
-branches 15
+insns 336
+spills 44
+calls 8
+branches 26
 frame abort_path 0
 frame classify 0
-frame main 32
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [va_arg_chain O0]
 insns 94
@@ -11204,61 +12456,85 @@ frame print_digits 32
 frame print_number 32
 
 [void_tail_print O0]
-insns 20
-spills 2
-calls 3
-branches 0
+insns 120
+spills 33
+calls 5
+branches 3
 frame main 0
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 frame show 16
 
 [void_tail_print O1]
-insns 22
-spills 2
-calls 3
-branches 0
+insns 129
+spills 20
+calls 5
+branches 3
 frame main 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame show 16
 
 [void_tail_print O2]
-insns 31
-spills 4
+insns 128
+spills 20
 calls 4
-branches 0
-frame main 16
+branches 4
+frame main 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame show 16
 
 [void_tail_print O3]
-insns 31
-spills 4
+insns 128
+spills 20
 calls 4
-branches 0
-frame main 16
+branches 4
+frame main 0
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 frame show 16
 
 [volatile_access O0]
-insns 57
-spills 13
-calls 8
-branches 0
+insns 145
+spills 48
+calls 7
+branches 3
 frame main 48
+frame print_i64 64
+frame print_u64 16
+frame put_u64 48
 
 [volatile_access O1]
-insns 44
-spills 4
-calls 8
-branches 0
+insns 139
+spills 22
+calls 7
+branches 3
 frame main 32
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [volatile_access O2]
-insns 44
-spills 4
-calls 8
-branches 0
-frame main 32
+insns 290
+spills 38
+calls 7
+branches 11
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
 
 [volatile_access O3]
-insns 44
-spills 4
-calls 8
-branches 0
-frame main 32
+insns 290
+spills 38
+calls 7
+branches 11
+frame main 64
+frame print_i64 32
+frame print_u64 16
+frame put_u64 32
