@@ -76,14 +76,8 @@ impl DeadCodeElimination {
         }
 
         let mut changed = true;
-        let mut iterations = 0;
-        const MAX_ITERATIONS: usize = 1000;
 
         while changed {
-            if iterations > MAX_ITERATIONS {
-                return Err(TransformError::ConvergenceFailed);
-            }
-            iterations += 1;
             changed = false;
 
             // Process blocks in reverse order (heuristic for faster convergence)

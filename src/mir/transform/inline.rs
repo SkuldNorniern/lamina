@@ -35,6 +35,7 @@ impl Transform for FunctionInlining {
     }
 }
 
+const MAX_EXPANSIONS: usize = 1000;
 const CALLEE_SIZE_LIMIT: usize = 30;
 const ANNOTATED_CALLEE_SIZE_LIMIT: usize = 200;
 
@@ -60,9 +61,6 @@ impl ModuleInlining {
             names.sort();
             for name in names {
                 let caller = &module.functions[&name];
-                if caller.instruction_count() > 1000 {
-                    continue;
-                }
                 for (block_index, block) in caller.blocks.iter().enumerate() {
                     for (index, instruction) in block.instructions.iter().enumerate() {
                         if let Instruction::Call {
@@ -101,6 +99,12 @@ impl ModuleInlining {
             else {
                 break;
             };
+            if count >= MAX_EXPANSIONS {
+                eprintln!(
+                    "Note: module inlining stopped after {MAX_EXPANSIONS} expansions; remaining calls were left in place"
+                );
+                break;
+            }
             let callee = module.functions[&callee_name].clone();
             let caller = module
                 .functions
@@ -108,9 +112,6 @@ impl ModuleInlining {
                 .ok_or(TransformError::InvalidState("missing caller"))?;
             self.expand(caller, block_index, index, &callee)?;
             count += 1;
-            if count >= 1000 {
-                break;
-            }
         }
         module
             .validate_in_pipeline()

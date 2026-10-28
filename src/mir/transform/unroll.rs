@@ -38,9 +38,6 @@ impl Transform for LoopUnrolling {
             return Ok(false);
         }
         let initial_size: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
-        if func.blocks.len() > 256 || initial_size > 8192 {
-            return Ok(false);
-        }
         let materialized = if func.blocks.iter().any(|b| matches!(b.instructions.last(), Some(Instruction::TailCall { name, .. }) if name == &func.sig.name)) {
             let saved = func.clone();
             if !materialize_tail_loop(func) { return Ok(false); }

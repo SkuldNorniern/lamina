@@ -31,7 +31,7 @@ mod vectorization;
 pub use addressing::AddressingCanonicalization;
 pub use branch_opt::BranchOptimization;
 pub use cfg::{CfgSimplify, JumpThreading};
-pub(crate) use cfg::{calculate_dominators, compute_back_edge_headers};
+pub(crate) use cfg::{Dominators, calculate_dominators, compute_back_edge_headers};
 pub use constant_folding::ConstantFolding;
 pub use copy_propagation::CopyPropagation;
 pub use cse::CommonSubexpressionElimination;
@@ -60,25 +60,9 @@ pub use vectorization::AutoVectorization;
 /// Error returned by transform passes.
 #[derive(Debug)]
 pub enum TransformError {
-    FunctionTooLarge {
-        pass: &'static str,
-        count: usize,
-        limit: usize,
-    },
-    BlockTooLarge {
-        label: String,
-        count: usize,
-        limit: usize,
-    },
     WouldDestroyFunction,
-    ConvergenceFailed,
     Unsupported(String),
     InvalidState(&'static str),
-    /// Function exceeded the pipeline-wide instruction budget.
-    PipelineFunctionTooLarge {
-        count: usize,
-        limit: usize,
-    },
     /// Pipeline ran too many iterations; a pass likely fails to converge.
     PipelineStalled {
         pass: &'static str,
@@ -98,11 +82,6 @@ pub enum TransformError {
         block: String,
         target: String,
         edge: &'static str,
-    },
-    /// Module exceeded the inliner's instruction budget.
-    InliningModuleTooLarge {
-        count: usize,
-        limit: usize,
     },
     /// Inlining did not reach a fixed point within the iteration limit.
     InliningStalled {
@@ -127,32 +106,9 @@ pub enum TransformError {
 impl fmt::Display for TransformError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::FunctionTooLarge { pass, count, limit } => {
-                write!(
-                    f,
-                    "Function too large for {pass} ({count} blocks, max {limit})"
-                )
-            }
-            Self::BlockTooLarge {
-                label,
-                count,
-                limit,
-            } => {
-                write!(
-                    f,
-                    "Block '{label}' too large ({count} instructions, max {limit})"
-                )
-            }
             Self::WouldDestroyFunction => write!(f, "transform would remove all blocks"),
-            Self::ConvergenceFailed => write!(f, "liveness analysis failed to converge"),
             Self::Unsupported(msg) => write!(f, "unsupported: {msg}"),
             Self::InvalidState(msg) => write!(f, "invalid state: {msg}"),
-            Self::PipelineFunctionTooLarge { count, limit } => {
-                write!(
-                    f,
-                    "function too large for transforms ({count} instructions, max {limit})"
-                )
-            }
             Self::PipelineStalled { pass, limit } => {
                 write!(
                     f,
@@ -180,12 +136,6 @@ impl fmt::Display for TransformError {
                     "invalid CFG: block '{block}' {edge} targets missing block '{target}'"
                 )
             }
-            Self::InliningModuleTooLarge { count, limit } => {
-                write!(
-                    f,
-                    "module too large for inlining ({count} instructions, max {limit})"
-                )
-            }
             Self::InliningStalled { limit } => {
                 write!(f, "inlining did not converge after {limit} iterations")
             }
@@ -201,34 +151,6 @@ impl fmt::Display for TransformError {
             }
         }
     }
-}
-
-/// Reject functions too large for a pass to process in reasonable time.
-///
-/// Pass `usize::MAX` for `max_instructions_per_block` to skip the per-block check.
-pub(crate) fn check_function_size(
-    func: &Function,
-    pass: &'static str,
-    max_blocks: usize,
-    max_instructions_per_block: usize,
-) -> Result<(), TransformError> {
-    if func.blocks.len() > max_blocks {
-        return Err(TransformError::FunctionTooLarge {
-            pass,
-            count: func.blocks.len(),
-            limit: max_blocks,
-        });
-    }
-    for block in &func.blocks {
-        if block.instructions.len() > max_instructions_per_block {
-            return Err(TransformError::BlockTooLarge {
-                label: block.label.clone(),
-                count: block.instructions.len(),
-                limit: max_instructions_per_block,
-            });
-        }
-    }
-    Ok(())
 }
 
 /// Trait for MIR transformation passes.
@@ -359,18 +281,8 @@ impl TransformPipeline {
     /// Runs each pass over one function once, in the order they were added. Repeating
     /// the list until nothing changes costs about half again as much and changed no
     /// output across the testcases, so the order the pipeline is built in is what
-    /// decides what a pass sees. A function far larger than anything a frontend emits
-    /// is refused rather than ground through every pass.
+    /// decides what a pass sees.
     pub fn apply_to_function(&self, func: &mut Function) -> Result<TransformStats, TransformError> {
-        let total_instructions: usize = func.blocks.iter().map(|b| b.instructions.len()).sum();
-        const MAX_INSTRUCTIONS: usize = 100_000;
-        if total_instructions > MAX_INSTRUCTIONS {
-            return Err(TransformError::PipelineFunctionTooLarge {
-                count: total_instructions,
-                limit: MAX_INSTRUCTIONS,
-            });
-        }
-
         let mut stats = TransformStats::default();
         let mut total_iterations = 0;
 
@@ -520,6 +432,22 @@ mod tests {
         register::Register,
     };
     use crate::{mir::codegen::from_ir, parser::parse_module};
+
+    #[test]
+    fn oversized_blocks_are_optimized_at_every_level() {
+        let mut ir = String::from("fn @main() -> i64 {\nentry:\n  %v0 = add.i64 1, 0\n");
+        for i in 1..1600 {
+            ir.push_str(&format!("  %v{i} = add.i64 %v{}, {}\n", i - 1, i % 7 + 1));
+        }
+        ir.push_str("  ret.i64 %v1599\n}\n");
+        let parsed = parse_module(&ir).unwrap();
+        for level in 0..=3 {
+            let mut module = from_ir(&parsed, "big").unwrap();
+            TransformPipeline::default_for_opt_level(level)
+                .apply_to_module(&mut module)
+                .unwrap_or_else(|e| panic!("O{level} failed on a 1600-instruction block: {e}"));
+        }
+    }
 
     #[test]
     fn module_inlining_runs_only_at_o2_and_reoptimizes_copies() {

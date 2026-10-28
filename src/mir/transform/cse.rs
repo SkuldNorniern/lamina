@@ -3,8 +3,7 @@
 use crate::mir::{
     Block, FloatBinOp, Function, Instruction, IntBinOp, MirType, Operand, Register, ScalarType,
     transform::{
-        Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
-        compute_back_edge_headers,
+        Transform, TransformCategory, TransformError, TransformLevel, compute_back_edge_headers,
     },
 };
 use std::collections::{HashMap, HashSet};
@@ -58,8 +57,6 @@ impl CommonSubexpressionElimination {
     }
 
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        check_function_size(func, "common_subexpression_elimination", 500, 500)?;
-
         let mut changed = false;
         let loop_headers = compute_back_edge_headers(func);
 
@@ -83,15 +80,6 @@ impl CommonSubexpressionElimination {
         // For blocks that are part of loops, be more conservative
         // Only apply CSE if the block is small and contains simple operations
         let is_in_loop_body = self.is_block_in_loop_body(block, loop_headers);
-
-        if is_in_loop_body && block.instructions.len() > 50 {
-            return false; // Skip large loop body blocks
-        }
-
-        if !is_in_loop_body && block.instructions.len() > 200 {
-            return false; // Skip large non-loop blocks
-        }
-
         self.eliminate_in_block_conservative(block, is_in_loop_body)
     }
 
@@ -137,13 +125,6 @@ impl CommonSubexpressionElimination {
 
     fn eliminate_in_block_conservative(&self, block: &mut Block, is_in_loop_body: bool) -> bool {
         let mut changed = false;
-
-        // Skip CSE in blocks with too many instructions to avoid excessive processing
-        if (!is_in_loop_body && block.instructions.len() > 200)
-            || (is_in_loop_body && block.instructions.len() > 50)
-        {
-            return false;
-        }
 
         // Map from expression key (including operand versions) to (destination register, dest version)
         let mut expr_to_reg: HashMap<String, (Register, u64)> = HashMap::new();

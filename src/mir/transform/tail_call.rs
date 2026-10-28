@@ -41,17 +41,6 @@ impl Transform for TailCallOptimization {
 
 impl TailCallOptimization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        const MAX_BLOCK_INSTRUCTIONS: usize = 1_000;
-        for block in &func.blocks {
-            if block.instructions.len() > MAX_BLOCK_INSTRUCTIONS {
-                return Err(TransformError::BlockTooLarge {
-                    label: block.label.clone(),
-                    count: block.instructions.len(),
-                    limit: MAX_BLOCK_INSTRUCTIONS,
-                });
-            }
-        }
-
         if func.sig.variadic {
             return Ok(false);
         }

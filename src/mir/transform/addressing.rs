@@ -12,9 +12,7 @@ use std::collections::HashMap;
 use crate::mir::{
     AddressMode, Function, Instruction, IntBinOp, Operand, Register,
     instruction::Immediate,
-    transform::{
-        Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
-    },
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 
 /// Canonicalizes address formation patterns into BaseIndexScale addressing.
@@ -45,8 +43,6 @@ impl Transform for AddressingCanonicalization {
 
 impl AddressingCanonicalization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        check_function_size(func, "addressing_canonicalization", 500, 1_000)?;
-
         let mut changed = false;
 
         for block in &mut func.blocks {
@@ -60,14 +56,7 @@ impl AddressingCanonicalization {
 
             let len = block.instructions.len();
 
-            const MAX_REWRITES_PER_BLOCK: usize = 50;
-            let mut rewrites_this_block = 0;
-
             for i in 0..len {
-                if rewrites_this_block >= MAX_REWRITES_PER_BLOCK {
-                    break; // Stop if we've made too many changes
-                }
-
                 // Phase 1: analyze immutably to compute potential new addressing mode
                 let new_addr_mode: Option<AddressMode> = match &block.instructions[i] {
                     Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
@@ -87,7 +76,6 @@ impl AddressingCanonicalization {
                         Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
                             *addr = new_mode;
                             changed = true;
-                            rewrites_this_block += 1;
                         }
                         _ => {}
                     }

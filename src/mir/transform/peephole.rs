@@ -43,13 +43,6 @@ impl Transform for Peephole {
 impl Peephole {
     /// Apply peephole rewrites to a function. Returns true if any change occurred.
     pub fn run_on_function(&self, func: &mut Function) -> bool {
-        const MAX_BLOCK_INSTRUCTIONS: usize = 10_000;
-        for block in &func.blocks {
-            if block.instructions.len() > MAX_BLOCK_INSTRUCTIONS {
-                return false; // Skip optimization on oversized blocks
-            }
-        }
-
         let mut changed = false;
         let loop_headers = compute_back_edge_headers(func);
         for block in &mut func.blocks {
