@@ -82,7 +82,7 @@
 //!
 //! builder
 //!     .function("main", Type::Void)
-//!     .print(i32(42))
+//!     .write_byte(i32(52), "w")
 //!     .ret_void();
 //!
 //! let module = builder.build();
@@ -126,7 +126,7 @@
 //! builder
 //!     .function("main", Type::Void)
 //!     .call(Some("result"), "double", vec![i32(21)])
-//!     .print(var("result")) // Should print 42
+//!     .write_byte(var("result"), "w") // Writes byte 42
 //!     .ret_void();
 //!
 //! let module = builder.build();

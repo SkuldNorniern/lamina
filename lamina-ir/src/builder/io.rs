@@ -1,11 +1,6 @@
 //! I/O operations for IR builder.
 //!
-//! This module provides methods for input/output operations including reading
-//! from stdin, writing to stdout, and printing values for debugging.
-//!
-//! For portable user output, prefer `write_byte` (maps to `writebyte`). The `print`
-//! instruction is debug-oriented and does not support string literals; use `write_byte`
-//! in a loop for string output. See `docs/OUTPUT_SEMANTICS.md` in the repository.
+//! This module provides raw byte input/output: reading from stdin and writing to stdout.
 
 use crate::{builder::IRBuilder, instruction::Instruction, types::Value};
 
@@ -36,11 +31,5 @@ impl<'a> IRBuilder<'a> {
     /// Reads a single byte from stdin (raw syscall)
     pub fn read_byte(&mut self, result: &'a str) -> &mut Self {
         self.inst(Instruction::ReadByte { result })
-    }
-
-    /// Creates a print instruction for debugging. Accepts numeric literals and named
-    /// values only; string literals are not supported (use `write_byte` for portable output).
-    pub fn print(&mut self, value: Value<'a>) -> &mut Self {
-        self.inst(Instruction::Print { value })
     }
 }

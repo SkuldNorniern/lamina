@@ -895,7 +895,7 @@ mod tests {
             .read(var("buffer"), i32(100), "bytes_read")
             .write_byte(i8(65), "byte_written")
             .read_byte("byte_read")
-            .print(i32(42))
+            .write_byte(i32(42), "printed")
             .ret_void();
 
         let module = builder.build();
@@ -923,11 +923,12 @@ mod tests {
             panic!("Expected Write instruction");
         }
 
-        // Verify print (should be at index 5, ret_void is at 6)
-        if let Instruction::Print { value } = &entry.instructions[5] {
+        // Verify writebyte (should be at index 5, ret_void is at 6)
+        if let Instruction::WriteByte { value, result } = &entry.instructions[5] {
             assert_eq!(*value, i32(42));
+            assert_eq!(*result, "printed");
         } else {
-            panic!("Expected Print instruction");
+            panic!("Expected WriteByte instruction");
         }
     }
 

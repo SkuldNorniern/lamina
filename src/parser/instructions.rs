@@ -156,7 +156,11 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
             "dealloc" => Err(removed_opcode_error(state, opcode_str, "'heapfree <ptr>'")),
             "call" => parse_call(state, None),
             "callptr" => parse_call_indirect(state, None),
-            "print" => parse_print(state),
+            "print" => Err(removed_opcode_error(
+                state,
+                opcode_str,
+                "'writebyte <value>' for one byte, 'write <ptr>, <size>' for raw bytes, or a call to a printf-style @extern for formatted output",
+            )),
             "va_start" => parse_va_start(state),
             "va_end" => parse_va_end(state),
             "va_copy" => parse_va_copy(state),
@@ -197,7 +201,8 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
                         )
                     }
                 } else {
-                    "Valid instruction opcodes include: ret, jmp, br, call, print, store, and many others".to_string()
+                    "Valid instruction opcodes include: ret, jmp, br, call, store, and many others"
+                        .to_string()
                 };
 
                 Err(state.error(format!(
@@ -878,11 +883,6 @@ fn parse_ret<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaE
 fn parse_heapfree<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let ptr = parse_value(state)?;
     Ok(Instruction::Dealloc { ptr })
-}
-
-fn parse_print<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    let value = parse_value(state)?;
-    Ok(Instruction::Print { value })
 }
 
 fn parse_va_start<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {

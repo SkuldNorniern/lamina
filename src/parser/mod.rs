@@ -1371,7 +1371,7 @@ fn @test_instructions() -> i64 {
     %i = le.i64 %h, 1
     %j = gt.i64 %i, 0
     %k = ge.i64 %j, 0
-    print %k
+    %out = writebyte %k
     ret.i64 %k
 }
 "#;
@@ -1380,7 +1380,7 @@ fn @test_instructions() -> i64 {
         assert_eq!(module.functions.len(), 1);
         let func = module.functions.get("test_instructions").unwrap();
 
-        // Should have 12 instructions (11 computations + 1 print + 1 ret)
+        // Should have 13 instructions (11 computations + 1 writebyte + 1 ret)
         assert_eq!(func.basic_blocks["entry"].instructions.len(), 13);
 
         Ok(())
@@ -1405,18 +1405,18 @@ fn @minimal() -> i64 {
         let parsed1 = parse_module(source1)?;
         assert_eq!(parsed1, expected1);
 
-        // Function with just print
+        // Function with just writebyte
         let source2 = r#"
-fn @print_only() -> i64 {
+fn @write_only() -> i64 {
   entry:
-    print 42
+    %w = writebyte 42
     ret.i64 0
 }
 "#;
         let mut builder2 = IRBuilder::new();
         builder2
-            .function("print_only", Type::Primitive(PrimitiveType::I64))
-            .print(ir_i32(42))
+            .function("write_only", Type::Primitive(PrimitiveType::I64))
+            .write_byte(ir_i32(42), "w")
             .ret(Type::Primitive(PrimitiveType::I64), ir_i64(0));
         let expected2 = builder2.build();
         let parsed2 = parse_module(source2)?;
@@ -1709,6 +1709,10 @@ ret.i64 0
 
         let err = parse_error("%e = writeptr %buf");
         assert!(err.contains("writebyte"), "{err}");
+
+        let err = parse_error("print %e");
+        assert!(err.contains("writebyte"), "{err}");
+        assert!(err.contains("'write <ptr>, <size>'"), "{err}");
 
         let err = parse_module(
             "fn @main() -> i64 {\n  entry:\n    %t = stackalloc.tuple i32, f64\n    ret.i64 0\n}\n",
@@ -2014,7 +2018,7 @@ entry:
         )
         .call(Some("c"), "helper", &[var("sum")])
         .call(None, "helper", &[OwnedValue::I64(1)])
-        .print(&var("c"))
+        .write_byte("w", &var("c"))
         .heapfree(&var("h"))
         .switch(
             PrimitiveType::I64,
@@ -2596,9 +2600,9 @@ fn @big() -> u64 { entry: %y = add.u64 0, 3   ret.u64 %y }
 fn @main() -> i64 {
   entry:
     %v = call @neg()
-    print %v
+    %w = writebyte %v
     %v = call @big()
-    print %v
+    %x = writebyte %v
     ret.i64 0
 }
 "#;
@@ -2629,7 +2633,7 @@ fn @main() -> i64 {
   entry:
     %v = add.i64 0, 5
     %v = add.i64 %v, 7
-    print %v
+    %w = writebyte %v
     ret.i64 %v
 }
 "#;

@@ -106,7 +106,7 @@
 //! let mut builder = IRBuilder::new();
 //! builder
 //!     .function("hello", Type::Void)
-//!     .print(i32(42))
+//!     .write_byte(i32(52), "w")
 //!     .ret_void();
 //! ```
 //!
@@ -538,13 +538,13 @@ pub struct FunctionSignature<'a> {
 /// builder
 ///     .function("example", Type::Void)
 ///     .binary(BinaryOp::Add, "sum", PrimitiveType::I32, i32(10), i32(20))
-///     .print(var("sum"))
+///     .write_byte(var("sum"), "w")
 ///     .ret_void();
 ///
 /// let module = builder.build();
 /// let func = &module.functions["example"];
 /// let entry_block = &func.basic_blocks["entry"];
-/// // entry_block.instructions contains: [Binary, Print, Ret]
+/// // entry_block.instructions contains: [Binary, WriteByte, Ret]
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct BasicBlock<'a> {

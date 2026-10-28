@@ -24,7 +24,6 @@
 //! - **Returns**: Exiting functions with optional return values
 //!
 //! ### Debug and I/O
-//! - **Print**: Debug output for development and testing
 //! - **Phi nodes**: optional value merging from different control paths
 //!
 //! ## Values
@@ -923,11 +922,6 @@ pub enum Instruction<'a> {
         result: Identifier<'a>, // Result byte read (-1 on error)
     },
 
-    // --- Debugging ---
-    Print {
-        value: Value<'a>, // Value to print (currently assumes i64 for printf)
-    },
-
     // --- Variadic arguments ---
     /// Initialize the `valist` at `ap` so it reads the arguments past the named
     /// parameters of the enclosing variadic function.
@@ -1138,8 +1132,6 @@ pub fn non_assignment_opcode_names() -> &'static [&'static str] {
         "read",
         "writebyte",
         "readbyte",
-        // Debugging (from Instruction::Print)
-        "print",
         // Variadic arguments (from Instruction::VaStart, VaEnd, VaCopy)
         "va_start",
         "va_end",
@@ -1683,7 +1675,6 @@ impl fmt::Display for Instruction<'_> {
                 write!(f, "%{result} = writebyte {value}")
             }
             Instruction::ReadByte { result } => write!(f, "%{result} = readbyte"),
-            Instruction::Print { value } => write!(f, "print {value}"),
             Instruction::VaStart { ap } => write!(f, "va_start {ap}"),
             Instruction::VaArg { result, ty, ap } => {
                 write!(f, "%{result} = va_arg.{ty} {ap}")
@@ -1888,12 +1879,6 @@ mod tests {
             format!("{}", instr15),
             "%merged_val = phi.i32 [%val1, label1], [10, label2]"
         );
-
-        // Print
-        let instr16 = Instruction::Print {
-            value: Value::Variable("debug_val"),
-        };
-        assert_eq!(format!("{}", instr16), "print %debug_val");
 
         // ZeroExtend
         let instr17 = Instruction::ZeroExtend {

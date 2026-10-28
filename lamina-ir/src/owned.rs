@@ -1029,13 +1029,6 @@ impl OwnedIRBuilder {
         self
     }
 
-    /// Appends a debug print instruction.
-    pub fn print(&mut self, value: &OwnedValue) -> &mut Self {
-        let t = format!("print {value}");
-        self.push(t);
-        self
-    }
-
     /// Appends a multi-way switch instruction.
     ///
     /// `cases` is a slice of `(integer_value, target_label)` pairs.
