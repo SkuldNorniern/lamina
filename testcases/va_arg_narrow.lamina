@@ -1,0 +1,28 @@
+fn @narrow(i64 %n, ...) -> i64 {
+entry:
+  %ap = stackalloc.valist
+  va_start %ap
+  %a = va_arg.i32 %ap
+  %b = va_arg.i8 %ap
+  %c = va_arg.ptr %ap
+  va_end %ap
+  %a64 = sext.i32.i64 %a
+  %b64 = sext.i8.i64 %b
+  %c64 = ptrtoint.i64 %c
+  %t = add.i64 %a64, %b64
+  %u = add.i64 %t, %c64
+  ret.i64 %u
+}
+
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+global $fmt: [5 x i8] = "%ld\n"
+
+fn @main() -> i64 {
+entry:
+  %a = call @narrow(0, -5, -3, 1000)
+  %q = funcaddr @printf
+  %r = callptr.i32 %q(ptr $fmt, ..., i64 %a)
+  ret.i64 0
+}

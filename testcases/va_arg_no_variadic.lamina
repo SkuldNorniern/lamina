@@ -1,0 +1,51 @@
+fn @sum(i64 %n, ...) -> i64 {
+entry:
+  %ap = stackalloc.valist
+  %acc = stackalloc.i64
+  %i = stackalloc.i64
+  store.i64 %acc, 0
+  store.i64 %i, 0
+  va_start %ap
+  jmp loop
+
+loop:
+  %iv = load.i64 %i
+  %c = lt.i64 %iv, %n
+  br %c, body, done
+
+body:
+  %x = va_arg.i64 %ap
+  %a = load.i64 %acc
+  %s = add.i64 %a, %x
+  store.i64 %acc, %s
+  %iv2 = add.i64 %iv, 1
+  store.i64 %i, %iv2
+  jmp loop
+
+done:
+  va_end %ap
+  %r = load.i64 %acc
+  ret.i64 %r
+}
+
+fn @noop(i64 %n, ...) -> i64 {
+entry:
+  %ap = stackalloc.valist
+  va_start %ap
+  va_end %ap
+  ret.i64 %n
+}
+
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+global $fmt: [9 x i8] = "%ld %ld\n"
+
+fn @main() -> i64 {
+entry:
+  %a = call @sum(0)
+  %b = call @noop(7)
+  %q = funcaddr @printf
+  %r = callptr.i32 %q(ptr $fmt, ..., i64 %a, i64 %b)
+  ret.i64 0
+}

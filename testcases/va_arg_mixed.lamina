@@ -1,0 +1,53 @@
+fn @mix(i64 %k, ...) -> i64 {
+entry:
+  %ap = stackalloc.valist
+  %isum = stackalloc.i64
+  %dsum = stackalloc.f64
+  %i = stackalloc.i64
+  store.i64 %isum, 0
+  store.f64 %dsum, 0.0
+  store.i64 %i, 0
+  va_start %ap
+  jmp loop
+
+loop:
+  %iv = load.i64 %i
+  %c = lt.i64 %iv, %k
+  br %c, body, done
+
+body:
+  %x = va_arg.i64 %ap
+  %y = va_arg.f64 %ap
+  %a = load.i64 %isum
+  %s = add.i64 %a, %x
+  store.i64 %isum, %s
+  %b = load.f64 %dsum
+  %t = add.f64 %b, %y
+  store.f64 %dsum, %t
+  %iv2 = add.i64 %iv, 1
+  store.i64 %i, %iv2
+  jmp loop
+
+done:
+  va_end %ap
+  %is = load.i64 %isum
+  %ds = load.f64 %dsum
+  %di = fptoint.f64.i64 %ds
+  %scaled = mul.i64 %is, 1000
+  %r = add.i64 %scaled, %di
+  ret.i64 %r
+}
+
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+global $fmt: [5 x i8] = "%ld\n"
+
+fn @main() -> i64 {
+entry:
+  %p = funcaddr @mix
+  %a = callptr.i64 %p(i64 9, ..., i64 1, f64 10.0, i64 2, f64 20.0, i64 3, f64 30.0, i64 4, f64 40.0, i64 5, f64 50.0, i64 6, f64 60.0, i64 7, f64 70.0, i64 8, f64 80.0, i64 9, f64 90.0)
+  %q = funcaddr @printf
+  %r = callptr.i32 %q(ptr $fmt, ..., i64 %a)
+  ret.i64 0
+}

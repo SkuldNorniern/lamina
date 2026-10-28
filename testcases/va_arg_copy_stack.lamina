@@ -1,0 +1,40 @@
+fn @skip(i64 %n, ...) -> i64 {
+entry:
+  %ap = stackalloc.valist
+  %bp = stackalloc.valist
+  va_start %ap
+  %x1 = va_arg.i64 %ap
+  %x2 = va_arg.i64 %ap
+  %x3 = va_arg.i64 %ap
+  %x4 = va_arg.i64 %ap
+  %x5 = va_arg.i64 %ap
+  va_copy %bp, %ap
+  %y = va_arg.i64 %ap
+  %z = va_arg.i64 %bp
+  %w = va_arg.i64 %ap
+  %v = va_arg.i64 %bp
+  va_end %ap
+  va_end %bp
+  %p = mul.i64 %y, 100000000
+  %q = mul.i64 %w, 1000
+  %r = add.i64 %p, %q
+  %sum = add.i64 %r, %v
+  %same = eq.i64 %y, %z
+  %sw = zext.bool.i64 %same
+  %final = add.i64 %sum, %sw
+  %g = add.i64 %final, %x5
+  ret.i64 %g
+}
+
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+global $fmt: [5 x i8] = "%ld\n"
+
+fn @main() -> i64 {
+entry:
+  %a = call @skip(0, 10, 20, 30, 40, 50, 60, 70, 80)
+  %q = funcaddr @printf
+  %r = callptr.i32 %q(ptr $fmt, ..., i64 %a)
+  ret.i64 0
+}

@@ -1,0 +1,29 @@
+fn @twice(i64 %n, ...) -> i64 {
+entry:
+  %ap = stackalloc.valist
+  %bp = stackalloc.valist
+  va_start %ap
+  %x = va_arg.i64 %ap
+  va_copy %bp, %ap
+  %y = va_arg.i64 %ap
+  %z = va_arg.i64 %bp
+  va_end %ap
+  va_end %bp
+  %s = add.i64 %x, %y
+  %t = mul.i64 %s, 1000
+  %u = add.i64 %t, %z
+  ret.i64 %u
+}
+
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+global $fmt: [5 x i8] = "%ld\n"
+
+fn @main() -> i64 {
+entry:
+  %a = call @twice(0, 10, 20, 30, 40, 50, 60, 70, 80)
+  %q = funcaddr @printf
+  %r = callptr.i32 %q(ptr $fmt, ..., i64 %a)
+  ret.i64 0
+}

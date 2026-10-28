@@ -1,0 +1,37 @@
+@noinline
+fn @deep(i64 %x) -> i64 {
+entry:
+  %y = mul.i64 %x, 3
+  ret.i64 %y
+}
+
+@noinline
+fn @leaf(i64 %x) -> i64 {
+entry:
+  %d = call @deep(%x)
+  %r = add.i64 %d, 1
+  ret.i64 %r
+}
+
+fn @vchain(i64 %n, ...) -> i64 {
+entry:
+  %ap = stackalloc.valist
+  va_start %ap
+  %first = va_arg.i64 %ap
+  va_end %ap
+  %r = call @leaf(%first)
+  ret.i64 %r
+}
+
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+global $fmt: [5 x i8] = "%ld\n"
+
+fn @main() -> i64 {
+entry:
+  %a = call @vchain(1, 14, 2)
+  %q = funcaddr @printf
+  %r = callptr.i32 %q(ptr $fmt, ..., i64 %a)
+  ret.i64 0
+}
