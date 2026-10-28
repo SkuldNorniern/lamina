@@ -242,7 +242,7 @@
 //!
 //! - **Zero-copy parsing**: IR uses string references to avoid unnecessary allocations
 //! - **Data structures**: HashMaps for O(1) lookups of functions and types
-//! - **SSA form**: Single Static Assignment form enables optimizations
+//! - **Typed, block-based IR**: explicit types and blocks keep passes simple; the optimizer runs on MIR, where registers are mutable
 //! - **Architecture-specific optimizations**: Tailored code generation for each target
 //!
 //! ## Thread Safety

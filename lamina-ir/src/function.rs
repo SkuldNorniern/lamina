@@ -10,7 +10,7 @@
 //! - **Basic Blocks**: Linear sequences of instructions ending with a terminator
 //! - **Function Signatures**: Parameter types and return types
 //! - **Annotations**: Metadata that affects function behavior and optimization
-//! - **SSA Variables**: Single Static Assignment form for all variables
+//! - **Named Values**: Typed names; a name may be reassigned, but not to a different type
 //!
 //! ## Function Structure
 //!
@@ -77,12 +77,11 @@
 //! - **Security**: `@trusted`, `@untrusted`
 //! - **Platform-specific**: `@windows_only`, `@linux_only`
 //!
-//! ## Variable Management (SSA Form)
+//! ## Variable Management
 //!
-//! ### Single Static Assignment
-//! - Each variable is assigned exactly **once** in its lifetime
-//! - Variables are immutable after assignment
-//! - Enables optimizations and analysis
+//! ### Typed Reassignment
+//! - A name may be assigned more than once in a function
+//! - Every assignment to a name uses the type of its first definition
 //!
 //! ### Variable Naming Convention
 //! ```text
@@ -94,7 +93,7 @@
 //!
 //! ### Variable Scoping
 //! - Variables are scoped to their function
-//! - Variables from different blocks can be merged using `phi` nodes
+//! - Values from different blocks can be merged with optional `phi` nodes, or by reassigning a name on each path
 //! - No global variable shadowing within functions
 //!
 //! ## Function Creation Patterns
@@ -614,7 +613,7 @@ impl<'a> Function<'a> {
     /// - Every block ends with a terminator (`Br`, `Jmp`, or `Ret`).
     /// - Return instructions carry a value when the return type is non-void,
     ///   and are bare when the return type is void.
-    /// - SSA variables are defined before they are used within each block
+    /// - Variables are defined before they are used within each block
     ///   (does not perform cross-block dominance analysis).
     ///
     /// Returns `Ok(())` when the function is valid, or a list of diagnostic
@@ -746,7 +745,7 @@ impl<'a> Function<'a> {
                     _ => {}
                 }
 
-                // 5. SSA: a use needs a definition earlier in its block or in another block.
+                // 5. A use needs a definition earlier in its block or in another block.
                 // A phi reads on the incoming edge, not where it sits, so a value a
                 // loop defines later in this same block is in order.
                 for used in instr.used_vars() {

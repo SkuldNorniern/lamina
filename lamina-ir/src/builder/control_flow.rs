@@ -69,7 +69,7 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Creates a phi node for SSA form
+    /// Creates a phi node that merges values from incoming edges.
     pub fn phi(
         &mut self,
         result: &'a str,

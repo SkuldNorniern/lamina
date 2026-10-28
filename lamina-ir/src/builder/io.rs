@@ -38,8 +38,8 @@ impl<'a> IRBuilder<'a> {
         self.inst(Instruction::ReadByte { result })
     }
 
-    /// Creates a print instruction for debugging. Accepts numeric literals and SSA
-    /// variables only; string literals are not supported (use `write_byte` for portable output).
+    /// Creates a print instruction for debugging. Accepts numeric literals and named
+    /// values only; string literals are not supported (use `write_byte` for portable output).
     pub fn print(&mut self, value: Value<'a>) -> &mut Self {
         self.inst(Instruction::Print { value })
     }

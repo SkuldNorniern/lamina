@@ -74,7 +74,7 @@ impl<'a> IRBuilder<'a> {
         })
     }
 
-    /// Creates a select instruction (SSA conditional expression).
+    /// Creates a select instruction (conditional value expression).
     pub fn select(
         &mut self,
         result: &'a str,

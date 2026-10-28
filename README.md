@@ -14,7 +14,7 @@
 
 <br/>
 
-Lamina is a compiler backend for the Lamina Intermediate Representation (IR): a small, statically-typed SSA IR.
+Lamina is a compiler backend for the Lamina Intermediate Representation (IR): a small, statically-typed, block-based IR.
 
 ## Why I made this
 
@@ -31,7 +31,7 @@ Lamina IR serves as a mid-level intermediate representation.
 **Design Principles:**
 - Human-readable and structurally clean
 - Block-based control flow with explicit typing
-- SSA (Static Single Assignment) form for all variables
+- Named, typed values: a name may be reassigned, but not to a different type
 - Strong type system with both primitive and composite types
 - Explicit memory model distinguishing between stack and heap
 - Designed for easy lowering to machine code
@@ -42,7 +42,7 @@ Lamina IR serves as a mid-level intermediate representation.
 - **Type System**: Primitive and composite types
 - **Memory Model**: Stack and heap allocations
 - **Control Flow**: Basic blocks and branching
-- **SSA Representation**: Single assignment form
+- **Reassignable Values**: A name may be assigned again, keeping its type
 - **Function System**: Typed parameters and returns
 
 ### Capabilities
@@ -91,7 +91,7 @@ Lamina directly generates machine code for multiple target architectures without
 
 ### Working Features
 - **Basic Arithmetic**: All arithmetic operations (add, sub, mul, div, rem, bitwise ops)
-- **Control Flow**: Conditionals, loops, branching, and phi nodes for SSA
+- **Control Flow**: Conditionals, loops, branching, and optional phi nodes for merging values
 - **Function Calls**: Recursive and non-recursive function calls with proper ABI
 - **Memory Operations**: Stack and heap allocations, load/store operations
 - **Type System**: Primitives, arrays, structs, and pointers
@@ -110,7 +110,7 @@ The IRBuilder API makes it straightforward to build compilers for other language
 
 The IRBuilder API provides methods for:
 - Creating modules, functions, and basic blocks
-- Inserting instructions with proper SSA form
+- Inserting instructions with correctly typed values
 - Defining and manipulating types
 - Managing memory allocations
 - Setting up control flow

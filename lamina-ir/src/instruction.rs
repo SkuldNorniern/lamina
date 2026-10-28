@@ -25,14 +25,13 @@
 //!
 //! ### Debug and I/O
 //! - **Print**: Debug output for development and testing
-//! - **Phi nodes**: SSA form value merging from different control paths
+//! - **Phi nodes**: optional value merging from different control paths
 //!
-//! ## SSA Form
+//! ## Values
 //!
-//! All instructions follow Single Static Assignment (SSA) form:
-//! - Each variable is assigned exactly once
-//! - Instructions produce new values rather than modifying existing ones
-//! - This enables optimizations and simplifies analysis
+//! Values are named and typed. A name may be assigned again, but not with a
+//! different type. Control flow is explicit through blocks; `phi` merges values
+//! from incoming edges and is optional.
 //!
 //! ## Example
 //!
@@ -513,7 +512,7 @@ pub enum Instruction<'a> {
     },
     /// Select between two values based on a boolean condition.
     ///
-    /// This is the SSA form of a conditional expression:
+    /// This is the value form of a conditional expression:
     /// `result = cond ? true_val : false_val`.
     /// It avoids introducing extra basic blocks compared to `br` + `phi`.
     Select {
@@ -634,7 +633,7 @@ pub enum Instruction<'a> {
     // --- Control Flow ---
     /// Multi-way branch based on an integer or boolean value.
     ///
-    /// This is the structured SSA form of a jump table. The `value` is compared
+    /// This is the structured form of a jump table. The `value` is compared
     /// against each case literal; on the first match, control transfers to the
     /// corresponding label. If no case matches, control transfers to `default`.
     Switch {
@@ -898,7 +897,7 @@ pub enum Instruction<'a> {
         args: Vec<Value<'a>>,
         // Return type needs to be known from function signature context
     },
-    // --- SSA ---
+    // --- Phi ---
     Phi {
         result: Identifier<'a>,
         ty: Type<'a>,
@@ -1029,7 +1028,7 @@ pub fn assignment_opcode_names() -> &'static [&'static str] {
         "inttoptr",
         // Function calls (from Instruction::Call - can have result)
         "call",
-        // SSA operations (from Instruction::Phi)
+        // Edge merge (from Instruction::Phi)
         "phi",
         // I/O operations (from Instruction::Write, Instruction::Read, etc. - with result)
         "write",
@@ -1196,7 +1195,7 @@ impl<'a> Instruction<'a> {
         }
     }
 
-    /// Returns the name of the SSA variable defined by this instruction, if any.
+    /// Returns the name of the value defined by this instruction, if any.
     ///
     /// Only assignment-style instructions (`Binary`, `Cmp`, `Alloc`, `Load`, `Call` with
     /// a result, etc.) define a variable. Terminators and stores do not.
@@ -1241,9 +1240,9 @@ impl<'a> Instruction<'a> {
         }
     }
 
-    /// Returns the names of all SSA variables *used* (read) by this instruction.
+    /// Returns the names of all values *used* (read) by this instruction.
     ///
-    /// Globals (prefixed `@`) and literal constants are not SSA variables and
+    /// Globals (prefixed `@`) and literal constants are not named values and
     /// are not returned.
     pub fn used_vars(&self) -> Vec<&'a str> {
         let mut vars: Vec<&'a str> = Vec::new();

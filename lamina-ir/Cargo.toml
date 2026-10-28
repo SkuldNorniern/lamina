@@ -4,9 +4,9 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Eira <eira@nornity.com>"]
-description = "Lamina Intermediate Representation — high-level SSA IR for the Lamina compiler"
+description = "Lamina Intermediate Representation — high-level typed IR for the Lamina compiler"
 license = "Apache-2.0"
-keywords = ["compiler", "IR", "SSA"]
+keywords = ["compiler", "IR", "typed-ir"]
 categories = ["compilers", "development-tools"]
 repository = "https://github.com/SkuldNorniern/lamina"
 

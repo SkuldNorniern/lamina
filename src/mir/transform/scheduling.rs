@@ -99,7 +99,7 @@ impl InstructionScheduling {
             }
 
             // 2. Register Output Dependencies (WAW) - to ensure we don't reorder defs to same reg
-            // (Though SSA should prevent this, MIR might not be strict SSA here)
+            // (MIR registers can be reassigned, so this edge is needed)
             if let Some(def_reg) = instr.def_reg() {
                 if let Some(&prev_def_idx) = reg_defs.get(def_reg) {
                     graph.add_edge(prev_def_idx, idx);

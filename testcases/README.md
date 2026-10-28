@@ -11,7 +11,7 @@ This directory contains test cases for the Lamina compiler, specifically designe
 
 ### Language Features
 - **`arithmetic.lamina`** - Arithmetic operations (add, sub, mul, div)
-- **`variables.lamina`** - Variable operations and SSA form
+- **`variables.lamina`** - Variable operations and reassignment
 - **`conditionals.lamina`** - Conditional branching (`br`, `gt`, `le`)
 - **`functions.lamina`** - Function definitions and calls
 - **`constants.lamina`** - Various constant sizes and types
@@ -109,7 +109,7 @@ To add a new test case:
 
 ## Notes
 
-- Tests use **Lamina IR syntax** with SSA form
+- Tests use **Lamina IR syntax**, typed and block-based
 - All tests target **AArch64 macOS** by default
 - Print statements use **printf with correct Apple ARM64 ABI**
 - Tests verify **core codegen functionality** including:

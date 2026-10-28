@@ -22,7 +22,7 @@
 //! ## Value Representation
 //!
 //! Values in the IR can be:
-//! - **Variables**: SSA variables like `%result`
+//! - **Variables**: named values like `%result`
 //! - **Constants**: Literal values like `42`, `true`, `"hello"`
 //! - **Globals**: Global variables like `@message`
 //!
@@ -263,7 +263,7 @@ pub enum Literal<'a> {
     String(&'a str),
 }
 
-/// An operand: an SSA variable, a constant, or the address of a global.
+/// An operand: a named value, a constant, or the address of a global.
 #[derive(Debug, Clone, PartialEq)] // Removed Eq, Hash because f32 doesn't support them
 pub enum Value<'a> {
     Variable(Identifier<'a>),

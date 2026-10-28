@@ -1,4 +1,4 @@
-//! Structural, SSA, dominance, and type verification for MIR.
+//! Structural, definition, dominance, and type verification for MIR.
 
 use crate::{
     Function, Immediate, Instruction, MirType, Module, Operand, Register, RegisterClass,
@@ -57,7 +57,7 @@ pub struct PhiVerification {
     pub incoming: Vec<(String, Operand)>,
 }
 
-/// Verify typed SSA before edge copies, exempting source-declared reassignments.
+/// Verify typed MIR before edge copies, exempting source-declared reassignments.
 /// Reassignment exemptions must come from source definitions, never verification failures.
 pub fn verify_before_phi_lowering(
     function: &Function,

@@ -111,7 +111,7 @@ impl CopyPropagation {
                 //   %c = add %a, 0   → propagated: c = add b, 0; map: {a → b, c → b}
                 //   %b = add %x, 5   → removes b as key, but {c → b} stays STALE
                 //   %d = add %c, 0   → propagates c → b, but b is now redefined
-                // would silently produce wrong code on non-SSA loops.
+                // would silently produce wrong code when a register is reassigned in a loop.
                 if let Some(keys) = aliases_of.remove(def_reg) {
                     for key in keys {
                         if matches!(value_map.get(&key), Some(Operand::Register(r)) if r == def_reg)

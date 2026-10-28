@@ -38,7 +38,7 @@ The fibonacci computation itself works correctly - the issue is specifically wit
 
 ## Language Implementations
 
-- **Lamina**: Functional IR with SSA form
+- **Lamina**: Typed, block-based IR
 - **Python**: Reference implementation
 - **C**: Low-level implementation
 - **JavaScript**: Node.js implementation

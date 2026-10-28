@@ -68,7 +68,7 @@
 //! - **Function Signatures**: All referenced functions exist and have compatible signatures
 //! - **Type Consistency**: All type references are valid and properly defined
 //! - **Global References**: All global variables are properly declared
-//! - **SSA Form**: All variables follow Single Static Assignment rules
+//! - **Value Types**: A name may be reassigned, but never with a different type
 //! - **Control Flow**: All basic blocks have valid terminators
 //!
 //! ## Examples

@@ -1,6 +1,6 @@
 //! `lamina-ir` — Lamina Intermediate Representation.
 //!
-//! This crate is the canonical home of the Lamina IR: the high-level, SSA-based
+//! This crate is the canonical home of the Lamina IR: the high-level, typed, block-based
 //! representation produced by the Lamina front-end before lowering to MIR.
 //!
 //! ## Layer overview
