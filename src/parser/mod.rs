@@ -49,7 +49,7 @@ use crate::{
 /// # use lamina::parser::edit_distance;
 /// assert_eq!(edit_distance("inline", "inlien", None), 2);
 /// assert_eq!(edit_distance("export", "EXPORT", None), 0); // case-insensitive
-/// assert_eq!(edit_distance("extern", "external", Some(2)), 3); // exceeds max
+/// assert_eq!(edit_distance("extern", "external", Some(1)), 2); // exceeds max
 /// ```
 pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
     // Normalize to lowercase for case-insensitive comparison
@@ -103,20 +103,23 @@ pub fn edit_distance(s1: &str, s2: &str, max_distance: Option<usize>) -> usize {
             curr_row[j] = (prev_row[j] + 1) // deletion
                 .min(curr_row[j - 1] + 1) // insertion
                 .min(prev_row[j - 1] + cost); // substitution
+        }
 
-            // Early termination if we exceed max_distance
-            if let Some(max) = max_distance
-                && curr_row[j] > max
-            {
-                return max + 1;
-            }
+        if let Some(max) = max_distance
+            && curr_row.iter().all(|&d| d > max)
+        {
+            return max + 1;
         }
 
         // Swap rows for next iteration
         mem::swap(&mut prev_row, &mut curr_row);
     }
 
-    prev_row[short_len]
+    let distance = prev_row[short_len];
+    match max_distance {
+        Some(max) if distance > max => max + 1,
+        _ => distance,
+    }
 }
 
 /// Collect close matches from `valid` for `input` (Levenshtein distance ≤ 2),
