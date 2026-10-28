@@ -4403,6 +4403,270 @@ frame abort_path 0
 frame classify 0
 frame main 32
 
+[va_arg_chain O0]
+insns 94
+spills 33
+calls 4
+branches 3
+frame deep 16
+frame fmt 0
+frame leaf 32
+frame main 32
+frame vchain 224
+
+[va_arg_chain O1]
+insns 94
+spills 33
+calls 4
+branches 3
+frame deep 16
+frame fmt 0
+frame leaf 32
+frame main 32
+frame vchain 224
+
+[va_arg_chain O2]
+insns 104
+spills 30
+calls 4
+branches 3
+frame deep 0
+frame fmt 0
+frame leaf 16
+frame main 32
+frame vchain 224
+
+[va_arg_chain O3]
+insns 104
+spills 30
+calls 4
+branches 3
+frame deep 0
+frame fmt 0
+frame leaf 16
+frame main 32
+frame vchain 224
+
+[va_arg_copy O0]
+insns 124
+spills 37
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame twice 288
+
+[va_arg_copy O1]
+insns 124
+spills 37
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame twice 288
+
+[va_arg_copy O2]
+insns 128
+spills 22
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame twice 224
+
+[va_arg_copy O3]
+insns 128
+spills 22
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame twice 224
+
+[va_arg_copy_stack O0]
+insns 222
+spills 61
+calls 2
+branches 19
+frame fmt 0
+frame main 32
+frame skip 384
+
+[va_arg_copy_stack O1]
+insns 222
+spills 61
+calls 2
+branches 19
+frame fmt 0
+frame main 32
+frame skip 384
+
+[va_arg_copy_stack O2]
+insns 218
+spills 24
+calls 2
+branches 19
+frame fmt 0
+frame main 32
+frame skip 240
+
+[va_arg_copy_stack O3]
+insns 223
+spills 28
+calls 2
+branches 19
+frame fmt 0
+frame main 32
+frame skip 256
+
+[va_arg_mixed O0]
+insns 192
+spills 60
+calls 2
+branches 7
+frame fmt 0
+frame main 48
+frame mix 384
+
+[va_arg_mixed O1]
+insns 192
+spills 60
+calls 2
+branches 7
+frame fmt 0
+frame main 48
+frame mix 384
+
+[va_arg_mixed O2]
+insns 174
+spills 35
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame mix 256
+
+[va_arg_mixed O3]
+insns 175
+spills 36
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame mix 256
+
+[va_arg_narrow O0]
+insns 111
+spills 39
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame narrow 272
+
+[va_arg_narrow O1]
+insns 111
+spills 39
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame narrow 272
+
+[va_arg_narrow O2]
+insns 116
+spills 22
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame narrow 208
+
+[va_arg_narrow O3]
+insns 116
+spills 22
+calls 2
+branches 7
+frame fmt 0
+frame main 32
+frame narrow 208
+
+[va_arg_no_variadic O0]
+insns 138
+spills 62
+calls 3
+branches 6
+frame fmt 0
+frame main 48
+frame noop 224
+frame sum 304
+
+[va_arg_no_variadic O1]
+insns 138
+spills 62
+calls 3
+branches 6
+frame fmt 0
+frame main 48
+frame noop 224
+frame sum 304
+
+[va_arg_no_variadic O2]
+insns 128
+spills 38
+calls 3
+branches 6
+frame fmt 0
+frame main 48
+frame noop 208
+frame sum 208
+
+[va_arg_no_variadic O3]
+insns 128
+spills 38
+calls 3
+branches 6
+frame fmt 0
+frame main 48
+frame noop 208
+frame sum 208
+
+[va_arg_sum O0]
+insns 113
+spills 42
+calls 2
+branches 5
+frame fmt 0
+frame main 32
+frame sum 304
+
+[va_arg_sum O1]
+insns 113
+spills 42
+calls 2
+branches 5
+frame fmt 0
+frame main 32
+frame sum 304
+
+[va_arg_sum O2]
+insns 101
+spills 22
+calls 2
+branches 5
+frame fmt 0
+frame main 32
+frame sum 208
+
+[va_arg_sum O3]
+insns 101
+spills 22
+calls 2
+branches 5
+frame fmt 0
+frame main 32
+frame sum 208
+
 [variables O0]
 insns 190
 spills 58
