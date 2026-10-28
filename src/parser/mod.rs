@@ -2165,6 +2165,38 @@ mod surface_tests {
     }
 
     #[test]
+    fn wide_integer_types_round_trip() {
+        round_trip(
+            "fn @wide(i128 %x, u128 %y) -> u128 {\n\
+             entry:\n  \
+             %s = add.i128 %x, -170141183460469231731687303715884105728\n  \
+             %d = sub.u128 %y, 340282366920938463463374607431768211455\n  \
+             %m = mul.i128 %s, 18446744073709551617\n  \
+             %q = div.i128 %m, %x\n  \
+             %r = rem.u128 %y, 3\n  \
+             %l = lt.i128 %q, 0\n  \
+             %h = shr.u128 %y, 64\n  \
+             %z = zext.u64.u128 %h\n  \
+             %t = trunc.i128.i32 %q\n  \
+             %f = inttofp.i128.f64 %x\n  \
+             ret.u128 %z\n\
+             }\n",
+        );
+    }
+
+    #[test]
+    fn wide_integer_literals_respect_their_width() {
+        rejects(
+            "fn @f() -> i128 {\nentry:\n  %x = add.i128 170141183460469231731687303715884105728, 0\n  ret.i128 %x\n}\n",
+            "too large",
+        );
+        rejects(
+            "fn @f() -> u128 {\nentry:\n  %x = add.u128 -1, 0\n  ret.u128 %x\n}\n",
+            "Expected an unsigned integer literal",
+        );
+    }
+
+    #[test]
     fn bit_intrinsics_round_trip() {
         round_trip(
             "fn @f(i64 %x, i64 %n, u8 %b, u32 %w) -> i64 {\n\

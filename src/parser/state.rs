@@ -360,6 +360,26 @@ impl<'a> ParserState<'a> {
             .map_err(|e| self.error(format!("Integer literal is too large: {e}")))
     }
 
+    /// Parses a non-negative integer literal up to `u128::MAX`, for `u128` operands.
+    pub fn parse_wide_unsigned(&mut self) -> Result<u128, LaminaError> {
+        self.skip_whitespace_and_comments();
+        let start = self.position;
+        while !self.is_eof() && self.bytes[self.position].is_ascii_digit() {
+            self.advance();
+        }
+        if start == self.position {
+            return Err(self.error("Expected an unsigned integer literal"));
+        }
+        self.input[start..self.position]
+            .parse::<u128>()
+            .map_err(|e| {
+                self.error(format!(
+                "Failed to parse integer: {e}\n  Hint: Unsigned literals must be between 0 and {}",
+                u128::MAX
+            ))
+            })
+    }
+
     /// Parses a float literal.
     pub fn parse_float(&mut self) -> Result<f64, LaminaError> {
         self.skip_whitespace_and_comments();

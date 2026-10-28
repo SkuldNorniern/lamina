@@ -117,6 +117,8 @@ fn parse_type_inner<'a>(state: &mut ParserState<'a>) -> Result<Type<'a>, LaminaE
                 "u16" => Ok(Type::Primitive(PrimitiveType::U16)),
                 "u32" => Ok(Type::Primitive(PrimitiveType::U32)),
                 "u64" => Ok(Type::Primitive(PrimitiveType::U64)),
+                "i128" => Ok(Type::Primitive(PrimitiveType::I128)),
+                "u128" => Ok(Type::Primitive(PrimitiveType::U128)),
                 "f32" => Ok(Type::Primitive(PrimitiveType::F32)),
                 "f64" => Ok(Type::Primitive(PrimitiveType::F64)),
                 "bool" => Ok(Type::Primitive(PrimitiveType::Bool)),

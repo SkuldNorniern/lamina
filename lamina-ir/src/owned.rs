@@ -77,10 +77,12 @@ pub enum OwnedValue {
     I16(i16),
     I32(i32),
     I64(i64),
+    I128(i128),
     U8(u8),
     U16(u16),
     U32(u32),
     U64(u64),
+    U128(u128),
     F32(f32),
     F64(f64),
     Bool(bool),
@@ -96,10 +98,12 @@ impl fmt::Display for OwnedValue {
             OwnedValue::I16(v) => write!(f, "{v}"),
             OwnedValue::I32(v) => write!(f, "{v}"),
             OwnedValue::I64(v) => write!(f, "{v}"),
+            OwnedValue::I128(v) => write!(f, "{v}"),
             OwnedValue::U8(v) => write!(f, "{v}"),
             OwnedValue::U16(v) => write!(f, "{v}"),
             OwnedValue::U32(v) => write!(f, "{v}"),
             OwnedValue::U64(v) => write!(f, "{v}"),
+            OwnedValue::U128(v) => write!(f, "{v}"),
             OwnedValue::F32(v) => write!(f, "{v}"),
             OwnedValue::F64(v) => write!(f, "{v}"),
             OwnedValue::Bool(v) => write!(f, "{v}"),
@@ -1116,10 +1120,12 @@ fn is_integer(ty: PrimitiveType) -> bool {
             | PrimitiveType::I16
             | PrimitiveType::I32
             | PrimitiveType::I64
+            | PrimitiveType::I128
             | PrimitiveType::U8
             | PrimitiveType::U16
             | PrimitiveType::U32
             | PrimitiveType::U64
+            | PrimitiveType::U128
     )
 }
 

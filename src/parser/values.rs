@@ -7,6 +7,9 @@ use crate::{
 };
 
 /// Inclusive bounds of an integer type, or `None` for a type that is not an integer.
+///
+/// Literals are read as `i128`, so these bounds cover `u128` only up to `i128::MAX`.
+/// Full-range `u128` literals are read by the typed-operand parser instead.
 pub fn integer_bounds(ty: PrimitiveType) -> Option<(i128, i128)> {
     Some(match ty {
         PrimitiveType::I8 => (i8::MIN.into(), i8::MAX.into()),
@@ -17,7 +20,11 @@ pub fn integer_bounds(ty: PrimitiveType) -> Option<(i128, i128)> {
         PrimitiveType::U16 => (0, u16::MAX.into()),
         PrimitiveType::U32 => (0, u32::MAX.into()),
         PrimitiveType::U64 => (0, u64::MAX.into()),
-        _ => return None,
+        PrimitiveType::I128 => (i128::MIN, i128::MAX),
+        PrimitiveType::U128 => (0, i128::MAX),
+        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Bool | PrimitiveType::Ptr => {
+            return None;
+        }
     })
 }
 
@@ -40,7 +47,12 @@ pub fn integer_literal(value: i128, ty: PrimitiveType) -> Result<Option<Literal<
         PrimitiveType::U8 => Literal::U8(value as u8),
         PrimitiveType::U16 => Literal::U16(value as u16),
         PrimitiveType::U32 => Literal::U32(value as u32),
-        _ => Literal::U64(value as u64),
+        PrimitiveType::U64 => Literal::U64(value as u64),
+        PrimitiveType::I128 => Literal::I128(value),
+        PrimitiveType::U128 => Literal::U128(value as u128),
+        PrimitiveType::F32 | PrimitiveType::F64 | PrimitiveType::Bool | PrimitiveType::Ptr => {
+            return Ok(None);
+        }
     }))
 }
 

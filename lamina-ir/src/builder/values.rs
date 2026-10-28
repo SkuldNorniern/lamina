@@ -26,6 +26,16 @@ pub fn i64<'a>(val: i64) -> Value<'a> {
     Value::Constant(Literal::I64(val))
 }
 
+/// Creates an i128 constant
+pub fn i128<'a>(val: i128) -> Value<'a> {
+    Value::Constant(Literal::I128(val))
+}
+
+/// Creates a u128 constant
+pub fn u128<'a>(val: u128) -> Value<'a> {
+    Value::Constant(Literal::U128(val))
+}
+
 /// Creates an f32 constant
 pub fn f32<'a>(val: f32) -> Value<'a> {
     Value::Constant(Literal::F32(val))

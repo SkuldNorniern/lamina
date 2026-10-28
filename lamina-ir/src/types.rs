@@ -189,6 +189,12 @@ pub enum PrimitiveType {
     U32,
     /// 64-bit unsigned integer (0 to 18,446,744,073,709,551,615)
     U64,
+    /// 128-bit signed integer, two's complement. Lowered to a pair of 64-bit words
+    /// before any backend sees it. Arithmetic wraps; division traps like `I64`.
+    I128,
+    /// 128-bit unsigned integer. Lowered to a pair of 64-bit words before any backend
+    /// sees it.
+    U128,
     /// 32-bit floating point number (IEEE 754 single precision)
     F32,
     /// 64-bit floating point number (IEEE 754 double precision)
@@ -249,6 +255,8 @@ pub enum Literal<'a> {
     U16(u16),
     U32(u32),
     U64(u64),
+    I128(i128),
+    U128(u128),
     F32(f32),
     F64(f64),
     Bool(bool),
@@ -278,6 +286,8 @@ impl PrimitiveType {
             name_for(PrimitiveType::U16),
             name_for(PrimitiveType::U32),
             name_for(PrimitiveType::U64),
+            name_for(PrimitiveType::I128),
+            name_for(PrimitiveType::U128),
             name_for(PrimitiveType::F32),
             name_for(PrimitiveType::F64),
             name_for(PrimitiveType::Bool),
@@ -297,6 +307,8 @@ impl PrimitiveType {
             PrimitiveType::U16 => "u16",
             PrimitiveType::U32 => "u32",
             PrimitiveType::U64 => "u64",
+            PrimitiveType::I128 => "i128",
+            PrimitiveType::U128 => "u128",
             PrimitiveType::F32 => "f32",
             PrimitiveType::F64 => "f64",
             PrimitiveType::Bool => "bool",
@@ -349,6 +361,8 @@ impl fmt::Display for Literal<'_> {
             Literal::U16(v) => write!(f, "{v}"),
             Literal::U32(v) => write!(f, "{v}"),
             Literal::U64(v) => write!(f, "{v}"),
+            Literal::I128(v) => write!(f, "{v}"),
+            Literal::U128(v) => write!(f, "{v}"),
             Literal::F32(v) => write!(f, "{v}"),
             Literal::F64(v) => write!(f, "{v}"),
             Literal::Bool(v) => write!(f, "{v}"),
@@ -374,6 +388,7 @@ pub const fn align_of_primitive(ty: PrimitiveType) -> u64 {
         PrimitiveType::I16 | PrimitiveType::U16 => 2,
         PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
         PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+        PrimitiveType::I128 | PrimitiveType::U128 => 16,
     }
 }
 
@@ -384,6 +399,7 @@ pub const fn sizeof_primitive(ty: PrimitiveType) -> u64 {
         PrimitiveType::I16 | PrimitiveType::U16 => 2,
         PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::F32 => 4,
         PrimitiveType::I64 | PrimitiveType::U64 | PrimitiveType::F64 | PrimitiveType::Ptr => 8,
+        PrimitiveType::I128 | PrimitiveType::U128 => 16,
     }
 }
 

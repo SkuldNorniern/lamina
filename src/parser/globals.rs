@@ -253,7 +253,7 @@ fn parse_integer_literal<'a>(
 
     // Only this literal's own characters decide whether it is a float; a later
     // element in a list carries its own point.
-    let token = state.peek_slice(24).unwrap_or("");
+    let token = state.peek_slice(40).unwrap_or("");
     let digits = token
         .strip_prefix('-')
         .unwrap_or(token)
@@ -264,6 +264,9 @@ fn parse_integer_literal<'a>(
         )));
     }
 
+    if hint == PrimitiveType::U128 {
+        return Ok(Some(Literal::U128(state.parse_wide_unsigned()?)));
+    }
     let value = state.parse_wide_integer()?;
     integer_literal(value, hint).map_err(|message| state.error(message))
 }

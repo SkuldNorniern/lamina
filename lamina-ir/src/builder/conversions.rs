@@ -182,12 +182,16 @@ impl<'a> IRBuilder<'a> {
 
 fn integer_signedness(ty: PrimitiveType) -> Option<bool> {
     match ty {
-        PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64 => {
-            Some(true)
-        }
-        PrimitiveType::U8 | PrimitiveType::U16 | PrimitiveType::U32 | PrimitiveType::U64 => {
-            Some(false)
-        }
+        PrimitiveType::I8
+        | PrimitiveType::I16
+        | PrimitiveType::I32
+        | PrimitiveType::I64
+        | PrimitiveType::I128 => Some(true),
+        PrimitiveType::U8
+        | PrimitiveType::U16
+        | PrimitiveType::U32
+        | PrimitiveType::U64
+        | PrimitiveType::U128 => Some(false),
         _ => None,
     }
 }

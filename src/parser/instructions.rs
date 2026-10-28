@@ -316,13 +316,16 @@ fn parse_primitive_type_suffix(state: &mut ParserState<'_>) -> Result<PrimitiveT
         "u16" => Ok(PrimitiveType::U16),
         "u32" => Ok(PrimitiveType::U32),
         "u64" => Ok(PrimitiveType::U64),
+        "i128" => Ok(PrimitiveType::I128),
+        "u128" => Ok(PrimitiveType::U128),
         "f32" => Ok(PrimitiveType::F32),
         "f64" => Ok(PrimitiveType::F64),
         "bool" => Ok(PrimitiveType::Bool),
         "char" => Err(removed_char_error(state)),
         "ptr" => Ok(PrimitiveType::Ptr),
         _ => {
-            let valid_types = "i8, i16, i32, i64, u8, u16, u32, u64, f32, f64, bool, ptr";
+            let valid_types =
+                "i8, i16, i32, i64, i128, u8, u16, u32, u64, u128, f32, f64, bool, ptr";
             Err(state.error(format!(
                 "Expected primitive type suffix, found '.{type_str}'\n  Hint: Valid type suffixes are: {valid_types}"
             )))
@@ -439,10 +442,12 @@ fn is_integer_type(ty: PrimitiveType) -> bool {
             | PrimitiveType::I16
             | PrimitiveType::I32
             | PrimitiveType::I64
+            | PrimitiveType::I128
             | PrimitiveType::U8
             | PrimitiveType::U16
             | PrimitiveType::U32
             | PrimitiveType::U64
+            | PrimitiveType::U128
     )
 }
 
@@ -537,7 +542,12 @@ fn parse_store<'a>(
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
-    let value = parse_value(state)?;
+    let value = match &ty {
+        Type::Primitive(PrimitiveType::I128 | PrimitiveType::U128) => {
+            parse_typed_operand(state, &ty)?
+        }
+        _ => parse_value(state)?,
+    };
     Ok(Instruction::Store {
         ty,
         ptr,
@@ -988,6 +998,8 @@ fn parse_zext<'a>(
         "u16" => PrimitiveType::U16,
         "u32" => PrimitiveType::U32,
         "u64" => PrimitiveType::U64,
+        "i128" => PrimitiveType::I128,
+        "u128" => PrimitiveType::U128,
         "f32" => PrimitiveType::F32,
         "f64" => PrimitiveType::F64,
         "bool" => PrimitiveType::Bool,
@@ -1006,6 +1018,8 @@ fn parse_zext<'a>(
         "u16" => PrimitiveType::U16,
         "u32" => PrimitiveType::U32,
         "u64" => PrimitiveType::U64,
+        "i128" => PrimitiveType::I128,
+        "u128" => PrimitiveType::U128,
         "f32" => PrimitiveType::F32,
         "f64" => PrimitiveType::F64,
         "bool" => PrimitiveType::Bool,
@@ -1040,8 +1054,16 @@ fn parse_int_to_float<'a>(
     let target_type = parse_primitive_from_ident(state, target_str)?;
 
     let signed = match source_type {
-        PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64 => true,
-        PrimitiveType::U8 | PrimitiveType::U16 | PrimitiveType::U32 | PrimitiveType::U64 => false,
+        PrimitiveType::I8
+        | PrimitiveType::I16
+        | PrimitiveType::I32
+        | PrimitiveType::I64
+        | PrimitiveType::I128 => true,
+        PrimitiveType::U8
+        | PrimitiveType::U16
+        | PrimitiveType::U32
+        | PrimitiveType::U64
+        | PrimitiveType::U128 => false,
         _ => {
             return Err(state.error(format!(
                 "inttofp source must be an integer type, found {source_str}"
@@ -1081,8 +1103,16 @@ fn parse_float_to_int<'a>(
         )));
     }
     let signed = match target_type {
-        PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64 => true,
-        PrimitiveType::U8 | PrimitiveType::U16 | PrimitiveType::U32 | PrimitiveType::U64 => false,
+        PrimitiveType::I8
+        | PrimitiveType::I16
+        | PrimitiveType::I32
+        | PrimitiveType::I64
+        | PrimitiveType::I128 => true,
+        PrimitiveType::U8
+        | PrimitiveType::U16
+        | PrimitiveType::U32
+        | PrimitiveType::U64
+        | PrimitiveType::U128 => false,
         _ => {
             return Err(state.error(format!(
                 "fptoint target must be an integer type, found {target_str}"
@@ -1279,6 +1309,8 @@ fn parse_primitive_from_ident(
         "u16" => Ok(PrimitiveType::U16),
         "u32" => Ok(PrimitiveType::U32),
         "u64" => Ok(PrimitiveType::U64),
+        "i128" => Ok(PrimitiveType::I128),
+        "u128" => Ok(PrimitiveType::U128),
         "f32" => Ok(PrimitiveType::F32),
         "f64" => Ok(PrimitiveType::F64),
         "bool" => Ok(PrimitiveType::Bool),
