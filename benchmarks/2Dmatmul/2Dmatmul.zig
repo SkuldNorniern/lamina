@@ -1,70 +1,59 @@
 const std = @import("std");
 
-// Matrix dimensions
-const MATRIX_SIZE: usize = 256;
+const N_ROWS: u64 = 256;
+const K_DIM: u64 = 256;
+const N_COLS: u64 = 256;
 
-/// Retrieves a value from matrix A at position [i, k]
-fn getMatrixAElement(i: usize, k: usize) usize {
-    // Values based on position (consistent with other implementations)
-    return i * k + 1;
+fn mix(x: u64) u64 {
+    const a = ((x *% 1103515245) +% 12345) & 2147483647;
+    const b = a ^ (a >> 7);
+    const c = ((b *% 1103515245) +% 12345) & 2147483647;
+    const d = c ^ (c >> 11);
+    return d & 65535;
 }
 
-/// Retrieves a value from matrix B at position [k, j]
-fn getMatrixBElement(k: usize, j: usize) usize {
-    // Values based on position (consistent with other implementations)
-    return k * j + 1;
+fn getMatrixAElement(i: u64, k: u64) u64 {
+    return mix(i * K_DIM + k);
 }
 
-/// Compute a single cell in the result matrix
-fn computeMatrixCell(i: usize, j: usize, k_dim: usize) usize {
-    var sum: usize = 0;
-    var k: usize = 0;
-    while (k < k_dim) : (k += 1) {
-        const a_elem = getMatrixAElement(i, k);
-        const b_elem = getMatrixBElement(k, j);
-        sum += a_elem * b_elem;
+fn getMatrixBElement(k: u64, j: u64) u64 {
+    return mix(k * N_COLS + j);
+}
+
+fn computeMatrixCell(i: u64, j: u64) u64 {
+    var sum: u64 = 0;
+    var k: u64 = 0;
+    while (k < K_DIM) : (k += 1) {
+        sum +%= getMatrixAElement(i, k) *% getMatrixBElement(k, j);
     }
     return sum;
 }
 
-/// Matrix multiplication benchmark
+fn matmulZig(stdout: *std.Io.Writer, n_rows: u64, k_dim: u64, n_cols: u64) !u64 {
+    try stdout.print("{d}\n{d}\n{d}\n", .{ n_rows, k_dim, n_cols });
+
+    var total_sum: u64 = 0;
+    var i: u64 = 0;
+    while (i < n_rows) : (i += 1) {
+        var j: u64 = 0;
+        while (j < n_cols) : (j += 1) {
+            total_sum +%= computeMatrixCell(i, j);
+        }
+    }
+
+    const total_ops = n_rows * n_cols * (k_dim * 2);
+    try stdout.print("{d}\n{d}\n", .{ total_sum, total_ops });
+    return total_sum;
+}
+
 pub fn main(init: std.process.Init) !void {
     var stdout_buffer: [4096]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writer(init.io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
 
-    const n = MATRIX_SIZE;
-    var total: usize = 0;
-
-    try stdout.print("Starting {d}x{d} matrix multiplication benchmark in Zig...\n", .{ n, n });
-
-    // Start timing
-    const start_ns = std.Io.Clock.awake.now(init.io).nanoseconds;
-
-    // Report progress every 5%, matching the C version
-    const result_size = n * n;
-    var cells_done: usize = 0;
-    var next_report = result_size / 20;
-
-    var i: usize = 0;
-    while (i < n) : (i += 1) {
-        var j: usize = 0;
-        while (j < n) : (j += 1) {
-            total += computeMatrixCell(i, j, n);
-
-            cells_done += 1;
-            if (cells_done >= next_report) {
-                try stdout.print("Progress: {d}%\n", .{cells_done * 100 / result_size});
-                next_report += result_size / 20;
-            }
-        }
-    }
-
-    // End timing
-    const end_ns = std.Io.Clock.awake.now(init.io).nanoseconds;
-    const elapsed = @as(f64, @floatFromInt(end_ns - start_ns)) / 1_000_000_000.0;
-
-    try stdout.print("\nCompleted in {d:.4} seconds\n", .{elapsed});
-    try stdout.print("Total sum: {d}\n", .{total});
+    try stdout.print("123456789\n", .{});
+    const result = try matmulZig(stdout, N_ROWS, K_DIM, N_COLS);
+    try stdout.print("{d}\n", .{result});
+    try stdout.print("987654323\n", .{});
     try stdout.flush();
 }

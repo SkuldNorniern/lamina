@@ -1,67 +1,44 @@
-# matmul2d.nim
-import times
-
-# --- Configuration ---
 const
-  N_ROWS = 256
-  K_DIM = 256
-  N_COLS = 256
+  N_ROWS = 256'i64
+  K_DIM = 256'i64
+  N_COLS = 256'i64
 
-# --- Markers ---
-const
-  HEADER_MARKER = 123456789'i64
-  START_MARKER = 987654321'i64
-  END_MARKER = 987654322'i64
-  STATUS_MARKER = 987654323'i64
+proc mix(x: int64): int64 =
+  let a = ((x * 1103515245'i64) + 12345'i64) and 2147483647'i64
+  let b = a xor (a shr 7)
+  let c = ((b * 1103515245'i64) + 12345'i64) and 2147483647'i64
+  let d = c xor (c shr 11)
+  d and 65535'i64
 
-# Generates element A[i,k] deterministically
 proc getMatrixAElement(i, k: int64): int64 {.inline.} =
-  (i * k) + 1
+  mix((i * K_DIM) + k)
 
-# Generates element B[k,j] deterministically
 proc getMatrixBElement(k, j: int64): int64 {.inline.} =
-  (k * j) + 1
+  mix((k * N_COLS) + j)
 
-# Performs matrix multiplication using standard Nim loops
-proc matmulNim(nRows, kDim, nCols: int): int64 =
+proc computeMatrixCell(i, j: int64): int64 =
+  var sum: int64 = 0
+  for k in 0'i64 ..< K_DIM:
+    sum += getMatrixAElement(i, k) * getMatrixBElement(k, j)
+  sum
+
+proc matmulNim(nRows, kDim, nCols: int64): int64 =
   echo nRows
   echo kDim
   echo nCols
 
-  # Use int64 for calculations to prevent potential overflow
-  let resultSize = (nRows * nCols).int64
   var totalSum: int64 = 0
+  for i in 0'i64 ..< nRows:
+    for j in 0'i64 ..< nCols:
+      totalSum += computeMatrixCell(i, j)
 
-  echo START_MARKER # Start timing after setup
-
-  # --- Standard Nim Implementation ---
-  # Generate elements on the fly
-  for iIdx in 0..<nRows:
-    for jIdx in 0..<nCols:
-      var cellSum: int64 = 0
-      let i = iIdx.int64
-      let j = jIdx.int64
-      for kIdx in 0..<kDim:
-        let k = kIdx.int64
-        let aElem = getMatrixAElement(i, k)
-        let bElem = getMatrixBElement(k, j)
-        # Use +% and *% for wrapping arithmetic to prevent overflow
-        cellSum += aElem *% bElem
-      totalSum += cellSum
-
-  # --- End of benchmark operation ---
-
-  # Calculate operations
-  let opsPerCell = (kDim * 2).int64
-  let totalOps = resultSize *% opsPerCell
-
-  echo END_MARKER # End timing before final prints
+  let totalOps = (nRows * nCols) * (kDim * 2)
   echo totalSum
   echo totalOps
-
-  return totalSum
+  totalSum
 
 when isMainModule:
-  echo HEADER_MARKER
-  discard matmulNim(N_ROWS, K_DIM, N_COLS) # Run the benchmark
-  echo STATUS_MARKER 
+  echo 123456789'i64
+  let result = matmulNim(N_ROWS, K_DIM, N_COLS)
+  echo result
+  echo 987654323'i64

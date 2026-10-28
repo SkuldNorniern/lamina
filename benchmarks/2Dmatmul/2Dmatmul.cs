@@ -1,102 +1,63 @@
 using System;
-using System.Diagnostics;
 
 namespace MatMul2D
 {
-    /// <summary>
-    /// Matrix multiplication benchmark for C#
-    /// Similar to the other implementations in the benchmark suite
-    /// </summary>
     class Program
     {
-        // Matrix dimensions
-        private const int MATRIX_SIZE = 256;
+        private const long N_ROWS = 256;
+        private const long K_DIM = 256;
+        private const long N_COLS = 256;
 
-        /// <summary>
-        /// Retrieves a value from matrix A at position [i, k]
-        /// </summary>
-        /// <param name="i">Row index</param>
-        /// <param name="k">Column index</param>
-        /// <returns>The value at position [i, k]</returns>
-        static long GetMatrixAElement(long i, long k)
+        static long Mix(long x)
         {
-            // Values based on position (consistent with other implementations)
-            return i * k + 1;
+            long a = (x * 1103515245L + 12345L) & 2147483647L;
+            long b = a ^ (a >> 7);
+            long c = (b * 1103515245L + 12345L) & 2147483647L;
+            long d = c ^ (c >> 11);
+            return d & 65535L;
         }
 
-        /// <summary>
-        /// Retrieves a value from matrix B at position [k, j]
-        /// </summary>
-        /// <param name="k">Row index</param>
-        /// <param name="j">Column index</param>
-        /// <returns>The value at position [k, j]</returns>
-        static long GetMatrixBElement(long k, long j)
-        {
-            // Values based on position (consistent with other implementations)
-            return k * j + 1;
-        }
+        static long GetMatrixAElement(long i, long k) => Mix(i * K_DIM + k);
 
-        /// <summary>
-        /// Compute a single cell in the result matrix
-        /// </summary>
-        /// <param name="i">Row index in result matrix</param>
-        /// <param name="j">Column index in result matrix</param>
-        /// <param name="kDim">The dimension of the matrices (n for an n×n matrix)</param>
-        /// <returns>The computed cell value</returns>
+        static long GetMatrixBElement(long k, long j) => Mix(k * N_COLS + j);
+
         static long ComputeMatrixCell(long i, long j, long kDim)
         {
             long sum = 0;
             for (long k = 0; k < kDim; k++)
             {
-                long aElem = GetMatrixAElement(i, k);
-                long bElem = GetMatrixBElement(k, j);
-                sum += aElem * bElem;
+                sum += GetMatrixAElement(i, k) * GetMatrixBElement(k, j);
             }
             return sum;
         }
 
-        /// <summary>
-        /// Matrix multiplication benchmark
-        /// </summary>
-        static int Main()
+        static long MatmulCs(long nRows, long kDim, long nCols)
         {
-            long n = MATRIX_SIZE;
-            long total = 0;
+            Console.WriteLine(nRows);
+            Console.WriteLine(kDim);
+            Console.WriteLine(nCols);
 
-            Console.WriteLine($"Starting {n}×{n} matrix multiplication benchmark in C#...");
-
-            // Start timing
-            var stopwatch = Stopwatch.StartNew();
-
-            // Report progress every 5%, matching the C version
-            long resultSize = n * n;
-            long cellsDone = 0;
-            long nextReport = resultSize / 20;
-
-            for (long i = 0; i < n; i++)
+            long totalSum = 0;
+            for (long i = 0; i < nRows; i++)
             {
-                for (long j = 0; j < n; j++)
+                for (long j = 0; j < nCols; j++)
                 {
-                    // Compute the result cell [i,j]
-                    total += ComputeMatrixCell(i, j, n);
-
-                    cellsDone++;
-                    if (cellsDone >= nextReport)
-                    {
-                        Console.WriteLine($"Progress: {cellsDone * 100 / resultSize}%");
-                        nextReport += resultSize / 20;
-                    }
+                    totalSum += ComputeMatrixCell(i, j, kDim);
                 }
             }
 
-            // End timing
-            stopwatch.Stop();
-            double elapsed = stopwatch.ElapsedMilliseconds / 1000.0;
+            long totalOps = nRows * nCols * (kDim * 2);
+            Console.WriteLine(totalSum);
+            Console.WriteLine(totalOps);
+            return totalSum;
+        }
 
-            Console.WriteLine($"\nCompleted in {elapsed:F4} seconds");
-            Console.WriteLine($"Checksum: {total}");
-
-            // Return success
+        static int Main()
+        {
+            Console.WriteLine(123456789L);
+            long result = MatmulCs(N_ROWS, K_DIM, N_COLS);
+            Console.WriteLine(result);
+            Console.WriteLine(987654323L);
             return 0;
         }
     }

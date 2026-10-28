@@ -1,65 +1,50 @@
-#!/usr/bin/env ruby
+N_ROWS = 256
+K_DIM = 256
+N_COLS = 256
 
-# Matrix multiplication benchmark for Ruby
-# Similar to the other implementations in the benchmark suite
+def mix(x)
+  a = (x * 1103515245 + 12345) & 2147483647
+  b = a ^ (a >> 7)
+  c = (b * 1103515245 + 12345) & 2147483647
+  d = c ^ (c >> 11)
+  d & 65535
+end
 
-# Get matrix dimensions
-MATRIX_SIZE = 256
-
-# Retrieves a value from matrix A at position [i, k]
 def get_matrix_a_element(i, k)
-  # Values based on position (consistent with other implementations)
-  i * k + 1
+  mix(i * K_DIM + k)
 end
 
-# Retrieves a value from matrix B at position [k, j]
 def get_matrix_b_element(k, j)
-  # Values based on position (consistent with other implementations)
-  k * j + 1
+  mix(k * N_COLS + j)
 end
 
-# Compute a single cell in the result matrix
 def compute_matrix_cell(i, j, k_dim)
   sum = 0
   (0...k_dim).each do |k|
-    a_elem = get_matrix_a_element(i, k)
-    b_elem = get_matrix_b_element(k, j)
-    sum += a_elem * b_elem
+    sum += get_matrix_a_element(i, k) * get_matrix_b_element(k, j)
   end
   sum
 end
 
-# Matrix multiplication benchmark
-def matrix_multiply_2d
-  start_time = Time.now
+def matmul_2d(n_rows, k_dim, n_cols)
+  puts n_rows
+  puts k_dim
+  puts n_cols
 
-  n = MATRIX_SIZE
-  total = 0
-  
-  puts "Starting #{n}x#{n} matrix multiplication benchmark in Ruby..."
-  
-  # Compute the full matrix multiplication
-  (0...n).each do |i|
-    # Print progress every 10% to avoid excessive output
-    if i % (n / 10) == 0
-      print "Progress: #{(i * 100.0 / n).round}%\r"
-      $stdout.flush
-    end
-    
-    (0...n).each do |j|
-      # Compute the result cell [i,j]
-      cell_value = compute_matrix_cell(i, j, n)
-      total += cell_value
+  total_sum = 0
+  (0...n_rows).each do |i|
+    (0...n_cols).each do |j|
+      total_sum += compute_matrix_cell(i, j, k_dim)
     end
   end
-  
-  elapsed = Time.now - start_time
-  puts "\nCompleted in #{elapsed.round(4)} seconds"
-  puts "Checksum: #{total}"
-  
-  # Return success
-  return 0
+
+  total_ops = n_rows * n_cols * (k_dim * 2)
+  puts total_sum
+  puts total_ops
+  total_sum
 end
 
-# Run the benchmark
-exit(matrix_multiply_2d) 
+puts 123456789
+result = matmul_2d(N_ROWS, K_DIM, N_COLS)
+puts result
+puts 987654323
