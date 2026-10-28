@@ -127,7 +127,7 @@ pub(super) fn compile_single_function_x86_64(
         X64RegAlloc::new(target_os)
     };
 
-    let (stack_slots, def_regs, total_slots);
+    let (stack_slots, total_slots);
 
     let mut saved_regs = Vec::new();
     if settings.regalloc != RegallocStrategy::Incremental {
@@ -175,7 +175,7 @@ pub(super) fn compile_single_function_x86_64(
             RegallocStrategy::Incremental => unreachable!(),
         };
         plan = coalesce_dying_inputs(func, &intervals, &plan, allowed);
-        (stack_slots, def_regs, total_slots) = layout_global_stack_slots(func, &plan);
+        (stack_slots, _, total_slots) = layout_global_stack_slots(func, &plan);
         reg_alloc = X64RegAlloc::from_global_plan(target_os, is_leaf, &plan);
         for allocation in plan.values() {
             if let MirAllocation::Register(reg) = allocation
@@ -187,8 +187,7 @@ pub(super) fn compile_single_function_x86_64(
         saved_regs.sort_unstable();
         saved_regs.dedup();
     } else {
-        (stack_slots, def_regs, total_slots) =
-            assign_stack_slots(func, X86Frame::calculate_stack_offset);
+        (stack_slots, _, total_slots) = assign_stack_slots(func, X86Frame::calculate_stack_offset);
     }
 
     // An aggregate too large for the return registers travels through a hidden pointer
@@ -514,7 +513,6 @@ pub(super) fn compile_single_function_x86_64(
                 &saved_regs,
                 target_os,
                 func_name,
-                &def_regs,
                 settings,
                 &mut debug_line,
                 abi_extensions,

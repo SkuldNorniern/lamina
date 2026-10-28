@@ -9,18 +9,12 @@ use std::collections::{HashMap, HashSet};
 pub struct FrameMap {
     pub slots: HashMap<Register, i32>,
     pub frame_size: i32,
-    /// Registers written by some instruction. A register that is only ever
-    /// read is a stack-allocation placeholder: its slot *is* the storage, so
-    /// its address is the value. Anything else holds a value that must be
-    /// loaded before use.
-    defined: HashSet<Register>,
 }
 
 impl FrameMap {
     /// Creates a frame map from a function, assigning stack slots to all virtual registers.
     pub fn from_function(f: &Function) -> Self {
         let mut regs: HashSet<Register> = HashSet::new();
-        let mut defined: HashSet<Register> = HashSet::new();
         for p in &f.sig.params {
             regs.insert(p.reg.clone());
         }
@@ -28,7 +22,6 @@ impl FrameMap {
             for ins in &b.instructions {
                 if let Some(d) = ins.def_reg() {
                     regs.insert(d.clone());
-                    defined.insert(d.clone());
                 }
                 if let Instruction::StackAddr { slot, .. } = ins {
                     regs.insert(Register::Virtual(*slot));
@@ -59,11 +52,7 @@ impl FrameMap {
             frame_size = 0;
         }
         frame_size = (frame_size + 15) & !15;
-        Self {
-            slots,
-            frame_size,
-            defined,
-        }
+        Self { slots, frame_size }
     }
 
     pub fn recompute_frame_size_from_slots(&mut self) {
@@ -78,12 +67,6 @@ impl FrameMap {
         let mut frame_size = (-min_off).max(0);
         frame_size = (frame_size + 15) & !15;
         self.frame_size = frame_size;
-    }
-
-    /// True when the register holds a value rather than being a stack
-    /// allocation placeholder whose slot address is the value.
-    pub fn holds_value(&self, r: &Register) -> bool {
-        self.defined.contains(r)
     }
 
     /// Returns the stack slot offset for a register, if it has one.

@@ -441,7 +441,6 @@ pub(super) fn emit_instruction_x86_64(
     saved_regs: &[&str],
     target_os: TargetOperatingSystem,
     func_name: &str,
-    def_regs: &BTreeSet<VirtualReg>,
     settings: &MirCodegenSettings,
     debug_line: &mut u32,
     abi_extensions: &AbiExtensions,
@@ -1482,7 +1481,6 @@ pub(super) fn emit_instruction_x86_64(
                     saved_regs,
                     target_os,
                     func_name,
-                    def_regs,
                     settings,
                     debug_line,
                     abi_extensions,
@@ -1581,22 +1579,7 @@ pub(super) fn emit_instruction_x86_64(
         MirInst::Lea { dst, base, offset } => {
             match base {
                 Register::Virtual(vreg) => {
-                    let is_placeholder = !def_regs.contains(vreg);
-
-                    if is_placeholder {
-                        if let Some(slot_offset) = stack_slots.get(vreg) {
-                            let total_offset = *slot_offset as i64 + (*offset as i64);
-                            if total_offset == 0 {
-                                writeln!(writer, "    leaq (%rbp), %rax")?;
-                            } else {
-                                writeln!(writer, "    leaq {total_offset}(%rbp), %rax")?;
-                            }
-                        } else {
-                            return Err(LaminaError::ValidationError(format!(
-                                "LEA placeholder base vreg {vreg:?} has no stack slot"
-                            )));
-                        }
-                    } else if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
+                    if let Some(phys) = reg_alloc.get_mapping_for(vreg) {
                         if *offset == 0 {
                             writeln!(writer, "    movq %{phys}, %rax")?;
                         } else {

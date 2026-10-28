@@ -1291,56 +1291,19 @@ fn emit_block<W: Write>(
             }
             MirInst::Lea { dst, base, offset } => {
                 let t = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                match base {
-                    // A placeholder's slot is the storage itself, so its
-                    // address is the value; any other register holds a pointer
-                    // that has to be loaded first.
-                    Register::Virtual(_) if !frame.holds_value(base) => {
-                        if let Some(slot_off) = frame.slot_of(base) {
-                            // Compute address: x29 + slot_off + offset
-                            let total = slot_off as i64 + (*offset as i64);
-                            if (0..=4095).contains(&total) {
-                                writeln!(w, "    add {t}, x29, #{total}")?;
-                            } else if total < 0 && -total <= 4095 {
-                                writeln!(w, "    sub {}, x29, #{}", t, -total)?;
-                            } else {
-                                emit_mov_imm64(w, t, total as u64)?;
-                                writeln!(w, "    add {t}, x29, {t}")?;
-                            }
-                        } else {
-                            // No stack slot: load value from physical reg and add offset
-                            load_reg_to(w, base, t, frame, ra)?;
-                            if *offset != 0 {
-                                let off = *offset as i64;
-                                if (0..=4095).contains(&off) {
-                                    writeln!(w, "    add {t}, {t}, #{off}")?;
-                                } else if off < 0 && -off <= 4095 {
-                                    writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
-                                } else {
-                                    let oreg = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                                    emit_mov_imm64(w, oreg, off as u64)?;
-                                    writeln!(w, "    add {t}, {t}, {oreg}")?;
-                                    ra.free_scratch(oreg);
-                                }
-                            }
-                        }
-                    }
-                    _ => {
-                        // Physical register: load value and add offset
-                        load_reg_to(w, base, t, frame, ra)?;
-                        if *offset != 0 {
-                            let off = *offset as i64;
-                            if (0..=4095).contains(&off) {
-                                writeln!(w, "    add {t}, {t}, #{off}")?;
-                            } else if off < 0 && -off <= 4095 {
-                                writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
-                            } else {
-                                let oreg = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                                emit_mov_imm64(w, oreg, off as u64)?;
-                                writeln!(w, "    add {t}, {t}, {oreg}")?;
-                                ra.free_scratch(oreg);
-                            }
-                        }
+                // The base register holds the pointer value.
+                load_reg_to(w, base, t, frame, ra)?;
+                if *offset != 0 {
+                    let off = *offset as i64;
+                    if (0..=4095).contains(&off) {
+                        writeln!(w, "    add {t}, {t}, #{off}")?;
+                    } else if off < 0 && -off <= 4095 {
+                        writeln!(w, "    sub {}, {}, #{}", t, t, -off)?;
+                    } else {
+                        let oreg = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        emit_mov_imm64(w, oreg, off as u64)?;
+                        writeln!(w, "    add {t}, {t}, {oreg}")?;
+                        ra.free_scratch(oreg);
                     }
                 }
                 store_result(w, dst, t, frame, ra)?;
