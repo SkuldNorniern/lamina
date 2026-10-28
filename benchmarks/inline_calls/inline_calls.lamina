@@ -1,0 +1,39 @@
+# Call-heavy loop: every iteration runs a chain of calls to two tiny leaf
+# functions. The leaves are small enough to inline, so the difference between
+# optimization levels is mostly call overhead.
+
+fn @mix(i64 %a, i64 %b) -> i64 {
+  entry:
+    %t = mul.i64 %a, 31
+    %u = add.i64 %t, %b
+    %v = xor.i64 %u, %a
+    ret.i64 %v
+}
+
+fn @step(i64 %a, i64 %b) -> i64 {
+  entry:
+    %m = call @mix(%a, %b)
+    %s = call @mix(%m, 7)
+    ret.i64 %s
+}
+
+@export
+fn @main() -> i64 {
+  entry:
+    %acc = add.i64 1, 0
+    %i = add.i64 0, 0
+    jmp loop_head
+
+  loop_head:
+    %more = lt.i64 %i, 20000000
+    br %more, loop_body, loop_done
+
+  loop_body:
+    %acc = call @step(%acc, %i)
+    %i = add.i64 %i, 1
+    jmp loop_head
+
+  loop_done:
+    print %acc
+    ret.i64 0
+}

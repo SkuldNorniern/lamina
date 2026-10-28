@@ -1,0 +1,36 @@
+# Integer arithmetic on locals only. Each iteration runs an LCG step and an
+# xor-shift mix, and adds the result to a running sum. The loop body touches no
+# memory.
+
+@export
+fn @main() -> i64 {
+  entry:
+    %x = add.i64 12345, 0
+    %y = add.i64 0, 0
+    %z = add.i64 0, 0
+    %i = add.i64 0, 0
+    jmp loop_head
+
+  loop_head:
+    %more = lt.i64 %i, 10000000
+    br %more, loop_body, loop_done
+
+  loop_body:
+    %m = mul.i64 %x, 1103515245
+    %m1 = add.i64 %m, 12345
+    %x = and.i64 %m1, 2147483647
+    %s = shr.i64 %x, 7
+    %s2 = shl.i64 %y, 3
+    %y1 = xor.i64 %s, %s2
+    %y = and.i64 %y1, 2147483647
+    %w = xor.i64 %y, %x
+    %z = add.i64 %z, %w
+    %i = add.i64 %i, 1
+    jmp loop_head
+
+  loop_done:
+    print %x
+    print %y
+    print %z
+    ret.i64 0
+}
