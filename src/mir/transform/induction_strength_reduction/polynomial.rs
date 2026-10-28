@@ -37,6 +37,7 @@ impl Polynomial {
 
 pub(super) struct Analysis<'a> {
     func: &'a Function,
+    dominators: &'a Dominators,
     info: &'a LoopInfo,
     defs: &'a HashMap<Register, Vec<Position>>,
     product: Position,
@@ -50,6 +51,7 @@ pub(super) struct Analysis<'a> {
 impl<'a> Analysis<'a> {
     pub fn new(
         func: &'a Function,
+        dominators: &'a Dominators,
         info: &'a LoopInfo,
         defs: &'a HashMap<Register, Vec<Position>>,
         product: Position,
@@ -57,6 +59,7 @@ impl<'a> Analysis<'a> {
     ) -> Self {
         Self {
             func,
+            dominators,
             info,
             defs,
             product,
@@ -214,11 +217,10 @@ impl<'a> Analysis<'a> {
                         Epoch::Old
                     }
                 } else {
-                    let dominators = calculate_dominators(self.func);
-                    if dominators
-                        .get(&self.func.blocks[use_position.0].label)
-                        .is_some_and(|d| d.contains(&self.func.blocks[definition.0].label))
-                    {
+                    if self.dominators.dominates(
+                        &self.func.blocks[definition.0].label,
+                        &self.func.blocks[use_position.0].label,
+                    ) {
                         Epoch::Updated
                     } else {
                         Epoch::Old

@@ -2,9 +2,7 @@
 
 use crate::mir::{
     AddressMode, Block, Function, Immediate, Instruction, IntBinOp, Operand, Register,
-    transform::{
-        Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
-    },
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use std::collections::HashMap;
 
@@ -76,8 +74,6 @@ impl Transform for CopyPropagation {
 
 impl CopyPropagation {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        check_function_size(func, "copy_propagation", 500, 1_000)?;
-
         let mut changed = false;
 
         // Apply copy propagation within each basic block (safe: no control flow issues)
@@ -92,21 +88,19 @@ impl CopyPropagation {
 
     fn propagate_copies_in_block(&self, block: &mut Block) -> bool {
         let mut changed = false;
-        let mut value_map = HashMap::new();
-
-        let mut propagations_this_block = 0;
-        let max_propagations_per_block = 50;
+        let mut value_map: HashMap<Register, Operand> = HashMap::new();
+        // Keys that were mapped to a given register, so a redefinition finds them
+        // directly. Entries can go stale when a key is remapped; those are checked
+        // against `value_map` before removal.
+        let mut aliases_of: HashMap<Register, Vec<Register>> = HashMap::new();
 
         let mut new_instructions = Vec::new();
 
         for instr in &block.instructions {
             let mut new_instr = instr.clone();
 
-            if propagations_this_block < max_propagations_per_block
-                && self.propagate_copies(&mut new_instr, &value_map)
-            {
+            if self.propagate_copies(&mut new_instr, &value_map) {
                 changed = true;
-                propagations_this_block += 1;
             }
 
             if let Some(def_reg) = new_instr.def_reg() {
@@ -118,10 +112,18 @@ impl CopyPropagation {
                 //   %b = add %x, 5   → removes b as key, but {c → b} stays STALE
                 //   %d = add %c, 0   → propagates c → b, but b is now redefined
                 // would silently produce wrong code on non-SSA loops.
-                value_map.retain(|_, v| !matches!(v, Operand::Register(r) if r == def_reg));
+                if let Some(keys) = aliases_of.remove(def_reg) {
+                    for key in keys {
+                        if matches!(value_map.get(&key), Some(Operand::Register(r)) if r == def_reg)
+                        {
+                            value_map.remove(&key);
+                        }
+                    }
+                }
             }
             if let Some((dst, src)) = identity_copy_source(&new_instr) {
                 value_map.insert(dst.clone(), Operand::Register(src.clone()));
+                aliases_of.entry(src.clone()).or_default().push(dst.clone());
             }
 
             new_instructions.push(new_instr);

@@ -5,8 +5,8 @@ use crate::mir::{
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use std::{
-    cmp::{Ordering, max},
-    collections::{BinaryHeap, HashMap, HashSet},
+    cmp::Ordering,
+    collections::{BinaryHeap, HashMap},
     mem,
 };
 
@@ -40,17 +40,7 @@ impl InstructionScheduling {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
         let mut changed = false;
 
-        const MAX_BLOCKS: usize = 500;
-        const MAX_INSTRUCTIONS_PER_BLOCK: usize = 2_000;
-
-        if func.blocks.len() > MAX_BLOCKS {
-            return Ok(false); // Skip optimization on huge functions for safety
-        }
-
         for block in &mut func.blocks {
-            if block.instructions.len() > MAX_INSTRUCTIONS_PER_BLOCK {
-                continue;
-            }
             if self.schedule_block(block) {
                 changed = true;
             }
@@ -192,52 +182,19 @@ impl InstructionScheduling {
         &self,
         graph: &DependencyGraph,
         instructions: &[Instruction],
-    ) -> HashMap<usize, usize> {
-        let mut priorities = HashMap::new();
-        // Calculate latency-weighted depth from sinks up
-        // We need a topological sort or just simple recursion with memoization.
-        // Since it's a DAG, memoization works.
-
-        let mut visited = HashSet::new();
-        for i in 0..instructions.len() {
-            self.compute_depth(i, graph, instructions, &mut priorities, &mut visited);
+    ) -> Vec<usize> {
+        let mut priorities = vec![0; instructions.len()];
+        for node in (0..instructions.len()).rev() {
+            let max_succ_depth = graph.edges.get(&node).map_or(0, |succs| {
+                succs
+                    .iter()
+                    .map(|&succ| priorities[succ])
+                    .max()
+                    .unwrap_or(0)
+            });
+            priorities[node] = self.get_latency(&instructions[node]) + max_succ_depth;
         }
         priorities
-    }
-
-    fn compute_depth(
-        &self,
-        node: usize,
-        graph: &DependencyGraph,
-        instructions: &[Instruction],
-        priorities: &mut HashMap<usize, usize>,
-        visited: &mut HashSet<usize>,
-    ) -> usize {
-        if let Some(&p) = priorities.get(&node) {
-            return p;
-        }
-
-        if visited.contains(&node) {
-            return 0; // Cycle detected (shouldn't happen in DAG)
-        }
-        visited.insert(node);
-
-        let latency = self.get_latency(&instructions[node]);
-        let mut max_succ_depth = 0;
-
-        if let Some(succs) = graph.edges.get(&node) {
-            for &succ in succs {
-                max_succ_depth = max(
-                    max_succ_depth,
-                    self.compute_depth(succ, graph, instructions, priorities, visited),
-                );
-            }
-        }
-
-        let depth = latency + max_succ_depth;
-        visited.remove(&node);
-        priorities.insert(node, depth);
-        depth
     }
 
     fn get_latency(&self, instr: &Instruction) -> usize {
@@ -258,7 +215,7 @@ impl InstructionScheduling {
     fn list_schedule(
         &self,
         graph: &DependencyGraph,
-        priorities: &HashMap<usize, usize>,
+        priorities: &[usize],
         num_instrs: usize,
     ) -> Vec<usize> {
         let mut scheduled = Vec::with_capacity(num_instrs);
@@ -271,7 +228,7 @@ impl InstructionScheduling {
         for (i, &degree) in in_degree.iter().enumerate().take(num_instrs) {
             if degree == 0 {
                 ready_queue.push(ScheduledItem {
-                    priority: *priorities.get(&i).unwrap_or(&0),
+                    priority: priorities[i],
                     index: i,
                 });
             }
@@ -287,7 +244,7 @@ impl InstructionScheduling {
                         *degree -= 1;
                         if *degree == 0 {
                             ready_queue.push(ScheduledItem {
-                                priority: *priorities.get(&v).unwrap_or(&0),
+                                priority: priorities[v],
                                 index: v,
                             });
                         }

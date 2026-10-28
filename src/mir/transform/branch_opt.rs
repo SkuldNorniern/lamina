@@ -1,12 +1,10 @@
 //! Branch optimization transform for MIR.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::mir::{
     Function,
-    transform::{
-        Transform, TransformCategory, TransformError, TransformLevel, check_function_size,
-    },
+    transform::{Transform, TransformCategory, TransformError, TransformLevel},
 };
 use lamina_mir::Block as MirBlock;
 
@@ -38,8 +36,6 @@ impl Transform for BranchOptimization {
 
 impl BranchOptimization {
     fn apply_internal(&self, func: &mut Function) -> Result<bool, TransformError> {
-        check_function_size(func, "branch_optimization", 1_000, usize::MAX)?;
-
         if func.blocks.len() <= 1 {
             return Ok(false);
         }
@@ -94,21 +90,19 @@ impl BranchOptimization {
     }
 
     fn compute_reachable_blocks<'a>(&self, func: &'a Function) -> HashSet<&'a str> {
+        let mut blocks_by_label: HashMap<&str, &MirBlock> =
+            HashMap::with_capacity(func.blocks.len());
+        for block in &func.blocks {
+            blocks_by_label.entry(block.label.as_str()).or_insert(block);
+        }
         let mut reachable: HashSet<&str> = HashSet::new();
         let mut worklist: VecDeque<&str> = VecDeque::new();
-        const MAX_ITERATIONS: usize = 10_000;
 
         reachable.insert(&func.entry);
         worklist.push_back(&func.entry);
 
-        let mut iterations = 0;
         while let Some(current_label) = worklist.pop_front() {
-            if iterations >= MAX_ITERATIONS {
-                break;
-            }
-            iterations += 1;
-
-            if let Some(block) = func.get_block(current_label) {
+            if let Some(block) = blocks_by_label.get(current_label) {
                 for succ in block.successors() {
                     if reachable.insert(succ) {
                         worklist.push_back(succ);
@@ -183,7 +177,7 @@ mod tests {
     }
 
     #[test]
-    fn test_large_function_rejected() {
+    fn test_large_function_is_optimized() {
         let mut func = FunctionBuilder::new("test")
             .returns(MirType::Scalar(ScalarType::I64))
             .block("entry")
@@ -192,7 +186,6 @@ mod tests {
             })
             .build();
 
-        // Add many blocks to exceed limit
         for i in 0..2000 {
             let label = format!("block{}", i);
             let mut block = Block::new(&label);
@@ -203,8 +196,7 @@ mod tests {
         }
 
         let pass = BranchOptimization;
-        let result = pass.apply(&mut func);
-        assert!(result.is_err());
+        assert!(pass.apply(&mut func).is_ok());
     }
 
     #[test]

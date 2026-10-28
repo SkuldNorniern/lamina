@@ -4,7 +4,8 @@ use crate::mir::{
     Block, Function, Immediate, Instruction, IntBinOp, MirType, Operand, Register, ScalarType,
     VirtualReg,
     transform::{
-        Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators,
+        Dominators, Transform, TransformCategory, TransformError, TransformLevel,
+        calculate_dominators,
     },
 };
 
@@ -132,7 +133,7 @@ struct Legality<'a> {
     func: &'a Function,
     info: &'a LoopInfo,
     header_idx: usize,
-    dominators: &'a HashMap<String, HashSet<String>>,
+    dominators: &'a Dominators,
     latches: &'a [String],
     nested: &'a HashSet<String>,
 }
@@ -144,7 +145,7 @@ impl Legality<'_> {
         product: (usize, usize),
         update: (usize, usize),
     ) -> Option<HashSet<String>> {
-        let dominates = |a: &str, b: &str| self.dominators.get(b).is_some_and(|ds| ds.contains(a));
+        let dominates = |a: &str, b: &str| self.dominators.dominates(a, b);
         let (bi, ii) = product;
         let (ub, ui) = update;
         let block = &self.func.blocks[bi];
@@ -201,7 +202,7 @@ fn reusable(
     func: &Function,
     info: &LoopInfo,
     defs: &HashMap<Register, Vec<(usize, usize)>>,
-    dominators: &HashMap<String, HashSet<String>>,
+    dominators: &Dominators,
     dst: &Register,
     product: (usize, usize),
     update: (usize, usize),
@@ -217,9 +218,7 @@ fn reusable(
             b.instructions.iter().enumerate().all(|(use_ii, i)| {
                 !i.use_regs().contains(&dst)
                     || (info.blocks.contains(&b.label)
-                        && dominators
-                            .get(&b.label)
-                            .is_some_and(|ds| ds.contains(&block.label))
+                        && dominators.dominates(&block.label, &b.label)
                         && !seen.contains(&b.label)
                         && (use_bi != bi || use_ii > ii)
                         && (use_bi != ub || use_ii < ui))
@@ -319,7 +318,8 @@ fn reduce_loop(func: &mut Function, info: &LoopInfo) -> Result<bool, TransformEr
             ) {
                 continue;
             }
-            let mut analysis = polynomial::Analysis::new(func, info, &defs, (bi, ii), *ty);
+            let mut analysis =
+                polynomial::Analysis::new(func, &dominators, info, &defs, (bi, ii), *ty);
             if let Some(polynomial) = analysis.product(lhs, rhs) {
                 let Some((_, update, _)) = polynomial.updates.first() else {
                     continue;
@@ -1509,7 +1509,8 @@ mod tests {
             (reg(10), vec![(2, 0)]),
         ]);
         let info = LoopInvariantCodeMotion.find_loops(&func).remove(0);
-        let mut analysis = polynomial::Analysis::new(&func, &info, &defs, (2, 1), ty);
+        let dominators = calculate_dominators(&func);
+        let mut analysis = polynomial::Analysis::new(&func, &dominators, &info, &defs, (2, 1), ty);
         assert!(analysis.product(&operand(10), &operand(6)).is_none());
         let body = func.get_block_mut("body").unwrap();
         body.instructions.remove(0);
@@ -1525,7 +1526,9 @@ mod tests {
         }
         defs.insert(reg(0), vec![(2, 193)]);
         defs.insert(reg(6), vec![(2, 194)]);
-        let mut analysis = polynomial::Analysis::new(&func, &info, &defs, (2, 190), ty);
+        let dominators = calculate_dominators(&func);
+        let mut analysis =
+            polynomial::Analysis::new(&func, &dominators, &info, &defs, (2, 190), ty);
         assert!(analysis.product(&operand(199), &operand(6)).is_none());
     }
     #[test]

@@ -55,9 +55,7 @@ impl Transform for LoopRotation {
                 .filter(|(_, b)| {
                     b.label != header
                         && matches!(b.instructions.last(), Some(Instruction::Jmp { target }) if *target == header)
-                        && dominators
-                            .get(&b.label)
-                            .is_some_and(|ds| ds.contains(&header))
+                        && dominators.dominates(&header, &b.label)
                 })
                 .map(|(index, _)| index)
                 .collect();

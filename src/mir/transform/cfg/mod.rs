@@ -30,65 +30,146 @@ pub(crate) fn compute_back_edge_headers(func: &Function) -> HashSet<String> {
     headers
 }
 
-/// Compute dominator sets via iterative dataflow.
+/// Dominance relation over the blocks of one function.
 ///
-/// Returns a map from block label → set of block labels that dominate it (including itself).
-pub(crate) fn calculate_dominators(func: &Function) -> HashMap<String, HashSet<String>> {
-    let all_blocks: HashSet<String> = func.blocks.iter().map(|b| b.label.clone()).collect();
+/// Built from the immediate-dominator tree (Cooper, Harvey and Kennedy), so a query
+/// costs constant time and the relation is never materialised as per-block sets.
+/// Blocks unreachable from the entry are dominated by every block, which is what the
+/// iterative dataflow formulation yields for them.
+pub(crate) struct Dominators {
+    index: HashMap<String, usize>,
+    /// Pre- and post-order numbers in the dominator tree; `None` when unreachable.
+    interval: Vec<Option<(usize, usize)>>,
+}
 
-    let mut pred_map: HashMap<String, Vec<String>> = HashMap::new();
-    for label in &all_blocks {
-        pred_map.insert(label.clone(), Vec::new());
+impl Dominators {
+    /// Whether block `a` dominates block `b` (a block dominates itself).
+    pub(crate) fn dominates(&self, a: &str, b: &str) -> bool {
+        let (Some(&ai), Some(&bi)) = (self.index.get(a), self.index.get(b)) else {
+            return false;
+        };
+        match (self.interval[ai], self.interval[bi]) {
+            (_, None) => true,
+            (None, Some(_)) => false,
+            (Some((a_in, a_out)), Some((b_in, _))) => a_in <= b_in && b_in < a_out,
+        }
     }
-    for block in &func.blocks {
-        for succ in block.successors() {
-            pred_map
-                .entry(succ.to_owned())
-                .or_default()
-                .push(block.label.clone());
+}
+
+/// Compute the dominance relation of `func`.
+pub(crate) fn calculate_dominators(func: &Function) -> Dominators {
+    let n = func.blocks.len();
+    let mut index: HashMap<String, usize> = HashMap::with_capacity(n);
+    for (i, block) in func.blocks.iter().enumerate() {
+        index.insert(block.label.clone(), i);
+    }
+
+    let mut succs: Vec<Vec<usize>> = vec![Vec::new(); n];
+    let mut preds: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (i, block) in func.blocks.iter().enumerate() {
+        for target in block.successors() {
+            if let Some(&t) = index.get(target) {
+                succs[i].push(t);
+                preds[t].push(i);
+            }
         }
     }
 
-    let mut dominators: HashMap<String, HashSet<String>> = HashMap::new();
-    for block in &func.blocks {
-        if block.label == func.entry {
-            let mut set = HashSet::new();
-            set.insert(block.label.clone());
-            dominators.insert(block.label.clone(), set);
+    let Some(&entry) = index.get(func.entry.as_str()) else {
+        return Dominators {
+            index,
+            interval: vec![None; n],
+        };
+    };
+
+    // Reverse post-order of the blocks reachable from the entry.
+    let mut postorder = Vec::with_capacity(n);
+    let mut visited = vec![false; n];
+    let mut stack = vec![(entry, 0usize)];
+    visited[entry] = true;
+    while let Some((node, next)) = stack.last_mut() {
+        let node = *node;
+        if let Some(&succ) = succs[node].get(*next) {
+            *next += 1;
+            if !visited[succ] {
+                visited[succ] = true;
+                stack.push((succ, 0));
+            }
         } else {
-            dominators.insert(block.label.clone(), all_blocks.clone());
+            postorder.push(node);
+            stack.pop();
         }
     }
+    let rpo: Vec<usize> = postorder.iter().rev().copied().collect();
+    let mut rpo_number = vec![usize::MAX; n];
+    for (number, &node) in rpo.iter().enumerate() {
+        rpo_number[node] = number;
+    }
 
+    let mut idom: Vec<Option<usize>> = vec![None; n];
+    idom[entry] = Some(entry);
+    let intersect = |idom: &[Option<usize>], mut a: usize, mut b: usize| {
+        while a != b {
+            while rpo_number[a] > rpo_number[b] {
+                a = idom[a].unwrap_or(entry);
+            }
+            while rpo_number[b] > rpo_number[a] {
+                b = idom[b].unwrap_or(entry);
+            }
+        }
+        a
+    };
     let mut changed = true;
-    const MAX_ITERATIONS: usize = 1000;
-    let mut iterations = 0;
-    while changed && iterations < MAX_ITERATIONS {
+    while changed {
         changed = false;
-        iterations += 1;
-        for block in &func.blocks {
-            if block.label == func.entry {
-                continue;
-            }
-            let preds: &[String] = pred_map.get(&block.label).map_or(&[], Vec::as_slice);
-            if preds.is_empty() {
-                continue;
-            }
-            let mut new_doms: HashSet<String> =
-                dominators.get(&preds[0]).cloned().unwrap_or_default();
-            for pred in &preds[1..] {
-                if let Some(pred_doms) = dominators.get(pred) {
-                    new_doms = new_doms.intersection(pred_doms).cloned().collect();
+        for &node in rpo.iter().skip(1) {
+            let mut new_idom: Option<usize> = None;
+            for &pred in &preds[node] {
+                if idom[pred].is_none() {
+                    continue;
                 }
+                new_idom = Some(match new_idom {
+                    None => pred,
+                    Some(current) => intersect(&idom, pred, current),
+                });
             }
-            new_doms.insert(block.label.clone());
-            if dominators.get(&block.label) != Some(&new_doms) {
-                dominators.insert(block.label.clone(), new_doms);
+            if new_idom.is_some() && idom[node] != new_idom {
+                idom[node] = new_idom;
                 changed = true;
             }
         }
     }
-    dominators
+
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for &node in &rpo {
+        if node != entry
+            && let Some(parent) = idom[node]
+        {
+            children[parent].push(node);
+        }
+    }
+    let mut interval = vec![None; n];
+    let mut clock = 0usize;
+    let mut stack = vec![(entry, 0usize)];
+    interval[entry] = Some((clock, 0));
+    clock += 1;
+    while let Some((node, next)) = stack.last_mut() {
+        let node = *node;
+        if let Some(&child) = children[node].get(*next) {
+            *next += 1;
+            interval[child] = Some((clock, 0));
+            clock += 1;
+            stack.push((child, 0));
+        } else {
+            if let Some((_, out)) = interval[node].as_mut() {
+                *out = clock;
+            }
+            clock += 1;
+            stack.pop();
+        }
+    }
+
+    Dominators { index, interval }
 }
 
 /// Simple CFG simplifications:
@@ -480,10 +561,9 @@ mod tests {
         let doms = calculate_dominators(&func);
         for block in &func.blocks {
             assert!(
-                doms[&block.label].contains("entry"),
-                "entry should dominate '{}' but doms = {:?}",
-                block.label,
-                doms[&block.label]
+                doms.dominates("entry", &block.label),
+                "entry should dominate '{}'",
+                block.label
             );
         }
     }
@@ -492,7 +572,7 @@ mod tests {
     fn block_dominates_itself() {
         let func = simple_linear_func();
         let doms = calculate_dominators(&func);
-        assert!(doms["entry"].contains("entry"));
+        assert!(doms.dominates("entry", "entry"));
     }
 
     #[test]

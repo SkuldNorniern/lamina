@@ -3,7 +3,7 @@
 //! This transform converts scalar operations in loops to SIMD vector
 //! operations. This is an O3 nightly/unstable feature.
 
-use crate::mir::transform::calculate_dominators;
+use crate::mir::transform::{Dominators, calculate_dominators};
 
 use crate::mir::{
     Function,
@@ -12,7 +12,7 @@ use crate::mir::{
     transform::{Transform, TransformCategory, TransformError, TransformLevel},
     types::{MirType, ScalarType, VectorLane, VectorType},
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// Auto-vectorization transform that converts scalar loop operations to SIMD.
 ///
@@ -105,16 +105,8 @@ impl AutoVectorization {
     }
 
     /// Check if an edge is a back edge (target dominates source)
-    fn is_back_edge(
-        &self,
-        dominators: &HashMap<String, HashSet<String>>,
-        source: &str,
-        target: &str,
-    ) -> bool {
-        dominators
-            .get(target)
-            .map(|doms| doms.contains(source))
-            .unwrap_or(false)
+    fn is_back_edge(&self, dominators: &Dominators, source: &str, target: &str) -> bool {
+        dominators.dominates(target, source)
     }
 
     /// Analyze a loop to extract its structure
@@ -123,7 +115,7 @@ impl AutoVectorization {
         func: &Function,
         header: &str,
         back_edge_source: &str,
-        _dominators: &HashMap<String, HashSet<String>>,
+        _dominators: &Dominators,
     ) -> Option<LoopInfo> {
         let mut loop_blocks = HashSet::new();
         let mut to_visit = vec![back_edge_source.to_string()];

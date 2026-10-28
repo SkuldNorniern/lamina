@@ -3,7 +3,8 @@
 use crate::mir::{
     Block, Function, Instruction, Register,
     transform::{
-        Transform, TransformCategory, TransformError, TransformLevel, calculate_dominators,
+        Dominators, Transform, TransformCategory, TransformError, TransformLevel,
+        calculate_dominators,
     },
 };
 use std::{
@@ -198,7 +199,7 @@ impl LoopInvariantCodeMotion {
                 else {
                     break;
                 };
-                if loop_info.blocks.len() > 50 || !self.optimize_loop(func, &loop_info)? {
+                if !self.optimize_loop(func, &loop_info)? {
                     break;
                 }
                 changed = true;
@@ -213,6 +214,12 @@ impl LoopInvariantCodeMotion {
         let mut loops = Vec::new();
 
         let dominators = calculate_dominators(func);
+        let mut preds: HashMap<&str, Vec<&str>> = HashMap::new();
+        for block in &func.blocks {
+            for succ in block.successors() {
+                preds.entry(succ).or_default().push(block.label.as_str());
+            }
+        }
 
         for block in &func.blocks {
             for instr in &block.instructions {
@@ -225,21 +232,20 @@ impl LoopInvariantCodeMotion {
                     // Check for back edges: target dominates source
                     if self.is_back_edge(&dominators, &block.label, true_target)
                         && let Some(loop_info) =
-                            self.analyze_loop(func, true_target, &block.label, &dominators)
+                            self.analyze_loop(true_target, &block.label, &preds)
                     {
                         loops.push(loop_info);
                     }
                     if self.is_back_edge(&dominators, &block.label, false_target)
                         && let Some(loop_info) =
-                            self.analyze_loop(func, false_target, &block.label, &dominators)
+                            self.analyze_loop(false_target, &block.label, &preds)
                     {
                         loops.push(loop_info);
                     }
                 }
                 if let Instruction::Jmp { target } = instr
                     && self.is_back_edge(&dominators, &block.label, target)
-                    && let Some(loop_info) =
-                        self.analyze_loop(func, target, &block.label, &dominators)
+                    && let Some(loop_info) = self.analyze_loop(target, &block.label, &preds)
                 {
                     loops.push(loop_info);
                 }
@@ -271,39 +277,23 @@ impl LoopInvariantCodeMotion {
             .collect()
     }
 
-    fn is_back_edge(
-        &self,
-        dominators: &HashMap<String, HashSet<String>>,
-        from: &str,
-        to: &str,
-    ) -> bool {
+    fn is_back_edge(&self, dominators: &Dominators, from: &str, to: &str) -> bool {
         // A back edge exists if the target (header) dominates the source
-        if let Some(doms) = dominators.get(from) {
-            doms.contains(to)
-        } else {
-            false
-        }
+        dominators.dominates(to, from)
     }
 
     fn analyze_loop(
         &self,
-        func: &Function,
         header: &str,
         back_edge_source: &str,
-        _dominators: &HashMap<String, HashSet<String>>,
+        preds: &HashMap<&str, Vec<&str>>,
     ) -> Option<LoopInfo> {
-        // Natural loop identification:
-        // A natural loop consists of the header, the back edge source,
-        // and all nodes that can reach the back edge without going through the header.
-        // (Optimized: we can traverse backwards from back_edge_source stopping at header)
+        // Natural loop: the header plus every block that reaches the back edge source
+        // without passing through the header.
         let mut loop_blocks = HashSet::new();
         let mut to_visit = Vec::new();
         let mut visited = HashSet::new();
-        const MAX_LOOP_ANALYSIS_ITERATIONS: usize = 1000;
-        let mut iterations = 0;
 
-        // First, collect all blocks that can reach the back edge source
-        // Initialize queue with back edge source
         if header != back_edge_source {
             to_visit.push(back_edge_source.to_string());
         }
@@ -311,21 +301,15 @@ impl LoopInvariantCodeMotion {
         loop_blocks.insert(back_edge_source.to_string());
 
         while let Some(block_label) = to_visit.pop() {
-            if iterations >= MAX_LOOP_ANALYSIS_ITERATIONS {
-                return None;
-            }
-            iterations += 1;
-
             if visited.contains(&block_label) {
                 continue;
             }
             visited.insert(block_label.clone());
             loop_blocks.insert(block_label.clone());
 
-            // Add predecessors that are not the header
-            for block in &func.blocks {
-                if self.has_edge_to(func, &block.label, &block_label) && block.label != header {
-                    to_visit.push(block.label.clone());
+            for &pred in preds.get(block_label.as_str()).into_iter().flatten() {
+                if pred != header {
+                    to_visit.push(pred.to_string());
                 }
             }
         }
@@ -337,19 +321,10 @@ impl LoopInvariantCodeMotion {
             return None;
         }
 
-        if loop_blocks.len() > 50 {
-            return None;
-        }
-
         Some(LoopInfo {
             header: header.to_string(),
             blocks: loop_blocks,
         })
-    }
-
-    fn has_edge_to(&self, func: &Function, from: &str, to: &str) -> bool {
-        func.get_block(from)
-            .is_some_and(|b| b.successors().contains(&to))
     }
 
     fn optimize_loop(
