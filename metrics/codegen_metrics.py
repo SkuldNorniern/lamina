@@ -7,6 +7,9 @@ records deterministic counts from the emitted AT&T assembly. No timing.
 
   python3 metrics/codegen_metrics.py --regenerate   rewrite metrics/baseline-x86_64.txt
   python3 metrics/codegen_metrics.py --check        compare against it, exit 1 on any difference
+  python3 metrics/codegen_metrics.py --benchmarks   print the same counts for benchmarks/*/*.lamina (not checked in)
+
+--compiler PATH measures another lamina binary, such as one built before a change.
 
 See metrics/README.md for metric definitions.
 """
@@ -112,10 +115,10 @@ def measure(text):
     }
 
 
-def compile_one(testcase, level, tmpdir):
-    stem = os.path.join(tmpdir, f"{testcase}_O{level}")
+def compile_one(source, level, tmpdir, compiler):
+    stem = os.path.join(tmpdir, f"{source.parent.name}_{source.stem}_O{level}")
     cmd = [
-        str(COMPILER), str(TESTCASES / f"{testcase}.lamina"),
+        str(compiler), str(source),
         "--emit-asm", "--target", TARGET, "--opt-level", str(level),
         "-j", "1", "-o", stem,
     ]
@@ -127,16 +130,27 @@ def compile_one(testcase, level, tmpdir):
         return measure(f.read())
 
 
-def collect():
-    if not COMPILER.exists():
-        print(f"error: {COMPILER} not found. Run: cargo build --release", file=sys.stderr)
+def testcase_sources():
+    return {p.stem: p for p in sorted(TESTCASES.glob("*.lamina"))}
+
+
+def benchmark_sources():
+    return {p.parent.name: p for p in sorted((ROOT / "benchmarks").glob("*/*.lamina"))}
+
+
+def collect(sources=None, compiler=COMPILER):
+    compiler = Path(compiler)
+    if not compiler.exists():
+        print(f"error: {compiler} not found. Run: cargo build --release", file=sys.stderr)
         sys.exit(2)
-    names = sorted(p.stem for p in TESTCASES.glob("*.lamina"))
+    if sources is None:
+        sources = testcase_sources()
+    names = sorted(sources)
     results = {}
     with tempfile.TemporaryDirectory(prefix="lamina-metrics-") as tmpdir:
         jobs = [(n, lv) for n in names for lv in LEVELS]
         with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 2) as pool:
-            futures = {pool.submit(compile_one, n, lv, tmpdir): (n, lv) for n, lv in jobs}
+            futures = {pool.submit(compile_one, sources[n], lv, tmpdir, compiler): (n, lv) for n, lv in jobs}
             for fut in concurrent.futures.as_completed(futures):
                 results[futures[fut]] = fut.result()
     return names, results
@@ -295,12 +309,45 @@ def cmd_check():
     return 1
 
 
+def cmd_benchmarks(compiler):
+    names, results = collect(benchmark_sources(), compiler)
+    for name in names:
+        for lv in LEVELS:
+            r = results[(name, lv)]
+            if "error" in r:
+                print(f"{name} O{lv}: compile-failed")
+                continue
+            print(f"{name} O{lv}: " + format_counts(r))
+    print()
+    sums = {lv: {k: 0 for k in MEASURE_KEYS} for lv in LEVELS}
+    for (name, lv), r in results.items():
+        if "error" not in r:
+            for k in MEASURE_KEYS:
+                sums[lv][k] += r[k]
+    for lv in LEVELS:
+        print(f"total O{lv}: " + format_counts(sums[lv]))
+    return 0
+
+
+MEASURE_KEYS = ("instructions", "spills", "calls", "branches")
+
+
+def format_counts(r):
+    return ", ".join(f"{k} {r[k]}" for k in MEASURE_KEYS)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--regenerate", action="store_true", help="rewrite the baseline file")
     mode.add_argument("--check", action="store_true", help="compare against the baseline; exit 1 on difference")
+    mode.add_argument("--benchmarks", action="store_true", help="print counts for benchmarks/*/*.lamina")
+    ap.add_argument("--compiler", default=str(COMPILER), help="lamina binary to measure")
     args = ap.parse_args()
+    if args.benchmarks:
+        return cmd_benchmarks(args.compiler)
+    if args.compiler != str(COMPILER):
+        ap.error("--compiler applies to --benchmarks only; the baseline is measured with the built binary")
     return cmd_regenerate() if args.regenerate else cmd_check()
 
 
