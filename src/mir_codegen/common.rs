@@ -2196,6 +2196,26 @@ entry:
     }
 
     #[test]
+    fn global_align_annotation_sets_the_emitted_boundary() {
+        let ir = parse_module(
+            "@align(64)\nglobal $arena: [256 x i8]\n\
+             @align(16)\nglobal $tab: [2 x i64] = [1, 2]\n\
+             fn @main() -> i64 {\nentry:\n ret.i64 0\n}\n",
+        )
+        .expect("parse aligned globals");
+        let mir = from_ir(&ir, "aligned").expect("lower aligned globals");
+        let mut output = Vec::new();
+        generate_mir_x86_64::<Vec<u8>>(&mir, &mut output, TargetOperatingSystem::Linux)
+            .expect("emit aligned globals");
+        let text = String::from_utf8(output).expect("utf8 assembly");
+        assert!(
+            text.contains(".bss\n.p2align 6\narena:\n    .zero 256"),
+            "{text}"
+        );
+        assert!(text.contains(".data\n.p2align 4\ntab:"), "{text}");
+    }
+
+    #[test]
     fn unwritten_tail_of_initialized_global_is_zeroed() {
         let ir = parse_module(
             "global $g: [10000000000 x i8] = [1, 2]\nfn @main() -> i64 {\nentry:\n ret.i64 0\n}",
