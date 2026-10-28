@@ -1,20 +1,26 @@
-use std::env;
+const N_ROWS: i64 = 256;
+const K_DIM: i64 = 256;
+const N_COLS: i64 = 256;
 
-fn arg(i: usize) -> i64 {
-    env::args().nth(i).expect("missing argument").parse().expect("bad integer")
+fn mix(x: i64) -> i64 {
+    let a = x.wrapping_mul(1103515245).wrapping_add(12345) & 2147483647;
+    let b = a ^ (a >> 7);
+    let c = b.wrapping_mul(1103515245).wrapping_add(12345) & 2147483647;
+    let d = c ^ (c >> 11);
+    d & 65535
 }
 
 fn get_matrix_a_element(i: i64, k: i64) -> i64 {
-    i.wrapping_mul(k).wrapping_add(1)
+    mix(i * K_DIM + k)
 }
 
 fn get_matrix_b_element(k: i64, j: i64) -> i64 {
-    k.wrapping_mul(j).wrapping_add(1)
+    mix(k * N_COLS + j)
 }
 
-fn compute_matrix_cell(i: i64, j: i64, k_dim: i64) -> i64 {
+fn compute_matrix_cell(i: i64, j: i64) -> i64 {
     let mut sum: i64 = 0;
-    for k in 0..k_dim {
+    for k in 0..K_DIM {
         sum = sum.wrapping_add(get_matrix_a_element(i, k).wrapping_mul(get_matrix_b_element(k, j)));
     }
     sum
@@ -28,7 +34,7 @@ fn matmul_2d(n_rows: i64, k_dim: i64, n_cols: i64) -> i64 {
     let mut total_sum: i64 = 0;
     for i in 0..n_rows {
         for j in 0..n_cols {
-            total_sum = total_sum.wrapping_add(compute_matrix_cell(i, j, k_dim));
+            total_sum = total_sum.wrapping_add(compute_matrix_cell(i, j));
         }
     }
 
@@ -40,12 +46,8 @@ fn matmul_2d(n_rows: i64, k_dim: i64, n_cols: i64) -> i64 {
 }
 
 fn main() {
-    let n_rows = arg(1);
-    let k_dim = arg(2);
-    let n_cols = arg(3);
-
     println!("123456789");
-    let result = matmul_2d(n_rows, k_dim, n_cols);
+    let result = matmul_2d(N_ROWS, K_DIM, N_COLS);
     println!("{}", result);
     println!("987654323");
 }

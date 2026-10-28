@@ -47,9 +47,10 @@ MIN_EFFECT = 0.02
 
 # Lamina cannot read argv, so its sizes are literals in each .lamina file. The
 # native ports read the same values from argv, so the compilers cannot fold the
-# loops into constants.
+# loops into constants. 2Dmatmul is the exception: every port hardcodes its
+# sizes, and the hashed element generator keeps the k-loop from closing.
 NATIVE_ARGS = {
-    "2Dmatmul": ["256", "256", "256"],
+    "2Dmatmul": [],
     "fibonacci": ["10", "20", "30", "35", "200000"],
     "primegeneration": ["100", "1000", "10000", "1000000"],
     "int_arith": ["10000000", "12345"],
@@ -59,10 +60,7 @@ NATIVE_ARGS = {
 
 # A toolchain that rewrites a loop into a closed form makes its timing measure
 # arithmetic, not the benchmark. These combinations are not timed.
-EXCLUDED_NATIVE = {
-    ("2Dmatmul", "clang"): "clang -O2/-O3 replace the k-loop with a closed-form sum; time does not scale with k_dim",
-    ("2Dmatmul", "rustc"): "rustc -O3 (LLVM) replaces the k-loop with a closed-form sum; time does not scale with k_dim",
-}
+EXCLUDED_NATIVE = {}
 
 NATIVE_TOOLS = {
     "gcc": {

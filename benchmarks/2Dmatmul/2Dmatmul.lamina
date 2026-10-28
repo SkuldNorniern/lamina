@@ -1,22 +1,40 @@
 # 2D Matrix Multiplication Benchmark (NumPy matmul equivalent)
 # Same algorithm as 2Dmatmul.c: C = A @ B for A (n_rows x k_dim), B (k_dim x n_cols).
-# Matrix elements come from a deterministic pattern instead of being stored.
+# Matrix elements come from a hashed index so the k-sum has no closed form.
 
-fn @get_matrix_a_element(i64 %i, i64 %k) -> i64 {
+fn @mix(i64 %x) -> i64 {
   entry:
-    %product = mul.i64 %i, %k
-    %result = add.i64 %product, 1
+    %m = mul.i64 %x, 1103515245
+    %m1 = add.i64 %m, 12345
+    %a = and.i64 %m1, 2147483647
+    %s = shr.i64 %a, 7
+    %b = xor.i64 %a, %s
+    %m2 = mul.i64 %b, 1103515245
+    %m3 = add.i64 %m2, 12345
+    %c = and.i64 %m3, 2147483647
+    %t = shr.i64 %c, 11
+    %d = xor.i64 %c, %t
+    %r = and.i64 %d, 65535
+    ret.i64 %r
+}
+
+fn @get_matrix_a_element(i64 %i, i64 %k, i64 %k_dim) -> i64 {
+  entry:
+    %index = mul.i64 %i, %k_dim
+    %index1 = add.i64 %index, %k
+    %result = call @mix(%index1)
     ret.i64 %result
 }
 
-fn @get_matrix_b_element(i64 %k, i64 %j) -> i64 {
+fn @get_matrix_b_element(i64 %k, i64 %j, i64 %n_cols) -> i64 {
   entry:
-    %product = mul.i64 %k, %j
-    %result = add.i64 %product, 1
+    %index = mul.i64 %k, %n_cols
+    %index1 = add.i64 %index, %j
+    %result = call @mix(%index1)
     ret.i64 %result
 }
 
-fn @compute_matrix_cell(i64 %i, i64 %j, i64 %k_dim) -> i64 {
+fn @compute_matrix_cell(i64 %i, i64 %j, i64 %k_dim, i64 %n_cols) -> i64 {
   entry:
     %sum = add.i64 0, 0
     %k = add.i64 0, 0
@@ -27,8 +45,8 @@ fn @compute_matrix_cell(i64 %i, i64 %j, i64 %k_dim) -> i64 {
     br %k_done, cell_done, k_body
 
   k_body:
-    %a_elem = call @get_matrix_a_element(%i, %k)
-    %b_elem = call @get_matrix_b_element(%k, %j)
+    %a_elem = call @get_matrix_a_element(%i, %k, %k_dim)
+    %b_elem = call @get_matrix_b_element(%k, %j, %n_cols)
     %product = mul.i64 %a_elem, %b_elem
     %sum = add.i64 %sum, %product
     %k = add.i64 %k, 1
@@ -62,7 +80,7 @@ fn @matmul_2d(i64 %n_rows, i64 %k_dim, i64 %n_cols) -> i64 {
     br %j_done, next_i, j_body
 
   j_body:
-    %cell_result = call @compute_matrix_cell(%i, %j, %k_dim)
+    %cell_result = call @compute_matrix_cell(%i, %j, %k_dim, %n_cols)
     %total_sum = add.i64 %total_sum, %cell_result
     %j = add.i64 %j, 1
     jmp j_loop
