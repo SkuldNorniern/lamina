@@ -7,8 +7,6 @@
 //!
 //! This helps on x86_64 which has native support for complex addressing modes.
 
-use std::collections::HashMap;
-
 use crate::mir::{
     AddressMode, Function, Instruction, IntBinOp, Operand, Register,
     instruction::Immediate,
@@ -46,31 +44,14 @@ impl AddressingCanonicalization {
         let mut changed = false;
 
         for block in &mut func.blocks {
-            // Build a simple def map for this block: reg -> (idx of instr)
-            let mut def_index: HashMap<Register, usize> = HashMap::new();
-            for (i, instr) in block.instructions.iter().enumerate() {
-                if let Some(reg) = instr.def_reg() {
-                    def_index.insert(reg.clone(), i);
-                }
-            }
-
-            let len = block.instructions.len();
-
-            for i in 0..len {
-                // Phase 1: analyze immutably to compute potential new addressing mode
-                let new_addr_mode: Option<AddressMode> = match &block.instructions[i] {
+            for i in 0..block.instructions.len() {
+                let new_addr_mode = match &block.instructions[i] {
                     Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
-                        let mut addr_clone = addr.clone();
-                        if self.try_rewrite_addr(&mut addr_clone, &def_index, &block.instructions) {
-                            Some(addr_clone)
-                        } else {
-                            None
-                        }
+                        canonical_address(addr, i, &block.instructions)
                     }
                     _ => None,
                 };
 
-                // Phase 2: apply mutation
                 if let Some(new_mode) = new_addr_mode {
                     match &mut block.instructions[i] {
                         Instruction::Load { addr, .. } | Instruction::Store { addr, .. } => {
@@ -85,141 +66,95 @@ impl AddressingCanonicalization {
 
         Ok(changed)
     }
+}
 
-    fn try_rewrite_addr(
-        &self,
-        addr: &mut AddressMode,
-        def_index: &HashMap<Register, usize>,
-        instructions: &[Instruction],
-    ) -> bool {
-        match addr {
-            AddressMode::BaseOffset {
-                base,
+/// The `BaseIndexScale` form of the address used by the access at `at`, when the
+/// registers it names hold the same values there as they did when the address was formed.
+fn canonical_address(
+    addr: &AddressMode,
+    at: usize,
+    instructions: &[Instruction],
+) -> Option<AddressMode> {
+    let AddressMode::BaseOffset {
+        base,
+        offset,
+        address_space,
+    } = addr
+    else {
+        return None;
+    };
+    let offset = i8::try_from(*offset).ok()?;
+    let formed = last_definition(instructions, base, at)?;
+    let Instruction::IntBinary {
+        op: IntBinOp::Add,
+        lhs,
+        rhs,
+        ..
+    } = &instructions[formed]
+    else {
+        return None;
+    };
+
+    [(lhs, rhs), (rhs, lhs)]
+        .into_iter()
+        .find_map(|(base_op, scaled_op)| {
+            let (Operand::Register(base_reg), Operand::Register(scaled_reg)) = (base_op, scaled_op)
+            else {
+                return None;
+            };
+            let (scaled_at, index, scale) = scaled_index(instructions, scaled_reg, formed)?;
+            if base_reg == &index
+                || redefined_between(instructions, base_reg, formed, at)
+                || redefined_between(instructions, &index, scaled_at, at)
+            {
+                return None;
+            }
+            Some(AddressMode::BaseIndexScale {
+                base: base_reg.clone(),
+                index,
+                scale,
                 offset,
-                address_space,
-            } => {
-                if let Some(def_pos) = def_index.get(base) {
-                    if *def_pos >= instructions.len() {
-                        return false;
-                    }
+                address_space: *address_space,
+            })
+        })
+}
 
-                    if let Some((base_reg, index_reg, scale)) = self.match_add_scaled_index(
-                        &instructions[*def_pos],
-                        def_index,
-                        instructions,
-                    ) {
-                        // Only convert if offset fits in i8 range and base != index
-                        if (*offset >= i8::MIN as i16) && (*offset <= i8::MAX as i16) {
-                            if base_reg == index_reg {
-                                return false;
-                            }
-
-                            let clamped_off = *offset as i8;
-                            *addr = AddressMode::BaseIndexScale {
-                                base: base_reg,
-                                index: index_reg,
-                                scale,
-                                offset: clamped_off,
-                                address_space: *address_space,
-                            };
-                            return true;
-                        }
-                    }
-                }
-            }
-            AddressMode::BaseIndexScale { .. } => {
-                // Already canonicalized, don't change
-            }
-        }
-        false
-    }
-
-    fn match_add_scaled_index(
-        &self,
-        def_instr: &Instruction,
-        def_index: &HashMap<Register, usize>,
-        instructions: &[Instruction],
-    ) -> Option<(Register, Register, u8)> {
-        // Check if a register is defined by shift-left with small power-of-two scale
-        fn scaled_from_shift(
-            r: &Register,
-            def_index: &HashMap<Register, usize>,
-            instructions: &[Instruction],
-        ) -> Option<(Register, u8)> {
-            if let Some(&pos) = def_index.get(r)
-                && let Instruction::IntBinary {
-                    op: IntBinOp::Shl,
-                    lhs,
-                    rhs,
-                    ..
-                } = &instructions[pos]
-                && let Operand::Register(idx) = lhs
-                && let Operand::Immediate(Immediate::I64(shift)) = rhs
-                && (0..=3).contains(&{ *shift })
-            {
-                return Some((idx.clone(), 1u8 << (*shift as u8)));
-            }
-            None
-        }
-
-        // Check if a register is defined by mul-by-const in {1,2,4,8}
-        fn scaled_from_mul(
-            r: &Register,
-            def_index: &HashMap<Register, usize>,
-            instructions: &[Instruction],
-        ) -> Option<(Register, u8)> {
-            if let Some(&pos) = def_index.get(r)
-                && let Instruction::IntBinary {
-                    op: IntBinOp::Mul,
-                    lhs,
-                    rhs,
-                    ..
-                } = &instructions[pos]
-                && let Operand::Register(idx) = lhs
-                && let Operand::Immediate(Immediate::I64(scale)) = rhs
-            {
-                match *scale {
-                    1 | 2 | 4 | 8 => return Some((idx.clone(), *scale as u8)),
-                    _ => {}
-                }
-            }
-            None
-        }
-
-        // Helper to detect base + scaled(idx)
-        fn try_base_plus_scaled(
-            base_op: &Operand,
-            other_op: &Operand,
-            def_index: &HashMap<Register, usize>,
-            instructions: &[Instruction],
-        ) -> Option<(Register, Register, u8)> {
-            if let Operand::Register(base_reg) = base_op
-                && let Operand::Register(r2) = other_op
-                && let Some((idx, scale)) = scaled_from_shift(r2, def_index, instructions)
-                    .or_else(|| scaled_from_mul(r2, def_index, instructions))
-            {
-                return Some((base_reg.clone(), idx, scale));
-            }
-            None
-        }
-
-        if let Instruction::IntBinary {
-            op: IntBinOp::Add,
-            lhs,
-            rhs,
+/// The register's value is `1 << shift` or `multiplier` times `index`, as set by the
+/// definition at the returned position, which is the last one before `before`.
+fn scaled_index(
+    instructions: &[Instruction],
+    reg: &Register,
+    before: usize,
+) -> Option<(usize, Register, u8)> {
+    let at = last_definition(instructions, reg, before)?;
+    let (index, scale) = match &instructions[at] {
+        Instruction::IntBinary {
+            op: IntBinOp::Shl,
+            lhs: Operand::Register(index),
+            rhs: Operand::Immediate(Immediate::I64(shift)),
             ..
-        } = def_instr
-        {
-            if let Some(m) = try_base_plus_scaled(lhs, rhs, def_index, instructions) {
-                return Some(m);
-            }
-            if let Some(m) = try_base_plus_scaled(rhs, lhs, def_index, instructions) {
-                return Some(m);
-            }
-        }
+        } if (0..=3).contains(shift) => (index, 1u8 << *shift),
+        Instruction::IntBinary {
+            op: IntBinOp::Mul,
+            lhs: Operand::Register(index),
+            rhs: Operand::Immediate(Immediate::I64(scale @ (1 | 2 | 4 | 8))),
+            ..
+        } => (index, *scale as u8),
+        _ => return None,
+    };
+    Some((at, index.clone(), scale))
+}
 
-        None
-    }
+fn last_definition(instructions: &[Instruction], reg: &Register, before: usize) -> Option<usize> {
+    (0..before)
+        .rev()
+        .find(|&i| instructions[i].def_reg() == Some(reg))
+}
+
+fn redefined_between(instructions: &[Instruction], reg: &Register, from: usize, to: usize) -> bool {
+    instructions[from..to]
+        .iter()
+        .any(|instruction| instruction.def_reg() == Some(reg))
 }
 
 #[cfg(test)]
@@ -228,7 +163,7 @@ mod tests {
     use super::*;
     use crate::mir::{
         FunctionBuilder, Immediate, MemoryAttrs, MirType, ScalarType, VirtualReg,
-        transform::test_utils::get_block,
+        transform::test_utils::get_block, verify_function_in_pipeline,
     };
 
     #[test]
@@ -580,5 +515,142 @@ mod tests {
         let pass = AddressingCanonicalization;
         let result = pass.apply(&mut func);
         assert!(result.is_ok());
+    }
+
+    fn base_index_candidate(
+        instructions_before: Vec<Instruction>,
+        instructions_after: Vec<Instruction>,
+    ) -> Function {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let reg = |id| Register::from(VirtualReg::gpr(id));
+        let mut func = FunctionBuilder::new("candidate")
+            .param(reg(0), i64_ty)
+            .param(reg(1), i64_ty)
+            .param(reg(3), i64_ty)
+            .returns(i64_ty)
+            .block("entry")
+            .build();
+        func.blocks[0].instructions.extend(instructions_before);
+        func.blocks[0].instructions.extend(instructions_after);
+        func
+    }
+
+    fn address_of(base: u32, offset: i16) -> AddressMode {
+        AddressMode::BaseOffset {
+            base: VirtualReg::gpr(base).into(),
+            offset,
+            address_space: Default::default(),
+        }
+    }
+
+    #[test]
+    fn access_is_not_rewritten_when_its_base_is_redefined_after_the_address_is_formed() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let reg = |id| Register::from(VirtualReg::gpr(id));
+        let mut func = base_index_candidate(
+            vec![
+                Instruction::IntBinary {
+                    op: IntBinOp::Shl,
+                    ty: i64_ty,
+                    dst: reg(2),
+                    lhs: Operand::Register(reg(1)),
+                    rhs: Operand::Immediate(Immediate::I64(3)),
+                },
+                Instruction::IntBinary {
+                    op: IntBinOp::Add,
+                    ty: i64_ty,
+                    dst: reg(4),
+                    lhs: Operand::Register(reg(0)),
+                    rhs: Operand::Register(reg(2)),
+                },
+                Instruction::Load {
+                    ty: i64_ty,
+                    dst: reg(5),
+                    addr: address_of(4, 0),
+                    attrs: MemoryAttrs::default(),
+                },
+                Instruction::Copy {
+                    ty: i64_ty,
+                    dst: reg(0),
+                    src: Operand::Register(reg(3)),
+                },
+            ],
+            vec![
+                Instruction::Load {
+                    ty: i64_ty,
+                    dst: reg(6),
+                    addr: address_of(4, 0),
+                    attrs: MemoryAttrs::default(),
+                },
+                Instruction::Ret {
+                    value: Some(Operand::Register(reg(6))),
+                },
+            ],
+        );
+        verify_function_in_pipeline(&func).expect("input is valid MIR");
+        AddressingCanonicalization
+            .apply(&mut func)
+            .expect("should succeed");
+        let entry = get_block(&func, "entry");
+        assert!(
+            matches!(
+                entry.instructions[4],
+                Instruction::Load {
+                    addr: AddressMode::BaseOffset { .. },
+                    ..
+                }
+            ),
+            "{:?}",
+            entry.instructions[4]
+        );
+    }
+
+    #[test]
+    fn access_is_not_rewritten_from_a_definition_that_follows_it() {
+        let i64_ty = MirType::Scalar(ScalarType::I64);
+        let reg = |id| Register::from(VirtualReg::gpr(id));
+        let mut func = base_index_candidate(
+            vec![Instruction::Load {
+                ty: i64_ty,
+                dst: reg(5),
+                addr: address_of(3, 0),
+                attrs: MemoryAttrs::default(),
+            }],
+            vec![
+                Instruction::IntBinary {
+                    op: IntBinOp::Shl,
+                    ty: i64_ty,
+                    dst: reg(2),
+                    lhs: Operand::Register(reg(1)),
+                    rhs: Operand::Immediate(Immediate::I64(3)),
+                },
+                Instruction::IntBinary {
+                    op: IntBinOp::Add,
+                    ty: i64_ty,
+                    dst: reg(3),
+                    lhs: Operand::Register(reg(0)),
+                    rhs: Operand::Register(reg(2)),
+                },
+                Instruction::Ret {
+                    value: Some(Operand::Register(reg(5))),
+                },
+            ],
+        );
+        verify_function_in_pipeline(&func).expect("input is valid MIR");
+        AddressingCanonicalization
+            .apply(&mut func)
+            .expect("should succeed");
+        let entry = get_block(&func, "entry");
+        assert!(
+            matches!(
+                entry.instructions[0],
+                Instruction::Load {
+                    addr: AddressMode::BaseOffset { .. },
+                    ..
+                }
+            ),
+            "{:?}",
+            entry.instructions[0]
+        );
     }
 }
