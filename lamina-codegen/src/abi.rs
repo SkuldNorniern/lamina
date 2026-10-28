@@ -78,7 +78,9 @@
 //! Every runtime helper the compiler calls is a [`RuntimeSymbol`]. Keys are the
 //! C names (`malloc`, `free`, `printf`, `fflush`, `exit`, `memcpy`, `memmove`,
 //! `memset`), plus the legacy aliases `print` (printf) and `dealloc` (free).
-//! Platform decoration (`_printf` on macOS) is applied to the override as well.
+//! The compiler-rt routines for 128-bit integers (`__divti3`, `__floattidf`, ...)
+//! are keys too, so an embedder can supply them. Platform decoration (`_printf`
+//! on macOS) is applied to the override as well.
 //!
 //! ## Backend-Specific ABIs
 //!
@@ -106,10 +108,34 @@ pub enum RuntimeSymbol {
     Memcpy,
     Memmove,
     Memset,
+    /// compiler-rt `__divti3`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Divti3,
+    /// compiler-rt `__udivti3`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Udivti3,
+    /// compiler-rt `__modti3`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Modti3,
+    /// compiler-rt `__umodti3`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Umodti3,
+    /// compiler-rt `__floattidf`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Floattidf,
+    /// compiler-rt `__floatuntidf`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Floatuntidf,
+    /// compiler-rt `__fixdfti`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Fixdfti,
+    /// compiler-rt `__fixunsdfti`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Fixunsdfti,
+    /// compiler-rt `__floattisf`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Floattisf,
+    /// compiler-rt `__floatuntisf`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Floatuntisf,
+    /// compiler-rt `__fixsfti`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Fixsfti,
+    /// compiler-rt `__fixunssfti`: 128-bit integer arithmetic and conversion, called by i128 lowering.
+    Fixunssfti,
 }
 
 impl RuntimeSymbol {
-    pub const ALL: [RuntimeSymbol; 8] = [
+    pub const ALL: [RuntimeSymbol; 20] = [
         RuntimeSymbol::Malloc,
         RuntimeSymbol::Free,
         RuntimeSymbol::Printf,
@@ -118,6 +144,18 @@ impl RuntimeSymbol {
         RuntimeSymbol::Memcpy,
         RuntimeSymbol::Memmove,
         RuntimeSymbol::Memset,
+        RuntimeSymbol::Divti3,
+        RuntimeSymbol::Udivti3,
+        RuntimeSymbol::Modti3,
+        RuntimeSymbol::Umodti3,
+        RuntimeSymbol::Floattidf,
+        RuntimeSymbol::Floatuntidf,
+        RuntimeSymbol::Fixdfti,
+        RuntimeSymbol::Fixunsdfti,
+        RuntimeSymbol::Floattisf,
+        RuntimeSymbol::Floatuntisf,
+        RuntimeSymbol::Fixsfti,
+        RuntimeSymbol::Fixunssfti,
     ];
 
     /// The undecorated C symbol name.
@@ -131,6 +169,18 @@ impl RuntimeSymbol {
             RuntimeSymbol::Memcpy => "memcpy",
             RuntimeSymbol::Memmove => "memmove",
             RuntimeSymbol::Memset => "memset",
+            RuntimeSymbol::Divti3 => "__divti3",
+            RuntimeSymbol::Udivti3 => "__udivti3",
+            RuntimeSymbol::Modti3 => "__modti3",
+            RuntimeSymbol::Umodti3 => "__umodti3",
+            RuntimeSymbol::Floattidf => "__floattidf",
+            RuntimeSymbol::Floatuntidf => "__floatuntidf",
+            RuntimeSymbol::Fixdfti => "__fixdfti",
+            RuntimeSymbol::Fixunsdfti => "__fixunsdfti",
+            RuntimeSymbol::Floattisf => "__floattisf",
+            RuntimeSymbol::Floatuntisf => "__floatuntisf",
+            RuntimeSymbol::Fixsfti => "__fixsfti",
+            RuntimeSymbol::Fixunssfti => "__fixunssfti",
         }
     }
 

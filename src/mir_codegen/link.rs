@@ -347,9 +347,24 @@ fn build_library_args(target_os: TargetOperatingSystem) -> Vec<String> {
         args.push("-lSystem".to_string());
     } else {
         args.push("-lc".to_string());
+        if let Some(libgcc) = detect_compiler().and_then(get_libgcc_file) {
+            args.push(libgcc);
+        }
     }
 
     args
+}
+
+/// The compiler runtime archive. It supplies the 128-bit integer helpers (`__divti3`
+/// and friends) that i128 lowering calls, which `-lc` does not provide.
+fn get_libgcc_file(compiler: &str) -> Option<String> {
+    Command::new(compiler)
+        .arg("-print-libgcc-file-name")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|path| path.trim().to_string())
+        .filter(|path| path.ends_with(".a") && Path::new(path).exists())
 }
 
 fn build_unix_linker_args(

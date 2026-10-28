@@ -83,6 +83,39 @@ pub fn retarget_runtime_calls<'a>(
     Cow::Owned(retargeted)
 }
 
+/// A target with no C library has no compiler runtime to link against, so a 128-bit
+/// helper the module calls must be defined in the module or redirected through
+/// `LAMINA_BUILTINS`. Reported here, naming the symbol, rather than at link time.
+fn check_compiler_runtime_symbols(
+    module: &Module,
+    target_os: TargetOperatingSystem,
+    builtins: &BuiltinLibrary,
+) -> Result<(), LaminaError> {
+    if target_os != TargetOperatingSystem::Unknown {
+        return Ok(());
+    }
+    for symbol in RuntimeSymbol::ALL {
+        if !symbol.c_name().starts_with("__") {
+            continue;
+        }
+        let name = builtins.c_name(symbol);
+        if module
+            .functions
+            .get(name)
+            .is_some_and(|f| f.blocks.is_empty())
+        {
+            return Err(LaminaError::CodegenError(CodegenError::UnsupportedFeature(
+                format!(
+                    "`{name}` is a compiler runtime helper that a target without a C library does not provide; \
+                 define it in the module, or name an implementation with LAMINA_BUILTINS={}=<symbol>",
+                    symbol.c_name()
+                ),
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Like [`generate_mir_to_target`], but honors [`MirCodegenSettings`] for register allocation
 /// and optional assembly debug directives.
 pub fn generate_mir_to_target_with_settings<W: Write>(
@@ -93,8 +126,10 @@ pub fn generate_mir_to_target_with_settings<W: Write>(
     codegen_units: usize,
     settings: &MirCodegenSettings,
 ) -> Result<(), LaminaError> {
-    let retargeted = retarget_runtime_calls(input, &BuiltinLibrary::from_env(target_os));
+    let builtins = BuiltinLibrary::from_env(target_os);
+    let retargeted = retarget_runtime_calls(input, &builtins);
     let module: &Module = &retargeted;
+    check_compiler_runtime_symbols(module, target_os, &builtins)?;
     let effective_caps = {
         #[cfg(feature = "nightly")]
         {
