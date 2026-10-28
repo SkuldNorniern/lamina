@@ -14,6 +14,8 @@ use crate::{
     },
     parser::parse_module,
 };
+#[cfg(feature = "ssa-round-trip")]
+use lamina_mir::ssa::round_trip_module;
 use lamina_platform::{Target, TargetArchitecture, TargetOperatingSystem, cpu_count};
 use std::{
     error::Error,
@@ -178,6 +180,9 @@ pub fn compile(options: CompileOptions) -> Result<(), Box<dyn Error>> {
             );
         }
     }
+
+    #[cfg(feature = "ssa-round-trip")]
+    round_trip_module(&mut mir_mod).map_err(|e| format!("SSA round trip failed: {e}"))?;
 
     let mut intermediate_buffer = Vec::<u8>::new();
     generate_mir_to_target_with_settings(

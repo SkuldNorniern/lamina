@@ -6,12 +6,18 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::{
+    block::Block,
     function::Function,
     instruction::Instruction,
+    module::Module,
     register::Register,
     types::MirType,
     verify::{Dominators, dominator_tree, instruction_definition_type},
 };
+
+mod destroy;
+
+pub use destroy::{DestroyError, destroy};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ValueId(pub u32);
@@ -39,6 +45,7 @@ pub struct SsaInst {
     pub source: usize,
     pub defines: Option<ValueId>,
     pub uses: Vec<ValueId>,
+    pub instruction: Instruction,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -61,7 +68,9 @@ pub struct SsaFunction {
     pub name: String,
     pub values: Vec<SsaValue>,
     pub blocks: Vec<SsaBlock>,
-    pub unreachable: Vec<String>,
+    pub unreachable: Vec<(usize, Block)>,
+    pub shell: Function,
+    pub dominators: Dominators,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,6 +239,15 @@ impl SsaFunction {
         function: &Function,
         callee_return: &dyn Fn(&str) -> Option<MirType>,
     ) -> Result<Self, SsaBuildError> {
+        let mut graph = Self::construct(function, callee_return)?;
+        graph.prune_trivial_parameters();
+        Ok(graph)
+    }
+
+    fn construct(
+        function: &Function,
+        callee_return: &dyn Fn(&str) -> Option<MirType>,
+    ) -> Result<Self, SsaBuildError> {
         let name = function.sig.name.as_str();
         let block_count = function.blocks.len();
         let index_of: HashMap<&str, usize> = function
@@ -276,7 +294,7 @@ impl SsaFunction {
         let order: Vec<usize> = (0..block_count).filter(|&b| reachable[b]).collect();
         let unreachable = (0..block_count)
             .filter(|&b| !reachable[b])
-            .map(|b| function.blocks[b].label.clone())
+            .map(|b| (b, function.blocks[b].clone()))
             .collect();
 
         let mut regs = Registers {
@@ -489,6 +507,7 @@ impl SsaFunction {
                     source: i,
                     defines,
                     uses,
+                    instruction: instr.clone(),
                 });
             }
             let mut edges = Vec::new();
@@ -512,17 +531,130 @@ impl SsaFunction {
             });
         }
 
+        let successors: Vec<Vec<usize>> = blocks
+            .iter()
+            .map(|block| {
+                block
+                    .edges
+                    .iter()
+                    .map(|edge| edge.target.0 as usize)
+                    .collect()
+            })
+            .collect();
+        let dominators = dominator_tree(&successors, (!blocks.is_empty()).then_some(0));
+        let mut shell = function.clone();
+        shell.blocks.clear();
+
         Ok(SsaFunction {
             name: name.to_string(),
             values,
             blocks,
             unreachable,
+            shell,
+            dominators,
         })
+    }
+
+    fn prune_trivial_parameters(&mut self) {
+        let mut incoming: Vec<Vec<(usize, usize)>> = vec![Vec::new(); self.blocks.len()];
+        for (b, block) in self.blocks.iter().enumerate() {
+            for (e, edge) in block.edges.iter().enumerate() {
+                incoming[edge.target.0 as usize].push((b, e));
+            }
+        }
+
+        let mut replaced: Vec<Option<ValueId>> = vec![None; self.values.len()];
+        let resolve = |replaced: &[Option<ValueId>], mut v: ValueId| {
+            while let Some(next) = replaced[v.0 as usize] {
+                v = next;
+            }
+            v
+        };
+
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (b, incoming_b) in incoming.iter().enumerate().skip(1) {
+                let mut i = 0;
+                while i < self.blocks[b].params.len() {
+                    let param = self.blocks[b].params[i];
+                    let mut same: Option<ValueId> = None;
+                    let mut trivial = true;
+                    for &(pred, e) in incoming_b {
+                        let arg = resolve(&replaced, self.blocks[pred].edges[e].args[i]);
+                        if arg == param {
+                            continue;
+                        }
+                        match same {
+                            None => same = Some(arg),
+                            Some(first) if first == arg => {}
+                            Some(_) => trivial = false,
+                        }
+                    }
+                    match same {
+                        Some(value) if trivial => {
+                            replaced[param.0 as usize] = Some(value);
+                            self.blocks[b].params.remove(i);
+                            for &(pred, e) in incoming_b {
+                                self.blocks[pred].edges[e].args.remove(i);
+                            }
+                            changed = true;
+                        }
+                        _ => i += 1,
+                    }
+                }
+            }
+        }
+
+        if replaced.iter().all(Option::is_none) {
+            return;
+        }
+        let resolved: Vec<Option<ValueId>> = (0..self.values.len())
+            .map(|v| replaced[v].map(|_| resolve(&replaced, ValueId(v as u32))))
+            .collect();
+        let mut renumber: Vec<Option<u32>> = vec![None; self.values.len()];
+        let mut kept = Vec::with_capacity(self.values.len());
+        for (v, value) in self.values.drain(..).enumerate() {
+            if resolved[v].is_none() {
+                renumber[v] = Some(kept.len() as u32);
+                kept.push(value);
+            }
+        }
+        let map = |id: &mut ValueId| {
+            let target = resolved[id.0 as usize].unwrap_or(*id);
+            *id = ValueId(renumber[target.0 as usize].unwrap_or(0));
+        };
+        for block in &mut self.blocks {
+            for id in &mut block.params {
+                map(id);
+            }
+            for inst in &mut block.insts {
+                for id in &mut inst.uses {
+                    map(id);
+                }
+                if let Some(id) = &mut inst.defines {
+                    map(id);
+                }
+            }
+            for edge in &mut block.edges {
+                for id in &mut edge.args {
+                    map(id);
+                }
+            }
+        }
+        for (b, block) in self.blocks.iter().enumerate() {
+            for (index, &p) in block.params.iter().enumerate() {
+                kept[p.0 as usize].def = ValueDef::BlockParam {
+                    block: BlockId(b as u32),
+                    index: index as u32,
+                };
+            }
+        }
+        self.values = kept;
     }
 
     pub fn verify(&self) -> Result<(), Vec<SsaViolation>> {
         let mut out = Vec::new();
-        let block_count = self.blocks.len();
         let mut definitions = vec![0usize; self.values.len()];
 
         let mut note =
@@ -585,19 +717,7 @@ impl SsaFunction {
             }
         }
 
-        let successors: Vec<Vec<usize>> = self
-            .blocks
-            .iter()
-            .map(|block| {
-                block
-                    .edges
-                    .iter()
-                    .map(|edge| edge.target.0 as usize)
-                    .filter(|&t| t < block_count)
-                    .collect()
-            })
-            .collect();
-        let doms: Dominators = dominator_tree(&successors, (block_count > 0).then_some(0));
+        let doms = &self.dominators;
 
         let check_use =
             |out: &mut Vec<SsaViolation>, id: ValueId, b: usize, position: Option<usize>| {
@@ -702,6 +822,40 @@ impl SsaFunction {
 
         if out.is_empty() { Ok(()) } else { Err(out) }
     }
+}
+
+/// Builds, verifies, prunes and destroys every defined function. Every graph is verified
+/// both before and after pruning.
+pub fn round_trip_module(module: &mut Module) -> Result<(), String> {
+    let mut names: Vec<String> = module.functions.keys().cloned().collect();
+    names.sort();
+    let mut rebuilt = Vec::with_capacity(names.len());
+    {
+        let callee_return = |name: &str| module.get_function(name).and_then(|f| f.sig.ret_ty);
+        for name in &names {
+            let function = &module.functions[name];
+            if function.blocks.is_empty() {
+                continue;
+            }
+            let check = |graph: &SsaFunction, stage: &str| {
+                graph.verify().map_err(|violations| {
+                    let lines: Vec<&str> = violations.iter().map(|v| v.message.as_str()).collect();
+                    format!("@{name} {stage}: {}", lines.join("; "))
+                })
+            };
+            let mut graph =
+                SsaFunction::construct(function, &callee_return).map_err(|e| e.to_string())?;
+            check(&graph, "before pruning")?;
+            graph.prune_trivial_parameters();
+            check(&graph, "after pruning")?;
+            let destroyed = destroy(&graph).map_err(|e| e.to_string())?;
+            rebuilt.push((name.clone(), destroyed));
+        }
+    }
+    for (name, function) in rebuilt {
+        module.functions.insert(name, function);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -851,9 +1005,9 @@ mod tests {
             .instr(ret(1))
             .build();
         let graph = checked(&f);
-        let entry = &graph.blocks[1];
-        assert_eq!(entry.params.len(), 1);
+        assert!(graph.blocks[1].params.is_empty());
         assert_eq!(graph.blocks[0].edges[0].target, BlockId(1));
+        assert_eq!(graph.blocks[1].insts[0].uses, graph.blocks[0].params);
     }
 
     #[test]
@@ -905,7 +1059,14 @@ mod tests {
             .instr(ret(2))
             .build();
         let graph = checked(&f);
-        assert_eq!(graph.unreachable, vec!["dead".to_string()]);
+        assert_eq!(
+            graph
+                .unreachable
+                .iter()
+                .map(|(_, b)| b.label.clone())
+                .collect::<Vec<_>>(),
+            vec!["dead".to_string()]
+        );
         assert_eq!(graph.blocks.len(), 2);
     }
 

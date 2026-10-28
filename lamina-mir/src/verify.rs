@@ -407,6 +407,7 @@ fn verify_unique_definitions(
 
 /// Compute dominator sets by block index; unreachable blocks have no set.
 /// Dominator tree of a function's reachable blocks, with constant-time ancestor queries.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dominators {
     idom: Vec<Option<usize>>,
     entry: Option<usize>,

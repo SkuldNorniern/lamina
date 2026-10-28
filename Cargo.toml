@@ -44,6 +44,8 @@ lamina-codegen = { path = "lamina-codegen", version = "0.2.0" }
 default = ["encoder"]
 # Enable MIR binary encoding support for JIT creation (MIR → Binary)
 encoder = []
+# Lower every function through SSA and back before codegen, to check the boundaries
+ssa-round-trip = []
 # Enable the use of the mold linker instead of the default system linker (usually ld via gcc)
 #use_mold = []
 # Enable experimental/nightly features (may change without notice)

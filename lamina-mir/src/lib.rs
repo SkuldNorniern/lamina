@@ -21,6 +21,7 @@ pub mod function;
 pub mod gpu;
 pub mod instruction;
 pub mod module;
+pub mod parallel;
 pub mod register;
 pub mod simd;
 pub mod ssa;
