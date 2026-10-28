@@ -326,8 +326,8 @@ mod tests {
     }
 
     #[test]
-    fn wasi_targets_round_trip() {
-        for name in ["wasm32_wasi"] {
+    fn wasm_targets_round_trip() {
+        for name in ["wasm32_wasi", "wasm32_unknown", "wasm64_unknown"] {
             let target: Target = name.parse().unwrap();
             assert_eq!(target.to_string(), name);
             assert!(HOST_ARCH_LIST.contains(&name));
