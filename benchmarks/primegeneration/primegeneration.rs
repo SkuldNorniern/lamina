@@ -1,60 +1,37 @@
-// primegeneration.rs
-// Rust implementation of prime generation benchmark
+use std::env;
 
-// Configuration - limits for counting
-const LIMIT1: usize = 100;
-const LIMIT2: usize = 1000;
-const LIMIT3: usize = 10000;
-const LIMIT4: usize = 50000;
+fn arg(i: usize) -> i64 {
+    env::args().nth(i).expect("missing argument").parse().expect("bad integer")
+}
 
-// Markers matching Lamina version
-const HEADER_MARKER: i64 = 123456789;
-const FOOTER_MARKER: i64 = 987654321;
-
-fn is_prime(n: usize) -> bool {
+fn is_prime(n: i64) -> bool {
     if n <= 1 {
         return false;
     }
-    if n <= 3 {
+    if n == 2 || n == 3 {
         return true;
     }
     if n % 2 == 0 {
         return false;
     }
-
-    let mut i = 3;
-    while i * i <= n {
-        if n % i == 0 {
+    let mut d = 3;
+    while d * d <= n {
+        if n % d == 0 {
             return false;
         }
-        i += 2;
+        d += 2;
     }
     true
 }
 
-fn count_primes(limit: usize) -> i64 {
-    if limit < 2 {
-        return 0;
-    }
-    let mut count = 0;
-    for i in 2..=limit {
-        if is_prime(i) {
-            count += 1;
-        }
-    }
-    count
+fn count_primes(limit: i64) -> i64 {
+    (2..=limit).filter(|&c| is_prime(c)).count() as i64
 }
 
 fn main() {
-    // Print header marker
-    println!("{}", HEADER_MARKER);
-
-    // Count and print prime counts for different limits
-    println!("{}", count_primes(LIMIT1));
-    println!("{}", count_primes(LIMIT2));
-    println!("{}", count_primes(LIMIT3));
-    println!("{}", count_primes(LIMIT4));
-
-    // Print footer marker
-    println!("{}", FOOTER_MARKER);
+    println!("123456789");
+    for i in 1..=4 {
+        println!("{}", count_primes(arg(i)));
+    }
+    println!("987654321");
 }

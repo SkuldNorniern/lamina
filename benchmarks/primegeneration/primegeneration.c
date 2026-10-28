@@ -1,48 +1,32 @@
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 
-// Configuration - limits for counting
-#define LIMIT1 100
-#define LIMIT2 1000
-#define LIMIT3 10000
-#define LIMIT4 50000
+static int64_t arg(int argc, char **argv, int i) {
+    if (i >= argc) { fprintf(stderr, "missing argument %d\n", i); exit(2); }
+    return strtoll(argv[i], NULL, 10);
+}
 
-// Markers matching Lamina version
-#define HEADER_MARKER 123456789LL
-#define FOOTER_MARKER 987654321LL
-
-int is_prime(int n) {
+static int is_prime(int64_t n) {
     if (n <= 1) return 0;
-    if (n <= 3) return 1;
+    if (n == 2 || n == 3) return 1;
     if (n % 2 == 0) return 0;
-
-    for (int i = 3; i * i <= n; i += 2) {
-        if (n % i == 0) return 0;
-    }
+    for (int64_t d = 3; d * d <= n; d += 2)
+        if (n % d == 0) return 0;
     return 1;
 }
 
-long long count_primes(int limit) {
-    if (limit < 2) return 0;
-    long long count = 0;
-    for (int i = 2; i <= limit; i++) {
-        if (is_prime(i)) count++;
-    }
+static int64_t count_primes(int64_t limit) {
+    int64_t count = 0;
+    for (int64_t current = 2; current <= limit; current++)
+        count += is_prime(current);
     return count;
 }
 
-int main() {
-    // Print header marker
-    printf("%lld\n", HEADER_MARKER);
-
-    // Count and print prime counts for different limits
-    printf("%lld\n", count_primes(LIMIT1));
-    printf("%lld\n", count_primes(LIMIT2));
-    printf("%lld\n", count_primes(LIMIT3));
-    printf("%lld\n", count_primes(LIMIT4));
-
-    // Print footer marker
-    printf("%lld\n", FOOTER_MARKER);
-
+int main(int argc, char **argv) {
+    printf("123456789\n");
+    for (int i = 1; i <= 4; i++)
+        printf("%lld\n", (long long)count_primes(arg(argc, argv, i)));
+    printf("987654321\n");
     return 0;
 }

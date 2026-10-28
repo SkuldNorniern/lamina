@@ -1,28 +1,19 @@
-// fibonacci_benchmark.rs
-// Rust implementation of Fibonacci sequence benchmark
+use std::env;
 
-// Configuration
-const N1: i32 = 10;
-const N2: i32 = 20;
-const N3: i32 = 30;
-const N4: i32 = 35;
+fn arg(i: usize) -> u64 {
+    env::args().nth(i).expect("missing argument").parse().expect("bad integer")
+}
 
-// Markers matching Lamina version
-const HEADER_MARKER: i64 = 123456789;
-const FOOTER_MARKER: i64 = 987654321;
-
-fn fibonacci_iterative(n: i32) -> i64 {
+fn fibonacci_iterative(n: u64) -> u64 {
     if n == 0 {
         return 0;
     }
     if n == 1 {
         return 1;
     }
-
-    let mut a: i64 = 0;
-    let mut b: i64 = 1;
+    let (mut a, mut b) = (0u64, 1u64);
     for _ in 2..=n {
-        let temp = a + b;
+        let temp = a.wrapping_add(b);
         a = b;
         b = temp;
     }
@@ -30,15 +21,19 @@ fn fibonacci_iterative(n: i32) -> i64 {
 }
 
 fn main() {
-    // Print header marker
-    println!("{}", HEADER_MARKER);
+    let (n1, n2, n3, n4) = (arg(1), arg(2), arg(3), arg(4));
+    let sweep_count = arg(5);
 
-    // Compute and print fibonacci numbers
-    println!("{}", fibonacci_iterative(N1));
-    println!("{}", fibonacci_iterative(N2));
-    println!("{}", fibonacci_iterative(N3));
-    println!("{}", fibonacci_iterative(N4));
+    println!("123456789");
+    println!("{}", fibonacci_iterative(n1));
+    println!("{}", fibonacci_iterative(n2));
+    println!("{}", fibonacci_iterative(n3));
+    println!("{}", fibonacci_iterative(n4));
 
-    // Print footer marker
-    println!("{}", FOOTER_MARKER);
+    let mut acc: u64 = 0;
+    for s in 0..sweep_count {
+        acc = acc.wrapping_add(fibonacci_iterative(s % 90));
+    }
+    println!("{}", acc);
+    println!("987654321");
 }
