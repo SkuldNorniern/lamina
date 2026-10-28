@@ -252,6 +252,10 @@ fn normalize_lowered_literal(operand: &mut Operand, ty: MirType) {
     }
 }
 
+fn declared_align(align: Option<u32>) -> usize {
+    align.map_or(1, |align| align as usize)
+}
+
 /// Lowers an IR module to MIR, named `name`.
 ///
 /// The result is target independent: an aggregate crossing a function boundary keeps
@@ -271,7 +275,7 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
             .ok_or(FromIRError::UnsupportedType)?;
         let mut global = if is_aggregate(&resolved) {
             let size = sizeof_type(&resolved).ok_or(FromIRError::UnsupportedType)? as usize;
-            let align = align_of_type(&resolved) as usize;
+            let align = (align_of_type(&resolved) as usize).max(declared_align(decl.align));
             let bytes =
                 aggregate_global_bytes(global_name, &resolved, size, decl.initializer.as_ref())?;
             let mut global = Global::new(*global_name, MirType::i8()).with_layout(size, align);
@@ -288,6 +292,7 @@ pub fn from_ir(ir: &IRModule<'_>, name: &str) -> Result<Module, FromIRError> {
             let ty = map_ir_type(&resolved)?;
             let initializer = global_initializer(global_name, ty, decl.initializer.as_ref())?;
             let mut global = Global::new(*global_name, ty);
+            global.align = global.align.max(declared_align(decl.align));
             if let Some(bytes) = initializer {
                 global = global.with_initializer(bytes);
             }

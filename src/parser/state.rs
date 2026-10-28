@@ -3,7 +3,7 @@
 use crate::{Identifier, Label, LaminaError, ir::Type};
 
 /// A type written before a `call` argument, checked once the callee's signature is known.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TypedCallArg<'a> {
     pub callee: Identifier<'a>,
     pub index: usize,
@@ -12,7 +12,7 @@ pub struct TypedCallArg<'a> {
 }
 
 /// Parser state tracking position and input.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParserState<'a> {
     input: &'a str,
     bytes: &'a [u8],

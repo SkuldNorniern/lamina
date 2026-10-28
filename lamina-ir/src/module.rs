@@ -209,6 +209,7 @@ impl fmt::Display for GlobalInit<'_> {
 ///     },
 ///     initializer: Some(GlobalInit::Value(Value::Constant(Literal::String("Hello, World!")))),
 ///     exported: false,
+///     align: None,
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq)] // PartialEq due to Value potentially holding f32
@@ -221,6 +222,8 @@ pub struct GlobalDeclaration<'a> {
     pub initializer: Option<GlobalInit<'a>>,
     /// Whether the global is visible to other modules (declared with `@export`)
     pub exported: bool,
+    /// Minimum alignment in bytes (declared with `@align(n)`)
+    pub align: Option<u32>,
 }
 
 /// A complete Lamina IR module (file).
@@ -453,6 +456,9 @@ impl fmt::Display for TypeDeclaration<'_> {
 
 impl fmt::Display for GlobalDeclaration<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(align) = self.align {
+            writeln!(f, "@align({align})")?;
+        }
         if self.exported {
             write!(f, "@export ")?;
         }
@@ -535,6 +541,7 @@ mod tests {
             ty: Type::Primitive(PrimitiveType::I32),
             initializer: Some(GlobalInit::Value(Value::Constant(Literal::I32(0)))),
             exported: false,
+            align: None,
         };
         assert_eq!(format!("{}", decl1), "global $count: i32 = 0");
 
@@ -546,8 +553,27 @@ mod tests {
             },
             initializer: None,
             exported: false,
+            align: None,
         };
         assert_eq!(format!("{}", decl2), "global $external_data: [256 x i8]");
+    }
+
+    #[test]
+    fn test_display_global_declaration_with_align() {
+        let decl = GlobalDeclaration {
+            name: "arena",
+            ty: Type::Array {
+                element_type: Box::new(Type::Primitive(PrimitiveType::I8)),
+                size: 1048576,
+            },
+            initializer: None,
+            exported: true,
+            align: Some(64),
+        };
+        assert_eq!(
+            format!("{}", decl),
+            "@align(64)\n@export global $arena: [1048576 x i8]"
+        );
     }
 
     #[test]
@@ -575,6 +601,7 @@ mod tests {
                         ty: Type::Primitive(PrimitiveType::I32),
                         initializer: Some(GlobalInit::Value(Value::Constant(Literal::I32(1)))),
                         exported: false,
+                        align: None,
                     },
                 );
             }
@@ -620,6 +647,7 @@ mod tests {
                 ty: Type::Primitive(PrimitiveType::F32),
                 initializer: Some(GlobalInit::Value(Value::Constant(Literal::F32(PI)))),
                 exported: false,
+                align: None,
             },
         );
 

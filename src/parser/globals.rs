@@ -9,18 +9,65 @@ use crate::{
         Value, types::resolve_type_names,
     },
     parser::{
+        functions::{parse_alignment_argument, unknown_annotation_hint},
         state::ParserState,
         types::parse_type,
         values::{integer_bounds, integer_literal},
     },
 };
 
-/// Parses a global declaration.
+const GLOBAL_ANNOTATION_NAMES: &[&str] = &["export", "align"];
+
+/// The annotations written before a `global`.
+#[derive(Debug, Default)]
+pub struct GlobalAnnotations {
+    pub exported: bool,
+    pub align: Option<u32>,
+}
+
+/// Parses the `@name` annotations that precede a `global`, in any order.
+pub fn parse_global_annotations(
+    state: &mut ParserState<'_>,
+) -> Result<GlobalAnnotations, LaminaError> {
+    let mut annotations = GlobalAnnotations::default();
+    loop {
+        state.skip_whitespace_and_comments();
+        if state.current_char() != Some('@') {
+            break;
+        }
+        state.advance();
+        let name = state.parse_identifier_str()?;
+        match name {
+            "export" => {
+                if annotations.exported {
+                    return Err(state.error("Duplicate annotation: @export"));
+                }
+                annotations.exported = true;
+            }
+            "align" => {
+                if annotations.align.is_some() {
+                    return Err(state.error("Duplicate annotation: @align"));
+                }
+                annotations.align = Some(parse_alignment_argument(state)?);
+            }
+            _ => {
+                let hint = unknown_annotation_hint(name, GLOBAL_ANNOTATION_NAMES);
+                return Err(state.error(format!(
+                    "Unknown global annotation: @{name}\n  Hint: {hint}"
+                )));
+            }
+        }
+    }
+    Ok(annotations)
+}
+
+/// Parses a global declaration, given the annotations already read before its `global`.
 pub fn parse_global_declaration<'a>(
     state: &mut ParserState<'a>,
-    exported: bool,
+    annotations: GlobalAnnotations,
     types: &HashMap<Identifier<'a>, TypeDeclaration<'a>>,
 ) -> Result<GlobalDeclaration<'a>, LaminaError> {
+    let GlobalAnnotations { exported, align } = annotations;
     state.consume_keyword("global")?;
     let name = state.parse_global_identifier()?;
     state.expect_char(':')?;
@@ -45,6 +92,7 @@ pub fn parse_global_declaration<'a>(
         ty,
         initializer,
         exported,
+        align,
     })
 }
 

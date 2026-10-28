@@ -7,6 +7,34 @@ use crate::{
 };
 use std::collections::{HashMap, HashSet};
 
+/// Parses the `(n)` of an `@align(n)` annotation. `n` must be a power of two that fits u32.
+pub fn parse_alignment_argument(state: &mut ParserState<'_>) -> Result<u32, LaminaError> {
+    state.expect_char('(')?;
+    let bytes = state.parse_integer()?;
+    state.expect_char(')')?;
+    match u32::try_from(bytes) {
+        Ok(alignment) if alignment.is_power_of_two() => Ok(alignment),
+        _ => Err(state.error(format!(
+            "Invalid alignment: @align({bytes})\n  Hint: Alignment must be a power of two, e.g. @align(16)"
+        ))),
+    }
+}
+
+/// The hint for an unknown annotation: a did-you-mean when a name is close, else the full list.
+pub fn unknown_annotation_hint(name: &str, valid: &[&str]) -> String {
+    let suggestions = super::suggest_alternatives(name, valid);
+    if !suggestions.is_empty() {
+        format!("Did you mean @{}?", suggestions.join(" or @"))
+    } else {
+        let list = valid
+            .iter()
+            .map(|s| format!("@{s}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("Valid annotations are: {list}")
+    }
+}
+
 /// Parses function annotations.
 pub fn parse_annotations(
     state: &mut ParserState<'_>,
@@ -46,40 +74,9 @@ pub fn parse_annotations(
                     }
                     FunctionAnnotation::Section(name.to_string())
                 }
-                "align" => {
-                    state.expect_char('(')?;
-                    let bytes = state.parse_integer()?;
-                    state.expect_char(')')?;
-                    match u32::try_from(bytes) {
-                        Ok(alignment) if alignment.is_power_of_two() => {
-                            FunctionAnnotation::Align(alignment)
-                        }
-                        _ => {
-                            return Err(state.error(format!(
-                                "Invalid alignment: @align({bytes})\n  Hint: Alignment must be a power of two, e.g. @align(16)"
-                            )));
-                        }
-                    }
-                }
+                "align" => FunctionAnnotation::Align(parse_alignment_argument(state)?),
                 _ => {
-                    let valid = super::get_annotation_names();
-                    let suggestions = super::suggest_alternatives(name, valid);
-
-                    let hint = if !suggestions.is_empty() {
-                        if suggestions.len() == 1 {
-                            format!("Did you mean @{}?", suggestions[0])
-                        } else {
-                            format!("Did you mean @{}?", suggestions.join(" or @"))
-                        }
-                    } else {
-                        let list = valid
-                            .iter()
-                            .map(|s| format!("@{s}"))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        format!("Valid annotations are: {list}")
-                    };
-
+                    let hint = unknown_annotation_hint(name, super::get_annotation_names());
                     return Err(state.error(format!(
                         "Unknown function annotation: @{name}\n  Hint: {hint}"
                     )));

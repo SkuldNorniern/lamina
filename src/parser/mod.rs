@@ -14,7 +14,9 @@ mod values;
 use std::{mem, str::from_utf8};
 
 use self::{
-    functions::parse_function_def, globals::parse_global_declaration, state::ParserState,
+    functions::parse_function_def,
+    globals::{parse_global_annotations, parse_global_declaration},
+    state::ParserState,
     types::parse_type_declaration,
 };
 #[cfg(feature = "nightly")]
@@ -199,6 +201,42 @@ const REMOVED_MODULE_ANNOTATIONS: &[(&str, &str)] = &[
     ("target_triple", "use --target"),
 ];
 
+/// The keyword that follows the leading run of `@name` / `@name(...)` annotations,
+/// found without consuming anything.
+fn leading_item_keyword<'s>(state: &ParserState<'s>) -> Result<&'s str, LaminaError> {
+    let mut probe = state.clone();
+    loop {
+        probe.skip_whitespace_and_comments();
+        if probe.current_char() != Some('@') {
+            break;
+        }
+        probe.advance();
+        probe.parse_identifier_str()?;
+        if probe.current_char() == Some('(') {
+            skip_annotation_argument(&mut probe)?;
+        }
+    }
+    probe.skip_whitespace_and_comments();
+    Ok(probe.peek_slice(6).unwrap_or(""))
+}
+
+fn skip_annotation_argument(probe: &mut ParserState<'_>) -> Result<(), LaminaError> {
+    probe.expect_char('(')?;
+    loop {
+        match probe.current_char() {
+            None => return Err(probe.error("Expected ')' to close the annotation")),
+            Some(')') => {
+                probe.advance();
+                return Ok(());
+            }
+            Some('"') => {
+                probe.parse_string_literal()?;
+            }
+            Some(_) => probe.advance(),
+        }
+    }
+}
+
 /// The name after a leading `@`, when the upcoming token is an `@` followed by an identifier.
 fn upcoming_annotation_name<'s>(state: &'s ParserState<'_>) -> &'s str {
     let bytes = state.bytes();
@@ -349,10 +387,7 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
         }
 
         let keyword_slice = state.peek_slice(6).unwrap_or("");
-        let exported_global = state
-            .peek_slice(32)
-            .and_then(|s| s.strip_prefix("@export"))
-            .is_some_and(|rest| rest.trim_start().starts_with("global"));
+        let item_keyword = leading_item_keyword(&state)?;
 
         if keyword_slice.starts_with("type") {
             let decl = parse_type_declaration(&mut state)?;
@@ -362,12 +397,10 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
                     "Duplicate type declaration: !{name}\n  Hint: Each type can only be declared once"
                 )));
             }
-        } else if exported_global || keyword_slice.starts_with("global") {
-            if exported_global {
-                state.consume_keyword("@export")?;
-            }
+        } else if item_keyword.starts_with("global") {
+            let annotations = parse_global_annotations(&mut state)?;
             let decl =
-                parse_global_declaration(&mut state, exported_global, &module.type_declarations)?;
+                parse_global_declaration(&mut state, annotations, &module.type_declarations)?;
             let name = decl.name;
             if module.global_declarations.insert(name, decl).is_some() {
                 return Err(state.error(format!(
@@ -596,6 +629,59 @@ mod tests {
 
         assert!(parse_module("global $d: u8 = 300").is_err());
         assert!(parse_module("global $e: u32 = -1").is_err());
+    }
+
+    #[test]
+    fn test_parse_global_align_annotation() {
+        let module =
+            parse_module("@align(64)\nglobal $arena: [1048576 x i8]").expect("Parsing failed");
+        let arena = module.global_declarations.get("arena").unwrap();
+        assert_eq!(arena.align, Some(64));
+        assert!(!arena.exported);
+    }
+
+    #[test]
+    fn test_parse_global_export_and_align_in_either_order() {
+        let input = "@export\n@align(16)\nglobal $v: [4 x i64] = [1, 2, 3, 4]";
+        let module = parse_module(input).expect("Parsing failed");
+        let v = module.global_declarations.get("v").unwrap();
+        assert!(v.exported);
+        assert_eq!(v.align, Some(16));
+
+        let swapped = "@align(16)\n@export\nglobal $v: [4 x i64] = [1, 2, 3, 4]";
+        let module = parse_module(swapped).expect("Parsing failed");
+        let v = module.global_declarations.get("v").unwrap();
+        assert!(v.exported);
+        assert_eq!(v.align, Some(16));
+    }
+
+    #[test]
+    fn test_parse_global_align_rejects_bad_values() {
+        let not_power = parse_module("@align(3)\nglobal $x: i32 = 1")
+            .expect_err("non-power-of-two alignment should be rejected")
+            .to_string();
+        assert!(
+            not_power.contains("Invalid alignment: @align(3)"),
+            "{not_power}"
+        );
+
+        let too_big = parse_module("@align(4294967296)\nglobal $x: i32 = 1")
+            .expect_err("alignment wider than u32 should be rejected")
+            .to_string();
+        assert!(too_big.contains("Invalid alignment"), "{too_big}");
+
+        let duplicate = parse_module("@align(8)\n@align(16)\nglobal $x: i32 = 1")
+            .expect_err("a second @align should be rejected")
+            .to_string();
+        assert!(
+            duplicate.contains("Duplicate annotation: @align"),
+            "{duplicate}"
+        );
+
+        let misspelled = parse_module("@alignn(16)\nglobal $x: i32 = 1")
+            .expect_err("an unknown global annotation should be rejected")
+            .to_string();
+        assert!(misspelled.contains("Did you mean @align?"), "{misspelled}");
     }
 
     #[test]
