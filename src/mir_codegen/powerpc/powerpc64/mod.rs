@@ -1319,10 +1319,15 @@ fn emit_instruction_ppc64<W: Write>(
                     .unwrap_or_else(|| abi.mangle_function_name("read"));
                 writeln!(writer, "    bl {read}")?;
                 writeln!(writer, "    nop")?;
-                writeln!(writer, "    cmpdi 0, 3, 1")?;
                 writeln!(writer, "    lbz 4, 0(1)")?;
                 writeln!(writer, "    addi 1, 1, 16")?;
-                writeln!(writer, "    isel 3, 4, 3, 2")?;
+                writeln!(writer, "    cmpdi 0, 3, 0")?;
+                writeln!(writer, "    li 5, -1")?;
+                writeln!(writer, "    isel 4, 5, 4, 2")?;
+                writeln!(writer, "    cmpldi 0, 3, 1")?;
+                writeln!(writer, "    li 5, -2")?;
+                writeln!(writer, "    isel 4, 5, 4, 1")?;
+                writeln!(writer, "    mr 3, 4")?;
             } else {
                 let types = signatures.arguments(name, args);
                 let kinds = aggregates.arguments(name, &types, signatures.fixed_arguments(name));

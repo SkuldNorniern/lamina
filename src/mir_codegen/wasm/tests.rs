@@ -92,6 +92,9 @@ for imp in module.imports:
             sys.stdout.buffer.write(bytes([args[0] & 0xff]))
             sys.stdout.buffer.flush()
             return 1
+        if name == 'readbyte':
+            data = sys.stdin.buffer.read(1)
+            return data[0] if data else -1
         return None if name == 'free' else 0
     linker.define(store, imp.module, imp.name,
                   wasmtime.Func(store, imp.type, callback))

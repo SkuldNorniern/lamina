@@ -1122,16 +1122,17 @@ pub(super) fn emit_instruction_x86_64(
                         writeln!(writer, "    movq %rsp, %rsi")?;
                         writeln!(writer, "    movq $1, %rdx")?;
                         writeln!(writer, "    syscall")?;
+                        writeln!(writer, "    movq $-2, %rdx")?;
+                        writeln!(writer, "    cmovcq %rdx, %rax")?;
                     }
                     TargetOperatingSystem::Windows => {
+                        writeln!(writer, "    movq %rsp, %rdx")?;
                         writeln!(writer, "    subq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        writeln!(writer, "    call getchar")?;
-                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
-                        // getchar reports EOF as -1; the syscall paths report 0.
-                        writeln!(writer, "    movslq %eax, %rax")?;
                         writeln!(writer, "    xorl %ecx, %ecx")?;
-                        writeln!(writer, "    cmpq $-1, %rax")?;
-                        writeln!(writer, "    cmoveq %rcx, %rax")?;
+                        writeln!(writer, "    movl $1, %r8d")?;
+                        writeln!(writer, "    call _read")?;
+                        writeln!(writer, "    addq ${}, %rsp", windows::SHADOW_SPACE_SIZE)?;
+                        writeln!(writer, "    movslq %eax, %rax")?;
                     }
                     _ => {
                         writeln!(writer, "    movq ${}, %rax", linux::SYS_READ)?;
@@ -1142,13 +1143,17 @@ pub(super) fn emit_instruction_x86_64(
                     }
                 }
 
-                // getchar already returns the byte (or -1); the syscall returns a
-                // count, so swap in the byte it stored only on a full read.
-                if target_os != TargetOperatingSystem::Windows {
-                    writeln!(writer, "    movzbl (%rsp), %ecx")?;
-                    writeln!(writer, "    cmpq $1, %rax")?;
-                    writeln!(writer, "    cmovel %ecx, %eax")?;
-                }
+                // Result: the byte (0..=255) after one read, -1 at end of file,
+                // -2 on any failure. Keyed on the count, never on the byte, so a
+                // NUL byte is not confused with EOF.
+                writeln!(writer, "    movzbl (%rsp), %ecx")?;
+                writeln!(writer, "    movq $-1, %rdx")?;
+                writeln!(writer, "    testq %rax, %rax")?;
+                writeln!(writer, "    cmoveq %rdx, %rcx")?;
+                writeln!(writer, "    movq $-2, %rdx")?;
+                writeln!(writer, "    cmpq $1, %rax")?;
+                writeln!(writer, "    cmovaq %rdx, %rcx")?;
+                writeln!(writer, "    movq %rcx, %rax")?;
 
                 writeln!(writer, "    addq ${}, %rsp", stack::ALIGNMENT)?;
 

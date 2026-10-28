@@ -1403,9 +1403,16 @@ fn emit_instruction_riscv<W: Write>(
                     .unwrap_or_else(|| abi.mangle_function_name("read"));
                 writeln!(writer, "    call {read}")?;
                 writeln!(writer, "    li t1, 1")?;
-                writeln!(writer, "    bne a0, t1, 1f")?;
-                writeln!(writer, "    lbu a0, 0(sp)")?;
+                writeln!(writer, "    beq a0, t1, 1f")?;
+                writeln!(writer, "    bnez a0, 2f")?;
+                writeln!(writer, "    li a0, -1")?;
+                writeln!(writer, "    j 3f")?;
+                writeln!(writer, "2:")?;
+                writeln!(writer, "    li a0, -2")?;
+                writeln!(writer, "    j 3f")?;
                 writeln!(writer, "1:")?;
+                writeln!(writer, "    lbu a0, 0(sp)")?;
+                writeln!(writer, "3:")?;
                 writeln!(writer, "    addi sp, sp, 16")?;
             } else {
                 // General function call implementation

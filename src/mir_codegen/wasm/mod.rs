@@ -757,6 +757,12 @@ const WASI_READ_HELPERS: &str = r#"  (func $lamina_readin (param $ptr i32) (para
       i64.extend_i32_u
     ) (else
       local.get $n
+      i64.eqz
+      (if (result i64) (then
+        i64.const -1
+      ) (else
+        i64.const -2
+      ))
     ))
   )
   (func $read (param $p i64) (param $n i64) (result i64)

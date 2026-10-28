@@ -1457,54 +1457,33 @@ fn emit_block<W: Write>(
                         }
                     }
                 } else if name == "lamina.readbyte" && args.is_empty() {
+                    writeln!(w, "    sub sp, sp, #16")?;
                     match abi.target_os() {
                         os if os_uses_macho(os) => {
-                            writeln!(w, "    sub sp, sp, #16")?;
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    mov x16, #3")?;
                             writeln!(w, "    svc #0")?;
-                            writeln!(w, "    ldrb {}, [sp]", w_alias("x9"))?;
-                            if let Some(dst) = ret {
-                                let dst_reg = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                                writeln!(w, "    cmp x0, #1")?;
-                                writeln!(w, "    uxtb {}, {}", x_alias("x9"), w_alias("x9"))?;
-                                writeln!(
-                                    w,
-                                    "    csel {}, {}, x0, eq",
-                                    x_alias(dst_reg),
-                                    x_alias("x9")
-                                )?;
-                                store_result(w, dst, &x_alias(dst_reg), frame, ra)?;
-                                ra.free_scratch(dst_reg);
-                            }
-                            writeln!(w, "    add sp, sp, #16")?;
+                            writeln!(w, "    csinv x0, x0, xzr, cc")?;
                         }
                         _ => {
-                            // Fallback to libc read
-                            writeln!(w, "    sub sp, sp, #16")?;
                             writeln!(w, "    mov x0, #0")?;
                             writeln!(w, "    mov x1, sp")?;
                             writeln!(w, "    mov x2, #1")?;
                             writeln!(w, "    bl read")?;
-                            writeln!(w, "    ldrb {}, [sp]", w_alias("x9"))?;
-                            if let Some(dst) = ret {
-                                let dst_reg = ra.alloc_scratch().ok_or_else(scratch_error)?;
-                                writeln!(w, "    cmp x0, #1")?;
-                                writeln!(w, "    uxtb {}, {}", x_alias("x9"), w_alias("x9"))?;
-                                writeln!(
-                                    w,
-                                    "    csel {}, {}, x0, eq",
-                                    x_alias(dst_reg),
-                                    x_alias("x9")
-                                )?;
-                                store_result(w, dst, &x_alias(dst_reg), frame, ra)?;
-                                ra.free_scratch(dst_reg);
-                            }
-                            writeln!(w, "    add sp, sp, #16")?;
                         }
                     }
+                    if let Some(dst) = ret {
+                        let dst_reg = ra.alloc_scratch().ok_or_else(scratch_error)?;
+                        let d = x_alias(dst_reg);
+                        writeln!(w, "    ldrb {}, [sp]", w_alias(dst_reg))?;
+                        writeln!(w, "    subs x0, x0, #1")?;
+                        writeln!(w, "    csel {d}, {d}, x0, eq")?;
+                        store_result(w, dst, &d, frame, ra)?;
+                        ra.free_scratch(dst_reg);
+                    }
+                    writeln!(w, "    add sp, sp, #16")?;
                 } else if name == "lamina.write" && args.len() == 2 {
                     match abi.target_os() {
                         os if os_uses_macho(os) => {
