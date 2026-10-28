@@ -50,7 +50,7 @@ pub use strength_reduction::StrengthReduction;
 pub use tail_call::TailCallOptimization;
 pub use unroll::LoopUnrolling;
 
-use crate::mir::{Function, MirType, Module, verify_function_in_pipeline};
+use crate::mir::{Aggregate, Function, MirType, Module, Signature, verify_function_in_pipeline};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -62,8 +62,44 @@ pub struct ReturnShape {
     pub aggregate: bool,
 }
 
-/// Return shape of every function in a module, keyed by name.
-pub type CalleeReturns = HashMap<String, ReturnShape>;
+/// One parameter as a caller passes it: its type and, for an aggregate passed by value,
+/// the aggregate's layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParamShape {
+    pub ty: MirType,
+    pub aggregate: Option<Aggregate>,
+}
+
+/// The signature a call has to match, as the callee declares it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CalleeShape {
+    pub ret: ReturnShape,
+    pub params: Vec<ParamShape>,
+    pub variadic: bool,
+}
+
+impl CalleeShape {
+    pub fn of(sig: &Signature) -> Self {
+        Self {
+            ret: ReturnShape {
+                ty: sig.ret_ty,
+                aggregate: sig.ret_aggregate.is_some(),
+            },
+            params: sig
+                .params
+                .iter()
+                .map(|param| ParamShape {
+                    ty: param.ty,
+                    aggregate: param.aggregate,
+                })
+                .collect(),
+            variadic: sig.variadic,
+        }
+    }
+}
+
+/// Signature of every function in a module, keyed by name.
+pub type CalleeSignatures = HashMap<String, CalleeShape>;
 
 #[cfg(feature = "nightly")]
 #[allow(unused_imports)]
@@ -187,7 +223,7 @@ pub trait Transform {
     fn apply_with_callees(
         &self,
         func: &mut Function,
-        _callees: &CalleeReturns,
+        _callees: &CalleeSignatures,
     ) -> Result<bool, TransformError> {
         self.apply(func)
     }
@@ -305,13 +341,13 @@ impl TransformPipeline {
     /// output across the testcases, so the order the pipeline is built in is what
     /// decides what a pass sees.
     pub fn apply_to_function(&self, func: &mut Function) -> Result<TransformStats, TransformError> {
-        self.apply_to_function_with(func, &CalleeReturns::new())
+        self.apply_to_function_with(func, &CalleeSignatures::new())
     }
 
     fn apply_to_function_with(
         &self,
         func: &mut Function,
-        callees: &CalleeReturns,
+        callees: &CalleeSignatures,
     ) -> Result<TransformStats, TransformError> {
         let mut stats = TransformStats::default();
         let mut total_iterations = 0;
@@ -382,18 +418,10 @@ impl TransformPipeline {
     fn apply_function_stages(&self, module: &mut Module) -> Result<TransformStats, TransformError> {
         let mut total_stats = TransformStats::default();
         let mut failed_functions = Vec::new();
-        let callees: CalleeReturns = module
+        let callees: CalleeSignatures = module
             .functions
             .iter()
-            .map(|(name, func)| {
-                (
-                    name.clone(),
-                    ReturnShape {
-                        ty: func.sig.ret_ty,
-                        aggregate: func.sig.ret_aggregate.is_some(),
-                    },
-                )
-            })
+            .map(|(name, func)| (name.clone(), CalleeShape::of(&func.sig)))
             .collect();
 
         for (func_name, func) in module.functions.iter_mut() {

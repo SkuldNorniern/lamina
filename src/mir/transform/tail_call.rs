@@ -7,7 +7,8 @@ use crate::mir::{
     function::Signature,
     gpu::GpuIntrinsic,
     transform::{
-        CalleeReturns, ReturnShape, Transform, TransformCategory, TransformError, TransformLevel,
+        CalleeShape, CalleeSignatures, ParamShape, Transform, TransformCategory, TransformError,
+        TransformLevel,
     },
     types::{MirType, ScalarType},
 };
@@ -37,13 +38,13 @@ impl Transform for TailCallOptimization {
     }
 
     fn apply(&self, func: &mut Function) -> Result<bool, TransformError> {
-        self.apply_internal(func, &CalleeReturns::new())
+        self.apply_internal(func, &CalleeSignatures::new())
     }
 
     fn apply_with_callees(
         &self,
         func: &mut Function,
-        callees: &CalleeReturns,
+        callees: &CalleeSignatures,
     ) -> Result<bool, TransformError> {
         self.apply_internal(func, callees)
     }
@@ -53,7 +54,7 @@ impl TailCallOptimization {
     fn apply_internal(
         &self,
         func: &mut Function,
-        callees: &CalleeReturns,
+        callees: &CalleeSignatures,
     ) -> Result<bool, TransformError> {
         if func.sig.variadic {
             return Ok(false);
@@ -132,7 +133,7 @@ impl TailCallOptimization {
         func_sig: &Signature,
         block: &mut Block,
         stack_addresses: &HashSet<Register>,
-        callees: &CalleeReturns,
+        callees: &CalleeSignatures,
     ) -> bool {
         let mut changed = false;
 
@@ -199,46 +200,47 @@ impl TailCallOptimization {
     /// Handles generalized tail calls (not just self-recursion) by strictly
     /// checking signature compatibility. This is required for Windows x86 (stdcall).
     ///
-    /// The callee's return shape comes from the module when it defines the callee;
-    /// otherwise only a returned call result can be trusted.
+    /// The callee's return shape and parameters come from the module when it defines
+    /// the callee; otherwise only a returned call result can be trusted, and the
+    /// arguments are checked against the caller's own parameters.
     fn is_tail_call_safe(
         &self,
         func_sig: &Signature,
         call_name: &str,
         call_args: &[Operand],
         call_ret: &Option<Register>,
-        callees: &CalleeReturns,
+        callees: &CalleeSignatures,
     ) -> bool {
         // An intrinsic is not a symbol a jump can reach: each one lowers to its own
         // sequence, and `print` loads a format string before calling printf.
         if GpuIntrinsic::from_name(call_name).is_some() || call_name.starts_with("lamina.") {
             return false;
         }
-        // 1. The callee must hand back exactly what the caller does. A callee the
-        // module does not define is only trusted when its result is returned.
-        match callees.get(call_name) {
+        let caller = CalleeShape::of(func_sig);
+        // 1. The callee must hand back exactly what the caller does, and take exactly
+        // what the caller takes, so both sides agree on the registers and the stack
+        // bytes the arguments occupy.
+        let params: &[ParamShape] = match callees.get(call_name) {
             Some(callee) => {
-                let caller = ReturnShape {
-                    ty: func_sig.ret_ty,
-                    aggregate: func_sig.ret_aggregate.is_some(),
-                };
                 if *callee != caller {
                     return false;
                 }
+                &callee.params
             }
             None => {
                 if call_ret.is_none() || func_sig.ret_aggregate.is_some() {
                     return false;
                 }
+                &caller.params
             }
-        }
+        };
 
-        // 2. Check argument compatibility (Stack size / Calling Convention)
-        if func_sig.params.len() != call_args.len() {
+        // 2. Check argument compatibility against the callee's parameters
+        if params.len() != call_args.len() {
             return false;
         }
 
-        for (param, arg) in func_sig.params.iter().zip(call_args.iter()) {
+        for (param, arg) in params.iter().zip(call_args.iter()) {
             if !self.is_compatible(param.ty, arg) {
                 return false;
             }
@@ -276,6 +278,7 @@ mod tests {
     use super::*;
     use crate::mir::{
         FunctionBuilder, Immediate, IntBinOp, MirType, Operand, ScalarType, VirtualReg,
+        transform::ReturnShape,
     };
 
     #[test]
@@ -539,15 +542,22 @@ mod tests {
             .build()
     }
 
-    fn callees(entries: &[(&str, Option<MirType>)]) -> CalleeReturns {
+    fn callees(entries: &[(&str, Option<MirType>)]) -> CalleeSignatures {
         entries
             .iter()
             .map(|(name, ty)| {
                 (
                     (*name).to_string(),
-                    ReturnShape {
-                        ty: *ty,
-                        aggregate: false,
+                    CalleeShape {
+                        ret: ReturnShape {
+                            ty: *ty,
+                            aggregate: false,
+                        },
+                        params: vec![ParamShape {
+                            ty: MirType::Scalar(ScalarType::I64),
+                            aggregate: None,
+                        }],
+                        variadic: false,
                     },
                 )
             })
@@ -648,6 +658,52 @@ mod tests {
             Some(VirtualReg::gpr(1).into()),
             Some(Operand::Register(VirtualReg::gpr(1).into())),
         );
+        assert!(
+            !TailCallOptimization
+                .apply_with_callees(&mut func, &known)
+                .expect("optimize")
+        );
+        assert_stays_call(&func);
+    }
+
+    fn callee_with_params(name: &str, params: Vec<ParamShape>) -> CalleeSignatures {
+        let shape = CalleeShape {
+            ret: ReturnShape {
+                ty: None,
+                aggregate: false,
+            },
+            params,
+            variadic: false,
+        };
+        [(name.to_string(), shape)].into_iter().collect()
+    }
+
+    #[test]
+    fn callee_with_more_parameters_than_the_call_is_not_a_tail_call() {
+        let i64_param = ParamShape {
+            ty: MirType::Scalar(ScalarType::I64),
+            aggregate: None,
+        };
+        let known = callee_with_params("g", vec![i64_param, i64_param]);
+        let mut func = tail_call_candidate(None, "g", None, None);
+        assert!(
+            !TailCallOptimization
+                .apply_with_callees(&mut func, &known)
+                .expect("optimize")
+        );
+        assert_stays_call(&func);
+    }
+
+    #[test]
+    fn callee_parameter_type_differing_from_the_caller_is_not_a_tail_call() {
+        let known = callee_with_params(
+            "g",
+            vec![ParamShape {
+                ty: MirType::Scalar(ScalarType::I32),
+                aggregate: None,
+            }],
+        );
+        let mut func = tail_call_candidate(None, "g", None, None);
         assert!(
             !TailCallOptimization
                 .apply_with_callees(&mut func, &known)
