@@ -78,34 +78,34 @@ fn @main() -> i64 {
 
     %r0 = call @setit(%s)
     %c0 = load.i64 %f0
-    print %c0
+    call @print_i64(%c0)
 
     %r1 = call @fieldset(%s)
     %c1 = load.i64 %f1
-    print %r1
-    print %c1
+    call @print_i64(%r1)
+    call @print_i64(%c1)
 
     %r2 = call @idxset(%s, 2)
     %c2 = load.i64 %f2
-    print %r2
-    print %c2
+    call @print_i64(%r2)
+    call @print_i64(%c2)
 
     %r3 = call @chain(%s)
     %c3 = load.i64 %f3
-    print %c3
+    call @print_i64(%c3)
 
     %r4 = call @viaret(%s)
     %c4 = load.i64 %f2
-    print %c4
+    call @print_i64(%c4)
 
     %r5 = call @forward(%s)
-    print %r5
+    call @print_i64(%r5)
 
     %r6 = call @read_elem($tbl)
-    print %r6
+    call @print_i64(%r6)
 
     %r7 = call @read_global_elem()
-    print %r7
+    call @print_i64(%r7)
 
     %slot = stackalloc.ptr
     store.ptr %slot, %s
@@ -113,11 +113,49 @@ fn @main() -> i64 {
     %le = getelem.i64 %lp, 0
     store.i64 %le, 808
     %c5 = load.i64 %f0
-    print %c5
+    call @print_i64(%c5)
 
     %ge = getelem.i64 $tbl, 0
     store.i64 %ge, 11
     %g0 = load.i64 $tbl
-    print %g0
+    call @print_i64(%g0)
     ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

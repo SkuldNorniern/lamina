@@ -88,23 +88,61 @@ fn @count_primes(i64 %limit) -> i64 {
 fn @main() -> i64 {
   entry:
     # Print header marker
-    print 123456789
+    call @print_i64(123456789)
 
     # Count primes up to different limits
     %count_100 = call @count_primes(100)
-    print %count_100
+    call @print_i64(%count_100)
 
     %count_1000 = call @count_primes(1000)
-    print %count_1000
+    call @print_i64(%count_1000)
 
     %count_10000 = call @count_primes(10000)
-    print %count_10000
+    call @print_i64(%count_10000)
 
     %count_1000000 = call @count_primes(1000000)
-    print %count_1000000
+    call @print_i64(%count_1000000)
 
     # Print footer marker
-    print 987654321
+    call @print_i64(987654321)
 
     ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

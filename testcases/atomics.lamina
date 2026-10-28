@@ -6,46 +6,48 @@ entry:
     store.i64 %cell, 10
     %old_add = atomic_add.i64 %cell, 5, seqcst
     %now_add = atomic_load.i64 %cell, seqcst
-    print %old_add
-    print %now_add
+    call @print_i64(%old_add)
+    call @print_i64(%now_add)
     %old_sub = atomic_sub.i64 %cell, 3, relaxed
-    print %old_sub
+    call @print_i64(%old_sub)
     %old_xchg = atomic_exchange.i64 %cell, 100, acqrel
-    print %old_xchg
+    call @print_i64(%old_xchg)
     atomic_store.i64 %cell, 6, seqcst
     %after_store = atomic_load.i64 %cell, acquire
-    print %after_store
+    call @print_i64(%after_store)
     atomic_store.i64 %cell, 7, release
     fence seqcst
     %old_and = atomic_and.i64 %cell, 5, seqcst
-    print %old_and
+    call @print_i64(%old_and)
     %old_or = atomic_or.i64 %cell, 8, seqcst
-    print %old_or
+    call @print_i64(%old_or)
     %old_xor = atomic_xor.i64 %cell, 3, seqcst
-    print %old_xor
+    call @print_i64(%old_xor)
     %final = atomic_load.i64 %cell, seqcst
-    print %final
+    call @print_i64(%final)
     %ignored = atomic_add.i64 %cell, 1000, seqcst
     %after_ignored = atomic_load.i64 %cell, seqcst
-    print %after_ignored
+    call @print_i64(%after_ignored)
 
     %forward = stackalloc.i64
     store.i64 %forward, 1
     %swapped = atomic_exchange.i64 %forward, 7, seqcst
     %reread = load.i64 %forward
-    print %swapped
-    print %reread
+    call @print_i64(%swapped)
+    call @print_i64(%reread)
     store.i64 %forward, 2
     atomic_store.i64 %forward, 9, seqcst
     %stored = load.i64 %forward
-    print %stored
+    call @print_i64(%stored)
 
     %byte = stackalloc.i8
     store.i8 %byte, 127
     %old_byte = atomic_add.i8 %byte, 1, seqcst
-    print %old_byte
+    %pv13 = sext.i8.i64 %old_byte
+    call @print_i64(%pv13)
     %now_byte = atomic_load.i8 %byte, seqcst
-    print %now_byte
+    %pv14 = sext.i8.i64 %now_byte
+    call @print_i64(%pv14)
 
     %flag = stackalloc.i64
     store.i64 %flag, 0
@@ -72,37 +74,83 @@ body:
 
 exit:
     %total = load.i64 %sum
-    print %total
+    call @print_i64(%total)
 
     %c8 = stackalloc.i8
     store.i8 %c8, 12
     %o8 = atomic_and.i8 %c8, 10, seqcst
     %n8 = atomic_load.i8 %c8, seqcst
-    print %o8
-    print %n8
+    %pv16 = sext.i8.i64 %o8
+    call @print_i64(%pv16)
+    %pv17 = sext.i8.i64 %n8
+    call @print_i64(%pv17)
     %c16 = stackalloc.i16
     store.i16 %c16, 1000
     %o16 = atomic_or.i16 %c16, 3000, acqrel
     %n16 = atomic_load.i16 %c16, seqcst
-    print %o16
-    print %n16
+    %pv18 = sext.i16.i64 %o16
+    call @print_i64(%pv18)
+    %pv19 = sext.i16.i64 %n16
+    call @print_i64(%pv19)
     %c32 = stackalloc.i32
     store.i32 %c32, -5
     %o32 = atomic_xor.i32 %c32, 255, seqcst
     %n32 = atomic_load.i32 %c32, seqcst
-    print %o32
-    print %n32
+    %pv20 = sext.i32.i64 %o32
+    call @print_i64(%pv20)
+    %pv21 = sext.i32.i64 %n32
+    call @print_i64(%pv21)
     %u8 = stackalloc.u8
     store.u8 %u8, 200
     %ou8 = atomic_sub.u8 %u8, 100, seqcst
     %nu8 = atomic_load.u8 %u8, seqcst
-    print %ou8
-    print %nu8
+    %pv22 = zext.u8.u64 %ou8
+    call @print_u64(%pv22)
+    %pv23 = zext.u8.u64 %nu8
+    call @print_u64(%pv23)
     %big = stackalloc.i64
     store.i64 %big, 1
     %ob = atomic_or.i64 %big, 4294967296, seqcst
     %nb = atomic_load.i64 %big, seqcst
-    print %ob
-    print %nb
+    call @print_i64(%ob)
+    call @print_i64(%nb)
     ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

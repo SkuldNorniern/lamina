@@ -412,2312 +412,2350 @@ fn @ud67(u64 %x) -> u64 {
 fn @main() -> i64 {
   entry:
     %v0 = call @sd0(0)
-    print %v0
+    call @print_i64(%v0)
     %v1 = call @sd0(1)
-    print %v1
+    call @print_i64(%v1)
     %v2 = call @sd0(-1)
-    print %v2
+    call @print_i64(%v2)
     %v3 = call @sd0(2)
-    print %v3
+    call @print_i64(%v3)
     %v4 = call @sd0(-2)
-    print %v4
+    call @print_i64(%v4)
     %v5 = call @sd0(7)
-    print %v5
+    call @print_i64(%v5)
     %v6 = call @sd0(-7)
-    print %v6
+    call @print_i64(%v6)
     %v7 = call @sd0(20)
-    print %v7
+    call @print_i64(%v7)
     %v8 = call @sd0(2147483647)
-    print %v8
+    call @print_i64(%v8)
     %v9 = call @sd0(-2147483648)
-    print %v9
+    call @print_i64(%v9)
     %v10 = call @sd0(2147483648)
-    print %v10
+    call @print_i64(%v10)
     %v11 = call @sd0(4294967296)
-    print %v11
+    call @print_i64(%v11)
     %v12 = call @sd0(4294967295)
-    print %v12
+    call @print_i64(%v12)
     %v13 = call @sd0(-9223372036854775808)
-    print %v13
+    call @print_i64(%v13)
     %v14 = call @sd0(9223372036854775807)
-    print %v14
+    call @print_i64(%v14)
     %v15 = call @sd0(12345678901234567)
-    print %v15
+    call @print_i64(%v15)
     %v16 = call @sd0(-999999999999)
-    print %v16
+    call @print_i64(%v16)
     %v17 = call @sd1(0)
-    print %v17
+    call @print_i64(%v17)
     %v18 = call @sd1(1)
-    print %v18
+    call @print_i64(%v18)
     %v19 = call @sd1(-1)
-    print %v19
+    call @print_i64(%v19)
     %v20 = call @sd1(2)
-    print %v20
+    call @print_i64(%v20)
     %v21 = call @sd1(-2)
-    print %v21
+    call @print_i64(%v21)
     %v22 = call @sd1(7)
-    print %v22
+    call @print_i64(%v22)
     %v23 = call @sd1(-7)
-    print %v23
+    call @print_i64(%v23)
     %v24 = call @sd1(20)
-    print %v24
+    call @print_i64(%v24)
     %v25 = call @sd1(2147483647)
-    print %v25
+    call @print_i64(%v25)
     %v26 = call @sd1(-2147483648)
-    print %v26
+    call @print_i64(%v26)
     %v27 = call @sd1(2147483648)
-    print %v27
+    call @print_i64(%v27)
     %v28 = call @sd1(4294967296)
-    print %v28
+    call @print_i64(%v28)
     %v29 = call @sd1(4294967295)
-    print %v29
+    call @print_i64(%v29)
     %v30 = call @sd1(-9223372036854775808)
-    print %v30
+    call @print_i64(%v30)
     %v31 = call @sd1(9223372036854775807)
-    print %v31
+    call @print_i64(%v31)
     %v32 = call @sd1(12345678901234567)
-    print %v32
+    call @print_i64(%v32)
     %v33 = call @sd1(-999999999999)
-    print %v33
+    call @print_i64(%v33)
     %v34 = call @sd2(0)
-    print %v34
+    call @print_i64(%v34)
     %v35 = call @sd2(1)
-    print %v35
+    call @print_i64(%v35)
     %v36 = call @sd2(-1)
-    print %v36
+    call @print_i64(%v36)
     %v37 = call @sd2(2)
-    print %v37
+    call @print_i64(%v37)
     %v38 = call @sd2(-2)
-    print %v38
+    call @print_i64(%v38)
     %v39 = call @sd2(7)
-    print %v39
+    call @print_i64(%v39)
     %v40 = call @sd2(-7)
-    print %v40
+    call @print_i64(%v40)
     %v41 = call @sd2(20)
-    print %v41
+    call @print_i64(%v41)
     %v42 = call @sd2(2147483647)
-    print %v42
+    call @print_i64(%v42)
     %v43 = call @sd2(-2147483648)
-    print %v43
+    call @print_i64(%v43)
     %v44 = call @sd2(2147483648)
-    print %v44
+    call @print_i64(%v44)
     %v45 = call @sd2(4294967296)
-    print %v45
+    call @print_i64(%v45)
     %v46 = call @sd2(4294967295)
-    print %v46
+    call @print_i64(%v46)
     %v47 = call @sd2(9223372036854775807)
-    print %v47
+    call @print_i64(%v47)
     %v48 = call @sd2(12345678901234567)
-    print %v48
+    call @print_i64(%v48)
     %v49 = call @sd2(-999999999999)
-    print %v49
+    call @print_i64(%v49)
     %v50 = call @sd3(0)
-    print %v50
+    call @print_i64(%v50)
     %v51 = call @sd3(1)
-    print %v51
+    call @print_i64(%v51)
     %v52 = call @sd3(-1)
-    print %v52
+    call @print_i64(%v52)
     %v53 = call @sd3(2)
-    print %v53
+    call @print_i64(%v53)
     %v54 = call @sd3(-2)
-    print %v54
+    call @print_i64(%v54)
     %v55 = call @sd3(7)
-    print %v55
+    call @print_i64(%v55)
     %v56 = call @sd3(-7)
-    print %v56
+    call @print_i64(%v56)
     %v57 = call @sd3(20)
-    print %v57
+    call @print_i64(%v57)
     %v58 = call @sd3(2147483647)
-    print %v58
+    call @print_i64(%v58)
     %v59 = call @sd3(-2147483648)
-    print %v59
+    call @print_i64(%v59)
     %v60 = call @sd3(2147483648)
-    print %v60
+    call @print_i64(%v60)
     %v61 = call @sd3(4294967296)
-    print %v61
+    call @print_i64(%v61)
     %v62 = call @sd3(4294967295)
-    print %v62
+    call @print_i64(%v62)
     %v63 = call @sd3(9223372036854775807)
-    print %v63
+    call @print_i64(%v63)
     %v64 = call @sd3(12345678901234567)
-    print %v64
+    call @print_i64(%v64)
     %v65 = call @sd3(-999999999999)
-    print %v65
+    call @print_i64(%v65)
     %v66 = call @sd4(0)
-    print %v66
+    call @print_i64(%v66)
     %v67 = call @sd4(1)
-    print %v67
+    call @print_i64(%v67)
     %v68 = call @sd4(-1)
-    print %v68
+    call @print_i64(%v68)
     %v69 = call @sd4(2)
-    print %v69
+    call @print_i64(%v69)
     %v70 = call @sd4(-2)
-    print %v70
+    call @print_i64(%v70)
     %v71 = call @sd4(7)
-    print %v71
+    call @print_i64(%v71)
     %v72 = call @sd4(-7)
-    print %v72
+    call @print_i64(%v72)
     %v73 = call @sd4(20)
-    print %v73
+    call @print_i64(%v73)
     %v74 = call @sd4(2147483647)
-    print %v74
+    call @print_i64(%v74)
     %v75 = call @sd4(-2147483648)
-    print %v75
+    call @print_i64(%v75)
     %v76 = call @sd4(2147483648)
-    print %v76
+    call @print_i64(%v76)
     %v77 = call @sd4(4294967296)
-    print %v77
+    call @print_i64(%v77)
     %v78 = call @sd4(4294967295)
-    print %v78
+    call @print_i64(%v78)
     %v79 = call @sd4(-9223372036854775808)
-    print %v79
+    call @print_i64(%v79)
     %v80 = call @sd4(9223372036854775807)
-    print %v80
+    call @print_i64(%v80)
     %v81 = call @sd4(12345678901234567)
-    print %v81
+    call @print_i64(%v81)
     %v82 = call @sd4(-999999999999)
-    print %v82
+    call @print_i64(%v82)
     %v83 = call @sd5(0)
-    print %v83
+    call @print_i64(%v83)
     %v84 = call @sd5(1)
-    print %v84
+    call @print_i64(%v84)
     %v85 = call @sd5(-1)
-    print %v85
+    call @print_i64(%v85)
     %v86 = call @sd5(2)
-    print %v86
+    call @print_i64(%v86)
     %v87 = call @sd5(-2)
-    print %v87
+    call @print_i64(%v87)
     %v88 = call @sd5(7)
-    print %v88
+    call @print_i64(%v88)
     %v89 = call @sd5(-7)
-    print %v89
+    call @print_i64(%v89)
     %v90 = call @sd5(20)
-    print %v90
+    call @print_i64(%v90)
     %v91 = call @sd5(2147483647)
-    print %v91
+    call @print_i64(%v91)
     %v92 = call @sd5(-2147483648)
-    print %v92
+    call @print_i64(%v92)
     %v93 = call @sd5(2147483648)
-    print %v93
+    call @print_i64(%v93)
     %v94 = call @sd5(4294967296)
-    print %v94
+    call @print_i64(%v94)
     %v95 = call @sd5(4294967295)
-    print %v95
+    call @print_i64(%v95)
     %v96 = call @sd5(-9223372036854775808)
-    print %v96
+    call @print_i64(%v96)
     %v97 = call @sd5(9223372036854775807)
-    print %v97
+    call @print_i64(%v97)
     %v98 = call @sd5(12345678901234567)
-    print %v98
+    call @print_i64(%v98)
     %v99 = call @sd5(-999999999999)
-    print %v99
+    call @print_i64(%v99)
     %v100 = call @sd6(0)
-    print %v100
+    call @print_i64(%v100)
     %v101 = call @sd6(1)
-    print %v101
+    call @print_i64(%v101)
     %v102 = call @sd6(-1)
-    print %v102
+    call @print_i64(%v102)
     %v103 = call @sd6(2)
-    print %v103
+    call @print_i64(%v103)
     %v104 = call @sd6(-2)
-    print %v104
+    call @print_i64(%v104)
     %v105 = call @sd6(7)
-    print %v105
+    call @print_i64(%v105)
     %v106 = call @sd6(-7)
-    print %v106
+    call @print_i64(%v106)
     %v107 = call @sd6(20)
-    print %v107
+    call @print_i64(%v107)
     %v108 = call @sd6(2147483647)
-    print %v108
+    call @print_i64(%v108)
     %v109 = call @sd6(-2147483648)
-    print %v109
+    call @print_i64(%v109)
     %v110 = call @sd6(2147483648)
-    print %v110
+    call @print_i64(%v110)
     %v111 = call @sd6(4294967296)
-    print %v111
+    call @print_i64(%v111)
     %v112 = call @sd6(4294967295)
-    print %v112
+    call @print_i64(%v112)
     %v113 = call @sd6(-9223372036854775808)
-    print %v113
+    call @print_i64(%v113)
     %v114 = call @sd6(9223372036854775807)
-    print %v114
+    call @print_i64(%v114)
     %v115 = call @sd6(12345678901234567)
-    print %v115
+    call @print_i64(%v115)
     %v116 = call @sd6(-999999999999)
-    print %v116
+    call @print_i64(%v116)
     %v117 = call @sd7(0)
-    print %v117
+    call @print_i64(%v117)
     %v118 = call @sd7(1)
-    print %v118
+    call @print_i64(%v118)
     %v119 = call @sd7(-1)
-    print %v119
+    call @print_i64(%v119)
     %v120 = call @sd7(2)
-    print %v120
+    call @print_i64(%v120)
     %v121 = call @sd7(-2)
-    print %v121
+    call @print_i64(%v121)
     %v122 = call @sd7(7)
-    print %v122
+    call @print_i64(%v122)
     %v123 = call @sd7(-7)
-    print %v123
+    call @print_i64(%v123)
     %v124 = call @sd7(20)
-    print %v124
+    call @print_i64(%v124)
     %v125 = call @sd7(2147483647)
-    print %v125
+    call @print_i64(%v125)
     %v126 = call @sd7(-2147483648)
-    print %v126
+    call @print_i64(%v126)
     %v127 = call @sd7(2147483648)
-    print %v127
+    call @print_i64(%v127)
     %v128 = call @sd7(4294967296)
-    print %v128
+    call @print_i64(%v128)
     %v129 = call @sd7(4294967295)
-    print %v129
+    call @print_i64(%v129)
     %v130 = call @sd7(-9223372036854775808)
-    print %v130
+    call @print_i64(%v130)
     %v131 = call @sd7(9223372036854775807)
-    print %v131
+    call @print_i64(%v131)
     %v132 = call @sd7(12345678901234567)
-    print %v132
+    call @print_i64(%v132)
     %v133 = call @sd7(-999999999999)
-    print %v133
+    call @print_i64(%v133)
     %v134 = call @sd8(0)
-    print %v134
+    call @print_i64(%v134)
     %v135 = call @sd8(1)
-    print %v135
+    call @print_i64(%v135)
     %v136 = call @sd8(-1)
-    print %v136
+    call @print_i64(%v136)
     %v137 = call @sd8(2)
-    print %v137
+    call @print_i64(%v137)
     %v138 = call @sd8(-2)
-    print %v138
+    call @print_i64(%v138)
     %v139 = call @sd8(7)
-    print %v139
+    call @print_i64(%v139)
     %v140 = call @sd8(-7)
-    print %v140
+    call @print_i64(%v140)
     %v141 = call @sd8(20)
-    print %v141
+    call @print_i64(%v141)
     %v142 = call @sd8(2147483647)
-    print %v142
+    call @print_i64(%v142)
     %v143 = call @sd8(-2147483648)
-    print %v143
+    call @print_i64(%v143)
     %v144 = call @sd8(2147483648)
-    print %v144
+    call @print_i64(%v144)
     %v145 = call @sd8(4294967296)
-    print %v145
+    call @print_i64(%v145)
     %v146 = call @sd8(4294967295)
-    print %v146
+    call @print_i64(%v146)
     %v147 = call @sd8(-9223372036854775808)
-    print %v147
+    call @print_i64(%v147)
     %v148 = call @sd8(9223372036854775807)
-    print %v148
+    call @print_i64(%v148)
     %v149 = call @sd8(12345678901234567)
-    print %v149
+    call @print_i64(%v149)
     %v150 = call @sd8(-999999999999)
-    print %v150
+    call @print_i64(%v150)
     %v151 = call @sd9(0)
-    print %v151
+    call @print_i64(%v151)
     %v152 = call @sd9(1)
-    print %v152
+    call @print_i64(%v152)
     %v153 = call @sd9(-1)
-    print %v153
+    call @print_i64(%v153)
     %v154 = call @sd9(2)
-    print %v154
+    call @print_i64(%v154)
     %v155 = call @sd9(-2)
-    print %v155
+    call @print_i64(%v155)
     %v156 = call @sd9(7)
-    print %v156
+    call @print_i64(%v156)
     %v157 = call @sd9(-7)
-    print %v157
+    call @print_i64(%v157)
     %v158 = call @sd9(20)
-    print %v158
+    call @print_i64(%v158)
     %v159 = call @sd9(2147483647)
-    print %v159
+    call @print_i64(%v159)
     %v160 = call @sd9(-2147483648)
-    print %v160
+    call @print_i64(%v160)
     %v161 = call @sd9(2147483648)
-    print %v161
+    call @print_i64(%v161)
     %v162 = call @sd9(4294967296)
-    print %v162
+    call @print_i64(%v162)
     %v163 = call @sd9(4294967295)
-    print %v163
+    call @print_i64(%v163)
     %v164 = call @sd9(-9223372036854775808)
-    print %v164
+    call @print_i64(%v164)
     %v165 = call @sd9(9223372036854775807)
-    print %v165
+    call @print_i64(%v165)
     %v166 = call @sd9(12345678901234567)
-    print %v166
+    call @print_i64(%v166)
     %v167 = call @sd9(-999999999999)
-    print %v167
+    call @print_i64(%v167)
     %v168 = call @sd10(0)
-    print %v168
+    call @print_i64(%v168)
     %v169 = call @sd10(1)
-    print %v169
+    call @print_i64(%v169)
     %v170 = call @sd10(-1)
-    print %v170
+    call @print_i64(%v170)
     %v171 = call @sd10(2)
-    print %v171
+    call @print_i64(%v171)
     %v172 = call @sd10(-2)
-    print %v172
+    call @print_i64(%v172)
     %v173 = call @sd10(7)
-    print %v173
+    call @print_i64(%v173)
     %v174 = call @sd10(-7)
-    print %v174
+    call @print_i64(%v174)
     %v175 = call @sd10(20)
-    print %v175
+    call @print_i64(%v175)
     %v176 = call @sd10(2147483647)
-    print %v176
+    call @print_i64(%v176)
     %v177 = call @sd10(-2147483648)
-    print %v177
+    call @print_i64(%v177)
     %v178 = call @sd10(2147483648)
-    print %v178
+    call @print_i64(%v178)
     %v179 = call @sd10(4294967296)
-    print %v179
+    call @print_i64(%v179)
     %v180 = call @sd10(4294967295)
-    print %v180
+    call @print_i64(%v180)
     %v181 = call @sd10(-9223372036854775808)
-    print %v181
+    call @print_i64(%v181)
     %v182 = call @sd10(9223372036854775807)
-    print %v182
+    call @print_i64(%v182)
     %v183 = call @sd10(12345678901234567)
-    print %v183
+    call @print_i64(%v183)
     %v184 = call @sd10(-999999999999)
-    print %v184
+    call @print_i64(%v184)
     %v185 = call @sd11(0)
-    print %v185
+    call @print_i64(%v185)
     %v186 = call @sd11(1)
-    print %v186
+    call @print_i64(%v186)
     %v187 = call @sd11(-1)
-    print %v187
+    call @print_i64(%v187)
     %v188 = call @sd11(2)
-    print %v188
+    call @print_i64(%v188)
     %v189 = call @sd11(-2)
-    print %v189
+    call @print_i64(%v189)
     %v190 = call @sd11(7)
-    print %v190
+    call @print_i64(%v190)
     %v191 = call @sd11(-7)
-    print %v191
+    call @print_i64(%v191)
     %v192 = call @sd11(20)
-    print %v192
+    call @print_i64(%v192)
     %v193 = call @sd11(2147483647)
-    print %v193
+    call @print_i64(%v193)
     %v194 = call @sd11(-2147483648)
-    print %v194
+    call @print_i64(%v194)
     %v195 = call @sd11(2147483648)
-    print %v195
+    call @print_i64(%v195)
     %v196 = call @sd11(4294967296)
-    print %v196
+    call @print_i64(%v196)
     %v197 = call @sd11(4294967295)
-    print %v197
+    call @print_i64(%v197)
     %v198 = call @sd11(-9223372036854775808)
-    print %v198
+    call @print_i64(%v198)
     %v199 = call @sd11(9223372036854775807)
-    print %v199
+    call @print_i64(%v199)
     %v200 = call @sd11(12345678901234567)
-    print %v200
+    call @print_i64(%v200)
     %v201 = call @sd11(-999999999999)
-    print %v201
+    call @print_i64(%v201)
     %v202 = call @sd12(0)
-    print %v202
+    call @print_i64(%v202)
     %v203 = call @sd12(1)
-    print %v203
+    call @print_i64(%v203)
     %v204 = call @sd12(-1)
-    print %v204
+    call @print_i64(%v204)
     %v205 = call @sd12(2)
-    print %v205
+    call @print_i64(%v205)
     %v206 = call @sd12(-2)
-    print %v206
+    call @print_i64(%v206)
     %v207 = call @sd12(7)
-    print %v207
+    call @print_i64(%v207)
     %v208 = call @sd12(-7)
-    print %v208
+    call @print_i64(%v208)
     %v209 = call @sd12(20)
-    print %v209
+    call @print_i64(%v209)
     %v210 = call @sd12(2147483647)
-    print %v210
+    call @print_i64(%v210)
     %v211 = call @sd12(-2147483648)
-    print %v211
+    call @print_i64(%v211)
     %v212 = call @sd12(2147483648)
-    print %v212
+    call @print_i64(%v212)
     %v213 = call @sd12(4294967296)
-    print %v213
+    call @print_i64(%v213)
     %v214 = call @sd12(4294967295)
-    print %v214
+    call @print_i64(%v214)
     %v215 = call @sd12(-9223372036854775808)
-    print %v215
+    call @print_i64(%v215)
     %v216 = call @sd12(9223372036854775807)
-    print %v216
+    call @print_i64(%v216)
     %v217 = call @sd12(12345678901234567)
-    print %v217
+    call @print_i64(%v217)
     %v218 = call @sd12(-999999999999)
-    print %v218
+    call @print_i64(%v218)
     %v219 = call @sd13(0)
-    print %v219
+    call @print_i64(%v219)
     %v220 = call @sd13(1)
-    print %v220
+    call @print_i64(%v220)
     %v221 = call @sd13(-1)
-    print %v221
+    call @print_i64(%v221)
     %v222 = call @sd13(2)
-    print %v222
+    call @print_i64(%v222)
     %v223 = call @sd13(-2)
-    print %v223
+    call @print_i64(%v223)
     %v224 = call @sd13(7)
-    print %v224
+    call @print_i64(%v224)
     %v225 = call @sd13(-7)
-    print %v225
+    call @print_i64(%v225)
     %v226 = call @sd13(20)
-    print %v226
+    call @print_i64(%v226)
     %v227 = call @sd13(2147483647)
-    print %v227
+    call @print_i64(%v227)
     %v228 = call @sd13(-2147483648)
-    print %v228
+    call @print_i64(%v228)
     %v229 = call @sd13(2147483648)
-    print %v229
+    call @print_i64(%v229)
     %v230 = call @sd13(4294967296)
-    print %v230
+    call @print_i64(%v230)
     %v231 = call @sd13(4294967295)
-    print %v231
+    call @print_i64(%v231)
     %v232 = call @sd13(-9223372036854775808)
-    print %v232
+    call @print_i64(%v232)
     %v233 = call @sd13(9223372036854775807)
-    print %v233
+    call @print_i64(%v233)
     %v234 = call @sd13(12345678901234567)
-    print %v234
+    call @print_i64(%v234)
     %v235 = call @sd13(-999999999999)
-    print %v235
+    call @print_i64(%v235)
     %v236 = call @sd14(0)
-    print %v236
+    call @print_i64(%v236)
     %v237 = call @sd14(1)
-    print %v237
+    call @print_i64(%v237)
     %v238 = call @sd14(-1)
-    print %v238
+    call @print_i64(%v238)
     %v239 = call @sd14(2)
-    print %v239
+    call @print_i64(%v239)
     %v240 = call @sd14(-2)
-    print %v240
+    call @print_i64(%v240)
     %v241 = call @sd14(7)
-    print %v241
+    call @print_i64(%v241)
     %v242 = call @sd14(-7)
-    print %v242
+    call @print_i64(%v242)
     %v243 = call @sd14(20)
-    print %v243
+    call @print_i64(%v243)
     %v244 = call @sd14(2147483647)
-    print %v244
+    call @print_i64(%v244)
     %v245 = call @sd14(-2147483648)
-    print %v245
+    call @print_i64(%v245)
     %v246 = call @sd14(2147483648)
-    print %v246
+    call @print_i64(%v246)
     %v247 = call @sd14(4294967296)
-    print %v247
+    call @print_i64(%v247)
     %v248 = call @sd14(4294967295)
-    print %v248
+    call @print_i64(%v248)
     %v249 = call @sd14(-9223372036854775808)
-    print %v249
+    call @print_i64(%v249)
     %v250 = call @sd14(9223372036854775807)
-    print %v250
+    call @print_i64(%v250)
     %v251 = call @sd14(12345678901234567)
-    print %v251
+    call @print_i64(%v251)
     %v252 = call @sd14(-999999999999)
-    print %v252
+    call @print_i64(%v252)
     %v253 = call @sd15(0)
-    print %v253
+    call @print_i64(%v253)
     %v254 = call @sd15(1)
-    print %v254
+    call @print_i64(%v254)
     %v255 = call @sd15(-1)
-    print %v255
+    call @print_i64(%v255)
     %v256 = call @sd15(2)
-    print %v256
+    call @print_i64(%v256)
     %v257 = call @sd15(-2)
-    print %v257
+    call @print_i64(%v257)
     %v258 = call @sd15(7)
-    print %v258
+    call @print_i64(%v258)
     %v259 = call @sd15(-7)
-    print %v259
+    call @print_i64(%v259)
     %v260 = call @sd15(20)
-    print %v260
+    call @print_i64(%v260)
     %v261 = call @sd15(2147483647)
-    print %v261
+    call @print_i64(%v261)
     %v262 = call @sd15(-2147483648)
-    print %v262
+    call @print_i64(%v262)
     %v263 = call @sd15(2147483648)
-    print %v263
+    call @print_i64(%v263)
     %v264 = call @sd15(4294967296)
-    print %v264
+    call @print_i64(%v264)
     %v265 = call @sd15(4294967295)
-    print %v265
+    call @print_i64(%v265)
     %v266 = call @sd15(-9223372036854775808)
-    print %v266
+    call @print_i64(%v266)
     %v267 = call @sd15(9223372036854775807)
-    print %v267
+    call @print_i64(%v267)
     %v268 = call @sd15(12345678901234567)
-    print %v268
+    call @print_i64(%v268)
     %v269 = call @sd15(-999999999999)
-    print %v269
+    call @print_i64(%v269)
     %v270 = call @sd16(0)
-    print %v270
+    call @print_i64(%v270)
     %v271 = call @sd16(1)
-    print %v271
+    call @print_i64(%v271)
     %v272 = call @sd16(-1)
-    print %v272
+    call @print_i64(%v272)
     %v273 = call @sd16(2)
-    print %v273
+    call @print_i64(%v273)
     %v274 = call @sd16(-2)
-    print %v274
+    call @print_i64(%v274)
     %v275 = call @sd16(7)
-    print %v275
+    call @print_i64(%v275)
     %v276 = call @sd16(-7)
-    print %v276
+    call @print_i64(%v276)
     %v277 = call @sd16(20)
-    print %v277
+    call @print_i64(%v277)
     %v278 = call @sd16(2147483647)
-    print %v278
+    call @print_i64(%v278)
     %v279 = call @sd16(-2147483648)
-    print %v279
+    call @print_i64(%v279)
     %v280 = call @sd16(2147483648)
-    print %v280
+    call @print_i64(%v280)
     %v281 = call @sd16(4294967296)
-    print %v281
+    call @print_i64(%v281)
     %v282 = call @sd16(4294967295)
-    print %v282
+    call @print_i64(%v282)
     %v283 = call @sd16(-9223372036854775808)
-    print %v283
+    call @print_i64(%v283)
     %v284 = call @sd16(9223372036854775807)
-    print %v284
+    call @print_i64(%v284)
     %v285 = call @sd16(12345678901234567)
-    print %v285
+    call @print_i64(%v285)
     %v286 = call @sd16(-999999999999)
-    print %v286
+    call @print_i64(%v286)
     %v287 = call @sd17(0)
-    print %v287
+    call @print_i64(%v287)
     %v288 = call @sd17(1)
-    print %v288
+    call @print_i64(%v288)
     %v289 = call @sd17(-1)
-    print %v289
+    call @print_i64(%v289)
     %v290 = call @sd17(2)
-    print %v290
+    call @print_i64(%v290)
     %v291 = call @sd17(-2)
-    print %v291
+    call @print_i64(%v291)
     %v292 = call @sd17(7)
-    print %v292
+    call @print_i64(%v292)
     %v293 = call @sd17(-7)
-    print %v293
+    call @print_i64(%v293)
     %v294 = call @sd17(20)
-    print %v294
+    call @print_i64(%v294)
     %v295 = call @sd17(2147483647)
-    print %v295
+    call @print_i64(%v295)
     %v296 = call @sd17(-2147483648)
-    print %v296
+    call @print_i64(%v296)
     %v297 = call @sd17(2147483648)
-    print %v297
+    call @print_i64(%v297)
     %v298 = call @sd17(4294967296)
-    print %v298
+    call @print_i64(%v298)
     %v299 = call @sd17(4294967295)
-    print %v299
+    call @print_i64(%v299)
     %v300 = call @sd17(-9223372036854775808)
-    print %v300
+    call @print_i64(%v300)
     %v301 = call @sd17(9223372036854775807)
-    print %v301
+    call @print_i64(%v301)
     %v302 = call @sd17(12345678901234567)
-    print %v302
+    call @print_i64(%v302)
     %v303 = call @sd17(-999999999999)
-    print %v303
+    call @print_i64(%v303)
     %v304 = call @sd18(0)
-    print %v304
+    call @print_i64(%v304)
     %v305 = call @sd18(1)
-    print %v305
+    call @print_i64(%v305)
     %v306 = call @sd18(-1)
-    print %v306
+    call @print_i64(%v306)
     %v307 = call @sd18(2)
-    print %v307
+    call @print_i64(%v307)
     %v308 = call @sd18(-2)
-    print %v308
+    call @print_i64(%v308)
     %v309 = call @sd18(7)
-    print %v309
+    call @print_i64(%v309)
     %v310 = call @sd18(-7)
-    print %v310
+    call @print_i64(%v310)
     %v311 = call @sd18(20)
-    print %v311
+    call @print_i64(%v311)
     %v312 = call @sd18(2147483647)
-    print %v312
+    call @print_i64(%v312)
     %v313 = call @sd18(-2147483648)
-    print %v313
+    call @print_i64(%v313)
     %v314 = call @sd18(2147483648)
-    print %v314
+    call @print_i64(%v314)
     %v315 = call @sd18(4294967296)
-    print %v315
+    call @print_i64(%v315)
     %v316 = call @sd18(4294967295)
-    print %v316
+    call @print_i64(%v316)
     %v317 = call @sd18(-9223372036854775808)
-    print %v317
+    call @print_i64(%v317)
     %v318 = call @sd18(9223372036854775807)
-    print %v318
+    call @print_i64(%v318)
     %v319 = call @sd18(12345678901234567)
-    print %v319
+    call @print_i64(%v319)
     %v320 = call @sd18(-999999999999)
-    print %v320
+    call @print_i64(%v320)
     %v321 = call @sd19(0)
-    print %v321
+    call @print_i64(%v321)
     %v322 = call @sd19(1)
-    print %v322
+    call @print_i64(%v322)
     %v323 = call @sd19(-1)
-    print %v323
+    call @print_i64(%v323)
     %v324 = call @sd19(2)
-    print %v324
+    call @print_i64(%v324)
     %v325 = call @sd19(-2)
-    print %v325
+    call @print_i64(%v325)
     %v326 = call @sd19(7)
-    print %v326
+    call @print_i64(%v326)
     %v327 = call @sd19(-7)
-    print %v327
+    call @print_i64(%v327)
     %v328 = call @sd19(20)
-    print %v328
+    call @print_i64(%v328)
     %v329 = call @sd19(2147483647)
-    print %v329
+    call @print_i64(%v329)
     %v330 = call @sd19(-2147483648)
-    print %v330
+    call @print_i64(%v330)
     %v331 = call @sd19(2147483648)
-    print %v331
+    call @print_i64(%v331)
     %v332 = call @sd19(4294967296)
-    print %v332
+    call @print_i64(%v332)
     %v333 = call @sd19(4294967295)
-    print %v333
+    call @print_i64(%v333)
     %v334 = call @sd19(-9223372036854775808)
-    print %v334
+    call @print_i64(%v334)
     %v335 = call @sd19(9223372036854775807)
-    print %v335
+    call @print_i64(%v335)
     %v336 = call @sd19(12345678901234567)
-    print %v336
+    call @print_i64(%v336)
     %v337 = call @sd19(-999999999999)
-    print %v337
+    call @print_i64(%v337)
     %v338 = call @sd20(0)
-    print %v338
+    call @print_i64(%v338)
     %v339 = call @sd20(1)
-    print %v339
+    call @print_i64(%v339)
     %v340 = call @sd20(-1)
-    print %v340
+    call @print_i64(%v340)
     %v341 = call @sd20(2)
-    print %v341
+    call @print_i64(%v341)
     %v342 = call @sd20(-2)
-    print %v342
+    call @print_i64(%v342)
     %v343 = call @sd20(7)
-    print %v343
+    call @print_i64(%v343)
     %v344 = call @sd20(-7)
-    print %v344
+    call @print_i64(%v344)
     %v345 = call @sd20(20)
-    print %v345
+    call @print_i64(%v345)
     %v346 = call @sd20(2147483647)
-    print %v346
+    call @print_i64(%v346)
     %v347 = call @sd20(-2147483648)
-    print %v347
+    call @print_i64(%v347)
     %v348 = call @sd20(2147483648)
-    print %v348
+    call @print_i64(%v348)
     %v349 = call @sd20(4294967296)
-    print %v349
+    call @print_i64(%v349)
     %v350 = call @sd20(4294967295)
-    print %v350
+    call @print_i64(%v350)
     %v351 = call @sd20(-9223372036854775808)
-    print %v351
+    call @print_i64(%v351)
     %v352 = call @sd20(9223372036854775807)
-    print %v352
+    call @print_i64(%v352)
     %v353 = call @sd20(12345678901234567)
-    print %v353
+    call @print_i64(%v353)
     %v354 = call @sd20(-999999999999)
-    print %v354
+    call @print_i64(%v354)
     %v355 = call @sd21(0)
-    print %v355
+    call @print_i64(%v355)
     %v356 = call @sd21(1)
-    print %v356
+    call @print_i64(%v356)
     %v357 = call @sd21(-1)
-    print %v357
+    call @print_i64(%v357)
     %v358 = call @sd21(2)
-    print %v358
+    call @print_i64(%v358)
     %v359 = call @sd21(-2)
-    print %v359
+    call @print_i64(%v359)
     %v360 = call @sd21(7)
-    print %v360
+    call @print_i64(%v360)
     %v361 = call @sd21(-7)
-    print %v361
+    call @print_i64(%v361)
     %v362 = call @sd21(20)
-    print %v362
+    call @print_i64(%v362)
     %v363 = call @sd21(2147483647)
-    print %v363
+    call @print_i64(%v363)
     %v364 = call @sd21(-2147483648)
-    print %v364
+    call @print_i64(%v364)
     %v365 = call @sd21(2147483648)
-    print %v365
+    call @print_i64(%v365)
     %v366 = call @sd21(4294967296)
-    print %v366
+    call @print_i64(%v366)
     %v367 = call @sd21(4294967295)
-    print %v367
+    call @print_i64(%v367)
     %v368 = call @sd21(-9223372036854775808)
-    print %v368
+    call @print_i64(%v368)
     %v369 = call @sd21(9223372036854775807)
-    print %v369
+    call @print_i64(%v369)
     %v370 = call @sd21(12345678901234567)
-    print %v370
+    call @print_i64(%v370)
     %v371 = call @sd21(-999999999999)
-    print %v371
+    call @print_i64(%v371)
     %v372 = call @sd22(0)
-    print %v372
+    call @print_i64(%v372)
     %v373 = call @sd22(1)
-    print %v373
+    call @print_i64(%v373)
     %v374 = call @sd22(-1)
-    print %v374
+    call @print_i64(%v374)
     %v375 = call @sd22(2)
-    print %v375
+    call @print_i64(%v375)
     %v376 = call @sd22(-2)
-    print %v376
+    call @print_i64(%v376)
     %v377 = call @sd22(7)
-    print %v377
+    call @print_i64(%v377)
     %v378 = call @sd22(-7)
-    print %v378
+    call @print_i64(%v378)
     %v379 = call @sd22(20)
-    print %v379
+    call @print_i64(%v379)
     %v380 = call @sd22(2147483647)
-    print %v380
+    call @print_i64(%v380)
     %v381 = call @sd22(-2147483648)
-    print %v381
+    call @print_i64(%v381)
     %v382 = call @sd22(2147483648)
-    print %v382
+    call @print_i64(%v382)
     %v383 = call @sd22(4294967296)
-    print %v383
+    call @print_i64(%v383)
     %v384 = call @sd22(4294967295)
-    print %v384
+    call @print_i64(%v384)
     %v385 = call @sd22(-9223372036854775808)
-    print %v385
+    call @print_i64(%v385)
     %v386 = call @sd22(9223372036854775807)
-    print %v386
+    call @print_i64(%v386)
     %v387 = call @sd22(12345678901234567)
-    print %v387
+    call @print_i64(%v387)
     %v388 = call @sd22(-999999999999)
-    print %v388
+    call @print_i64(%v388)
     %v389 = call @sd23(0)
-    print %v389
+    call @print_i64(%v389)
     %v390 = call @sd23(1)
-    print %v390
+    call @print_i64(%v390)
     %v391 = call @sd23(-1)
-    print %v391
+    call @print_i64(%v391)
     %v392 = call @sd23(2)
-    print %v392
+    call @print_i64(%v392)
     %v393 = call @sd23(-2)
-    print %v393
+    call @print_i64(%v393)
     %v394 = call @sd23(7)
-    print %v394
+    call @print_i64(%v394)
     %v395 = call @sd23(-7)
-    print %v395
+    call @print_i64(%v395)
     %v396 = call @sd23(20)
-    print %v396
+    call @print_i64(%v396)
     %v397 = call @sd23(2147483647)
-    print %v397
+    call @print_i64(%v397)
     %v398 = call @sd23(-2147483648)
-    print %v398
+    call @print_i64(%v398)
     %v399 = call @sd23(2147483648)
-    print %v399
+    call @print_i64(%v399)
     %v400 = call @sd23(4294967296)
-    print %v400
+    call @print_i64(%v400)
     %v401 = call @sd23(4294967295)
-    print %v401
+    call @print_i64(%v401)
     %v402 = call @sd23(-9223372036854775808)
-    print %v402
+    call @print_i64(%v402)
     %v403 = call @sd23(9223372036854775807)
-    print %v403
+    call @print_i64(%v403)
     %v404 = call @sd23(12345678901234567)
-    print %v404
+    call @print_i64(%v404)
     %v405 = call @sd23(-999999999999)
-    print %v405
+    call @print_i64(%v405)
     %v406 = call @sd24(0)
-    print %v406
+    call @print_i64(%v406)
     %v407 = call @sd24(1)
-    print %v407
+    call @print_i64(%v407)
     %v408 = call @sd24(-1)
-    print %v408
+    call @print_i64(%v408)
     %v409 = call @sd24(2)
-    print %v409
+    call @print_i64(%v409)
     %v410 = call @sd24(-2)
-    print %v410
+    call @print_i64(%v410)
     %v411 = call @sd24(7)
-    print %v411
+    call @print_i64(%v411)
     %v412 = call @sd24(-7)
-    print %v412
+    call @print_i64(%v412)
     %v413 = call @sd24(20)
-    print %v413
+    call @print_i64(%v413)
     %v414 = call @sd24(2147483647)
-    print %v414
+    call @print_i64(%v414)
     %v415 = call @sd24(-2147483648)
-    print %v415
+    call @print_i64(%v415)
     %v416 = call @sd24(2147483648)
-    print %v416
+    call @print_i64(%v416)
     %v417 = call @sd24(4294967296)
-    print %v417
+    call @print_i64(%v417)
     %v418 = call @sd24(4294967295)
-    print %v418
+    call @print_i64(%v418)
     %v419 = call @sd24(-9223372036854775808)
-    print %v419
+    call @print_i64(%v419)
     %v420 = call @sd24(9223372036854775807)
-    print %v420
+    call @print_i64(%v420)
     %v421 = call @sd24(12345678901234567)
-    print %v421
+    call @print_i64(%v421)
     %v422 = call @sd24(-999999999999)
-    print %v422
+    call @print_i64(%v422)
     %v423 = call @sd25(0)
-    print %v423
+    call @print_i64(%v423)
     %v424 = call @sd25(1)
-    print %v424
+    call @print_i64(%v424)
     %v425 = call @sd25(-1)
-    print %v425
+    call @print_i64(%v425)
     %v426 = call @sd25(2)
-    print %v426
+    call @print_i64(%v426)
     %v427 = call @sd25(-2)
-    print %v427
+    call @print_i64(%v427)
     %v428 = call @sd25(7)
-    print %v428
+    call @print_i64(%v428)
     %v429 = call @sd25(-7)
-    print %v429
+    call @print_i64(%v429)
     %v430 = call @sd25(20)
-    print %v430
+    call @print_i64(%v430)
     %v431 = call @sd25(2147483647)
-    print %v431
+    call @print_i64(%v431)
     %v432 = call @sd25(-2147483648)
-    print %v432
+    call @print_i64(%v432)
     %v433 = call @sd25(2147483648)
-    print %v433
+    call @print_i64(%v433)
     %v434 = call @sd25(4294967296)
-    print %v434
+    call @print_i64(%v434)
     %v435 = call @sd25(4294967295)
-    print %v435
+    call @print_i64(%v435)
     %v436 = call @sd25(-9223372036854775808)
-    print %v436
+    call @print_i64(%v436)
     %v437 = call @sd25(9223372036854775807)
-    print %v437
+    call @print_i64(%v437)
     %v438 = call @sd25(12345678901234567)
-    print %v438
+    call @print_i64(%v438)
     %v439 = call @sd25(-999999999999)
-    print %v439
+    call @print_i64(%v439)
     %v440 = call @sd26(0)
-    print %v440
+    call @print_i64(%v440)
     %v441 = call @sd26(1)
-    print %v441
+    call @print_i64(%v441)
     %v442 = call @sd26(-1)
-    print %v442
+    call @print_i64(%v442)
     %v443 = call @sd26(2)
-    print %v443
+    call @print_i64(%v443)
     %v444 = call @sd26(-2)
-    print %v444
+    call @print_i64(%v444)
     %v445 = call @sd26(7)
-    print %v445
+    call @print_i64(%v445)
     %v446 = call @sd26(-7)
-    print %v446
+    call @print_i64(%v446)
     %v447 = call @sd26(20)
-    print %v447
+    call @print_i64(%v447)
     %v448 = call @sd26(2147483647)
-    print %v448
+    call @print_i64(%v448)
     %v449 = call @sd26(-2147483648)
-    print %v449
+    call @print_i64(%v449)
     %v450 = call @sd26(2147483648)
-    print %v450
+    call @print_i64(%v450)
     %v451 = call @sd26(4294967296)
-    print %v451
+    call @print_i64(%v451)
     %v452 = call @sd26(4294967295)
-    print %v452
+    call @print_i64(%v452)
     %v453 = call @sd26(-9223372036854775808)
-    print %v453
+    call @print_i64(%v453)
     %v454 = call @sd26(9223372036854775807)
-    print %v454
+    call @print_i64(%v454)
     %v455 = call @sd26(12345678901234567)
-    print %v455
+    call @print_i64(%v455)
     %v456 = call @sd26(-999999999999)
-    print %v456
+    call @print_i64(%v456)
     %v457 = call @sd27(0)
-    print %v457
+    call @print_i64(%v457)
     %v458 = call @sd27(1)
-    print %v458
+    call @print_i64(%v458)
     %v459 = call @sd27(-1)
-    print %v459
+    call @print_i64(%v459)
     %v460 = call @sd27(2)
-    print %v460
+    call @print_i64(%v460)
     %v461 = call @sd27(-2)
-    print %v461
+    call @print_i64(%v461)
     %v462 = call @sd27(7)
-    print %v462
+    call @print_i64(%v462)
     %v463 = call @sd27(-7)
-    print %v463
+    call @print_i64(%v463)
     %v464 = call @sd27(20)
-    print %v464
+    call @print_i64(%v464)
     %v465 = call @sd27(2147483647)
-    print %v465
+    call @print_i64(%v465)
     %v466 = call @sd27(-2147483648)
-    print %v466
+    call @print_i64(%v466)
     %v467 = call @sd27(2147483648)
-    print %v467
+    call @print_i64(%v467)
     %v468 = call @sd27(4294967296)
-    print %v468
+    call @print_i64(%v468)
     %v469 = call @sd27(4294967295)
-    print %v469
+    call @print_i64(%v469)
     %v470 = call @sd27(-9223372036854775808)
-    print %v470
+    call @print_i64(%v470)
     %v471 = call @sd27(9223372036854775807)
-    print %v471
+    call @print_i64(%v471)
     %v472 = call @sd27(12345678901234567)
-    print %v472
+    call @print_i64(%v472)
     %v473 = call @sd27(-999999999999)
-    print %v473
+    call @print_i64(%v473)
     %v474 = call @sd28(0)
-    print %v474
+    call @print_i64(%v474)
     %v475 = call @sd28(1)
-    print %v475
+    call @print_i64(%v475)
     %v476 = call @sd28(-1)
-    print %v476
+    call @print_i64(%v476)
     %v477 = call @sd28(2)
-    print %v477
+    call @print_i64(%v477)
     %v478 = call @sd28(-2)
-    print %v478
+    call @print_i64(%v478)
     %v479 = call @sd28(7)
-    print %v479
+    call @print_i64(%v479)
     %v480 = call @sd28(-7)
-    print %v480
+    call @print_i64(%v480)
     %v481 = call @sd28(20)
-    print %v481
+    call @print_i64(%v481)
     %v482 = call @sd28(2147483647)
-    print %v482
+    call @print_i64(%v482)
     %v483 = call @sd28(-2147483648)
-    print %v483
+    call @print_i64(%v483)
     %v484 = call @sd28(2147483648)
-    print %v484
+    call @print_i64(%v484)
     %v485 = call @sd28(4294967296)
-    print %v485
+    call @print_i64(%v485)
     %v486 = call @sd28(4294967295)
-    print %v486
+    call @print_i64(%v486)
     %v487 = call @sd28(-9223372036854775808)
-    print %v487
+    call @print_i64(%v487)
     %v488 = call @sd28(9223372036854775807)
-    print %v488
+    call @print_i64(%v488)
     %v489 = call @sd28(12345678901234567)
-    print %v489
+    call @print_i64(%v489)
     %v490 = call @sd28(-999999999999)
-    print %v490
+    call @print_i64(%v490)
     %v491 = call @sd29(0)
-    print %v491
+    call @print_i64(%v491)
     %v492 = call @sd29(1)
-    print %v492
+    call @print_i64(%v492)
     %v493 = call @sd29(-1)
-    print %v493
+    call @print_i64(%v493)
     %v494 = call @sd29(2)
-    print %v494
+    call @print_i64(%v494)
     %v495 = call @sd29(-2)
-    print %v495
+    call @print_i64(%v495)
     %v496 = call @sd29(7)
-    print %v496
+    call @print_i64(%v496)
     %v497 = call @sd29(-7)
-    print %v497
+    call @print_i64(%v497)
     %v498 = call @sd29(20)
-    print %v498
+    call @print_i64(%v498)
     %v499 = call @sd29(2147483647)
-    print %v499
+    call @print_i64(%v499)
     %v500 = call @sd29(-2147483648)
-    print %v500
+    call @print_i64(%v500)
     %v501 = call @sd29(2147483648)
-    print %v501
+    call @print_i64(%v501)
     %v502 = call @sd29(4294967296)
-    print %v502
+    call @print_i64(%v502)
     %v503 = call @sd29(4294967295)
-    print %v503
+    call @print_i64(%v503)
     %v504 = call @sd29(-9223372036854775808)
-    print %v504
+    call @print_i64(%v504)
     %v505 = call @sd29(9223372036854775807)
-    print %v505
+    call @print_i64(%v505)
     %v506 = call @sd29(12345678901234567)
-    print %v506
+    call @print_i64(%v506)
     %v507 = call @sd29(-999999999999)
-    print %v507
+    call @print_i64(%v507)
     %v508 = call @sd30(0)
-    print %v508
+    call @print_i64(%v508)
     %v509 = call @sd30(1)
-    print %v509
+    call @print_i64(%v509)
     %v510 = call @sd30(-1)
-    print %v510
+    call @print_i64(%v510)
     %v511 = call @sd30(2)
-    print %v511
+    call @print_i64(%v511)
     %v512 = call @sd30(-2)
-    print %v512
+    call @print_i64(%v512)
     %v513 = call @sd30(7)
-    print %v513
+    call @print_i64(%v513)
     %v514 = call @sd30(-7)
-    print %v514
+    call @print_i64(%v514)
     %v515 = call @sd30(20)
-    print %v515
+    call @print_i64(%v515)
     %v516 = call @sd30(2147483647)
-    print %v516
+    call @print_i64(%v516)
     %v517 = call @sd30(-2147483648)
-    print %v517
+    call @print_i64(%v517)
     %v518 = call @sd30(2147483648)
-    print %v518
+    call @print_i64(%v518)
     %v519 = call @sd30(4294967296)
-    print %v519
+    call @print_i64(%v519)
     %v520 = call @sd30(4294967295)
-    print %v520
+    call @print_i64(%v520)
     %v521 = call @sd30(-9223372036854775808)
-    print %v521
+    call @print_i64(%v521)
     %v522 = call @sd30(9223372036854775807)
-    print %v522
+    call @print_i64(%v522)
     %v523 = call @sd30(12345678901234567)
-    print %v523
+    call @print_i64(%v523)
     %v524 = call @sd30(-999999999999)
-    print %v524
+    call @print_i64(%v524)
     %v525 = call @sd31(0)
-    print %v525
+    call @print_i64(%v525)
     %v526 = call @sd31(1)
-    print %v526
+    call @print_i64(%v526)
     %v527 = call @sd31(-1)
-    print %v527
+    call @print_i64(%v527)
     %v528 = call @sd31(2)
-    print %v528
+    call @print_i64(%v528)
     %v529 = call @sd31(-2)
-    print %v529
+    call @print_i64(%v529)
     %v530 = call @sd31(7)
-    print %v530
+    call @print_i64(%v530)
     %v531 = call @sd31(-7)
-    print %v531
+    call @print_i64(%v531)
     %v532 = call @sd31(20)
-    print %v532
+    call @print_i64(%v532)
     %v533 = call @sd31(2147483647)
-    print %v533
+    call @print_i64(%v533)
     %v534 = call @sd31(-2147483648)
-    print %v534
+    call @print_i64(%v534)
     %v535 = call @sd31(2147483648)
-    print %v535
+    call @print_i64(%v535)
     %v536 = call @sd31(4294967296)
-    print %v536
+    call @print_i64(%v536)
     %v537 = call @sd31(4294967295)
-    print %v537
+    call @print_i64(%v537)
     %v538 = call @sd31(-9223372036854775808)
-    print %v538
+    call @print_i64(%v538)
     %v539 = call @sd31(9223372036854775807)
-    print %v539
+    call @print_i64(%v539)
     %v540 = call @sd31(12345678901234567)
-    print %v540
+    call @print_i64(%v540)
     %v541 = call @sd31(-999999999999)
-    print %v541
+    call @print_i64(%v541)
     %v542 = call @sd32(0)
-    print %v542
+    call @print_i64(%v542)
     %v543 = call @sd32(1)
-    print %v543
+    call @print_i64(%v543)
     %v544 = call @sd32(-1)
-    print %v544
+    call @print_i64(%v544)
     %v545 = call @sd32(2)
-    print %v545
+    call @print_i64(%v545)
     %v546 = call @sd32(-2)
-    print %v546
+    call @print_i64(%v546)
     %v547 = call @sd32(7)
-    print %v547
+    call @print_i64(%v547)
     %v548 = call @sd32(-7)
-    print %v548
+    call @print_i64(%v548)
     %v549 = call @sd32(20)
-    print %v549
+    call @print_i64(%v549)
     %v550 = call @sd32(2147483647)
-    print %v550
+    call @print_i64(%v550)
     %v551 = call @sd32(-2147483648)
-    print %v551
+    call @print_i64(%v551)
     %v552 = call @sd32(2147483648)
-    print %v552
+    call @print_i64(%v552)
     %v553 = call @sd32(4294967296)
-    print %v553
+    call @print_i64(%v553)
     %v554 = call @sd32(4294967295)
-    print %v554
+    call @print_i64(%v554)
     %v555 = call @sd32(-9223372036854775808)
-    print %v555
+    call @print_i64(%v555)
     %v556 = call @sd32(9223372036854775807)
-    print %v556
+    call @print_i64(%v556)
     %v557 = call @sd32(12345678901234567)
-    print %v557
+    call @print_i64(%v557)
     %v558 = call @sd32(-999999999999)
-    print %v558
+    call @print_i64(%v558)
     %v559 = call @sd33(0)
-    print %v559
+    call @print_i64(%v559)
     %v560 = call @sd33(1)
-    print %v560
+    call @print_i64(%v560)
     %v561 = call @sd33(-1)
-    print %v561
+    call @print_i64(%v561)
     %v562 = call @sd33(2)
-    print %v562
+    call @print_i64(%v562)
     %v563 = call @sd33(-2)
-    print %v563
+    call @print_i64(%v563)
     %v564 = call @sd33(7)
-    print %v564
+    call @print_i64(%v564)
     %v565 = call @sd33(-7)
-    print %v565
+    call @print_i64(%v565)
     %v566 = call @sd33(20)
-    print %v566
+    call @print_i64(%v566)
     %v567 = call @sd33(2147483647)
-    print %v567
+    call @print_i64(%v567)
     %v568 = call @sd33(-2147483648)
-    print %v568
+    call @print_i64(%v568)
     %v569 = call @sd33(2147483648)
-    print %v569
+    call @print_i64(%v569)
     %v570 = call @sd33(4294967296)
-    print %v570
+    call @print_i64(%v570)
     %v571 = call @sd33(4294967295)
-    print %v571
+    call @print_i64(%v571)
     %v572 = call @sd33(-9223372036854775808)
-    print %v572
+    call @print_i64(%v572)
     %v573 = call @sd33(9223372036854775807)
-    print %v573
+    call @print_i64(%v573)
     %v574 = call @sd33(12345678901234567)
-    print %v574
+    call @print_i64(%v574)
     %v575 = call @sd33(-999999999999)
-    print %v575
+    call @print_i64(%v575)
     %v576 = call @sd34(0)
-    print %v576
+    call @print_i64(%v576)
     %v577 = call @sd34(1)
-    print %v577
+    call @print_i64(%v577)
     %v578 = call @sd34(-1)
-    print %v578
+    call @print_i64(%v578)
     %v579 = call @sd34(2)
-    print %v579
+    call @print_i64(%v579)
     %v580 = call @sd34(-2)
-    print %v580
+    call @print_i64(%v580)
     %v581 = call @sd34(7)
-    print %v581
+    call @print_i64(%v581)
     %v582 = call @sd34(-7)
-    print %v582
+    call @print_i64(%v582)
     %v583 = call @sd34(20)
-    print %v583
+    call @print_i64(%v583)
     %v584 = call @sd34(2147483647)
-    print %v584
+    call @print_i64(%v584)
     %v585 = call @sd34(-2147483648)
-    print %v585
+    call @print_i64(%v585)
     %v586 = call @sd34(2147483648)
-    print %v586
+    call @print_i64(%v586)
     %v587 = call @sd34(4294967296)
-    print %v587
+    call @print_i64(%v587)
     %v588 = call @sd34(4294967295)
-    print %v588
+    call @print_i64(%v588)
     %v589 = call @sd34(-9223372036854775808)
-    print %v589
+    call @print_i64(%v589)
     %v590 = call @sd34(9223372036854775807)
-    print %v590
+    call @print_i64(%v590)
     %v591 = call @sd34(12345678901234567)
-    print %v591
+    call @print_i64(%v591)
     %v592 = call @sd34(-999999999999)
-    print %v592
+    call @print_i64(%v592)
     %v593 = call @sd35(0)
-    print %v593
+    call @print_i64(%v593)
     %v594 = call @sd35(1)
-    print %v594
+    call @print_i64(%v594)
     %v595 = call @sd35(-1)
-    print %v595
+    call @print_i64(%v595)
     %v596 = call @sd35(2)
-    print %v596
+    call @print_i64(%v596)
     %v597 = call @sd35(-2)
-    print %v597
+    call @print_i64(%v597)
     %v598 = call @sd35(7)
-    print %v598
+    call @print_i64(%v598)
     %v599 = call @sd35(-7)
-    print %v599
+    call @print_i64(%v599)
     %v600 = call @sd35(20)
-    print %v600
+    call @print_i64(%v600)
     %v601 = call @sd35(2147483647)
-    print %v601
+    call @print_i64(%v601)
     %v602 = call @sd35(-2147483648)
-    print %v602
+    call @print_i64(%v602)
     %v603 = call @sd35(2147483648)
-    print %v603
+    call @print_i64(%v603)
     %v604 = call @sd35(4294967296)
-    print %v604
+    call @print_i64(%v604)
     %v605 = call @sd35(4294967295)
-    print %v605
+    call @print_i64(%v605)
     %v606 = call @sd35(-9223372036854775808)
-    print %v606
+    call @print_i64(%v606)
     %v607 = call @sd35(9223372036854775807)
-    print %v607
+    call @print_i64(%v607)
     %v608 = call @sd35(12345678901234567)
-    print %v608
+    call @print_i64(%v608)
     %v609 = call @sd35(-999999999999)
-    print %v609
+    call @print_i64(%v609)
     %v610 = call @sd36(0)
-    print %v610
+    call @print_i64(%v610)
     %v611 = call @sd36(1)
-    print %v611
+    call @print_i64(%v611)
     %v612 = call @sd36(-1)
-    print %v612
+    call @print_i64(%v612)
     %v613 = call @sd36(2)
-    print %v613
+    call @print_i64(%v613)
     %v614 = call @sd36(-2)
-    print %v614
+    call @print_i64(%v614)
     %v615 = call @sd36(7)
-    print %v615
+    call @print_i64(%v615)
     %v616 = call @sd36(-7)
-    print %v616
+    call @print_i64(%v616)
     %v617 = call @sd36(20)
-    print %v617
+    call @print_i64(%v617)
     %v618 = call @sd36(2147483647)
-    print %v618
+    call @print_i64(%v618)
     %v619 = call @sd36(-2147483648)
-    print %v619
+    call @print_i64(%v619)
     %v620 = call @sd36(2147483648)
-    print %v620
+    call @print_i64(%v620)
     %v621 = call @sd36(4294967296)
-    print %v621
+    call @print_i64(%v621)
     %v622 = call @sd36(4294967295)
-    print %v622
+    call @print_i64(%v622)
     %v623 = call @sd36(-9223372036854775808)
-    print %v623
+    call @print_i64(%v623)
     %v624 = call @sd36(9223372036854775807)
-    print %v624
+    call @print_i64(%v624)
     %v625 = call @sd36(12345678901234567)
-    print %v625
+    call @print_i64(%v625)
     %v626 = call @sd36(-999999999999)
-    print %v626
+    call @print_i64(%v626)
     %v627 = call @sd37(0)
-    print %v627
+    call @print_i64(%v627)
     %v628 = call @sd37(1)
-    print %v628
+    call @print_i64(%v628)
     %v629 = call @sd37(-1)
-    print %v629
+    call @print_i64(%v629)
     %v630 = call @sd37(2)
-    print %v630
+    call @print_i64(%v630)
     %v631 = call @sd37(-2)
-    print %v631
+    call @print_i64(%v631)
     %v632 = call @sd37(7)
-    print %v632
+    call @print_i64(%v632)
     %v633 = call @sd37(-7)
-    print %v633
+    call @print_i64(%v633)
     %v634 = call @sd37(20)
-    print %v634
+    call @print_i64(%v634)
     %v635 = call @sd37(2147483647)
-    print %v635
+    call @print_i64(%v635)
     %v636 = call @sd37(-2147483648)
-    print %v636
+    call @print_i64(%v636)
     %v637 = call @sd37(2147483648)
-    print %v637
+    call @print_i64(%v637)
     %v638 = call @sd37(4294967296)
-    print %v638
+    call @print_i64(%v638)
     %v639 = call @sd37(4294967295)
-    print %v639
+    call @print_i64(%v639)
     %v640 = call @sd37(-9223372036854775808)
-    print %v640
+    call @print_i64(%v640)
     %v641 = call @sd37(9223372036854775807)
-    print %v641
+    call @print_i64(%v641)
     %v642 = call @sd37(12345678901234567)
-    print %v642
+    call @print_i64(%v642)
     %v643 = call @sd37(-999999999999)
-    print %v643
+    call @print_i64(%v643)
     %v644 = call @sd38(0)
-    print %v644
+    call @print_i64(%v644)
     %v645 = call @sd38(1)
-    print %v645
+    call @print_i64(%v645)
     %v646 = call @sd38(-1)
-    print %v646
+    call @print_i64(%v646)
     %v647 = call @sd38(2)
-    print %v647
+    call @print_i64(%v647)
     %v648 = call @sd38(-2)
-    print %v648
+    call @print_i64(%v648)
     %v649 = call @sd38(7)
-    print %v649
+    call @print_i64(%v649)
     %v650 = call @sd38(-7)
-    print %v650
+    call @print_i64(%v650)
     %v651 = call @sd38(20)
-    print %v651
+    call @print_i64(%v651)
     %v652 = call @sd38(2147483647)
-    print %v652
+    call @print_i64(%v652)
     %v653 = call @sd38(-2147483648)
-    print %v653
+    call @print_i64(%v653)
     %v654 = call @sd38(2147483648)
-    print %v654
+    call @print_i64(%v654)
     %v655 = call @sd38(4294967296)
-    print %v655
+    call @print_i64(%v655)
     %v656 = call @sd38(4294967295)
-    print %v656
+    call @print_i64(%v656)
     %v657 = call @sd38(-9223372036854775808)
-    print %v657
+    call @print_i64(%v657)
     %v658 = call @sd38(9223372036854775807)
-    print %v658
+    call @print_i64(%v658)
     %v659 = call @sd38(12345678901234567)
-    print %v659
+    call @print_i64(%v659)
     %v660 = call @sd38(-999999999999)
-    print %v660
+    call @print_i64(%v660)
     %v661 = call @sd39(0)
-    print %v661
+    call @print_i64(%v661)
     %v662 = call @sd39(1)
-    print %v662
+    call @print_i64(%v662)
     %v663 = call @sd39(-1)
-    print %v663
+    call @print_i64(%v663)
     %v664 = call @sd39(2)
-    print %v664
+    call @print_i64(%v664)
     %v665 = call @sd39(-2)
-    print %v665
+    call @print_i64(%v665)
     %v666 = call @sd39(7)
-    print %v666
+    call @print_i64(%v666)
     %v667 = call @sd39(-7)
-    print %v667
+    call @print_i64(%v667)
     %v668 = call @sd39(20)
-    print %v668
+    call @print_i64(%v668)
     %v669 = call @sd39(2147483647)
-    print %v669
+    call @print_i64(%v669)
     %v670 = call @sd39(-2147483648)
-    print %v670
+    call @print_i64(%v670)
     %v671 = call @sd39(2147483648)
-    print %v671
+    call @print_i64(%v671)
     %v672 = call @sd39(4294967296)
-    print %v672
+    call @print_i64(%v672)
     %v673 = call @sd39(4294967295)
-    print %v673
+    call @print_i64(%v673)
     %v674 = call @sd39(-9223372036854775808)
-    print %v674
+    call @print_i64(%v674)
     %v675 = call @sd39(9223372036854775807)
-    print %v675
+    call @print_i64(%v675)
     %v676 = call @sd39(12345678901234567)
-    print %v676
+    call @print_i64(%v676)
     %v677 = call @sd39(-999999999999)
-    print %v677
+    call @print_i64(%v677)
     %v678 = call @sd40(0)
-    print %v678
+    call @print_i64(%v678)
     %v679 = call @sd40(1)
-    print %v679
+    call @print_i64(%v679)
     %v680 = call @sd40(-1)
-    print %v680
+    call @print_i64(%v680)
     %v681 = call @sd40(2)
-    print %v681
+    call @print_i64(%v681)
     %v682 = call @sd40(-2)
-    print %v682
+    call @print_i64(%v682)
     %v683 = call @sd40(7)
-    print %v683
+    call @print_i64(%v683)
     %v684 = call @sd40(-7)
-    print %v684
+    call @print_i64(%v684)
     %v685 = call @sd40(20)
-    print %v685
+    call @print_i64(%v685)
     %v686 = call @sd40(2147483647)
-    print %v686
+    call @print_i64(%v686)
     %v687 = call @sd40(-2147483648)
-    print %v687
+    call @print_i64(%v687)
     %v688 = call @sd40(2147483648)
-    print %v688
+    call @print_i64(%v688)
     %v689 = call @sd40(4294967296)
-    print %v689
+    call @print_i64(%v689)
     %v690 = call @sd40(4294967295)
-    print %v690
+    call @print_i64(%v690)
     %v691 = call @sd40(-9223372036854775808)
-    print %v691
+    call @print_i64(%v691)
     %v692 = call @sd40(9223372036854775807)
-    print %v692
+    call @print_i64(%v692)
     %v693 = call @sd40(12345678901234567)
-    print %v693
+    call @print_i64(%v693)
     %v694 = call @sd40(-999999999999)
-    print %v694
+    call @print_i64(%v694)
     %v695 = call @sd41(0)
-    print %v695
+    call @print_i64(%v695)
     %v696 = call @sd41(1)
-    print %v696
+    call @print_i64(%v696)
     %v697 = call @sd41(-1)
-    print %v697
+    call @print_i64(%v697)
     %v698 = call @sd41(2)
-    print %v698
+    call @print_i64(%v698)
     %v699 = call @sd41(-2)
-    print %v699
+    call @print_i64(%v699)
     %v700 = call @sd41(7)
-    print %v700
+    call @print_i64(%v700)
     %v701 = call @sd41(-7)
-    print %v701
+    call @print_i64(%v701)
     %v702 = call @sd41(20)
-    print %v702
+    call @print_i64(%v702)
     %v703 = call @sd41(2147483647)
-    print %v703
+    call @print_i64(%v703)
     %v704 = call @sd41(-2147483648)
-    print %v704
+    call @print_i64(%v704)
     %v705 = call @sd41(2147483648)
-    print %v705
+    call @print_i64(%v705)
     %v706 = call @sd41(4294967296)
-    print %v706
+    call @print_i64(%v706)
     %v707 = call @sd41(4294967295)
-    print %v707
+    call @print_i64(%v707)
     %v708 = call @sd41(-9223372036854775808)
-    print %v708
+    call @print_i64(%v708)
     %v709 = call @sd41(9223372036854775807)
-    print %v709
+    call @print_i64(%v709)
     %v710 = call @sd41(12345678901234567)
-    print %v710
+    call @print_i64(%v710)
     %v711 = call @sd41(-999999999999)
-    print %v711
+    call @print_i64(%v711)
     %v712 = call @sd42(0)
-    print %v712
+    call @print_i64(%v712)
     %v713 = call @sd42(1)
-    print %v713
+    call @print_i64(%v713)
     %v714 = call @sd42(-1)
-    print %v714
+    call @print_i64(%v714)
     %v715 = call @sd42(2)
-    print %v715
+    call @print_i64(%v715)
     %v716 = call @sd42(-2)
-    print %v716
+    call @print_i64(%v716)
     %v717 = call @sd42(7)
-    print %v717
+    call @print_i64(%v717)
     %v718 = call @sd42(-7)
-    print %v718
+    call @print_i64(%v718)
     %v719 = call @sd42(20)
-    print %v719
+    call @print_i64(%v719)
     %v720 = call @sd42(2147483647)
-    print %v720
+    call @print_i64(%v720)
     %v721 = call @sd42(-2147483648)
-    print %v721
+    call @print_i64(%v721)
     %v722 = call @sd42(2147483648)
-    print %v722
+    call @print_i64(%v722)
     %v723 = call @sd42(4294967296)
-    print %v723
+    call @print_i64(%v723)
     %v724 = call @sd42(4294967295)
-    print %v724
+    call @print_i64(%v724)
     %v725 = call @sd42(-9223372036854775808)
-    print %v725
+    call @print_i64(%v725)
     %v726 = call @sd42(9223372036854775807)
-    print %v726
+    call @print_i64(%v726)
     %v727 = call @sd42(12345678901234567)
-    print %v727
+    call @print_i64(%v727)
     %v728 = call @sd42(-999999999999)
-    print %v728
+    call @print_i64(%v728)
     %v729 = call @sd43(0)
-    print %v729
+    call @print_i64(%v729)
     %v730 = call @sd43(1)
-    print %v730
+    call @print_i64(%v730)
     %v731 = call @sd43(-1)
-    print %v731
+    call @print_i64(%v731)
     %v732 = call @sd43(2)
-    print %v732
+    call @print_i64(%v732)
     %v733 = call @sd43(-2)
-    print %v733
+    call @print_i64(%v733)
     %v734 = call @sd43(7)
-    print %v734
+    call @print_i64(%v734)
     %v735 = call @sd43(-7)
-    print %v735
+    call @print_i64(%v735)
     %v736 = call @sd43(20)
-    print %v736
+    call @print_i64(%v736)
     %v737 = call @sd43(2147483647)
-    print %v737
+    call @print_i64(%v737)
     %v738 = call @sd43(-2147483648)
-    print %v738
+    call @print_i64(%v738)
     %v739 = call @sd43(2147483648)
-    print %v739
+    call @print_i64(%v739)
     %v740 = call @sd43(4294967296)
-    print %v740
+    call @print_i64(%v740)
     %v741 = call @sd43(4294967295)
-    print %v741
+    call @print_i64(%v741)
     %v742 = call @sd43(-9223372036854775808)
-    print %v742
+    call @print_i64(%v742)
     %v743 = call @sd43(9223372036854775807)
-    print %v743
+    call @print_i64(%v743)
     %v744 = call @sd43(12345678901234567)
-    print %v744
+    call @print_i64(%v744)
     %v745 = call @sd43(-999999999999)
-    print %v745
+    call @print_i64(%v745)
     %v746 = call @ud44(0)
-    print %v746
+    call @print_u64(%v746)
     %v747 = call @ud44(1)
-    print %v747
+    call @print_u64(%v747)
     %v748 = call @ud44(18446744073709551615)
-    print %v748
+    call @print_u64(%v748)
     %v749 = call @ud44(2)
-    print %v749
+    call @print_u64(%v749)
     %v750 = call @ud44(18446744073709551614)
-    print %v750
+    call @print_u64(%v750)
     %v751 = call @ud44(7)
-    print %v751
+    call @print_u64(%v751)
     %v752 = call @ud44(18446744073709551609)
-    print %v752
+    call @print_u64(%v752)
     %v753 = call @ud44(20)
-    print %v753
+    call @print_u64(%v753)
     %v754 = call @ud44(2147483647)
-    print %v754
+    call @print_u64(%v754)
     %v755 = call @ud44(18446744071562067968)
-    print %v755
+    call @print_u64(%v755)
     %v756 = call @ud44(2147483648)
-    print %v756
+    call @print_u64(%v756)
     %v757 = call @ud44(4294967296)
-    print %v757
+    call @print_u64(%v757)
     %v758 = call @ud44(4294967295)
-    print %v758
+    call @print_u64(%v758)
     %v759 = call @ud44(9223372036854775808)
-    print %v759
+    call @print_u64(%v759)
     %v760 = call @ud44(9223372036854775807)
-    print %v760
+    call @print_u64(%v760)
     %v761 = call @ud44(12345678901234567)
-    print %v761
+    call @print_u64(%v761)
     %v762 = call @ud44(18446743073709551617)
-    print %v762
+    call @print_u64(%v762)
     %v763 = call @ud45(0)
-    print %v763
+    call @print_u64(%v763)
     %v764 = call @ud45(1)
-    print %v764
+    call @print_u64(%v764)
     %v765 = call @ud45(18446744073709551615)
-    print %v765
+    call @print_u64(%v765)
     %v766 = call @ud45(2)
-    print %v766
+    call @print_u64(%v766)
     %v767 = call @ud45(18446744073709551614)
-    print %v767
+    call @print_u64(%v767)
     %v768 = call @ud45(7)
-    print %v768
+    call @print_u64(%v768)
     %v769 = call @ud45(18446744073709551609)
-    print %v769
+    call @print_u64(%v769)
     %v770 = call @ud45(20)
-    print %v770
+    call @print_u64(%v770)
     %v771 = call @ud45(2147483647)
-    print %v771
+    call @print_u64(%v771)
     %v772 = call @ud45(18446744071562067968)
-    print %v772
+    call @print_u64(%v772)
     %v773 = call @ud45(2147483648)
-    print %v773
+    call @print_u64(%v773)
     %v774 = call @ud45(4294967296)
-    print %v774
+    call @print_u64(%v774)
     %v775 = call @ud45(4294967295)
-    print %v775
+    call @print_u64(%v775)
     %v776 = call @ud45(9223372036854775808)
-    print %v776
+    call @print_u64(%v776)
     %v777 = call @ud45(9223372036854775807)
-    print %v777
+    call @print_u64(%v777)
     %v778 = call @ud45(12345678901234567)
-    print %v778
+    call @print_u64(%v778)
     %v779 = call @ud45(18446743073709551617)
-    print %v779
+    call @print_u64(%v779)
     %v780 = call @ud46(0)
-    print %v780
+    call @print_u64(%v780)
     %v781 = call @ud46(1)
-    print %v781
+    call @print_u64(%v781)
     %v782 = call @ud46(18446744073709551615)
-    print %v782
+    call @print_u64(%v782)
     %v783 = call @ud46(2)
-    print %v783
+    call @print_u64(%v783)
     %v784 = call @ud46(18446744073709551614)
-    print %v784
+    call @print_u64(%v784)
     %v785 = call @ud46(7)
-    print %v785
+    call @print_u64(%v785)
     %v786 = call @ud46(18446744073709551609)
-    print %v786
+    call @print_u64(%v786)
     %v787 = call @ud46(20)
-    print %v787
+    call @print_u64(%v787)
     %v788 = call @ud46(2147483647)
-    print %v788
+    call @print_u64(%v788)
     %v789 = call @ud46(18446744071562067968)
-    print %v789
+    call @print_u64(%v789)
     %v790 = call @ud46(2147483648)
-    print %v790
+    call @print_u64(%v790)
     %v791 = call @ud46(4294967296)
-    print %v791
+    call @print_u64(%v791)
     %v792 = call @ud46(4294967295)
-    print %v792
+    call @print_u64(%v792)
     %v793 = call @ud46(9223372036854775808)
-    print %v793
+    call @print_u64(%v793)
     %v794 = call @ud46(9223372036854775807)
-    print %v794
+    call @print_u64(%v794)
     %v795 = call @ud46(12345678901234567)
-    print %v795
+    call @print_u64(%v795)
     %v796 = call @ud46(18446743073709551617)
-    print %v796
+    call @print_u64(%v796)
     %v797 = call @ud47(0)
-    print %v797
+    call @print_u64(%v797)
     %v798 = call @ud47(1)
-    print %v798
+    call @print_u64(%v798)
     %v799 = call @ud47(18446744073709551615)
-    print %v799
+    call @print_u64(%v799)
     %v800 = call @ud47(2)
-    print %v800
+    call @print_u64(%v800)
     %v801 = call @ud47(18446744073709551614)
-    print %v801
+    call @print_u64(%v801)
     %v802 = call @ud47(7)
-    print %v802
+    call @print_u64(%v802)
     %v803 = call @ud47(18446744073709551609)
-    print %v803
+    call @print_u64(%v803)
     %v804 = call @ud47(20)
-    print %v804
+    call @print_u64(%v804)
     %v805 = call @ud47(2147483647)
-    print %v805
+    call @print_u64(%v805)
     %v806 = call @ud47(18446744071562067968)
-    print %v806
+    call @print_u64(%v806)
     %v807 = call @ud47(2147483648)
-    print %v807
+    call @print_u64(%v807)
     %v808 = call @ud47(4294967296)
-    print %v808
+    call @print_u64(%v808)
     %v809 = call @ud47(4294967295)
-    print %v809
+    call @print_u64(%v809)
     %v810 = call @ud47(9223372036854775808)
-    print %v810
+    call @print_u64(%v810)
     %v811 = call @ud47(9223372036854775807)
-    print %v811
+    call @print_u64(%v811)
     %v812 = call @ud47(12345678901234567)
-    print %v812
+    call @print_u64(%v812)
     %v813 = call @ud47(18446743073709551617)
-    print %v813
+    call @print_u64(%v813)
     %v814 = call @ud48(0)
-    print %v814
+    call @print_u64(%v814)
     %v815 = call @ud48(1)
-    print %v815
+    call @print_u64(%v815)
     %v816 = call @ud48(18446744073709551615)
-    print %v816
+    call @print_u64(%v816)
     %v817 = call @ud48(2)
-    print %v817
+    call @print_u64(%v817)
     %v818 = call @ud48(18446744073709551614)
-    print %v818
+    call @print_u64(%v818)
     %v819 = call @ud48(7)
-    print %v819
+    call @print_u64(%v819)
     %v820 = call @ud48(18446744073709551609)
-    print %v820
+    call @print_u64(%v820)
     %v821 = call @ud48(20)
-    print %v821
+    call @print_u64(%v821)
     %v822 = call @ud48(2147483647)
-    print %v822
+    call @print_u64(%v822)
     %v823 = call @ud48(18446744071562067968)
-    print %v823
+    call @print_u64(%v823)
     %v824 = call @ud48(2147483648)
-    print %v824
+    call @print_u64(%v824)
     %v825 = call @ud48(4294967296)
-    print %v825
+    call @print_u64(%v825)
     %v826 = call @ud48(4294967295)
-    print %v826
+    call @print_u64(%v826)
     %v827 = call @ud48(9223372036854775808)
-    print %v827
+    call @print_u64(%v827)
     %v828 = call @ud48(9223372036854775807)
-    print %v828
+    call @print_u64(%v828)
     %v829 = call @ud48(12345678901234567)
-    print %v829
+    call @print_u64(%v829)
     %v830 = call @ud48(18446743073709551617)
-    print %v830
+    call @print_u64(%v830)
     %v831 = call @ud49(0)
-    print %v831
+    call @print_u64(%v831)
     %v832 = call @ud49(1)
-    print %v832
+    call @print_u64(%v832)
     %v833 = call @ud49(18446744073709551615)
-    print %v833
+    call @print_u64(%v833)
     %v834 = call @ud49(2)
-    print %v834
+    call @print_u64(%v834)
     %v835 = call @ud49(18446744073709551614)
-    print %v835
+    call @print_u64(%v835)
     %v836 = call @ud49(7)
-    print %v836
+    call @print_u64(%v836)
     %v837 = call @ud49(18446744073709551609)
-    print %v837
+    call @print_u64(%v837)
     %v838 = call @ud49(20)
-    print %v838
+    call @print_u64(%v838)
     %v839 = call @ud49(2147483647)
-    print %v839
+    call @print_u64(%v839)
     %v840 = call @ud49(18446744071562067968)
-    print %v840
+    call @print_u64(%v840)
     %v841 = call @ud49(2147483648)
-    print %v841
+    call @print_u64(%v841)
     %v842 = call @ud49(4294967296)
-    print %v842
+    call @print_u64(%v842)
     %v843 = call @ud49(4294967295)
-    print %v843
+    call @print_u64(%v843)
     %v844 = call @ud49(9223372036854775808)
-    print %v844
+    call @print_u64(%v844)
     %v845 = call @ud49(9223372036854775807)
-    print %v845
+    call @print_u64(%v845)
     %v846 = call @ud49(12345678901234567)
-    print %v846
+    call @print_u64(%v846)
     %v847 = call @ud49(18446743073709551617)
-    print %v847
+    call @print_u64(%v847)
     %v848 = call @ud50(0)
-    print %v848
+    call @print_u64(%v848)
     %v849 = call @ud50(1)
-    print %v849
+    call @print_u64(%v849)
     %v850 = call @ud50(18446744073709551615)
-    print %v850
+    call @print_u64(%v850)
     %v851 = call @ud50(2)
-    print %v851
+    call @print_u64(%v851)
     %v852 = call @ud50(18446744073709551614)
-    print %v852
+    call @print_u64(%v852)
     %v853 = call @ud50(7)
-    print %v853
+    call @print_u64(%v853)
     %v854 = call @ud50(18446744073709551609)
-    print %v854
+    call @print_u64(%v854)
     %v855 = call @ud50(20)
-    print %v855
+    call @print_u64(%v855)
     %v856 = call @ud50(2147483647)
-    print %v856
+    call @print_u64(%v856)
     %v857 = call @ud50(18446744071562067968)
-    print %v857
+    call @print_u64(%v857)
     %v858 = call @ud50(2147483648)
-    print %v858
+    call @print_u64(%v858)
     %v859 = call @ud50(4294967296)
-    print %v859
+    call @print_u64(%v859)
     %v860 = call @ud50(4294967295)
-    print %v860
+    call @print_u64(%v860)
     %v861 = call @ud50(9223372036854775808)
-    print %v861
+    call @print_u64(%v861)
     %v862 = call @ud50(9223372036854775807)
-    print %v862
+    call @print_u64(%v862)
     %v863 = call @ud50(12345678901234567)
-    print %v863
+    call @print_u64(%v863)
     %v864 = call @ud50(18446743073709551617)
-    print %v864
+    call @print_u64(%v864)
     %v865 = call @ud51(0)
-    print %v865
+    call @print_u64(%v865)
     %v866 = call @ud51(1)
-    print %v866
+    call @print_u64(%v866)
     %v867 = call @ud51(18446744073709551615)
-    print %v867
+    call @print_u64(%v867)
     %v868 = call @ud51(2)
-    print %v868
+    call @print_u64(%v868)
     %v869 = call @ud51(18446744073709551614)
-    print %v869
+    call @print_u64(%v869)
     %v870 = call @ud51(7)
-    print %v870
+    call @print_u64(%v870)
     %v871 = call @ud51(18446744073709551609)
-    print %v871
+    call @print_u64(%v871)
     %v872 = call @ud51(20)
-    print %v872
+    call @print_u64(%v872)
     %v873 = call @ud51(2147483647)
-    print %v873
+    call @print_u64(%v873)
     %v874 = call @ud51(18446744071562067968)
-    print %v874
+    call @print_u64(%v874)
     %v875 = call @ud51(2147483648)
-    print %v875
+    call @print_u64(%v875)
     %v876 = call @ud51(4294967296)
-    print %v876
+    call @print_u64(%v876)
     %v877 = call @ud51(4294967295)
-    print %v877
+    call @print_u64(%v877)
     %v878 = call @ud51(9223372036854775808)
-    print %v878
+    call @print_u64(%v878)
     %v879 = call @ud51(9223372036854775807)
-    print %v879
+    call @print_u64(%v879)
     %v880 = call @ud51(12345678901234567)
-    print %v880
+    call @print_u64(%v880)
     %v881 = call @ud51(18446743073709551617)
-    print %v881
+    call @print_u64(%v881)
     %v882 = call @ud52(0)
-    print %v882
+    call @print_u64(%v882)
     %v883 = call @ud52(1)
-    print %v883
+    call @print_u64(%v883)
     %v884 = call @ud52(18446744073709551615)
-    print %v884
+    call @print_u64(%v884)
     %v885 = call @ud52(2)
-    print %v885
+    call @print_u64(%v885)
     %v886 = call @ud52(18446744073709551614)
-    print %v886
+    call @print_u64(%v886)
     %v887 = call @ud52(7)
-    print %v887
+    call @print_u64(%v887)
     %v888 = call @ud52(18446744073709551609)
-    print %v888
+    call @print_u64(%v888)
     %v889 = call @ud52(20)
-    print %v889
+    call @print_u64(%v889)
     %v890 = call @ud52(2147483647)
-    print %v890
+    call @print_u64(%v890)
     %v891 = call @ud52(18446744071562067968)
-    print %v891
+    call @print_u64(%v891)
     %v892 = call @ud52(2147483648)
-    print %v892
+    call @print_u64(%v892)
     %v893 = call @ud52(4294967296)
-    print %v893
+    call @print_u64(%v893)
     %v894 = call @ud52(4294967295)
-    print %v894
+    call @print_u64(%v894)
     %v895 = call @ud52(9223372036854775808)
-    print %v895
+    call @print_u64(%v895)
     %v896 = call @ud52(9223372036854775807)
-    print %v896
+    call @print_u64(%v896)
     %v897 = call @ud52(12345678901234567)
-    print %v897
+    call @print_u64(%v897)
     %v898 = call @ud52(18446743073709551617)
-    print %v898
+    call @print_u64(%v898)
     %v899 = call @ud53(0)
-    print %v899
+    call @print_u64(%v899)
     %v900 = call @ud53(1)
-    print %v900
+    call @print_u64(%v900)
     %v901 = call @ud53(18446744073709551615)
-    print %v901
+    call @print_u64(%v901)
     %v902 = call @ud53(2)
-    print %v902
+    call @print_u64(%v902)
     %v903 = call @ud53(18446744073709551614)
-    print %v903
+    call @print_u64(%v903)
     %v904 = call @ud53(7)
-    print %v904
+    call @print_u64(%v904)
     %v905 = call @ud53(18446744073709551609)
-    print %v905
+    call @print_u64(%v905)
     %v906 = call @ud53(20)
-    print %v906
+    call @print_u64(%v906)
     %v907 = call @ud53(2147483647)
-    print %v907
+    call @print_u64(%v907)
     %v908 = call @ud53(18446744071562067968)
-    print %v908
+    call @print_u64(%v908)
     %v909 = call @ud53(2147483648)
-    print %v909
+    call @print_u64(%v909)
     %v910 = call @ud53(4294967296)
-    print %v910
+    call @print_u64(%v910)
     %v911 = call @ud53(4294967295)
-    print %v911
+    call @print_u64(%v911)
     %v912 = call @ud53(9223372036854775808)
-    print %v912
+    call @print_u64(%v912)
     %v913 = call @ud53(9223372036854775807)
-    print %v913
+    call @print_u64(%v913)
     %v914 = call @ud53(12345678901234567)
-    print %v914
+    call @print_u64(%v914)
     %v915 = call @ud53(18446743073709551617)
-    print %v915
+    call @print_u64(%v915)
     %v916 = call @ud54(0)
-    print %v916
+    call @print_u64(%v916)
     %v917 = call @ud54(1)
-    print %v917
+    call @print_u64(%v917)
     %v918 = call @ud54(18446744073709551615)
-    print %v918
+    call @print_u64(%v918)
     %v919 = call @ud54(2)
-    print %v919
+    call @print_u64(%v919)
     %v920 = call @ud54(18446744073709551614)
-    print %v920
+    call @print_u64(%v920)
     %v921 = call @ud54(7)
-    print %v921
+    call @print_u64(%v921)
     %v922 = call @ud54(18446744073709551609)
-    print %v922
+    call @print_u64(%v922)
     %v923 = call @ud54(20)
-    print %v923
+    call @print_u64(%v923)
     %v924 = call @ud54(2147483647)
-    print %v924
+    call @print_u64(%v924)
     %v925 = call @ud54(18446744071562067968)
-    print %v925
+    call @print_u64(%v925)
     %v926 = call @ud54(2147483648)
-    print %v926
+    call @print_u64(%v926)
     %v927 = call @ud54(4294967296)
-    print %v927
+    call @print_u64(%v927)
     %v928 = call @ud54(4294967295)
-    print %v928
+    call @print_u64(%v928)
     %v929 = call @ud54(9223372036854775808)
-    print %v929
+    call @print_u64(%v929)
     %v930 = call @ud54(9223372036854775807)
-    print %v930
+    call @print_u64(%v930)
     %v931 = call @ud54(12345678901234567)
-    print %v931
+    call @print_u64(%v931)
     %v932 = call @ud54(18446743073709551617)
-    print %v932
+    call @print_u64(%v932)
     %v933 = call @ud55(0)
-    print %v933
+    call @print_u64(%v933)
     %v934 = call @ud55(1)
-    print %v934
+    call @print_u64(%v934)
     %v935 = call @ud55(18446744073709551615)
-    print %v935
+    call @print_u64(%v935)
     %v936 = call @ud55(2)
-    print %v936
+    call @print_u64(%v936)
     %v937 = call @ud55(18446744073709551614)
-    print %v937
+    call @print_u64(%v937)
     %v938 = call @ud55(7)
-    print %v938
+    call @print_u64(%v938)
     %v939 = call @ud55(18446744073709551609)
-    print %v939
+    call @print_u64(%v939)
     %v940 = call @ud55(20)
-    print %v940
+    call @print_u64(%v940)
     %v941 = call @ud55(2147483647)
-    print %v941
+    call @print_u64(%v941)
     %v942 = call @ud55(18446744071562067968)
-    print %v942
+    call @print_u64(%v942)
     %v943 = call @ud55(2147483648)
-    print %v943
+    call @print_u64(%v943)
     %v944 = call @ud55(4294967296)
-    print %v944
+    call @print_u64(%v944)
     %v945 = call @ud55(4294967295)
-    print %v945
+    call @print_u64(%v945)
     %v946 = call @ud55(9223372036854775808)
-    print %v946
+    call @print_u64(%v946)
     %v947 = call @ud55(9223372036854775807)
-    print %v947
+    call @print_u64(%v947)
     %v948 = call @ud55(12345678901234567)
-    print %v948
+    call @print_u64(%v948)
     %v949 = call @ud55(18446743073709551617)
-    print %v949
+    call @print_u64(%v949)
     %v950 = call @ud56(0)
-    print %v950
+    call @print_u64(%v950)
     %v951 = call @ud56(1)
-    print %v951
+    call @print_u64(%v951)
     %v952 = call @ud56(18446744073709551615)
-    print %v952
+    call @print_u64(%v952)
     %v953 = call @ud56(2)
-    print %v953
+    call @print_u64(%v953)
     %v954 = call @ud56(18446744073709551614)
-    print %v954
+    call @print_u64(%v954)
     %v955 = call @ud56(7)
-    print %v955
+    call @print_u64(%v955)
     %v956 = call @ud56(18446744073709551609)
-    print %v956
+    call @print_u64(%v956)
     %v957 = call @ud56(20)
-    print %v957
+    call @print_u64(%v957)
     %v958 = call @ud56(2147483647)
-    print %v958
+    call @print_u64(%v958)
     %v959 = call @ud56(18446744071562067968)
-    print %v959
+    call @print_u64(%v959)
     %v960 = call @ud56(2147483648)
-    print %v960
+    call @print_u64(%v960)
     %v961 = call @ud56(4294967296)
-    print %v961
+    call @print_u64(%v961)
     %v962 = call @ud56(4294967295)
-    print %v962
+    call @print_u64(%v962)
     %v963 = call @ud56(9223372036854775808)
-    print %v963
+    call @print_u64(%v963)
     %v964 = call @ud56(9223372036854775807)
-    print %v964
+    call @print_u64(%v964)
     %v965 = call @ud56(12345678901234567)
-    print %v965
+    call @print_u64(%v965)
     %v966 = call @ud56(18446743073709551617)
-    print %v966
+    call @print_u64(%v966)
     %v967 = call @ud57(0)
-    print %v967
+    call @print_u64(%v967)
     %v968 = call @ud57(1)
-    print %v968
+    call @print_u64(%v968)
     %v969 = call @ud57(18446744073709551615)
-    print %v969
+    call @print_u64(%v969)
     %v970 = call @ud57(2)
-    print %v970
+    call @print_u64(%v970)
     %v971 = call @ud57(18446744073709551614)
-    print %v971
+    call @print_u64(%v971)
     %v972 = call @ud57(7)
-    print %v972
+    call @print_u64(%v972)
     %v973 = call @ud57(18446744073709551609)
-    print %v973
+    call @print_u64(%v973)
     %v974 = call @ud57(20)
-    print %v974
+    call @print_u64(%v974)
     %v975 = call @ud57(2147483647)
-    print %v975
+    call @print_u64(%v975)
     %v976 = call @ud57(18446744071562067968)
-    print %v976
+    call @print_u64(%v976)
     %v977 = call @ud57(2147483648)
-    print %v977
+    call @print_u64(%v977)
     %v978 = call @ud57(4294967296)
-    print %v978
+    call @print_u64(%v978)
     %v979 = call @ud57(4294967295)
-    print %v979
+    call @print_u64(%v979)
     %v980 = call @ud57(9223372036854775808)
-    print %v980
+    call @print_u64(%v980)
     %v981 = call @ud57(9223372036854775807)
-    print %v981
+    call @print_u64(%v981)
     %v982 = call @ud57(12345678901234567)
-    print %v982
+    call @print_u64(%v982)
     %v983 = call @ud57(18446743073709551617)
-    print %v983
+    call @print_u64(%v983)
     %v984 = call @ud58(0)
-    print %v984
+    call @print_u64(%v984)
     %v985 = call @ud58(1)
-    print %v985
+    call @print_u64(%v985)
     %v986 = call @ud58(18446744073709551615)
-    print %v986
+    call @print_u64(%v986)
     %v987 = call @ud58(2)
-    print %v987
+    call @print_u64(%v987)
     %v988 = call @ud58(18446744073709551614)
-    print %v988
+    call @print_u64(%v988)
     %v989 = call @ud58(7)
-    print %v989
+    call @print_u64(%v989)
     %v990 = call @ud58(18446744073709551609)
-    print %v990
+    call @print_u64(%v990)
     %v991 = call @ud58(20)
-    print %v991
+    call @print_u64(%v991)
     %v992 = call @ud58(2147483647)
-    print %v992
+    call @print_u64(%v992)
     %v993 = call @ud58(18446744071562067968)
-    print %v993
+    call @print_u64(%v993)
     %v994 = call @ud58(2147483648)
-    print %v994
+    call @print_u64(%v994)
     %v995 = call @ud58(4294967296)
-    print %v995
+    call @print_u64(%v995)
     %v996 = call @ud58(4294967295)
-    print %v996
+    call @print_u64(%v996)
     %v997 = call @ud58(9223372036854775808)
-    print %v997
+    call @print_u64(%v997)
     %v998 = call @ud58(9223372036854775807)
-    print %v998
+    call @print_u64(%v998)
     %v999 = call @ud58(12345678901234567)
-    print %v999
+    call @print_u64(%v999)
     %v1000 = call @ud58(18446743073709551617)
-    print %v1000
+    call @print_u64(%v1000)
     %v1001 = call @ud59(0)
-    print %v1001
+    call @print_u64(%v1001)
     %v1002 = call @ud59(1)
-    print %v1002
+    call @print_u64(%v1002)
     %v1003 = call @ud59(18446744073709551615)
-    print %v1003
+    call @print_u64(%v1003)
     %v1004 = call @ud59(2)
-    print %v1004
+    call @print_u64(%v1004)
     %v1005 = call @ud59(18446744073709551614)
-    print %v1005
+    call @print_u64(%v1005)
     %v1006 = call @ud59(7)
-    print %v1006
+    call @print_u64(%v1006)
     %v1007 = call @ud59(18446744073709551609)
-    print %v1007
+    call @print_u64(%v1007)
     %v1008 = call @ud59(20)
-    print %v1008
+    call @print_u64(%v1008)
     %v1009 = call @ud59(2147483647)
-    print %v1009
+    call @print_u64(%v1009)
     %v1010 = call @ud59(18446744071562067968)
-    print %v1010
+    call @print_u64(%v1010)
     %v1011 = call @ud59(2147483648)
-    print %v1011
+    call @print_u64(%v1011)
     %v1012 = call @ud59(4294967296)
-    print %v1012
+    call @print_u64(%v1012)
     %v1013 = call @ud59(4294967295)
-    print %v1013
+    call @print_u64(%v1013)
     %v1014 = call @ud59(9223372036854775808)
-    print %v1014
+    call @print_u64(%v1014)
     %v1015 = call @ud59(9223372036854775807)
-    print %v1015
+    call @print_u64(%v1015)
     %v1016 = call @ud59(12345678901234567)
-    print %v1016
+    call @print_u64(%v1016)
     %v1017 = call @ud59(18446743073709551617)
-    print %v1017
+    call @print_u64(%v1017)
     %v1018 = call @ud60(0)
-    print %v1018
+    call @print_u64(%v1018)
     %v1019 = call @ud60(1)
-    print %v1019
+    call @print_u64(%v1019)
     %v1020 = call @ud60(18446744073709551615)
-    print %v1020
+    call @print_u64(%v1020)
     %v1021 = call @ud60(2)
-    print %v1021
+    call @print_u64(%v1021)
     %v1022 = call @ud60(18446744073709551614)
-    print %v1022
+    call @print_u64(%v1022)
     %v1023 = call @ud60(7)
-    print %v1023
+    call @print_u64(%v1023)
     %v1024 = call @ud60(18446744073709551609)
-    print %v1024
+    call @print_u64(%v1024)
     %v1025 = call @ud60(20)
-    print %v1025
+    call @print_u64(%v1025)
     %v1026 = call @ud60(2147483647)
-    print %v1026
+    call @print_u64(%v1026)
     %v1027 = call @ud60(18446744071562067968)
-    print %v1027
+    call @print_u64(%v1027)
     %v1028 = call @ud60(2147483648)
-    print %v1028
+    call @print_u64(%v1028)
     %v1029 = call @ud60(4294967296)
-    print %v1029
+    call @print_u64(%v1029)
     %v1030 = call @ud60(4294967295)
-    print %v1030
+    call @print_u64(%v1030)
     %v1031 = call @ud60(9223372036854775808)
-    print %v1031
+    call @print_u64(%v1031)
     %v1032 = call @ud60(9223372036854775807)
-    print %v1032
+    call @print_u64(%v1032)
     %v1033 = call @ud60(12345678901234567)
-    print %v1033
+    call @print_u64(%v1033)
     %v1034 = call @ud60(18446743073709551617)
-    print %v1034
+    call @print_u64(%v1034)
     %v1035 = call @ud61(0)
-    print %v1035
+    call @print_u64(%v1035)
     %v1036 = call @ud61(1)
-    print %v1036
+    call @print_u64(%v1036)
     %v1037 = call @ud61(18446744073709551615)
-    print %v1037
+    call @print_u64(%v1037)
     %v1038 = call @ud61(2)
-    print %v1038
+    call @print_u64(%v1038)
     %v1039 = call @ud61(18446744073709551614)
-    print %v1039
+    call @print_u64(%v1039)
     %v1040 = call @ud61(7)
-    print %v1040
+    call @print_u64(%v1040)
     %v1041 = call @ud61(18446744073709551609)
-    print %v1041
+    call @print_u64(%v1041)
     %v1042 = call @ud61(20)
-    print %v1042
+    call @print_u64(%v1042)
     %v1043 = call @ud61(2147483647)
-    print %v1043
+    call @print_u64(%v1043)
     %v1044 = call @ud61(18446744071562067968)
-    print %v1044
+    call @print_u64(%v1044)
     %v1045 = call @ud61(2147483648)
-    print %v1045
+    call @print_u64(%v1045)
     %v1046 = call @ud61(4294967296)
-    print %v1046
+    call @print_u64(%v1046)
     %v1047 = call @ud61(4294967295)
-    print %v1047
+    call @print_u64(%v1047)
     %v1048 = call @ud61(9223372036854775808)
-    print %v1048
+    call @print_u64(%v1048)
     %v1049 = call @ud61(9223372036854775807)
-    print %v1049
+    call @print_u64(%v1049)
     %v1050 = call @ud61(12345678901234567)
-    print %v1050
+    call @print_u64(%v1050)
     %v1051 = call @ud61(18446743073709551617)
-    print %v1051
+    call @print_u64(%v1051)
     %v1052 = call @ud62(0)
-    print %v1052
+    call @print_u64(%v1052)
     %v1053 = call @ud62(1)
-    print %v1053
+    call @print_u64(%v1053)
     %v1054 = call @ud62(18446744073709551615)
-    print %v1054
+    call @print_u64(%v1054)
     %v1055 = call @ud62(2)
-    print %v1055
+    call @print_u64(%v1055)
     %v1056 = call @ud62(18446744073709551614)
-    print %v1056
+    call @print_u64(%v1056)
     %v1057 = call @ud62(7)
-    print %v1057
+    call @print_u64(%v1057)
     %v1058 = call @ud62(18446744073709551609)
-    print %v1058
+    call @print_u64(%v1058)
     %v1059 = call @ud62(20)
-    print %v1059
+    call @print_u64(%v1059)
     %v1060 = call @ud62(2147483647)
-    print %v1060
+    call @print_u64(%v1060)
     %v1061 = call @ud62(18446744071562067968)
-    print %v1061
+    call @print_u64(%v1061)
     %v1062 = call @ud62(2147483648)
-    print %v1062
+    call @print_u64(%v1062)
     %v1063 = call @ud62(4294967296)
-    print %v1063
+    call @print_u64(%v1063)
     %v1064 = call @ud62(4294967295)
-    print %v1064
+    call @print_u64(%v1064)
     %v1065 = call @ud62(9223372036854775808)
-    print %v1065
+    call @print_u64(%v1065)
     %v1066 = call @ud62(9223372036854775807)
-    print %v1066
+    call @print_u64(%v1066)
     %v1067 = call @ud62(12345678901234567)
-    print %v1067
+    call @print_u64(%v1067)
     %v1068 = call @ud62(18446743073709551617)
-    print %v1068
+    call @print_u64(%v1068)
     %v1069 = call @ud63(0)
-    print %v1069
+    call @print_u64(%v1069)
     %v1070 = call @ud63(1)
-    print %v1070
+    call @print_u64(%v1070)
     %v1071 = call @ud63(18446744073709551615)
-    print %v1071
+    call @print_u64(%v1071)
     %v1072 = call @ud63(2)
-    print %v1072
+    call @print_u64(%v1072)
     %v1073 = call @ud63(18446744073709551614)
-    print %v1073
+    call @print_u64(%v1073)
     %v1074 = call @ud63(7)
-    print %v1074
+    call @print_u64(%v1074)
     %v1075 = call @ud63(18446744073709551609)
-    print %v1075
+    call @print_u64(%v1075)
     %v1076 = call @ud63(20)
-    print %v1076
+    call @print_u64(%v1076)
     %v1077 = call @ud63(2147483647)
-    print %v1077
+    call @print_u64(%v1077)
     %v1078 = call @ud63(18446744071562067968)
-    print %v1078
+    call @print_u64(%v1078)
     %v1079 = call @ud63(2147483648)
-    print %v1079
+    call @print_u64(%v1079)
     %v1080 = call @ud63(4294967296)
-    print %v1080
+    call @print_u64(%v1080)
     %v1081 = call @ud63(4294967295)
-    print %v1081
+    call @print_u64(%v1081)
     %v1082 = call @ud63(9223372036854775808)
-    print %v1082
+    call @print_u64(%v1082)
     %v1083 = call @ud63(9223372036854775807)
-    print %v1083
+    call @print_u64(%v1083)
     %v1084 = call @ud63(12345678901234567)
-    print %v1084
+    call @print_u64(%v1084)
     %v1085 = call @ud63(18446743073709551617)
-    print %v1085
+    call @print_u64(%v1085)
     %v1086 = call @ud64(0)
-    print %v1086
+    call @print_u64(%v1086)
     %v1087 = call @ud64(1)
-    print %v1087
+    call @print_u64(%v1087)
     %v1088 = call @ud64(18446744073709551615)
-    print %v1088
+    call @print_u64(%v1088)
     %v1089 = call @ud64(2)
-    print %v1089
+    call @print_u64(%v1089)
     %v1090 = call @ud64(18446744073709551614)
-    print %v1090
+    call @print_u64(%v1090)
     %v1091 = call @ud64(7)
-    print %v1091
+    call @print_u64(%v1091)
     %v1092 = call @ud64(18446744073709551609)
-    print %v1092
+    call @print_u64(%v1092)
     %v1093 = call @ud64(20)
-    print %v1093
+    call @print_u64(%v1093)
     %v1094 = call @ud64(2147483647)
-    print %v1094
+    call @print_u64(%v1094)
     %v1095 = call @ud64(18446744071562067968)
-    print %v1095
+    call @print_u64(%v1095)
     %v1096 = call @ud64(2147483648)
-    print %v1096
+    call @print_u64(%v1096)
     %v1097 = call @ud64(4294967296)
-    print %v1097
+    call @print_u64(%v1097)
     %v1098 = call @ud64(4294967295)
-    print %v1098
+    call @print_u64(%v1098)
     %v1099 = call @ud64(9223372036854775808)
-    print %v1099
+    call @print_u64(%v1099)
     %v1100 = call @ud64(9223372036854775807)
-    print %v1100
+    call @print_u64(%v1100)
     %v1101 = call @ud64(12345678901234567)
-    print %v1101
+    call @print_u64(%v1101)
     %v1102 = call @ud64(18446743073709551617)
-    print %v1102
+    call @print_u64(%v1102)
     %v1103 = call @ud65(0)
-    print %v1103
+    call @print_u64(%v1103)
     %v1104 = call @ud65(1)
-    print %v1104
+    call @print_u64(%v1104)
     %v1105 = call @ud65(18446744073709551615)
-    print %v1105
+    call @print_u64(%v1105)
     %v1106 = call @ud65(2)
-    print %v1106
+    call @print_u64(%v1106)
     %v1107 = call @ud65(18446744073709551614)
-    print %v1107
+    call @print_u64(%v1107)
     %v1108 = call @ud65(7)
-    print %v1108
+    call @print_u64(%v1108)
     %v1109 = call @ud65(18446744073709551609)
-    print %v1109
+    call @print_u64(%v1109)
     %v1110 = call @ud65(20)
-    print %v1110
+    call @print_u64(%v1110)
     %v1111 = call @ud65(2147483647)
-    print %v1111
+    call @print_u64(%v1111)
     %v1112 = call @ud65(18446744071562067968)
-    print %v1112
+    call @print_u64(%v1112)
     %v1113 = call @ud65(2147483648)
-    print %v1113
+    call @print_u64(%v1113)
     %v1114 = call @ud65(4294967296)
-    print %v1114
+    call @print_u64(%v1114)
     %v1115 = call @ud65(4294967295)
-    print %v1115
+    call @print_u64(%v1115)
     %v1116 = call @ud65(9223372036854775808)
-    print %v1116
+    call @print_u64(%v1116)
     %v1117 = call @ud65(9223372036854775807)
-    print %v1117
+    call @print_u64(%v1117)
     %v1118 = call @ud65(12345678901234567)
-    print %v1118
+    call @print_u64(%v1118)
     %v1119 = call @ud65(18446743073709551617)
-    print %v1119
+    call @print_u64(%v1119)
     %v1120 = call @ud66(0)
-    print %v1120
+    call @print_u64(%v1120)
     %v1121 = call @ud66(1)
-    print %v1121
+    call @print_u64(%v1121)
     %v1122 = call @ud66(18446744073709551615)
-    print %v1122
+    call @print_u64(%v1122)
     %v1123 = call @ud66(2)
-    print %v1123
+    call @print_u64(%v1123)
     %v1124 = call @ud66(18446744073709551614)
-    print %v1124
+    call @print_u64(%v1124)
     %v1125 = call @ud66(7)
-    print %v1125
+    call @print_u64(%v1125)
     %v1126 = call @ud66(18446744073709551609)
-    print %v1126
+    call @print_u64(%v1126)
     %v1127 = call @ud66(20)
-    print %v1127
+    call @print_u64(%v1127)
     %v1128 = call @ud66(2147483647)
-    print %v1128
+    call @print_u64(%v1128)
     %v1129 = call @ud66(18446744071562067968)
-    print %v1129
+    call @print_u64(%v1129)
     %v1130 = call @ud66(2147483648)
-    print %v1130
+    call @print_u64(%v1130)
     %v1131 = call @ud66(4294967296)
-    print %v1131
+    call @print_u64(%v1131)
     %v1132 = call @ud66(4294967295)
-    print %v1132
+    call @print_u64(%v1132)
     %v1133 = call @ud66(9223372036854775808)
-    print %v1133
+    call @print_u64(%v1133)
     %v1134 = call @ud66(9223372036854775807)
-    print %v1134
+    call @print_u64(%v1134)
     %v1135 = call @ud66(12345678901234567)
-    print %v1135
+    call @print_u64(%v1135)
     %v1136 = call @ud66(18446743073709551617)
-    print %v1136
+    call @print_u64(%v1136)
     %v1137 = call @ud67(0)
-    print %v1137
+    call @print_u64(%v1137)
     %v1138 = call @ud67(1)
-    print %v1138
+    call @print_u64(%v1138)
     %v1139 = call @ud67(18446744073709551615)
-    print %v1139
+    call @print_u64(%v1139)
     %v1140 = call @ud67(2)
-    print %v1140
+    call @print_u64(%v1140)
     %v1141 = call @ud67(18446744073709551614)
-    print %v1141
+    call @print_u64(%v1141)
     %v1142 = call @ud67(7)
-    print %v1142
+    call @print_u64(%v1142)
     %v1143 = call @ud67(18446744073709551609)
-    print %v1143
+    call @print_u64(%v1143)
     %v1144 = call @ud67(20)
-    print %v1144
+    call @print_u64(%v1144)
     %v1145 = call @ud67(2147483647)
-    print %v1145
+    call @print_u64(%v1145)
     %v1146 = call @ud67(18446744071562067968)
-    print %v1146
+    call @print_u64(%v1146)
     %v1147 = call @ud67(2147483648)
-    print %v1147
+    call @print_u64(%v1147)
     %v1148 = call @ud67(4294967296)
-    print %v1148
+    call @print_u64(%v1148)
     %v1149 = call @ud67(4294967295)
-    print %v1149
+    call @print_u64(%v1149)
     %v1150 = call @ud67(9223372036854775808)
-    print %v1150
+    call @print_u64(%v1150)
     %v1151 = call @ud67(9223372036854775807)
-    print %v1151
+    call @print_u64(%v1151)
     %v1152 = call @ud67(12345678901234567)
-    print %v1152
+    call @print_u64(%v1152)
     %v1153 = call @ud67(18446743073709551617)
-    print %v1153
+    call @print_u64(%v1153)
     ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

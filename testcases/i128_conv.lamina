@@ -4,10 +4,10 @@ entry:
   %v = add.i8 -1, 0
   %w = sext.i8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -16,10 +16,10 @@ entry:
   %v = add.i8 -1, 0
   %w = zext.i8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -28,10 +28,10 @@ entry:
   %v = add.i8 -1, 0
   %w = sext.i8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -40,10 +40,10 @@ entry:
   %v = add.i8 -1, 0
   %w = zext.i8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -52,10 +52,10 @@ entry:
   %v = add.i8 127, 0
   %w = sext.i8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -64,10 +64,10 @@ entry:
   %v = add.i8 127, 0
   %w = zext.i8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -76,10 +76,10 @@ entry:
   %v = add.i8 127, 0
   %w = sext.i8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -88,10 +88,10 @@ entry:
   %v = add.i8 127, 0
   %w = zext.i8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -100,10 +100,10 @@ entry:
   %v = add.i8 -128, 0
   %w = sext.i8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -112,10 +112,10 @@ entry:
   %v = add.i8 -128, 0
   %w = zext.i8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -124,10 +124,10 @@ entry:
   %v = add.i8 -128, 0
   %w = sext.i8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -136,10 +136,10 @@ entry:
   %v = add.i8 -128, 0
   %w = zext.i8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -148,10 +148,10 @@ entry:
   %v = add.i8 5, 0
   %w = sext.i8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -160,10 +160,10 @@ entry:
   %v = add.i8 5, 0
   %w = zext.i8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -172,10 +172,10 @@ entry:
   %v = add.i8 5, 0
   %w = sext.i8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -184,10 +184,10 @@ entry:
   %v = add.i8 5, 0
   %w = zext.i8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -196,10 +196,10 @@ entry:
   %v = add.u8 255, 0
   %w = zext.u8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -208,10 +208,10 @@ entry:
   %v = add.u8 255, 0
   %w = zext.u8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -220,10 +220,10 @@ entry:
   %v = add.u8 0, 0
   %w = zext.u8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -232,10 +232,10 @@ entry:
   %v = add.u8 0, 0
   %w = zext.u8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -244,10 +244,10 @@ entry:
   %v = add.u8 200, 0
   %w = zext.u8.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -256,10 +256,10 @@ entry:
   %v = add.u8 200, 0
   %w = zext.u8.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -268,10 +268,10 @@ entry:
   %v = add.i16 -1, 0
   %w = sext.i16.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -280,10 +280,10 @@ entry:
   %v = add.i16 -1, 0
   %w = zext.i16.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -292,10 +292,10 @@ entry:
   %v = add.i16 -1, 0
   %w = sext.i16.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -304,10 +304,10 @@ entry:
   %v = add.i16 -1, 0
   %w = zext.i16.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -316,10 +316,10 @@ entry:
   %v = add.i16 32767, 0
   %w = sext.i16.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -328,10 +328,10 @@ entry:
   %v = add.i16 32767, 0
   %w = zext.i16.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -340,10 +340,10 @@ entry:
   %v = add.i16 32767, 0
   %w = sext.i16.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -352,10 +352,10 @@ entry:
   %v = add.i16 32767, 0
   %w = zext.i16.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -364,10 +364,10 @@ entry:
   %v = add.i16 -32768, 0
   %w = sext.i16.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -376,10 +376,10 @@ entry:
   %v = add.i16 -32768, 0
   %w = zext.i16.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -388,10 +388,10 @@ entry:
   %v = add.i16 -32768, 0
   %w = sext.i16.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -400,10 +400,10 @@ entry:
   %v = add.i16 -32768, 0
   %w = zext.i16.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -412,10 +412,10 @@ entry:
   %v = add.u16 65535, 0
   %w = zext.u16.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -424,10 +424,10 @@ entry:
   %v = add.u16 65535, 0
   %w = zext.u16.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -436,10 +436,10 @@ entry:
   %v = add.u16 1234, 0
   %w = zext.u16.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -448,10 +448,10 @@ entry:
   %v = add.u16 1234, 0
   %w = zext.u16.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -460,10 +460,10 @@ entry:
   %v = add.i32 -1, 0
   %w = sext.i32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -472,10 +472,10 @@ entry:
   %v = add.i32 -1, 0
   %w = zext.i32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -484,10 +484,10 @@ entry:
   %v = add.i32 -1, 0
   %w = sext.i32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -496,10 +496,10 @@ entry:
   %v = add.i32 -1, 0
   %w = zext.i32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -508,10 +508,10 @@ entry:
   %v = add.i32 2147483647, 0
   %w = sext.i32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -520,10 +520,10 @@ entry:
   %v = add.i32 2147483647, 0
   %w = zext.i32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -532,10 +532,10 @@ entry:
   %v = add.i32 2147483647, 0
   %w = sext.i32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -544,10 +544,10 @@ entry:
   %v = add.i32 2147483647, 0
   %w = zext.i32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -556,10 +556,10 @@ entry:
   %v = add.i32 -2147483648, 0
   %w = sext.i32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -568,10 +568,10 @@ entry:
   %v = add.i32 -2147483648, 0
   %w = zext.i32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -580,10 +580,10 @@ entry:
   %v = add.i32 -2147483648, 0
   %w = sext.i32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -592,10 +592,10 @@ entry:
   %v = add.i32 -2147483648, 0
   %w = zext.i32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -604,10 +604,10 @@ entry:
   %v = add.i32 99, 0
   %w = sext.i32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -616,10 +616,10 @@ entry:
   %v = add.i32 99, 0
   %w = zext.i32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -628,10 +628,10 @@ entry:
   %v = add.i32 99, 0
   %w = sext.i32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -640,10 +640,10 @@ entry:
   %v = add.i32 99, 0
   %w = zext.i32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -652,10 +652,10 @@ entry:
   %v = add.u32 4294967295, 0
   %w = zext.u32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -664,10 +664,10 @@ entry:
   %v = add.u32 4294967295, 0
   %w = zext.u32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -676,10 +676,10 @@ entry:
   %v = add.u32 7, 0
   %w = zext.u32.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -688,10 +688,10 @@ entry:
   %v = add.u32 7, 0
   %w = zext.u32.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -700,10 +700,10 @@ entry:
   %v = add.i64 -1, 0
   %w = sext.i64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -712,10 +712,10 @@ entry:
   %v = add.i64 -1, 0
   %w = zext.i64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -724,10 +724,10 @@ entry:
   %v = add.i64 -1, 0
   %w = sext.i64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -736,10 +736,10 @@ entry:
   %v = add.i64 -1, 0
   %w = zext.i64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -748,10 +748,10 @@ entry:
   %v = add.i64 9223372036854775807, 0
   %w = sext.i64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -760,10 +760,10 @@ entry:
   %v = add.i64 9223372036854775807, 0
   %w = zext.i64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -772,10 +772,10 @@ entry:
   %v = add.i64 9223372036854775807, 0
   %w = sext.i64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -784,10 +784,10 @@ entry:
   %v = add.i64 9223372036854775807, 0
   %w = zext.i64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -796,10 +796,10 @@ entry:
   %v = add.i64 -9223372036854775808, 0
   %w = sext.i64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -808,10 +808,10 @@ entry:
   %v = add.i64 -9223372036854775808, 0
   %w = zext.i64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -820,10 +820,10 @@ entry:
   %v = add.i64 -9223372036854775808, 0
   %w = sext.i64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -832,10 +832,10 @@ entry:
   %v = add.i64 -9223372036854775808, 0
   %w = zext.i64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -844,10 +844,10 @@ entry:
   %v = add.i64 0, 0
   %w = sext.i64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -856,10 +856,10 @@ entry:
   %v = add.i64 0, 0
   %w = zext.i64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -868,10 +868,10 @@ entry:
   %v = add.i64 0, 0
   %w = sext.i64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -880,10 +880,10 @@ entry:
   %v = add.i64 0, 0
   %w = zext.i64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -892,10 +892,10 @@ entry:
   %v = add.u64 18446744073709551615, 0
   %w = zext.u64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -904,10 +904,10 @@ entry:
   %v = add.u64 18446744073709551615, 0
   %w = zext.u64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -916,10 +916,10 @@ entry:
   %v = add.u64 1, 0
   %w = zext.u64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -928,10 +928,10 @@ entry:
   %v = add.u64 1, 0
   %w = zext.u64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -940,10 +940,10 @@ entry:
   %v = add.u64 9223372036854775808, 0
   %w = zext.u64.i128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -952,10 +952,10 @@ entry:
   %v = add.u64 9223372036854775808, 0
   %w = zext.u64.u128 %v
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -964,10 +964,10 @@ entry:
   %b = add.bool 1, 0
   %w = zext.bool.i128 %b
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -976,10 +976,10 @@ entry:
   %b = add.bool 0, 0
   %w = zext.bool.i128 %b
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -989,10 +989,10 @@ entry:
   %t = trunc.i128.i8 %v
   %w = sext.i8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1002,10 +1002,10 @@ entry:
   %t = trunc.i128.u8 %v
   %w = zext.u8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1015,10 +1015,10 @@ entry:
   %t = trunc.i128.i16 %v
   %w = sext.i16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1028,10 +1028,10 @@ entry:
   %t = trunc.i128.u16 %v
   %w = zext.u16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1041,10 +1041,10 @@ entry:
   %t = trunc.i128.i32 %v
   %w = sext.i32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1054,10 +1054,10 @@ entry:
   %t = trunc.i128.u32 %v
   %w = zext.u32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1067,10 +1067,10 @@ entry:
   %t = trunc.i128.i64 %v
   %w = sext.i64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1080,10 +1080,10 @@ entry:
   %t = trunc.i128.u64 %v
   %w = zext.u64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1093,10 +1093,10 @@ entry:
   %t = trunc.i128.i8 %v
   %w = sext.i8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1106,10 +1106,10 @@ entry:
   %t = trunc.i128.u8 %v
   %w = zext.u8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1119,10 +1119,10 @@ entry:
   %t = trunc.i128.i16 %v
   %w = sext.i16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1132,10 +1132,10 @@ entry:
   %t = trunc.i128.u16 %v
   %w = zext.u16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1145,10 +1145,10 @@ entry:
   %t = trunc.i128.i32 %v
   %w = sext.i32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1158,10 +1158,10 @@ entry:
   %t = trunc.i128.u32 %v
   %w = zext.u32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1171,10 +1171,10 @@ entry:
   %t = trunc.i128.i64 %v
   %w = sext.i64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1184,10 +1184,10 @@ entry:
   %t = trunc.i128.u64 %v
   %w = zext.u64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1197,10 +1197,10 @@ entry:
   %t = trunc.i128.i8 %v
   %w = sext.i8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1210,10 +1210,10 @@ entry:
   %t = trunc.i128.u8 %v
   %w = zext.u8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1223,10 +1223,10 @@ entry:
   %t = trunc.i128.i16 %v
   %w = sext.i16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1236,10 +1236,10 @@ entry:
   %t = trunc.i128.u16 %v
   %w = zext.u16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1249,10 +1249,10 @@ entry:
   %t = trunc.i128.i32 %v
   %w = sext.i32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1262,10 +1262,10 @@ entry:
   %t = trunc.i128.u32 %v
   %w = zext.u32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1275,10 +1275,10 @@ entry:
   %t = trunc.i128.i64 %v
   %w = sext.i64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1288,10 +1288,10 @@ entry:
   %t = trunc.i128.u64 %v
   %w = zext.u64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1301,10 +1301,10 @@ entry:
   %t = trunc.i128.i8 %v
   %w = sext.i8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1314,10 +1314,10 @@ entry:
   %t = trunc.i128.u8 %v
   %w = zext.u8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1327,10 +1327,10 @@ entry:
   %t = trunc.i128.i16 %v
   %w = sext.i16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1340,10 +1340,10 @@ entry:
   %t = trunc.i128.u16 %v
   %w = zext.u16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1353,10 +1353,10 @@ entry:
   %t = trunc.i128.i32 %v
   %w = sext.i32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1366,10 +1366,10 @@ entry:
   %t = trunc.i128.u32 %v
   %w = zext.u32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1379,10 +1379,10 @@ entry:
   %t = trunc.i128.i64 %v
   %w = sext.i64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1392,10 +1392,10 @@ entry:
   %t = trunc.i128.u64 %v
   %w = zext.u64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1405,10 +1405,10 @@ entry:
   %t = trunc.i128.i8 %v
   %w = sext.i8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1418,10 +1418,10 @@ entry:
   %t = trunc.i128.u8 %v
   %w = zext.u8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1431,10 +1431,10 @@ entry:
   %t = trunc.i128.i16 %v
   %w = sext.i16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1444,10 +1444,10 @@ entry:
   %t = trunc.i128.u16 %v
   %w = zext.u16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1457,10 +1457,10 @@ entry:
   %t = trunc.i128.i32 %v
   %w = sext.i32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1470,10 +1470,10 @@ entry:
   %t = trunc.i128.u32 %v
   %w = zext.u32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1483,10 +1483,10 @@ entry:
   %t = trunc.i128.i64 %v
   %w = sext.i64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1496,10 +1496,10 @@ entry:
   %t = trunc.i128.u64 %v
   %w = zext.u64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1509,10 +1509,10 @@ entry:
   %t = trunc.i128.i8 %v
   %w = sext.i8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1522,10 +1522,10 @@ entry:
   %t = trunc.i128.u8 %v
   %w = zext.u8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1535,10 +1535,10 @@ entry:
   %t = trunc.i128.i16 %v
   %w = sext.i16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1548,10 +1548,10 @@ entry:
   %t = trunc.i128.u16 %v
   %w = zext.u16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1561,10 +1561,10 @@ entry:
   %t = trunc.i128.i32 %v
   %w = sext.i32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1574,10 +1574,10 @@ entry:
   %t = trunc.i128.u32 %v
   %w = zext.u32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1587,10 +1587,10 @@ entry:
   %t = trunc.i128.i64 %v
   %w = sext.i64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1600,10 +1600,10 @@ entry:
   %t = trunc.i128.u64 %v
   %w = zext.u64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1613,10 +1613,10 @@ entry:
   %t = trunc.i128.i8 %v
   %w = sext.i8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1626,10 +1626,10 @@ entry:
   %t = trunc.i128.u8 %v
   %w = zext.u8.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1639,10 +1639,10 @@ entry:
   %t = trunc.i128.i16 %v
   %w = sext.i16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1652,10 +1652,10 @@ entry:
   %t = trunc.i128.u16 %v
   %w = zext.u16.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1665,10 +1665,10 @@ entry:
   %t = trunc.i128.i32 %v
   %w = sext.i32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1678,10 +1678,10 @@ entry:
   %t = trunc.i128.u32 %v
   %w = zext.u32.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1691,10 +1691,10 @@ entry:
   %t = trunc.i128.i64 %v
   %w = sext.i64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1704,10 +1704,10 @@ entry:
   %t = trunc.i128.u64 %v
   %w = zext.u64.i128 %t
   %lo = trunc.i128.i64 %w
-  print %lo
+  call @print_i64(%lo)
   %hs = shr.i128 %w, 64
   %hi = trunc.i128.i64 %hs
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -1852,4 +1852,42 @@ entry:
   %d136 = call @case136()
   %d137 = call @case137()
   ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

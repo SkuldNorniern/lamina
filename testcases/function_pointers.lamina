@@ -1,3 +1,11 @@
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+@extern
+fn @fflush(ptr %f) -> i32
+
+global $fmt_g: [4 x i8] = "%g\n"
+
 fn @twice(i64 %x) -> i64 {
 entry:
   %r = mul.i64 %x, 2
@@ -28,11 +36,58 @@ entry:
   %a = funcaddr @twice
   %b = funcaddr @thrice
   %r1 = call @apply(%a, 21)
-  print %r1
+  call @print_i64(%r1)
   %r2 = call @apply(%b, 21)
-  print %r2
+  call @print_i64(%r2)
   %s = funcaddr @scale
   %r3 = callptr.f64 %s(f64 1.5, i64 4)
-  print %r3
+  call @print_f64(%r3)
+  ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_f64(f64 %x) -> i64 {
+entry:
+  %p = getelem.i8 $fmt_g, 0
+  %r = call @printf(%p, %x)
+  %n = inttoptr.i64 0
+  %z = call @fflush(%n)
   ret.i64 0
 }

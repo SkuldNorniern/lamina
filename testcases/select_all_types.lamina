@@ -4,21 +4,59 @@ entry:
   %t = lt.i64 1, 2
   %f = lt.i64 2, 1
   %a = select.i64 %t, 10, 20
-  print %a
+  call @print_i64(%a)
   %b = select.i64 %f, 10, 20
-  print %b
+  call @print_i64(%b)
   %c = select.i32 %t, -5, 7
   %cw = sext.i32.i64 %c
-  print %cw
+  call @print_i64(%cw)
   %d = select.u8 %f, 200, 100
   %dw = zext.u8.i64 %d
-  print %dw
+  call @print_i64(%dw)
   %e = select.f64 %t, 1.5, 2.5
   %eb = bitcast.f64.i64 %e
-  print %eb
+  call @print_i64(%eb)
   %g = select.f32 %f, 1.5, 2.5
   %gb = bitcast.f32.i32 %g
   %gw = sext.i32.i64 %gb
-  print %gw
+  call @print_i64(%gw)
   ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

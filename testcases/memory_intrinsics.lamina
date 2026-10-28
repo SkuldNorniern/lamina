@@ -7,25 +7,63 @@ entry:
   store.i8 %p3, 90
   %c3 = load.i8 %p3
   %c3w = sext.i8.i64 %c3
-  print %c3w
+  call @print_i64(%c3w)
   %copy = stackalloc.[8 x i8]
   %cbase = getelem.i8 %copy, 0
   memcpy %cbase, %base, 8
   %q3 = getelem.i8 %copy, 3
   %d3 = load.i8 %q3
   %d3w = sext.i8.i64 %d3
-  print %d3w
+  call @print_i64(%d3w)
   %q0 = getelem.i8 %copy, 0
   memmove %q0, %q3, 4
   %e0 = load.i8 %q0
   %e0w = sext.i8.i64 %e0
-  print %e0w
+  call @print_i64(%e0w)
   %q1 = getelem.i8 %copy, 1
   %e1 = load.i8 %q1
   %e1w = sext.i8.i64 %e1
-  print %e1w
+  call @print_i64(%e1w)
   write %cbase, 8, n
   %nl = writebyte 10
-  print %n
+  call @print_i64(%n)
   ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

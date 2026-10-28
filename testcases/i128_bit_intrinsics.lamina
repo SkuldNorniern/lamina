@@ -20,20 +20,20 @@ entry:
 fn @show_u(u128 %r) -> i64 {
 entry:
   %lo = trunc.u128.u64 %r
-  print %lo
+  call @print_u64(%lo)
   %s = shr.u128 %r, 64
   %hi = trunc.u128.u64 %s
-  print %hi
+  call @print_u64(%hi)
   ret.i64 0
 }
 
 fn @show_i(i128 %r) -> i64 {
 entry:
   %lo = trunc.i128.i64 %r
-  print %lo
+  call @print_i64(%lo)
   %s = shr.i128 %r, 64
   %hi = trunc.i128.i64 %s
-  print %hi
+  call @print_i64(%hi)
   ret.i64 0
 }
 
@@ -493,4 +493,42 @@ entry:
     %r291 = rotr.i128 %x282, %x290
     call @show_i(%r291)
   ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

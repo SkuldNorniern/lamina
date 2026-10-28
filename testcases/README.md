@@ -93,7 +93,7 @@ Each test case follows this structure:
 fn @main() -> i64 {
   entry:
     # Test logic here
-    print <value>  # Expected output
+    %w = writebyte <byte>  # Expected output
     ret.i64 0
 }
 ```
@@ -111,7 +111,7 @@ To add a new test case:
 
 - Tests use **Lamina IR syntax**, typed and block-based
 - All tests target **AArch64 macOS** by default
-- Print statements use **printf with correct Apple ARM64 ABI**
+- Float output calls libc **printf through an `@extern` declaration**, with the Apple ARM64 variadic ABI on macOS
 - Tests verify **core codegen functionality** including:
   - Constant materialization
   - Register allocation

@@ -37,37 +37,75 @@ entry:
   store.i128 %slot, %seed
   %back = load.i128 %slot
   %loa = trunc.i128.i64 %back
-  print %loa
+  call @print_i64(%loa)
   %hsa = shr.i128 %back, 64
   %hia = trunc.i128.i64 %hsa
-  print %hia
+  call @print_i64(%hia)
   %other = stackalloc.i128
   call @store_through(%other, %seed)
   %via = load.i128 %other
   %lob = trunc.i128.i64 %via
-  print %lob
+  call @print_i64(%lob)
   %hsb = shr.i128 %via, 64
   %hib = trunc.i128.i64 %hsb
-  print %hib
+  call @print_i64(%hib)
   %sum = call @loop_sum()
   %loc = trunc.i128.i64 %sum
-  print %loc
+  call @print_i64(%loc)
   %hsc = shr.i128 %sum, 64
   %hic = trunc.i128.i64 %hsc
-  print %hic
+  call @print_i64(%hic)
   %pa = add.i128 1267650600228229401496703205385, 0
   %pb = add.i128 -1237940039285380274899124223, 0
   %mx = call @pick(%pa, %pb)
   %lod = trunc.i128.i64 %mx
-  print %lod
+  call @print_i64(%lod)
   %hsd = shr.i128 %mx, 64
   %hid = trunc.i128.i64 %hsd
-  print %hid
+  call @print_i64(%hid)
   %mn = call @pick(%pb, %pa)
   %loe = trunc.i128.i64 %mn
-  print %loe
+  call @print_i64(%loe)
   %hse = shr.i128 %mn, 64
   %hie = trunc.i128.i64 %hse
-  print %hie
+  call @print_i64(%hie)
   ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

@@ -54,21 +54,59 @@ fn @exit(i32 %code) -> void
 fn @main() -> i64 {
 entry:
   %a = call @hidden_fn()
-  print %a
+  call @print_i64(%a)
   %b = call @protected_fn()
-  print %b
+  call @print_i64(%b)
   %c = call @internal_fn()
-  print %c
+  call @print_i64(%c)
   %d = call @private_fn()
-  print %d
+  call @print_i64(%d)
   %e = call @cold_fn()
-  print %e
+  call @print_i64(%e)
   %f = call @hot_fn()
-  print %f
+  call @print_i64(%f)
   %g = call @inline_fn()
-  print %g
+  call @print_i64(%g)
   %unused = call @pure_fn(9)
   call @exit(0)
-  print 99
+  call @print_i64(99)
   ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

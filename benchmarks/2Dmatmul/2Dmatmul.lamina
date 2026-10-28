@@ -58,9 +58,9 @@ fn @compute_matrix_cell(i64 %i, i64 %j, i64 %k_dim, i64 %n_cols) -> i64 {
 
 fn @matmul_2d(i64 %n_rows, i64 %k_dim, i64 %n_cols) -> i64 {
   entry:
-    print %n_rows
-    print %k_dim
-    print %n_cols
+    call @print_i64(%n_rows)
+    call @print_i64(%k_dim)
+    call @print_i64(%n_cols)
 
     %result_size = mul.i64 %n_rows, %n_cols
     %total_sum = add.i64 0, 0
@@ -90,10 +90,10 @@ fn @matmul_2d(i64 %n_rows, i64 %k_dim, i64 %n_cols) -> i64 {
     jmp i_loop
 
   matmul_done:
-    print %total_sum
+    call @print_i64(%total_sum)
     %ops_per_cell = mul.i64 %k_dim, 2
     %total_ops = mul.i64 %result_size, %ops_per_cell
-    print %total_ops
+    call @print_i64(%total_ops)
     ret.i64 %total_sum
 }
 
@@ -105,13 +105,51 @@ fn @main() -> i64 {
     %n_cols = add.i64 256, 0
 
     %header = add.i64 123456789, 0
-    print %header
+    call @print_i64(%header)
 
     %result = call @matmul_2d(%n_rows, %k_dim, %n_cols)
-    print %result
+    call @print_i64(%result)
 
     %status = add.i64 987654323, 0
-    print %status
+    call @print_i64(%status)
 
     ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

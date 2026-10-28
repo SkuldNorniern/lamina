@@ -10,16 +10,55 @@ fn @main() -> i64 {
 entry:
  %a = load.u64 $big
  %b = add.u64 %a, 1
- print %b
+ call @print_u64(%b)
  %c = call @scale(%b)
- print %c
+ call @print_u64(%c)
  %d = sub.u64 0, 1
- print %d
+ call @print_u64(%d)
  %e = div.u64 %d, 3
- print %e
+ call @print_u64(%e)
  %f = trunc.u64.u32 %d
- print %f
+ %pv4 = zext.u32.u64 %f
+ call @print_u64(%pv4)
  %g = sub.i64 0, 1
- print %g
+ call @print_i64(%g)
  ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

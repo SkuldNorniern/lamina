@@ -34,25 +34,63 @@ fn @mk_u8() -> u8 {
 fn @main() -> i64 {
   entry:
     %a = call @xor_eq_u8(255)
-    print %a
+    call @print_i64(%a)
     %b = call @xor_eq_u8(5)
-    print %b
+    call @print_i64(%b)
     %c = call @add_eq_u16(65535)
-    print %c
+    call @print_i64(%c)
     %d = call @or_eq_u32(4294967295)
-    print %d
+    call @print_i64(%d)
     %r = call @mk_u8()
     %s = xor.u8 %r, 0
     %e = eq.u8 %r, %s
     %ew = zext.bool.i64 %e
-    print %ew
+    call @print_i64(%ew)
     %rw = zext.u8.i64 %r
-    print %rw
+    call @print_i64(%rw)
     %big = gt.u8 %r, 1
     %bigw = zext.bool.i64 %big
-    print %bigw
+    call @print_i64(%bigw)
     %q = div.u8 %r, 5
     %qw = zext.u8.i64 %q
-    print %qw
+    call @print_i64(%qw)
     ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

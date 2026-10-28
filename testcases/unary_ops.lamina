@@ -1,24 +1,81 @@
+@extern
+fn @printf(ptr %fmt, ...) -> i32
+
+@extern
+fn @fflush(ptr %f) -> i32
+
+global $fmt_g: [4 x i8] = "%g\n"
+
 fn @main() -> i64 {
 entry:
   %a = add.i64 5, 0
   %na = neg.i64 %a
-  print %na
+  call @print_i64(%na)
   %nb = not.i64 %a
-  print %nb
+  call @print_i64(%nb)
   %c = add.i32 -7, 0
   %nc = neg.i32 %c
   %ncw = sext.i32.i64 %nc
-  print %ncw
+  call @print_i64(%ncw)
   %f = add.f64 2.0, 0.25
   %nf = neg.f64 %f
-  print %nf
+  call @print_f64(%nf)
   %s = sqrt.f64 16.0
-  print %s
+  call @print_f64(%s)
   %g = add.f32 9.0, 0.0
   %sg = sqrt.f32 %g
-  print %sg
+  %pv5 = fpcast.f32.f64 %sg
+  call @print_f64(%pv5)
   %u = add.u32 1, 0
   %nu = not.u32 %u
-  print %nu
+  %pv6 = zext.u32.u64 %nu
+  call @print_u64(%pv6)
+  ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_f64(f64 %x) -> i64 {
+entry:
+  %p = getelem.i8 $fmt_g, 0
+  %r = call @printf(%p, %x)
+  %n = inttoptr.i64 0
+  %z = call @fflush(%n)
   ret.i64 0
 }

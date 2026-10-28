@@ -43,23 +43,23 @@ fn @main() -> i64 {
   entry:
     # Print header marker
     %header = add.i64 123456789, 0
-    print %header
+    call @print_i64(%header)
 
     # Compute and print factorial(10)
     %fact10 = call @factorial_iterative(10)
-    print %fact10
+    call @print_i64(%fact10)
 
     # Compute and print factorial(12)
     %fact12 = call @factorial_iterative(12)
-    print %fact12
+    call @print_i64(%fact12)
 
     # Compute and print factorial(15)
     %fact15 = call @factorial_iterative(15)
-    print %fact15
+    call @print_i64(%fact15)
 
     # Compute and print factorial(18)
     %fact18 = call @factorial_iterative(18)
-    print %fact18
+    call @print_i64(%fact18)
 
     %acc = add.i64 0, 0
     %sweep = add.i64 0, 0
@@ -77,11 +77,49 @@ fn @main() -> i64 {
     jmp sweep_head
 
   sweep_done:
-    print %acc
+    call @print_i64(%acc)
 
     # Print footer marker
     %footer = add.i64 987654321, 0
-    print %footer
+    call @print_i64(%footer)
 
     ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

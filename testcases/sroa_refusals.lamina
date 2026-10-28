@@ -20,7 +20,7 @@ fn @escape_call() -> i64 {
     %av = load.i64 %a
     %bv = load.i64 %b
     %sum = add.i64 %av, %bv
-    print %sum
+    call @print_i64(%sum)
     ret.i64 0
 }
 
@@ -38,8 +38,8 @@ fn @escape_store() -> i64 {
     store.i64 %q, 60
     %av = load.i64 %a
     %bv = load.i64 %b
-    print %av
-    print %bv
+    call @print_i64(%av)
+    call @print_i64(%bv)
     ret.i64 0
 }
 
@@ -78,7 +78,7 @@ fn @dynamic_index(i64 %n) -> i64 {
     jmp sum_head
 
   sum_done:
-    print %total
+    call @print_i64(%total)
     ret.i64 0
 }
 
@@ -92,9 +92,11 @@ fn @overlap() -> i64 {
     %lo = load.i32 %w0
     %hi = load.i32 %w1
     %whole = load.i64 %w0
-    print %lo
-    print %hi
-    print %whole
+    %pv4 = sext.i32.i64 %lo
+    call @print_i64(%pv4)
+    %pv5 = sext.i32.i64 %hi
+    call @print_i64(%pv5)
+    call @print_i64(%whole)
     ret.i64 0
 }
 
@@ -109,7 +111,7 @@ fn @volatile_field() -> i64 {
     %av = load.i64 %a
     %bv = volatile load.i64 %b
     %sum = add.i64 %av, %bv
-    print %sum
+    call @print_i64(%sum)
     ret.i64 0
 }
 
@@ -141,8 +143,8 @@ fn @split_fields() -> i64 {
   done:
     %fx = load.i64 %x
     %fy = load.i64 %y
-    print %fx
-    print %fy
+    call @print_i64(%fx)
+    call @print_i64(%fy)
     ret.i64 0
 }
 
@@ -158,7 +160,7 @@ fn @bool_field() -> i64 {
     %cv = load.i64 %c
     %z = zext.bool.i64 %fv
     %sum = add.i64 %z, %cv
-    print %sum
+    call @print_i64(%sum)
     ret.i64 0
 }
 
@@ -173,4 +175,42 @@ fn @main() -> i64 {
     %e6 = call @split_fields()
     %e7 = call @bool_field()
     ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }

@@ -74,10 +74,10 @@ entry:
   %d = add.i128 -7, 0
   %res0 = call @many(%a, %b, %c, %d)
   %p0_lo = trunc.i128.i64 %res0
-  print %p0_lo
+  call @print_i64(%p0_lo)
   %p0_hs = shr.i128 %res0, 64
   %p0_hi = trunc.i128.i64 %p0_hs
-  print %p0_hi
+  call @print_i64(%p0_hi)
   %x0v = add.i64 1, 0
   %x1v = add.i64 -2, 0
   %x2v = add.i64 3, 0
@@ -87,10 +87,10 @@ entry:
   %zz = add.i128 -5, 0
   %res1 = call @split(%x0v, %x1v, %x2v, %x3v, %x4v, %y, %zz)
   %p1_lo = trunc.i128.i64 %res1
-  print %p1_lo
+  call @print_i64(%p1_lo)
   %p1_hs = shr.i128 %res1, 64
   %p1_hi = trunc.i128.i64 %p1_hs
-  print %p1_hi
+  call @print_i64(%p1_hi)
   %t0 = add.i64 9, 0
   %t1 = add.i64 4, 0
   %t2 = add.i64 -6, 0
@@ -101,20 +101,20 @@ entry:
   %zt = add.i128 31, 0
   %res2 = call @tail(%t0, %t1, %t2, %t3, %t4, %t5, %yy, %zt)
   %p2_lo = trunc.i128.i64 %res2
-  print %p2_lo
+  call @print_i64(%p2_lo)
   %p2_hs = shr.i128 %res2, 64
   %p2_hi = trunc.i128.i64 %p2_hs
-  print %p2_hi
+  call @print_i64(%p2_hi)
   %p = add.i128 123456789012345678901234, 0
   %q = add.i128 -98765432109876543210, 0
   %r = add.i128 1208925819614629174706176, 0
   %s = add.i128 -3, 0
   %res3 = call @mixed(%p, %q, %r, %s)
   %p3_lo = trunc.i128.i64 %res3
-  print %p3_lo
+  call @print_i64(%p3_lo)
   %p3_hs = shr.i128 %res3, 64
   %p3_hi = trunc.i128.i64 %p3_hs
-  print %p3_hi
+  call @print_i64(%p3_hi)
   %g0 = add.i64 11, 0
   %g1 = add.i64 -12, 0
   %g2 = add.i64 13, 0
@@ -126,9 +126,47 @@ entry:
   %wp = add.i128 -73786976294838206422, 0
   %res4 = call @pad(%g0, %g1, %g2, %g3, %g4, %g5, %stk, %yp, %wp)
   %p4_lo = trunc.i128.i64 %res4
-  print %p4_lo
+  call @print_i64(%p4_lo)
   %p4_hs = shr.i128 %res4, 64
   %p4_hi = trunc.i128.i64 %p4_hs
-  print %p4_hi
+  call @print_i64(%p4_hi)
   ret.i64 0
+}
+
+fn @put_u64(u64 %n) -> void {
+entry:
+  %q = div.u64 %n, 10
+  %r = rem.u64 %n, 10
+  %d = add.u64 %r, 48
+  %z = eq.u64 %q, 0
+  br %z, last, more
+more:
+  call @put_u64(%q)
+  jmp last
+last:
+  %w = writebyte %d
+  ret.void
+}
+
+fn @print_u64(u64 %n) -> void {
+entry:
+  call @put_u64(%n)
+  %nl = writebyte 10
+  ret.void
+}
+
+fn @print_i64(i64 %n) -> void {
+entry:
+  %neg = lt.i64 %n, 0
+  %m = sub.i64 0, %n
+  %s = select.i64 %neg, %m, %n
+  %u = bitcast.i64.u64 %s
+  br %neg, minus, digits
+minus:
+  %c = writebyte 45
+  jmp digits
+digits:
+  call @put_u64(%u)
+  %nl = writebyte 10
+  ret.void
 }
