@@ -805,7 +805,7 @@ fn conversions_saturate_clamp_and_zero_nan() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn byte_io_goes_through_putchar_and_getchar() -> Result<(), Box<dyn Error>> {
+fn byte_io_goes_through_write_and_read_without_stdio() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
     let ir = "fn @main() -> i64 {\nentry:\n  %w = writebyte 72\n  %r = readbyte\n  ret.i64 %r\n}\n";
     let module = parse_module(ir)?;
@@ -813,8 +813,12 @@ fn byte_io_goes_through_putchar_and_getchar() -> Result<(), Box<dyn Error>> {
     let mut output = Vec::new();
     generate_mir_riscv(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
-    assert!(assembly.contains("    call putchar\n"), "{assembly}");
-    assert!(assembly.contains("    call getchar\n"), "{assembly}");
+    assert!(assembly.contains("    sb a0, 0(sp)\n"), "{assembly}");
+    assert!(assembly.contains("    call write\n"), "{assembly}");
+    assert!(assembly.contains("    call read\n"), "{assembly}");
+    assert!(assembly.contains("    lbu a0, 0(sp)\n"), "{assembly}");
+    assert!(!assembly.contains("putchar"), "{assembly}");
+    assert!(!assembly.contains("getchar"), "{assembly}");
     assert!(!assembly.contains("call writebyte"), "{assembly}");
     assert!(!assembly.contains("call readbyte"), "{assembly}");
     Ok(())

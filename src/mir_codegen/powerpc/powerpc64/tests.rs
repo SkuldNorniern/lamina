@@ -346,7 +346,7 @@ fn stack_arguments_sit_in_the_parameter_save_area() -> Result<(), Box<dyn Error>
 }
 
 #[test]
-fn byte_io_goes_through_putchar_and_getchar() -> Result<(), Box<dyn Error>> {
+fn byte_io_goes_through_write_and_read_without_stdio() -> Result<(), Box<dyn Error>> {
     use crate::{mir::codegen::from_ir, parser::parse_module};
     let ir = "fn @main() -> i64 {\nentry:\n  %w = writebyte 72\n  %r = readbyte\n  ret.i64 %r\n}\n";
     let module = parse_module(ir)?;
@@ -354,8 +354,12 @@ fn byte_io_goes_through_putchar_and_getchar() -> Result<(), Box<dyn Error>> {
     let mut output = Vec::new();
     generate_mir_ppc64(&mir, &mut output, TargetOperatingSystem::Linux)?;
     let assembly = String::from_utf8(output)?;
-    assert!(assembly.contains("    bl putchar\n"), "{assembly}");
-    assert!(assembly.contains("    bl getchar\n"), "{assembly}");
+    assert!(assembly.contains("    stb 3, 0(1)\n"), "{assembly}");
+    assert!(assembly.contains("    bl write\n"), "{assembly}");
+    assert!(assembly.contains("    bl read\n"), "{assembly}");
+    assert!(assembly.contains("    lbz 4, 0(1)\n"), "{assembly}");
+    assert!(!assembly.contains("putchar"), "{assembly}");
+    assert!(!assembly.contains("getchar"), "{assembly}");
     assert!(!assembly.contains("bl writebyte"), "{assembly}");
     assert!(!assembly.contains("bl readbyte"), "{assembly}");
     Ok(())
