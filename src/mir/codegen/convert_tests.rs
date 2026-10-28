@@ -547,7 +547,7 @@ fn f64_phi_immediate_survives_lowering_as_copy() {
             "choose",
             vec![FunctionParameter {
                 name: "condition",
-                ty: IRType::Primitive(IRPrim::I8),
+                ty: IRType::Primitive(IRPrim::Bool),
                 annotations: vec![],
             }],
             IRType::Primitive(IRPrim::F64),

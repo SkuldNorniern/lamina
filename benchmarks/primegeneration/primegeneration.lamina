@@ -70,7 +70,8 @@ fn @count_primes(i64 %limit) -> i64 {
   count_loop_body:
     # Check if current number is prime
     %is_current_prime = call @is_prime(%current)
-    br %is_current_prime, count_increment, count_next
+    %current_is_prime = ne.i64 %is_current_prime, 0
+    br %current_is_prime, count_increment, count_next
 
   count_increment:
     %count = add.i64 %count, 1

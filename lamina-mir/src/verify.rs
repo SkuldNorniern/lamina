@@ -1003,6 +1003,16 @@ fn verify_instruction_types(
                         &mut instruction_errors,
                     );
                 }
+                Instruction::Br { cond, .. } => {
+                    verify_register(
+                        cond,
+                        MirType::i1(),
+                        "Branch condition",
+                        definitions,
+                        config,
+                        &mut instruction_errors,
+                    );
+                }
                 Instruction::Store { ty, src, .. } => {
                     verify_operand(
                         src,
@@ -1861,6 +1871,30 @@ mod tests {
         );
         assert!(errors.iter().any(|error| error.contains("Copy source")));
         assert!(errors.iter().any(|error| error.contains("Select true arm")));
+    }
+
+    #[test]
+    fn rejects_non_i1_branch_condition() {
+        let function = FunctionBuilder::new("bad_branch")
+            .block("entry")
+            .instr(Instruction::Copy {
+                ty: MirType::i8(),
+                dst: VirtualReg::gpr(0).into(),
+                src: Operand::Immediate(Immediate::I8(1)),
+            })
+            .instr(Instruction::Br {
+                cond: VirtualReg::gpr(0).into(),
+                true_target: "exit".to_string(),
+                false_target: "exit".to_string(),
+            })
+            .block("exit")
+            .instr(Instruction::Ret { value: None })
+            .build();
+
+        let errors = verification_errors(&function);
+        assert!(errors.iter().any(|error| error.contains(
+            "expected Branch condition to have type i1, found register v0 defined as i8"
+        )));
     }
 
     #[test]
