@@ -1,0 +1,1704 @@
+# Division and remainder with runtime divisors: operands either side of the 32-bit
+# boundary, all sign combinations, and mixed narrow/wide operands. Expected values are Python integers.
+# A zero divisor and i64::MIN / -1 trap and are not part of this test.
+
+fn @sdiv(i64 %a, i64 %b) -> i64 {
+  entry:
+    %q = div.i64 %a, %b
+    ret.i64 %q
+}
+
+fn @srem(i64 %a, i64 %b) -> i64 {
+  entry:
+    %r = rem.i64 %a, %b
+    ret.i64 %r
+}
+
+fn @udiv(u64 %a, u64 %b) -> u64 {
+  entry:
+    %q = div.u64 %a, %b
+    ret.u64 %q
+}
+
+fn @urem(u64 %a, u64 %b) -> u64 {
+  entry:
+    %r = rem.u64 %a, %b
+    ret.u64 %r
+}
+
+fn @main() -> i64 {
+  entry:
+    %v0 = call @sdiv(0, 1)
+    print %v0
+    %v1 = call @srem(0, 1)
+    print %v1
+    %v2 = call @udiv(0, 1)
+    print %v2
+    %v3 = call @urem(0, 1)
+    print %v3
+    %v4 = call @sdiv(0, -1)
+    print %v4
+    %v5 = call @srem(0, -1)
+    print %v5
+    %v6 = call @udiv(0, 18446744073709551615)
+    print %v6
+    %v7 = call @urem(0, 18446744073709551615)
+    print %v7
+    %v8 = call @sdiv(0, 2)
+    print %v8
+    %v9 = call @srem(0, 2)
+    print %v9
+    %v10 = call @udiv(0, 2)
+    print %v10
+    %v11 = call @urem(0, 2)
+    print %v11
+    %v12 = call @sdiv(0, -2)
+    print %v12
+    %v13 = call @srem(0, -2)
+    print %v13
+    %v14 = call @udiv(0, 18446744073709551614)
+    print %v14
+    %v15 = call @urem(0, 18446744073709551614)
+    print %v15
+    %v16 = call @sdiv(0, 3)
+    print %v16
+    %v17 = call @srem(0, 3)
+    print %v17
+    %v18 = call @udiv(0, 3)
+    print %v18
+    %v19 = call @urem(0, 3)
+    print %v19
+    %v20 = call @sdiv(0, -3)
+    print %v20
+    %v21 = call @srem(0, -3)
+    print %v21
+    %v22 = call @udiv(0, 18446744073709551613)
+    print %v22
+    %v23 = call @urem(0, 18446744073709551613)
+    print %v23
+    %v24 = call @sdiv(0, 2147483647)
+    print %v24
+    %v25 = call @srem(0, 2147483647)
+    print %v25
+    %v26 = call @udiv(0, 2147483647)
+    print %v26
+    %v27 = call @urem(0, 2147483647)
+    print %v27
+    %v28 = call @sdiv(0, -2147483648)
+    print %v28
+    %v29 = call @srem(0, -2147483648)
+    print %v29
+    %v30 = call @udiv(0, 18446744071562067968)
+    print %v30
+    %v31 = call @urem(0, 18446744071562067968)
+    print %v31
+    %v32 = call @sdiv(0, 2147483648)
+    print %v32
+    %v33 = call @srem(0, 2147483648)
+    print %v33
+    %v34 = call @udiv(0, 2147483648)
+    print %v34
+    %v35 = call @urem(0, 2147483648)
+    print %v35
+    %v36 = call @sdiv(0, 4294967296)
+    print %v36
+    %v37 = call @srem(0, 4294967296)
+    print %v37
+    %v38 = call @udiv(0, 4294967296)
+    print %v38
+    %v39 = call @urem(0, 4294967296)
+    print %v39
+    %v40 = call @sdiv(0, 4294967295)
+    print %v40
+    %v41 = call @srem(0, 4294967295)
+    print %v41
+    %v42 = call @udiv(0, 4294967295)
+    print %v42
+    %v43 = call @urem(0, 4294967295)
+    print %v43
+    %v44 = call @sdiv(0, -4294967295)
+    print %v44
+    %v45 = call @srem(0, -4294967295)
+    print %v45
+    %v46 = call @udiv(0, 18446744069414584321)
+    print %v46
+    %v47 = call @urem(0, 18446744069414584321)
+    print %v47
+    %v48 = call @sdiv(0, 9223372036854775807)
+    print %v48
+    %v49 = call @srem(0, 9223372036854775807)
+    print %v49
+    %v50 = call @udiv(0, 9223372036854775807)
+    print %v50
+    %v51 = call @urem(0, 9223372036854775807)
+    print %v51
+    %v52 = call @sdiv(0, -9223372036854775808)
+    print %v52
+    %v53 = call @srem(0, -9223372036854775808)
+    print %v53
+    %v54 = call @udiv(0, 9223372036854775808)
+    print %v54
+    %v55 = call @urem(0, 9223372036854775808)
+    print %v55
+    %v56 = call @sdiv(1, 1)
+    print %v56
+    %v57 = call @srem(1, 1)
+    print %v57
+    %v58 = call @udiv(1, 1)
+    print %v58
+    %v59 = call @urem(1, 1)
+    print %v59
+    %v60 = call @sdiv(1, -1)
+    print %v60
+    %v61 = call @srem(1, -1)
+    print %v61
+    %v62 = call @udiv(1, 18446744073709551615)
+    print %v62
+    %v63 = call @urem(1, 18446744073709551615)
+    print %v63
+    %v64 = call @sdiv(1, 2)
+    print %v64
+    %v65 = call @srem(1, 2)
+    print %v65
+    %v66 = call @udiv(1, 2)
+    print %v66
+    %v67 = call @urem(1, 2)
+    print %v67
+    %v68 = call @sdiv(1, -2)
+    print %v68
+    %v69 = call @srem(1, -2)
+    print %v69
+    %v70 = call @udiv(1, 18446744073709551614)
+    print %v70
+    %v71 = call @urem(1, 18446744073709551614)
+    print %v71
+    %v72 = call @sdiv(1, 3)
+    print %v72
+    %v73 = call @srem(1, 3)
+    print %v73
+    %v74 = call @udiv(1, 3)
+    print %v74
+    %v75 = call @urem(1, 3)
+    print %v75
+    %v76 = call @sdiv(1, -3)
+    print %v76
+    %v77 = call @srem(1, -3)
+    print %v77
+    %v78 = call @udiv(1, 18446744073709551613)
+    print %v78
+    %v79 = call @urem(1, 18446744073709551613)
+    print %v79
+    %v80 = call @sdiv(1, 2147483647)
+    print %v80
+    %v81 = call @srem(1, 2147483647)
+    print %v81
+    %v82 = call @udiv(1, 2147483647)
+    print %v82
+    %v83 = call @urem(1, 2147483647)
+    print %v83
+    %v84 = call @sdiv(1, -2147483648)
+    print %v84
+    %v85 = call @srem(1, -2147483648)
+    print %v85
+    %v86 = call @udiv(1, 18446744071562067968)
+    print %v86
+    %v87 = call @urem(1, 18446744071562067968)
+    print %v87
+    %v88 = call @sdiv(1, 2147483648)
+    print %v88
+    %v89 = call @srem(1, 2147483648)
+    print %v89
+    %v90 = call @udiv(1, 2147483648)
+    print %v90
+    %v91 = call @urem(1, 2147483648)
+    print %v91
+    %v92 = call @sdiv(1, 4294967296)
+    print %v92
+    %v93 = call @srem(1, 4294967296)
+    print %v93
+    %v94 = call @udiv(1, 4294967296)
+    print %v94
+    %v95 = call @urem(1, 4294967296)
+    print %v95
+    %v96 = call @sdiv(1, 4294967295)
+    print %v96
+    %v97 = call @srem(1, 4294967295)
+    print %v97
+    %v98 = call @udiv(1, 4294967295)
+    print %v98
+    %v99 = call @urem(1, 4294967295)
+    print %v99
+    %v100 = call @sdiv(1, -4294967295)
+    print %v100
+    %v101 = call @srem(1, -4294967295)
+    print %v101
+    %v102 = call @udiv(1, 18446744069414584321)
+    print %v102
+    %v103 = call @urem(1, 18446744069414584321)
+    print %v103
+    %v104 = call @sdiv(1, 9223372036854775807)
+    print %v104
+    %v105 = call @srem(1, 9223372036854775807)
+    print %v105
+    %v106 = call @udiv(1, 9223372036854775807)
+    print %v106
+    %v107 = call @urem(1, 9223372036854775807)
+    print %v107
+    %v108 = call @sdiv(1, -9223372036854775808)
+    print %v108
+    %v109 = call @srem(1, -9223372036854775808)
+    print %v109
+    %v110 = call @udiv(1, 9223372036854775808)
+    print %v110
+    %v111 = call @urem(1, 9223372036854775808)
+    print %v111
+    %v112 = call @sdiv(-1, 1)
+    print %v112
+    %v113 = call @srem(-1, 1)
+    print %v113
+    %v114 = call @udiv(18446744073709551615, 1)
+    print %v114
+    %v115 = call @urem(18446744073709551615, 1)
+    print %v115
+    %v116 = call @sdiv(-1, -1)
+    print %v116
+    %v117 = call @srem(-1, -1)
+    print %v117
+    %v118 = call @udiv(18446744073709551615, 18446744073709551615)
+    print %v118
+    %v119 = call @urem(18446744073709551615, 18446744073709551615)
+    print %v119
+    %v120 = call @sdiv(-1, 2)
+    print %v120
+    %v121 = call @srem(-1, 2)
+    print %v121
+    %v122 = call @udiv(18446744073709551615, 2)
+    print %v122
+    %v123 = call @urem(18446744073709551615, 2)
+    print %v123
+    %v124 = call @sdiv(-1, -2)
+    print %v124
+    %v125 = call @srem(-1, -2)
+    print %v125
+    %v126 = call @udiv(18446744073709551615, 18446744073709551614)
+    print %v126
+    %v127 = call @urem(18446744073709551615, 18446744073709551614)
+    print %v127
+    %v128 = call @sdiv(-1, 3)
+    print %v128
+    %v129 = call @srem(-1, 3)
+    print %v129
+    %v130 = call @udiv(18446744073709551615, 3)
+    print %v130
+    %v131 = call @urem(18446744073709551615, 3)
+    print %v131
+    %v132 = call @sdiv(-1, -3)
+    print %v132
+    %v133 = call @srem(-1, -3)
+    print %v133
+    %v134 = call @udiv(18446744073709551615, 18446744073709551613)
+    print %v134
+    %v135 = call @urem(18446744073709551615, 18446744073709551613)
+    print %v135
+    %v136 = call @sdiv(-1, 2147483647)
+    print %v136
+    %v137 = call @srem(-1, 2147483647)
+    print %v137
+    %v138 = call @udiv(18446744073709551615, 2147483647)
+    print %v138
+    %v139 = call @urem(18446744073709551615, 2147483647)
+    print %v139
+    %v140 = call @sdiv(-1, -2147483648)
+    print %v140
+    %v141 = call @srem(-1, -2147483648)
+    print %v141
+    %v142 = call @udiv(18446744073709551615, 18446744071562067968)
+    print %v142
+    %v143 = call @urem(18446744073709551615, 18446744071562067968)
+    print %v143
+    %v144 = call @sdiv(-1, 2147483648)
+    print %v144
+    %v145 = call @srem(-1, 2147483648)
+    print %v145
+    %v146 = call @udiv(18446744073709551615, 2147483648)
+    print %v146
+    %v147 = call @urem(18446744073709551615, 2147483648)
+    print %v147
+    %v148 = call @sdiv(-1, 4294967296)
+    print %v148
+    %v149 = call @srem(-1, 4294967296)
+    print %v149
+    %v150 = call @udiv(18446744073709551615, 4294967296)
+    print %v150
+    %v151 = call @urem(18446744073709551615, 4294967296)
+    print %v151
+    %v152 = call @sdiv(-1, 4294967295)
+    print %v152
+    %v153 = call @srem(-1, 4294967295)
+    print %v153
+    %v154 = call @udiv(18446744073709551615, 4294967295)
+    print %v154
+    %v155 = call @urem(18446744073709551615, 4294967295)
+    print %v155
+    %v156 = call @sdiv(-1, -4294967295)
+    print %v156
+    %v157 = call @srem(-1, -4294967295)
+    print %v157
+    %v158 = call @udiv(18446744073709551615, 18446744069414584321)
+    print %v158
+    %v159 = call @urem(18446744073709551615, 18446744069414584321)
+    print %v159
+    %v160 = call @sdiv(-1, 9223372036854775807)
+    print %v160
+    %v161 = call @srem(-1, 9223372036854775807)
+    print %v161
+    %v162 = call @udiv(18446744073709551615, 9223372036854775807)
+    print %v162
+    %v163 = call @urem(18446744073709551615, 9223372036854775807)
+    print %v163
+    %v164 = call @sdiv(-1, -9223372036854775808)
+    print %v164
+    %v165 = call @srem(-1, -9223372036854775808)
+    print %v165
+    %v166 = call @udiv(18446744073709551615, 9223372036854775808)
+    print %v166
+    %v167 = call @urem(18446744073709551615, 9223372036854775808)
+    print %v167
+    %v168 = call @sdiv(7, 1)
+    print %v168
+    %v169 = call @srem(7, 1)
+    print %v169
+    %v170 = call @udiv(7, 1)
+    print %v170
+    %v171 = call @urem(7, 1)
+    print %v171
+    %v172 = call @sdiv(7, -1)
+    print %v172
+    %v173 = call @srem(7, -1)
+    print %v173
+    %v174 = call @udiv(7, 18446744073709551615)
+    print %v174
+    %v175 = call @urem(7, 18446744073709551615)
+    print %v175
+    %v176 = call @sdiv(7, 2)
+    print %v176
+    %v177 = call @srem(7, 2)
+    print %v177
+    %v178 = call @udiv(7, 2)
+    print %v178
+    %v179 = call @urem(7, 2)
+    print %v179
+    %v180 = call @sdiv(7, -2)
+    print %v180
+    %v181 = call @srem(7, -2)
+    print %v181
+    %v182 = call @udiv(7, 18446744073709551614)
+    print %v182
+    %v183 = call @urem(7, 18446744073709551614)
+    print %v183
+    %v184 = call @sdiv(7, 3)
+    print %v184
+    %v185 = call @srem(7, 3)
+    print %v185
+    %v186 = call @udiv(7, 3)
+    print %v186
+    %v187 = call @urem(7, 3)
+    print %v187
+    %v188 = call @sdiv(7, -3)
+    print %v188
+    %v189 = call @srem(7, -3)
+    print %v189
+    %v190 = call @udiv(7, 18446744073709551613)
+    print %v190
+    %v191 = call @urem(7, 18446744073709551613)
+    print %v191
+    %v192 = call @sdiv(7, 2147483647)
+    print %v192
+    %v193 = call @srem(7, 2147483647)
+    print %v193
+    %v194 = call @udiv(7, 2147483647)
+    print %v194
+    %v195 = call @urem(7, 2147483647)
+    print %v195
+    %v196 = call @sdiv(7, -2147483648)
+    print %v196
+    %v197 = call @srem(7, -2147483648)
+    print %v197
+    %v198 = call @udiv(7, 18446744071562067968)
+    print %v198
+    %v199 = call @urem(7, 18446744071562067968)
+    print %v199
+    %v200 = call @sdiv(7, 2147483648)
+    print %v200
+    %v201 = call @srem(7, 2147483648)
+    print %v201
+    %v202 = call @udiv(7, 2147483648)
+    print %v202
+    %v203 = call @urem(7, 2147483648)
+    print %v203
+    %v204 = call @sdiv(7, 4294967296)
+    print %v204
+    %v205 = call @srem(7, 4294967296)
+    print %v205
+    %v206 = call @udiv(7, 4294967296)
+    print %v206
+    %v207 = call @urem(7, 4294967296)
+    print %v207
+    %v208 = call @sdiv(7, 4294967295)
+    print %v208
+    %v209 = call @srem(7, 4294967295)
+    print %v209
+    %v210 = call @udiv(7, 4294967295)
+    print %v210
+    %v211 = call @urem(7, 4294967295)
+    print %v211
+    %v212 = call @sdiv(7, -4294967295)
+    print %v212
+    %v213 = call @srem(7, -4294967295)
+    print %v213
+    %v214 = call @udiv(7, 18446744069414584321)
+    print %v214
+    %v215 = call @urem(7, 18446744069414584321)
+    print %v215
+    %v216 = call @sdiv(7, 9223372036854775807)
+    print %v216
+    %v217 = call @srem(7, 9223372036854775807)
+    print %v217
+    %v218 = call @udiv(7, 9223372036854775807)
+    print %v218
+    %v219 = call @urem(7, 9223372036854775807)
+    print %v219
+    %v220 = call @sdiv(7, -9223372036854775808)
+    print %v220
+    %v221 = call @srem(7, -9223372036854775808)
+    print %v221
+    %v222 = call @udiv(7, 9223372036854775808)
+    print %v222
+    %v223 = call @urem(7, 9223372036854775808)
+    print %v223
+    %v224 = call @sdiv(-7, 1)
+    print %v224
+    %v225 = call @srem(-7, 1)
+    print %v225
+    %v226 = call @udiv(18446744073709551609, 1)
+    print %v226
+    %v227 = call @urem(18446744073709551609, 1)
+    print %v227
+    %v228 = call @sdiv(-7, -1)
+    print %v228
+    %v229 = call @srem(-7, -1)
+    print %v229
+    %v230 = call @udiv(18446744073709551609, 18446744073709551615)
+    print %v230
+    %v231 = call @urem(18446744073709551609, 18446744073709551615)
+    print %v231
+    %v232 = call @sdiv(-7, 2)
+    print %v232
+    %v233 = call @srem(-7, 2)
+    print %v233
+    %v234 = call @udiv(18446744073709551609, 2)
+    print %v234
+    %v235 = call @urem(18446744073709551609, 2)
+    print %v235
+    %v236 = call @sdiv(-7, -2)
+    print %v236
+    %v237 = call @srem(-7, -2)
+    print %v237
+    %v238 = call @udiv(18446744073709551609, 18446744073709551614)
+    print %v238
+    %v239 = call @urem(18446744073709551609, 18446744073709551614)
+    print %v239
+    %v240 = call @sdiv(-7, 3)
+    print %v240
+    %v241 = call @srem(-7, 3)
+    print %v241
+    %v242 = call @udiv(18446744073709551609, 3)
+    print %v242
+    %v243 = call @urem(18446744073709551609, 3)
+    print %v243
+    %v244 = call @sdiv(-7, -3)
+    print %v244
+    %v245 = call @srem(-7, -3)
+    print %v245
+    %v246 = call @udiv(18446744073709551609, 18446744073709551613)
+    print %v246
+    %v247 = call @urem(18446744073709551609, 18446744073709551613)
+    print %v247
+    %v248 = call @sdiv(-7, 2147483647)
+    print %v248
+    %v249 = call @srem(-7, 2147483647)
+    print %v249
+    %v250 = call @udiv(18446744073709551609, 2147483647)
+    print %v250
+    %v251 = call @urem(18446744073709551609, 2147483647)
+    print %v251
+    %v252 = call @sdiv(-7, -2147483648)
+    print %v252
+    %v253 = call @srem(-7, -2147483648)
+    print %v253
+    %v254 = call @udiv(18446744073709551609, 18446744071562067968)
+    print %v254
+    %v255 = call @urem(18446744073709551609, 18446744071562067968)
+    print %v255
+    %v256 = call @sdiv(-7, 2147483648)
+    print %v256
+    %v257 = call @srem(-7, 2147483648)
+    print %v257
+    %v258 = call @udiv(18446744073709551609, 2147483648)
+    print %v258
+    %v259 = call @urem(18446744073709551609, 2147483648)
+    print %v259
+    %v260 = call @sdiv(-7, 4294967296)
+    print %v260
+    %v261 = call @srem(-7, 4294967296)
+    print %v261
+    %v262 = call @udiv(18446744073709551609, 4294967296)
+    print %v262
+    %v263 = call @urem(18446744073709551609, 4294967296)
+    print %v263
+    %v264 = call @sdiv(-7, 4294967295)
+    print %v264
+    %v265 = call @srem(-7, 4294967295)
+    print %v265
+    %v266 = call @udiv(18446744073709551609, 4294967295)
+    print %v266
+    %v267 = call @urem(18446744073709551609, 4294967295)
+    print %v267
+    %v268 = call @sdiv(-7, -4294967295)
+    print %v268
+    %v269 = call @srem(-7, -4294967295)
+    print %v269
+    %v270 = call @udiv(18446744073709551609, 18446744069414584321)
+    print %v270
+    %v271 = call @urem(18446744073709551609, 18446744069414584321)
+    print %v271
+    %v272 = call @sdiv(-7, 9223372036854775807)
+    print %v272
+    %v273 = call @srem(-7, 9223372036854775807)
+    print %v273
+    %v274 = call @udiv(18446744073709551609, 9223372036854775807)
+    print %v274
+    %v275 = call @urem(18446744073709551609, 9223372036854775807)
+    print %v275
+    %v276 = call @sdiv(-7, -9223372036854775808)
+    print %v276
+    %v277 = call @srem(-7, -9223372036854775808)
+    print %v277
+    %v278 = call @udiv(18446744073709551609, 9223372036854775808)
+    print %v278
+    %v279 = call @urem(18446744073709551609, 9223372036854775808)
+    print %v279
+    %v280 = call @sdiv(2147483647, 1)
+    print %v280
+    %v281 = call @srem(2147483647, 1)
+    print %v281
+    %v282 = call @udiv(2147483647, 1)
+    print %v282
+    %v283 = call @urem(2147483647, 1)
+    print %v283
+    %v284 = call @sdiv(2147483647, -1)
+    print %v284
+    %v285 = call @srem(2147483647, -1)
+    print %v285
+    %v286 = call @udiv(2147483647, 18446744073709551615)
+    print %v286
+    %v287 = call @urem(2147483647, 18446744073709551615)
+    print %v287
+    %v288 = call @sdiv(2147483647, 2)
+    print %v288
+    %v289 = call @srem(2147483647, 2)
+    print %v289
+    %v290 = call @udiv(2147483647, 2)
+    print %v290
+    %v291 = call @urem(2147483647, 2)
+    print %v291
+    %v292 = call @sdiv(2147483647, -2)
+    print %v292
+    %v293 = call @srem(2147483647, -2)
+    print %v293
+    %v294 = call @udiv(2147483647, 18446744073709551614)
+    print %v294
+    %v295 = call @urem(2147483647, 18446744073709551614)
+    print %v295
+    %v296 = call @sdiv(2147483647, 3)
+    print %v296
+    %v297 = call @srem(2147483647, 3)
+    print %v297
+    %v298 = call @udiv(2147483647, 3)
+    print %v298
+    %v299 = call @urem(2147483647, 3)
+    print %v299
+    %v300 = call @sdiv(2147483647, -3)
+    print %v300
+    %v301 = call @srem(2147483647, -3)
+    print %v301
+    %v302 = call @udiv(2147483647, 18446744073709551613)
+    print %v302
+    %v303 = call @urem(2147483647, 18446744073709551613)
+    print %v303
+    %v304 = call @sdiv(2147483647, 2147483647)
+    print %v304
+    %v305 = call @srem(2147483647, 2147483647)
+    print %v305
+    %v306 = call @udiv(2147483647, 2147483647)
+    print %v306
+    %v307 = call @urem(2147483647, 2147483647)
+    print %v307
+    %v308 = call @sdiv(2147483647, -2147483648)
+    print %v308
+    %v309 = call @srem(2147483647, -2147483648)
+    print %v309
+    %v310 = call @udiv(2147483647, 18446744071562067968)
+    print %v310
+    %v311 = call @urem(2147483647, 18446744071562067968)
+    print %v311
+    %v312 = call @sdiv(2147483647, 2147483648)
+    print %v312
+    %v313 = call @srem(2147483647, 2147483648)
+    print %v313
+    %v314 = call @udiv(2147483647, 2147483648)
+    print %v314
+    %v315 = call @urem(2147483647, 2147483648)
+    print %v315
+    %v316 = call @sdiv(2147483647, 4294967296)
+    print %v316
+    %v317 = call @srem(2147483647, 4294967296)
+    print %v317
+    %v318 = call @udiv(2147483647, 4294967296)
+    print %v318
+    %v319 = call @urem(2147483647, 4294967296)
+    print %v319
+    %v320 = call @sdiv(2147483647, 4294967295)
+    print %v320
+    %v321 = call @srem(2147483647, 4294967295)
+    print %v321
+    %v322 = call @udiv(2147483647, 4294967295)
+    print %v322
+    %v323 = call @urem(2147483647, 4294967295)
+    print %v323
+    %v324 = call @sdiv(2147483647, -4294967295)
+    print %v324
+    %v325 = call @srem(2147483647, -4294967295)
+    print %v325
+    %v326 = call @udiv(2147483647, 18446744069414584321)
+    print %v326
+    %v327 = call @urem(2147483647, 18446744069414584321)
+    print %v327
+    %v328 = call @sdiv(2147483647, 9223372036854775807)
+    print %v328
+    %v329 = call @srem(2147483647, 9223372036854775807)
+    print %v329
+    %v330 = call @udiv(2147483647, 9223372036854775807)
+    print %v330
+    %v331 = call @urem(2147483647, 9223372036854775807)
+    print %v331
+    %v332 = call @sdiv(2147483647, -9223372036854775808)
+    print %v332
+    %v333 = call @srem(2147483647, -9223372036854775808)
+    print %v333
+    %v334 = call @udiv(2147483647, 9223372036854775808)
+    print %v334
+    %v335 = call @urem(2147483647, 9223372036854775808)
+    print %v335
+    %v336 = call @sdiv(-2147483647, 1)
+    print %v336
+    %v337 = call @srem(-2147483647, 1)
+    print %v337
+    %v338 = call @udiv(18446744071562067969, 1)
+    print %v338
+    %v339 = call @urem(18446744071562067969, 1)
+    print %v339
+    %v340 = call @sdiv(-2147483647, -1)
+    print %v340
+    %v341 = call @srem(-2147483647, -1)
+    print %v341
+    %v342 = call @udiv(18446744071562067969, 18446744073709551615)
+    print %v342
+    %v343 = call @urem(18446744071562067969, 18446744073709551615)
+    print %v343
+    %v344 = call @sdiv(-2147483647, 2)
+    print %v344
+    %v345 = call @srem(-2147483647, 2)
+    print %v345
+    %v346 = call @udiv(18446744071562067969, 2)
+    print %v346
+    %v347 = call @urem(18446744071562067969, 2)
+    print %v347
+    %v348 = call @sdiv(-2147483647, -2)
+    print %v348
+    %v349 = call @srem(-2147483647, -2)
+    print %v349
+    %v350 = call @udiv(18446744071562067969, 18446744073709551614)
+    print %v350
+    %v351 = call @urem(18446744071562067969, 18446744073709551614)
+    print %v351
+    %v352 = call @sdiv(-2147483647, 3)
+    print %v352
+    %v353 = call @srem(-2147483647, 3)
+    print %v353
+    %v354 = call @udiv(18446744071562067969, 3)
+    print %v354
+    %v355 = call @urem(18446744071562067969, 3)
+    print %v355
+    %v356 = call @sdiv(-2147483647, -3)
+    print %v356
+    %v357 = call @srem(-2147483647, -3)
+    print %v357
+    %v358 = call @udiv(18446744071562067969, 18446744073709551613)
+    print %v358
+    %v359 = call @urem(18446744071562067969, 18446744073709551613)
+    print %v359
+    %v360 = call @sdiv(-2147483647, 2147483647)
+    print %v360
+    %v361 = call @srem(-2147483647, 2147483647)
+    print %v361
+    %v362 = call @udiv(18446744071562067969, 2147483647)
+    print %v362
+    %v363 = call @urem(18446744071562067969, 2147483647)
+    print %v363
+    %v364 = call @sdiv(-2147483647, -2147483648)
+    print %v364
+    %v365 = call @srem(-2147483647, -2147483648)
+    print %v365
+    %v366 = call @udiv(18446744071562067969, 18446744071562067968)
+    print %v366
+    %v367 = call @urem(18446744071562067969, 18446744071562067968)
+    print %v367
+    %v368 = call @sdiv(-2147483647, 2147483648)
+    print %v368
+    %v369 = call @srem(-2147483647, 2147483648)
+    print %v369
+    %v370 = call @udiv(18446744071562067969, 2147483648)
+    print %v370
+    %v371 = call @urem(18446744071562067969, 2147483648)
+    print %v371
+    %v372 = call @sdiv(-2147483647, 4294967296)
+    print %v372
+    %v373 = call @srem(-2147483647, 4294967296)
+    print %v373
+    %v374 = call @udiv(18446744071562067969, 4294967296)
+    print %v374
+    %v375 = call @urem(18446744071562067969, 4294967296)
+    print %v375
+    %v376 = call @sdiv(-2147483647, 4294967295)
+    print %v376
+    %v377 = call @srem(-2147483647, 4294967295)
+    print %v377
+    %v378 = call @udiv(18446744071562067969, 4294967295)
+    print %v378
+    %v379 = call @urem(18446744071562067969, 4294967295)
+    print %v379
+    %v380 = call @sdiv(-2147483647, -4294967295)
+    print %v380
+    %v381 = call @srem(-2147483647, -4294967295)
+    print %v381
+    %v382 = call @udiv(18446744071562067969, 18446744069414584321)
+    print %v382
+    %v383 = call @urem(18446744071562067969, 18446744069414584321)
+    print %v383
+    %v384 = call @sdiv(-2147483647, 9223372036854775807)
+    print %v384
+    %v385 = call @srem(-2147483647, 9223372036854775807)
+    print %v385
+    %v386 = call @udiv(18446744071562067969, 9223372036854775807)
+    print %v386
+    %v387 = call @urem(18446744071562067969, 9223372036854775807)
+    print %v387
+    %v388 = call @sdiv(-2147483647, -9223372036854775808)
+    print %v388
+    %v389 = call @srem(-2147483647, -9223372036854775808)
+    print %v389
+    %v390 = call @udiv(18446744071562067969, 9223372036854775808)
+    print %v390
+    %v391 = call @urem(18446744071562067969, 9223372036854775808)
+    print %v391
+    %v392 = call @sdiv(2147483648, 1)
+    print %v392
+    %v393 = call @srem(2147483648, 1)
+    print %v393
+    %v394 = call @udiv(2147483648, 1)
+    print %v394
+    %v395 = call @urem(2147483648, 1)
+    print %v395
+    %v396 = call @sdiv(2147483648, -1)
+    print %v396
+    %v397 = call @srem(2147483648, -1)
+    print %v397
+    %v398 = call @udiv(2147483648, 18446744073709551615)
+    print %v398
+    %v399 = call @urem(2147483648, 18446744073709551615)
+    print %v399
+    %v400 = call @sdiv(2147483648, 2)
+    print %v400
+    %v401 = call @srem(2147483648, 2)
+    print %v401
+    %v402 = call @udiv(2147483648, 2)
+    print %v402
+    %v403 = call @urem(2147483648, 2)
+    print %v403
+    %v404 = call @sdiv(2147483648, -2)
+    print %v404
+    %v405 = call @srem(2147483648, -2)
+    print %v405
+    %v406 = call @udiv(2147483648, 18446744073709551614)
+    print %v406
+    %v407 = call @urem(2147483648, 18446744073709551614)
+    print %v407
+    %v408 = call @sdiv(2147483648, 3)
+    print %v408
+    %v409 = call @srem(2147483648, 3)
+    print %v409
+    %v410 = call @udiv(2147483648, 3)
+    print %v410
+    %v411 = call @urem(2147483648, 3)
+    print %v411
+    %v412 = call @sdiv(2147483648, -3)
+    print %v412
+    %v413 = call @srem(2147483648, -3)
+    print %v413
+    %v414 = call @udiv(2147483648, 18446744073709551613)
+    print %v414
+    %v415 = call @urem(2147483648, 18446744073709551613)
+    print %v415
+    %v416 = call @sdiv(2147483648, 2147483647)
+    print %v416
+    %v417 = call @srem(2147483648, 2147483647)
+    print %v417
+    %v418 = call @udiv(2147483648, 2147483647)
+    print %v418
+    %v419 = call @urem(2147483648, 2147483647)
+    print %v419
+    %v420 = call @sdiv(2147483648, -2147483648)
+    print %v420
+    %v421 = call @srem(2147483648, -2147483648)
+    print %v421
+    %v422 = call @udiv(2147483648, 18446744071562067968)
+    print %v422
+    %v423 = call @urem(2147483648, 18446744071562067968)
+    print %v423
+    %v424 = call @sdiv(2147483648, 2147483648)
+    print %v424
+    %v425 = call @srem(2147483648, 2147483648)
+    print %v425
+    %v426 = call @udiv(2147483648, 2147483648)
+    print %v426
+    %v427 = call @urem(2147483648, 2147483648)
+    print %v427
+    %v428 = call @sdiv(2147483648, 4294967296)
+    print %v428
+    %v429 = call @srem(2147483648, 4294967296)
+    print %v429
+    %v430 = call @udiv(2147483648, 4294967296)
+    print %v430
+    %v431 = call @urem(2147483648, 4294967296)
+    print %v431
+    %v432 = call @sdiv(2147483648, 4294967295)
+    print %v432
+    %v433 = call @srem(2147483648, 4294967295)
+    print %v433
+    %v434 = call @udiv(2147483648, 4294967295)
+    print %v434
+    %v435 = call @urem(2147483648, 4294967295)
+    print %v435
+    %v436 = call @sdiv(2147483648, -4294967295)
+    print %v436
+    %v437 = call @srem(2147483648, -4294967295)
+    print %v437
+    %v438 = call @udiv(2147483648, 18446744069414584321)
+    print %v438
+    %v439 = call @urem(2147483648, 18446744069414584321)
+    print %v439
+    %v440 = call @sdiv(2147483648, 9223372036854775807)
+    print %v440
+    %v441 = call @srem(2147483648, 9223372036854775807)
+    print %v441
+    %v442 = call @udiv(2147483648, 9223372036854775807)
+    print %v442
+    %v443 = call @urem(2147483648, 9223372036854775807)
+    print %v443
+    %v444 = call @sdiv(2147483648, -9223372036854775808)
+    print %v444
+    %v445 = call @srem(2147483648, -9223372036854775808)
+    print %v445
+    %v446 = call @udiv(2147483648, 9223372036854775808)
+    print %v446
+    %v447 = call @urem(2147483648, 9223372036854775808)
+    print %v447
+    %v448 = call @sdiv(-2147483648, 1)
+    print %v448
+    %v449 = call @srem(-2147483648, 1)
+    print %v449
+    %v450 = call @udiv(18446744071562067968, 1)
+    print %v450
+    %v451 = call @urem(18446744071562067968, 1)
+    print %v451
+    %v452 = call @sdiv(-2147483648, -1)
+    print %v452
+    %v453 = call @srem(-2147483648, -1)
+    print %v453
+    %v454 = call @udiv(18446744071562067968, 18446744073709551615)
+    print %v454
+    %v455 = call @urem(18446744071562067968, 18446744073709551615)
+    print %v455
+    %v456 = call @sdiv(-2147483648, 2)
+    print %v456
+    %v457 = call @srem(-2147483648, 2)
+    print %v457
+    %v458 = call @udiv(18446744071562067968, 2)
+    print %v458
+    %v459 = call @urem(18446744071562067968, 2)
+    print %v459
+    %v460 = call @sdiv(-2147483648, -2)
+    print %v460
+    %v461 = call @srem(-2147483648, -2)
+    print %v461
+    %v462 = call @udiv(18446744071562067968, 18446744073709551614)
+    print %v462
+    %v463 = call @urem(18446744071562067968, 18446744073709551614)
+    print %v463
+    %v464 = call @sdiv(-2147483648, 3)
+    print %v464
+    %v465 = call @srem(-2147483648, 3)
+    print %v465
+    %v466 = call @udiv(18446744071562067968, 3)
+    print %v466
+    %v467 = call @urem(18446744071562067968, 3)
+    print %v467
+    %v468 = call @sdiv(-2147483648, -3)
+    print %v468
+    %v469 = call @srem(-2147483648, -3)
+    print %v469
+    %v470 = call @udiv(18446744071562067968, 18446744073709551613)
+    print %v470
+    %v471 = call @urem(18446744071562067968, 18446744073709551613)
+    print %v471
+    %v472 = call @sdiv(-2147483648, 2147483647)
+    print %v472
+    %v473 = call @srem(-2147483648, 2147483647)
+    print %v473
+    %v474 = call @udiv(18446744071562067968, 2147483647)
+    print %v474
+    %v475 = call @urem(18446744071562067968, 2147483647)
+    print %v475
+    %v476 = call @sdiv(-2147483648, -2147483648)
+    print %v476
+    %v477 = call @srem(-2147483648, -2147483648)
+    print %v477
+    %v478 = call @udiv(18446744071562067968, 18446744071562067968)
+    print %v478
+    %v479 = call @urem(18446744071562067968, 18446744071562067968)
+    print %v479
+    %v480 = call @sdiv(-2147483648, 2147483648)
+    print %v480
+    %v481 = call @srem(-2147483648, 2147483648)
+    print %v481
+    %v482 = call @udiv(18446744071562067968, 2147483648)
+    print %v482
+    %v483 = call @urem(18446744071562067968, 2147483648)
+    print %v483
+    %v484 = call @sdiv(-2147483648, 4294967296)
+    print %v484
+    %v485 = call @srem(-2147483648, 4294967296)
+    print %v485
+    %v486 = call @udiv(18446744071562067968, 4294967296)
+    print %v486
+    %v487 = call @urem(18446744071562067968, 4294967296)
+    print %v487
+    %v488 = call @sdiv(-2147483648, 4294967295)
+    print %v488
+    %v489 = call @srem(-2147483648, 4294967295)
+    print %v489
+    %v490 = call @udiv(18446744071562067968, 4294967295)
+    print %v490
+    %v491 = call @urem(18446744071562067968, 4294967295)
+    print %v491
+    %v492 = call @sdiv(-2147483648, -4294967295)
+    print %v492
+    %v493 = call @srem(-2147483648, -4294967295)
+    print %v493
+    %v494 = call @udiv(18446744071562067968, 18446744069414584321)
+    print %v494
+    %v495 = call @urem(18446744071562067968, 18446744069414584321)
+    print %v495
+    %v496 = call @sdiv(-2147483648, 9223372036854775807)
+    print %v496
+    %v497 = call @srem(-2147483648, 9223372036854775807)
+    print %v497
+    %v498 = call @udiv(18446744071562067968, 9223372036854775807)
+    print %v498
+    %v499 = call @urem(18446744071562067968, 9223372036854775807)
+    print %v499
+    %v500 = call @sdiv(-2147483648, -9223372036854775808)
+    print %v500
+    %v501 = call @srem(-2147483648, -9223372036854775808)
+    print %v501
+    %v502 = call @udiv(18446744071562067968, 9223372036854775808)
+    print %v502
+    %v503 = call @urem(18446744071562067968, 9223372036854775808)
+    print %v503
+    %v504 = call @sdiv(4294967295, 1)
+    print %v504
+    %v505 = call @srem(4294967295, 1)
+    print %v505
+    %v506 = call @udiv(4294967295, 1)
+    print %v506
+    %v507 = call @urem(4294967295, 1)
+    print %v507
+    %v508 = call @sdiv(4294967295, -1)
+    print %v508
+    %v509 = call @srem(4294967295, -1)
+    print %v509
+    %v510 = call @udiv(4294967295, 18446744073709551615)
+    print %v510
+    %v511 = call @urem(4294967295, 18446744073709551615)
+    print %v511
+    %v512 = call @sdiv(4294967295, 2)
+    print %v512
+    %v513 = call @srem(4294967295, 2)
+    print %v513
+    %v514 = call @udiv(4294967295, 2)
+    print %v514
+    %v515 = call @urem(4294967295, 2)
+    print %v515
+    %v516 = call @sdiv(4294967295, -2)
+    print %v516
+    %v517 = call @srem(4294967295, -2)
+    print %v517
+    %v518 = call @udiv(4294967295, 18446744073709551614)
+    print %v518
+    %v519 = call @urem(4294967295, 18446744073709551614)
+    print %v519
+    %v520 = call @sdiv(4294967295, 3)
+    print %v520
+    %v521 = call @srem(4294967295, 3)
+    print %v521
+    %v522 = call @udiv(4294967295, 3)
+    print %v522
+    %v523 = call @urem(4294967295, 3)
+    print %v523
+    %v524 = call @sdiv(4294967295, -3)
+    print %v524
+    %v525 = call @srem(4294967295, -3)
+    print %v525
+    %v526 = call @udiv(4294967295, 18446744073709551613)
+    print %v526
+    %v527 = call @urem(4294967295, 18446744073709551613)
+    print %v527
+    %v528 = call @sdiv(4294967295, 2147483647)
+    print %v528
+    %v529 = call @srem(4294967295, 2147483647)
+    print %v529
+    %v530 = call @udiv(4294967295, 2147483647)
+    print %v530
+    %v531 = call @urem(4294967295, 2147483647)
+    print %v531
+    %v532 = call @sdiv(4294967295, -2147483648)
+    print %v532
+    %v533 = call @srem(4294967295, -2147483648)
+    print %v533
+    %v534 = call @udiv(4294967295, 18446744071562067968)
+    print %v534
+    %v535 = call @urem(4294967295, 18446744071562067968)
+    print %v535
+    %v536 = call @sdiv(4294967295, 2147483648)
+    print %v536
+    %v537 = call @srem(4294967295, 2147483648)
+    print %v537
+    %v538 = call @udiv(4294967295, 2147483648)
+    print %v538
+    %v539 = call @urem(4294967295, 2147483648)
+    print %v539
+    %v540 = call @sdiv(4294967295, 4294967296)
+    print %v540
+    %v541 = call @srem(4294967295, 4294967296)
+    print %v541
+    %v542 = call @udiv(4294967295, 4294967296)
+    print %v542
+    %v543 = call @urem(4294967295, 4294967296)
+    print %v543
+    %v544 = call @sdiv(4294967295, 4294967295)
+    print %v544
+    %v545 = call @srem(4294967295, 4294967295)
+    print %v545
+    %v546 = call @udiv(4294967295, 4294967295)
+    print %v546
+    %v547 = call @urem(4294967295, 4294967295)
+    print %v547
+    %v548 = call @sdiv(4294967295, -4294967295)
+    print %v548
+    %v549 = call @srem(4294967295, -4294967295)
+    print %v549
+    %v550 = call @udiv(4294967295, 18446744069414584321)
+    print %v550
+    %v551 = call @urem(4294967295, 18446744069414584321)
+    print %v551
+    %v552 = call @sdiv(4294967295, 9223372036854775807)
+    print %v552
+    %v553 = call @srem(4294967295, 9223372036854775807)
+    print %v553
+    %v554 = call @udiv(4294967295, 9223372036854775807)
+    print %v554
+    %v555 = call @urem(4294967295, 9223372036854775807)
+    print %v555
+    %v556 = call @sdiv(4294967295, -9223372036854775808)
+    print %v556
+    %v557 = call @srem(4294967295, -9223372036854775808)
+    print %v557
+    %v558 = call @udiv(4294967295, 9223372036854775808)
+    print %v558
+    %v559 = call @urem(4294967295, 9223372036854775808)
+    print %v559
+    %v560 = call @sdiv(4294967296, 1)
+    print %v560
+    %v561 = call @srem(4294967296, 1)
+    print %v561
+    %v562 = call @udiv(4294967296, 1)
+    print %v562
+    %v563 = call @urem(4294967296, 1)
+    print %v563
+    %v564 = call @sdiv(4294967296, -1)
+    print %v564
+    %v565 = call @srem(4294967296, -1)
+    print %v565
+    %v566 = call @udiv(4294967296, 18446744073709551615)
+    print %v566
+    %v567 = call @urem(4294967296, 18446744073709551615)
+    print %v567
+    %v568 = call @sdiv(4294967296, 2)
+    print %v568
+    %v569 = call @srem(4294967296, 2)
+    print %v569
+    %v570 = call @udiv(4294967296, 2)
+    print %v570
+    %v571 = call @urem(4294967296, 2)
+    print %v571
+    %v572 = call @sdiv(4294967296, -2)
+    print %v572
+    %v573 = call @srem(4294967296, -2)
+    print %v573
+    %v574 = call @udiv(4294967296, 18446744073709551614)
+    print %v574
+    %v575 = call @urem(4294967296, 18446744073709551614)
+    print %v575
+    %v576 = call @sdiv(4294967296, 3)
+    print %v576
+    %v577 = call @srem(4294967296, 3)
+    print %v577
+    %v578 = call @udiv(4294967296, 3)
+    print %v578
+    %v579 = call @urem(4294967296, 3)
+    print %v579
+    %v580 = call @sdiv(4294967296, -3)
+    print %v580
+    %v581 = call @srem(4294967296, -3)
+    print %v581
+    %v582 = call @udiv(4294967296, 18446744073709551613)
+    print %v582
+    %v583 = call @urem(4294967296, 18446744073709551613)
+    print %v583
+    %v584 = call @sdiv(4294967296, 2147483647)
+    print %v584
+    %v585 = call @srem(4294967296, 2147483647)
+    print %v585
+    %v586 = call @udiv(4294967296, 2147483647)
+    print %v586
+    %v587 = call @urem(4294967296, 2147483647)
+    print %v587
+    %v588 = call @sdiv(4294967296, -2147483648)
+    print %v588
+    %v589 = call @srem(4294967296, -2147483648)
+    print %v589
+    %v590 = call @udiv(4294967296, 18446744071562067968)
+    print %v590
+    %v591 = call @urem(4294967296, 18446744071562067968)
+    print %v591
+    %v592 = call @sdiv(4294967296, 2147483648)
+    print %v592
+    %v593 = call @srem(4294967296, 2147483648)
+    print %v593
+    %v594 = call @udiv(4294967296, 2147483648)
+    print %v594
+    %v595 = call @urem(4294967296, 2147483648)
+    print %v595
+    %v596 = call @sdiv(4294967296, 4294967296)
+    print %v596
+    %v597 = call @srem(4294967296, 4294967296)
+    print %v597
+    %v598 = call @udiv(4294967296, 4294967296)
+    print %v598
+    %v599 = call @urem(4294967296, 4294967296)
+    print %v599
+    %v600 = call @sdiv(4294967296, 4294967295)
+    print %v600
+    %v601 = call @srem(4294967296, 4294967295)
+    print %v601
+    %v602 = call @udiv(4294967296, 4294967295)
+    print %v602
+    %v603 = call @urem(4294967296, 4294967295)
+    print %v603
+    %v604 = call @sdiv(4294967296, -4294967295)
+    print %v604
+    %v605 = call @srem(4294967296, -4294967295)
+    print %v605
+    %v606 = call @udiv(4294967296, 18446744069414584321)
+    print %v606
+    %v607 = call @urem(4294967296, 18446744069414584321)
+    print %v607
+    %v608 = call @sdiv(4294967296, 9223372036854775807)
+    print %v608
+    %v609 = call @srem(4294967296, 9223372036854775807)
+    print %v609
+    %v610 = call @udiv(4294967296, 9223372036854775807)
+    print %v610
+    %v611 = call @urem(4294967296, 9223372036854775807)
+    print %v611
+    %v612 = call @sdiv(4294967296, -9223372036854775808)
+    print %v612
+    %v613 = call @srem(4294967296, -9223372036854775808)
+    print %v613
+    %v614 = call @udiv(4294967296, 9223372036854775808)
+    print %v614
+    %v615 = call @urem(4294967296, 9223372036854775808)
+    print %v615
+    %v616 = call @sdiv(-4294967296, 1)
+    print %v616
+    %v617 = call @srem(-4294967296, 1)
+    print %v617
+    %v618 = call @udiv(18446744069414584320, 1)
+    print %v618
+    %v619 = call @urem(18446744069414584320, 1)
+    print %v619
+    %v620 = call @sdiv(-4294967296, -1)
+    print %v620
+    %v621 = call @srem(-4294967296, -1)
+    print %v621
+    %v622 = call @udiv(18446744069414584320, 18446744073709551615)
+    print %v622
+    %v623 = call @urem(18446744069414584320, 18446744073709551615)
+    print %v623
+    %v624 = call @sdiv(-4294967296, 2)
+    print %v624
+    %v625 = call @srem(-4294967296, 2)
+    print %v625
+    %v626 = call @udiv(18446744069414584320, 2)
+    print %v626
+    %v627 = call @urem(18446744069414584320, 2)
+    print %v627
+    %v628 = call @sdiv(-4294967296, -2)
+    print %v628
+    %v629 = call @srem(-4294967296, -2)
+    print %v629
+    %v630 = call @udiv(18446744069414584320, 18446744073709551614)
+    print %v630
+    %v631 = call @urem(18446744069414584320, 18446744073709551614)
+    print %v631
+    %v632 = call @sdiv(-4294967296, 3)
+    print %v632
+    %v633 = call @srem(-4294967296, 3)
+    print %v633
+    %v634 = call @udiv(18446744069414584320, 3)
+    print %v634
+    %v635 = call @urem(18446744069414584320, 3)
+    print %v635
+    %v636 = call @sdiv(-4294967296, -3)
+    print %v636
+    %v637 = call @srem(-4294967296, -3)
+    print %v637
+    %v638 = call @udiv(18446744069414584320, 18446744073709551613)
+    print %v638
+    %v639 = call @urem(18446744069414584320, 18446744073709551613)
+    print %v639
+    %v640 = call @sdiv(-4294967296, 2147483647)
+    print %v640
+    %v641 = call @srem(-4294967296, 2147483647)
+    print %v641
+    %v642 = call @udiv(18446744069414584320, 2147483647)
+    print %v642
+    %v643 = call @urem(18446744069414584320, 2147483647)
+    print %v643
+    %v644 = call @sdiv(-4294967296, -2147483648)
+    print %v644
+    %v645 = call @srem(-4294967296, -2147483648)
+    print %v645
+    %v646 = call @udiv(18446744069414584320, 18446744071562067968)
+    print %v646
+    %v647 = call @urem(18446744069414584320, 18446744071562067968)
+    print %v647
+    %v648 = call @sdiv(-4294967296, 2147483648)
+    print %v648
+    %v649 = call @srem(-4294967296, 2147483648)
+    print %v649
+    %v650 = call @udiv(18446744069414584320, 2147483648)
+    print %v650
+    %v651 = call @urem(18446744069414584320, 2147483648)
+    print %v651
+    %v652 = call @sdiv(-4294967296, 4294967296)
+    print %v652
+    %v653 = call @srem(-4294967296, 4294967296)
+    print %v653
+    %v654 = call @udiv(18446744069414584320, 4294967296)
+    print %v654
+    %v655 = call @urem(18446744069414584320, 4294967296)
+    print %v655
+    %v656 = call @sdiv(-4294967296, 4294967295)
+    print %v656
+    %v657 = call @srem(-4294967296, 4294967295)
+    print %v657
+    %v658 = call @udiv(18446744069414584320, 4294967295)
+    print %v658
+    %v659 = call @urem(18446744069414584320, 4294967295)
+    print %v659
+    %v660 = call @sdiv(-4294967296, -4294967295)
+    print %v660
+    %v661 = call @srem(-4294967296, -4294967295)
+    print %v661
+    %v662 = call @udiv(18446744069414584320, 18446744069414584321)
+    print %v662
+    %v663 = call @urem(18446744069414584320, 18446744069414584321)
+    print %v663
+    %v664 = call @sdiv(-4294967296, 9223372036854775807)
+    print %v664
+    %v665 = call @srem(-4294967296, 9223372036854775807)
+    print %v665
+    %v666 = call @udiv(18446744069414584320, 9223372036854775807)
+    print %v666
+    %v667 = call @urem(18446744069414584320, 9223372036854775807)
+    print %v667
+    %v668 = call @sdiv(-4294967296, -9223372036854775808)
+    print %v668
+    %v669 = call @srem(-4294967296, -9223372036854775808)
+    print %v669
+    %v670 = call @udiv(18446744069414584320, 9223372036854775808)
+    print %v670
+    %v671 = call @urem(18446744069414584320, 9223372036854775808)
+    print %v671
+    %v672 = call @sdiv(-9223372036854775808, 1)
+    print %v672
+    %v673 = call @srem(-9223372036854775808, 1)
+    print %v673
+    %v674 = call @udiv(9223372036854775808, 1)
+    print %v674
+    %v675 = call @urem(9223372036854775808, 1)
+    print %v675
+    %v676 = call @sdiv(-9223372036854775808, 2)
+    print %v676
+    %v677 = call @srem(-9223372036854775808, 2)
+    print %v677
+    %v678 = call @udiv(9223372036854775808, 2)
+    print %v678
+    %v679 = call @urem(9223372036854775808, 2)
+    print %v679
+    %v680 = call @sdiv(-9223372036854775808, -2)
+    print %v680
+    %v681 = call @srem(-9223372036854775808, -2)
+    print %v681
+    %v682 = call @udiv(9223372036854775808, 18446744073709551614)
+    print %v682
+    %v683 = call @urem(9223372036854775808, 18446744073709551614)
+    print %v683
+    %v684 = call @sdiv(-9223372036854775808, 3)
+    print %v684
+    %v685 = call @srem(-9223372036854775808, 3)
+    print %v685
+    %v686 = call @udiv(9223372036854775808, 3)
+    print %v686
+    %v687 = call @urem(9223372036854775808, 3)
+    print %v687
+    %v688 = call @sdiv(-9223372036854775808, -3)
+    print %v688
+    %v689 = call @srem(-9223372036854775808, -3)
+    print %v689
+    %v690 = call @udiv(9223372036854775808, 18446744073709551613)
+    print %v690
+    %v691 = call @urem(9223372036854775808, 18446744073709551613)
+    print %v691
+    %v692 = call @sdiv(-9223372036854775808, 2147483647)
+    print %v692
+    %v693 = call @srem(-9223372036854775808, 2147483647)
+    print %v693
+    %v694 = call @udiv(9223372036854775808, 2147483647)
+    print %v694
+    %v695 = call @urem(9223372036854775808, 2147483647)
+    print %v695
+    %v696 = call @sdiv(-9223372036854775808, -2147483648)
+    print %v696
+    %v697 = call @srem(-9223372036854775808, -2147483648)
+    print %v697
+    %v698 = call @udiv(9223372036854775808, 18446744071562067968)
+    print %v698
+    %v699 = call @urem(9223372036854775808, 18446744071562067968)
+    print %v699
+    %v700 = call @sdiv(-9223372036854775808, 2147483648)
+    print %v700
+    %v701 = call @srem(-9223372036854775808, 2147483648)
+    print %v701
+    %v702 = call @udiv(9223372036854775808, 2147483648)
+    print %v702
+    %v703 = call @urem(9223372036854775808, 2147483648)
+    print %v703
+    %v704 = call @sdiv(-9223372036854775808, 4294967296)
+    print %v704
+    %v705 = call @srem(-9223372036854775808, 4294967296)
+    print %v705
+    %v706 = call @udiv(9223372036854775808, 4294967296)
+    print %v706
+    %v707 = call @urem(9223372036854775808, 4294967296)
+    print %v707
+    %v708 = call @sdiv(-9223372036854775808, 4294967295)
+    print %v708
+    %v709 = call @srem(-9223372036854775808, 4294967295)
+    print %v709
+    %v710 = call @udiv(9223372036854775808, 4294967295)
+    print %v710
+    %v711 = call @urem(9223372036854775808, 4294967295)
+    print %v711
+    %v712 = call @sdiv(-9223372036854775808, -4294967295)
+    print %v712
+    %v713 = call @srem(-9223372036854775808, -4294967295)
+    print %v713
+    %v714 = call @udiv(9223372036854775808, 18446744069414584321)
+    print %v714
+    %v715 = call @urem(9223372036854775808, 18446744069414584321)
+    print %v715
+    %v716 = call @sdiv(-9223372036854775808, 9223372036854775807)
+    print %v716
+    %v717 = call @srem(-9223372036854775808, 9223372036854775807)
+    print %v717
+    %v718 = call @udiv(9223372036854775808, 9223372036854775807)
+    print %v718
+    %v719 = call @urem(9223372036854775808, 9223372036854775807)
+    print %v719
+    %v720 = call @sdiv(-9223372036854775808, -9223372036854775808)
+    print %v720
+    %v721 = call @srem(-9223372036854775808, -9223372036854775808)
+    print %v721
+    %v722 = call @udiv(9223372036854775808, 9223372036854775808)
+    print %v722
+    %v723 = call @urem(9223372036854775808, 9223372036854775808)
+    print %v723
+    %v724 = call @sdiv(9223372036854775807, 1)
+    print %v724
+    %v725 = call @srem(9223372036854775807, 1)
+    print %v725
+    %v726 = call @udiv(9223372036854775807, 1)
+    print %v726
+    %v727 = call @urem(9223372036854775807, 1)
+    print %v727
+    %v728 = call @sdiv(9223372036854775807, -1)
+    print %v728
+    %v729 = call @srem(9223372036854775807, -1)
+    print %v729
+    %v730 = call @udiv(9223372036854775807, 18446744073709551615)
+    print %v730
+    %v731 = call @urem(9223372036854775807, 18446744073709551615)
+    print %v731
+    %v732 = call @sdiv(9223372036854775807, 2)
+    print %v732
+    %v733 = call @srem(9223372036854775807, 2)
+    print %v733
+    %v734 = call @udiv(9223372036854775807, 2)
+    print %v734
+    %v735 = call @urem(9223372036854775807, 2)
+    print %v735
+    %v736 = call @sdiv(9223372036854775807, -2)
+    print %v736
+    %v737 = call @srem(9223372036854775807, -2)
+    print %v737
+    %v738 = call @udiv(9223372036854775807, 18446744073709551614)
+    print %v738
+    %v739 = call @urem(9223372036854775807, 18446744073709551614)
+    print %v739
+    %v740 = call @sdiv(9223372036854775807, 3)
+    print %v740
+    %v741 = call @srem(9223372036854775807, 3)
+    print %v741
+    %v742 = call @udiv(9223372036854775807, 3)
+    print %v742
+    %v743 = call @urem(9223372036854775807, 3)
+    print %v743
+    %v744 = call @sdiv(9223372036854775807, -3)
+    print %v744
+    %v745 = call @srem(9223372036854775807, -3)
+    print %v745
+    %v746 = call @udiv(9223372036854775807, 18446744073709551613)
+    print %v746
+    %v747 = call @urem(9223372036854775807, 18446744073709551613)
+    print %v747
+    %v748 = call @sdiv(9223372036854775807, 2147483647)
+    print %v748
+    %v749 = call @srem(9223372036854775807, 2147483647)
+    print %v749
+    %v750 = call @udiv(9223372036854775807, 2147483647)
+    print %v750
+    %v751 = call @urem(9223372036854775807, 2147483647)
+    print %v751
+    %v752 = call @sdiv(9223372036854775807, -2147483648)
+    print %v752
+    %v753 = call @srem(9223372036854775807, -2147483648)
+    print %v753
+    %v754 = call @udiv(9223372036854775807, 18446744071562067968)
+    print %v754
+    %v755 = call @urem(9223372036854775807, 18446744071562067968)
+    print %v755
+    %v756 = call @sdiv(9223372036854775807, 2147483648)
+    print %v756
+    %v757 = call @srem(9223372036854775807, 2147483648)
+    print %v757
+    %v758 = call @udiv(9223372036854775807, 2147483648)
+    print %v758
+    %v759 = call @urem(9223372036854775807, 2147483648)
+    print %v759
+    %v760 = call @sdiv(9223372036854775807, 4294967296)
+    print %v760
+    %v761 = call @srem(9223372036854775807, 4294967296)
+    print %v761
+    %v762 = call @udiv(9223372036854775807, 4294967296)
+    print %v762
+    %v763 = call @urem(9223372036854775807, 4294967296)
+    print %v763
+    %v764 = call @sdiv(9223372036854775807, 4294967295)
+    print %v764
+    %v765 = call @srem(9223372036854775807, 4294967295)
+    print %v765
+    %v766 = call @udiv(9223372036854775807, 4294967295)
+    print %v766
+    %v767 = call @urem(9223372036854775807, 4294967295)
+    print %v767
+    %v768 = call @sdiv(9223372036854775807, -4294967295)
+    print %v768
+    %v769 = call @srem(9223372036854775807, -4294967295)
+    print %v769
+    %v770 = call @udiv(9223372036854775807, 18446744069414584321)
+    print %v770
+    %v771 = call @urem(9223372036854775807, 18446744069414584321)
+    print %v771
+    %v772 = call @sdiv(9223372036854775807, 9223372036854775807)
+    print %v772
+    %v773 = call @srem(9223372036854775807, 9223372036854775807)
+    print %v773
+    %v774 = call @udiv(9223372036854775807, 9223372036854775807)
+    print %v774
+    %v775 = call @urem(9223372036854775807, 9223372036854775807)
+    print %v775
+    %v776 = call @sdiv(9223372036854775807, -9223372036854775808)
+    print %v776
+    %v777 = call @srem(9223372036854775807, -9223372036854775808)
+    print %v777
+    %v778 = call @udiv(9223372036854775807, 9223372036854775808)
+    print %v778
+    %v779 = call @urem(9223372036854775807, 9223372036854775808)
+    print %v779
+    %v780 = call @sdiv(1000000007, 1)
+    print %v780
+    %v781 = call @srem(1000000007, 1)
+    print %v781
+    %v782 = call @udiv(1000000007, 1)
+    print %v782
+    %v783 = call @urem(1000000007, 1)
+    print %v783
+    %v784 = call @sdiv(1000000007, -1)
+    print %v784
+    %v785 = call @srem(1000000007, -1)
+    print %v785
+    %v786 = call @udiv(1000000007, 18446744073709551615)
+    print %v786
+    %v787 = call @urem(1000000007, 18446744073709551615)
+    print %v787
+    %v788 = call @sdiv(1000000007, 2)
+    print %v788
+    %v789 = call @srem(1000000007, 2)
+    print %v789
+    %v790 = call @udiv(1000000007, 2)
+    print %v790
+    %v791 = call @urem(1000000007, 2)
+    print %v791
+    %v792 = call @sdiv(1000000007, -2)
+    print %v792
+    %v793 = call @srem(1000000007, -2)
+    print %v793
+    %v794 = call @udiv(1000000007, 18446744073709551614)
+    print %v794
+    %v795 = call @urem(1000000007, 18446744073709551614)
+    print %v795
+    %v796 = call @sdiv(1000000007, 3)
+    print %v796
+    %v797 = call @srem(1000000007, 3)
+    print %v797
+    %v798 = call @udiv(1000000007, 3)
+    print %v798
+    %v799 = call @urem(1000000007, 3)
+    print %v799
+    %v800 = call @sdiv(1000000007, -3)
+    print %v800
+    %v801 = call @srem(1000000007, -3)
+    print %v801
+    %v802 = call @udiv(1000000007, 18446744073709551613)
+    print %v802
+    %v803 = call @urem(1000000007, 18446744073709551613)
+    print %v803
+    %v804 = call @sdiv(1000000007, 2147483647)
+    print %v804
+    %v805 = call @srem(1000000007, 2147483647)
+    print %v805
+    %v806 = call @udiv(1000000007, 2147483647)
+    print %v806
+    %v807 = call @urem(1000000007, 2147483647)
+    print %v807
+    %v808 = call @sdiv(1000000007, -2147483648)
+    print %v808
+    %v809 = call @srem(1000000007, -2147483648)
+    print %v809
+    %v810 = call @udiv(1000000007, 18446744071562067968)
+    print %v810
+    %v811 = call @urem(1000000007, 18446744071562067968)
+    print %v811
+    %v812 = call @sdiv(1000000007, 2147483648)
+    print %v812
+    %v813 = call @srem(1000000007, 2147483648)
+    print %v813
+    %v814 = call @udiv(1000000007, 2147483648)
+    print %v814
+    %v815 = call @urem(1000000007, 2147483648)
+    print %v815
+    %v816 = call @sdiv(1000000007, 4294967296)
+    print %v816
+    %v817 = call @srem(1000000007, 4294967296)
+    print %v817
+    %v818 = call @udiv(1000000007, 4294967296)
+    print %v818
+    %v819 = call @urem(1000000007, 4294967296)
+    print %v819
+    %v820 = call @sdiv(1000000007, 4294967295)
+    print %v820
+    %v821 = call @srem(1000000007, 4294967295)
+    print %v821
+    %v822 = call @udiv(1000000007, 4294967295)
+    print %v822
+    %v823 = call @urem(1000000007, 4294967295)
+    print %v823
+    %v824 = call @sdiv(1000000007, -4294967295)
+    print %v824
+    %v825 = call @srem(1000000007, -4294967295)
+    print %v825
+    %v826 = call @udiv(1000000007, 18446744069414584321)
+    print %v826
+    %v827 = call @urem(1000000007, 18446744069414584321)
+    print %v827
+    %v828 = call @sdiv(1000000007, 9223372036854775807)
+    print %v828
+    %v829 = call @srem(1000000007, 9223372036854775807)
+    print %v829
+    %v830 = call @udiv(1000000007, 9223372036854775807)
+    print %v830
+    %v831 = call @urem(1000000007, 9223372036854775807)
+    print %v831
+    %v832 = call @sdiv(1000000007, -9223372036854775808)
+    print %v832
+    %v833 = call @srem(1000000007, -9223372036854775808)
+    print %v833
+    %v834 = call @udiv(1000000007, 9223372036854775808)
+    print %v834
+    %v835 = call @urem(1000000007, 9223372036854775808)
+    print %v835
+    ret.i64 0
+}
