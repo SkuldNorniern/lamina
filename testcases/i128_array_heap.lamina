@@ -1,0 +1,30 @@
+# i128 elements of a stack array, and a 128-bit value in a heap allocation.
+fn @main() -> i64 {
+entry:
+  %arr = stackalloc.[4 x i128]
+  %p0 = getelem.i128 %arr, 0
+  %p1 = getelem.i128 %arr, 1
+  %p3 = getelem.i128 %arr, 3
+  store.i128 %p0, 170141183460469231731687303715884105727
+  store.i128 %p1, -5
+  %a = add.i128 -5, 1
+  store.i128 %p3, %a
+  %x = load.i128 %p0
+  %y = load.i128 %p1
+  %z = load.i128 %p3
+  %s = add.i128 %y, %z
+  %lo = trunc.i128.i64 %x
+  print %lo
+  %hi = shr.i128 %x, 64
+  %hl = trunc.i128.i64 %hi
+  print %hl
+  %sl = trunc.i128.i64 %s
+  print %sl
+  %h = heapalloc.i128
+  store.i128 %h, 99999999999999999999999
+  %hv = load.i128 %h
+  %hvl = trunc.i128.i64 %hv
+  print %hvl
+  heapfree %h
+  ret.i64 0
+}

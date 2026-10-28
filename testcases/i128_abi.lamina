@@ -1,0 +1,134 @@
+# i128/u128 across calls: register pairs, pairs split by the register limit, stack padding.
+fn @many(i128 %a, i128 %b, i128 %c, i128 %d) -> i128 {
+entry:
+  %s1 = add.i128 %a, %b
+  %s2 = add.i128 %s1, %c
+  %s3 = add.i128 %s2, %d
+  ret.i128 %s3
+}
+
+fn @split(i64 %x1v, i64 %x2v, i64 %x3v, i64 %x4v, i64 %x5v, i128 %y, i128 %zz) -> i128 {
+entry:
+  %x1 = zext.i64.i128 %x1v
+  %x2 = zext.i64.i128 %x2v
+  %x3 = zext.i64.i128 %x3v
+  %x4 = zext.i64.i128 %x4v
+  %x5 = zext.i64.i128 %x5v
+  %m2 = mul.i128 %x2, 2
+  %m3 = mul.i128 %x3, 3
+  %m4 = mul.i128 %x4, 5
+  %m5 = mul.i128 %x5, 7
+  %y11 = mul.i128 %y, 11
+  %z13 = mul.i128 %zz, 13
+  %t1 = add.i128 %x1, %m2
+  %t2 = add.i128 %t1, %m3
+  %t3 = add.i128 %t2, %m4
+  %t4 = add.i128 %t3, %m5
+  %t5 = add.i128 %t4, %y11
+  %t6 = add.i128 %t5, %z13
+  ret.i128 %t6
+}
+
+fn @tail(i64 %a1, i64 %a2, i64 %a3, i64 %a4, i64 %a5, i64 %a6, i128 %y, i128 %z) -> i128 {
+entry:
+  %w1 = sub.i64 %a1, %a2
+  %w2 = add.i64 %w1, %a3
+  %w3 = sub.i64 %w2, %a4
+  %w4 = add.i64 %w3, %a5
+  %w5 = sub.i64 %w4, %a6
+  %wide = sext.i64.i128 %w5
+  %y17 = mul.i128 %y, 17
+  %r1 = add.i128 %wide, %y17
+  %r2 = sub.i128 %r1, %z
+  ret.i128 %r2
+}
+
+fn @mixed(i128 %p, i128 %q, i128 %r, i128 %s) -> u128 {
+entry:
+  %pq = mul.i128 %p, %q
+  %pqr = sub.i128 %pq, %r
+  %res = add.i128 %pqr, %s
+  ret.u128 %res
+}
+
+fn @pad(i64 %g1, i64 %g2, i64 %g3, i64 %g4, i64 %g5, i64 %g6, i64 %stk, i128 %y, i128 %w) -> i128 {
+entry:
+  %sum1 = add.i64 %g1, %g2
+  %sum2 = add.i64 %sum1, %g3
+  %sum3 = add.i64 %sum2, %g4
+  %sum4 = add.i64 %sum3, %g5
+  %sum5 = add.i64 %sum4, %g6
+  %sum6 = add.i64 %sum5, %stk
+  %sext = sext.i64.i128 %sum6
+  %yy = mul.i128 %y, 3
+  %pr = add.i128 %sext, %yy
+  %pr2 = add.i128 %pr, %w
+  ret.i128 %pr2
+}
+
+fn @main() -> i64 {
+entry:
+  %a = add.i128 1512366075204170947332355369683137040, 0
+  %b = add.i128 -1267650600228229401496703205379, 0
+  %c = add.i128 9223372036854775817, 0
+  %d = add.i128 -7, 0
+  %res0 = call @many(%a, %b, %c, %d)
+  %p0_lo = trunc.i128.i64 %res0
+  print %p0_lo
+  %p0_hs = shr.i128 %res0, 64
+  %p0_hi = trunc.i128.i64 %p0_hs
+  print %p0_hi
+  %x0v = add.i64 1, 0
+  %x1v = add.i64 -2, 0
+  %x2v = add.i64 3, 0
+  %x3v = add.i64 4, 0
+  %x4v = add.i64 1099511627776, 0
+  %y = add.i128 1237940039285380274899124301, 0
+  %zz = add.i128 -5, 0
+  %res1 = call @split(%x0v, %x1v, %x2v, %x3v, %x4v, %y, %zz)
+  %p1_lo = trunc.i128.i64 %res1
+  print %p1_lo
+  %p1_hs = shr.i128 %res1, 64
+  %p1_hi = trunc.i128.i64 %p1_hs
+  print %p1_hi
+  %t0 = add.i64 9, 0
+  %t1 = add.i64 4, 0
+  %t2 = add.i64 -6, 0
+  %t3 = add.i64 2, 0
+  %t4 = add.i64 100, 0
+  %t5 = add.i64 -50, 0
+  %yy = add.i128 -1180591620717411303419, 0
+  %zt = add.i128 31, 0
+  %res2 = call @tail(%t0, %t1, %t2, %t3, %t4, %t5, %yy, %zt)
+  %p2_lo = trunc.i128.i64 %res2
+  print %p2_lo
+  %p2_hs = shr.i128 %res2, 64
+  %p2_hi = trunc.i128.i64 %p2_hs
+  print %p2_hi
+  %p = add.i128 123456789012345678901234, 0
+  %q = add.i128 -98765432109876543210, 0
+  %r = add.i128 1208925819614629174706176, 0
+  %s = add.i128 -3, 0
+  %res3 = call @mixed(%p, %q, %r, %s)
+  %p3_lo = trunc.i128.i64 %res3
+  print %p3_lo
+  %p3_hs = shr.i128 %res3, 64
+  %p3_hi = trunc.i128.i64 %p3_hs
+  print %p3_hi
+  %g0 = add.i64 11, 0
+  %g1 = add.i64 -12, 0
+  %g2 = add.i64 13, 0
+  %g3 = add.i64 -14, 0
+  %g4 = add.i64 15, 0
+  %g5 = add.i64 -16, 0
+  %stk = add.i64 1000003, 0
+  %yp = add.i128 1267650600228229401495715551055, 0
+  %wp = add.i128 -73786976294838206422, 0
+  %res4 = call @pad(%g0, %g1, %g2, %g3, %g4, %g5, %stk, %yp, %wp)
+  %p4_lo = trunc.i128.i64 %res4
+  print %p4_lo
+  %p4_hs = shr.i128 %res4, 64
+  %p4_hi = trunc.i128.i64 %p4_hs
+  print %p4_hi
+  ret.i64 0
+}

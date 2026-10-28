@@ -1,0 +1,1855 @@
+# i128/u128 zext, sext and trunc to and from every narrower integer width, and bool.
+fn @case0() -> i64 {
+entry:
+  %v = add.i8 -1, 0
+  %w = sext.i8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case1() -> i64 {
+entry:
+  %v = add.i8 -1, 0
+  %w = zext.i8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case2() -> i64 {
+entry:
+  %v = add.i8 -1, 0
+  %w = sext.i8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case3() -> i64 {
+entry:
+  %v = add.i8 -1, 0
+  %w = zext.i8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case4() -> i64 {
+entry:
+  %v = add.i8 127, 0
+  %w = sext.i8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case5() -> i64 {
+entry:
+  %v = add.i8 127, 0
+  %w = zext.i8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case6() -> i64 {
+entry:
+  %v = add.i8 127, 0
+  %w = sext.i8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case7() -> i64 {
+entry:
+  %v = add.i8 127, 0
+  %w = zext.i8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case8() -> i64 {
+entry:
+  %v = add.i8 -128, 0
+  %w = sext.i8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case9() -> i64 {
+entry:
+  %v = add.i8 -128, 0
+  %w = zext.i8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case10() -> i64 {
+entry:
+  %v = add.i8 -128, 0
+  %w = sext.i8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case11() -> i64 {
+entry:
+  %v = add.i8 -128, 0
+  %w = zext.i8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case12() -> i64 {
+entry:
+  %v = add.i8 5, 0
+  %w = sext.i8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case13() -> i64 {
+entry:
+  %v = add.i8 5, 0
+  %w = zext.i8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case14() -> i64 {
+entry:
+  %v = add.i8 5, 0
+  %w = sext.i8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case15() -> i64 {
+entry:
+  %v = add.i8 5, 0
+  %w = zext.i8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case16() -> i64 {
+entry:
+  %v = add.u8 255, 0
+  %w = zext.u8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case17() -> i64 {
+entry:
+  %v = add.u8 255, 0
+  %w = zext.u8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case18() -> i64 {
+entry:
+  %v = add.u8 0, 0
+  %w = zext.u8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case19() -> i64 {
+entry:
+  %v = add.u8 0, 0
+  %w = zext.u8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case20() -> i64 {
+entry:
+  %v = add.u8 200, 0
+  %w = zext.u8.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case21() -> i64 {
+entry:
+  %v = add.u8 200, 0
+  %w = zext.u8.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case22() -> i64 {
+entry:
+  %v = add.i16 -1, 0
+  %w = sext.i16.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case23() -> i64 {
+entry:
+  %v = add.i16 -1, 0
+  %w = zext.i16.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case24() -> i64 {
+entry:
+  %v = add.i16 -1, 0
+  %w = sext.i16.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case25() -> i64 {
+entry:
+  %v = add.i16 -1, 0
+  %w = zext.i16.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case26() -> i64 {
+entry:
+  %v = add.i16 32767, 0
+  %w = sext.i16.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case27() -> i64 {
+entry:
+  %v = add.i16 32767, 0
+  %w = zext.i16.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case28() -> i64 {
+entry:
+  %v = add.i16 32767, 0
+  %w = sext.i16.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case29() -> i64 {
+entry:
+  %v = add.i16 32767, 0
+  %w = zext.i16.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case30() -> i64 {
+entry:
+  %v = add.i16 -32768, 0
+  %w = sext.i16.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case31() -> i64 {
+entry:
+  %v = add.i16 -32768, 0
+  %w = zext.i16.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case32() -> i64 {
+entry:
+  %v = add.i16 -32768, 0
+  %w = sext.i16.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case33() -> i64 {
+entry:
+  %v = add.i16 -32768, 0
+  %w = zext.i16.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case34() -> i64 {
+entry:
+  %v = add.u16 65535, 0
+  %w = zext.u16.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case35() -> i64 {
+entry:
+  %v = add.u16 65535, 0
+  %w = zext.u16.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case36() -> i64 {
+entry:
+  %v = add.u16 1234, 0
+  %w = zext.u16.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case37() -> i64 {
+entry:
+  %v = add.u16 1234, 0
+  %w = zext.u16.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case38() -> i64 {
+entry:
+  %v = add.i32 -1, 0
+  %w = sext.i32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case39() -> i64 {
+entry:
+  %v = add.i32 -1, 0
+  %w = zext.i32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case40() -> i64 {
+entry:
+  %v = add.i32 -1, 0
+  %w = sext.i32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case41() -> i64 {
+entry:
+  %v = add.i32 -1, 0
+  %w = zext.i32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case42() -> i64 {
+entry:
+  %v = add.i32 2147483647, 0
+  %w = sext.i32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case43() -> i64 {
+entry:
+  %v = add.i32 2147483647, 0
+  %w = zext.i32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case44() -> i64 {
+entry:
+  %v = add.i32 2147483647, 0
+  %w = sext.i32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case45() -> i64 {
+entry:
+  %v = add.i32 2147483647, 0
+  %w = zext.i32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case46() -> i64 {
+entry:
+  %v = add.i32 -2147483648, 0
+  %w = sext.i32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case47() -> i64 {
+entry:
+  %v = add.i32 -2147483648, 0
+  %w = zext.i32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case48() -> i64 {
+entry:
+  %v = add.i32 -2147483648, 0
+  %w = sext.i32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case49() -> i64 {
+entry:
+  %v = add.i32 -2147483648, 0
+  %w = zext.i32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case50() -> i64 {
+entry:
+  %v = add.i32 99, 0
+  %w = sext.i32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case51() -> i64 {
+entry:
+  %v = add.i32 99, 0
+  %w = zext.i32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case52() -> i64 {
+entry:
+  %v = add.i32 99, 0
+  %w = sext.i32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case53() -> i64 {
+entry:
+  %v = add.i32 99, 0
+  %w = zext.i32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case54() -> i64 {
+entry:
+  %v = add.u32 4294967295, 0
+  %w = zext.u32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case55() -> i64 {
+entry:
+  %v = add.u32 4294967295, 0
+  %w = zext.u32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case56() -> i64 {
+entry:
+  %v = add.u32 7, 0
+  %w = zext.u32.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case57() -> i64 {
+entry:
+  %v = add.u32 7, 0
+  %w = zext.u32.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case58() -> i64 {
+entry:
+  %v = add.i64 -1, 0
+  %w = sext.i64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case59() -> i64 {
+entry:
+  %v = add.i64 -1, 0
+  %w = zext.i64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case60() -> i64 {
+entry:
+  %v = add.i64 -1, 0
+  %w = sext.i64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case61() -> i64 {
+entry:
+  %v = add.i64 -1, 0
+  %w = zext.i64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case62() -> i64 {
+entry:
+  %v = add.i64 9223372036854775807, 0
+  %w = sext.i64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case63() -> i64 {
+entry:
+  %v = add.i64 9223372036854775807, 0
+  %w = zext.i64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case64() -> i64 {
+entry:
+  %v = add.i64 9223372036854775807, 0
+  %w = sext.i64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case65() -> i64 {
+entry:
+  %v = add.i64 9223372036854775807, 0
+  %w = zext.i64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case66() -> i64 {
+entry:
+  %v = add.i64 -9223372036854775808, 0
+  %w = sext.i64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case67() -> i64 {
+entry:
+  %v = add.i64 -9223372036854775808, 0
+  %w = zext.i64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case68() -> i64 {
+entry:
+  %v = add.i64 -9223372036854775808, 0
+  %w = sext.i64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case69() -> i64 {
+entry:
+  %v = add.i64 -9223372036854775808, 0
+  %w = zext.i64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case70() -> i64 {
+entry:
+  %v = add.i64 0, 0
+  %w = sext.i64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case71() -> i64 {
+entry:
+  %v = add.i64 0, 0
+  %w = zext.i64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case72() -> i64 {
+entry:
+  %v = add.i64 0, 0
+  %w = sext.i64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case73() -> i64 {
+entry:
+  %v = add.i64 0, 0
+  %w = zext.i64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case74() -> i64 {
+entry:
+  %v = add.u64 18446744073709551615, 0
+  %w = zext.u64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case75() -> i64 {
+entry:
+  %v = add.u64 18446744073709551615, 0
+  %w = zext.u64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case76() -> i64 {
+entry:
+  %v = add.u64 1, 0
+  %w = zext.u64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case77() -> i64 {
+entry:
+  %v = add.u64 1, 0
+  %w = zext.u64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case78() -> i64 {
+entry:
+  %v = add.u64 9223372036854775808, 0
+  %w = zext.u64.i128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case79() -> i64 {
+entry:
+  %v = add.u64 9223372036854775808, 0
+  %w = zext.u64.u128 %v
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case80() -> i64 {
+entry:
+  %b = add.bool 1, 0
+  %w = zext.bool.i128 %b
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case81() -> i64 {
+entry:
+  %b = add.bool 0, 0
+  %w = zext.bool.i128 %b
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case82() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %t = trunc.i128.i8 %v
+  %w = sext.i8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case83() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %t = trunc.i128.u8 %v
+  %w = zext.u8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case84() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %t = trunc.i128.i16 %v
+  %w = sext.i16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case85() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %t = trunc.i128.u16 %v
+  %w = zext.u16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case86() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %t = trunc.i128.i32 %v
+  %w = sext.i32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case87() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %t = trunc.i128.u32 %v
+  %w = zext.u32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case88() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %t = trunc.i128.i64 %v
+  %w = sext.i64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case89() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %t = trunc.i128.u64 %v
+  %w = zext.u64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case90() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %t = trunc.i128.i8 %v
+  %w = sext.i8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case91() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %t = trunc.i128.u8 %v
+  %w = zext.u8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case92() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %t = trunc.i128.i16 %v
+  %w = sext.i16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case93() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %t = trunc.i128.u16 %v
+  %w = zext.u16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case94() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %t = trunc.i128.i32 %v
+  %w = sext.i32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case95() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %t = trunc.i128.u32 %v
+  %w = zext.u32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case96() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %t = trunc.i128.i64 %v
+  %w = sext.i64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case97() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %t = trunc.i128.u64 %v
+  %w = zext.u64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case98() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %t = trunc.i128.i8 %v
+  %w = sext.i8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case99() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %t = trunc.i128.u8 %v
+  %w = zext.u8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case100() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %t = trunc.i128.i16 %v
+  %w = sext.i16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case101() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %t = trunc.i128.u16 %v
+  %w = zext.u16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case102() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %t = trunc.i128.i32 %v
+  %w = sext.i32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case103() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %t = trunc.i128.u32 %v
+  %w = zext.u32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case104() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %t = trunc.i128.i64 %v
+  %w = sext.i64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case105() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %t = trunc.i128.u64 %v
+  %w = zext.u64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case106() -> i64 {
+entry:
+  %v = add.i128 9223372036854775813, 0
+  %t = trunc.i128.i8 %v
+  %w = sext.i8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case107() -> i64 {
+entry:
+  %v = add.i128 9223372036854775813, 0
+  %t = trunc.i128.u8 %v
+  %w = zext.u8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case108() -> i64 {
+entry:
+  %v = add.i128 9223372036854775813, 0
+  %t = trunc.i128.i16 %v
+  %w = sext.i16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case109() -> i64 {
+entry:
+  %v = add.i128 9223372036854775813, 0
+  %t = trunc.i128.u16 %v
+  %w = zext.u16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case110() -> i64 {
+entry:
+  %v = add.i128 9223372036854775813, 0
+  %t = trunc.i128.i32 %v
+  %w = sext.i32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case111() -> i64 {
+entry:
+  %v = add.i128 9223372036854775813, 0
+  %t = trunc.i128.u32 %v
+  %w = zext.u32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case112() -> i64 {
+entry:
+  %v = add.i128 9223372036854775813, 0
+  %t = trunc.i128.i64 %v
+  %w = sext.i64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case113() -> i64 {
+entry:
+  %v = add.i128 9223372036854775813, 0
+  %t = trunc.i128.u64 %v
+  %w = zext.u64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case114() -> i64 {
+entry:
+  %v = add.i128 -1267650600228229401496703205453, 0
+  %t = trunc.i128.i8 %v
+  %w = sext.i8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case115() -> i64 {
+entry:
+  %v = add.i128 -1267650600228229401496703205453, 0
+  %t = trunc.i128.u8 %v
+  %w = zext.u8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case116() -> i64 {
+entry:
+  %v = add.i128 -1267650600228229401496703205453, 0
+  %t = trunc.i128.i16 %v
+  %w = sext.i16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case117() -> i64 {
+entry:
+  %v = add.i128 -1267650600228229401496703205453, 0
+  %t = trunc.i128.u16 %v
+  %w = zext.u16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case118() -> i64 {
+entry:
+  %v = add.i128 -1267650600228229401496703205453, 0
+  %t = trunc.i128.i32 %v
+  %w = sext.i32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case119() -> i64 {
+entry:
+  %v = add.i128 -1267650600228229401496703205453, 0
+  %t = trunc.i128.u32 %v
+  %w = zext.u32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case120() -> i64 {
+entry:
+  %v = add.i128 -1267650600228229401496703205453, 0
+  %t = trunc.i128.i64 %v
+  %w = sext.i64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case121() -> i64 {
+entry:
+  %v = add.i128 -1267650600228229401496703205453, 0
+  %t = trunc.i128.u64 %v
+  %w = zext.u64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case122() -> i64 {
+entry:
+  %v = add.i128 170141183460469231731687303715884105727, 0
+  %t = trunc.i128.i8 %v
+  %w = sext.i8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case123() -> i64 {
+entry:
+  %v = add.i128 170141183460469231731687303715884105727, 0
+  %t = trunc.i128.u8 %v
+  %w = zext.u8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case124() -> i64 {
+entry:
+  %v = add.i128 170141183460469231731687303715884105727, 0
+  %t = trunc.i128.i16 %v
+  %w = sext.i16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case125() -> i64 {
+entry:
+  %v = add.i128 170141183460469231731687303715884105727, 0
+  %t = trunc.i128.u16 %v
+  %w = zext.u16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case126() -> i64 {
+entry:
+  %v = add.i128 170141183460469231731687303715884105727, 0
+  %t = trunc.i128.i32 %v
+  %w = sext.i32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case127() -> i64 {
+entry:
+  %v = add.i128 170141183460469231731687303715884105727, 0
+  %t = trunc.i128.u32 %v
+  %w = zext.u32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case128() -> i64 {
+entry:
+  %v = add.i128 170141183460469231731687303715884105727, 0
+  %t = trunc.i128.i64 %v
+  %w = sext.i64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case129() -> i64 {
+entry:
+  %v = add.i128 170141183460469231731687303715884105727, 0
+  %t = trunc.i128.u64 %v
+  %w = zext.u64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case130() -> i64 {
+entry:
+  %v = add.i128 -170141183460469231731687303715884105728, 0
+  %t = trunc.i128.i8 %v
+  %w = sext.i8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case131() -> i64 {
+entry:
+  %v = add.i128 -170141183460469231731687303715884105728, 0
+  %t = trunc.i128.u8 %v
+  %w = zext.u8.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case132() -> i64 {
+entry:
+  %v = add.i128 -170141183460469231731687303715884105728, 0
+  %t = trunc.i128.i16 %v
+  %w = sext.i16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case133() -> i64 {
+entry:
+  %v = add.i128 -170141183460469231731687303715884105728, 0
+  %t = trunc.i128.u16 %v
+  %w = zext.u16.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case134() -> i64 {
+entry:
+  %v = add.i128 -170141183460469231731687303715884105728, 0
+  %t = trunc.i128.i32 %v
+  %w = sext.i32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case135() -> i64 {
+entry:
+  %v = add.i128 -170141183460469231731687303715884105728, 0
+  %t = trunc.i128.u32 %v
+  %w = zext.u32.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case136() -> i64 {
+entry:
+  %v = add.i128 -170141183460469231731687303715884105728, 0
+  %t = trunc.i128.i64 %v
+  %w = sext.i64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case137() -> i64 {
+entry:
+  %v = add.i128 -170141183460469231731687303715884105728, 0
+  %t = trunc.i128.u64 %v
+  %w = zext.u64.i128 %t
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @main() -> i64 {
+entry:
+  %d0 = call @case0()
+  %d1 = call @case1()
+  %d2 = call @case2()
+  %d3 = call @case3()
+  %d4 = call @case4()
+  %d5 = call @case5()
+  %d6 = call @case6()
+  %d7 = call @case7()
+  %d8 = call @case8()
+  %d9 = call @case9()
+  %d10 = call @case10()
+  %d11 = call @case11()
+  %d12 = call @case12()
+  %d13 = call @case13()
+  %d14 = call @case14()
+  %d15 = call @case15()
+  %d16 = call @case16()
+  %d17 = call @case17()
+  %d18 = call @case18()
+  %d19 = call @case19()
+  %d20 = call @case20()
+  %d21 = call @case21()
+  %d22 = call @case22()
+  %d23 = call @case23()
+  %d24 = call @case24()
+  %d25 = call @case25()
+  %d26 = call @case26()
+  %d27 = call @case27()
+  %d28 = call @case28()
+  %d29 = call @case29()
+  %d30 = call @case30()
+  %d31 = call @case31()
+  %d32 = call @case32()
+  %d33 = call @case33()
+  %d34 = call @case34()
+  %d35 = call @case35()
+  %d36 = call @case36()
+  %d37 = call @case37()
+  %d38 = call @case38()
+  %d39 = call @case39()
+  %d40 = call @case40()
+  %d41 = call @case41()
+  %d42 = call @case42()
+  %d43 = call @case43()
+  %d44 = call @case44()
+  %d45 = call @case45()
+  %d46 = call @case46()
+  %d47 = call @case47()
+  %d48 = call @case48()
+  %d49 = call @case49()
+  %d50 = call @case50()
+  %d51 = call @case51()
+  %d52 = call @case52()
+  %d53 = call @case53()
+  %d54 = call @case54()
+  %d55 = call @case55()
+  %d56 = call @case56()
+  %d57 = call @case57()
+  %d58 = call @case58()
+  %d59 = call @case59()
+  %d60 = call @case60()
+  %d61 = call @case61()
+  %d62 = call @case62()
+  %d63 = call @case63()
+  %d64 = call @case64()
+  %d65 = call @case65()
+  %d66 = call @case66()
+  %d67 = call @case67()
+  %d68 = call @case68()
+  %d69 = call @case69()
+  %d70 = call @case70()
+  %d71 = call @case71()
+  %d72 = call @case72()
+  %d73 = call @case73()
+  %d74 = call @case74()
+  %d75 = call @case75()
+  %d76 = call @case76()
+  %d77 = call @case77()
+  %d78 = call @case78()
+  %d79 = call @case79()
+  %d80 = call @case80()
+  %d81 = call @case81()
+  %d82 = call @case82()
+  %d83 = call @case83()
+  %d84 = call @case84()
+  %d85 = call @case85()
+  %d86 = call @case86()
+  %d87 = call @case87()
+  %d88 = call @case88()
+  %d89 = call @case89()
+  %d90 = call @case90()
+  %d91 = call @case91()
+  %d92 = call @case92()
+  %d93 = call @case93()
+  %d94 = call @case94()
+  %d95 = call @case95()
+  %d96 = call @case96()
+  %d97 = call @case97()
+  %d98 = call @case98()
+  %d99 = call @case99()
+  %d100 = call @case100()
+  %d101 = call @case101()
+  %d102 = call @case102()
+  %d103 = call @case103()
+  %d104 = call @case104()
+  %d105 = call @case105()
+  %d106 = call @case106()
+  %d107 = call @case107()
+  %d108 = call @case108()
+  %d109 = call @case109()
+  %d110 = call @case110()
+  %d111 = call @case111()
+  %d112 = call @case112()
+  %d113 = call @case113()
+  %d114 = call @case114()
+  %d115 = call @case115()
+  %d116 = call @case116()
+  %d117 = call @case117()
+  %d118 = call @case118()
+  %d119 = call @case119()
+  %d120 = call @case120()
+  %d121 = call @case121()
+  %d122 = call @case122()
+  %d123 = call @case123()
+  %d124 = call @case124()
+  %d125 = call @case125()
+  %d126 = call @case126()
+  %d127 = call @case127()
+  %d128 = call @case128()
+  %d129 = call @case129()
+  %d130 = call @case130()
+  %d131 = call @case131()
+  %d132 = call @case132()
+  %d133 = call @case133()
+  %d134 = call @case134()
+  %d135 = call @case135()
+  %d136 = call @case136()
+  %d137 = call @case137()
+  ret.i64 0
+}

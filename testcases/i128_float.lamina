@@ -1,0 +1,461 @@
+# i128 <-> f32/f64 conversions through the compiler-rt helpers, and float literals into i128.
+fn @case0() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case1() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case2() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case3() -> i64 {
+entry:
+  %v = add.i128 3, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case4() -> i64 {
+entry:
+  %v = add.i128 -7, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case5() -> i64 {
+entry:
+  %v = add.i128 9007199254740993, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case6() -> i64 {
+entry:
+  %v = add.i128 9223372036854775807, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case7() -> i64 {
+entry:
+  %v = add.i128 -9223372036854775808, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case8() -> i64 {
+entry:
+  %v = add.i128 18446744073709551621, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case9() -> i64 {
+entry:
+  %v = add.i128 -1267650600228229401496703205383, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case10() -> i64 {
+entry:
+  %v = add.i128 1267650600228229401496703217721, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case11() -> i64 {
+entry:
+  %v = add.i128 85070591730234617046435272575353356288, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case12() -> i64 {
+entry:
+  %v = add.i128 -170141183460469231731687303715884105728, 0
+  %f = inttofp.i128.f64 %v
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case13() -> i64 {
+entry:
+  %v = add.u128 0, 0
+  %f = inttofp.u128.f64 %v
+  %w = fptoint.f64.u128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case14() -> i64 {
+entry:
+  %v = add.u128 1, 0
+  %f = inttofp.u128.f64 %v
+  %w = fptoint.f64.u128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case15() -> i64 {
+entry:
+  %v = add.u128 3, 0
+  %f = inttofp.u128.f64 %v
+  %w = fptoint.f64.u128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case16() -> i64 {
+entry:
+  %v = add.u128 9007199254740993, 0
+  %f = inttofp.u128.f64 %v
+  %w = fptoint.f64.u128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case17() -> i64 {
+entry:
+  %v = add.u128 18446744073709551615, 0
+  %f = inttofp.u128.f64 %v
+  %w = fptoint.f64.u128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case18() -> i64 {
+entry:
+  %v = add.u128 1267650600228229401496703217721, 0
+  %f = inttofp.u128.f64 %v
+  %w = fptoint.f64.u128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case19() -> i64 {
+entry:
+  %v = add.u128 170141183460469231731687303715884105727, 0
+  %f = inttofp.u128.f64 %v
+  %w = fptoint.f64.u128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case20() -> i64 {
+entry:
+  %v = add.u128 170141183460469231732840225220490952704, 0
+  %f = inttofp.u128.f64 %v
+  %w = fptoint.f64.u128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case21() -> i64 {
+entry:
+  %v = add.i128 0, 0
+  %f = inttofp.i128.f32 %v
+  %w = fptoint.f32.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case22() -> i64 {
+entry:
+  %v = add.i128 1, 0
+  %f = inttofp.i128.f32 %v
+  %w = fptoint.f32.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case23() -> i64 {
+entry:
+  %v = add.i128 -1, 0
+  %f = inttofp.i128.f32 %v
+  %w = fptoint.f32.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case24() -> i64 {
+entry:
+  %v = add.i128 12345, 0
+  %f = inttofp.i128.f32 %v
+  %w = fptoint.f32.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case25() -> i64 {
+entry:
+  %v = add.i128 -1099511627773, 0
+  %f = inttofp.i128.f32 %v
+  %w = fptoint.f32.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case26() -> i64 {
+entry:
+  %v = add.i128 4503599627370497, 0
+  %f = inttofp.i128.f32 %v
+  %w = fptoint.f32.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case27() -> i64 {
+entry:
+  %f = add.f64 100000000000000000000.0, 0.0
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case28() -> i64 {
+entry:
+  %f = add.f64 -15000000000000000000.0, 0.0
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case29() -> i64 {
+entry:
+  %f = add.f64 0.75, 0.0
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case30() -> i64 {
+entry:
+  %f = add.f64 -0.75, 0.0
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case31() -> i64 {
+entry:
+  %f = add.f64 1234567890123.5, 0.0
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @case32() -> i64 {
+entry:
+  %f = add.f64 1.0e30, 0.0
+  %w = fptoint.f64.i128 %f
+  %lo = trunc.i128.i64 %w
+  print %lo
+  %hs = shr.i128 %w, 64
+  %hi = trunc.i128.i64 %hs
+  print %hi
+  ret.i64 0
+}
+
+fn @main() -> i64 {
+entry:
+  %d0 = call @case0()
+  %d1 = call @case1()
+  %d2 = call @case2()
+  %d3 = call @case3()
+  %d4 = call @case4()
+  %d5 = call @case5()
+  %d6 = call @case6()
+  %d7 = call @case7()
+  %d8 = call @case8()
+  %d9 = call @case9()
+  %d10 = call @case10()
+  %d11 = call @case11()
+  %d12 = call @case12()
+  %d13 = call @case13()
+  %d14 = call @case14()
+  %d15 = call @case15()
+  %d16 = call @case16()
+  %d17 = call @case17()
+  %d18 = call @case18()
+  %d19 = call @case19()
+  %d20 = call @case20()
+  %d21 = call @case21()
+  %d22 = call @case22()
+  %d23 = call @case23()
+  %d24 = call @case24()
+  %d25 = call @case25()
+  %d26 = call @case26()
+  %d27 = call @case27()
+  %d28 = call @case28()
+  %d29 = call @case29()
+  %d30 = call @case30()
+  %d31 = call @case31()
+  %d32 = call @case32()
+  ret.i64 0
+}
