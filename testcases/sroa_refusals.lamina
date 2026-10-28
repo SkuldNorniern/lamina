@@ -1,0 +1,176 @@
+# Stack aggregates that a split must not touch, next to one that it must split.
+# Each function prints what it read back, so a split that drops a store, aliases two
+# fields or moves a write to the wrong slot changes the output.
+
+fn @set_word(ptr %p, i64 %v) -> i64 {
+  entry:
+    store.i64 %p, %v
+    ret.i64 0
+}
+
+# The field pointer is passed to a call, so the record stays whole.
+fn @escape_call() -> i64 {
+  entry:
+    %s = stackalloc.struct { a: i64, b: i64 }
+    %a = getfieldptr %s, 0
+    %b = getfieldptr %s, 1
+    store.i64 %a, 1
+    store.i64 %b, 2
+    %r = call @set_word(%b, 40)
+    %av = load.i64 %a
+    %bv = load.i64 %b
+    %sum = add.i64 %av, %bv
+    print %sum
+    ret.i64 0
+}
+
+# The field pointer is stored to memory and written back through a loaded copy.
+fn @escape_store() -> i64 {
+  entry:
+    %s = stackalloc.struct { a: i64, b: i64 }
+    %holder = stackalloc.ptr
+    %a = getfieldptr %s, 0
+    %b = getfieldptr %s, 1
+    store.i64 %a, 5
+    store.i64 %b, 6
+    store.ptr %holder, %b
+    %q = load.ptr %holder
+    store.i64 %q, 60
+    %av = load.i64 %a
+    %bv = load.i64 %b
+    print %av
+    print %bv
+    ret.i64 0
+}
+
+# The index is known only at run time, so the array is never split.
+fn @dynamic_index(i64 %n) -> i64 {
+  entry:
+    %arr = stackalloc.[4 x i64]
+    %i = add.i64 0, 0
+    jmp fill_head
+
+  fill_head:
+    %more = lt.i64 %i, %n
+    br %more, fill_body, fill_done
+
+  fill_body:
+    %p = getelem.i64 %arr, %i
+    %sq = mul.i64 %i, %i
+    store.i64 %p, %sq
+    %i = add.i64 %i, 1
+    jmp fill_head
+
+  fill_done:
+    %j = add.i64 0, 0
+    %total = add.i64 0, 0
+    jmp sum_head
+
+  sum_head:
+    %more2 = lt.i64 %j, %n
+    br %more2, sum_body, sum_done
+
+  sum_body:
+    %q = getelem.i64 %arr, %j
+    %v = load.i64 %q
+    %total = add.i64 %total, %v
+    %j = add.i64 %j, 1
+    jmp sum_head
+
+  sum_done:
+    print %total
+    ret.i64 0
+}
+
+# A 64-bit store and a 32-bit load share bytes, so the two words stay in one slot.
+fn @overlap() -> i64 {
+  entry:
+    %w = stackalloc.[2 x i32]
+    %w0 = getelem.i32 %w, 0
+    %w1 = getelem.i32 %w, 1
+    store.i64 %w0, 4294967298
+    %lo = load.i32 %w0
+    %hi = load.i32 %w1
+    %whole = load.i64 %w0
+    print %lo
+    print %hi
+    print %whole
+    ret.i64 0
+}
+
+# A volatile access reaches one field through its field pointer.
+fn @volatile_field() -> i64 {
+  entry:
+    %s = stackalloc.struct { a: i64, b: i64 }
+    %a = getfieldptr %s, 0
+    %b = getfieldptr %s, 1
+    store.i64 %a, 3
+    volatile store.i64 %b, 9
+    %av = load.i64 %a
+    %bv = volatile load.i64 %b
+    %sum = add.i64 %av, %bv
+    print %sum
+    ret.i64 0
+}
+
+# Two independent i64 fields updated in a loop, which SROA splits and mem2reg promotes.
+fn @split_fields() -> i64 {
+  entry:
+    %s = stackalloc.struct { x: i64, y: i64 }
+    %x = getfieldptr %s, 0
+    %y = getfieldptr %s, 1
+    store.i64 %x, 0
+    store.i64 %y, 0
+    %i = add.i64 0, 0
+    jmp head
+
+  head:
+    %more = lt.i64 %i, 10
+    br %more, body, done
+
+  body:
+    %xv = load.i64 %x
+    %xn = add.i64 %xv, 1
+    store.i64 %x, %xn
+    %yv = load.i64 %y
+    %yn = add.i64 %yv, 2
+    store.i64 %y, %yn
+    %i = add.i64 %i, 1
+    jmp head
+
+  done:
+    %fx = load.i64 %x
+    %fy = load.i64 %y
+    print %fx
+    print %fy
+    ret.i64 0
+}
+
+# A bool field has MIR type i1, which is not promotable, so the record stays whole.
+fn @bool_field() -> i64 {
+  entry:
+    %s = stackalloc.struct { flag: bool, count: i64 }
+    %f = getfieldptr %s, 0
+    %c = getfieldptr %s, 1
+    store.bool %f, 1
+    store.i64 %c, 4
+    %fv = load.bool %f
+    %cv = load.i64 %c
+    %z = zext.bool.i64 %fv
+    %sum = add.i64 %z, %cv
+    print %sum
+    ret.i64 0
+}
+
+@export
+fn @main() -> i64 {
+  entry:
+    %e1 = call @escape_call()
+    %e2 = call @escape_store()
+    %e3 = call @dynamic_index(4)
+    %e4 = call @overlap()
+    %e5 = call @volatile_field()
+    %e6 = call @split_fields()
+    %e7 = call @bool_field()
+    ret.i64 0
+}
