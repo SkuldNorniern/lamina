@@ -1,6 +1,9 @@
 //! Parser state management for Lamina IR parsing.
 
-use crate::{Identifier, Label, LaminaError, ir::Type};
+use crate::{
+    Identifier, Label, LaminaError,
+    ir::{Literal, Type},
+};
 
 /// A type written before a `call` argument, checked once the callee's signature is known.
 #[derive(Debug, Clone)]
@@ -8,6 +11,23 @@ pub struct TypedCallArg<'a> {
     pub callee: Identifier<'a>,
     pub index: usize,
     pub ty: Type<'a>,
+    pub position: usize,
+}
+
+/// A bare literal `call` argument. Its width is the callee's parameter type, which
+/// is only known once the whole module is parsed.
+#[derive(Debug, Clone)]
+pub struct UntypedCallLiteral<'a> {
+    pub callee: Identifier<'a>,
+    pub index: usize,
+    pub value: Literal<'a>,
+    pub position: usize,
+}
+
+/// A direct `call`, checked once the module's functions are known.
+#[derive(Debug, Clone)]
+pub struct CallSite<'a> {
+    pub callee: Identifier<'a>,
     pub position: usize,
 }
 
@@ -19,6 +39,8 @@ pub struct ParserState<'a> {
     position: usize,
     type_depth: usize,
     pub typed_call_args: Vec<TypedCallArg<'a>>,
+    pub untyped_call_literals: Vec<UntypedCallLiteral<'a>>,
+    pub call_sites: Vec<CallSite<'a>>,
 }
 
 pub const MAX_TYPE_DEPTH: usize = 256;
@@ -32,6 +54,8 @@ impl<'a> ParserState<'a> {
             position: 0,
             type_depth: 0,
             typed_call_args: Vec::new(),
+            untyped_call_literals: Vec::new(),
+            call_sites: Vec::new(),
         }
     }
 
@@ -159,6 +183,31 @@ impl<'a> ParserState<'a> {
             };
 
             Err(self.error(format!("{suggestion}, but found '{found}'")))
+        }
+    }
+
+    /// Skips spaces, tabs and a trailing comment, but never the line break. Trailing
+    /// operands of a statement are read with this, so the next line stays its own.
+    pub fn skip_inline_space(&mut self) {
+        while let Some(byte) = self.peek_byte(0) {
+            match byte {
+                b' ' | b'\t' | b'\r' => self.advance(),
+                b'#' => {
+                    while self.peek_byte(0).is_some_and(|b| b != b'\n') {
+                        self.advance();
+                    }
+                }
+                _ => break,
+            }
+        }
+    }
+
+    /// Parses an identifier that must sit on the current line, else `missing`.
+    pub fn parse_same_line_identifier(&mut self, missing: &str) -> Result<&'a str, LaminaError> {
+        self.skip_inline_space();
+        match self.current_char() {
+            Some(c) if c.is_ascii_alphabetic() || c == '_' => self.parse_identifier_str(),
+            _ => Err(self.error(missing)),
         }
     }
 

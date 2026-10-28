@@ -9,7 +9,7 @@ use crate::{
     parser::{
         functions::alignment_from_bytes,
         globals::parse_value_with_type_hint,
-        state::{ParserState, TypedCallArg},
+        state::{CallSite, ParserState, TypedCallArg, UntypedCallLiteral},
         types::{parse_type, removed_char_error},
         values::parse_value,
     },
@@ -240,6 +240,13 @@ pub fn parse_instruction<'a>(state: &mut ParserState<'a>) -> Result<Instruction<
 
 fn parse_memory_ordering_name(state: &mut ParserState<'_>) -> Result<MemoryOrdering, LaminaError> {
     let name = state.parse_identifier_str()?;
+    memory_ordering_from_name(state, name)
+}
+
+fn memory_ordering_from_name(
+    state: &ParserState<'_>,
+    name: &str,
+) -> Result<MemoryOrdering, LaminaError> {
     match name {
         "relaxed" => Ok(MemoryOrdering::Relaxed),
         "acquire" => Ok(MemoryOrdering::Acquire),
@@ -329,7 +336,10 @@ fn parse_atomic_rmw<'a>(
 }
 
 fn parse_fence<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    let ordering = parse_memory_ordering_name(state)?;
+    let name = state.parse_same_line_identifier(
+        "fence needs a memory ordering on the same line\n  Hint: Write 'fence seqcst', with relaxed, acquire, release, acqrel or seqcst",
+    )?;
+    let ordering = memory_ordering_from_name(state, name)?;
     Ok(Instruction::Fence { ordering })
 }
 
@@ -528,7 +538,7 @@ fn parse_alloc<'a>(
 /// is left unread, so the next line still parses as its own instruction.
 fn parse_alloc_align(state: &mut ParserState<'_>) -> Result<Option<u32>, LaminaError> {
     let start = state.position();
-    state.skip_whitespace_and_comments();
+    state.skip_inline_space();
     let word_ends = !state
         .peek_byte(5)
         .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_');
@@ -537,7 +547,7 @@ fn parse_alloc_align(state: &mut ParserState<'_>) -> Result<Option<u32>, LaminaE
         return Ok(None);
     }
     state.advance_by(5);
-    state.skip_whitespace_and_comments();
+    state.skip_inline_space();
     if !state
         .current_char()
         .is_some_and(|c| c.is_ascii_digit() || c == '-')
@@ -604,12 +614,7 @@ fn parse_store<'a>(
     let ty = parse_type_suffix(state)?;
     let ptr = parse_value(state)?;
     state.expect_char(',')?;
-    let value = match &ty {
-        Type::Primitive(PrimitiveType::I128 | PrimitiveType::U128) => {
-            parse_typed_operand(state, &ty)?
-        }
-        _ => parse_value(state)?,
-    };
+    let value = parse_typed_operand(state, &ty)?;
     Ok(Instruction::Store {
         ty,
         ptr,
@@ -657,7 +662,7 @@ fn parse_getelem<'a>(
     let array_ptr = parse_value(state)?;
     state.expect_char(',')?;
     let index = parse_value(state)?;
-    state.skip_whitespace_and_comments();
+    state.skip_inline_space();
     if state.current_char() == Some(',') {
         return Err(state.error(
             "getelem no longer takes an element type operand\n  Hint: Put the element type in the suffix: 'getelem.<type> <ptr>, <index>'",
@@ -730,7 +735,12 @@ fn parse_call<'a>(
     state: &mut ParserState<'a>,
     result: Option<Identifier<'a>>,
 ) -> Result<Instruction<'a>, LaminaError> {
+    let call_position = state.position();
     let func_name = state.parse_function_identifier()?;
+    state.call_sites.push(CallSite {
+        callee: func_name,
+        position: call_position,
+    });
     state.expect_char('(')?;
     let mut args = Vec::new();
     loop {
@@ -741,7 +751,17 @@ fn parse_call<'a>(
         }
         let index = args.len();
         if starts_untyped_value(state) {
-            args.push(parse_value(state)?);
+            let position = state.position();
+            let value = parse_value(state)?;
+            if let Value::Constant(literal) = &value {
+                state.untyped_call_literals.push(UntypedCallLiteral {
+                    callee: func_name,
+                    index,
+                    value: literal.clone(),
+                    position,
+                });
+            }
+            args.push(value);
         } else {
             let position = state.position();
             let ty = parse_type(state).map_err(|_| untyped_call_error(state))?;
@@ -749,7 +769,7 @@ fn parse_call<'a>(
             if matches!(state.current_char(), None | Some(')') | Some(',')) {
                 return Err(untyped_call_error(state));
             }
-            args.push(parse_value(state)?);
+            args.push(parse_typed_operand(state, &ty)?);
             state.typed_call_args.push(TypedCallArg {
                 callee: func_name,
                 index,
@@ -836,7 +856,7 @@ fn parse_call_indirect<'a>(
         if matches!(state.current_char(), None | Some(')') | Some(',')) {
             return Err(untyped_call_indirect_error(state));
         }
-        let value = parse_value(state)?;
+        let value = parse_typed_operand(state, &ty)?;
         args.push((ty, value));
         state.skip_whitespace_and_comments();
         if state.current_char() == Some(')') {
@@ -1006,12 +1026,27 @@ fn parse_readbyte_assignment<'a>(
     Ok(Instruction::ReadByte { result })
 }
 
+/// Parses the `, <name>` that closes a statement form, which must share the line.
+fn parse_trailing_name<'a>(
+    state: &mut ParserState<'a>,
+    missing: &str,
+) -> Result<&'a str, LaminaError> {
+    state.skip_inline_space();
+    if state.current_char() != Some(',') {
+        return Err(state.error(missing));
+    }
+    state.advance();
+    state.parse_same_line_identifier(missing)
+}
+
 fn parse_write<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
     let size = parse_value(state)?;
-    state.expect_char(',')?;
-    let result = state.parse_identifier_str()?;
+    let result = parse_trailing_name(
+        state,
+        "write needs a result name on the same line\n  Hint: Write 'write <ptr>, <size>, <name>'",
+    )?;
     Ok(Instruction::Write {
         buffer,
         size,
@@ -1023,8 +1058,10 @@ fn parse_read<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lamina
     let buffer = parse_value(state)?;
     state.expect_char(',')?;
     let size = parse_value(state)?;
-    state.expect_char(',')?;
-    let result = state.parse_identifier_str()?;
+    let result = parse_trailing_name(
+        state,
+        "read needs a result name on the same line\n  Hint: Write 'read <ptr>, <size>, <name>'",
+    )?;
     Ok(Instruction::Read {
         buffer,
         size,
@@ -1034,13 +1071,17 @@ fn parse_read<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, Lamina
 
 fn parse_writebyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
     let value = parse_value(state)?;
-    state.expect_char(',')?;
-    let result = state.parse_identifier_str()?;
+    let result = parse_trailing_name(
+        state,
+        "writebyte needs a result name on the same line\n  Hint: Write 'writebyte <value>, <name>'",
+    )?;
     Ok(Instruction::WriteByte { value, result })
 }
 
 fn parse_readbyte<'a>(state: &mut ParserState<'a>) -> Result<Instruction<'a>, LaminaError> {
-    let result = state.parse_identifier_str()?;
+    let result = state.parse_same_line_identifier(
+        "readbyte needs a result name on the same line\n  Hint: Write 'readbyte <name>'",
+    )?;
     Ok(Instruction::ReadByte { result })
 }
 
@@ -1094,7 +1135,7 @@ fn parse_zext<'a>(
         )));
     }
 
-    let value = parse_value(state)?;
+    let value = parse_typed_operand(state, &Type::Primitive(source_type))?;
     Ok(Instruction::ZeroExtend {
         result,
         source_type,
@@ -1137,7 +1178,7 @@ fn parse_int_to_float<'a>(
         )));
     }
 
-    let value = parse_value(state)?;
+    let value = parse_typed_operand(state, &Type::Primitive(source_type))?;
     Ok(Instruction::IntToFloat {
         result,
         signed,
@@ -1181,7 +1222,7 @@ fn parse_float_to_int<'a>(
         }
     };
 
-    let value = parse_value(state)?;
+    let value = parse_typed_operand(state, &Type::Primitive(source_type))?;
     Ok(Instruction::FloatToInt {
         result,
         signed,
@@ -1213,7 +1254,7 @@ fn parse_float_convert<'a>(
         )));
     }
 
-    let value = parse_value(state)?;
+    let value = parse_typed_operand(state, &Type::Primitive(source_type))?;
     Ok(Instruction::FloatConvert {
         result,
         source_type,
@@ -1240,7 +1281,7 @@ fn parse_trunc<'a>(
         )));
     }
 
-    let value = parse_value(state)?;
+    let value = parse_typed_operand(state, &Type::Primitive(source_type))?;
     Ok(Instruction::Trunc {
         result,
         source_type,
@@ -1267,7 +1308,7 @@ fn parse_sext<'a>(
         )));
     }
 
-    let value = parse_value(state)?;
+    let value = parse_typed_operand(state, &Type::Primitive(source_type))?;
     Ok(Instruction::SignExtend {
         result,
         source_type,
@@ -1288,7 +1329,7 @@ fn parse_bitcast<'a>(
     let target_type_str = state.parse_identifier_str()?;
     let target_type = parse_primitive_from_ident(state, target_type_str)?;
 
-    let value = parse_value(state)?;
+    let value = parse_typed_operand(state, &Type::Primitive(source_type))?;
     Ok(Instruction::Bitcast {
         result,
         source_type,
@@ -1345,9 +1386,9 @@ fn parse_select<'a>(
     let ty = parse_type_suffix(state)?;
     let cond = parse_value(state)?;
     state.expect_char(',')?;
-    let true_val = parse_value(state)?;
+    let true_val = parse_typed_operand(state, &ty)?;
     state.expect_char(',')?;
-    let false_val = parse_value(state)?;
+    let false_val = parse_typed_operand(state, &ty)?;
     Ok(Instruction::Select {
         result,
         ty,

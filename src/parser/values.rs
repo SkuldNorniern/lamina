@@ -28,6 +28,23 @@ pub fn integer_bounds(ty: PrimitiveType) -> Option<(i128, i128)> {
     })
 }
 
+/// The value of an integer literal, or `None` for any other literal.
+pub fn literal_integer(literal: &Literal<'_>) -> Option<i128> {
+    Some(match *literal {
+        Literal::I8(v) => v.into(),
+        Literal::I16(v) => v.into(),
+        Literal::I32(v) => v.into(),
+        Literal::I64(v) => v.into(),
+        Literal::U8(v) => v.into(),
+        Literal::U16(v) => v.into(),
+        Literal::U32(v) => v.into(),
+        Literal::U64(v) => v.into(),
+        Literal::I128(v) => v,
+        Literal::U128(v) => return i128::try_from(v).ok(),
+        Literal::F32(_) | Literal::F64(_) | Literal::Bool(_) | Literal::String(_) => return None,
+    })
+}
+
 /// The literal of integer type `ty` holding `value`. `Ok(None)` when `ty` is not an
 /// integer type; `Err` with the range message when `value` does not fit.
 pub fn integer_literal(value: i128, ty: PrimitiveType) -> Result<Option<Literal<'static>>, String> {

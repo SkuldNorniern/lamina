@@ -263,6 +263,12 @@ pub fn parse_value_with_type_hint<'a>(
                 return Err(state.error("Expected float literal for F64 hint"));
             }
 
+            if matches!(type_hint, Type::Primitive(PrimitiveType::Bool)) {
+                return Err(state.error(
+                    "Integer literal cannot be used with bool type\n  Hint: Write 'true' or 'false'",
+                ));
+            }
+
             if let Type::Primitive(p) = type_hint
                 && let Some(literal) = parse_integer_literal(state, *p)?
             {

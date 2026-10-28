@@ -9,6 +9,8 @@ mod instructions;
 mod offsets;
 pub mod state;
 mod types;
+#[cfg(test)]
+mod validation_tests;
 mod values;
 
 use std::{mem, str::from_utf8};
@@ -23,7 +25,11 @@ use self::{
 use crate::ir::ModuleAnnotation;
 use crate::{
     LaminaError,
-    ir::{AllocType, Module, PrimitiveType, assignment_opcode_names, non_assignment_opcode_names},
+    ir::{
+        AllocType, Module, PrimitiveType, Type, assignment_opcode_names,
+        non_assignment_opcode_names,
+    },
+    parser::values::{integer_literal, literal_integer},
 };
 
 /// Calculates the Levenshtein edit distance between two strings.
@@ -346,6 +352,52 @@ fn module_annotations_conflict(a: &ModuleAnnotation, b: &ModuleAnnotation) -> bo
     )
 }
 
+fn check_call_sites(state: &mut ParserState<'_>, module: &Module<'_>) -> Result<(), LaminaError> {
+    for site in mem::take(&mut state.call_sites) {
+        if module.functions.contains_key(site.callee) || site.callee.starts_with("__lamina_gpu_") {
+            continue;
+        }
+        state.set_position(site.position);
+        return Err(state.error(format!(
+            "Call to undefined function @{}\n  Hint: Define 'fn @{}(...)', or declare it with '@extern' before calling it",
+            site.callee, site.callee
+        )));
+    }
+    Ok(())
+}
+
+fn check_untyped_call_literals(
+    state: &mut ParserState<'_>,
+    module: &Module<'_>,
+) -> Result<(), LaminaError> {
+    for arg in mem::take(&mut state.untyped_call_literals) {
+        let Some(func) = module.functions.get(arg.callee) else {
+            continue;
+        };
+        let Some(param) = func.signature.params.get(arg.index) else {
+            continue;
+        };
+        let Type::Primitive(param_ty) = param.ty else {
+            continue;
+        };
+        let Some(value) = literal_integer(&arg.value) else {
+            continue;
+        };
+        let message = if param_ty == PrimitiveType::Bool {
+            "Integer literal cannot be passed to a bool parameter\n  Hint: Write 'true' or 'false'"
+                .to_string()
+        } else {
+            match integer_literal(value, param_ty) {
+                Ok(_) => continue,
+                Err(message) => message,
+            }
+        };
+        state.set_position(arg.position);
+        return Err(state.error(message));
+    }
+    Ok(())
+}
+
 fn check_typed_call_args(
     state: &mut ParserState<'_>,
     module: &Module<'_>,
@@ -436,7 +488,9 @@ pub fn parse_module(input: &str) -> Result<Module<'_>, LaminaError> {
         }
     }
 
+    check_call_sites(&mut state, &module)?;
     check_typed_call_args(&mut state, &module)?;
+    check_untyped_call_literals(&mut state, &module)?;
     offsets::resolve_field_offsets(&mut module);
     module
         .validate()
@@ -1700,13 +1754,29 @@ ret.i64 0
             .to_string()
     }
 
+    fn entry_call(input: &str) -> Instruction<'_> {
+        let module = parse_module(input).expect("Parsing failed");
+        module.functions["main"].basic_blocks["entry"].instructions[0].clone()
+    }
+
     #[test]
     fn typed_call_argument_parses_like_untyped() {
-        let source_typed = call_module("call @f(i64 7)");
-        let typed = parse_module(&source_typed).expect("typed call");
-        let source_untyped = call_module("call @f(7)");
-        let untyped = parse_module(&source_untyped).expect("untyped call");
+        let body = "fn @f(i32 %x) -> i32 {\nentry:\n  ret.i32 %x\n}\n\
+                    fn @main() -> i32 {\nentry:\n  %v = call @f({arg})\n  ret.i32 %v\n}\n";
+        let typed_source = body.replace("{arg}", "i32 7");
+        let untyped_source = body.replace("{arg}", "7");
+        let typed = parse_module(&typed_source).expect("typed call");
+        let untyped = parse_module(&untyped_source).expect("untyped call");
         assert_eq!(typed, untyped);
+    }
+
+    #[test]
+    fn typed_call_argument_literal_takes_its_stated_width() {
+        let source = call_module("call @f(i64 7)");
+        let Instruction::Call { args, .. } = &entry_call(&source) else {
+            panic!("expected a call");
+        };
+        assert_eq!(args[0], Value::Constant(Literal::I64(7)));
     }
 
     #[test]
@@ -1970,7 +2040,7 @@ ret.i64 0
 
     #[test]
     fn test_display_of_changed_instructions_round_trips() {
-        let source = "fn @cb(f32 %x, i64 %n) -> i64 {
+        let source = "fn @malloc(i64 %n) -> ptr {\nentry:\n  %p = stackalloc.i64\n  ret.ptr %p\n}\nfn @free(ptr %p) -> void {\nentry:\n  ret.void\n}\nfn @cb(f32 %x, i64 %n) -> i64 {
 entry:
   ret.i64 %n
 }
