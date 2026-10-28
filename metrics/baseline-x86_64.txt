@@ -3163,6 +3163,74 @@ frame main 64
 frame print_digits 32
 frame print_number 32
 
+[pointer_param_store O0]
+insns 308
+spills 106
+calls 34
+branches 0
+frame chain 32
+frame fieldset 32
+frame forward 16
+frame idxset 64
+frame main 240
+frame pass 16
+frame read_elem 32
+frame read_global_elem 32
+frame setit 16
+frame tbl 0
+frame viaret 32
+
+[pointer_param_store O1]
+insns 308
+spills 106
+calls 34
+branches 0
+frame chain 32
+frame fieldset 32
+frame forward 16
+frame idxset 64
+frame main 240
+frame pass 16
+frame read_elem 32
+frame read_global_elem 32
+frame setit 16
+frame tbl 0
+frame viaret 32
+
+[pointer_param_store O2]
+insns 294
+spills 22
+calls 25
+branches 1
+frame chain 0
+frame fieldset 0
+frame forward 16
+frame idxset 0
+frame main 112
+frame pass 0
+frame read_elem 0
+frame read_global_elem 0
+frame setit 0
+frame tbl 0
+frame viaret 0
+
+[pointer_param_store O3]
+insns 293
+spills 17
+calls 25
+branches 1
+frame chain 0
+frame fieldset 0
+frame forward 16
+frame idxset 0
+frame main 96
+frame pass 0
+frame read_elem 0
+frame read_global_elem 0
+frame setit 0
+frame tbl 0
+frame viaret 0
+
 [primitive_types_comprehensive O0]
 insns 940
 spills 242
