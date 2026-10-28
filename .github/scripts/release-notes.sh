@@ -4,8 +4,7 @@
 #
 # The format is strict: `type: subject` or `type(scope): subject`, with the
 # optional `!` breaking marker. Anything else lands under "Other" so it is
-# visible rather than quietly dropped — commit-lint.yml keeps new commits from
-# landing there.
+# visible rather than quietly dropped.
 #
 # Needs full history: check out with fetch-depth: 0.
 set -euo pipefail
