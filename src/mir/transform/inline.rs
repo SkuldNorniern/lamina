@@ -237,6 +237,7 @@ impl ModuleInlining {
             continuation.push('_');
         }
         let mut blocks = callee.blocks.clone();
+        let mut returns = false;
         for block in &mut blocks {
             block.label = labels[&block.label].clone();
             let mut instructions = Vec::new();
@@ -268,6 +269,7 @@ impl ModuleInlining {
                             copy.normalize_integer_immediates(None);
                             instructions.push(copy);
                         }
+                        returns = true;
                         instruction = Instruction::Jmp {
                             target: continuation.clone(),
                         };
@@ -296,7 +298,11 @@ impl ModuleInlining {
         });
         blocks.push(Block {
             label: continuation,
-            instructions: after,
+            instructions: if returns {
+                after
+            } else {
+                vec![Instruction::Unreachable]
+            },
         });
         caller
             .blocks
