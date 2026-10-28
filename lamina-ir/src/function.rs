@@ -220,14 +220,11 @@
 //! let module = builder.build();
 //! ```
 
-use std::{
-    collections::{HashMap, HashSet},
-    fmt,
-};
+use std::{collections::HashMap, fmt, iter};
 
 use crate::{
     instruction::Instruction,
-    types::{Identifier, Label, PrimitiveType, Type},
+    types::{Identifier, Label, PrimitiveType, Type, Value},
 };
 
 /// Function annotations that provide metadata about function behavior.
@@ -613,8 +610,10 @@ impl<'a> Function<'a> {
     /// - Every block ends with a terminator (`Br`, `Jmp`, or `Ret`).
     /// - Return instructions carry a value when the return type is non-void,
     ///   and are bare when the return type is void.
-    /// - Variables are defined before they are used within each block
-    ///   (does not perform cross-block dominance analysis).
+    /// - Every read of a variable is assigned on every path from the entry block to
+    ///   it. Parameters are assigned on entry. A phi reads its operand on the edge from
+    ///   its named predecessor. Reads in unreachable blocks see only parameters and
+    ///   definitions earlier in the same block.
     ///
     /// Returns `Ok(())` when the function is valid, or a list of diagnostic
     /// strings describing every violation found.
@@ -632,16 +631,6 @@ impl<'a> Function<'a> {
             ));
         }
 
-        let mut defining_blocks: HashMap<&str, HashSet<&str>> = HashMap::new();
-        for (label, block) in &self.basic_blocks {
-            for instr in &block.instructions {
-                if let Some(def) = instr.defined_var() {
-                    defining_blocks.entry(def).or_default().insert(*label);
-                }
-            }
-        }
-        let params: HashSet<&str> = self.signature.params.iter().map(|p| p.name).collect();
-
         for (label, block) in &self.basic_blocks {
             let last = block.instructions.last();
             let has_terminator = last.is_some_and(Instruction::is_terminator);
@@ -651,8 +640,6 @@ impl<'a> Function<'a> {
                     label, self.name
                 ));
             }
-
-            let mut defined: HashSet<&str> = HashSet::new();
 
             for instr in &block.instructions {
                 match instr {
@@ -744,34 +731,167 @@ impl<'a> Function<'a> {
                     }
                     _ => {}
                 }
-
-                // 5. A use needs a definition earlier in its block or in another block.
-                // A phi reads on the incoming edge, not where it sits, so a value a
-                // loop defines later in this same block is in order.
-                for used in instr.used_vars() {
-                    if matches!(instr, Instruction::Phi { .. }) {
-                        continue;
-                    }
-                    let defined_elsewhere = defining_blocks
-                        .get(used)
-                        .is_some_and(|blocks| blocks.iter().any(|b| *b != *label));
-                    if !params.contains(used) && !defined.contains(used) && !defined_elsewhere {
-                        errors.push(format!(
-                            "use of undefined variable '%{}' in block '{}' of '@{}'",
-                            used, label, self.name
-                        ));
-                    }
-                }
-                if let Some(def) = instr.defined_var() {
-                    defined.insert(def);
-                }
             }
         }
+
+        self.check_definite_assignment(&mut errors);
 
         if errors.is_empty() {
             Ok(())
         } else {
             Err(errors)
+        }
+    }
+
+    fn check_definite_assignment(&self, errors: &mut Vec<String>) {
+        let mut labels: Vec<Label<'a>> = self.basic_blocks.keys().copied().collect();
+        labels.sort_unstable();
+        let index: HashMap<Label<'a>, usize> =
+            labels.iter().enumerate().map(|(i, l)| (*l, i)).collect();
+        let Some(&entry) = index.get(self.entry_block) else {
+            return;
+        };
+
+        let mut var_index: HashMap<&'a str, usize> = HashMap::new();
+        for name in self
+            .signature
+            .params
+            .iter()
+            .map(|p| p.name)
+            .chain(labels.iter().flat_map(|label| {
+                self.basic_blocks[label]
+                    .instructions
+                    .iter()
+                    .filter_map(Instruction::defined_var)
+            }))
+        {
+            let next = var_index.len();
+            var_index.entry(name).or_insert(next);
+        }
+        let words = var_index.len().div_ceil(64);
+        let top = vec![u64::MAX; words];
+        let mut params = vec![0u64; words];
+        for p in &self.signature.params {
+            set_bit(&mut params, var_index[p.name]);
+        }
+
+        let n = labels.len();
+        let succs: Vec<Vec<usize>> = labels
+            .iter()
+            .map(|label| {
+                terminator_targets(&self.basic_blocks[label])
+                    .into_iter()
+                    .filter_map(|t| index.get(t).copied())
+                    .collect()
+            })
+            .collect();
+        let mut reachable = vec![false; n];
+        reachable[entry] = true;
+        let mut stack = vec![entry];
+        while let Some(b) = stack.pop() {
+            for &s in &succs[b] {
+                if !reachable[s] {
+                    reachable[s] = true;
+                    stack.push(s);
+                }
+            }
+        }
+        let mut preds: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for b in (0..n).filter(|&b| reachable[b]) {
+            for &s in &succs[b] {
+                preds[s].push(b);
+            }
+        }
+
+        let block_defs: Vec<Vec<u64>> = labels
+            .iter()
+            .map(|label| {
+                let mut defs = vec![0u64; words];
+                for instr in &self.basic_blocks[label].instructions {
+                    if let Some(def) = instr.defined_var() {
+                        set_bit(&mut defs, var_index[def]);
+                    }
+                }
+                defs
+            })
+            .collect();
+
+        let mut ins: Vec<Vec<u64>> = vec![top.clone(); n];
+        let mut outs: Vec<Vec<u64>> = (0..n).map(|b| or_words(&top, &block_defs[b])).collect();
+        ins[entry] = params.clone();
+        outs[entry] = or_words(&params, &block_defs[entry]);
+        loop {
+            let mut changed = false;
+            for b in (0..n).filter(|&b| reachable[b]) {
+                if b != entry {
+                    let mut new_in = top.clone();
+                    for &p in &preds[b] {
+                        and_assign(&mut new_in, &outs[p]);
+                    }
+                    if new_in != ins[b] {
+                        ins[b] = new_in;
+                        changed = true;
+                    }
+                }
+                let new_out = or_words(&ins[b], &block_defs[b]);
+                if new_out != outs[b] {
+                    outs[b] = new_out;
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        let assigned = |set: &[u64], name: &str| {
+            var_index
+                .get(name)
+                .is_some_and(|&i| set[i / 64] >> (i % 64) & 1 == 1)
+        };
+
+        for (b, label) in labels.iter().enumerate() {
+            let block = &self.basic_blocks[label];
+            let mut cur = if reachable[b] {
+                ins[b].clone()
+            } else {
+                params.clone()
+            };
+            for instr in &block.instructions {
+                if let Instruction::Phi {
+                    result, incoming, ..
+                } = instr
+                {
+                    if reachable[b] {
+                        for (value, pred) in incoming {
+                            let (Value::Variable(name), Some(&p)) = (value, index.get(pred)) else {
+                                continue;
+                            };
+                            if reachable[p] && !assigned(&outs[p], name) {
+                                errors.push(format!(
+                                    "phi in block '{}' of '@{}' reads '%{}' from '{}', where it is not assigned on every path to the end of that block",
+                                    label, self.name, name, pred
+                                ));
+                            }
+                        }
+                    }
+                    if let Some(&i) = var_index.get(result) {
+                        set_bit(&mut cur, i);
+                    }
+                    continue;
+                }
+                for used in instr.used_vars() {
+                    if !assigned(&cur, used) {
+                        errors.push(format!(
+                            "use of '%{}' in block '{}' of '@{}' is not assigned on every path to it",
+                            used, label, self.name
+                        ));
+                    }
+                }
+                if let Some(def) = instr.defined_var() {
+                    set_bit(&mut cur, var_index[def]);
+                }
+            }
         }
     }
 
@@ -835,6 +955,35 @@ impl<'a> Function<'a> {
 }
 
 // --- Display Implementations ---
+
+fn terminator_targets<'a>(block: &BasicBlock<'a>) -> Vec<Label<'a>> {
+    match block.instructions.last() {
+        Some(Instruction::Br {
+            true_label,
+            false_label,
+            ..
+        }) => vec![*true_label, *false_label],
+        Some(Instruction::Jmp { target_label }) => vec![*target_label],
+        Some(Instruction::Switch { default, cases, .. }) => iter::once(*default)
+            .chain(cases.iter().map(|(_, label)| *label))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn set_bit(set: &mut [u64], i: usize) {
+    set[i / 64] |= 1 << (i % 64);
+}
+
+fn or_words(a: &[u64], b: &[u64]) -> Vec<u64> {
+    a.iter().zip(b).map(|(x, y)| x | y).collect()
+}
+
+fn and_assign(a: &mut [u64], b: &[u64]) {
+    for (x, y) in a.iter_mut().zip(b) {
+        *x &= y;
+    }
+}
 
 fn is_pointer_either(a: &Type<'_>, b: &Type<'_>) -> bool {
     matches!(a, Type::Primitive(PrimitiveType::Ptr))
@@ -1641,5 +1790,196 @@ mod tests {
         );
         let f = simple_func(vec![], Type::Primitive(PrimitiveType::Ptr), blocks, "entry");
         assert!(f.validate().is_ok());
+    }
+
+    fn da_add<'a>(result: &'a str, lhs: Value<'a>) -> Instruction<'a> {
+        Instruction::Binary {
+            op: BinaryOp::Add,
+            result,
+            ty: PrimitiveType::I32,
+            lhs,
+            rhs: Value::Constant(Literal::I32(1)),
+        }
+    }
+
+    fn da_branch<'a>(true_label: &'a str, false_label: &'a str) -> Instruction<'a> {
+        Instruction::Br {
+            condition: Value::Constant(Literal::Bool(true)),
+            true_label,
+            false_label,
+        }
+    }
+
+    fn da_jump<'a>(target_label: &'a str) -> Instruction<'a> {
+        Instruction::Jmp { target_label }
+    }
+
+    fn da_ret<'a>(value: Value<'a>) -> Instruction<'a> {
+        Instruction::Ret {
+            ty: Type::Primitive(PrimitiveType::I32),
+            value: Some(value),
+        }
+    }
+
+    fn da_func<'a>(blocks: Vec<(&'a str, Vec<Instruction<'a>>)>) -> Function<'a> {
+        let basic_blocks = blocks
+            .into_iter()
+            .map(|(label, instructions)| (label, BasicBlock { instructions }))
+            .collect();
+        simple_func(
+            vec![],
+            Type::Primitive(PrimitiveType::I32),
+            basic_blocks,
+            "entry",
+        )
+    }
+
+    #[test]
+    fn test_definite_assignment_one_arm_does_not_reach_join() {
+        let f = da_func(vec![
+            ("entry", vec![da_branch("a", "b")]),
+            (
+                "a",
+                vec![da_add("x", Value::Constant(Literal::I32(1))), da_jump("j")],
+            ),
+            ("b", vec![da_jump("j")]),
+            ("j", vec![da_ret(Value::Variable("x"))]),
+        ]);
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("'%x'") && e.contains("'j'")));
+    }
+
+    #[test]
+    fn test_definite_assignment_both_arms_reach_join() {
+        let f = da_func(vec![
+            ("entry", vec![da_branch("a", "b")]),
+            (
+                "a",
+                vec![da_add("x", Value::Constant(Literal::I32(1))), da_jump("j")],
+            ),
+            (
+                "b",
+                vec![da_add("x", Value::Constant(Literal::I32(2))), da_jump("j")],
+            ),
+            ("j", vec![da_ret(Value::Variable("x"))]),
+        ]);
+        assert_eq!(f.validate(), Ok(()));
+    }
+
+    #[test]
+    fn test_definite_assignment_entry_backedge_does_not_initialize() {
+        let f = da_func(vec![
+            (
+                "entry",
+                vec![
+                    da_add("y", Value::Variable("x")),
+                    da_add("x", Value::Constant(Literal::I32(1))),
+                    da_branch("entry", "exit"),
+                ],
+            ),
+            ("exit", vec![da_ret(Value::Variable("y"))]),
+        ]);
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("'%x'")));
+    }
+
+    #[test]
+    fn test_definite_assignment_loop_defined_value_read_on_first_iteration() {
+        let f = da_func(vec![
+            ("entry", vec![da_jump("h")]),
+            (
+                "h",
+                vec![
+                    da_add("y", Value::Variable("x")),
+                    da_add("x", Value::Constant(Literal::I32(1))),
+                    da_branch("h", "exit"),
+                ],
+            ),
+            ("exit", vec![da_ret(Value::Variable("y"))]),
+        ]);
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("'%x'")));
+    }
+
+    #[test]
+    fn test_definite_assignment_phi_operand_must_be_assigned_on_its_edge() {
+        let phi = |incoming: Vec<(Value<'static>, &'static str)>| Instruction::Phi {
+            result: "p",
+            ty: Type::Primitive(PrimitiveType::I32),
+            incoming,
+        };
+        let f = da_func(vec![
+            ("entry", vec![da_branch("a", "b")]),
+            (
+                "a",
+                vec![da_add("x", Value::Constant(Literal::I32(1))), da_jump("j")],
+            ),
+            ("b", vec![da_jump("j")]),
+            (
+                "j",
+                vec![
+                    phi(vec![
+                        (Value::Variable("x"), "a"),
+                        (Value::Variable("x"), "b"),
+                    ]),
+                    da_ret(Value::Variable("p")),
+                ],
+            ),
+        ]);
+        let errs = f.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("'%x' from 'b'")));
+        assert!(!errs.iter().any(|e| e.contains("from 'a'")));
+    }
+
+    #[test]
+    fn test_definite_assignment_phi_operand_assigned_on_each_edge_accepted() {
+        let f = da_func(vec![
+            ("entry", vec![da_branch("a", "b")]),
+            (
+                "a",
+                vec![da_add("x", Value::Constant(Literal::I32(1))), da_jump("j")],
+            ),
+            (
+                "b",
+                vec![da_add("z", Value::Constant(Literal::I32(2))), da_jump("j")],
+            ),
+            (
+                "j",
+                vec![
+                    Instruction::Phi {
+                        result: "p",
+                        ty: Type::Primitive(PrimitiveType::I32),
+                        incoming: vec![(Value::Variable("x"), "a"), (Value::Variable("z"), "b")],
+                    },
+                    da_ret(Value::Variable("p")),
+                ],
+            ),
+        ]);
+        assert_eq!(f.validate(), Ok(()));
+    }
+
+    #[test]
+    fn test_definite_assignment_unreachable_block_does_not_inherit_definitions() {
+        let f = da_func(vec![
+            (
+                "entry",
+                vec![
+                    da_add("x", Value::Constant(Literal::I32(1))),
+                    da_ret(Value::Variable("x")),
+                ],
+            ),
+            (
+                "dead",
+                vec![
+                    da_add("q", Value::Variable("x")),
+                    da_ret(Value::Variable("q")),
+                ],
+            ),
+        ]);
+        let errs = f.validate().unwrap_err();
+        assert!(
+            errs.iter()
+                .any(|e| e.contains("'%x'") && e.contains("'dead'"))
+        );
     }
 }

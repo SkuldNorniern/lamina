@@ -1269,8 +1269,9 @@ impl<'a> Instruction<'a> {
                 push_value(true_val, &mut vars);
                 push_value(false_val, &mut vars);
             }
-            Instruction::Write { buffer, .. } | Instruction::Read { buffer, .. } => {
+            Instruction::Write { buffer, size, .. } | Instruction::Read { buffer, size, .. } => {
                 push_value(buffer, &mut vars);
+                push_value(size, &mut vars);
             }
             Instruction::AtomicLoad { ptr, .. } => push_value(ptr, &mut vars),
             Instruction::AtomicStore { ptr, value, .. }
@@ -1292,6 +1293,50 @@ impl<'a> Instruction<'a> {
                 for (v, _) in incoming {
                     push_value(v, &mut vars);
                 }
+            }
+            #[cfg(feature = "nightly")]
+            Instruction::SimdBinary { lhs, rhs, .. } => {
+                push_value(lhs, &mut vars);
+                push_value(rhs, &mut vars);
+            }
+            #[cfg(feature = "nightly")]
+            Instruction::SimdUnary { operand, .. } => push_value(operand, &mut vars),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdTernary { lhs, rhs, acc, .. } => {
+                push_value(lhs, &mut vars);
+                push_value(rhs, &mut vars);
+                push_value(acc, &mut vars);
+            }
+            #[cfg(feature = "nightly")]
+            Instruction::SimdShuffle { lhs, rhs, mask, .. } => {
+                push_value(lhs, &mut vars);
+                push_value(rhs, &mut vars);
+                push_value(mask, &mut vars);
+            }
+            #[cfg(feature = "nightly")]
+            Instruction::SimdExtract {
+                vector, lane_index, ..
+            } => {
+                push_value(vector, &mut vars);
+                push_value(lane_index, &mut vars);
+            }
+            #[cfg(feature = "nightly")]
+            Instruction::SimdInsert {
+                vector,
+                scalar,
+                lane_index,
+                ..
+            } => {
+                push_value(vector, &mut vars);
+                push_value(scalar, &mut vars);
+                push_value(lane_index, &mut vars);
+            }
+            #[cfg(feature = "nightly")]
+            Instruction::SimdLoad { ptr, .. } => push_value(ptr, &mut vars),
+            #[cfg(feature = "nightly")]
+            Instruction::SimdStore { ptr, value, .. } => {
+                push_value(ptr, &mut vars);
+                push_value(value, &mut vars);
             }
             _ => {}
         }
